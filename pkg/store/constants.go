@@ -1,0 +1,38 @@
+package store
+
+//go:generate stringer -type=FQDNType
+
+const (
+	ANY               FQDNType = 0xFFFF
+	NONE              FQDNType = 0x0000
+	INDEX             FQDNType = 0x0001
+	TIMESTAMP         FQDNType = 0x0002
+	FPS               FQDNType = 0x0003
+	DROPPED_FRAMES    FQDNType = 0x0004
+	PATH              FQDNType = 0x0005
+	IMAGES            FQDNType = 0x0100
+	IMAGE             FQDNType = IMAGES + 1
+	IMAGE_GRAYSCALE   FQDNType = IMAGES + 2
+	IMAGE_TRANSFORMED FQDNType = IMAGES + 3
+	SYNC_DATA         FQDNType = IMAGES + 4
+	STEREO_LEFT       FQDNType = IMAGES + 5
+	STEREO_RIGHT      FQDNType = IMAGES + 6
+	DEPTH_IMAGE       FQDNType = IMAGES + 7
+	MAP_IMAGE         FQDNType = IMAGES + 8
+	ENVIRONMENT       FQDNType = 0x0F00
+	USER_KEY_CODE     FQDNType = ENVIRONMENT + 1
+	USER_MOUSE_DOWN   FQDNType = ENVIRONMENT + 2
+	USER_MOUSE_UP     FQDNType = ENVIRONMENT + 3
+	USER_MOUSE_MOVE   FQDNType = ENVIRONMENT + 4
+	ENV_OBSERVATION   FQDNType = ENVIRONMENT + 5
+	ENV_ACTION        FQDNType = ENVIRONMENT + 6
+	ALGORITHMS        FQDNType = 0x0200
+	KEY_POINTS        FQDNType = ALGORITHMS + 1
+	DESCRIPTORS       FQDNType = ALGORITHMS + 2
+	FEATURES          FQDNType = ALGORITHMS + 3
+	DNN_MODEL         FQDNType = ALGORITHMS + 4
+	DNN_BACKEND       FQDNType = ALGORITHMS + 5
+	FEATURES_TYPE     FQDNType = ALGORITHMS + 6
+	MATCHER           FQDNType = ALGORITHMS + 7
+	DRAWER            FQDNType = 0x1001
+)
