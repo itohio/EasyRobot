@@ -4,10 +4,10 @@ import (
 	"time"
 
 	"github.com/foxis/EasyRobot/pkg/backend"
-	. "github.com/foxis/EasyRobot/pkg/logger"
-	"github.com/foxis/EasyRobot/pkg/pipeline"
-	"github.com/foxis/EasyRobot/pkg/pipeline/steps"
-	"github.com/foxis/EasyRobot/pkg/plugin"
+	. "github.com/foxis/EasyRobot/pkg/core/logger"
+	"github.com/foxis/EasyRobot/pkg/core/pipeline"
+	"github.com/foxis/EasyRobot/pkg/core/pipeline/steps"
+	"github.com/foxis/EasyRobot/pkg/core/plugin"
 
 	"gocv.io/x/gocv"
 )

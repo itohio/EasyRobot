@@ -8,10 +8,10 @@ import (
 	"image/color"
 	"time"
 
-	. "github.com/foxis/EasyRobot/pkg/logger"
-	"github.com/foxis/EasyRobot/pkg/pipeline"
-	"github.com/foxis/EasyRobot/pkg/plugin"
-	"github.com/foxis/EasyRobot/pkg/store"
+	. "github.com/foxis/EasyRobot/pkg/core/logger"
+	"github.com/foxis/EasyRobot/pkg/core/pipeline"
+	"github.com/foxis/EasyRobot/pkg/core/plugin"
+	"github.com/foxis/EasyRobot/pkg/core/store"
 
 	"gocv.io/x/gocv"
 )

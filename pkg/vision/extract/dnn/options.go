@@ -1,7 +1,7 @@
 package dnn
 
 import (
-	"github.com/foxis/EasyRobot/pkg/plugin"
+	"github.com/foxis/EasyRobot/pkg/core/plugin"
 	"gocv.io/x/gocv"
 )
 

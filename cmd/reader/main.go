@@ -15,9 +15,9 @@ import (
 	"github.com/foxis/EasyRobot/pkg/core/pipeline/steps/fps"
 	"github.com/foxis/EasyRobot/pkg/core/plugin"
 	"github.com/foxis/EasyRobot/pkg/core/store"
-	"github.com/foxis/EasyRobot/pkg/core/vision/display"
-	"github.com/foxis/EasyRobot/pkg/core/vision/reader"
-	"github.com/foxis/EasyRobot/pkg/core/vision/writer"
+	"github.com/foxis/EasyRobot/pkg/vision/display"
+	"github.com/foxis/EasyRobot/pkg/vision/reader"
+	"github.com/foxis/EasyRobot/pkg/vision/writer"
 )
 
 func main() {

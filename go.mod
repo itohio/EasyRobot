@@ -3,6 +3,7 @@ module github.com/foxis/EasyRobot
 go 1.16
 
 require (
+	github.com/chewxy/math32 v1.0.8 // indirect
 	github.com/coreos/go-systemd v0.0.0-20190321100706-95778dfbb74e // indirect
 	github.com/hexdigest/gounit v0.0.0-20180817093830-f1874d3307cb // indirect
 	github.com/rs/zerolog v1.23.0 // indirect

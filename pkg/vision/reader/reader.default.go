@@ -5,9 +5,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/foxis/EasyRobot/pkg/pipeline"
-	"github.com/foxis/EasyRobot/pkg/pipeline/steps"
-	"github.com/foxis/EasyRobot/pkg/plugin"
+	"github.com/foxis/EasyRobot/pkg/core/pipeline"
+	"github.com/foxis/EasyRobot/pkg/core/pipeline/steps"
+	"github.com/foxis/EasyRobot/pkg/core/plugin"
 )
 
 type defaultReader readerOpts

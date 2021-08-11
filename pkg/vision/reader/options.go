@@ -1,6 +1,6 @@
 package reader
 
-import "github.com/foxis/EasyRobot/pkg/plugin"
+import "github.com/foxis/EasyRobot/pkg/core/plugin"
 
 type readerOpts struct {
 	paths  []string

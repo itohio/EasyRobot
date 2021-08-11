@@ -1,8 +1,8 @@
 package format
 
 import (
-	"github.com/foxis/EasyRobot/pkg/plugin"
-	"github.com/foxis/EasyRobot/pkg/store"
+	"github.com/foxis/EasyRobot/pkg/core/plugin"
+	"github.com/foxis/EasyRobot/pkg/core/store"
 )
 
 type Options struct {
