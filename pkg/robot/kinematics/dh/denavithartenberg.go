@@ -11,12 +11,12 @@ type DenavitHartenberg struct {
 	eps           float32
 	maxIterations int
 	params        []float32
-	pos           [6]float32
+	pos           [7]float32
 	H0i           []mat.Matrix // TODO replace with Matrix4x4
 }
 
 func New(eps float32, maxIterations int, cfg ...Config) kinematics.Kinematics {
-	return DenavitHartenberg{
+	return &DenavitHartenberg{
 		eps:           eps,
 		maxIterations: maxIterations,
 		c:             cfg,
@@ -25,19 +25,19 @@ func New(eps float32, maxIterations int, cfg ...Config) kinematics.Kinematics {
 	}
 }
 
-func (p DenavitHartenberg) DOF() int {
+func (p *DenavitHartenberg) DOF() int {
 	return len(p.c)
 }
 
-func (p DenavitHartenberg) Params() vec.Vector {
+func (p *DenavitHartenberg) Params() vec.Vector {
 	return p.params[:]
 }
 
-func (p DenavitHartenberg) Effector() vec.Vector {
+func (p *DenavitHartenberg) Effector() vec.Vector {
 	return p.pos[:]
 }
 
-func (p DenavitHartenberg) Forward() bool {
+func (p *DenavitHartenberg) Forward() bool {
 	H := mat.NewEye(4)
 	p.H0i[0].Eye()
 	for i, cfg := range p.c {
@@ -48,12 +48,12 @@ func (p DenavitHartenberg) Forward() bool {
 	}
 
 	copy(p.pos[:3], p.H0i[len(p.c)].Col(3))
-	// TODO determine orientation
+	copy(p.pos[3:], p.H0i[len(p.c)].Quaternion().Vector())
 
 	return true
 }
 
-func (p DenavitHartenberg) Inverse() bool {
+func (p *DenavitHartenberg) Inverse() bool {
 
 	return false
 }

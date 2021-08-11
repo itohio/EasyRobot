@@ -14,24 +14,24 @@ type p3d struct {
 }
 
 func New3DOF(cfg [3]Config) kinematics.Kinematics {
-	return p3d{
+	return &p3d{
 		c: cfg,
 	}
 }
 
-func (p3d) DOF() int {
+func (*p3d) DOF() int {
 	return 3
 }
 
-func (p p3d) Params() vec.Vector {
+func (p *p3d) Params() vec.Vector {
 	return p.params[:]
 }
 
-func (p p3d) Effector() vec.Vector {
+func (p *p3d) Effector() vec.Vector {
 	return p.pos[:]
 }
 
-func (p p3d) Forward() bool {
+func (p *p3d) Forward() bool {
 	a0 := p.c[0].Limit(p.params[0])
 	a1 := p.c[1].Limit(p.params[1])
 	a2 := p.c[2].Limit(p.params[2]) + a1
@@ -42,15 +42,15 @@ func (p p3d) Forward() bool {
 	x := l0 + l1*math32.Cos(a1) + l2*math32.Cos(a2)
 	z := l1*math32.Sin(a1) + l2*math32.Sin(a2)
 	p.pos[0] = x * math32.Cos(a0)
-	p.pos[2] = z
 	p.pos[1] = x * math32.Sin(a0)
-	p.pos[2] = a2
-	p.pos[3] = a0
+	p.pos[2] = z
+	p.pos[4] = a2
+	p.pos[5] = a0
 
 	return true
 }
 
-func (p p3d) Inverse() bool {
+func (p *p3d) Inverse() bool {
 	l0 := p.c[0].Length
 	l1 := p.c[1].Length
 	l2 := p.c[2].Length
