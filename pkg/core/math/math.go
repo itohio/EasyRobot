@@ -8,6 +8,17 @@ func SQR(a float32) float32 {
 	return a * a
 }
 
+func Clamp(a, min, max float32) float32 {
+	switch {
+	case a > max:
+		return max
+	case a < min:
+		return min
+	default:
+		return a
+	}
+}
+
 // (a^2+b^2)^(1/2) without Owerflow
 func Pytag(a, b float32) float32 {
 	absa := math32.Abs(a)

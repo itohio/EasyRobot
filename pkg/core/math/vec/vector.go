@@ -87,6 +87,20 @@ func (v Vector) Slice(start, end int) Vector {
 	return v[start:end]
 }
 
+func (v Vector) Clamp(min, max Vector) Vector {
+	for i := range v {
+		v[i] = math.Clamp(v[i], min[i], max[i])
+	}
+	return v
+}
+
+func (v Vector) FillC(c float32) Vector {
+	for i := range v {
+		v[i] = c
+	}
+	return v
+}
+
 func (v Vector) Neg() Vector {
 	for i := range v {
 		v[i] = -v[i]
@@ -178,6 +192,16 @@ func (v Vector) Normal() Vector {
 func (v Vector) NormalFast() Vector {
 	d := v.SumSqr(1)
 	return v.MulC(math.FastISqrt(d))
+}
+
+func (v Vector) Product(v1 Vector) Vector {
+	if len(v) != len(v1) {
+		panic(-1)
+	}
+	for i := range v {
+		v[i] *= v1[i]
+	}
+	return v
 }
 
 func (v Vector) Dot(v1 Vector) float32 {

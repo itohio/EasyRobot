@@ -2,6 +2,7 @@ package vec
 
 import (
 	"github.com/chewxy/math32"
+	"github.com/foxis/EasyRobot/pkg/core/math"
 )
 
 type Vector3D [3]float32
@@ -10,11 +11,11 @@ func New3D(x, y, z float32) Vector3D {
 	return Vector3D{x, y, z}
 }
 
-func (v Vector3D) Vector() Vector {
+func (v *Vector3D) Vector() Vector {
 	return v[:]
 }
 
-func (v Vector3D) MagnitudeSqr() float32 {
+func (v *Vector3D) MagnitudeSqr() float32 {
 	var sum float32
 	for _, val := range v {
 		sum += val * val
@@ -22,11 +23,11 @@ func (v Vector3D) MagnitudeSqr() float32 {
 	return sum
 }
 
-func (v Vector3D) Magnitude() float32 {
+func (v *Vector3D) Magnitude() float32 {
 	return math32.Sqrt(v.MagnitudeSqr())
 }
 
-func (v Vector3D) DistanceSqr(v1 Vector3D) float32 {
+func (v *Vector3D) DistanceSqr(v1 Vector3D) float32 {
 	var sum float32
 
 	d := v[0] - v1[0]
@@ -38,55 +39,74 @@ func (v Vector3D) DistanceSqr(v1 Vector3D) float32 {
 	return sum
 }
 
-func (v Vector3D) Distance(v1 Vector3D) float32 {
+func (v *Vector3D) Distance(v1 Vector3D) float32 {
 	return math32.Sqrt(v.DistanceSqr(v1))
 }
 
-func (v Vector3D) Clone() Vector3D {
-	return Vector3D{v[0], v[1], v[2]}
+func (v *Vector3D) Clone() *Vector3D {
+	return &Vector3D{v[0], v[1], v[2]}
 }
 
-func (v Vector3D) Neg() Vector3D {
+func (v *Vector3D) Neg() *Vector3D {
 	v[0] = -v[0]
 	v[1] = -v[1]
 	v[2] = -v[2]
 	return v
 }
 
-func (v Vector3D) Add(v1 Vector3D) Vector3D {
+func (v *Vector3D) Add(v1 Vector3D) *Vector3D {
 	v[0] += v1[0]
 	v[1] += v1[1]
 	v[2] += v1[2]
 	return v
 }
 
-func (v Vector3D) Sub(v1 Vector3D) Vector3D {
+func (v *Vector3D) Sub(v1 Vector3D) *Vector3D {
 	v[0] -= v1[0]
 	v[1] -= v1[1]
 	v[2] -= v1[2]
 	return v
 }
 
-func (v Vector3D) Mul(c float32) Vector3D {
+func (v *Vector3D) MulC(c float32) *Vector3D {
 	v[0] *= c
 	v[1] *= c
 	v[2] *= c
 	return v
 }
 
-func (v Vector3D) Div(c float32) Vector3D {
+func (v *Vector3D) MulCAdd(c float32, v1 Vector3D) *Vector3D {
+	for i := range v {
+		v[i] += v1[i] * c
+	}
+	return v
+}
+
+func (v *Vector3D) MulCSub(c float32, v1 Vector3D) *Vector3D {
+	for i := range v {
+		v[i] -= v1[i] * c
+	}
+	return v
+}
+
+func (v *Vector3D) DivC(c float32) *Vector3D {
 	v[0] /= c
 	v[1] /= c
 	v[2] /= c
 	return v
 }
 
-func (v Vector3D) Normal() Vector3D {
+func (v *Vector3D) Normal() *Vector3D {
 	d := v.Magnitude()
-	return v.Div(d)
+	return v.DivC(d)
 }
 
-func (v Vector3D) Dot(v1 Vector3D) float32 {
+func (v *Vector3D) NormalFast() *Vector3D {
+	d := v.MagnitudeSqr()
+	return v.MulC(math.FastISqrt(d))
+}
+
+func (v *Vector3D) Dot(v1 Vector3D) float32 {
 	var sum float32
 	sum += v[0] * v1[0]
 	sum += v[1] * v1[1]
@@ -94,31 +114,22 @@ func (v Vector3D) Dot(v1 Vector3D) float32 {
 	return sum
 }
 
-func (v Vector3D) Cross(v1 Vector3D) Vector3D {
-	var dst Vector3D
-	dst[0] = v[1]*v1[2] - v[2]*v1[1]
-	dst[1] = v[2]*v1[0] - v[0]*v1[2]
-	dst[2] = v[0]*v1[1] - v[1]*v1[0]
-	return dst
-}
-
-func (v Vector3D) Reflect(n Vector3D) Vector3D {
-	N_dot_V := n.Dot(v) * 2
-	v[0] = N_dot_V*n[0] - v[0]
-	v[1] = N_dot_V*n[1] - v[1]
-	v[2] = N_dot_V*n[2] - v[2]
-
+func (v *Vector3D) Cross(v1 Vector3D) *Vector3D {
+	t := v.Clone()
+	v[0] = t[1]*v1[2] - t[2]*v1[1]
+	v[1] = t[2]*v1[0] - t[0]*v1[2]
+	v[2] = t[0]*v1[1] - t[1]*v1[0]
 	return v
 }
 
-func (v Vector3D) Refract(n Vector3D, ni, nt float32) (Vector3D, bool) {
+func (v *Vector3D) Refract(n Vector3D, ni, nt float32) (*Vector3D, bool) {
 	var (
 		sin_T  Vector3D /* sin vect of the refracted vect */
 		cos_V  Vector3D /* cos vect of the incident vect */
 		n_mult float32  /* ni over nt */
 	)
 
-	N_dot_V := n.Dot(v)
+	N_dot_V := n.Dot(*v)
 	if N_dot_V > 0.0 {
 		n_mult = ni / nt
 	} else {
@@ -145,13 +156,19 @@ func (v Vector3D) Refract(n Vector3D, ni, nt float32) (Vector3D, bool) {
 	return v, true
 }
 
-func (v Vector3D) Interpolate(v1 Vector3D, t float32) Vector3D {
-	var dst Vector3D
-	d := v1[0] - v[0]
-	dst[0] = v[0] + d*t
-	d = v1[1] - v[1]
-	dst[1] = v[1] + d*t
-	d = v1[2] - v[2]
-	dst[2] = v[2] + d*t
-	return dst
+func (v *Vector3D) Reflect(n Vector3D) *Vector3D {
+	if len(v) != len(n) {
+		panic(-1)
+	}
+	N_dot_V := n.Dot(*v) * 2
+
+	return v.Neg().MulCAdd(N_dot_V, n)
+}
+
+func (v *Vector3D) Interpolate(v1 Vector3D, t float32) *Vector3D {
+	if len(v) != len(v1) {
+		panic(-1)
+	}
+	d := v1.Clone().Sub(*v)
+	return v.MulCAdd(t, *d)
 }
