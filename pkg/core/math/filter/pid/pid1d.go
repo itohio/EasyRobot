@@ -1,8 +1,6 @@
 package pid
 
 import (
-	"time"
-
 	"github.com/foxis/EasyRobot/pkg/core/math"
 )
 
@@ -11,7 +9,7 @@ type PID1D struct {
 	min, max                         float32
 	input, lastInput, Output, Target float32
 	iTerm                            float32
-	lastTimestamp, timestamp         time.Time
+	samplePeriod                     float32
 }
 
 func New1D(p, i, d, min, max float32) PID1D {
@@ -27,30 +25,22 @@ func New1D(p, i, d, min, max float32) PID1D {
 func (p *PID1D) Init(input float32) *PID1D {
 	p.input = input
 	p.lastInput = input
-	p.timestamp = time.Now()
-	p.lastTimestamp = p.timestamp
 	p.iTerm = 0
 	return p
 }
 
-func (p *PID1D) Update(input float32) *PID1D {
+func (p *PID1D) Update(input, samplePeriod float32) *PID1D {
 	p.lastInput, p.input = p.input, input
-	p.lastTimestamp, p.timestamp = p.timestamp, time.Now()
+	p.samplePeriod = samplePeriod
 	return p
 }
 
 func (p *PID1D) Calculate() *PID1D {
-	timeChange := p.timestamp.Sub(p.lastTimestamp)
-	delta := float32(timeChange.Seconds())
-	if timeChange == 0 {
-		delta = 1
-	}
-
 	E := p.Target - p.input
 	D := (p.input - p.lastInput)
 
-	p.iTerm = math.Clamp(p.iTerm+p.I*E*delta, p.min, p.max)
-	p.Output = math.Clamp(p.P*E+p.iTerm-p.D*D/delta, p.min, p.max)
+	p.iTerm = math.Clamp(p.iTerm+p.I*E*p.samplePeriod, p.min, p.max)
+	p.Output = math.Clamp(p.P*E+p.iTerm-p.D*D/p.samplePeriod, p.min, p.max)
 
 	return p
 }

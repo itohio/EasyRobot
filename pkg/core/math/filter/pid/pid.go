@@ -1,8 +1,6 @@
 package pid
 
 import (
-	"time"
-
 	"github.com/foxis/EasyRobot/pkg/core/math/vec"
 )
 
@@ -11,7 +9,7 @@ type PID struct {
 	min, max                         vec.Vector
 	input, lastInput, Output, Target vec.Vector
 	iTerm                            vec.Vector
-	lastTimestamp, timestamp         time.Time
+	samplePeriod                     float32
 }
 
 func New(p, i, d, min, max vec.Vector) PID {
@@ -34,33 +32,25 @@ func (p *PID) Init(input vec.Vector) *PID {
 	}
 	p.input = input
 	p.lastInput = input
-	p.timestamp = time.Now()
-	p.lastTimestamp = p.timestamp
 	p.iTerm.FillC(0)
 	return p
 }
 
-func (p *PID) Update(input vec.Vector) *PID {
+func (p *PID) Update(input vec.Vector, samplePeriod float32) *PID {
 	if len(p.P) != len(input) {
 		panic(-1)
 	}
 	p.lastInput, p.input = p.input, input
-	p.lastTimestamp, p.timestamp = p.timestamp, time.Now()
+	p.samplePeriod = samplePeriod
 	return p
 }
 
 func (p *PID) Calculate() *PID {
-	timeChange := p.timestamp.Sub(p.lastTimestamp)
-	delta := float32(timeChange.Seconds())
-	if timeChange == 0 {
-		delta = 1
-	}
-
 	E := p.Target.Clone().Sub(p.input)
 	D := p.input.Clone().Sub(p.lastInput)
 
-	p.iTerm.Add(p.I.Clone().Product(E).MulC(delta)).Clamp(p.min, p.max)
-	p.Output.CopyFrom(0, p.P.Clone().Product(E).Add(p.iTerm).Sub(p.D.Clone().Product(D).DivC(delta)).Clamp(p.min, p.max))
+	p.iTerm.Add(p.I.Clone().Multiply(E).MulC(p.samplePeriod)).Clamp(p.min, p.max)
+	p.Output.CopyFrom(0, p.P.Clone().Multiply(E).Add(p.iTerm).Sub(p.D.Clone().Multiply(D).DivC(p.samplePeriod)).Clamp(p.min, p.max))
 
 	return p
 }

@@ -2,6 +2,8 @@ package math
 
 import "github.com/chewxy/math32"
 
+//go:generate go run ../../../cmd/codegen -i gen/vec.tpl -c gen/vec.json
+
 const magic32 = 0x5F375A86
 
 func SQR(a float32) float32 {
