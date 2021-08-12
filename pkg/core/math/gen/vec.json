@@ -1,0 +1,81 @@
+[
+    {
+        "file_name": "vec/vec.go",
+        "extra_code": "",
+        "post_process": ["gofmt", "-s", "-w", "vec/vec.go"],
+        "params": {
+            "type": "float32",
+            "name": "Vector",
+            "name_class": "Vector",
+            "name_ret": "Vector",
+            "size": "",
+            "xy": true,
+            "xyz": true,
+            "xyzw": true,
+            "refract2d": "Refract2D",
+            "refract3d": "Refract3D",
+            "cross": true,
+            "quaternion": true
+        }
+    },
+    {
+        "file_name": "vec/vec2d.go",
+        "extra_code": "",
+        "post_process": ["gofmt", "-s", "-w", "vec/vec2d.go"],
+        "params": {
+            "type": "float32",
+            "name": "Vector2D",
+            "name_class": "*Vector2D",
+            "name_ret": "*Vector2D",
+            "size": 2,
+            "refract2d": "Refract",
+            "xy": true
+        }
+    },
+    {
+        "file_name": "vec/vec3d.go",
+        "extra_code": "",
+        "post_process": ["gofmt", "-s", "-w", "vec/vec3d.go"],
+        "params": {
+            "type": "float32",
+            "name": "Vector3D",
+            "name_class": "*Vector3D",
+            "name_ret": "*Vector3D",
+            "size": 3,
+            "refract3d": "Refract",
+            "cross": true,
+            "xyz": true
+        }
+    },
+    {
+        "file_name": "vec/vec4d.go",
+        "extra_code": "",
+        "post_process": ["gofmt", "-s", "-w", "vec/vec4d.go"],
+        "params": {
+            "type": "float32",
+            "name": "Vector4D",
+            "name_class": "*Vector4D",
+            "name_ret": "*Vector4D",
+            "size": 4,
+            "xyz": true,
+            "xyzw": true,
+            "quaternion": true
+        }
+    },
+    {
+        "file_name": "vec/quaternion.go",
+        "extra_code": "",
+        "post_process": ["gofmt", "-s", "-w", "vec/quaternion.go"],
+        "params": {
+            "type": "float32",
+            "name": "Quaternion",
+            "name_class": "*Quaternion",
+            "name_ret": "*Quaternion",
+            "size": 4,
+            "xyz": true,
+            "xyzw": true,
+            "refract3d": "Refract",
+            "quaternion": true
+        }
+    }
+]

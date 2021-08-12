@@ -1,20 +1,38 @@
+// Generated code. DO NOT EDIT
+
 package vec
 
 import (
 	"github.com/chewxy/math32"
+	"github.com/foxis/EasyRobot/pkg/core/math"
 )
 
 type Vector2D [2]float32
 
-func New2D(x, y float32) Vector2D {
-	return Vector2D{x, y}
+func (v *Vector2D) Sum() float32 {
+	var sum float32
+	for _, val := range v {
+		sum += val
+	}
+	return sum
 }
 
 func (v *Vector2D) Vector() Vector {
 	return v[:]
 }
 
-func (v *Vector2D) MagnitudeSqr() float32 {
+func (v *Vector2D) Slice(start, end int) Vector {
+	if end < 0 {
+		end = len(v)
+	}
+	return v[start:end]
+}
+
+func (v *Vector2D) XY() (float32, float32) {
+	return v[0], v[1]
+}
+
+func (v *Vector2D) SumSqr() float32 {
 	var sum float32
 	for _, val := range v {
 		sum += val * val
@@ -23,17 +41,11 @@ func (v *Vector2D) MagnitudeSqr() float32 {
 }
 
 func (v *Vector2D) Magnitude() float32 {
-	return math32.Sqrt(v.MagnitudeSqr())
+	return math32.Sqrt(v.SumSqr())
 }
 
 func (v *Vector2D) DistanceSqr(v1 Vector2D) float32 {
-	var sum float32
-
-	d := v[0] - v1[0]
-	sum += d * d
-	d = v[1] - v1[1]
-	sum += d * d
-	return sum
+	return v.Clone().Sub(v1).SumSqr()
 }
 
 func (v *Vector2D) Distance(v1 Vector2D) float32 {
@@ -41,57 +53,135 @@ func (v *Vector2D) Distance(v1 Vector2D) float32 {
 }
 
 func (v *Vector2D) Clone() *Vector2D {
-	return &Vector2D{v[0], v[1]}
+	clone := Vector2D{}
+	copy(clone[:], v[:])
+	return &clone
+}
+
+func (v *Vector2D) CopyFrom(start int, v1 Vector) *Vector2D {
+	copy(v[start:], v1)
+	return v
+}
+
+func (v *Vector2D) CopyTo(start int, v1 Vector) Vector {
+	copy(v1, v[start:])
+	return v1
+}
+
+func (v *Vector2D) Clamp(min, max Vector2D) *Vector2D {
+	for i := range v {
+		v[i] = math.Clamp(v[i], min[i], max[i])
+	}
+	return v
+}
+
+func (v *Vector2D) FillC(c float32) *Vector2D {
+	for i := range v {
+		v[i] = c
+	}
+	return v
 }
 
 func (v *Vector2D) Neg() *Vector2D {
-	v[0] = -v[0]
-	v[1] = -v[1]
+	for i := range v {
+		v[i] = -v[i]
+	}
 	return v
 }
 
 func (v *Vector2D) Add(v1 Vector2D) *Vector2D {
-	v[0] += v1[0]
-	v[1] += v1[1]
+	for i := range v {
+		v[i] += v1[i]
+	}
+	return v
+}
+
+func (v *Vector2D) AddC(c float32) *Vector2D {
+	for i := range v {
+		v[i] += c
+	}
 	return v
 }
 
 func (v *Vector2D) Sub(v1 Vector2D) *Vector2D {
-	v[0] -= v1[0]
-	v[1] -= v1[1]
+	for i := range v {
+		v[i] -= v1[i]
+	}
 	return v
 }
 
-func (v *Vector2D) Mul(c float32) *Vector2D {
-	v[0] *= c
-	v[1] *= c
+func (v *Vector2D) SubC(c float32) *Vector2D {
+	for i := range v {
+		v[i] -= c
+	}
 	return v
 }
 
-func (v *Vector2D) Div(c float32) *Vector2D {
-	v[0] /= c
-	v[1] /= c
+func (v *Vector2D) MulC(c float32) *Vector2D {
+	for i := range v {
+		v[i] *= c
+	}
+	return v
+}
+
+func (v *Vector2D) MulCAdd(c float32, v1 Vector2D) *Vector2D {
+	for i := range v {
+		v[i] += v1[i] * c
+	}
+	return v
+}
+
+func (v *Vector2D) MulCSub(c float32, v1 Vector2D) *Vector2D {
+	for i := range v {
+		v[i] -= v1[i] * c
+	}
+	return v
+}
+
+func (v *Vector2D) DivC(c float32) *Vector2D {
+	for i := range v {
+		v[i] /= c
+	}
+	return v
+}
+
+func (v *Vector2D) DivCAdd(c float32, v1 Vector2D) *Vector2D {
+	for i := range v {
+		v[i] += v1[i] / c
+	}
+	return v
+}
+
+func (v *Vector2D) DivCSub(c float32, v1 Vector2D) *Vector2D {
+	for i := range v {
+		v[i] -= v1[i] / c
+	}
 	return v
 }
 
 func (v *Vector2D) Normal() *Vector2D {
 	d := v.Magnitude()
-	return v.Div(d)
+	return v.DivC(d)
+}
+
+func (v *Vector2D) NormalFast() *Vector2D {
+	d := v.SumSqr()
+	return v.MulC(math.FastISqrt(d))
+}
+
+func (v *Vector2D) Multiply(v1 Vector2D) *Vector2D {
+	for i := range v {
+		v[i] *= v1[i]
+	}
+	return v
 }
 
 func (v *Vector2D) Dot(v1 Vector2D) float32 {
 	var sum float32
-	sum += v[0] * v1[0]
-	sum += v[1] * v1[1]
+	for i := range v {
+		sum += v[i] * v1[i]
+	}
 	return sum
-}
-
-func (v *Vector2D) Reflect(n Vector2D) *Vector2D {
-	N_dot_V := n.Dot(*v) * 2
-	v[0] = N_dot_V*n[0] - v[0]
-	v[1] = N_dot_V*n[1] - v[1]
-
-	return v
 }
 
 func (v *Vector2D) Refract(n Vector2D, ni, nt float32) (*Vector2D, bool) {
@@ -100,7 +190,9 @@ func (v *Vector2D) Refract(n Vector2D, ni, nt float32) (*Vector2D, bool) {
 		sin_T  Vector2D
 		n_mult float32
 	)
+
 	N_dot_V := n.Dot(*v)
+
 	if N_dot_V > 0.0 {
 		n_mult = ni / nt
 	} else {
@@ -125,11 +217,16 @@ func (v *Vector2D) Refract(n Vector2D, ni, nt float32) (*Vector2D, bool) {
 	return v, true
 }
 
+func (v *Vector2D) Reflect(n Vector2D) *Vector2D {
+
+	N_dot_V := n.Dot(*v) * 2
+
+	return v.Neg().MulCAdd(N_dot_V, n)
+}
+
 func (v *Vector2D) Interpolate(v1 Vector2D, t float32) *Vector2D {
-	var dst Vector2D
-	d := v1[0] - v[0]
-	dst[0] = v[0] + d*t
-	d = v1[1] - v[1]
-	dst[1] = v[1] + d*t
-	return &dst
+
+	d := v1.Clone().Sub(*v)
+	return v.MulCAdd(t, *d)
+
 }
