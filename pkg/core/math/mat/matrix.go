@@ -19,7 +19,7 @@ func New(rows, cols int) Matrix {
 	}
 }
 
-func NewBacked(rows, cols int, arr []float32) Matrix {
+func NewFromRaw(rows, cols int, arr []float32) Matrix {
 	if len(arr) != rows*cols {
 		panic(-1)
 	}
@@ -30,74 +30,68 @@ func NewBacked(rows, cols int, arr []float32) Matrix {
 	}
 }
 
-func NewEye(N int) Matrix {
-	m := New(N, N)
-	return m.Eye()
-}
-
-func NewRotation2D(a float32) Matrix {
-	c := math32.Cos(a)
-	s := math32.Sin(a)
+func NewFrom(rows, cols int, arr ...float32) Matrix {
+	if len(arr) != rows*cols {
+		panic(-1)
+	}
 	return Matrix{
-		Rows: 2,
-		Cols: 2,
-		Data: []float32{
-			c, -s,
-			s, c,
-		},
+		Data: arr,
+		Rows: rows,
+		Cols: cols,
 	}
 }
 
-func NewRotationX(a float32) Matrix {
+func (m Matrix) Rotation2D(a float32) Matrix {
 	c := math32.Cos(a)
 	s := math32.Sin(a)
-	return Matrix{
-		Rows: 3,
-		Cols: 3,
-		Data: []float32{
-			1, 0, 0,
-			0, c, -s,
-			0, s, c,
-		},
-	}
+	return m.SetSubmatrixRaw(0, 0, 2, 2,
+		c, -s,
+		s, c,
+	)
 }
 
-func NewRotationY(a float32) Matrix {
+func (m Matrix) RotationX(a float32) Matrix {
 	c := math32.Cos(a)
 	s := math32.Sin(a)
-	return Matrix{
-		Rows: 3,
-		Cols: 3,
-		Data: []float32{
-			c, 0, s,
-			0, 1, 0,
-			-s, 0, c,
-		},
-	}
+	return m.SetSubmatrixRaw(0, 0, 3, 3,
+		1, 0, 0,
+		0, c, -s,
+		0, s, c,
+	)
 }
 
-func NewRotationZ(a float32) Matrix {
+func (m Matrix) RotationY(a float32) Matrix {
 	c := math32.Cos(a)
 	s := math32.Sin(a)
-	return Matrix{
-		Rows: 3,
-		Cols: 3,
-		Data: []float32{
-			c, -s, 0,
-			s, c, 0,
-			0, 0, 1,
-		},
-	}
+	return m.SetSubmatrixRaw(0, 0, 3, 3,
+		c, 0, s,
+		0, 1, 0,
+		-s, 0, c,
+	)
 }
 
-func NewRotation(x, y, z float32) Matrix {
-	m := NewRotationX(x)
-	return m.Mul(NewRotationY(y)).Mul(NewRotationZ(z))
+func (m Matrix) RotationZ(a float32) Matrix {
+	c := math32.Cos(a)
+	s := math32.Sin(a)
+	return m.SetSubmatrixRaw(0, 0, 3, 3,
+		c, -s, 0,
+		s, c, 0,
+		0, 0, 1,
+	)
 }
 
-// Build orientation matrix from quaternion
-// NOTE: axis must be unit vector
-func NewOrientation(q vec.Quaternion) Matrix {
+func (m Matrix) Rotation(x, y, z float32) Matrix {
+	m.RotationX(x)
+	Y := m.Clone()
+	Y.RotationY(y)
+	Z := m.Clone()
+	Z.RotationZ(z)
+	return m.Mul(Y).Mul(Z)
+}
+
+/// Build orientation matrix from quaternion
+/// NOTE: axis must be unit vector
+func (m Matrix) Orientation(q vec.Quaternion) Matrix {
 	theta := q.Theta() / 2
 
 	qr := math32.Cos(theta)
@@ -116,26 +110,27 @@ func NewOrientation(q vec.Quaternion) Matrix {
 	qiqr := qi * qr
 	qkqr := qk * qr
 	qjqk := qj * qk
-	return Matrix{
-		Rows: 3,
-		Cols: 3,
-		Data: []float32{
-			1.0 - 2.0*(qjqj+qkqk),
-			2.0 * (qiqj + qkqr),
-			2.0 * (qiqk + qjqr),
-			2.0 * (qiqj + qkqr),
-			1.0 - 2.0*(qiqi+qkqk),
-			2.0 * (qjqk + qiqr),
-			2.0 * (qiqk + qjqr),
-			2.0 * (qjqk + qiqr),
-			1.0 - 2.0*(qiqi+qjqj),
-		},
-	}
+	return m.SetSubmatrixRaw(0, 0, 3, 3,
+		1.0-2.0*(qjqj+qkqk),
+		2.0*(qiqj+qkqr),
+		2.0*(qiqk+qjqr),
+		2.0*(qiqj+qkqr),
+		1.0-2.0*(qiqi+qkqk),
+		2.0*(qjqk+qiqr),
+		2.0*(qiqk+qjqr),
+		2.0*(qjqk+qiqr),
+		1.0-2.0*(qiqi+qjqj),
+	)
 }
 
 func (m Matrix) Eye() Matrix {
+	idx := 0
+	for i := range m.Data {
+		m.Data[i] = 0
+	}
 	for i := 0; i < m.Rows; i++ {
-		m.Set(i, i, 1)
+		m.Data[idx] = 1
+		idx += m.Cols + 1
 	}
 	return m
 }
@@ -216,6 +211,19 @@ func (m Matrix) SetSubmatrix(row, col int, m1 Matrix) Matrix {
 	return m
 }
 
+func (m Matrix) SetSubmatrixRaw(row, col, rows1, cols1 int, m1 ...float32) Matrix {
+	src := 0
+	for i := 0; i < rows1; i++ {
+		dst := m.RowIdx(row+i) + col
+		for j := 0; j < cols1; j++ {
+			m.Data[dst] = m1[src]
+			dst++
+			src++
+		}
+	}
+	return m
+}
+
 func (m Matrix) Set(row, col int, val float32) {
 	m.Data[m.RowIdx(row)+col] = val
 }
@@ -275,24 +283,15 @@ func (m Matrix) DivC(c float32) Matrix {
 }
 
 func (m Matrix) Mul(m1 Matrix) Matrix {
-	dst := New(m.Rows, m1.Rows)
-	return m.MulTo(m1, dst)
+	tmp := m.Clone()
+	return tmp.MulTo(m1, tmp)
 }
 
 func (m Matrix) MulTo(m1 Matrix, dst Matrix) Matrix {
 	if dst.Rows != m.Rows || dst.Cols != m1.Rows {
 		panic(-1)
 	}
-	for i := 0; i < m.Rows; i++ {
-		for j := 0; j < m1.Rows; j++ {
-			var acc float32
-			for k := 0; k < m.Cols; k++ {
-				acc += m.Get(i, k) * m1.Get(k, j)
-			}
-			dst.Set(i, j, acc)
-		}
-	}
-
+	multo(m.Rows, m.Cols, m1.Rows, m1.Cols, m.Data, m1.Data, dst.Data)
 	return dst
 }
 
@@ -302,11 +301,7 @@ func (m Matrix) MulDiag(v vec.Vector) Matrix {
 }
 
 func (m Matrix) MulDiagTo(v vec.Vector, dst Matrix) Matrix {
-	for i := 0; i < m.Rows; i++ {
-		for j := 0; j < m.Cols; j++ {
-			dst.Set(i, j, m.Get(i, j)*v[j])
-		}
-	}
+	muldiagto(m.Rows, m.Cols, v, m.Data, dst.Data)
 	return dst
 }
 
@@ -316,15 +311,7 @@ func (m Matrix) MulV(v vec.Vector) vec.Vector {
 }
 
 func (m Matrix) MulVTo(v vec.Vector, dst vec.Vector) vec.Vector {
-	src := 0
-	for i := range dst {
-		var acc float32
-		for _, pv := range v {
-			acc += pv * m.Data[src]
-			src++
-		}
-		dst[i] = acc
-	}
+	mulvto(m.Data, v, dst)
 	return dst
 }
 
@@ -334,15 +321,7 @@ func (m Matrix) MulVT(v vec.Vector) vec.Vector {
 }
 
 func (m Matrix) MulVTTo(v vec.Vector, dst vec.Vector) vec.Vector {
-	for i := range dst {
-		var acc float32
-		src := i
-		for _, pv := range v {
-			acc += pv * m.Data[src]
-			src += m.Cols
-		}
-		dst[i] = acc
-	}
+	mulvtto(m.Data, v, dst)
 	return dst
 }
 
