@@ -45,7 +45,7 @@ func (c Config) Limit(a float32) float32 {
 	}
 }
 
-func (c Config) CalculateTransform(parameter float32, m mat.Matrix) bool {
+func (c Config) CalculateTransform(parameter float32, m *mat.Matrix4x4) bool {
 	parameter = c.Limit(parameter)
 	alpha := c.Alpha
 	theta := c.Theta
@@ -72,21 +72,21 @@ func (c Config) CalculateTransform(parameter float32, m mat.Matrix) bool {
 	ca := math32.Cos(alpha)
 	sa := math32.Sin(alpha)
 
-	m.Data[0] = ct
-	m.Data[1] = -st * ca
-	m.Data[2] = st * sa
-	m.Data[3] = r * ct
-	m.Data[4] = st
-	m.Data[5] = ct * ca
-	m.Data[6] = -ct * sa
-	m.Data[7] = r * st
-	m.Data[8] = 0
-	m.Data[9] = sa
-	m.Data[10] = ca
-	m.Data[11] = d
-	m.Data[12] = 0
-	m.Data[13] = 0
-	m.Data[14] = 0
-	m.Data[15] = 1
+	m[0] = ct
+	m[1] = -st * ca
+	m[2] = st * sa
+	m[3] = r * ct
+	m[4] = st
+	m[5] = ct * ca
+	m[6] = -ct * sa
+	m[7] = r * st
+	m[8] = 0
+	m[9] = sa
+	m[10] = ca
+	m[11] = d
+	m[12] = 0
+	m[13] = 0
+	m[14] = 0
+	m[15] = 1
 	return true
 }

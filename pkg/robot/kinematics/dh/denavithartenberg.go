@@ -12,7 +12,7 @@ type DenavitHartenberg struct {
 	maxIterations int
 	params        []float32
 	pos           [7]float32
-	H0i           []mat.Matrix // TODO replace with Matrix4x4
+	H0i           []mat.Matrix4x4 // TODO replace with Matrix4x4
 }
 
 func New(eps float32, maxIterations int, cfg ...Config) kinematics.Kinematics {
@@ -21,7 +21,6 @@ func New(eps float32, maxIterations int, cfg ...Config) kinematics.Kinematics {
 		maxIterations: maxIterations,
 		c:             cfg,
 		params:        make([]float32, len(cfg)),
-		H0i:           make([]mat.Matrix, len(cfg)+1),
 	}
 }
 
@@ -38,13 +37,14 @@ func (p *DenavitHartenberg) Effector() vec.Vector {
 }
 
 func (p *DenavitHartenberg) Forward() bool {
-	H := mat.NewEye(4)
+	H := mat.Matrix4x4{}
+	H.Eye()
 	p.H0i[0].Eye()
 	for i, cfg := range p.c {
-		if cfg.CalculateTransform(p.params[i], H) {
+		if cfg.CalculateTransform(p.params[i], &H) {
 			return false
 		}
-		p.H0i[i].MulTo(H, p.H0i[i+1])
+		p.H0i[i].MulTo(H, &(p.H0i[i+1]))
 	}
 
 	copy(p.pos[:3], p.H0i[len(p.c)].Col(3))

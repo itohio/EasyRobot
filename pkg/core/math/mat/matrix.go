@@ -239,9 +239,6 @@ func (m Matrix) Clone() Matrix {
 }
 
 func (m Matrix) Transpose(m1 Matrix) Matrix {
-	if m.Cols != m1.Rows || m.Rows != m1.Cols {
-		panic(-1)
-	}
 	src := 0
 	for i := 0; i < m.Rows; i++ {
 		dst := i
@@ -288,9 +285,6 @@ func (m Matrix) Mul(m1 Matrix) Matrix {
 }
 
 func (m Matrix) MulTo(m1 Matrix, dst Matrix) Matrix {
-	if dst.Rows != m.Rows || dst.Cols != m1.Rows {
-		panic(-1)
-	}
 	multo(m.Rows, m.Cols, m1.Rows, m1.Cols, m.Data, m1.Data, dst.Data)
 	return dst
 }

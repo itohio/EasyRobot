@@ -144,9 +144,6 @@ func (m *Matrix2x2) Clone() *Matrix2x2 {
 }
 
 func (m *Matrix2x2) Transpose(m1 Matrix2x2) *Matrix2x2 {
-	if 2 != 2 || 2 != 2 {
-		panic(-1)
-	}
 	src := 0
 	for i := 0; i < 2; i++ {
 		dst := i

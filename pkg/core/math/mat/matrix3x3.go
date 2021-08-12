@@ -205,9 +205,6 @@ func (m *Matrix3x3) Clone() *Matrix3x3 {
 }
 
 func (m *Matrix3x3) Transpose(m1 Matrix3x3) *Matrix3x3 {
-	if 3 != 3 || 3 != 3 {
-		panic(-1)
-	}
 	src := 0
 	for i := 0; i < 3; i++ {
 		dst := i

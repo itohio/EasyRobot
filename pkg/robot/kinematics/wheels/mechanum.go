@@ -37,11 +37,11 @@ func (p *mechanum) Effector() vec.Vector {
 
 func (p *mechanum) Forward() bool {
 	c := 2 / (p.wBX + p.wBY)
-	m := mat.NewBacked(3, 4, []float32{
+	m := mat.NewFrom(3, 4,
 		1, 1, 1, 1,
 		1, -1, -1, 1,
 		-c, c, -c, c,
-	}).MulC(p.wR / 4)
+	).MulC(p.wR / 4)
 
 	m.MulVTo(p.params[:], p.pos[:])
 
@@ -50,12 +50,12 @@ func (p *mechanum) Forward() bool {
 
 func (p *mechanum) Inverse() bool {
 	c := (p.wBX + p.wBY) / 2
-	m := mat.NewBacked(4, 3, []float32{
+	m := mat.NewFrom(4, 3,
 		1, 1, -c,
 		1, -1, c,
 		1, -1, -c,
 		1, 1, c,
-	}).DivC(p.wR)
+	).DivC(p.wR)
 
 	m.MulVTo(p.pos[:], p.params[:])
 	return true

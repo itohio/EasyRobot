@@ -141,7 +141,7 @@ func TestVector_XY(t *testing.T) {
 		want1 float32
 		want2 float32
 	}{
-		//TODO: Add test cases
+		{"new", func(t *testing.T) Vector { return NewFrom(1, 2, 3) }, nil, 1, 2},
 	}
 
 	for _, tt := range tests {
@@ -174,7 +174,7 @@ func TestVector_XYZ(t *testing.T) {
 		want2 float32
 		want3 float32
 	}{
-		//TODO: Add test cases
+		{"new", func(t *testing.T) Vector { return NewFrom(1, 2, 3) }, nil, 1, 2, 3},
 	}
 
 	for _, tt := range tests {
@@ -212,7 +212,7 @@ func TestVector_XYZW(t *testing.T) {
 		want3 float32
 		want4 float32
 	}{
-		//TODO: Add test cases
+		{"new", func(t *testing.T) Vector { return NewFrom(1, 2, 3, 4) }, nil, 1, 2, 3, 4},
 	}
 
 	for _, tt := range tests {

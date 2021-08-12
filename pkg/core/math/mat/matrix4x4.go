@@ -205,9 +205,6 @@ func (m *Matrix4x4) Clone() *Matrix4x4 {
 }
 
 func (m *Matrix4x4) Transpose(m1 Matrix4x4) *Matrix4x4 {
-	if 4 != 4 || 4 != 4 {
-		panic(-1)
-	}
 	src := 0
 	for i := 0; i < 4; i++ {
 		dst := i
