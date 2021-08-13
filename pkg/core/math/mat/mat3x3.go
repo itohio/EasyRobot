@@ -1,3 +1,5 @@
+// Generated code. DO NOT EDIT
+
 package mat
 
 import (
@@ -17,6 +19,7 @@ func New3x3(arr ...float32) Matrix3x3 {
 	return m
 }
 
+// Returns a flat representation of this matrix.
 func (m *Matrix3x3) Flat(v vec.Vector) vec.Vector {
 	N := len(m[0])
 	for i, row := range m {
@@ -25,6 +28,9 @@ func (m *Matrix3x3) Flat(v vec.Vector) vec.Vector {
 	return v
 }
 
+// Returns a Matrix view of this matrix.
+// The view actually contains slices of original matrix rows.
+// This way original matrix can be modified.
 func (m *Matrix3x3) Matrix() Matrix {
 	m1 := make(Matrix, len(m))
 	for i := range m {
@@ -70,7 +76,8 @@ func (m *Matrix3x3) RotationZ(a float32) *Matrix3x3 {
 }
 
 // Build orientation matrix from quaternion
-// NOTE: axis must be unit vector
+// Matrix size must be at least 3x3
+// Quaternion axis must be unit vector
 func (m *Matrix3x3) Orientation(q vec.Quaternion) *Matrix3x3 {
 	theta := q.Theta() / 2
 
@@ -103,7 +110,7 @@ func (m *Matrix3x3) Orientation(q vec.Quaternion) *Matrix3x3 {
 	)
 }
 
-// Fills destination matrix with identity matrix
+// Fills destination matrix with identity matrix.
 func (m *Matrix3x3) Eye() *Matrix3x3 {
 	for i := range m {
 		row := m[i][:]
@@ -117,10 +124,12 @@ func (m *Matrix3x3) Eye() *Matrix3x3 {
 	return m
 }
 
+// Returns a slice to the row.
 func (m *Matrix3x3) Row(row int) vec.Vector {
 	return m[row][:]
 }
 
+// Returns a copy of the matrix column.
 func (m *Matrix3x3) Col(col int, v vec.Vector) vec.Vector {
 	for i, row := range m {
 		v[i] = row[col]
@@ -148,6 +157,7 @@ func (m *Matrix3x3) Diagonal(dst vec.Vector) vec.Vector {
 	return dst
 }
 
+// Size of the vector must equal to number of rows
 func (m *Matrix3x3) SetDiagonal(v vec.Vector3D) *Matrix3x3 {
 	for i, v := range v {
 		m[i][i] = v

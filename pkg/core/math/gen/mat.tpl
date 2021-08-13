@@ -1,3 +1,5 @@
+// Generated code. DO NOT EDIT
+
 package mat
 
 import (
@@ -37,6 +39,7 @@ func New(rows, cols int, arr ...float32) Matrix {
 }
 {{end}}
 
+// Returns a flat representation of this matrix.
 func (m {{.name_class}}) Flat(v vec.Vector) vec.Vector {
 	N := len(m[0])
 	for i, row := range m {
@@ -45,6 +48,9 @@ func (m {{.name_class}}) Flat(v vec.Vector) vec.Vector {
 	return v
 }
 
+// Returns a Matrix view of this matrix.
+// The view actually contains slices of original matrix rows.
+// This way original matrix can be modified.
 func (m {{.name_class}}) Matrix() Matrix {
 	m1 := make(Matrix, len(m))
 	for i := range m {
@@ -106,7 +112,8 @@ func (m {{.name_class}}) RotationZ(a {{.type}}) {{.name_ret}} {
 
 {{if .orientation}}
 // Build orientation matrix from quaternion
-// NOTE: axis must be unit vector
+// Matrix size must be at least 3x3
+// Quaternion axis must be unit vector
 func (m {{.name_class}}) Orientation(q vec.Quaternion) {{.name_ret}} {
 	theta := q.Theta() / 2
 
@@ -141,7 +148,7 @@ func (m {{.name_class}}) Orientation(q vec.Quaternion) {{.name_ret}} {
 {{end}}
 
 {{ if eq .rows .cols}}
-// Fills destination matrix with identity matrix
+// Fills destination matrix with identity matrix.
 func (m {{.name_class}}) Eye() {{.name_ret}} {
 	for i := range m {
 		row := m[i][:]
@@ -156,10 +163,12 @@ func (m {{.name_class}}) Eye() {{.name_ret}} {
 }
 {{end}}
 
+// Returns a slice to the row.
 func (m {{.name_class}}) Row(row int) vec.Vector {
 	return m[row][:]
 }
 
+// Returns a copy of the matrix column.
 func (m {{.name_class}}) Col(col int, v vec.Vector) vec.Vector {
 	for i, row := range m {
 		v[i] = row[col]
@@ -188,6 +197,7 @@ func (m {{.name_class}}) Diagonal(dst vec.Vector) vec.Vector {
 	return dst
 }
 
+// Size of the vector must equal to number of rows
 func (m {{.name_class}}) SetDiagonal(v vec.{{.name_vec}}) {{.name_ret}} {
 	for i, v := range v {
 		m[i][i] = v

@@ -7,6 +7,114 @@ import (
 	"github.com/foxis/EasyRobot/pkg/core/math/vec"
 )
 
+func TestMatrix3x3_Flat(t *testing.T) {
+	type args struct {
+		v vec.Vector
+	}
+	tests := []struct {
+		name    string
+		init    func(t *testing.T) Matrix3x3
+		inspect func(r *Matrix3x3, t *testing.T) //inspects receiver after test run
+
+		args func(t *testing.T) args
+
+		want1 vec.Vector
+	}{
+		{
+			"new",
+			func(t *testing.T) Matrix3x3 {
+				return New3x3(
+					1, 2, 3, 4, 5, 6, 7, 8, 9,
+				)
+			},
+			nil,
+			func(t *testing.T) args {
+				return args{vec.New(9)}
+			},
+			vec.Vector{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		},
+		{
+			"new modify",
+			func(t *testing.T) Matrix3x3 {
+				return New3x3(
+					1, 2, 3, 4, 5, 6, 7, 8, 9,
+				)
+			},
+			func(r *Matrix3x3, t *testing.T) {
+				r[1][1] = 123
+			},
+			func(t *testing.T) args {
+				return args{vec.New(9)}
+			},
+			vec.Vector{1, 2, 3, 4, 5, 6, 7, 8, 9},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tArgs := tt.args(t)
+
+			receiver := tt.init(t)
+			got1 := receiver.Flat(tArgs.v)
+
+			if tt.inspect != nil {
+				tt.inspect(&receiver, t)
+			}
+
+			if !reflect.DeepEqual(got1, tt.want1) {
+				t.Errorf("Matrix3x3.Flat got1 = %v, want1: %v", got1, tt.want1)
+			}
+		})
+	}
+}
+
+func TestMatrix3x3_Matrix(t *testing.T) {
+	tests := []struct {
+		name    string
+		init    func(t *testing.T) Matrix3x3
+		inspect func(r *Matrix3x3, t *testing.T) //inspects receiver after test run
+
+		want1 Matrix
+	}{
+		{
+			"new",
+			func(t *testing.T) Matrix3x3 {
+				return New3x3(
+					1, 2, 3, 4, 5, 6, 7, 8, 9,
+				)
+			},
+			nil,
+			New(3, 3, 1, 2, 3, 4, 5, 6, 7, 8, 9),
+		},
+		{
+			"new modify",
+			func(t *testing.T) Matrix3x3 {
+				return New3x3(
+					1, 2, 3, 4, 5, 6, 7, 8, 9,
+				)
+			},
+			func(r *Matrix3x3, t *testing.T) {
+				r[1][1] = 123
+			},
+			New(3, 3, 1, 2, 3, 4, 123, 6, 7, 8, 9),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			receiver := tt.init(t)
+			got1 := receiver.Matrix()
+
+			if tt.inspect != nil {
+				tt.inspect(&receiver, t)
+			}
+
+			if !reflect.DeepEqual(got1, tt.want1) {
+				t.Errorf("Matrix3x3.Matrix got1 = %v, want1: %v", got1, tt.want1)
+			}
+		})
+	}
+}
 func TestNew3x3(t *testing.T) {
 	type args struct {
 		rows int
@@ -309,7 +417,7 @@ func TestMatrix3x3_Col(t *testing.T) {
 			vec.Vector{2, 5, 8},
 		},
 		{
-			"new",
+			"new modify",
 			func(t *testing.T) Matrix3x3 {
 				return New3x3(
 					1, 2, 3, 4, 5, 6, 7, 8, 9,
@@ -490,13 +598,25 @@ func TestMatrix3x3_SetDiagonal(t *testing.T) {
 	tests := []struct {
 		name    string
 		init    func(t *testing.T) Matrix3x3
-		inspect func(r Matrix3x3, t *testing.T) //inspects receiver after test run
+		inspect func(r *Matrix3x3, t *testing.T) //inspects receiver after test run
 
 		args func(t *testing.T) args
 
-		want1 Matrix3x3
+		want1 *Matrix3x3
 	}{
-		//TODO: Add test cases
+		{
+			"new modify",
+			func(t *testing.T) Matrix3x3 {
+				return New3x3(1, 2, 3, 4, 5, 6, 7, 8, 9)
+			},
+			func(r *Matrix3x3, t *testing.T) {
+				r[0][1] = 123
+			},
+			func(t *testing.T) args {
+				return args{vec.Vector3D{11, 22, 33}}
+			},
+			&Matrix3x3{{11, 123, 3}, {4, 22, 6}, {7, 8, 33}},
+		},
 	}
 
 	for _, tt := range tests {
@@ -507,7 +627,7 @@ func TestMatrix3x3_SetDiagonal(t *testing.T) {
 			got1 := receiver.SetDiagonal(tArgs.v)
 
 			if tt.inspect != nil {
-				tt.inspect(receiver, t)
+				tt.inspect(&receiver, t)
 			}
 
 			if !reflect.DeepEqual(got1, tt.want1) {
