@@ -1,398 +1,133 @@
 [
     {
-        "file_name": "mat/matrix2x2.go",
-        "post_process": ["gofmt", "-s", "-w", "mat/matrix2x2.go"],
+        "file_name": "mat/mat.go",
+        "post_process": ["gofmt", "-s", "-w", "mat/mat.go"],
         "params": {
-            "multiline_type": {
-                "regex": true,
-                "old": "(?s)type Matrix struct \\{(.*?)\\}",
-                "new": "type Matrix2x2 [4]float32"
-            },
-            "NewFrom": {
-                "regex": true,
-                "old": "NewFrom\\(\\d,\\s\\d,\\s",
-                "new": "New2x2From("
-            } ,
-            "multiline_new": {
-                "regex": "func",
-                "old": "New",
-                "new": ""
-            },
-            "multiline_newfromraw": {
-                "regex": "func",
-                "old": "NewFromRaw",
-                "new": ""
-            },
-            "multiline_rotation": {
-                "regex": "func",
-                "old": "Rotation",
-                "new": ""
-            },
-            "multiline_rotationx": {
-                "regex": "func",
-                "old": "RotationX",
-                "new": ""
-            },
-            "multiline_rotationy": {
-                "regex": "func",
-                "old": "RotationY",
-                "new": ""
-            },
-            "multiline_rotationz": {
-                "regex": "func",
-                "old": "RotationZ",
-                "new": ""
-            },
-            "multiline_mul": {
-                "regex": "func",
-                "old": "Mul",
-                "new": [
-                    "func (m Matrix2x2) Mul(m1 Matrix2x2) *Matrix2x2 {",
-                    "    tmp := m.Clone()",
-                    "    return tmp.MulTo(m1, tmp)",
-                    "}"
-                ]
-            },
-            "multiline_multo": {
-                "regex": "func",
-                "old": "MulTo",
-                "new": [
-                    "func (m *Matrix2x2) MulTo(m1 Matrix2x2, dst *Matrix2x2) *Matrix2x2 {",
-                    "    multo(2, 2, 2, 2, m[:], m1[:], dst[:])",
-                    "    return dst",
-                    "}"
-                ]
-            },
-            "multiline_clone": {
-                "regex": "func",
-                "old": "Clone",
-                "new": [
-                    "func (m *Matrix2x2) Clone() *Matrix2x2 {",
-                    "    m1 := Matrix2x2{}",
-                    "    copy(m1[:], m[:])",
-                    "    return &m1",
-                    "}"
-                ]
-            },
-            "multiline_newfrom": {
-                "regex": "func",
-                "old": "NewFrom",
-                "new": [
-                    "func New2x2From(arr ...float32) Matrix2x2 {",
-                    "    if len(arr) != 4 {",
-                    "        panic(-1)",
-                    "    }",
-                    "    m := Matrix2x2{}",
-                    "    copy(m[:], arr)",
-                    "    return m",
-                    "}"
-                ]
-            },
-            "multiline_LU": {
-                "regex": "func",
-                "old": "LU",
-                "new": ""
-            },
-            "multiline_quaternion": {
-                "regex": "func",
-                "old": "Quaternion",
-                "new": ""
-            },
-            "multiline_det": {
-                "regex": "func",
-                "old": "Det",
-                "new": ""
-            },
-            "multiline_orientation": {
-                "regex": "func",
-                "old": "Orientation",
-                "new": ""
-            },
-            "multiline_muldiag": {"regex": "func","old": "MulDiag","new": ""},
-            "multiline_muldiagto": {"regex": "func","old": "MulDiagTo","new": ""},
-            "multiline_mulv": {"regex": "func","old": "MulV","new": [
-                "func (m *Matrix2x2) MulV(v vec.Vector2D) *vec.Vector2D {",
-                "    dst := vec.Vector2D{}",
-                "    return m.MulVTo(v, &dst)",
-                "}"
-            ]},
-            "multiline_mulvto": {"regex": "func","old": "MulVTo","new": [
-                "func (m *Matrix2x2) MulVTo(v vec.Vector2D, dst *vec.Vector2D) *vec.Vector2D {",
-                "    mulvto(m[:], v[:], dst[:])",
-                "    return dst",
-                "}"
-            ]},
-            "multiline_mulvt": {"regex": "func","old": "MulVT","new": [
-                "func (m *Matrix2x2) MulVT(v vec.Vector2D) *vec.Vector2D {",
-                "    dst := vec.Vector2D{}",
-                "    return m.MulVTTo(v, &dst)",
-                "}"
-            ]},
-            "multiline_mulvtto": {"regex": "func","old": "MulVTTo","new": [
-                "func (m *Matrix2x2) MulVTTo(v vec.Vector2D, dst *vec.Vector2D) *vec.Vector2D {",
-                "    mulvtto(m[:], v[:], dst[:])",
-                "    return dst",
-                "}"
-            ]},
-           "(m Matrix)": "(m *Matrix2x2)",
-            "m1 Matrix)": "m1 Matrix2x2)",
-            ") Matrix {": ") *Matrix2x2 {",
-            "return m1": "return &m1",
-            "m.Rows": "2",
-            "m.Cols": "2",
-            "m1.Rows": "2",
-            "m1.Cols": "2",
-            "m.Data": "m",
-            "tmp.Data": "tmp",
-            "m1.Data": "m1"
+            "type": "float32",
+            "name": "Matrix",
+            "name_class": "Matrix",
+            "name_ret": "Matrix",
+            "name_vec": "Vector",
+            "name_vec_src": "Vector",
+            "name_vec_srct": "Vector",
+            "name_vec_dst": "vec.Vector",
+            "name_vec_ret": "Vector",
+            "mat_a": "",
+            "mat_b": "",
+            "rows": "",
+            "cols": "",
+            "rotation2d": true,
+            "rotationxyz": true,
+            "orientation": true,
+            "quaternion": true
         }
     },
     {
-        "file_name": "mat/matrix3x3.go",
-        "post_process": ["gofmt", "-s", "-w", "mat/matrix3x3.go"],
+        "file_name": "mat/mat2x2.go",
+        "post_process": ["gofmt", "-s", "-w", "mat/mat2x2.go"],
         "params": {
-            "multiline_type": {
-                "regex": true,
-                "old": "(?s)type Matrix struct \\{(.*?)\\}",
-                "new": "type Matrix3x3 [9]float32"
-            },
-            "NewFrom": {
-                "regex": true,
-                "old": "NewFrom\\(\\d,\\s\\d,\\s",
-                "new": "New3x3From("
-            } ,
-            "multiline_new": {
-                "regex": "func",
-                "old": "New",
-                "new": ""
-            },
-            "multiline_newfromraw": {
-                "regex": "func",
-                "old": "NewFromRaw",
-                "new": ""
-            },
-            "multiline_rotation": {
-                "regex": "func",
-                "old": "Rotation2D",
-                "new": ""
-            },
-            "multiline_mul": {
-                "regex": "func",
-                "old": "Mul",
-                "new": [
-                    "func (m *Matrix3x3) Mul(m1 Matrix3x3) *Matrix3x3 {",
-                    "    tmp := m.Clone()",
-                    "    return tmp.MulTo(m1, tmp)",
-                    "}"
-                ]
-            },
-            "multiline_multo": {
-                "regex": "func",
-                "old": "MulTo",
-                "new": [
-                    "func (m *Matrix3x3) MulTo(m1 Matrix3x3, dst *Matrix3x3) *Matrix3x3 {",
-                    "    multo(2, 2, 2, 2, m[:], m1[:], dst[:])",
-                    "    return dst",
-                    "}"
-                ]
-            },
-            "multiline_clone": {
-                "regex": "func",
-                "old": "Clone",
-                "new": [
-                    "func (m *Matrix3x3) Clone() *Matrix3x3 {",
-                    "    m1 := Matrix3x3{}",
-                    "    copy(m1[:], m[:])",
-                    "    return &m1",
-                    "}"
-                ]
-            },
-            "multiline_newfrom": {
-                "regex": "func",
-                "old": "NewFrom",
-                "new": [
-                    "func New3x3From(arr ...float32) Matrix3x3 {",
-                    "    if len(arr) != 4 {",
-                    "        panic(-1)",
-                    "    }",
-                    "    m := Matrix3x3{}",
-                    "    copy(m[:], arr)",
-                    "    return m",
-                    "}"
-                ]
-            },
-            "multiline_LU": {
-                "regex": "func",
-                "old": "LU",
-                "new": ""
-            },
-            "multiline_det": {
-                "regex": "func",
-                "old": "Det",
-                "new": ""
-            },
-            "multiline_muldiag": {"regex": "func","old": "MulDiag","new": ""},
-            "multiline_muldiagto": {"regex": "func","old": "MulDiagTo","new": ""},
-            "multiline_mulv": {"regex": "func","old": "MulV","new": [
-                "func (m *Matrix3x3) MulV(v vec.Vector3D) *vec.Vector3D {",
-                "    dst := vec.Vector3D{}",
-                "    return m.MulVTo(v, &dst)",
-                "}"
-            ]},
-            "multiline_mulvto": {"regex": "func","old": "MulVTo","new": [
-                "func (m *Matrix3x3) MulVTo(v vec.Vector3D, dst *vec.Vector3D) *vec.Vector3D {",
-                "    mulvto(m[:], v[:], dst[:])",
-                "    return dst",
-                "}"
-            ]},
-            "multiline_mulvt": {"regex": "func","old": "MulVT","new": [
-                "func (m *Matrix3x3) MulVT(v vec.Vector3D) *vec.Vector3D {",
-                "    dst := vec.Vector3D{}",
-                "    return m.MulVTTo(v, &dst)",
-                "}"
-            ]},
-            "multiline_mulvtto": {"regex": "func","old": "MulVTTo","new": [
-                "func (m *Matrix3x3) MulVTTo(v vec.Vector3D, dst *vec.Vector3D) *vec.Vector3D {",
-                "    mulvtto(m[:], v[:], dst[:])",
-                "    return dst",
-                "}"
-            ]},
-           "(m Matrix)": "(m *Matrix3x3)",
-            "m1 Matrix)": "m1 Matrix3x3)",
-            ") Matrix {": ") *Matrix3x3 {",
-            "return m1": "return &m1",
-            "m.Rows": "3",
-            "m.Cols": "3",
-            "m1.Rows": "3",
-            "m1.Cols": "3",
-            "m.Data": "m",
-            "tmp.Data": "tmp",
-            "m1.Data": "m1",
-            "return m.Mul(Y).Mul(Z)": "return m.Mul(*Y).Mul(*Z)"
+            "type": "float32",
+            "name": "Matrix2x2",
+            "name_class": "*Matrix2x2",
+            "name_ret": "*Matrix2x2",
+            "name_vec": "Vector2D",
+            "name_vec_src": "Vector2D",
+            "name_vec_srct": "Vector2D",
+            "name_vec_dst": "*vec.Vector2D",
+            "name_vec_ret": "Vector2D",
+            "mat_a": "2x2",
+            "mat_b": "2x2",
+            "rows": 2,
+            "cols": 2,
+            "rotation2d": true
         }
     },
     {
-        "file_name": "mat/matrix4x4.go",
-        "post_process": ["gofmt", "-s", "-w", "mat/matrix4x4.go"],
+        "file_name": "mat/mat3x3.go",
+        "post_process": ["gofmt", "-s", "-w", "mat/mat3x3.go"],
         "params": {
-            "multiline_type": {
-                "regex": true,
-                "old": "(?s)type Matrix struct \\{(.*?)\\}",
-                "new": "type Matrix4x4 [16]float32"
-            },
-            "NewFrom": {
-                "regex": true,
-                "old": "NewFrom\\(\\d,\\s\\d,\\s",
-                "new": "New4x4From("
-            } ,
-            "multiline_new": {
-                "regex": "func",
-                "old": "New",
-                "new": ""
-            },
-            "multiline_newfromraw": {
-                "regex": "func",
-                "old": "NewFromRaw",
-                "new": ""
-            },
-            "multiline_rotation": {
-                "regex": "func",
-                "old": "Rotation2D",
-                "new": ""
-            },
-            "multiline_mul": {
-                "regex": "func",
-                "old": "Mul",
-                "new": [
-                    "func (m *Matrix4x4) Mul(m1 Matrix4x4) *Matrix4x4 {",
-                    "    tmp := m.Clone()",
-                    "    return tmp.MulTo(m1, tmp)",
-                    "}"
-                ]
-            },
-            "multiline_multo": {
-                "regex": "func",
-                "old": "MulTo",
-                "new": [
-                    "func (m *Matrix4x4) MulTo(m1 Matrix4x4, dst *Matrix4x4) *Matrix4x4 {",
-                    "    multo(2, 2, 2, 2, m[:], m1[:], dst[:])",
-                    "    return dst",
-                    "}"
-                ]
-            },
-            "multiline_clone": {
-                "regex": "func",
-                "old": "Clone",
-                "new": [
-                    "func (m *Matrix4x4) Clone() *Matrix4x4 {",
-                    "    m1 := Matrix4x4{}",
-                    "    copy(m1[:], m[:])",
-                    "    return &m1",
-                    "}"
-                ]
-            },
-            "multiline_newfrom": {
-                "regex": "func",
-                "old": "NewFrom",
-                "new": [
-                    "func New4x4From(arr ...float32) Matrix4x4 {",
-                    "    if len(arr) != 4 {",
-                    "        panic(-1)",
-                    "    }",
-                    "    m := Matrix4x4{}",
-                    "    copy(m[:], arr)",
-                    "    return m",
-                    "}"
-                ]
-            },
-            "multiline_LU": {
-                "regex": "func",
-                "old": "LU",
-                "new": ""
-            },
-            "multiline_det": {
-                "regex": "func",
-                "old": "Det",
-                "new": ""
-            },
-            "multiline_muldiag": {"regex": "func","old": "MulDiag","new": ""},
-            "multiline_muldiagto": {"regex": "func","old": "MulDiagTo","new": ""},
-            "multiline_mulv": {"regex": "func","old": "MulV","new": [
-                "func (m *Matrix4x4) MulV(v vec.Vector4D) *vec.Vector4D {",
-                "    dst := vec.Vector4D{}",
-                "    return m.MulVTo(v, &dst)",
-                "}"
-            ]},
-            "multiline_mulvto": {"regex": "func","old": "MulVTo","new": [
-                "func (m *Matrix4x4) MulVTo(v vec.Vector4D, dst *vec.Vector4D) *vec.Vector4D {",
-                "    mulvto(m[:], v[:], dst[:])",
-                "    return dst",
-                "}"
-            ]},
-            "multiline_mulvt": {"regex": "func","old": "MulVT","new": [
-                "func (m *Matrix4x4) MulVT(v vec.Vector4D) *vec.Vector4D {",
-                "    dst := vec.Vector4D{}",
-                "    return m.MulVTTo(v, &dst)",
-                "}"
-            ]},
-            "multiline_mulvtto": {"regex": "func","old": "MulVTTo","new": [
-                "func (m *Matrix4x4) MulVTTo(v vec.Vector4D, dst *vec.Vector4D) *vec.Vector4D {",
-                "    mulvtto(m[:], v[:], dst[:])",
-                "    return dst",
-                "}"
-            ]},
-           "(m Matrix)": "(m *Matrix4x4)",
-            "m1 Matrix)": "m1 Matrix4x4)",
-            ") Matrix {": ") *Matrix4x4 {",
-            "return m1": "return &m1",
-            "m.Rows": "4",
-            "m.Cols": "4",
-            "m1.Rows": "4",
-            "m1.Cols": "4",
-            "m.Data": "m",
-            "tmp.Data": "tmp",
-            "m1.Data": "m1",
-            "return m.Mul(Y).Mul(Z)": "return m.Mul(*Y).Mul(*Z)"
+            "type": "float32",
+            "name": "Matrix3x3",
+            "name_class": "*Matrix3x3",
+            "name_ret": "*Matrix3x3",
+            "name_vec": "Vector3D",
+            "name_vec_src": "Vector3D",
+            "name_vec_srct": "Vector3D",
+            "name_vec_dst": "*vec.Vector3D",
+            "name_vec_ret": "Vector3D",
+            "mat_a": "3x3",
+            "mat_b": "3x3",
+            "rows": 3,
+            "cols": 3,
+            "rotationxyz": true,
+            "orientation": true,
+            "quaternion": true
         }
-    }    
+    },
+    {
+        "file_name": "mat/mat4x4.go",
+        "post_process": ["gofmt", "-s", "-w", "mat/mat4x4.go"],
+        "params": {
+            "type": "float32",
+            "name": "Matrix4x4",
+            "name_class": "*Matrix4x4",
+            "name_ret": "*Matrix4x4",
+            "name_vec": "Vector4D",
+            "name_vec_src": "Vector4D",
+            "name_vec_srct": "Vector4D",
+            "name_vec_dst": "*vec.Vector4D",
+            "name_vec_ret": "Vector4D",
+            "mat_a": "4x4",
+            "mat_b": "4x4",
+            "rows": 4,
+            "cols": 4,
+            "rotationxyz": true,
+            "orientation": true,
+            "quaternion": true
+        }
+    },
+    {
+        "file_name": "mat/mat3x4.go",
+        "post_process": ["gofmt", "-s", "-w", "mat/mat3x4.go"],
+        "params": {
+            "type": "float32",
+            "name": "Matrix3x4",
+            "name_class": "*Matrix3x4",
+            "name_ret": "*Matrix3x4",
+            "name_vec": "Vector4D",
+            "name_vec_src": "Vector4D",
+            "name_vec_srct": "Vector3D",
+            "name_vec_dst": "*vec.Vector3D",
+            "name_vec_ret": "Vector4D",
+            "mat_a": "",
+            "mat_b": "4x3",
+            "rows": 3,
+            "cols": 4,
+            "rotationxyz": true,
+            "orientation": true,
+            "quaternion": true
+        }
+    },
+    {
+        "file_name": "mat/mat4x3.go",
+        "post_process": ["gofmt", "-s", "-w", "mat/mat4x3.go"],
+        "params": {
+            "type": "float32",
+            "name": "Matrix4x3",
+            "name_class": "*Matrix4x3",
+            "name_ret": "*Matrix4x3",
+            "name_vec": "Vector4D",
+            "name_vec_src": "Vector3D",
+            "name_vec_srct": "Vector4D",
+            "name_vec_dst": "*vec.Vector4D",
+            "name_vec_ret": "Vector4D",
+            "mat_a": "",
+            "mat_b": "3x4",
+            "rows": 4,
+            "cols": 3,
+            "rotationxyz": true,
+            "orientation": true,
+            "quaternion": true
+        }
+    }
 ]

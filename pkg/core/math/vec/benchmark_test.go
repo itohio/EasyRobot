@@ -38,7 +38,7 @@ func BenchmarkCloneVector3D(b *testing.B) {
 }
 
 func BenchmarkCloneVector4D(b *testing.B) {
-	v := Vector3D{}
+	v := Vector4D{}
 	for i := 0; i < b.N; i++ {
 		_ = v.Clone()
 	}

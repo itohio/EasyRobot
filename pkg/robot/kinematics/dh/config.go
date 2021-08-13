@@ -72,21 +72,21 @@ func (c Config) CalculateTransform(parameter float32, m *mat.Matrix4x4) bool {
 	ca := math32.Cos(alpha)
 	sa := math32.Sin(alpha)
 
-	m[0] = ct
-	m[1] = -st * ca
-	m[2] = st * sa
-	m[3] = r * ct
-	m[4] = st
-	m[5] = ct * ca
-	m[6] = -ct * sa
-	m[7] = r * st
-	m[8] = 0
-	m[9] = sa
-	m[10] = ca
-	m[11] = d
-	m[12] = 0
-	m[13] = 0
-	m[14] = 0
-	m[15] = 1
+	m[0][0] = ct
+	m[0][1] = -st * ca
+	m[0][2] = st * sa
+	m[0][3] = r * ct
+	m[1][0] = st
+	m[1][1] = ct * ca
+	m[1][2] = -ct * sa
+	m[1][3] = r * st
+	m[2][0] = 0
+	m[2][1] = sa
+	m[2][2] = ca
+	m[2][3] = d
+	m[3][0] = 0
+	m[3][1] = 0
+	m[3][2] = 0
+	m[3][3] = 1
 	return true
 }

@@ -44,10 +44,10 @@ func (p *DenavitHartenberg) Forward() bool {
 		if cfg.CalculateTransform(p.params[i], &H) {
 			return false
 		}
-		p.H0i[i].MulTo(H, &(p.H0i[i+1]))
+		p.H0i[i+1].Mul(p.H0i[i], H)
 	}
 
-	copy(p.pos[:3], p.H0i[len(p.c)].Col(3))
+	p.H0i[len(p.c)].Col(3, p.pos[:3])
 	copy(p.pos[3:], p.H0i[len(p.c)].Quaternion().Vector())
 
 	return true

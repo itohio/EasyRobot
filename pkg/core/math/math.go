@@ -3,7 +3,7 @@ package math
 import "github.com/chewxy/math32"
 
 //go:generate go run ../../../cmd/codegen -i gen/vec.tpl -c gen/vec.json
-//go:generate go run ../../../cmd/codegen -i mat/matrix.go -c gen/mat.json -m re
+//go:generate go run ../../../cmd/codegen -i gen/mat.tpl -c gen/mat.json
 
 const magic32 = 0x5F375A86
 
