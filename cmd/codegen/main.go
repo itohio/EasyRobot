@@ -20,7 +20,7 @@ type Config struct {
 }
 
 func main() {
-	tpl := flag.String("i", "", "Path to template file")
+	tpl := flag.String("i", "", "Path to template/source file")
 	config := flag.String("c", "", "Path to configuration file")
 	mode := flag.String("m", "template", "Generation mode: one of (template, replace)")
 	flag.Parse()
@@ -52,6 +52,11 @@ func main() {
 
 	var cfg []Config
 	json.Unmarshal(cfgContent, &cfg)
+	for i := range cfg {
+		if cfg[i].FileName == "" {
+			cfg[i].FileName = *tpl
+		}
+	}
 
 	switch {
 	case strings.HasPrefix("template", *mode):
