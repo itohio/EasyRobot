@@ -1,0 +1,28 @@
+syntax = "proto3";
+package servos;
+
+// import "github.com/gogo/protobuf@v1.3.2/gogoproto/gogo.proto";
+
+// option (gogoproto.gostring_all) = false;
+// option (gogoproto.goproto_stringer_all) = false;
+// option (gogoproto.stringer_all) =  false;
+// option (gogoproto.marshaler_all) = true;
+// option (gogoproto.sizer_all) = true;
+// option (gogoproto.unmarshaler_all) = true;
+
+message Motor {
+    uint32 Pin = 1;
+    float  Offset = 3;
+    float  Scale = 4;
+	float  Min = 5;
+	float  Max = 6;
+    float  Default = 7; 
+}
+
+message Config {
+    repeated Motor Motor = 1;
+}
+
+message State {
+    repeated float Params = 1;
+}

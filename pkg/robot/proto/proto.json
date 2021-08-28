@@ -1,0 +1,7 @@
+[
+    {
+        "params": {
+            "github.com/gogo/protobuf/proto": "github.com/foxis/EasyRobot/pkg/robot/proto"
+        }
+    }
+]

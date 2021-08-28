@@ -1,0 +1,21 @@
+syntax = "proto3";
+package kinematics;
+
+
+message DenavitHartenberg {
+	uint32 Index = 1;
+	float  Theta = 2;
+	float  Alpha = 3;
+	float  R = 4;
+	float  D = 5;
+}
+
+message Wheels {
+    float Radius = 1;
+    float BaseX = 2;
+    float BaseY = 3;
+}
+
+message Config {
+    repeated DenavitHartenberg DH = 1;
+}
