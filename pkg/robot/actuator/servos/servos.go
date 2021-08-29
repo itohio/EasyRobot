@@ -3,6 +3,7 @@ package servos
 import (
 	io "io"
 
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/robot/kinematics"
 )
 
@@ -21,15 +22,17 @@ type Actuator interface {
 	Set(params []float32) error
 }
 
-func NewDefaultConfig(pin uint32) Motor {
-	return Motor{
-		Pin:     pin,
+func NewDefaultConfig(opts ...options.Option) Motor {
+	cfg := Motor{
+		Pin:     0,
 		Min:     -90,
 		Max:     90,
 		Default: 0,
 		Scale:   500 / 90.0,
 		Offset:  1500,
 	}
+	options.ApplyOptions(&cfg, opts...)
+	return cfg
 }
 
 func NewClient(writer io.Writer) Actuator {
