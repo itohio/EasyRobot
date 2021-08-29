@@ -121,7 +121,7 @@ func TestWritePacket(t *testing.T) {
 		t.Fatalf("Wrong data: wanted %v, got %v", wantedData, data)
 	}
 
-	buf, n, packet, err := readPacket(context.Background(), 123456, stream, make([]byte, maxHeaderSize))
+	buf, n, packet, err := ReadPacketFromReliableStream(context.Background(), 123456, stream, make([]byte, maxHeaderSize))
 	if err != nil {
 		t.Fatalf("read packet failed: %v", err)
 	}
@@ -157,7 +157,7 @@ func Test_reliableStreamReader(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tArgs := tt.args(t)
 
-			reliableStreamReader(tArgs.ctx, tArgs.id, tArgs.reader, tArgs.ch)
+			ReliableStreamReader(tArgs.ctx, tArgs.id, tArgs.reader, tArgs.ch)
 
 		})
 	}
