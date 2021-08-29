@@ -34,32 +34,7 @@ func blink(led machine.Pin, t time.Duration) {
 	}
 }
 
-func testgo(ch chan transport.PacketData) {
-	for {
-		time.Sleep(time.Second)
-		select {
-		case ch <- transport.PacketData{Type: 123, Data: []byte("hello")}:
-			println("out")
-		default:
-			println("drop")
-		}
-	}
-}
-
-func test() <-chan transport.PacketData {
-	ch := make(chan transport.PacketData, 1)
-	go testgo(ch)
-	return ch
-}
-
 func main() {
-	time.Sleep(time.Second * 10)
-	// ch := test()
-	// for d := range ch {
-	// 	println(string(d.Data))
-	// 	time.Sleep(time.Second)
-	// }
-
 	led := machine.LED
 	led.Configure(machine.PinConfig{Mode: machine.PinOutput})
 	uart.Configure(machine.UARTConfig{TX: tx, RX: rx})

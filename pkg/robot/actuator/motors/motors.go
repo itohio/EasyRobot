@@ -5,7 +5,7 @@ package motors
 
 const (
 	// Device ID for robot.transport
-	ID = 0x00000002
+	ID = 0x00000200
 )
 
 type Actuator interface {

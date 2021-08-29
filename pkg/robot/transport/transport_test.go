@@ -48,31 +48,68 @@ func NewTestStream() *TestStream {
 	}
 }
 
-func TestReadPackets(t *testing.T) {
-	type args struct {
-		ctx    context.Context
-		id     uint32
-		reader io.Reader
-	}
-	tests := []struct {
-		name string
-		args func(t *testing.T) args
-
-		want1 <-chan PacketData
-	}{
-		//TODO: Add test cases
+func TestReadPacketsID(t *testing.T) {
+	stream := NewTestStream()
+	dataString := "HelloWorldHelloWorld"
+	err := WritePacket(123, 321, stream, []byte(dataString))
+	if err != nil {
+		t.Fatalf("write packet failed: %v", err)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tArgs := tt.args(t)
+	err = WritePacket(456, 123, stream, []byte(dataString))
+	if err != nil {
+		t.Fatalf("write packet failed: %v", err)
+	}
 
-			got1 := ReadPackets(tArgs.ctx, tArgs.id, tArgs.reader)
+	buf := make([]byte, 32)
+	buffer, n, packet, err := ReadPacketFromReliableStream(context.Background(), 321, stream, buf)
 
-			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("ReadPackets got1 = %v, want1: %v", got1, tt.want1)
-			}
-		})
+	if err != nil {
+		t.Fatalf("read packet failed: %v", err)
+	}
+
+	if n != 0 {
+		t.Fatalf("Found a packet %v", packet.Type)
+	}
+
+	buffer, n, packet, err = ReadPacketFromReliableStream(context.Background(), 456, stream, buffer)
+
+	if err != nil {
+		t.Fatalf("read packet failed: %v", err)
+	}
+
+	if n == 0 {
+		t.Fatalf("Not Found a packet")
+	}
+
+	if packet.Type != 123 {
+		t.Fatalf("wrong packet %v", packet.Type)
+	}
+
+	stream.index = 0
+
+	buffer, n, packet, err = ReadPacketFromReliableStream(context.Background(), AnyID, stream, buffer)
+	if err != nil {
+		t.Fatalf("read packet failed: %v", err)
+	}
+
+	if n == 0 {
+		t.Fatalf("Not Found a packet")
+	}
+	if packet.Type != 321 {
+		t.Fatalf("wrong packet")
+	}
+
+	buffer, n, packet, err = ReadPacketFromReliableStream(context.Background(), AnyID, stream, buffer)
+	if err != nil {
+		t.Fatalf("read packet failed: %v", err)
+	}
+
+	if n == 0 {
+		t.Fatalf("Not Found a packet")
+	}
+	if packet.Type != 123 {
+		t.Fatalf("wrong packet")
 	}
 }
 

@@ -11,7 +11,7 @@ import (
 
 const (
 	// Device ID for robot.transport
-	ID = 0x00000001
+	ID = 0x00000100
 )
 
 type Actuator interface {

@@ -11,6 +11,7 @@ import (
 //go:generate go run ../../../cmd/codegen -i types.pb.go -c ../proto/proto.json -m re
 
 var (
+	AnyID         uint32 = 0xFFFFFFFF
 	Magic         uint32 = 0xBADAB00A
 	maxHeaderSize        = int(unsafe.Sizeof(PacketHeader{}))
 	BufferSize           = maxHeaderSize + 64
@@ -136,7 +137,7 @@ func ReadPacketFromReliableStream(ctx context.Context, id uint32, reader io.Read
 		return
 	}
 
-	if header.ID != id {
+	if id != AnyID && header.ID != id {
 		err = skipAll(ctx, reader, buffer, int(header.TailSize))
 		return
 	}
