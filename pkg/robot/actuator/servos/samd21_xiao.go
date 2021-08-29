@@ -7,6 +7,7 @@ import (
 	"machine"
 	"math"
 
+	"github.com/foxis/EasyRobot/pkg/robot/kinematics"
 	"tinygo.org/x/drivers/servo"
 )
 
@@ -28,10 +29,14 @@ var (
 	errBadCoefficients = errors.New("bad coefficients")
 )
 
-func New(cfg []Motor) (servos, error) {
-	s := servos{}
+func New(cfg []Motor) (Actuator, error) {
+	s := &servos{}
 	err := s.Configure(cfg)
 	return s, err
+}
+
+func (s *servos) ConfigureKinematics(cfg []kinematics.DenavitHartenberg) error {
+	return nil
 }
 
 func (s *servos) Configure(cfg []Motor) error {
@@ -61,7 +66,7 @@ func (s *servos) Configure(cfg []Motor) error {
 	}
 	s.cfg = cfg
 
-	return nil
+	return s.Set(s.pos)
 }
 
 func (s *servos) Get() ([]float32, error) {

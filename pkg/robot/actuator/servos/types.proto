@@ -20,7 +20,7 @@ message Motor {
 }
 
 message Config {
-    repeated Motor Motor = 1;
+    repeated Motor Motors = 1;
 }
 
 message State {

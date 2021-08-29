@@ -1,0 +1,21 @@
+syntax = "proto3";
+package transport;
+
+
+message PacketHeader {
+	fixed32 Magic = 1;
+	uint32 ID = 2;
+	uint32 TailSize = 3;
+	uint32 CRC = 4;
+}
+
+message PacketData {
+	uint32 Type = 1;
+	bytes Data = 2;
+}
+
+message DeviceMetadata {
+	fixed32 ID = 1;
+	string Name= 2;
+	repeated uint32 Types = 3;
+}
