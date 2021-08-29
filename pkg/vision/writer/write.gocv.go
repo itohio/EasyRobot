@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	. "github.com/foxis/EasyRobot/pkg/core/logger"
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline/steps"
 	"github.com/foxis/EasyRobot/pkg/core/plugin"
@@ -24,19 +25,19 @@ func init() {
 	pipeline.Register(GOCV_NAME, NewGoCV)
 }
 
-func NewGoCV(opts ...plugin.Option) (pipeline.Step, error) {
+func NewGoCV(opts ...options.Option) (pipeline.Step, error) {
 	o := writerOpts{
 		base: plugin.DefaultOptions(),
 		ext:  "png",
 	}
-	plugin.ApplyOptions(&o, opts...)
-	plugin.ApplyOptions(&o.base, opts...)
+	options.ApplyOptions(&o, opts...)
+	options.ApplyOptions(&o.base, opts...)
 	newOpts := opts
 	newOpts = append(newOpts, WithWriterGoCV(o.prefix, o.ext, o.keys))
 	return steps.NewSink(newOpts...)
 }
 
-func WithWriterGoCV(prefix, extension string, keys []store.FQDNType) plugin.Option {
+func WithWriterGoCV(prefix, extension string, keys []store.FQDNType) options.Option {
 	return steps.WithNamedSinkFunc(GOCV_NAME, sink_gocv(writerOpts{prefix: prefix, ext: extension, keys: keys}))
 }
 

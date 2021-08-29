@@ -1,9 +1,9 @@
 package example
 
 import (
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline/steps"
-	"github.com/foxis/EasyRobot/pkg/core/plugin"
 	"github.com/foxis/EasyRobot/pkg/core/store"
 )
 
@@ -13,13 +13,13 @@ func init() {
 	pipeline.Register(NAME, NewExample)
 }
 
-func NewExample(opts ...plugin.Option) (pipeline.Step, error) {
+func NewExample(opts ...options.Option) (pipeline.Step, error) {
 	newOpts := opts
 	newOpts = append(newOpts, WithExample())
 	return steps.NewProcessor(newOpts...)
 }
 
-func WithExample() plugin.Option {
+func WithExample() options.Option {
 	return steps.WithProcessor(&processorImpl{})
 }
 

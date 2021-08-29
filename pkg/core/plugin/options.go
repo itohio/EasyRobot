@@ -1,5 +1,7 @@
 package plugin
 
+import "github.com/foxis/EasyRobot/pkg/core/options"
+
 type Options struct {
 	Name         string `opts:"name"`
 	Blocking     bool   `opts:"block"`
@@ -18,15 +20,8 @@ func DefaultOptions() Options {
 	}
 }
 
-/// Apply options using option funcs
-func ApplyOptions(optionsStructPtr interface{}, opts ...Option) {
-	for _, opt := range opts {
-		opt(optionsStructPtr)
-	}
-}
-
 /// Set plugin Name
-func WithName(name string) Option {
+func WithName(name string) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*Options); ok {
 			opt.Name = name
@@ -35,7 +30,7 @@ func WithName(name string) Option {
 }
 
 /// Set buffer size for sync/join
-func WithBufferSize(size int) Option {
+func WithBufferSize(size int) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*Options); ok {
 			opt.BufferSize = size
@@ -45,7 +40,7 @@ func WithBufferSize(size int) Option {
 
 /// Sets whether output should be blocking.
 /// Non blocking will skip data.
-func WithBlocking(blocking bool) Option {
+func WithBlocking(blocking bool) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*Options); ok {
 			opt.Blocking = blocking
@@ -54,7 +49,7 @@ func WithBlocking(blocking bool) Option {
 }
 
 /// Skip processing
-func WithEnable(b bool) Option {
+func WithEnable(b bool) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*Options); ok {
 			opt.Enabled = b
@@ -63,7 +58,7 @@ func WithEnable(b bool) Option {
 }
 
 /// Stop the step if End Of Stream is detected
-func WithEOSExit(exit bool) Option {
+func WithEOSExit(exit bool) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*Options); ok {
 			opt.NoEOS = !exit
@@ -72,7 +67,7 @@ func WithEOSExit(exit bool) Option {
 }
 
 /// Ignore errors
-func WithIgnoreErrors(ignore bool) Option {
+func WithIgnoreErrors(ignore bool) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*Options); ok {
 			opt.IgnoreErrors = ignore
@@ -82,14 +77,14 @@ func WithIgnoreErrors(ignore bool) Option {
 
 /// Update Options struct with values inside the map.
 /// Usecase: write/read options to JSON.
-func WithMapping(opt map[string]interface{}) Option {
+func WithMapping(opt map[string]interface{}) options.Option {
 	return func(o interface{}) {
 		fillStruct(o, opt)
 	}
 }
 
 /// Close keys where supported(display/sink/bridge)
-func WithClose(close bool) Option {
+func WithClose(close bool) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*Options); ok {
 			opt.Close = close

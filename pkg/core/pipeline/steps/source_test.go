@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline"
-	"github.com/foxis/EasyRobot/pkg/core/plugin"
 	"github.com/foxis/EasyRobot/pkg/core/store"
 )
 
@@ -18,7 +18,7 @@ func TestWithSourceReader(t *testing.T) {
 		name string
 		args func(t *testing.T) args
 
-		want1 plugin.Option
+		want1 options.Option
 	}{
 		//TODO: Add test cases
 	}
@@ -40,7 +40,7 @@ func TestWithRepeat(t *testing.T) {
 	tests := []struct {
 		name string
 
-		want1 plugin.Option
+		want1 options.Option
 	}{
 		//TODO: Add test cases
 	}
@@ -64,7 +64,7 @@ func TestWithKey(t *testing.T) {
 		name string
 		args func(t *testing.T) args
 
-		want1 plugin.Option
+		want1 options.Option
 	}{
 		//TODO: Add test cases
 	}
@@ -84,7 +84,7 @@ func TestWithKey(t *testing.T) {
 
 func TestNewReader(t *testing.T) {
 	type args struct {
-		opts []plugin.Option
+		opts []options.Option
 	}
 	tests := []struct {
 		name string

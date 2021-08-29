@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline"
 	"github.com/foxis/EasyRobot/pkg/core/plugin"
 	"github.com/foxis/EasyRobot/pkg/core/store"
@@ -25,16 +26,16 @@ func TestOptions(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		args    []plugin.Option
+		args    []options.Option
 		want1   SinkOptions
 		wantErr bool
 	}{
-		{"WithSinkProcessor", []plugin.Option{plugin.WithName("name"), WithSinkProcessor(&tmpSink)}, SinkOptions{base: plugin.Options{"name", false, true, 0, false, false, true}, sink: &tmpSink}, false},
-		{"WithSinkFunc", []plugin.Option{WithSinkFunc(tmpSinkFunc)}, SinkOptions{base: plugin.Options{"sink", false, true, 0, false, false, true}, sink: &DefaultSink{sink: tmpSinkFunc}}, false},
-		{"WithNamedSinkFunc", []plugin.Option{WithNamedSinkFunc("name", tmpSinkFunc)}, SinkOptions{base: plugin.Options{"name", false, true, 0, false, false, true}, sink: &DefaultSink{sink: tmpSinkFunc}}, false},
-		{"WithSinkInitFunc", []plugin.Option{WithSinkInitFunc(tmpErrFunc)}, SinkOptions{base: plugin.Options{"sink", false, true, 0, false, false, true}, sink: &DefaultSink{init: tmpErrFunc}}, false},
-		{"WithSinkResetFunc", []plugin.Option{WithSinkResetFunc(tmpFunc)}, SinkOptions{base: plugin.Options{"sink", false, true, 0, false, false, true}, sink: &DefaultSink{reset: tmpFunc}}, false},
-		{"WithSinkCloseFunc", []plugin.Option{WithSinkCloseFunc(tmpFunc)}, SinkOptions{base: plugin.Options{"sink", false, true, 0, false, false, true}, sink: &DefaultSink{close: tmpFunc}}, false},
+		{"WithSinkProcessor", []options.Option{plugin.WithName("name"), WithSinkProcessor(&tmpSink)}, SinkOptions{base: plugin.Options{"name", false, true, 0, false, false, true}, sink: &tmpSink}, false},
+		{"WithSinkFunc", []options.Option{WithSinkFunc(tmpSinkFunc)}, SinkOptions{base: plugin.Options{"sink", false, true, 0, false, false, true}, sink: &DefaultSink{sink: tmpSinkFunc}}, false},
+		{"WithNamedSinkFunc", []options.Option{WithNamedSinkFunc("name", tmpSinkFunc)}, SinkOptions{base: plugin.Options{"name", false, true, 0, false, false, true}, sink: &DefaultSink{sink: tmpSinkFunc}}, false},
+		{"WithSinkInitFunc", []options.Option{WithSinkInitFunc(tmpErrFunc)}, SinkOptions{base: plugin.Options{"sink", false, true, 0, false, false, true}, sink: &DefaultSink{init: tmpErrFunc}}, false},
+		{"WithSinkResetFunc", []options.Option{WithSinkResetFunc(tmpFunc)}, SinkOptions{base: plugin.Options{"sink", false, true, 0, false, false, true}, sink: &DefaultSink{reset: tmpFunc}}, false},
+		{"WithSinkCloseFunc", []options.Option{WithSinkCloseFunc(tmpFunc)}, SinkOptions{base: plugin.Options{"sink", false, true, 0, false, false, true}, sink: &DefaultSink{close: tmpFunc}}, false},
 	}
 
 	for _, tt := range tests {
@@ -196,7 +197,7 @@ func TestWithSinkFunc(t *testing.T) {
 		name string
 		args func(t *testing.T) args
 
-		want1 plugin.Option
+		want1 options.Option
 	}{
 		//TODO: Add test cases
 	}
@@ -223,7 +224,7 @@ func TestWithNamedSinkFunc(t *testing.T) {
 		name string
 		args func(t *testing.T) args
 
-		want1 plugin.Option
+		want1 options.Option
 	}{
 		//TODO: Add test cases
 	}
@@ -249,7 +250,7 @@ func TestWithSinkInitFunc(t *testing.T) {
 		name string
 		args func(t *testing.T) args
 
-		want1 plugin.Option
+		want1 options.Option
 	}{
 		//TODO: Add test cases
 	}
@@ -275,7 +276,7 @@ func TestWithSinkResetFunc(t *testing.T) {
 		name string
 		args func(t *testing.T) args
 
-		want1 plugin.Option
+		want1 options.Option
 	}{
 		//TODO: Add test cases
 	}
@@ -295,7 +296,7 @@ func TestWithSinkResetFunc(t *testing.T) {
 
 func TestNewSink(t *testing.T) {
 	type args struct {
-		opts []plugin.Option
+		opts []options.Option
 	}
 	tests := []struct {
 		name string

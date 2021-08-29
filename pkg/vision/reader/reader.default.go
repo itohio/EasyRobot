@@ -5,9 +5,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline/steps"
-	"github.com/foxis/EasyRobot/pkg/core/plugin"
 )
 
 type defaultReader readerOpts
@@ -18,15 +18,15 @@ func init() {
 	pipeline.Register(DEFAULT_NAME, NewDefault)
 }
 
-func NewDefault(opts ...plugin.Option) (pipeline.Step, error) {
+func NewDefault(opts ...options.Option) (pipeline.Step, error) {
 	o := readerOpts{}
-	plugin.ApplyOptions(&o, opts...)
+	options.ApplyOptions(&o, opts...)
 	newOpts := opts
 	newOpts = append(newOpts, WithDefaultReader(o.paths))
 	return steps.NewReader(newOpts...)
 }
 
-func WithDefaultReader(paths []string) plugin.Option {
+func WithDefaultReader(paths []string) options.Option {
 	return steps.WithSourceReader(&defaultReader{paths: paths})
 }
 

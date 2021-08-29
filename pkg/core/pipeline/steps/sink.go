@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	. "github.com/foxis/EasyRobot/pkg/core/logger"
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline"
 	"github.com/foxis/EasyRobot/pkg/core/plugin"
 	"github.com/foxis/EasyRobot/pkg/core/store"
@@ -58,7 +59,7 @@ type SinkOptions struct {
 	sink Sink
 }
 
-func WithSinkProcessor(pr Sink) plugin.Option {
+func WithSinkProcessor(pr Sink) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*SinkOptions); ok {
 			opt.sink = pr
@@ -68,7 +69,7 @@ func WithSinkProcessor(pr Sink) plugin.Option {
 		}
 	}
 }
-func WithSinkFunc(f SinkFunc) plugin.Option {
+func WithSinkFunc(f SinkFunc) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*SinkOptions); ok {
 			if pr, ok := opt.sink.(*DefaultSink); ok {
@@ -77,7 +78,7 @@ func WithSinkFunc(f SinkFunc) plugin.Option {
 		}
 	}
 }
-func WithNamedSinkFunc(name string, f SinkFunc) plugin.Option {
+func WithNamedSinkFunc(name string, f SinkFunc) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*SinkOptions); ok {
 			if pr, ok := opt.sink.(*DefaultSink); ok {
@@ -87,7 +88,7 @@ func WithNamedSinkFunc(name string, f SinkFunc) plugin.Option {
 		}
 	}
 }
-func WithSinkInitFunc(f func() error) plugin.Option {
+func WithSinkInitFunc(f func() error) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*SinkOptions); ok {
 			if pr, ok := opt.sink.(*DefaultSink); ok {
@@ -96,7 +97,7 @@ func WithSinkInitFunc(f func() error) plugin.Option {
 		}
 	}
 }
-func WithSinkResetFunc(f func()) plugin.Option {
+func WithSinkResetFunc(f func()) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*SinkOptions); ok {
 			if pr, ok := opt.sink.(*DefaultSink); ok {
@@ -105,7 +106,7 @@ func WithSinkResetFunc(f func()) plugin.Option {
 		}
 	}
 }
-func WithSinkCloseFunc(f func()) plugin.Option {
+func WithSinkCloseFunc(f func()) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*SinkOptions); ok {
 			if pr, ok := opt.sink.(*DefaultSink); ok {
@@ -124,7 +125,7 @@ func init() {
 	pipeline.Register(SINK_NAME, NewSink)
 }
 
-func NewSink(opts ...plugin.Option) (pipeline.Step, error) {
+func NewSink(opts ...options.Option) (pipeline.Step, error) {
 	step := &sink{
 		SinkOptions: SinkOptions{
 			base: plugin.DefaultOptions(),
@@ -132,8 +133,8 @@ func NewSink(opts ...plugin.Option) (pipeline.Step, error) {
 		},
 	}
 	step.base.Name = SINK_NAME
-	plugin.ApplyOptions(&step.SinkOptions, opts...)
-	plugin.ApplyOptions(&step.SinkOptions.base, opts...)
+	options.ApplyOptions(&step.SinkOptions, opts...)
+	options.ApplyOptions(&step.SinkOptions.base, opts...)
 	step.Reset()
 	return step, nil
 }

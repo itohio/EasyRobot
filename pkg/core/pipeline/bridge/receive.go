@@ -3,6 +3,7 @@ package bridge
 import (
 	"context"
 
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline"
 	"github.com/foxis/EasyRobot/pkg/core/plugin"
 )
@@ -18,14 +19,14 @@ func init() {
 	pipeline.Register(BRIDGE_RECEIVE_NAME, NewBridgeReceiver)
 }
 
-func NewBridgeReceiver(opts ...plugin.Option) (pipeline.Step, error) {
+func NewBridgeReceiver(opts ...options.Option) (pipeline.Step, error) {
 	step := &bridgeReceive{
 		options: Options{
 			base: plugin.DefaultOptions(),
 		},
 	}
-	plugin.ApplyOptions(&step.options, opts...)
-	plugin.ApplyOptions(&step.options.base, opts...)
+	options.ApplyOptions(&step.options, opts...)
+	options.ApplyOptions(&step.options.base, opts...)
 	step.Reset()
 	return step, nil
 }

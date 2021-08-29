@@ -3,6 +3,8 @@ package plugin
 import (
 	"reflect"
 	"testing"
+
+	"github.com/foxis/EasyRobot/pkg/core/options"
 )
 
 func TestNew(t *testing.T) {
@@ -107,7 +109,7 @@ func TestRegistry_Unregister(t *testing.T) {
 func TestRegistry_New(t *testing.T) {
 	type args struct {
 		name string
-		opts []Option
+		opts []options.Option
 	}
 	tests := []struct {
 		name    string

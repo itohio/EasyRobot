@@ -3,8 +3,8 @@ package example
 import (
 	"context"
 
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline"
-	"github.com/foxis/EasyRobot/pkg/core/plugin"
 	"github.com/foxis/EasyRobot/pkg/core/store"
 )
 
@@ -18,12 +18,12 @@ func init() {
 	pipeline.Register(NAME, New)
 }
 
-func New(opts ...plugin.Option) (pipeline.Step, error) {
+func New(opts ...options.Option) (pipeline.Step, error) {
 	step := &stepImpl{
 		Options: Options{},
 	}
-	plugin.ApplyOptions(&step.Options, opts...)
-	plugin.ApplyOptions(&step.base, opts...)
+	options.ApplyOptions(&step.Options, opts...)
+	options.ApplyOptions(&step.base, opts...)
 	step.Reset()
 	return step, nil
 }

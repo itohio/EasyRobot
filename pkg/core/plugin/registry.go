@@ -3,6 +3,8 @@ package plugin
 import (
 	"errors"
 	"sync"
+
+	"github.com/foxis/EasyRobot/pkg/core/options"
 )
 
 var (
@@ -12,9 +14,8 @@ var (
 	ErrCorruptedRegistry = errors.New("registry seems to be corrupted")
 )
 
-type Option func(cfg interface{})
 type Plugin interface{}
-type Builder func(...Option) (Plugin, error)
+type Builder func(...options.Option) (Plugin, error)
 
 type Registry struct {
 	mutex    sync.RWMutex
@@ -45,7 +46,7 @@ func (p *Registry) Unregister(name string) error {
 	return nil
 }
 
-func (p *Registry) New(name string, opts ...Option) (Plugin, error) {
+func (p *Registry) New(name string, opts ...options.Option) (Plugin, error) {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
 	if build, ok := p.registry[name]; ok {

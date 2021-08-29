@@ -5,9 +5,9 @@ import (
 
 	"github.com/foxis/EasyRobot/pkg/backend"
 	. "github.com/foxis/EasyRobot/pkg/core/logger"
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline/steps"
-	"github.com/foxis/EasyRobot/pkg/core/plugin"
 
 	"gocv.io/x/gocv"
 )
@@ -23,15 +23,15 @@ func init() {
 	pipeline.Register(VIDEO_GOCV_NAME, NewVideoFileGoCV)
 }
 
-func NewVideoFileGoCV(opts ...plugin.Option) (pipeline.Step, error) {
+func NewVideoFileGoCV(opts ...options.Option) (pipeline.Step, error) {
 	o := readerOpts{}
-	plugin.ApplyOptions(&o, opts...)
+	options.ApplyOptions(&o, opts...)
 	newOpts := opts
 	newOpts = append(newOpts, WithVideoReaderGoCV(o.fname))
 	return steps.NewReader(newOpts...)
 }
 
-func WithVideoReaderGoCV(file string) plugin.Option {
+func WithVideoReaderGoCV(file string) options.Option {
 	return steps.WithSourceReader(&readerVideoGoCV{readerOpts: readerOpts{fname: file}})
 }
 

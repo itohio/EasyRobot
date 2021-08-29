@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/foxis/EasyRobot/pkg/backend"
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline/steps"
 	"github.com/foxis/EasyRobot/pkg/core/plugin"
@@ -27,7 +28,7 @@ func init() {
 	pipeline.Register(NAME, NewGoCV)
 }
 
-func NewGoCV(opts ...plugin.Option) (pipeline.Step, error) {
+func NewGoCV(opts ...options.Option) (pipeline.Step, error) {
 	algorithm := &stepImpl{
 		options: Options{
 			backend: gocv.NetBackendDefault,
@@ -35,7 +36,7 @@ func NewGoCV(opts ...plugin.Option) (pipeline.Step, error) {
 		},
 	}
 
-	plugin.ApplyOptions(&algorithm.options, opts...)
+	options.ApplyOptions(&algorithm.options, opts...)
 
 	data := store.New()
 	data.Set(store.DNN_MODEL, algorithm.options.model)
@@ -61,7 +62,7 @@ func NewGoCV(opts ...plugin.Option) (pipeline.Step, error) {
 		algorithm.swapRGB = algorithm.options.swapRGB
 	}
 
-	newOpts := append([]plugin.Option{plugin.WithName(NAME)}, opts...)
+	newOpts := append([]options.Option{plugin.WithName(NAME)}, opts...)
 	newOpts = append(
 		newOpts,
 		steps.WithProcessor(algorithm),

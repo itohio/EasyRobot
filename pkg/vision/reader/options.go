@@ -1,6 +1,6 @@
 package reader
 
-import "github.com/foxis/EasyRobot/pkg/core/plugin"
+import "github.com/foxis/EasyRobot/pkg/core/options"
 
 type readerOpts struct {
 	paths  []string
@@ -11,28 +11,28 @@ type readerOpts struct {
 	index  int
 }
 
-func WithPaths(paths []string) plugin.Option {
+func WithPaths(paths []string) options.Option {
 	return func(opt interface{}) {
 		if o, ok := opt.(*readerOpts); ok {
 			o.paths = paths
 		}
 	}
 }
-func WithId(id int) plugin.Option {
+func WithId(id int) options.Option {
 	return func(opt interface{}) {
 		if o, ok := opt.(*readerOpts); ok {
 			o.id = id
 		}
 	}
 }
-func WithFileName(fname string) plugin.Option {
+func WithFileName(fname string) options.Option {
 	return func(opt interface{}) {
 		if o, ok := opt.(*readerOpts); ok {
 			o.fname = fname
 		}
 	}
 }
-func WithResolution(width, height int) plugin.Option {
+func WithResolution(width, height int) options.Option {
 	return func(opt interface{}) {
 		if o, ok := opt.(*readerOpts); ok {
 			o.width = width

@@ -3,6 +3,7 @@ package bridge
 import (
 	"context"
 
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline"
 	"github.com/foxis/EasyRobot/pkg/core/plugin"
 )
@@ -19,7 +20,7 @@ func init() {
 	pipeline.Register(BRIDGE_DUPLEX_NAME, NewDuplexBridge)
 }
 
-func NewDuplexBridge(opts ...plugin.Option) (pipeline.Step, error) {
+func NewDuplexBridge(opts ...options.Option) (pipeline.Step, error) {
 	recv, err := NewBridgeReceiver(opts...)
 	if err != nil {
 		return nil, err
@@ -36,8 +37,8 @@ func NewDuplexBridge(opts ...plugin.Option) (pipeline.Step, error) {
 		recv: recv,
 		send: send,
 	}
-	plugin.ApplyOptions(&step.options, opts...)
-	plugin.ApplyOptions(&step.options.base, opts...)
+	options.ApplyOptions(&step.options, opts...)
+	options.ApplyOptions(&step.options.base, opts...)
 
 	step.Reset()
 	return step, nil

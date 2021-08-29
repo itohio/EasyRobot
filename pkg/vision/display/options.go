@@ -1,6 +1,7 @@
 package display
 
 import (
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/plugin"
 	"github.com/foxis/EasyRobot/pkg/core/store"
 )
@@ -12,7 +13,7 @@ type Options struct {
 	keys []store.FQDNType
 }
 
-func WithKeyFirst(key store.FQDNType) plugin.Option {
+func WithKeyFirst(key store.FQDNType) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*Options); ok {
 			opt.keys = []store.FQDNType{key}
@@ -20,7 +21,7 @@ func WithKeyFirst(key store.FQDNType) plugin.Option {
 	}
 }
 
-func WithKey(key store.FQDNType) plugin.Option {
+func WithKey(key store.FQDNType) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*Options); ok {
 			opt.keys = append(opt.keys, key)
@@ -28,7 +29,7 @@ func WithKey(key store.FQDNType) plugin.Option {
 	}
 }
 
-func WithKeys(keys []store.FQDNType) plugin.Option {
+func WithKeys(keys []store.FQDNType) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*Options); ok {
 			opt.keys = append(opt.keys, keys...)

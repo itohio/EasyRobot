@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline/steps"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline/steps/fps"
@@ -49,7 +50,7 @@ func main() {
 	var sink pipeline.Step
 	var err error
 
-	opts := []plugin.Option{}
+	opts := []options.Option{}
 
 	if len(*imagesPath) != 0 {
 		paths := ReadFileList(*imagesPath)

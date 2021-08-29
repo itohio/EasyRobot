@@ -1,6 +1,7 @@
 package writer
 
 import (
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline/steps"
 	"github.com/foxis/EasyRobot/pkg/core/plugin"
@@ -13,16 +14,16 @@ func init() {
 	pipeline.Register(NULL_NAME, NewNull)
 }
 
-func NewNull(opts ...plugin.Option) (pipeline.Step, error) {
+func NewNull(opts ...options.Option) (pipeline.Step, error) {
 	o := writerOpts{base: plugin.DefaultOptions()}
-	plugin.ApplyOptions(&o, opts...)
-	plugin.ApplyOptions(&o.base, opts...)
+	options.ApplyOptions(&o, opts...)
+	options.ApplyOptions(&o.base, opts...)
 	newOpts := opts
 	newOpts = append(newOpts, WithNullWriter(o.keys))
 	return steps.NewSink(newOpts...)
 }
 
-func WithNullWriter(keys []store.FQDNType) plugin.Option {
+func WithNullWriter(keys []store.FQDNType) options.Option {
 	return steps.WithNamedSinkFunc(NULL_NAME, sink_null(keys))
 }
 

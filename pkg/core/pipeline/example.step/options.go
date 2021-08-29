@@ -1,6 +1,7 @@
 package example
 
 import (
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/plugin"
 )
 
@@ -11,7 +12,7 @@ type Options struct {
 	b    bool
 }
 
-func WithBool() plugin.Option {
+func WithBool() options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*Options); ok {
 			opt.b = true

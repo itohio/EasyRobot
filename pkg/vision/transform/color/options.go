@@ -1,7 +1,7 @@
 package color
 
 import (
-	"github.com/foxis/EasyRobot/pkg/core/plugin"
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/store"
 )
 
@@ -13,7 +13,7 @@ type Options struct {
 	code int
 }
 
-func WithKey(src, dst store.FQDNType) plugin.Option {
+func WithKey(src, dst store.FQDNType) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*Options); ok {
 			opt.src = src
@@ -22,7 +22,7 @@ func WithKey(src, dst store.FQDNType) plugin.Option {
 	}
 }
 
-func WithConvertCode(code int) plugin.Option {
+func WithConvertCode(code int) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*Options); ok {
 			opt.code = code

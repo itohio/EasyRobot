@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	. "github.com/foxis/EasyRobot/pkg/core/logger"
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline"
 	"github.com/foxis/EasyRobot/pkg/core/plugin"
 	"github.com/foxis/EasyRobot/pkg/core/store"
@@ -30,7 +31,7 @@ type NamedSourceReader interface {
 	Name() string
 }
 
-func WithSourceReader(reader SourceReader) plugin.Option {
+func WithSourceReader(reader SourceReader) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*SourceOptions); ok {
 			opt.reader = reader
@@ -41,7 +42,7 @@ func WithSourceReader(reader SourceReader) plugin.Option {
 	}
 }
 
-func WithRepeat() plugin.Option {
+func WithRepeat() options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*SourceOptions); ok {
 			opt.Repeat = true
@@ -49,7 +50,7 @@ func WithRepeat() plugin.Option {
 	}
 }
 
-func WithKey(dst store.FQDNType) plugin.Option {
+func WithKey(dst store.FQDNType) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*SourceOptions); ok {
 			opt.dst = dst
@@ -66,15 +67,15 @@ func init() {
 	pipeline.Register(SOURCE_NAME, NewReader)
 }
 
-func NewReader(opts ...plugin.Option) (pipeline.Step, error) {
+func NewReader(opts ...options.Option) (pipeline.Step, error) {
 	step := &readerImpl{
 		SourceOptions: SourceOptions{
 			base: plugin.DefaultOptions(),
 			dst:  store.IMAGE,
 		},
 	}
-	plugin.ApplyOptions(&step.SourceOptions, opts...)
-	plugin.ApplyOptions(&step.SourceOptions.base, opts...)
+	options.ApplyOptions(&step.SourceOptions, opts...)
+	options.ApplyOptions(&step.SourceOptions.base, opts...)
 	step.Reset()
 	return step, nil
 }

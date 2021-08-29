@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline/steps"
 	"github.com/foxis/EasyRobot/pkg/core/plugin"
@@ -20,19 +21,19 @@ func init() {
 	pipeline.Register(IMAGES_NAME, NewImages)
 }
 
-func NewImages(opts ...plugin.Option) (pipeline.Step, error) {
+func NewImages(opts ...options.Option) (pipeline.Step, error) {
 	o := writerOpts{
 		base: plugin.DefaultOptions(),
 		ext:  "png",
 	}
-	plugin.ApplyOptions(&o, opts...)
-	plugin.ApplyOptions(&o.base, opts...)
+	options.ApplyOptions(&o, opts...)
+	options.ApplyOptions(&o.base, opts...)
 	newOpts := opts
 	newOpts = append(newOpts, WithImagesWriter(o.prefix, o.ext, o.keys))
 	return steps.NewSink(newOpts...)
 }
 
-func WithImagesWriter(prefix, extension string, keys []store.FQDNType) plugin.Option {
+func WithImagesWriter(prefix, extension string, keys []store.FQDNType) options.Option {
 	return steps.WithNamedSinkFunc(IMAGES_NAME, sink_images(writerOpts{prefix: prefix, ext: extension, keys: keys}))
 }
 

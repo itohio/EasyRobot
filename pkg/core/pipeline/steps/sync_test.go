@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline"
-	"github.com/foxis/EasyRobot/pkg/core/plugin"
 	"github.com/foxis/EasyRobot/pkg/core/store"
 )
 
@@ -146,7 +146,7 @@ func Testbuffer_FindClosest(t *testing.T) {
 
 func TestNewSync(t *testing.T) {
 	type args struct {
-		opts []plugin.Option
+		opts []options.Option
 	}
 	tests := []struct {
 		name string

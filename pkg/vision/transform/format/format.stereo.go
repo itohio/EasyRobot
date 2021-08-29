@@ -1,9 +1,9 @@
 package format
 
 import (
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline/steps"
-	"github.com/foxis/EasyRobot/pkg/core/plugin"
 	"github.com/foxis/EasyRobot/pkg/core/store"
 )
 
@@ -13,13 +13,13 @@ func init() {
 	pipeline.Register(D2S_NAME, NewDataToStereo)
 }
 
-func NewDataToStereo(opts ...plugin.Option) (pipeline.Step, error) {
+func NewDataToStereo(opts ...options.Option) (pipeline.Step, error) {
 	newOpts := opts
 	newOpts = append(newOpts, WithDataToStereo())
 	return steps.NewProcessor(newOpts...)
 }
 
-func WithDataToStereo() plugin.Option {
+func WithDataToStereo() options.Option {
 	return steps.WithNamedProcessorFunc(D2S_NAME, data2stereo)
 }
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	. "github.com/foxis/EasyRobot/pkg/core/logger"
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline"
 	"github.com/foxis/EasyRobot/pkg/core/plugin"
 	"github.com/foxis/EasyRobot/pkg/core/store"
@@ -22,12 +23,12 @@ func init() {
 	pipeline.Register(FANOUT_NAME, NewFanOut)
 }
 
-func NewFanOut(opts ...plugin.Option) (pipeline.Step, error) {
-	options := plugin.DefaultOptions()
-	options.Name = FANOUT_NAME
-	plugin.ApplyOptions(&options, opts...)
+func NewFanOut(opts ...options.Option) (pipeline.Step, error) {
+	o := plugin.DefaultOptions()
+	o.Name = FANOUT_NAME
+	options.ApplyOptions(&o, opts...)
 	return &fanout{
-		base:  options,
+		base:  o,
 		chArr: make([]chan pipeline.Data, 0),
 	}, nil
 }

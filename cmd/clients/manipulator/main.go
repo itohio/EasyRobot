@@ -59,22 +59,26 @@ func main() {
 
 	manipulator := servos.NewClient(rw)
 
-	// manipulator.Configure([]servos.Motor{
-	// 	servos.NewDefaultConfig(0),
-	// 	servos.NewDefaultConfig(0),
-	// 	servos.NewDefaultConfig(0),
-	// },
-	// )
+	manipulator.Configure([]servos.Motor{
+		servos.NewDefaultConfig(servos.WithMicroseconds(500, 2500, 1500, 180)),
+		servos.NewDefaultConfig(servos.WithMicroseconds(500, 2500, 1500, 180)),
+		servos.NewDefaultConfig(servos.WithMicroseconds(500, 2500, 1500, 180)),
+	},
+	)
 
 	state := vec.New(3)
+	state[0] = -45
+	state[1] = 0
+	state[2] = 45
 	for {
-		for i := range state {
-			state[i] = float32(90 - rand.Intn(180))
-		}
-		fmt.Println(">>> Set state")
+		fmt.Println(">>> Set state ", state)
 		if err := manipulator.Set(state); err != nil {
 			panic(err)
 		}
 		time.Sleep(time.Second)
+
+		for i := range state {
+			state[i] = float32(90 - 45*rand.Intn(4))
+		}
 	}
 }

@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/plugin"
 	"github.com/foxis/EasyRobot/pkg/core/store"
 )
@@ -16,10 +17,10 @@ type Transport interface {
 	Close()
 }
 
-type TransportBuilder func(opts ...plugin.Option) (Transport, error)
+type TransportBuilder func(opts ...options.Option) (Transport, error)
 
 func Register(name string, builder TransportBuilder) error {
-	return transport.Register(name, func(opts ...plugin.Option) (plugin.Plugin, error) { return builder(opts...) })
+	return transport.Register(name, func(opts ...options.Option) (plugin.Plugin, error) { return builder(opts...) })
 }
 
 func Unregister(name string) error {

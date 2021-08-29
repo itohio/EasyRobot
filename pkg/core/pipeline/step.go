@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/plugin"
 	"github.com/foxis/EasyRobot/pkg/core/store"
 )
@@ -33,7 +34,7 @@ type MarshallableStep interface {
 
 type StepConfigurator interface {
 	Config() interface{}
-	SetConfig(opts ...plugin.Option)
+	SetConfig(opts ...options.Option)
 }
 
 func StepReceive(ctx context.Context, o plugin.Options, in <-chan Data) (Data, error) {

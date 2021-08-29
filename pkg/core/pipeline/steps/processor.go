@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	. "github.com/foxis/EasyRobot/pkg/core/logger"
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline"
 	"github.com/foxis/EasyRobot/pkg/core/plugin"
 	"github.com/foxis/EasyRobot/pkg/core/store"
@@ -65,14 +66,14 @@ type processor struct {
 	out chan pipeline.Data
 }
 
-func WithFields(fields store.Store) plugin.Option {
+func WithFields(fields store.Store) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*ProcessorOptions); ok {
 			opt.fields = fields
 		}
 	}
 }
-func WithProcessor(pr Processor) plugin.Option {
+func WithProcessor(pr Processor) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*ProcessorOptions); ok {
 			opt.processor = pr
@@ -82,7 +83,7 @@ func WithProcessor(pr Processor) plugin.Option {
 		}
 	}
 }
-func WithProcessorFunc(f ProcessFunc) plugin.Option {
+func WithProcessorFunc(f ProcessFunc) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*ProcessorOptions); ok {
 			if pr, ok := opt.processor.(*DefaultProcessor); ok {
@@ -91,7 +92,7 @@ func WithProcessorFunc(f ProcessFunc) plugin.Option {
 		}
 	}
 }
-func WithNamedProcessorFunc(name string, f ProcessFunc) plugin.Option {
+func WithNamedProcessorFunc(name string, f ProcessFunc) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*ProcessorOptions); ok {
 			if pr, ok := opt.processor.(*DefaultProcessor); ok {
@@ -101,7 +102,7 @@ func WithNamedProcessorFunc(name string, f ProcessFunc) plugin.Option {
 		}
 	}
 }
-func WithInitFunc(f func() error) plugin.Option {
+func WithInitFunc(f func() error) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*ProcessorOptions); ok {
 			if pr, ok := opt.processor.(*DefaultProcessor); ok {
@@ -110,7 +111,7 @@ func WithInitFunc(f func() error) plugin.Option {
 		}
 	}
 }
-func WithResetFunc(f func()) plugin.Option {
+func WithResetFunc(f func()) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*ProcessorOptions); ok {
 			if pr, ok := opt.processor.(*DefaultProcessor); ok {
@@ -119,7 +120,7 @@ func WithResetFunc(f func()) plugin.Option {
 		}
 	}
 }
-func WithCloseFunc(f func()) plugin.Option {
+func WithCloseFunc(f func()) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*ProcessorOptions); ok {
 			if pr, ok := opt.processor.(*DefaultProcessor); ok {
@@ -133,7 +134,7 @@ func init() {
 	pipeline.Register(PROCESS_NAME, NewProcessor)
 }
 
-func NewProcessor(opts ...plugin.Option) (pipeline.Step, error) {
+func NewProcessor(opts ...options.Option) (pipeline.Step, error) {
 	step := &processor{
 		ProcessorOptions: ProcessorOptions{
 			base:      plugin.DefaultOptions(),
@@ -141,8 +142,8 @@ func NewProcessor(opts ...plugin.Option) (pipeline.Step, error) {
 		},
 	}
 	step.base.Name = PROCESS_NAME
-	plugin.ApplyOptions(&step.ProcessorOptions, opts...)
-	plugin.ApplyOptions(&step.ProcessorOptions.base, opts...)
+	options.ApplyOptions(&step.ProcessorOptions, opts...)
+	options.ApplyOptions(&step.ProcessorOptions.base, opts...)
 	step.Reset()
 	return step, nil
 }

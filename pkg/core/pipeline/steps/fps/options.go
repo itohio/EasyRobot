@@ -1,7 +1,7 @@
 package fps
 
 import (
-	"github.com/foxis/EasyRobot/pkg/core/plugin"
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/store"
 )
 
@@ -12,7 +12,7 @@ type Options struct {
 	suffix    store.FQDNType
 }
 
-func WithNumFrames(numFrames int) plugin.Option {
+func WithNumFrames(numFrames int) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*Options); ok {
 			opt.numFrames = numFrames
@@ -20,7 +20,7 @@ func WithNumFrames(numFrames int) plugin.Option {
 	}
 }
 
-func WithSuffix(suffix store.FQDNType) plugin.Option {
+func WithSuffix(suffix store.FQDNType) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*Options); ok {
 			opt.suffix = suffix

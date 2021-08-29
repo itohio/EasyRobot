@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline"
-	"github.com/foxis/EasyRobot/pkg/core/plugin"
 	"github.com/foxis/EasyRobot/pkg/core/store"
 )
 
@@ -136,7 +136,7 @@ func TestWithFields(t *testing.T) {
 		name string
 		args func(t *testing.T) args
 
-		want1 plugin.Option
+		want1 options.Option
 	}{
 		//TODO: Add test cases
 	}
@@ -162,7 +162,7 @@ func TestWithProcessor(t *testing.T) {
 		name string
 		args func(t *testing.T) args
 
-		want1 plugin.Option
+		want1 options.Option
 	}{
 		//TODO: Add test cases
 	}
@@ -188,7 +188,7 @@ func TestWithProcessorFunc(t *testing.T) {
 		name string
 		args func(t *testing.T) args
 
-		want1 plugin.Option
+		want1 options.Option
 	}{
 		//TODO: Add test cases
 	}
@@ -215,7 +215,7 @@ func TestWithNamedProcessorFunc(t *testing.T) {
 		name string
 		args func(t *testing.T) args
 
-		want1 plugin.Option
+		want1 options.Option
 	}{
 		//TODO: Add test cases
 	}
@@ -241,7 +241,7 @@ func TestWithInitFunc(t *testing.T) {
 		name string
 		args func(t *testing.T) args
 
-		want1 plugin.Option
+		want1 options.Option
 	}{
 		//TODO: Add test cases
 	}
@@ -267,7 +267,7 @@ func TestWithResetFunc(t *testing.T) {
 		name string
 		args func(t *testing.T) args
 
-		want1 plugin.Option
+		want1 options.Option
 	}{
 		//TODO: Add test cases
 	}
@@ -287,7 +287,7 @@ func TestWithResetFunc(t *testing.T) {
 
 func TestNewProcessor(t *testing.T) {
 	type args struct {
-		opts []plugin.Option
+		opts []options.Option
 	}
 	tests := []struct {
 		name string

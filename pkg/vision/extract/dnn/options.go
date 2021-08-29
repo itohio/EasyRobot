@@ -1,7 +1,7 @@
 package dnn
 
 import (
-	"github.com/foxis/EasyRobot/pkg/core/plugin"
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"gocv.io/x/gocv"
 )
 
@@ -22,7 +22,7 @@ type Options struct {
 	swapRGB bool
 }
 
-func WithImageParams(ratio float64, mean [4]float64, swapRGB bool) plugin.Option {
+func WithImageParams(ratio float64, mean [4]float64, swapRGB bool) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*Options); ok {
 			opt.ratio = ratio
@@ -32,7 +32,7 @@ func WithImageParams(ratio float64, mean [4]float64, swapRGB bool) plugin.Option
 	}
 }
 
-func WithResolution(width, height int) plugin.Option {
+func WithResolution(width, height int) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*Options); ok {
 			opt.width = width
@@ -41,7 +41,7 @@ func WithResolution(width, height int) plugin.Option {
 	}
 }
 
-func WithModel(model, config string) plugin.Option {
+func WithModel(model, config string) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*Options); ok {
 			opt.model = model
@@ -50,7 +50,7 @@ func WithModel(model, config string) plugin.Option {
 	}
 }
 
-func WithTarget(target string) plugin.Option {
+func WithTarget(target string) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*Options); ok {
 			opt.target = gocv.ParseNetTarget(target)
@@ -58,7 +58,7 @@ func WithTarget(target string) plugin.Option {
 	}
 }
 
-func WithBackend(backend string) plugin.Option {
+func WithBackend(backend string) options.Option {
 	return func(o interface{}) {
 		if opt, ok := o.(*Options); ok {
 			opt.backend = gocv.ParseNetBackend(backend)

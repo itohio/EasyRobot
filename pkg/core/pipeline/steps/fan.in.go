@@ -6,6 +6,7 @@ import (
 
 	"github.com/foxis/EasyRobot/internal/concurrency"
 	. "github.com/foxis/EasyRobot/pkg/core/logger"
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline"
 	"github.com/foxis/EasyRobot/pkg/core/plugin"
 )
@@ -23,10 +24,10 @@ func init() {
 	pipeline.Register(FANIN_NAME, NewFanIn)
 }
 
-func NewFanIn(opts ...plugin.Option) (pipeline.Step, error) {
+func NewFanIn(opts ...options.Option) (pipeline.Step, error) {
 	step := &fanin{base: plugin.DefaultOptions()}
 	step.base.Name = FANIN_NAME
-	plugin.ApplyOptions(&step.base, opts...)
+	options.ApplyOptions(&step.base, opts...)
 	step.Reset()
 	return step, nil
 }

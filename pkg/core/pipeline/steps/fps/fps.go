@@ -4,6 +4,7 @@ import (
 	"time"
 
 	. "github.com/foxis/EasyRobot/pkg/core/logger"
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline/steps"
 	"github.com/foxis/EasyRobot/pkg/core/plugin"
@@ -14,17 +15,17 @@ func init() {
 	pipeline.Register(NAME, New)
 }
 
-func New(opts ...plugin.Option) (pipeline.Step, error) {
+func New(opts ...options.Option) (pipeline.Step, error) {
 	o := Options{
 		numFrames: 30,
 	}
-	plugin.ApplyOptions(&o, opts...)
-	newOpts := append([]plugin.Option{plugin.WithName(NAME)}, opts...)
+	options.ApplyOptions(&o, opts...)
+	newOpts := append([]options.Option{plugin.WithName(NAME)}, opts...)
 	newOpts = append(newOpts, WithFPSCounter(o.numFrames, o.suffix))
 	return steps.NewProcessor(newOpts...)
 }
 
-func WithFPSCounter(numFrames int, suffix store.FQDNType) plugin.Option {
+func WithFPSCounter(numFrames int, suffix store.FQDNType) options.Option {
 	fps := store.FPS
 	drop := store.DROPPED_FRAMES
 	if suffix != store.NONE {

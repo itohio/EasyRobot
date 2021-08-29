@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/foxis/EasyRobot/pkg/core/plugin"
+	"github.com/foxis/EasyRobot/pkg/core/options"
 )
 
 func TestRegister(t *testing.T) {
@@ -73,7 +73,7 @@ func TestUnregister(t *testing.T) {
 func TestNewStep(t *testing.T) {
 	type args struct {
 		name string
-		opts []plugin.Option
+		opts []options.Option
 	}
 	tests := []struct {
 		name string

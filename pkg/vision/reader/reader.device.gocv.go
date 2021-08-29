@@ -5,9 +5,9 @@ import (
 
 	"github.com/foxis/EasyRobot/pkg/backend"
 	. "github.com/foxis/EasyRobot/pkg/core/logger"
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline/steps"
-	"github.com/foxis/EasyRobot/pkg/core/plugin"
 
 	"gocv.io/x/gocv"
 )
@@ -23,19 +23,19 @@ type readerDeviceGoCV struct {
 	dev *gocv.VideoCapture
 }
 
-func NewDeviceGoCV(opts ...plugin.Option) (pipeline.Step, error) {
+func NewDeviceGoCV(opts ...options.Option) (pipeline.Step, error) {
 	o := readerOpts{}
-	plugin.ApplyOptions(&o, opts...)
+	options.ApplyOptions(&o, opts...)
 	newOpts := opts
 	newOpts = append(newOpts, WithDeviceReaderGoCVResolution(o.id, o.width, o.height))
 	return steps.NewReader(newOpts...)
 }
 
-func WithDeviceReaderGoCVDefault(id int) plugin.Option {
+func WithDeviceReaderGoCVDefault(id int) options.Option {
 	return steps.WithSourceReader(&readerDeviceGoCV{readerOpts: readerOpts{id: id}})
 }
 
-func WithDeviceReaderGoCVResolution(id, width, height int) plugin.Option {
+func WithDeviceReaderGoCVResolution(id, width, height int) options.Option {
 	return steps.WithSourceReader(&readerDeviceGoCV{readerOpts: readerOpts{id: id, width: width, height: height}})
 }
 

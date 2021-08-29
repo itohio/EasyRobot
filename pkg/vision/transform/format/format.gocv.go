@@ -4,9 +4,9 @@ import (
 	"image"
 	"image/color"
 
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline/steps"
-	"github.com/foxis/EasyRobot/pkg/core/plugin"
 	"github.com/foxis/EasyRobot/pkg/core/store"
 
 	"gocv.io/x/gocv"
@@ -22,33 +22,33 @@ func init() {
 	pipeline.Register(I2M_NAME, NewImageToMat)
 }
 
-func NewMatToImage(opts ...plugin.Option) (pipeline.Step, error) {
+func NewMatToImage(opts ...options.Option) (pipeline.Step, error) {
 	o := Options{
 		src: store.IMAGE,
 		dst: store.IMAGE,
 	}
-	plugin.ApplyOptions(&o, opts...)
+	options.ApplyOptions(&o, opts...)
 	newOpts := opts
 	newOpts = append(newOpts, WithMatToImage(o.src, o.dst))
 	return steps.NewProcessor(newOpts...)
 }
 
-func NewImageToMat(opts ...plugin.Option) (pipeline.Step, error) {
+func NewImageToMat(opts ...options.Option) (pipeline.Step, error) {
 	o := Options{
 		src: store.IMAGE,
 		dst: store.IMAGE,
 	}
-	plugin.ApplyOptions(&o, opts...)
+	options.ApplyOptions(&o, opts...)
 	newOpts := opts
 	newOpts = append(newOpts, WithImageToMat(o.src, o.dst))
 	return steps.NewProcessor(newOpts...)
 }
 
-func WithMatToImage(src, dst store.FQDNType) plugin.Option {
+func WithMatToImage(src, dst store.FQDNType) options.Option {
 	return steps.WithNamedProcessorFunc(M2I_NAME, mat2img(src, dst))
 }
 
-func WithImageToMat(src, dst store.FQDNType) plugin.Option {
+func WithImageToMat(src, dst store.FQDNType) options.Option {
 	return steps.WithNamedProcessorFunc(I2M_NAME, img2mat(src, dst))
 }
 

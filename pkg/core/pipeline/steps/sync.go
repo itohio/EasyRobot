@@ -8,6 +8,7 @@ import (
 
 	"github.com/foxis/EasyRobot/internal/concurrency"
 	. "github.com/foxis/EasyRobot/pkg/core/logger"
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline"
 	"github.com/foxis/EasyRobot/pkg/core/plugin"
 	"github.com/foxis/EasyRobot/pkg/core/store"
@@ -96,7 +97,7 @@ func init() {
 	pipeline.Register(SYNC_NAME, NewSync)
 }
 
-func NewSync(opts ...plugin.Option) (pipeline.Step, error) {
+func NewSync(opts ...options.Option) (pipeline.Step, error) {
 	step := &syncronize{
 		SyncOptions: SyncOptions{
 			tolerance:  time.Millisecond * 10,
@@ -105,8 +106,8 @@ func NewSync(opts ...plugin.Option) (pipeline.Step, error) {
 		chArr: make([]<-chan pipeline.Data, 0),
 	}
 
-	plugin.ApplyOptions(&step.SyncOptions, opts...)
-	plugin.ApplyOptions(&step.base, opts...)
+	options.ApplyOptions(&step.SyncOptions, opts...)
+	options.ApplyOptions(&step.base, opts...)
 	step.Reset()
 	return step, nil
 }

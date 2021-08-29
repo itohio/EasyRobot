@@ -9,6 +9,7 @@ import (
 	"time"
 
 	. "github.com/foxis/EasyRobot/pkg/core/logger"
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline"
 	"github.com/foxis/EasyRobot/pkg/core/plugin"
 	"github.com/foxis/EasyRobot/pkg/core/store"
@@ -26,16 +27,16 @@ func init() {
 	pipeline.Register(NAME+"GoCV", NewGoCV)
 }
 
-func NewGoCV(opts ...plugin.Option) (pipeline.Step, error) {
+func NewGoCV(opts ...options.Option) (pipeline.Step, error) {
 	step := &display{
 		Options: Options{
 			base: plugin.DefaultOptions(),
 			keys: []store.FQDNType{},
 		},
 	}
-	plugin.ApplyOptions(&step.Options, opts...)
-	plugin.ApplyOptions(&step.Options.base, plugin.WithName(NAME+"GoCV"))
-	plugin.ApplyOptions(&step.Options.base, opts...)
+	options.ApplyOptions(&step.Options, opts...)
+	options.ApplyOptions(&step.Options.base, plugin.WithName(NAME+"GoCV"))
+	options.ApplyOptions(&step.Options.base, opts...)
 	step.Reset()
 	return step, nil
 }

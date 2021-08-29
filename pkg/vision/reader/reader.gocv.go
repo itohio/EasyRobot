@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/foxis/EasyRobot/pkg/backend"
+	"github.com/foxis/EasyRobot/pkg/core/options"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline"
 	"github.com/foxis/EasyRobot/pkg/core/pipeline/steps"
-	"github.com/foxis/EasyRobot/pkg/core/plugin"
 
 	"gocv.io/x/gocv"
 )
@@ -22,15 +22,15 @@ func init() {
 	pipeline.Register(IMAGE_GOCV_NAME, NewGoCV)
 }
 
-func NewGoCV(opts ...plugin.Option) (pipeline.Step, error) {
+func NewGoCV(opts ...options.Option) (pipeline.Step, error) {
 	o := readerOpts{}
-	plugin.ApplyOptions(&o, opts...)
+	options.ApplyOptions(&o, opts...)
 	newOpts := opts
 	newOpts = append(newOpts, WithDefaultReader(o.paths))
 	return steps.NewReader(newOpts...)
 }
 
-func WithReaderGoCV(paths []string) plugin.Option {
+func WithReaderGoCV(paths []string) options.Option {
 	return steps.WithSourceReader(&readerGoCV{paths: paths})
 }
 
