@@ -1,0 +1,17 @@
+syntax = "proto3";
+package pb;
+
+message Motor {
+    uint32 Pin = 1;
+    float  Offset = 3;
+    float  Scale = 4;
+	float  Min = 5;
+	float  Max = 6;
+    float  Default = 7; 
+}
+
+message Config {
+    repeated Motor Motors = 1;
+    uint32 PWMPeriod = 2;
+}
+

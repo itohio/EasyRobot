@@ -19,3 +19,5 @@ message DeviceMetadata {
 	string Name= 2;
 	repeated uint32 Types = 3;
 }
+
+

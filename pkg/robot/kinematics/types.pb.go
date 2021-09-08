@@ -99,24 +99,24 @@ func (m *DenavitHartenberg) GetD() float32 {
 	return 0
 }
 
-type Wheels struct {
-	Radius float32 `protobuf:"fixed32,1,opt,name=Radius,proto3" json:"Radius,omitempty"`
-	BaseX  float32 `protobuf:"fixed32,2,opt,name=BaseX,proto3" json:"BaseX,omitempty"`
-	BaseY  float32 `protobuf:"fixed32,3,opt,name=BaseY,proto3" json:"BaseY,omitempty"`
+type PlanarJoint struct {
+	MinAngle float32 `protobuf:"fixed32,1,opt,name=MinAngle,proto3" json:"MinAngle,omitempty"`
+	MaxAngle float32 `protobuf:"fixed32,2,opt,name=MaxAngle,proto3" json:"MaxAngle,omitempty"`
+	Length   float32 `protobuf:"fixed32,3,opt,name=Length,proto3" json:"Length,omitempty"`
 }
 
-func (m *Wheels) Reset()         { *m = Wheels{} }
-func (m *Wheels) String() string { return proto.CompactTextString(m) }
-func (*Wheels) ProtoMessage()    {}
-func (*Wheels) Descriptor() ([]byte, []int) {
+func (m *PlanarJoint) Reset()         { *m = PlanarJoint{} }
+func (m *PlanarJoint) String() string { return proto.CompactTextString(m) }
+func (*PlanarJoint) ProtoMessage()    {}
+func (*PlanarJoint) Descriptor() ([]byte, []int) {
 	return fileDescriptor_d938547f84707355, []int{1}
 }
-func (m *Wheels) XXX_Unmarshal(b []byte) error {
+func (m *PlanarJoint) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *Wheels) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *PlanarJoint) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_Wheels.Marshal(b, m, deterministic)
+		return xxx_messageInfo_PlanarJoint.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -126,48 +126,232 @@ func (m *Wheels) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
-func (m *Wheels) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_Wheels.Merge(m, src)
+func (m *PlanarJoint) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_PlanarJoint.Merge(m, src)
 }
-func (m *Wheels) XXX_Size() int {
+func (m *PlanarJoint) XXX_Size() int {
 	return m.Size()
 }
-func (m *Wheels) XXX_DiscardUnknown() {
-	xxx_messageInfo_Wheels.DiscardUnknown(m)
+func (m *PlanarJoint) XXX_DiscardUnknown() {
+	xxx_messageInfo_PlanarJoint.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_Wheels proto.InternalMessageInfo
+var xxx_messageInfo_PlanarJoint proto.InternalMessageInfo
 
-func (m *Wheels) GetRadius() float32 {
+func (m *PlanarJoint) GetMinAngle() float32 {
+	if m != nil {
+		return m.MinAngle
+	}
+	return 0
+}
+
+func (m *PlanarJoint) GetMaxAngle() float32 {
+	if m != nil {
+		return m.MaxAngle
+	}
+	return 0
+}
+
+func (m *PlanarJoint) GetLength() float32 {
+	if m != nil {
+		return m.Length
+	}
+	return 0
+}
+
+type Wheel struct {
+	Radius float32 `protobuf:"fixed32,1,opt,name=Radius,proto3" json:"Radius,omitempty"`
+	BaseX  float32 `protobuf:"fixed32,2,opt,name=BaseX,proto3" json:"BaseX,omitempty"`
+	BaseY  float32 `protobuf:"fixed32,3,opt,name=BaseY,proto3" json:"BaseY,omitempty"`
+}
+
+func (m *Wheel) Reset()         { *m = Wheel{} }
+func (m *Wheel) String() string { return proto.CompactTextString(m) }
+func (*Wheel) ProtoMessage()    {}
+func (*Wheel) Descriptor() ([]byte, []int) {
+	return fileDescriptor_d938547f84707355, []int{2}
+}
+func (m *Wheel) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *Wheel) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_Wheel.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *Wheel) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Wheel.Merge(m, src)
+}
+func (m *Wheel) XXX_Size() int {
+	return m.Size()
+}
+func (m *Wheel) XXX_DiscardUnknown() {
+	xxx_messageInfo_Wheel.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_Wheel proto.InternalMessageInfo
+
+func (m *Wheel) GetRadius() float32 {
 	if m != nil {
 		return m.Radius
 	}
 	return 0
 }
 
-func (m *Wheels) GetBaseX() float32 {
+func (m *Wheel) GetBaseX() float32 {
 	if m != nil {
 		return m.BaseX
 	}
 	return 0
 }
 
-func (m *Wheels) GetBaseY() float32 {
+func (m *Wheel) GetBaseY() float32 {
 	if m != nil {
 		return m.BaseY
 	}
 	return 0
 }
 
+type PID struct {
+	P float32 `protobuf:"fixed32,1,opt,name=P,proto3" json:"P,omitempty"`
+	I float32 `protobuf:"fixed32,2,opt,name=I,proto3" json:"I,omitempty"`
+	D float32 `protobuf:"fixed32,3,opt,name=D,proto3" json:"D,omitempty"`
+}
+
+func (m *PID) Reset()         { *m = PID{} }
+func (m *PID) String() string { return proto.CompactTextString(m) }
+func (*PID) ProtoMessage()    {}
+func (*PID) Descriptor() ([]byte, []int) {
+	return fileDescriptor_d938547f84707355, []int{3}
+}
+func (m *PID) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *PID) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_PID.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *PID) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_PID.Merge(m, src)
+}
+func (m *PID) XXX_Size() int {
+	return m.Size()
+}
+func (m *PID) XXX_DiscardUnknown() {
+	xxx_messageInfo_PID.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_PID proto.InternalMessageInfo
+
+func (m *PID) GetP() float32 {
+	if m != nil {
+		return m.P
+	}
+	return 0
+}
+
+func (m *PID) GetI() float32 {
+	if m != nil {
+		return m.I
+	}
+	return 0
+}
+
+func (m *PID) GetD() float32 {
+	if m != nil {
+		return m.D
+	}
+	return 0
+}
+
+type Motion struct {
+	Velocity     float32 `protobuf:"fixed32,1,opt,name=Velocity,proto3" json:"Velocity,omitempty"`
+	Acceleration float32 `protobuf:"fixed32,2,opt,name=Acceleration,proto3" json:"Acceleration,omitempty"`
+	Jerk         float32 `protobuf:"fixed32,3,opt,name=Jerk,proto3" json:"Jerk,omitempty"`
+}
+
+func (m *Motion) Reset()         { *m = Motion{} }
+func (m *Motion) String() string { return proto.CompactTextString(m) }
+func (*Motion) ProtoMessage()    {}
+func (*Motion) Descriptor() ([]byte, []int) {
+	return fileDescriptor_d938547f84707355, []int{4}
+}
+func (m *Motion) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *Motion) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_Motion.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *Motion) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Motion.Merge(m, src)
+}
+func (m *Motion) XXX_Size() int {
+	return m.Size()
+}
+func (m *Motion) XXX_DiscardUnknown() {
+	xxx_messageInfo_Motion.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_Motion proto.InternalMessageInfo
+
+func (m *Motion) GetVelocity() float32 {
+	if m != nil {
+		return m.Velocity
+	}
+	return 0
+}
+
+func (m *Motion) GetAcceleration() float32 {
+	if m != nil {
+		return m.Acceleration
+	}
+	return 0
+}
+
+func (m *Motion) GetJerk() float32 {
+	if m != nil {
+		return m.Jerk
+	}
+	return 0
+}
+
 type Config struct {
-	DH []*DenavitHartenberg `protobuf:"bytes,1,rep,name=DH,proto3" json:"DH,omitempty"`
+	DH     []*DenavitHartenberg `protobuf:"bytes,1,rep,name=DH,proto3" json:"DH,omitempty"`
+	Planar []*PlanarJoint       `protobuf:"bytes,2,rep,name=Planar,proto3" json:"Planar,omitempty"`
+	Wheels []*Wheel             `protobuf:"bytes,3,rep,name=Wheels,proto3" json:"Wheels,omitempty"`
+	PID    []*PID               `protobuf:"bytes,4,rep,name=PID,proto3" json:"PID,omitempty"`
+	Motion []*Motion            `protobuf:"bytes,5,rep,name=Motion,proto3" json:"Motion,omitempty"`
 }
 
 func (m *Config) Reset()         { *m = Config{} }
 func (m *Config) String() string { return proto.CompactTextString(m) }
 func (*Config) ProtoMessage()    {}
 func (*Config) Descriptor() ([]byte, []int) {
-	return fileDescriptor_d938547f84707355, []int{2}
+	return fileDescriptor_d938547f84707355, []int{5}
 }
 func (m *Config) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -203,32 +387,120 @@ func (m *Config) GetDH() []*DenavitHartenberg {
 	return nil
 }
 
+func (m *Config) GetPlanar() []*PlanarJoint {
+	if m != nil {
+		return m.Planar
+	}
+	return nil
+}
+
+func (m *Config) GetWheels() []*Wheel {
+	if m != nil {
+		return m.Wheels
+	}
+	return nil
+}
+
+func (m *Config) GetPID() []*PID {
+	if m != nil {
+		return m.PID
+	}
+	return nil
+}
+
+func (m *Config) GetMotion() []*Motion {
+	if m != nil {
+		return m.Motion
+	}
+	return nil
+}
+
+type State struct {
+	Params []float32 `protobuf:"fixed32,1,rep,packed,name=Params,proto3" json:"Params,omitempty"`
+}
+
+func (m *State) Reset()         { *m = State{} }
+func (m *State) String() string { return proto.CompactTextString(m) }
+func (*State) ProtoMessage()    {}
+func (*State) Descriptor() ([]byte, []int) {
+	return fileDescriptor_d938547f84707355, []int{6}
+}
+func (m *State) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *State) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_State.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *State) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_State.Merge(m, src)
+}
+func (m *State) XXX_Size() int {
+	return m.Size()
+}
+func (m *State) XXX_DiscardUnknown() {
+	xxx_messageInfo_State.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_State proto.InternalMessageInfo
+
+func (m *State) GetParams() []float32 {
+	if m != nil {
+		return m.Params
+	}
+	return nil
+}
+
 func init() {
 	proto.RegisterType((*DenavitHartenberg)(nil), "kinematics.DenavitHartenberg")
-	proto.RegisterType((*Wheels)(nil), "kinematics.Wheels")
+	proto.RegisterType((*PlanarJoint)(nil), "kinematics.PlanarJoint")
+	proto.RegisterType((*Wheel)(nil), "kinematics.Wheel")
+	proto.RegisterType((*PID)(nil), "kinematics.PID")
+	proto.RegisterType((*Motion)(nil), "kinematics.Motion")
 	proto.RegisterType((*Config)(nil), "kinematics.Config")
+	proto.RegisterType((*State)(nil), "kinematics.State")
 }
 
 func init() { proto.RegisterFile("types.proto", fileDescriptor_d938547f84707355) }
 
 var fileDescriptor_d938547f84707355 = []byte{
-	// 245 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0xe2, 0x2e, 0xa9, 0x2c, 0x48,
-	0x2d, 0xd6, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0xe2, 0xca, 0xce, 0xcc, 0x4b, 0xcd, 0x4d, 0x2c,
-	0xc9, 0x4c, 0x2e, 0x56, 0x2a, 0xe4, 0x12, 0x74, 0x49, 0xcd, 0x4b, 0x2c, 0xcb, 0x2c, 0xf1, 0x48,
-	0x2c, 0x2a, 0x49, 0xcd, 0x4b, 0x4a, 0x2d, 0x4a, 0x17, 0x12, 0xe1, 0x62, 0xf5, 0xcc, 0x4b, 0x49,
-	0xad, 0x90, 0x60, 0x54, 0x60, 0xd4, 0xe0, 0x0d, 0x82, 0x70, 0x40, 0xa2, 0x21, 0x19, 0xa9, 0x25,
-	0x89, 0x12, 0x4c, 0x0a, 0x8c, 0x1a, 0x4c, 0x41, 0x10, 0x0e, 0x48, 0xd4, 0x31, 0xa7, 0x20, 0x23,
-	0x51, 0x82, 0x19, 0x22, 0x0a, 0xe6, 0x08, 0xf1, 0x70, 0x31, 0x06, 0x49, 0xb0, 0x80, 0x45, 0x18,
-	0x83, 0x40, 0x3c, 0x17, 0x09, 0x56, 0x08, 0xcf, 0x45, 0xc9, 0x87, 0x8b, 0x2d, 0x3c, 0x23, 0x35,
-	0x35, 0xa7, 0x58, 0x48, 0x8c, 0x8b, 0x2d, 0x28, 0x31, 0x25, 0xb3, 0xb4, 0x18, 0x6c, 0x11, 0x53,
-	0x10, 0x94, 0x07, 0x32, 0xd3, 0x29, 0xb1, 0x38, 0x35, 0x02, 0x66, 0x13, 0x98, 0x03, 0x13, 0x8d,
-	0x84, 0xd9, 0x04, 0xe6, 0x28, 0x99, 0x73, 0xb1, 0x39, 0xe7, 0xe7, 0xa5, 0x65, 0xa6, 0x0b, 0xe9,
-	0x72, 0x31, 0xb9, 0x78, 0x48, 0x30, 0x2a, 0x30, 0x6b, 0x70, 0x1b, 0xc9, 0xea, 0x21, 0xfc, 0xa8,
-	0x87, 0xe1, 0xc1, 0x20, 0x26, 0x17, 0x0f, 0x27, 0x89, 0x13, 0x8f, 0xe4, 0x18, 0x2f, 0x3c, 0x92,
-	0x63, 0x7c, 0xf0, 0x48, 0x8e, 0x71, 0xc2, 0x63, 0x39, 0x86, 0x0b, 0x8f, 0xe5, 0x18, 0x6e, 0x3c,
-	0x96, 0x63, 0x48, 0x62, 0x03, 0x07, 0x93, 0x31, 0x20, 0x00, 0x00, 0xff, 0xff, 0x95, 0xac, 0xc5,
-	0x05, 0x35, 0x01, 0x00, 0x00,
+	// 439 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x64, 0x92, 0xcf, 0x6e, 0xd3, 0x40,
+	0x10, 0xc6, 0xb3, 0x76, 0x6c, 0xa1, 0x49, 0x11, 0xea, 0x0a, 0xc1, 0x0a, 0x09, 0x13, 0x7c, 0x0a,
+	0x48, 0xa4, 0x12, 0x3c, 0x41, 0x8a, 0x0f, 0x71, 0xa1, 0x92, 0xb5, 0x20, 0xfe, 0x48, 0x70, 0xd8,
+	0xa6, 0x43, 0xb2, 0xaa, 0xbb, 0x0e, 0xf6, 0x82, 0xda, 0xb7, 0xe0, 0xb1, 0x38, 0xf6, 0xc8, 0x11,
+	0x25, 0x2f, 0x82, 0x76, 0x76, 0x0d, 0x89, 0xb8, 0xe5, 0xf7, 0xcd, 0x37, 0xe3, 0xfd, 0x66, 0x02,
+	0x23, 0x7b, 0xbd, 0xc6, 0x6e, 0xba, 0x6e, 0x1b, 0xdb, 0x70, 0xb8, 0xd0, 0x06, 0x2f, 0x95, 0xd5,
+	0x8b, 0x2e, 0xff, 0x0a, 0x87, 0x05, 0x1a, 0xf5, 0x5d, 0xdb, 0xb9, 0x6a, 0x2d, 0x9a, 0x33, 0x6c,
+	0x97, 0xfc, 0x2e, 0x24, 0xa5, 0x39, 0xc7, 0x2b, 0xc1, 0xc6, 0x6c, 0x72, 0x5b, 0x7a, 0x70, 0xea,
+	0xdb, 0x15, 0x5a, 0x25, 0xa2, 0x31, 0x9b, 0x44, 0xd2, 0x83, 0x53, 0x67, 0xf5, 0x7a, 0xa5, 0x44,
+	0xec, 0x55, 0x02, 0x7e, 0x00, 0x4c, 0x8a, 0x21, 0x29, 0x4c, 0x3a, 0x2a, 0x44, 0xe2, 0xa9, 0xc8,
+	0x3f, 0xc3, 0xa8, 0xaa, 0x95, 0x51, 0xed, 0x49, 0xa3, 0x8d, 0xe5, 0x0f, 0xe0, 0xd6, 0xa9, 0x36,
+	0x33, 0xb3, 0xac, 0x91, 0xbe, 0x17, 0xc9, 0xbf, 0x4c, 0x35, 0x75, 0xe5, 0x6b, 0x51, 0xa8, 0x05,
+	0xe6, 0xf7, 0x20, 0x7d, 0x8d, 0x66, 0x69, 0x57, 0xe1, 0xcb, 0x81, 0xf2, 0x57, 0x90, 0xbc, 0x5f,
+	0x21, 0xd6, 0xce, 0x20, 0xd5, 0xb9, 0xfe, 0xd6, 0x85, 0xb1, 0x81, 0xdc, 0x8b, 0x8f, 0x55, 0x87,
+	0x1f, 0xfa, 0x1c, 0x04, 0xbd, 0xfa, 0xb1, 0xcf, 0x41, 0x90, 0x1f, 0x41, 0x5c, 0x95, 0x85, 0x0b,
+	0x50, 0x85, 0x29, 0xac, 0x72, 0x54, 0x86, 0x66, 0x56, 0xfa, 0x70, 0x71, 0x1f, 0xee, 0x13, 0xa4,
+	0xa7, 0x8d, 0xd5, 0x8d, 0x71, 0x6f, 0x7f, 0x87, 0x75, 0xb3, 0xd0, 0xf6, 0xba, 0xcf, 0xd5, 0x33,
+	0xcf, 0xe1, 0x60, 0xb6, 0x58, 0x60, 0x8d, 0xad, 0x72, 0xde, 0x30, 0x6c, 0x4f, 0xe3, 0x1c, 0x86,
+	0x27, 0xd8, 0x5e, 0x84, 0xd1, 0xf4, 0x3b, 0xdf, 0x30, 0x48, 0x5f, 0x36, 0xe6, 0x8b, 0x5e, 0xf2,
+	0x67, 0x10, 0x15, 0x73, 0xc1, 0xc6, 0xf1, 0x64, 0xf4, 0xfc, 0xe1, 0xf4, 0xdf, 0x45, 0xa7, 0xff,
+	0x9d, 0x53, 0x46, 0xc5, 0x9c, 0x1f, 0x41, 0xea, 0x97, 0x2e, 0x22, 0x6a, 0xb9, 0xbf, 0xdb, 0xb2,
+	0x73, 0x0e, 0x19, 0x6c, 0xfc, 0x09, 0xa4, 0xb4, 0xc6, 0x4e, 0xc4, 0xd4, 0x70, 0xb8, 0xdb, 0x40,
+	0x15, 0x19, 0x0c, 0xfc, 0x31, 0x2d, 0x49, 0x0c, 0xc9, 0x77, 0x67, 0x6f, 0x70, 0x59, 0x48, 0x5a,
+	0xe0, 0xd3, 0x7e, 0x2d, 0x22, 0x21, 0x17, 0xdf, 0x75, 0xf9, 0x8a, 0x0c, 0x8e, 0xfc, 0x11, 0x24,
+	0x6f, 0xac, 0xb2, 0x74, 0xe1, 0x4a, 0xb5, 0xea, 0xb2, 0xa3, 0x98, 0x91, 0x0c, 0x74, 0x2c, 0x7e,
+	0x6e, 0x32, 0x76, 0xb3, 0xc9, 0xd8, 0xef, 0x4d, 0xc6, 0x7e, 0x6c, 0xb3, 0xc1, 0xcd, 0x36, 0x1b,
+	0xfc, 0xda, 0x66, 0x83, 0xb3, 0x94, 0xfe, 0xe0, 0x2f, 0xfe, 0x04, 0x00, 0x00, 0xff, 0xff, 0x70,
+	0xc3, 0x48, 0x64, 0xef, 0x02, 0x00, 0x00,
 }
 
 func (m *DenavitHartenberg) Marshal() (dAtA []byte, err error) {
@@ -283,7 +555,7 @@ func (m *DenavitHartenberg) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *Wheels) Marshal() (dAtA []byte, err error) {
+func (m *PlanarJoint) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -293,12 +565,53 @@ func (m *Wheels) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *Wheels) MarshalTo(dAtA []byte) (int, error) {
+func (m *PlanarJoint) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *Wheels) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *PlanarJoint) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.Length != 0 {
+		i -= 4
+		encoding_binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(m.Length))))
+		i--
+		dAtA[i] = 0x1d
+	}
+	if m.MaxAngle != 0 {
+		i -= 4
+		encoding_binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(m.MaxAngle))))
+		i--
+		dAtA[i] = 0x15
+	}
+	if m.MinAngle != 0 {
+		i -= 4
+		encoding_binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(m.MinAngle))))
+		i--
+		dAtA[i] = 0xd
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *Wheel) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *Wheel) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Wheel) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -318,6 +631,88 @@ func (m *Wheels) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if m.Radius != 0 {
 		i -= 4
 		encoding_binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(m.Radius))))
+		i--
+		dAtA[i] = 0xd
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *PID) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *PID) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *PID) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.D != 0 {
+		i -= 4
+		encoding_binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(m.D))))
+		i--
+		dAtA[i] = 0x1d
+	}
+	if m.I != 0 {
+		i -= 4
+		encoding_binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(m.I))))
+		i--
+		dAtA[i] = 0x15
+	}
+	if m.P != 0 {
+		i -= 4
+		encoding_binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(m.P))))
+		i--
+		dAtA[i] = 0xd
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *Motion) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *Motion) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Motion) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.Jerk != 0 {
+		i -= 4
+		encoding_binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(m.Jerk))))
+		i--
+		dAtA[i] = 0x1d
+	}
+	if m.Acceleration != 0 {
+		i -= 4
+		encoding_binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(m.Acceleration))))
+		i--
+		dAtA[i] = 0x15
+	}
+	if m.Velocity != 0 {
+		i -= 4
+		encoding_binary.LittleEndian.PutUint32(dAtA[i:], uint32(math.Float32bits(float32(m.Velocity))))
 		i--
 		dAtA[i] = 0xd
 	}
@@ -344,6 +739,62 @@ func (m *Config) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if len(m.Motion) > 0 {
+		for iNdEx := len(m.Motion) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Motion[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintTypes(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x2a
+		}
+	}
+	if len(m.PID) > 0 {
+		for iNdEx := len(m.PID) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.PID[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintTypes(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x22
+		}
+	}
+	if len(m.Wheels) > 0 {
+		for iNdEx := len(m.Wheels) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Wheels[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintTypes(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x1a
+		}
+	}
+	if len(m.Planar) > 0 {
+		for iNdEx := len(m.Planar) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Planar[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintTypes(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x12
+		}
+	}
 	if len(m.DH) > 0 {
 		for iNdEx := len(m.DH) - 1; iNdEx >= 0; iNdEx-- {
 			{
@@ -357,6 +808,39 @@ func (m *Config) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			i--
 			dAtA[i] = 0xa
 		}
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *State) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *State) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *State) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Params) > 0 {
+		for iNdEx := len(m.Params) - 1; iNdEx >= 0; iNdEx-- {
+			f1 := math.Float32bits(float32(m.Params[iNdEx]))
+			i -= 4
+			encoding_binary.LittleEndian.PutUint32(dAtA[i:], uint32(f1))
+		}
+		i = encodeVarintTypes(dAtA, i, uint64(len(m.Params)*4))
+		i--
+		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -396,7 +880,25 @@ func (m *DenavitHartenberg) Size() (n int) {
 	return n
 }
 
-func (m *Wheels) Size() (n int) {
+func (m *PlanarJoint) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.MinAngle != 0 {
+		n += 5
+	}
+	if m.MaxAngle != 0 {
+		n += 5
+	}
+	if m.Length != 0 {
+		n += 5
+	}
+	return n
+}
+
+func (m *Wheel) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -414,6 +916,42 @@ func (m *Wheels) Size() (n int) {
 	return n
 }
 
+func (m *PID) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.P != 0 {
+		n += 5
+	}
+	if m.I != 0 {
+		n += 5
+	}
+	if m.D != 0 {
+		n += 5
+	}
+	return n
+}
+
+func (m *Motion) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Velocity != 0 {
+		n += 5
+	}
+	if m.Acceleration != 0 {
+		n += 5
+	}
+	if m.Jerk != 0 {
+		n += 5
+	}
+	return n
+}
+
 func (m *Config) Size() (n int) {
 	if m == nil {
 		return 0
@@ -425,6 +963,42 @@ func (m *Config) Size() (n int) {
 			l = e.Size()
 			n += 1 + l + sovTypes(uint64(l))
 		}
+	}
+	if len(m.Planar) > 0 {
+		for _, e := range m.Planar {
+			l = e.Size()
+			n += 1 + l + sovTypes(uint64(l))
+		}
+	}
+	if len(m.Wheels) > 0 {
+		for _, e := range m.Wheels {
+			l = e.Size()
+			n += 1 + l + sovTypes(uint64(l))
+		}
+	}
+	if len(m.PID) > 0 {
+		for _, e := range m.PID {
+			l = e.Size()
+			n += 1 + l + sovTypes(uint64(l))
+		}
+	}
+	if len(m.Motion) > 0 {
+		for _, e := range m.Motion {
+			l = e.Size()
+			n += 1 + l + sovTypes(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *State) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if len(m.Params) > 0 {
+		n += 1 + sovTypes(uint64(len(m.Params)*4)) + len(m.Params)*4
 	}
 	return n
 }
@@ -548,7 +1122,7 @@ func (m *DenavitHartenberg) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *Wheels) Unmarshal(dAtA []byte) error {
+func (m *PlanarJoint) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -571,10 +1145,93 @@ func (m *Wheels) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: Wheels: wiretype end group for non-group")
+			return fmt.Errorf("proto: PlanarJoint: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: Wheels: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: PlanarJoint: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 5 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MinAngle", wireType)
+			}
+			var v uint32
+			if (iNdEx + 4) > l {
+				return io.ErrUnexpectedEOF
+			}
+			v = uint32(encoding_binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+			iNdEx += 4
+			m.MinAngle = float32(math.Float32frombits(v))
+		case 2:
+			if wireType != 5 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MaxAngle", wireType)
+			}
+			var v uint32
+			if (iNdEx + 4) > l {
+				return io.ErrUnexpectedEOF
+			}
+			v = uint32(encoding_binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+			iNdEx += 4
+			m.MaxAngle = float32(math.Float32frombits(v))
+		case 3:
+			if wireType != 5 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Length", wireType)
+			}
+			var v uint32
+			if (iNdEx + 4) > l {
+				return io.ErrUnexpectedEOF
+			}
+			v = uint32(encoding_binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+			iNdEx += 4
+			m.Length = float32(math.Float32frombits(v))
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTypes(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *Wheel) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTypes
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: Wheel: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: Wheel: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -610,6 +1267,172 @@ func (m *Wheels) Unmarshal(dAtA []byte) error {
 			v = uint32(encoding_binary.LittleEndian.Uint32(dAtA[iNdEx:]))
 			iNdEx += 4
 			m.BaseY = float32(math.Float32frombits(v))
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTypes(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *PID) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTypes
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: PID: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: PID: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 5 {
+				return fmt.Errorf("proto: wrong wireType = %d for field P", wireType)
+			}
+			var v uint32
+			if (iNdEx + 4) > l {
+				return io.ErrUnexpectedEOF
+			}
+			v = uint32(encoding_binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+			iNdEx += 4
+			m.P = float32(math.Float32frombits(v))
+		case 2:
+			if wireType != 5 {
+				return fmt.Errorf("proto: wrong wireType = %d for field I", wireType)
+			}
+			var v uint32
+			if (iNdEx + 4) > l {
+				return io.ErrUnexpectedEOF
+			}
+			v = uint32(encoding_binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+			iNdEx += 4
+			m.I = float32(math.Float32frombits(v))
+		case 3:
+			if wireType != 5 {
+				return fmt.Errorf("proto: wrong wireType = %d for field D", wireType)
+			}
+			var v uint32
+			if (iNdEx + 4) > l {
+				return io.ErrUnexpectedEOF
+			}
+			v = uint32(encoding_binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+			iNdEx += 4
+			m.D = float32(math.Float32frombits(v))
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTypes(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *Motion) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTypes
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: Motion: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: Motion: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 5 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Velocity", wireType)
+			}
+			var v uint32
+			if (iNdEx + 4) > l {
+				return io.ErrUnexpectedEOF
+			}
+			v = uint32(encoding_binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+			iNdEx += 4
+			m.Velocity = float32(math.Float32frombits(v))
+		case 2:
+			if wireType != 5 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Acceleration", wireType)
+			}
+			var v uint32
+			if (iNdEx + 4) > l {
+				return io.ErrUnexpectedEOF
+			}
+			v = uint32(encoding_binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+			iNdEx += 4
+			m.Acceleration = float32(math.Float32frombits(v))
+		case 3:
+			if wireType != 5 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Jerk", wireType)
+			}
+			var v uint32
+			if (iNdEx + 4) > l {
+				return io.ErrUnexpectedEOF
+			}
+			v = uint32(encoding_binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+			iNdEx += 4
+			m.Jerk = float32(math.Float32frombits(v))
 		default:
 			iNdEx = preIndex
 			skippy, err := skipTypes(dAtA[iNdEx:])
@@ -694,6 +1517,246 @@ func (m *Config) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Planar", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Planar = append(m.Planar, &PlanarJoint{})
+			if err := m.Planar[len(m.Planar)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Wheels", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Wheels = append(m.Wheels, &Wheel{})
+			if err := m.Wheels[len(m.Wheels)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PID", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.PID = append(m.PID, &PID{})
+			if err := m.PID[len(m.PID)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Motion", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Motion = append(m.Motion, &Motion{})
+			if err := m.Motion[len(m.Motion)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTypes(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *State) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTypes
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: State: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: State: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType == 5 {
+				var v uint32
+				if (iNdEx + 4) > l {
+					return io.ErrUnexpectedEOF
+				}
+				v = uint32(encoding_binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+				iNdEx += 4
+				v2 := float32(math.Float32frombits(v))
+				m.Params = append(m.Params, v2)
+			} else if wireType == 2 {
+				var packedLen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowTypes
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					packedLen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if packedLen < 0 {
+					return ErrInvalidLengthTypes
+				}
+				postIndex := iNdEx + packedLen
+				if postIndex < 0 {
+					return ErrInvalidLengthTypes
+				}
+				if postIndex > l {
+					return io.ErrUnexpectedEOF
+				}
+				var elementCount int
+				elementCount = packedLen / 4
+				if elementCount != 0 && len(m.Params) == 0 {
+					m.Params = make([]float32, 0, elementCount)
+				}
+				for iNdEx < postIndex {
+					var v uint32
+					if (iNdEx + 4) > l {
+						return io.ErrUnexpectedEOF
+					}
+					v = uint32(encoding_binary.LittleEndian.Uint32(dAtA[iNdEx:]))
+					iNdEx += 4
+					v2 := float32(math.Float32frombits(v))
+					m.Params = append(m.Params, v2)
+				}
+			} else {
+				return fmt.Errorf("proto: wrong wireType = %d for field Params", wireType)
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipTypes(dAtA[iNdEx:])

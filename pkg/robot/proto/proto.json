@@ -1,7 +1,9 @@
 [
     {
         "params": {
-            "github.com/gogo/protobuf/proto": "github.com/foxis/EasyRobot/pkg/robot/proto"
+            "github.com/gogo/protobuf/proto": "github.com/foxis/EasyRobot/pkg/robot/proto",
+            "transport \"transport\"": "transport \"github.com/foxis/EasyRobot/pkg/robot/transport\"",
+            "kinematics \"kinematics\"": "kinematics \"github.com/foxis/EasyRobot/pkg/robot/kinematics\""
         }
     }
 ]

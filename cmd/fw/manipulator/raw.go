@@ -1,9 +1,9 @@
-// +build !kinematics
+// +build !planar !dh
 
 package main
 
 import (
-	"github.com/foxis/EasyRobot/pkg/robot/actuator/servos"
+	servos "github.com/foxis/EasyRobot/pkg/robot/actuator/servos/fw"
 	"github.com/foxis/EasyRobot/pkg/robot/transport"
 )
 
@@ -21,4 +21,5 @@ func setState(packet transport.PacketData) {
 }
 
 func configKinematics(packet transport.PacketData) {
+	configMotionKinematics(packet)
 }

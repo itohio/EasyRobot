@@ -1,5 +1,5 @@
 syntax = "proto3";
-package motors;
+package pb;
 
 message Motor {
     uint32 PinA = 1;
@@ -8,14 +8,10 @@ message Motor {
     uint32 PinEnable = 4;
     uint32 PinEncA = 5;
     uint32 PinEncB = 6;
-
-    uint32 PWMPeriod = 7;
 }
 
 message Config {
     repeated Motor Motors = 1;
+    uint32 PWMPeriod = 2;
 }
 
-message State {
-    repeated float Params = 1;
-}

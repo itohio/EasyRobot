@@ -17,7 +17,11 @@ type InternalMessageInfo interface {
 
 func RegisterFile(string, []byte) {}
 
+func RegisterEnum(string, map[int32]string, map[string]int32) {}
+
 func RegisterType(interface{}, string) {}
+
+func EnumName(map[int32]string, int32) string { return "" }
 
 func CompactTextString(interface{}) string {
 	return "nope"

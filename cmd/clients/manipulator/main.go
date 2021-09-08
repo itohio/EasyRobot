@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/foxis/EasyRobot/pkg/core/math/vec"
+	"github.com/foxis/EasyRobot/pkg/robot/actuator"
 	"github.com/foxis/EasyRobot/pkg/robot/actuator/servos"
+	"github.com/foxis/EasyRobot/pkg/robot/kinematics"
 	"go.bug.st/serial.v1"
 )
 
@@ -57,13 +59,24 @@ func main() {
 		}
 	}()
 
-	manipulator := servos.NewClient(rw)
+	manipulator := servos.New(rw)
 
-	manipulator.Configure([]servos.Motor{
-		servos.NewDefaultConfig(servos.WithMicroseconds(500, 2500, 1500, 180)),
-		servos.NewDefaultConfig(servos.WithMicroseconds(500, 2500, 1500, 180)),
-		servos.NewDefaultConfig(servos.WithMicroseconds(500, 2500, 1500, 180)),
-	},
+	manipulator.Configure(
+		actuator.WithServoConfig([]servos.Motor{
+			servos.NewMotorConfig(servos.WithMicroseconds(500, 2500, 1500, 180)),
+			servos.NewMotorConfig(servos.WithMicroseconds(500, 2500, 1500, 180)),
+			servos.NewMotorConfig(servos.WithMicroseconds(500, 2500, 1500, 180)),
+		}),
+		actuator.WithMotionConfig([]kinematics.Motion{
+			{Velocity: 50, Acceleration: 10, Jerk: 1},
+			{Velocity: 50, Acceleration: 10, Jerk: 1},
+			{Velocity: 50, Acceleration: 10, Jerk: 1},
+		}),
+		actuator.WithPlanarKinematics([]kinematics.PlanarJoint{
+			{MinAngle: -90, MaxAngle: 90, Length: 39},
+			{MinAngle: -90, MaxAngle: 90, Length: 45},
+			{MinAngle: -10, MaxAngle: 90, Length: 100},
+		}),
 	)
 
 	state := vec.New(3)

@@ -10,12 +10,38 @@ message DenavitHartenberg {
 	float  D = 5;
 }
 
-message Wheels {
+message PlanarJoint {
+	float MinAngle = 1;
+	float MaxAngle = 2;
+	float Length = 3;
+}
+
+message Wheel {
     float Radius = 1;
     float BaseX = 2;
     float BaseY = 3;
 }
 
+message PID {
+	float P = 1;
+	float I = 2;
+	float D = 3;
+}
+
+message Motion {
+	float Velocity = 1;
+	float Acceleration = 2;
+	float Jerk = 3;
+}
+
 message Config {
     repeated DenavitHartenberg DH = 1;
+	repeated PlanarJoint Planar = 2;
+	repeated Wheel Wheels = 3;
+	repeated PID PID = 4;
+	repeated Motion Motion = 5;
+}
+
+message State {
+    repeated float Params = 1;
 }

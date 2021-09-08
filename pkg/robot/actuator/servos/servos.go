@@ -1,28 +1,37 @@
 package servos
 
+//go:generate protoc -I=./ -I=${GOPATH}/pkg/mod/ -I=${GOPATH}/src --proto_path=../../ --gogofaster_out=./ pb/types.proto
+//go:generate go run ../../../../cmd/codegen -i pb/types.pb.go -c ../../proto/proto.json -m re
+
 import (
-	io "io"
+	"errors"
+	"io"
 
 	"github.com/foxis/EasyRobot/pkg/core/options"
+	"github.com/foxis/EasyRobot/pkg/robot/actuator"
+	"github.com/foxis/EasyRobot/pkg/robot/actuator/servos/pb"
 	"github.com/foxis/EasyRobot/pkg/robot/kinematics"
+	"github.com/foxis/EasyRobot/pkg/robot/transport"
 )
-
-//go:generate protoc -I=./ -I=${GOPATH}/pkg/mod/ -I=${GOPATH}/src --gogofaster_out=./ types.proto
-//go:generate go run ../../../../cmd/codegen -i types.pb.go -c ../../proto/proto.json -m re
 
 const (
 	// Device ID for robot.transport
 	ID = 0x00000100
 )
 
-type Actuator interface {
-	Configure([]Motor) error
-	ConfigureKinematics([]kinematics.DenavitHartenberg) error
-	Get() ([]float32, error)
-	Set(params []float32) error
+type Motor = pb.Motor
+type Config = pb.Config
+type State = kinematics.State
+
+type servosClient struct {
+	wr io.Writer
 }
 
-func NewDefaultConfig(opts ...options.Option) Motor {
+var (
+	errNotSupported = errors.New("not supported")
+)
+
+func NewMotorConfig(opts ...options.Option) Motor {
 	cfg := Motor{
 		Pin:     0,
 		Min:     -90,
@@ -35,6 +44,32 @@ func NewDefaultConfig(opts ...options.Option) Motor {
 	return cfg
 }
 
-func NewClient(writer io.Writer) Actuator {
+func New(writer io.Writer) actuator.Actuator {
 	return &servosClient{wr: writer}
+}
+
+func (s *servosClient) Configure(opts ...actuator.ConfigureOption) error {
+	for _, opt := range opts {
+		dataType, data := opt()
+		if err := transport.WritePacket(ID, dataType, s.wr, data); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *servosClient) Get() ([]float32, error) {
+	return nil, errNotSupported
+}
+
+func (s *servosClient) Set(params []float32) error {
+	cfg := State{
+		Params: params,
+	}
+	data, err := cfg.Marshal()
+	if err != nil {
+		return err
+	}
+	return transport.WritePacket(ID, transport.PacketSetState, s.wr, data)
 }

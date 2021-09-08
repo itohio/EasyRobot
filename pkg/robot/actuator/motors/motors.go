@@ -1,16 +1,18 @@
 package motors
 
-//go:generate protoc -I=./ -I=${GOPATH}/pkg/mod/ -I=${GOPATH}/src --gogofaster_out=./ types.proto
-//go:generate go run ../../../../cmd/codegen -i types.pb.go -c ../../proto/proto.json -m re
+import (
+	"github.com/foxis/EasyRobot/pkg/robot/actuator/motors/pb"
+	"github.com/foxis/EasyRobot/pkg/robot/kinematics"
+)
+
+//go:generate protoc -I=./ -I=${GOPATH}/pkg/mod/ -I=${GOPATH}/src --gogofaster_out=./ --proto_path=../../ pb/types.proto
+//go:generate go run ../../../../cmd/codegen -i pb/types.pb.go -c ../../proto/proto.json -m re
 
 const (
 	// Device ID for robot.transport
 	ID = 0x00000200
 )
 
-type Actuator interface {
-	Configure([]Motor) error
-	GetSpeed() ([]float32, error)
-	SetSpeed(params []float32) error
-	SetTorque(params []float32) error
-}
+type Motor = pb.Motor
+type Config = pb.Config
+type State = kinematics.State

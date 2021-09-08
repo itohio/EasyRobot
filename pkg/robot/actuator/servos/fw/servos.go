@@ -1,5 +1,3 @@
-// +build sam,xiao
-
 package servos
 
 import (
@@ -7,15 +5,15 @@ import (
 	"machine"
 	"math"
 
+	"github.com/foxis/EasyRobot/pkg/robot/actuator/servos/pb"
 	"github.com/foxis/EasyRobot/pkg/robot/kinematics"
 	"tinygo.org/x/drivers/servo"
 )
 
-type servos struct {
-	motors []servo.Servo
-	cfg    []Motor
-	pos    []float32
-}
+type Motor = pb.Motor
+type Config = pb.Config
+type State = kinematics.State
+type TimerMappingFunc func(pin machine.Pin) (*machine.TCC, bool)
 
 var (
 	errInvalidPin      = errors.New("invalid pin")
@@ -23,21 +21,12 @@ var (
 	errBadCoefficients = errors.New("bad coefficients")
 )
 
-func New(cfg []Motor) (Actuator, error) {
-	s := &servos{}
-	err := s.Configure(cfg)
-	return s, err
-}
-
-func (s *servos) ConfigureKinematics(cfg []kinematics.DenavitHartenberg) error {
-	return nil
-}
-
-func (s *servos) Configure(cfg []Motor) error {
+func (s *Actuator) Configure(cfg []Motor) error {
 	oldCfg := s.cfg
 	oldMotors := s.motors
 	s.motors = make([]servo.Servo, len(cfg))
-	s.pos = make([]float32, len(cfg))
+	pos := [32]float32{}
+
 	for i, c := range cfg {
 		needNewServo := true
 
@@ -63,7 +52,7 @@ func (s *servos) Configure(cfg []Motor) error {
 		}
 
 		if needNewServo {
-			timer, valid := timerMapping(pin)
+			timer, valid := s.timerMapping(pin)
 			if !valid {
 				return errInvalidPin
 			}
@@ -76,30 +65,18 @@ func (s *servos) Configure(cfg []Motor) error {
 		} else {
 			s.motors[i] = oldMotors[i]
 		}
-		s.pos[i] = c.Default
+		pos[i] = c.Default
 	}
 	s.cfg = cfg
 
-	return s.Set(s.pos)
+	return s.Set(pos[:len(s.motors)])
 }
 
-func (s *servos) Get() ([]float32, error) {
-	return s.pos, nil
+func (s *Actuator) Get() ([]float32, error) {
+	return nil, nil
 }
 
-func (s *servos) Set(params []float32) error {
-	if len(s.pos) != len(params) {
-		return errNumberOfParams
-	}
-
-	for i, p := range params {
-		s.setServo(i, p)
-	}
-
-	return nil
-}
-
-func (s *servos) setServo(idx int, param float32) {
+func (s *Actuator) setServo(idx int, param float32) {
 	if param < s.cfg[idx].Min {
 		param = s.cfg[idx].Min
 	}

@@ -2,24 +2,28 @@
 
 package main
 
-//go:generate tinygo flash -target=xiao -tags logless
-
 import (
 	"machine"
 
 	"github.com/foxis/EasyRobot/pkg/robot/actuator/servos"
+	fw "github.com/foxis/EasyRobot/pkg/robot/actuator/servos/fw"
 )
 
 var (
 	uart = machine.Serial
 	tx   = machine.UART_TX_PIN
 	rx   = machine.UART_RX_PIN
-
-	manipulatorConfig = []servos.Motor{
-		servos.NewDefaultConfig(servos.WithPin(uint32(machine.D8))),
-		servos.NewDefaultConfig(servos.WithPin(uint32(machine.D9))),
-		servos.NewDefaultConfig(servos.WithPin(uint32(machine.D10))),
-	}
-
-	manipulator servos.Actuator
 )
+
+func timerMapping(pin machine.Pin) (*machine.TCC, bool) {
+	switch pin {
+	case machine.D9:
+		return machine.TCC0, true
+	case machine.D8:
+		return machine.TCC1, true
+	case machine.D10:
+		return machine.TCC1, true
+	default:
+		return nil, false
+	}
+}
