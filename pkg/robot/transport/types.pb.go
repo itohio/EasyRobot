@@ -6,7 +6,7 @@ package transport
 import (
 	encoding_binary "encoding/binary"
 	fmt "fmt"
-	proto "github.com/foxis/EasyRobot/pkg/robot/proto"
+	proto "github.com/itohio/EasyRobot/pkg/robot/proto"
 	io "io"
 	math "math"
 	math_bits "math/bits"

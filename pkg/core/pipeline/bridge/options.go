@@ -1,8 +1,8 @@
 package bridge
 
 import (
-	"github.com/foxis/EasyRobot/pkg/core/plugin"
-	"github.com/foxis/EasyRobot/pkg/core/transport"
+	"github.com/itohio/EasyRobot/pkg/core/plugin"
+	"github.com/itohio/EasyRobot/pkg/core/transport"
 )
 
 type Options struct {

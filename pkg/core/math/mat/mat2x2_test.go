@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/foxis/EasyRobot/pkg/core/math/vec"
+	"github.com/itohio/EasyRobot/pkg/core/math/vec"
 )
 
 func TestNew2x2(t *testing.T) {

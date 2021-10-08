@@ -1,6 +1,6 @@
 package plugin
 
-import "github.com/foxis/EasyRobot/pkg/core/options"
+import "github.com/itohio/EasyRobot/pkg/core/options"
 
 type Options struct {
 	Name         string `opts:"name"`

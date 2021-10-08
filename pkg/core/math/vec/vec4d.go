@@ -4,7 +4,7 @@ package vec
 
 import (
 	"github.com/chewxy/math32"
-	"github.com/foxis/EasyRobot/pkg/core/math"
+	"github.com/itohio/EasyRobot/pkg/core/math"
 )
 
 type Vector4D [4]float32

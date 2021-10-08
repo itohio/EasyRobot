@@ -1,8 +1,8 @@
 package fps
 
 import (
-	"github.com/foxis/EasyRobot/pkg/core/options"
-	"github.com/foxis/EasyRobot/pkg/core/store"
+	"github.com/itohio/EasyRobot/pkg/core/options"
+	"github.com/itohio/EasyRobot/pkg/core/store"
 )
 
 const NAME = "fps"

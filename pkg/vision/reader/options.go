@@ -1,6 +1,6 @@
 package reader
 
-import "github.com/foxis/EasyRobot/pkg/core/options"
+import "github.com/itohio/EasyRobot/pkg/core/options"
 
 type readerOpts struct {
 	paths  []string

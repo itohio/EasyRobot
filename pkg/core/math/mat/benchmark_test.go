@@ -3,7 +3,7 @@ package mat
 import (
 	"testing"
 
-	"github.com/foxis/EasyRobot/pkg/core/math/vec"
+	"github.com/itohio/EasyRobot/pkg/core/math/vec"
 )
 
 func BenchmarkCloneMatrix2(b *testing.B) {

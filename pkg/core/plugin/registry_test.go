@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/foxis/EasyRobot/pkg/core/options"
+	"github.com/itohio/EasyRobot/pkg/core/options"
 )
 
 func TestNew(t *testing.T) {

@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/foxis/EasyRobot/pkg/core/options"
-	"github.com/foxis/EasyRobot/pkg/core/pipeline"
+	"github.com/itohio/EasyRobot/pkg/core/options"
+	"github.com/itohio/EasyRobot/pkg/core/pipeline"
 )
 
 func TestNewFanIn(t *testing.T) {

@@ -2,7 +2,7 @@ package vaj
 
 import (
 	"github.com/chewxy/math32"
-	"github.com/foxis/EasyRobot/pkg/core/math"
+	"github.com/itohio/EasyRobot/pkg/core/math"
 )
 
 type VAJ1D struct {

@@ -3,8 +3,8 @@
 package main
 
 import (
-	"github.com/foxis/EasyRobot/pkg/robot/actuator/kinematics"
-	"github.com/foxis/EasyRobot/pkg/robot/transport"
+	"github.com/itohio/EasyRobot/pkg/robot/actuator/kinematics"
+	"github.com/itohio/EasyRobot/pkg/robot/transport"
 )
 
 var (

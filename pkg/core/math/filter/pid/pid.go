@@ -1,7 +1,7 @@
 package pid
 
 import (
-	"github.com/foxis/EasyRobot/pkg/core/math/vec"
+	"github.com/itohio/EasyRobot/pkg/core/math/vec"
 )
 
 type PID struct {

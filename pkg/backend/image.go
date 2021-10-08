@@ -3,7 +3,7 @@ package backend
 import (
 	"image"
 
-	"github.com/foxis/EasyRobot/pkg/core/store"
+	"github.com/itohio/EasyRobot/pkg/core/store"
 )
 
 type imageGetter struct {

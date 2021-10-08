@@ -3,8 +3,8 @@
 package main
 
 import (
-	servos "github.com/foxis/EasyRobot/pkg/robot/actuator/servos/fw"
-	"github.com/foxis/EasyRobot/pkg/robot/transport"
+	servos "github.com/itohio/EasyRobot/pkg/robot/actuator/servos/fw"
+	"github.com/itohio/EasyRobot/pkg/robot/transport"
 )
 
 func setState(packet transport.PacketData) {

@@ -1,8 +1,8 @@
 package example
 
 import (
-	"github.com/foxis/EasyRobot/pkg/core/options"
-	"github.com/foxis/EasyRobot/pkg/core/plugin"
+	"github.com/itohio/EasyRobot/pkg/core/options"
+	"github.com/itohio/EasyRobot/pkg/core/plugin"
 )
 
 const NAME = "example"

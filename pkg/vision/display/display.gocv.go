@@ -8,11 +8,11 @@ import (
 	"image/color"
 	"time"
 
-	. "github.com/foxis/EasyRobot/pkg/core/logger"
-	"github.com/foxis/EasyRobot/pkg/core/options"
-	"github.com/foxis/EasyRobot/pkg/core/pipeline"
-	"github.com/foxis/EasyRobot/pkg/core/plugin"
-	"github.com/foxis/EasyRobot/pkg/core/store"
+	. "github.com/itohio/EasyRobot/pkg/core/logger"
+	"github.com/itohio/EasyRobot/pkg/core/options"
+	"github.com/itohio/EasyRobot/pkg/core/pipeline"
+	"github.com/itohio/EasyRobot/pkg/core/plugin"
+	"github.com/itohio/EasyRobot/pkg/core/store"
 
 	"gocv.io/x/gocv"
 )

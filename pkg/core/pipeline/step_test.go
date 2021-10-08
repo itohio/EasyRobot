@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/foxis/EasyRobot/pkg/core/plugin"
+	"github.com/itohio/EasyRobot/pkg/core/plugin"
 )
 
 func TestStepReceive(t *testing.T) {

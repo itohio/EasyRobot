@@ -3,9 +3,9 @@ package example
 import (
 	"context"
 
-	"github.com/foxis/EasyRobot/pkg/core/options"
-	"github.com/foxis/EasyRobot/pkg/core/pipeline"
-	"github.com/foxis/EasyRobot/pkg/core/store"
+	"github.com/itohio/EasyRobot/pkg/core/options"
+	"github.com/itohio/EasyRobot/pkg/core/pipeline"
+	"github.com/itohio/EasyRobot/pkg/core/store"
 )
 
 type stepImpl struct {

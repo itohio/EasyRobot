@@ -5,8 +5,8 @@ import (
 	"machine"
 	"math"
 
-	"github.com/foxis/EasyRobot/pkg/robot/actuator/servos/pb"
-	"github.com/foxis/EasyRobot/pkg/robot/kinematics"
+	"github.com/itohio/EasyRobot/pkg/robot/actuator/servos/pb"
+	"github.com/itohio/EasyRobot/pkg/robot/kinematics"
 	"tinygo.org/x/drivers/servo"
 )
 

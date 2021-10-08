@@ -1,4 +1,4 @@
-module github.com/foxis/EasyRobot
+module github.com/itohio/EasyRobot
 
 go 1.16
 

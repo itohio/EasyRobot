@@ -8,11 +8,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/foxis/EasyRobot/pkg/core/math/filter/vaj"
-	servos "github.com/foxis/EasyRobot/pkg/robot/actuator/servos"
-	fw "github.com/foxis/EasyRobot/pkg/robot/actuator/servos/fw"
-	"github.com/foxis/EasyRobot/pkg/robot/kinematics"
-	"github.com/foxis/EasyRobot/pkg/robot/transport"
+	vaj "github.com/itohio/EasyRobot/pkg/core/math/filter/kinematics"
+	servos "github.com/itohio/EasyRobot/pkg/robot/actuator/servos"
+	fw "github.com/itohio/EasyRobot/pkg/robot/actuator/servos/fw"
+	"github.com/itohio/EasyRobot/pkg/robot/kinematics"
+	"github.com/itohio/EasyRobot/pkg/robot/transport"
 )
 
 var (
@@ -21,7 +21,7 @@ var (
 		servos.NewMotorConfig(servos.WithPin(uint32(machine.D9))),
 		servos.NewMotorConfig(servos.WithPin(uint32(machine.D10))),
 	}
-	motion = []vaj.VAJ1D{
+	motion = []kinematics.VAJ1D{
 		{},
 		{},
 		{},

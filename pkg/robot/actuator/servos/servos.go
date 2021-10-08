@@ -7,11 +7,11 @@ import (
 	"errors"
 	"io"
 
-	"github.com/foxis/EasyRobot/pkg/core/options"
-	"github.com/foxis/EasyRobot/pkg/robot/actuator"
-	"github.com/foxis/EasyRobot/pkg/robot/actuator/servos/pb"
-	"github.com/foxis/EasyRobot/pkg/robot/kinematics"
-	"github.com/foxis/EasyRobot/pkg/robot/transport"
+	"github.com/itohio/EasyRobot/pkg/core/options"
+	"github.com/itohio/EasyRobot/pkg/robot/actuator"
+	"github.com/itohio/EasyRobot/pkg/robot/actuator/servos/pb"
+	"github.com/itohio/EasyRobot/pkg/robot/kinematics"
+	"github.com/itohio/EasyRobot/pkg/robot/transport"
 )
 
 const (

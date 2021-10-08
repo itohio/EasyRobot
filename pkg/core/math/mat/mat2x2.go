@@ -4,7 +4,7 @@ package mat
 
 import (
 	"github.com/chewxy/math32"
-	"github.com/foxis/EasyRobot/pkg/core/math/vec"
+	"github.com/itohio/EasyRobot/pkg/core/math/vec"
 )
 
 type Matrix2x2 [2][2]float32

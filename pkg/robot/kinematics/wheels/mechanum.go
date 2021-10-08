@@ -1,9 +1,9 @@
 package wheels
 
 import (
-	"github.com/foxis/EasyRobot/pkg/core/math/mat"
-	"github.com/foxis/EasyRobot/pkg/core/math/vec"
-	"github.com/foxis/EasyRobot/pkg/robot/kinematics"
+	"github.com/itohio/EasyRobot/pkg/core/math/mat"
+	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	"github.com/itohio/EasyRobot/pkg/robot/kinematics"
 )
 
 type mechanum struct {
