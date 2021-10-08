@@ -88,7 +88,7 @@ func main() {
 		if err := manipulator.Set(state); err != nil {
 			panic(err)
 		}
-		time.Sleep(time.Second)
+		time.Sleep(time.Second * 3)
 
 		for i := range state {
 			state[i] = float32(90 - 45*rand.Intn(4))

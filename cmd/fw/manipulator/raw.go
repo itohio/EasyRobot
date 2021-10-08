@@ -17,7 +17,11 @@ func setState(packet transport.PacketData) {
 		return
 	}
 
-	manipulator.Set(state.Params)
+	motionLock.Lock()
+	defer motionLock.Unlock()
+	for i := range state.Params {
+		motion[i].Target = state.Params[i]
+	}
 }
 
 func configKinematics(packet transport.PacketData) {

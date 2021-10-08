@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"machine"
+	"sync"
 	"time"
 
 	"github.com/foxis/EasyRobot/pkg/core/math/filter/vaj"
@@ -20,9 +21,14 @@ var (
 		servos.NewMotorConfig(servos.WithPin(uint32(machine.D9))),
 		servos.NewMotorConfig(servos.WithPin(uint32(machine.D10))),
 	}
+	motion = []vaj.VAJ1D{
+		{},
+		{},
+		{},
+	}
 
 	manipulator fw.Actuator
-	motion      []vaj.VAJ1D
+	motionLock  sync.Mutex
 )
 
 func blink(led machine.Pin, t time.Duration) {
@@ -50,6 +56,7 @@ func main() {
 		n    int
 		data transport.PacketData
 	)
+
 	for {
 		//ch := transport.ReadPackets(ctx, servos.ID, uart)
 
@@ -60,6 +67,7 @@ func main() {
 				continue
 			}
 
+			updateMotion()
 			if n == 0 {
 				continue
 			}
@@ -98,8 +106,16 @@ func configMotors(packet transport.PacketData) {
 		motors[i] = *m
 	}
 
+	motionLock.Lock()
+	defer motionLock.Unlock()
 	if err := manipulator.Configure(motors); err != nil {
-		motion = NewMotion(len(motors))
+		return
+	}
+	motion = NewMotion(len(motors))
+	for i := range motors {
+		motion[i].Input = motors[i].Default
+		motion[i].Output = motors[i].Default
+		motion[i].Target = motors[i].Default
 	}
 }
 
@@ -121,10 +137,32 @@ func configMotionKinematics(packet transport.PacketData) {
 		return
 	}
 
+	motionLock.Lock()
+	defer motionLock.Unlock()
 	for i := range motion {
 		if cfg.Motion[i] == nil {
 			continue
 		}
 		motion[i] = vaj.New1D(cfg.Motion[i].Velocity, cfg.Motion[i].Acceleration, cfg.Motion[i].Jerk)
 	}
+}
+
+var now = time.Now()
+
+func updateMotion() {
+	state := [32]float32{}
+
+	motionLock.Lock()
+	d := time.Since(now)
+	for i := range motion {
+		motion[i].Update(float32(d.Seconds()))
+		state[i] = motion[i].Output
+	}
+	manipulator.Set(state[:len(motion)])
+
+	println(motion[0].Input, motion[0].Output, motion[0].Target)
+	motionLock.Unlock()
+
+	now = time.Now()
+	time.Sleep(time.Millisecond * 100)
 }

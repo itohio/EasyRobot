@@ -36,6 +36,35 @@ func Pytag(a, b float32) float32 {
 	}
 }
 
+// Quadratic equation solver
+func Quad(a, b, c, eps float32) (float32, float32) {
+	if a == 0 {
+		if c == 0 {
+			return 0, 0
+		}
+		return b / c, b / c
+	}
+
+	if b == 0 {
+		t := -c / a
+		if t <= 0 {
+			return 0, 0
+		}
+		t = math32.Sqrt(t)
+		return t, t
+	}
+
+	r := -b
+	z := b*b - 4*a*c
+	if z < eps {
+		z = 0
+	} else if z < 0 {
+		return 0, 0
+	}
+	z = math32.Sqrt(z)
+	return (r + z) / (2 * a), (r - z) / (2 * a)
+}
+
 // https://medium.com/@adrien.za/fast-inverse-square-root-in-go-and-javascript-for-fun-6b891e74e5a8
 func FastISqrt(x float32) float32 {
 	// If n is negative return NaN

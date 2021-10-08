@@ -4,9 +4,6 @@ package main
 
 import (
 	"machine"
-
-	"github.com/foxis/EasyRobot/pkg/robot/actuator/servos"
-	fw "github.com/foxis/EasyRobot/pkg/robot/actuator/servos/fw"
 )
 
 var (
