@@ -10,11 +10,15 @@ func _() {
 	var x [1]struct{}
 	_ = x[ANY-65535]
 	_ = x[NONE-0]
+	_ = x[BASIC-0]
 	_ = x[INDEX-1]
 	_ = x[TIMESTAMP-2]
 	_ = x[FPS-3]
 	_ = x[DROPPED_FRAMES-4]
 	_ = x[PATH-5]
+	_ = x[ROBOT_ID-6]
+	_ = x[ROBOT_STATUS-7]
+	_ = x[EVENTS-8]
 	_ = x[IMAGES-256]
 	_ = x[IMAGE-257]
 	_ = x[IMAGE_GRAYSCALE-258]
@@ -24,6 +28,8 @@ func _() {
 	_ = x[STEREO_RIGHT-262]
 	_ = x[DEPTH_IMAGE-263]
 	_ = x[MAP_IMAGE-264]
+	_ = x[AUDIO-512]
+	_ = x[SENSORS-768]
 	_ = x[ENVIRONMENT-3840]
 	_ = x[USER_KEY_CODE-3841]
 	_ = x[USER_MOUSE_DOWN-3842]
@@ -39,26 +45,33 @@ func _() {
 	_ = x[DNN_BACKEND-517]
 	_ = x[FEATURES_TYPE-518]
 	_ = x[MATCHER-519]
+	_ = x[DRAWER-767]
+	_ = x[CRYPTO-32768]
+	_ = x[SIGNATURE-32769]
 }
 
 const (
-	_FQDNType_name_0 = "NONEINDEXTIMESTAMPFPSDROPPED_FRAMESPATH"
+	_FQDNType_name_0 = "NONEINDEXTIMESTAMPFPSDROPPED_FRAMESPATHROBOT_IDROBOT_STATUSEVENTS"
 	_FQDNType_name_1 = "IMAGESIMAGEIMAGE_GRAYSCALEIMAGE_TRANSFORMEDSYNC_DATASTEREO_LEFTSTEREO_RIGHTDEPTH_IMAGEMAP_IMAGE"
-	_FQDNType_name_2 = "ALGORITHMSKEY_POINTSDESCRIPTORSFEATURESDNN_MODELDNN_BACKENDFEATURES_TYPEMATCHER"
-	_FQDNType_name_3 = "ENVIRONMENTUSER_KEY_CODEUSER_MOUSE_DOWNUSER_MOUSE_UPUSER_MOUSE_MOVEENV_OBSERVATIONENV_ACTION"
-	_FQDNType_name_4 = "ANY"
+	_FQDNType_name_2 = "AUDIOKEY_POINTSDESCRIPTORSFEATURESDNN_MODELDNN_BACKENDFEATURES_TYPEMATCHER"
+	_FQDNType_name_3 = "DRAWERSENSORS"
+	_FQDNType_name_4 = "ENVIRONMENTUSER_KEY_CODEUSER_MOUSE_DOWNUSER_MOUSE_UPUSER_MOUSE_MOVEENV_OBSERVATIONENV_ACTION"
+	_FQDNType_name_5 = "CRYPTOSIGNATURE"
+	_FQDNType_name_6 = "ANY"
 )
 
 var (
-	_FQDNType_index_0 = [...]uint8{0, 4, 9, 18, 21, 35, 39}
+	_FQDNType_index_0 = [...]uint8{0, 4, 9, 18, 21, 35, 39, 47, 59, 65}
 	_FQDNType_index_1 = [...]uint8{0, 6, 11, 26, 43, 52, 63, 75, 86, 95}
-	_FQDNType_index_2 = [...]uint8{0, 10, 20, 31, 39, 48, 59, 72, 79}
-	_FQDNType_index_3 = [...]uint8{0, 11, 24, 39, 52, 67, 82, 92}
+	_FQDNType_index_2 = [...]uint8{0, 5, 15, 26, 34, 43, 54, 67, 74}
+	_FQDNType_index_3 = [...]uint8{0, 6, 13}
+	_FQDNType_index_4 = [...]uint8{0, 11, 24, 39, 52, 67, 82, 92}
+	_FQDNType_index_5 = [...]uint8{0, 6, 15}
 )
 
 func (i FQDNType) String() string {
 	switch {
-	case i <= 5:
+	case i <= 8:
 		return _FQDNType_name_0[_FQDNType_index_0[i]:_FQDNType_index_0[i+1]]
 	case 256 <= i && i <= 264:
 		i -= 256
@@ -66,11 +79,17 @@ func (i FQDNType) String() string {
 	case 512 <= i && i <= 519:
 		i -= 512
 		return _FQDNType_name_2[_FQDNType_index_2[i]:_FQDNType_index_2[i+1]]
+	case 767 <= i && i <= 768:
+		i -= 767
+		return _FQDNType_name_3[_FQDNType_index_3[i]:_FQDNType_index_3[i+1]]
 	case 3840 <= i && i <= 3846:
 		i -= 3840
-		return _FQDNType_name_3[_FQDNType_index_3[i]:_FQDNType_index_3[i+1]]
+		return _FQDNType_name_4[_FQDNType_index_4[i]:_FQDNType_index_4[i+1]]
+	case 32768 <= i && i <= 32769:
+		i -= 32768
+		return _FQDNType_name_5[_FQDNType_index_5[i]:_FQDNType_index_5[i+1]]
 	case i == 65535:
-		return _FQDNType_name_4
+		return _FQDNType_name_6
 	default:
 		return "FQDNType(" + strconv.FormatInt(int64(i), 10) + ")"
 	}

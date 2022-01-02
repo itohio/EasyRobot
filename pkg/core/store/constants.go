@@ -5,11 +5,15 @@ package store
 const (
 	ANY               FQDNType = 0xFFFF
 	NONE              FQDNType = 0x0000
-	INDEX             FQDNType = 0x0001
-	TIMESTAMP         FQDNType = 0x0002
-	FPS               FQDNType = 0x0003
-	DROPPED_FRAMES    FQDNType = 0x0004
-	PATH              FQDNType = 0x0005
+	BASIC             FQDNType = 0x0000
+	INDEX             FQDNType = BASIC + 1
+	TIMESTAMP         FQDNType = BASIC + 2
+	FPS               FQDNType = BASIC + 3
+	DROPPED_FRAMES    FQDNType = BASIC + 4
+	PATH              FQDNType = BASIC + 5
+	ROBOT_ID          FQDNType = BASIC + 6
+	ROBOT_STATUS      FQDNType = BASIC + 7
+	EVENTS            FQDNType = BASIC + 8
 	IMAGES            FQDNType = 0x0100
 	IMAGE             FQDNType = IMAGES + 1
 	IMAGE_GRAYSCALE   FQDNType = IMAGES + 2
@@ -19,6 +23,8 @@ const (
 	STEREO_RIGHT      FQDNType = IMAGES + 6
 	DEPTH_IMAGE       FQDNType = IMAGES + 7
 	MAP_IMAGE         FQDNType = IMAGES + 8
+	AUDIO             FQDNType = 0x0200
+	SENSORS           FQDNType = 0x0300
 	ENVIRONMENT       FQDNType = 0x0F00
 	USER_KEY_CODE     FQDNType = ENVIRONMENT + 1
 	USER_MOUSE_DOWN   FQDNType = ENVIRONMENT + 2
@@ -34,5 +40,7 @@ const (
 	DNN_BACKEND       FQDNType = ALGORITHMS + 5
 	FEATURES_TYPE     FQDNType = ALGORITHMS + 6
 	MATCHER           FQDNType = ALGORITHMS + 7
-	DRAWER            FQDNType = 0x1001
+	DRAWER            FQDNType = ALGORITHMS + 0xFF
+	CRYPTO            FQDNType = 0x8000
+	SIGNATURE         FQDNType = CRYPTO + 1
 )

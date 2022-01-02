@@ -1,0 +1,82 @@
+syntax = "proto3";
+package transport;
+
+import "github.com/gogo/protobuf@v1.3.2/gogoproto/gogo.proto";
+
+option (gogoproto.gostring_all) = true;
+option (gogoproto.goproto_stringer_all) = false;
+option (gogoproto.stringer_all) =  true;
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.sizer_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+option (gogoproto.testgen_all) = true;
+option (gogoproto.benchgen_all) = true;
+option (gogoproto.populate_all) = true;
+option (gogoproto.equal_all) = true;
+
+
+
+enum StreamType {
+    NONE = 0;
+    VIDEO_RAW = 1;
+    VIDEO_PNG = 2;
+    VIDEO_JPG = 3;
+    VIDEO_H264 = 4;
+    VIDEO_H265 = 5;
+    FEATURES_DNN = 16;
+    FEATURES_CV = 17;
+    AUDIO_PCM = 32;
+    AUDIO_MP3 = 33;
+    AUDIO_OGG = 34;
+    SENSORS_RAW = 64;
+}
+
+message StreamMsg {
+    StreamType Type = 1;
+    int64 Index = 2;
+    int64 Timestamp = 3;
+    bytes Data = 7 [(gogoproto.nullable) = false, (gogoproto.customtype) = "Blob"];
+}
+message StatusMsg {
+    int64 OWD = 1;
+    int64 RTT = 2;
+    int64 Jitter = 3;
+    float Battery = 4;
+    float Health = 5;
+}
+message ChatMsg {
+    int64 Timestamp = 1;
+    string Username = 2;
+    string Message = 7;
+}
+message EventMsg {
+    uint64 Id = 1;
+    repeated uint64 Flags = 2;
+    repeated float Data = 7;
+}
+message RobotMsg {
+    bytes Id = 1;
+    string Name = 2;
+    string Description = 3;
+
+    message Capability {
+        // NOTE: 
+        // Negative Id refers to stream types:
+        //   streamType: abs(Id)
+        // Positive Id refers to Event types.
+        int64 Id = 1;
+        string Name = 2;
+        string Description = 3;
+    }
+    
+    repeated Capability Capabilities = 4 [(gogoproto.nullable) = false];
+}
+
+message Robot {
+    int64 Timestamp = 1;
+    StatusMsg Status = 2 [(gogoproto.nullable) = false];
+    RobotMsg Robot = 3 [(gogoproto.nullable) = false];
+    repeated EventMsg Events = 4 [(gogoproto.nullable) = false];
+    repeated StreamMsg Stream = 5 [(gogoproto.nullable) = false];
+    bytes Signature = 6 [(gogoproto.nullable) = false, (gogoproto.customtype) = "Blob"];
+}

@@ -15,8 +15,9 @@ type Options struct {
 /// Create options struct with default values
 func DefaultOptions() Options {
 	return Options{
-		Enabled: true,
-		Close:   true,
+		Enabled:    true,
+		Close:      true,
+		BufferSize: 1,
 	}
 }
 

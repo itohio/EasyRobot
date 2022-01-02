@@ -1,9 +1,10 @@
+//go:build planar
 // +build planar
 
 package main
 
 import (
-	"github.com/itohio/EasyRobot/pkg/robot/actuator/kinematics"
+	"github.com/itohio/EasyRobot/pkg/robot/kinematics"
 	"github.com/itohio/EasyRobot/pkg/robot/transport"
 )
 

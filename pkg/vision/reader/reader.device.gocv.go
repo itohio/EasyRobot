@@ -66,6 +66,7 @@ func (s *readerDeviceGoCV) Open() error {
 	if s.width != 0 && s.height != 0 {
 		dev.Set(gocv.VideoCaptureFrameWidth, float64(s.width))
 		dev.Set(gocv.VideoCaptureFrameHeight, float64(s.height))
+
 	}
 	s.dev = dev
 	s.index = 0

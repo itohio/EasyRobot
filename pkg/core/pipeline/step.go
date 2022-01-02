@@ -70,7 +70,7 @@ func StepSend(ctx context.Context, o plugin.Options, out chan Data, data Data) e
 }
 
 func StepMakeChan(o plugin.Options) chan Data {
-	if o.BufferSize > 0 {
+	if o.BufferSize == 0 {
 		return make(chan Data)
 	} else {
 		return make(chan Data, o.BufferSize)
