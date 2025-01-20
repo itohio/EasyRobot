@@ -105,6 +105,34 @@ func main() {
 
 	pipe.Run(ctx)
 
+	/*
+
+		***** Feedback proposal
+		add store.RESPONSE - locally a channel, remotely - a pb message
+		there should be a step that would accept the response and would be able to act on it
+
+		***** API Proposal
+
+		pipeline.New(
+			reader.NewReader(...),
+			fps.New(...),
+			pipeline.WithFanOut(
+				display.NewGoCV(...),
+				pipeline.WithLinear(
+					somestep.New(...),
+					writer.NewNul(...),
+				),
+			),
+		)
+
+
+		***** Extreme proposal
+		Actually implement a processing graph instead of a pipeline. Or maybe implement it side-by-side.
+		steps would have input and output ports. input port would connect to output port.
+		ports would be named.
+
+	*/
+
 	for data := range keys {
 		if *hide {
 			continue
