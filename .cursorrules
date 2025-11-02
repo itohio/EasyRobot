@@ -1,0 +1,137 @@
+# General rules
+- Prefer composition over inheritance
+- Return early to reduce nesting
+- `New*` functions should return types, not interfaces. Check instance conformance to interface.
+- Keep number of arguments low
+- Write testable code: avoid hard-to-mock dependencies
+- Each function does one thing (Single Responsibility)
+- Do not refactor code unless explicitly asked
+- Before implementing anything new, create a design/plan document explaining the feature at high level
+- Before changing/adding new features - locate/find design document and update that document first to make it sense.
+- Make sure features/modules/packages have high level design documents
+- Use asyncrhonous programming when communicating with APIs or Serial, USB, etc.
+- If a SPEC.md exists for specific module/package/feature, work on it before working on module/package/feature
+- Follow Go Code Review Comments and Effective Go
+- Maximum function length: 30 lines. Extract helper functions (Not a hard limit. do not split just for splitting sake)
+- Package by feature/domain, not by layer
+- Follow Domain Driven development but don't overcomplicate with abstractions for the sake of abstractions
+- Accept interfaces, return structs
+- Keep interfaces small (1-3 methods ideal)
+- Error handling: never ignore errors, wrap with context
+- Prefer table-driven tests
+- Prefer Options pattern over builder or other patterns
+- No naked returns except for very short functions
+- Avoid package-level state; use dependency injection
+- Constructor functions return interfaces when appropriate
+- Use context.Context for cancellation and timeouts
+- Prefer explicit over implicit
+- Make zero values useful
+- Avoid premature abstraction
+- Makefile must have build, clean, test, cover commands
+- If it is a service, then there has to be docker folder that uses `make build` to build in a build image and then lean final image (Does not apply to cli or libraries)
+- Prefer Mermaid diagrams over just drawings
+
+# Cross-language principles
+- If it is CRUD - prefer variable arguments for inserts (i.e. no CreateOne, CreateMany - the fewer similar functions the better)
+- DRY but avoid premature abstraction
+- Avoid writing multiple functions that do very similar thing
+- Prefer using standard library instead of rolling your own algorithms
+- Open/Closed: extend behavior without modifying existing code
+- Liskov Substitution: subtypes must be substitutable
+- Interface Segregation: many specific interfaces > one general
+- Dependency Inversion: depend on abstractions
+- Explicit dependencies in function/constructor signatures
+- Separate concerns: I/O, business logic, data transformation
+- Name things precisely: no utils, helpers, managers as names
+- Comments explain "why", not "what"
+- Optimize for readability and maintainability over cleverness
+
+## Enforcement Patterns
+1. Proto files are the main source of truth for communication.
+2. Services communicate via NATS using structs generated from protobuf schema.
+
+Before generating code:
+1. Identify single responsibility for each function
+2. Check if function can be broken into smaller units
+3. Verify all dependencies are passed explicitly
+4. Ensure return values are strongly typed
+5. Consider error handling paths
+6. Take design/specs and/or implementation plan into account
+
+When refactoring:
+- Extract magic numbers to constants
+- Extract complex conditions to named functions
+- Replace parameter lists >3 with structs/objects
+- Replace boolean parameters with enum/strategy pattern
+
+## Language-Specific Gotchas
+
+**Go:**
+Avoid:
+- Goroutine leaks (always ensure cleanup)
+- Pointer receivers for consistency, value for immutability
+- init() functions (makes testing hard)
+- Package names: don't stutter (http.HTTPServer → http.Server)
+
+Prefer:
+- Early returns over deeply nested if-else
+- errors.Is/As over type assertions
+- sync.Pool for frequently allocated objects
+- Concrete types in struct fields, interfaces in parameters
+
+# Execution Environment
+For any code execution, testing, or experiments:
+- MUST use Docker containers, never run directly on host
+- Create Dockerfile in project root or test directory
+- Use docker-compose for multi-service scenarios
+- Mount code as volume, don't copy into image during development
+- Examples:
+  * Python tests: docker run --rm -v $(pwd):/app -w /app python:3.11 pytest
+  * Go tests: docker run --rm -v $(pwd):/go/src/app -w /go/src/app golang:1.21 go test ./...
+  * Quick experiments: docker run --rm -it -v $(pwd):/workspace python:3.11 python script.py
+
+# Context Management
+When dealing with large files or datasets:
+- NEVER copy entire large files into conversation
+- Instead, create helper utilities to extract relevant portions
+- Helper programs should be small, single-purpose tools
+- Store helpers in tools/ or scripts/ directory
+
+Helper program patterns:
+1. Extract specific functions/types from source files
+2. Parse and filter log files
+3. Query structured data (JSON, CSV, etc.)
+4. Generate summaries of large codebases
+
+Example helper creation:
+"""
+If user needs to work with large.log file, create:
+tools/extract_errors.go or tools/extract_errors.py
+That reads the file and outputs only error lines with context.
+Then run: docker run --rm -v $(pwd):/app -w /app golang:1.21 go run tools/extract_errors.go
+"""
+
+# Helper Program Requirements
+When creating helper programs:
+- Single file, standalone execution
+- Clear flags/arguments for filtering
+- Output to stdout for piping
+- Include usage string
+- Name pattern: {verb}_{target}.{ext}
+  * extract_function.py
+  * filter_logs.go
+  * parse_config.py
+  * summarize_module.go
+
+# Docker Best Practices
+Dockerfile structure:
+- Use specific version tags, not 'latest'
+- Multi-stage builds for compiled languages
+- Minimal base images (alpine where possible)
+- Non-root user for execution
+- .dockerignore to exclude unnecessary files
+
+For tests:
+- Create docker-compose.test.yml if dependencies needed
+- Use tmpfs mounts for test databases
+- Clean up containers after tests (--rm flag)
