@@ -1,3 +1,9 @@
+# Project specific rules
+- Main use-case : Robotics
+- Precision - float32
+- As few allocations as possible (controlled buffer-preallocations, reuse)
+- low level algorithms and hot paths as optimized as possible <- consider possibility to segregate by architecture
+
 # General rules
 - Prefer composition over inheritance
 - Return early to reduce nesting
@@ -30,6 +36,9 @@
 - Makefile must have build, clean, test, cover commands
 - If it is a service, then there has to be docker folder that uses `make build` to build in a build image and then lean final image (Does not apply to cli or libraries)
 - Prefer Mermaid diagrams over just drawings
+- Use Mockery for interface mocks
+- Use Testify `requre` and `assert`
+- Interface names must be verbs, e.g. "Reader", "Writer", "Searcher" according to go interface naming best practices.
 
 # Cross-language principles
 - If it is CRUD - prefer variable arguments for inserts (i.e. no CreateOne, CreateMany - the fewer similar functions the better)
