@@ -5,6 +5,7 @@ package vec
 import (
 	"github.com/chewxy/math32"
 	"github.com/itohio/EasyRobot/pkg/core/math"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
 )
 
 type Vector []float32
@@ -18,11 +19,10 @@ func NewFrom(v ...float32) Vector {
 }
 
 func (v Vector) Sum() float32 {
-	var sum float32
-	for _, val := range v {
-		sum += val
+	if len(v) == 0 {
+		return 0
 	}
-	return sum
+	return primitive.Sum(v, len(v), 1)
 }
 
 func (v Vector) Slice(start, end int) Vector {
@@ -45,11 +45,10 @@ func (v Vector) XYZW() (float32, float32, float32, float32) {
 }
 
 func (v Vector) SumSqr() float32 {
-	var sum float32
-	for _, val := range v {
-		sum += val * val
+	if len(v) == 0 {
+		return 0
 	}
-	return sum
+	return primitive.SqrSum(v, len(v), 1)
 }
 
 func (v Vector) Magnitude() float32 {
@@ -92,6 +91,12 @@ func (v Vector) Clamp(min, max Vector) Vector {
 }
 
 func (v Vector) FillC(c float32) Vector {
+	if len(v) == 0 {
+		return v
+	}
+	// Fill with constant: use SumArrConst with zero source and constant
+	// Actually simpler: just use MulArrConst with 0 then add c
+	// Or even simpler: loop is fine for fill operations
 	for i := range v {
 		v[i] = c
 	}
@@ -99,65 +104,85 @@ func (v Vector) FillC(c float32) Vector {
 }
 
 func (v Vector) Neg() Vector {
-	for i := range v {
-		v[i] = -v[i]
+	if len(v) == 0 {
+		return v
 	}
+	primitive.MulArrInPlace(v, -1, len(v))
 	return v
 }
 
 func (v Vector) Add(v1 Vector) Vector {
-	for i := range v {
-		v[i] += v1[i]
+	if len(v) == 0 {
+		return v
 	}
+	// v = v + v1, but SumArrAdd does v += v1 + c
+	// So we need to use SumArrAdd with c=0, then it becomes v += v1
+	primitive.SumArrAdd(v, v1, 0, len(v), 1)
 	return v
 }
 
 func (v Vector) AddC(c float32) Vector {
-	for i := range v {
-		v[i] += c
+	if len(v) == 0 {
+		return v
 	}
+	primitive.SumArrInPlace(v, c, len(v))
 	return v
 }
 
 func (v Vector) Sub(v1 Vector) Vector {
-	for i := range v {
-		v[i] -= v1[i]
+	if len(v) == 0 {
+		return v
 	}
+	// v = v - v1, so we compute diff and store in v
+	primitive.DiffArr(v, v, v1, len(v), 1, 1)
 	return v
 }
 
 func (v Vector) SubC(c float32) Vector {
-	for i := range v {
-		v[i] -= c
+	if len(v) == 0 {
+		return v
 	}
+	primitive.DiffArrInPlace(v, c, len(v))
 	return v
 }
 
 func (v Vector) MulC(c float32) Vector {
-	for i := range v {
-		v[i] *= c
+	if len(v) == 0 {
+		return v
 	}
+	primitive.MulArrInPlace(v, c, len(v))
 	return v
 }
 
 func (v Vector) MulCAdd(c float32, v1 Vector) Vector {
-	for i := range v {
-		v[i] += v1[i] * c
+	if len(v) == 0 {
+		return v
 	}
+	primitive.MulArrAdd(v, v1, c, len(v), 1)
 	return v
 }
 
 func (v Vector) MulCSub(c float32, v1 Vector) Vector {
-	for i := range v {
-		v[i] -= v1[i] * c
+	if len(v) == 0 {
+		return v
 	}
+	// v = v - v1 * c
+	// MulArrAdd does v += v1 * c, so we need to negate
+	// Actually: we can use DiffArrAdd with negative c: v += v1 - c becomes v += v1 when c=0
+	// But we need: v -= v1 * c, which is v += -(v1 * c)
+	// Better: use MulArrAdd with -c: v += v1 * (-c) = v -= v1 * c
+	primitive.MulArrAdd(v, v1, -c, len(v), 1)
 	return v
 }
 
 func (v Vector) DivC(c float32) Vector {
-	for i := range v {
-		v[i] /= c
+	if len(v) == 0 {
+		return v
 	}
+	if c == 0 {
+		return v
+	}
+	primitive.DivArrInPlace(v, c, len(v))
 	return v
 }
 
@@ -289,18 +314,18 @@ func (v Vector) SlerpLong(v1 Vector, time, spin float32) Vector {
 }
 
 func (v Vector) Multiply(v1 Vector) Vector {
-	for i := range v {
-		v[i] *= v1[i]
+	if len(v) == 0 {
+		return v
 	}
+	primitive.HadamardProduct(v, v, v1, len(v), 1, 1)
 	return v
 }
 
 func (v Vector) Dot(v1 Vector) float32 {
-	var sum float32
-	for i := range v {
-		sum += v[i] * v1[i]
+	if len(v) == 0 || len(v1) == 0 || len(v) != len(v1) {
+		return 0
 	}
-	return sum
+	return primitive.DotProduct(v, v1, len(v), 1, 1)
 }
 
 func (v Vector) Cross(v1 Vector) Vector {

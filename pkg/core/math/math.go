@@ -1,6 +1,8 @@
 package math
 
-import "github.com/chewxy/math32"
+import (
+	"github.com/chewxy/math32"
+)
 
 //go:generate go run ../../../cmd/codegen -i gen/vec.tpl -c gen/vec.json
 //go:generate go run ../../../cmd/codegen -i gen/mat.tpl -c gen/mat.json
@@ -11,15 +13,10 @@ func SQR(a float32) float32 {
 	return a * a
 }
 
-func Clamp(a, min, max float32) float32 {
-	switch {
-	case a > max:
-		return max
-	case a < min:
-		return min
-	default:
-		return a
-	}
+type Number interface {
+	~int | ~int8 | ~int16 | ~int32 | ~int64 |
+		~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr |
+		~float32 | ~float64
 }
 
 // (a^2+b^2)^(1/2) without Owerflow
@@ -92,4 +89,29 @@ func FastISqrt(x float32) float32 {
 
 	// And return our fast inverse square root result
 	return f
+}
+
+func Min[T Number](a, b T) T {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func Max[T Number](a, b T) T {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func Clamp[T Number](a, min, max T) T {
+	switch {
+	case a > max:
+		return max
+	case a < min:
+		return min
+	default:
+		return a
+	}
 }

@@ -1,10 +1,10 @@
 package math
 
 import (
-	"reflect"
 	"testing"
 
 	"github.com/chewxy/math32"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestSQR(t *testing.T) {
@@ -28,9 +28,7 @@ func TestSQR(t *testing.T) {
 
 			got1 := SQR(tArgs.a)
 
-			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("SQR got1 = %v, want1: %v", got1, tt.want1)
-			}
+			assert.Equal(t, tt.want1, got1)
 		})
 	}
 }
@@ -58,9 +56,7 @@ func TestClamp(t *testing.T) {
 
 			got1 := Clamp(tArgs.a, tArgs.min, tArgs.max)
 
-			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("Clamp got1 = %v, want1: %v", got1, tt.want1)
-			}
+			assert.Equal(t, tt.want1, got1)
 		})
 	}
 }
@@ -85,9 +81,7 @@ func TestPytag(t *testing.T) {
 
 			got1 := Pytag(tArgs.a, tArgs.b)
 
-			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("Pytag got1 = %v, want1: %v", got1, tt.want1)
-			}
+			assert.Equal(t, tt.want1, got1)
 		})
 	}
 }
@@ -113,9 +107,7 @@ func TestFastISqrt(t *testing.T) {
 			got1 := FastISqrt(tt.args)
 
 			want1 := 1 / math32.Sqrt(tt.args)
-			if math32.Abs(got1-want1) > tt.precision {
-				t.Errorf("FastISqrt got1 = %v, want1: %v, abs err: %v", got1, want1, math32.Abs(got1-want1))
-			}
+			assert.InDelta(t, want1, got1, float64(tt.precision), "FastISqrt")
 		})
 	}
 }
