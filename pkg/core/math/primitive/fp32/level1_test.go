@@ -1,4 +1,4 @@
-package primitive
+package fp32
 
 import (
 	"testing"
@@ -9,11 +9,11 @@ import (
 
 func TestAxpy(t *testing.T) {
 	tests := []struct {
-		name   string
-		y, x   []float32
-		alpha  float32
+		name                string
+		y, x                []float32
+		alpha               float32
 		strideY, strideX, n int
-		wantY  []float32
+		wantY               []float32
 	}{
 		{
 			name:    "simple",
@@ -57,10 +57,10 @@ func TestAxpy(t *testing.T) {
 
 func TestDot(t *testing.T) {
 	tests := []struct {
-		name               string
-		x, y               []float32
+		name                string
+		x, y                []float32
 		strideX, strideY, n int
-		want               float32
+		want                float32
 	}{
 		{
 			name:    "simple",
@@ -92,10 +92,10 @@ func TestDot(t *testing.T) {
 
 func TestNrm2(t *testing.T) {
 	tests := []struct {
-		name       string
-		x          []float32
-		stride, n  int
-		want       float32
+		name      string
+		x         []float32
+		stride, n int
+		want      float32
 	}{
 		{
 			name:   "simple",
@@ -196,10 +196,10 @@ func TestScal(t *testing.T) {
 
 func TestCopy(t *testing.T) {
 	tests := []struct {
-		name               string
-		y, x               []float32
+		name                string
+		y, x                []float32
 		strideY, strideX, n int
-		want               []float32
+		want                []float32
 	}{
 		{
 			name:    "simple",
@@ -222,10 +222,10 @@ func TestCopy(t *testing.T) {
 
 func TestSwap(t *testing.T) {
 	tests := []struct {
-		name               string
-		x, y               []float32
+		name                string
+		x, y                []float32
 		strideX, strideY, n int
-		wantX, wantY       []float32
+		wantX, wantY        []float32
 	}{
 		{
 			name:    "simple",

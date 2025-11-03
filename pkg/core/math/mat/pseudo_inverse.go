@@ -3,7 +3,7 @@ package mat
 import (
 	"errors"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
 )
 
 var (
@@ -31,7 +31,7 @@ func (m Matrix) PseudoInverse(dst Matrix) error {
 	ldApinv := len(dst[0])
 
 	// Use Gepseu for pseudo-inverse computation
-	if err := primitive.Gepseu(dstFlat, mFlat, ldA, ldApinv, rows, cols); err != nil {
+	if err := fp32.Gepseu(dstFlat, mFlat, ldA, ldApinv, rows, cols); err != nil {
 		return ErrPseudoInverseFailed
 	}
 

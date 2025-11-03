@@ -3,14 +3,14 @@ package tensor
 import (
 	"fmt"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
 )
 
 // MatVecMulTransposed performs matrix-vector multiplication with matrix transposed: y = alpha*A^T*x + beta*y
 // matrix: [M, N] tensor (will be transposed)
 // vector: [M] tensor (input vector)
 // result: [N] tensor (output vector)
-// Uses primitive.Gemv_T internally.
+// Uses fp32 primitive.Gemv_T internally.
 func (t *Tensor) MatVecMulTransposed(matrix *Tensor, vector *Tensor, alpha, beta float32) *Tensor {
 	if t == nil || matrix == nil || vector == nil {
 		return nil
@@ -49,7 +49,7 @@ func (t *Tensor) MatVecMulTransposed(matrix *Tensor, vector *Tensor, alpha, beta
 	ldA := N
 
 	// Use primitive.Gemv_T
-	primitive.Gemv_T(
+	fp32.Gemv_T(
 		result.Data, // y (output)
 		matrix.Data, // A (matrix)
 		vector.Data, // x (vector)
@@ -132,7 +132,7 @@ func (t *Tensor) MatMulTransposed(other *Tensor, transposeA, transposeB bool, ds
 		switch {
 		case !transposeA && !transposeB:
 			// Gemm_NN: C = A @ B
-			primitive.Gemm_NN(
+			fp32.Gemm_NN(
 				result.Data, t.Data, other.Data,
 				ldC, ldA, ldB,
 				M, N, K1,
@@ -140,7 +140,7 @@ func (t *Tensor) MatMulTransposed(other *Tensor, transposeA, transposeB bool, ds
 			)
 		case !transposeA && transposeB:
 			// Gemm_NT: C = A @ B^T
-			primitive.Gemm_NT(
+			fp32.Gemm_NT(
 				result.Data, t.Data, other.Data,
 				ldC, ldA, ldB,
 				M, N, K1,
@@ -148,7 +148,7 @@ func (t *Tensor) MatMulTransposed(other *Tensor, transposeA, transposeB bool, ds
 			)
 		case transposeA && !transposeB:
 			// Gemm_TN: C = A^T @ B
-			primitive.Gemm_TN(
+			fp32.Gemm_TN(
 				result.Data, t.Data, other.Data,
 				ldC, ldA, ldB,
 				M, N, K1,
@@ -156,7 +156,7 @@ func (t *Tensor) MatMulTransposed(other *Tensor, transposeA, transposeB bool, ds
 			)
 		case transposeA && transposeB:
 			// Gemm_TT: C = A^T @ B^T
-			primitive.Gemm_TT(
+			fp32.Gemm_TT(
 				result.Data, t.Data, other.Data,
 				ldC, ldA, ldB,
 				M, N, K1,
@@ -188,7 +188,7 @@ func (t *Tensor) MatMulTransposed(other *Tensor, transposeA, transposeB bool, ds
 
 			switch {
 			case !transposeA && !transposeB:
-				primitive.Gemm_NN(
+				fp32.Gemm_NN(
 					result.Data[resultOffset:],
 					t.Data[tOffset:],
 					other.Data[otherOffset:],
@@ -197,7 +197,7 @@ func (t *Tensor) MatMulTransposed(other *Tensor, transposeA, transposeB bool, ds
 					1.0, 0.0,
 				)
 			case !transposeA && transposeB:
-				primitive.Gemm_NT(
+				fp32.Gemm_NT(
 					result.Data[resultOffset:],
 					t.Data[tOffset:],
 					other.Data[otherOffset:],
@@ -206,7 +206,7 @@ func (t *Tensor) MatMulTransposed(other *Tensor, transposeA, transposeB bool, ds
 					1.0, 0.0,
 				)
 			case transposeA && !transposeB:
-				primitive.Gemm_TN(
+				fp32.Gemm_TN(
 					result.Data[resultOffset:],
 					t.Data[tOffset:],
 					other.Data[otherOffset:],
@@ -215,7 +215,7 @@ func (t *Tensor) MatMulTransposed(other *Tensor, transposeA, transposeB bool, ds
 					1.0, 0.0,
 				)
 			case transposeA && transposeB:
-				primitive.Gemm_TT(
+				fp32.Gemm_TT(
 					result.Data[resultOffset:],
 					t.Data[tOffset:],
 					other.Data[otherOffset:],
@@ -232,7 +232,7 @@ func (t *Tensor) MatMulTransposed(other *Tensor, transposeA, transposeB bool, ds
 }
 
 // AddScaled adds a scaled tensor to this tensor in-place: t = t + alpha * other
-// Uses primitive.Axpy internally.
+// Uses fp32 primitive.Axpy internally.
 // Returns the tensor itself for method chaining.
 func (t *Tensor) AddScaled(other *Tensor, alpha float32) *Tensor {
 	if t == nil || other == nil {
@@ -254,6 +254,6 @@ func (t *Tensor) AddScaled(other *Tensor, alpha float32) *Tensor {
 
 	// Use primitive.Axpy for contiguous case
 	size := t.Size()
-	primitive.Axpy(t.Data, other.Data, 1, 1, size, alpha)
+	fp32.Axpy(t.Data, other.Data, 1, 1, size, alpha)
 	return t
 }

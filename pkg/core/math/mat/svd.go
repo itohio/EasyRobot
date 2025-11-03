@@ -7,7 +7,7 @@ package mat
 import (
 	"errors"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
 	"github.com/itohio/EasyRobot/pkg/core/math/vec"
 )
 
@@ -59,7 +59,7 @@ func (m Matrix) SVD(dst *SVDResult) error {
 	ldVt := len(dst.Vt[0])
 
 	// Use Gesvd for SVD decomposition
-	if err := primitive.Gesvd(UFlat, sVec, VtFlat, mFlat, ldA, ldU, ldVt, rows, cols); err != nil {
+	if err := fp32.Gesvd(UFlat, sVec, VtFlat, mFlat, ldA, ldU, ldVt, rows, cols); err != nil {
 		return errors.New("svd: decomposition failed")
 	}
 

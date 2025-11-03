@@ -11,7 +11,7 @@ import (
 	"errors"
 
 	"github.com/chewxy/math32"
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
 	"github.com/itohio/EasyRobot/pkg/core/math/vec"
 )
 
@@ -58,12 +58,12 @@ func NNLS(A Matrix, B vec.Vector, dst *NNLSResult, rangeVal float32) error {
 	dst.W = make(vec.Vector, n)
 
 	// Use Gnnls for non-negative least squares
-	rNorm, err := primitive.Gnnls(dst.X, AFlat, BFlat, ldA, m, n)
+	rNorm, err := fp32.Gnnls(dst.X, AFlat, BFlat, ldA, m, n)
 	if err != nil {
-		if err == primitive.ErrBadDimensions {
+		if err == fp32.ErrBadDimensions {
 			return ErrNNLSBadDimensions
 		}
-		if err == primitive.ErrMaxIterations {
+		if err == fp32.ErrMaxIterations {
 			return ErrNNLSMaxIterations
 		}
 		return err
@@ -77,10 +77,10 @@ func NNLS(A Matrix, B vec.Vector, dst *NNLSResult, rangeVal float32) error {
 	copy(res, B)
 	// res = B - A*X using Gemv
 	AFlatCopy := A.Flat() // Use original A (Gnnls modified it)
-	primitive.Gemv_N(res, AFlatCopy, dst.X, ldA, m, n, -1.0, 1.0)
+	fp32.Gemv_N(res, AFlatCopy, dst.X, ldA, m, n, -1.0, 1.0)
 
 	// W = A^T * res using Gemv_T
-	primitive.Gemv_T(dst.W, AFlatCopy, res, ldA, m, n, 1.0, 0.0)
+	fp32.Gemv_T(dst.W, AFlatCopy, res, ldA, m, n, 1.0, 0.0)
 
 	return nil
 }

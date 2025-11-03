@@ -8,7 +8,7 @@ import (
 	"errors"
 
 	"github.com/chewxy/math32"
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
 	"github.com/itohio/EasyRobot/pkg/core/math/vec"
 )
 
@@ -49,7 +49,7 @@ func (m Matrix) QRDecompose(dst *QRResult) error {
 		minMN = cols
 	}
 	tau := make([]float32, minMN)
-	if err := primitive.Geqrf(QFlat, tau, ldA, rows, cols); err != nil {
+	if err := fp32.Geqrf(QFlat, tau, ldA, rows, cols); err != nil {
 		return errors.New("qr: decomposition failed")
 	}
 
@@ -120,7 +120,7 @@ func (m Matrix) QR(dst *QRResult) error {
 	// Use Orgqr to generate Q matrix
 	dst.Q = New(rows, rows)
 	QFlat := dst.Q.Flat()
-	if err := primitive.Orgqr(QFlat, mFlat, tau, ldA, ldQ, rows, cols, minMN); err != nil {
+	if err := fp32.Orgqr(QFlat, mFlat, tau, ldA, ldQ, rows, cols, minMN); err != nil {
 		return errors.New("qr: Q reconstruction failed")
 	}
 

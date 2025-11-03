@@ -4,13 +4,13 @@ import (
 	"fmt"
 
 	"github.com/chewxy/math32"
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
 )
 
 // MatMul performs matrix multiplication with another tensor.
 // For 2D tensors: [M, K] × [K, N] = [M, N]
 // For batched tensors: [B, M, K] × [B, K, N] = [B, M, N] or [M, K] × [B, K, N] = [B, M, N]
-// Uses primitive.Gemm_NN by default. Automatically handles leading dimensions.
+// Uses fp32 primitive.Gemm_NN by default. Automatically handles leading dimensions.
 func (t *Tensor) MatMul(other *Tensor) *Tensor {
 	if t == nil || other == nil {
 		return nil
@@ -78,8 +78,8 @@ func (t *Tensor) matMul2D(other *Tensor) *Tensor {
 		Data: make([]float32, M*N),
 	}
 
-	// Use primitive.Gemm_NN
-	primitive.Gemm_NN(
+	// Use fp32.Gemm_NN
+	fp32.Gemm_NN(
 		result.Data,   // C
 		t.Data,        // A
 		other.Data,    // B
@@ -162,7 +162,7 @@ func (t *Tensor) matMulSameBatch(other *Tensor, batchSize, M, N, K int) *Tensor 
 
 	// Check if contiguous (can use GemmStrided)
 	if t.isContiguous() && other.isContiguous() {
-		primitive.GemmStrided(
+		fp32.GemmStrided(
 			result.Data,   // C
 			t.Data,        // A
 			other.Data,    // B
@@ -176,7 +176,7 @@ func (t *Tensor) matMulSameBatch(other *Tensor, batchSize, M, N, K int) *Tensor 
 		)
 	} else {
 		// Use GemmBatched (handles strided access)
-		primitive.GemmBatched(
+		fp32.GemmBatched(
 			result.Data,
 			t.Data,
 			other.Data,
@@ -216,7 +216,7 @@ func (t *Tensor) matMulBroadcastFirst(other *Tensor, batchSize, M, N, K int) *Te
 		otherOffset := b * otherStride
 		resultOffset := b * resultStride
 
-		primitive.Gemm_NN(
+		fp32.Gemm_NN(
 			result.Data[resultOffset:],
 			t.Data,
 			other.Data[otherOffset:],
@@ -251,7 +251,7 @@ func (t *Tensor) matMulBroadcastSecond(other *Tensor, batchSize, M, N, K int) *T
 		tOffset := b * tStride
 		resultOffset := b * resultStride
 
-		primitive.Gemm_NN(
+		fp32.Gemm_NN(
 			result.Data[resultOffset:],
 			t.Data[tOffset:],
 			other.Data,
@@ -338,7 +338,7 @@ func (t *Tensor) TransposeTo(dst *Tensor, dims ...int) *Tensor {
 // Dot computes the dot product of two tensors.
 // For vectors: dot product of two 1D tensors
 // For matrices: Frobenius inner product (sum of element-wise products)
-// Uses primitive.Dot for vector case.
+// Uses fp32 primitive.Dot for vector case.
 func (t *Tensor) Dot(other *Tensor) float32 {
 	if t == nil || other == nil {
 		return 0
@@ -354,7 +354,7 @@ func (t *Tensor) Dot(other *Tensor) float32 {
 		}
 
 		if t.isContiguous() && other.isContiguous() {
-			return primitive.Dot(t.Data, other.Data, 1, 1, tShape[0])
+			return fp32.Dot(t.Data, other.Data, 1, 1, tShape[0])
 		}
 
 		// Strided case
@@ -396,7 +396,7 @@ func (t *Tensor) dotFrobenius(other *Tensor) float32 {
 
 // Norm computes vector or matrix norm.
 // ord: 0 = L1 norm (|x|_1), 1 = L2 norm (|x|_2), 2 = Frobenius norm for matrices
-// Uses primitive.Nrm2 for L2 norm, primitive.Asum for L1 norm.
+// Uses fp32 primitive.Nrm2 for L2 norm, fp32 primitive.Asum for L1 norm.
 func (t *Tensor) Norm(ord int) float32 {
 	if t == nil {
 		return 0
@@ -406,21 +406,21 @@ func (t *Tensor) Norm(ord int) float32 {
 	case 0:
 		// L1 norm
 		if t.isContiguous() {
-			return primitive.Asum(t.Data, 1, t.Size())
+			return fp32.Asum(t.Data, 1, t.Size())
 		}
 		return t.norm1Strided()
 
 	case 1:
 		// L2 norm (Euclidean norm)
 		if t.isContiguous() {
-			return primitive.Nrm2(t.Data, 1, t.Size())
+			return fp32.Nrm2(t.Data, 1, t.Size())
 		}
 		return t.norm2Strided()
 
 	case 2:
 		// Frobenius norm for matrices (same as L2 norm on flattened matrix)
 		if t.isContiguous() {
-			return primitive.Nrm2(t.Data, 1, t.Size())
+			return fp32.Nrm2(t.Data, 1, t.Size())
 		}
 		return t.norm2Strided()
 
@@ -510,7 +510,7 @@ func (t *Tensor) norm2StridedRecursive(sum *float32, indices []int, strides []in
 // Normalize normalizes the tensor along a dimension (L2 normalization).
 // For vectors (1D): normalizes the entire vector
 // For matrices (2D): normalizes along specified dimension (0=rows, 1=columns)
-// Uses primitive.Nrm2 + primitive.Scal for efficient computation.
+// Uses fp32 primitive.Nrm2 + fp32 primitive.Scal for efficient computation.
 func (t *Tensor) Normalize(dim int) *Tensor {
 	if t == nil {
 		return nil
@@ -544,10 +544,10 @@ func (t *Tensor) normalizeVector() *Tensor {
 		return result
 	}
 
-	// Use primitive operations
-	norm := primitive.Nrm2(result.Data, 1, result.Size())
+	// Use fp32 operations
+	norm := fp32.Nrm2(result.Data, 1, result.Size())
 	if norm > 0 {
-		primitive.Scal(result.Data, 1, result.Size(), 1.0/norm)
+		fp32.Scal(result.Data, 1, result.Size(), 1.0/norm)
 	}
 
 	return result
@@ -567,9 +567,9 @@ func (t *Tensor) normalizeMatrixDim(dim int) *Tensor {
 		// Normalize along rows (each row becomes unit vector)
 		for i := 0; i < M; i++ {
 			rowData := result.Data[i*N : (i+1)*N]
-			norm := primitive.Nrm2(rowData, 1, N)
+			norm := fp32.Nrm2(rowData, 1, N)
 			if norm > 0 {
-				primitive.Scal(rowData, 1, N, 1.0/norm)
+				fp32.Scal(rowData, 1, N, 1.0/norm)
 			}
 		}
 	} else if dim == 1 {
@@ -580,7 +580,7 @@ func (t *Tensor) normalizeMatrixDim(dim int) *Tensor {
 			for i := 0; i < M; i++ {
 				colData[i] = result.Data[i*N+j]
 			}
-			norm := primitive.Nrm2(colData, 1, M)
+			norm := fp32.Nrm2(colData, 1, M)
 			if norm > 0 {
 				scale := 1.0 / norm
 				for i := 0; i < M; i++ {

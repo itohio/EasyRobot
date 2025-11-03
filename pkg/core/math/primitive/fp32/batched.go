@@ -1,4 +1,4 @@
-package primitive
+package fp32
 
 // GemmBatched computes batched matrix-matrix multiply: C[k] = alpha*A[k]*B[k] + beta*C[k]
 // This is BLAS batched GEMM operation with separate arrays

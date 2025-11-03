@@ -1,4 +1,4 @@
-package primitive
+package fp32
 
 // Im2Col converts image patches to columns for GEMM-based convolution
 // This is used to convert convolution operations to matrix multiplication

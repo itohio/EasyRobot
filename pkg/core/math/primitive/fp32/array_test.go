@@ -1,4 +1,4 @@
-package primitive
+package fp32
 
 import (
 	"testing"
@@ -56,41 +56,41 @@ func TestSqrSum(t *testing.T) {
 
 func TestStatsArr(t *testing.T) {
 	tests := []struct {
-		name            string
-		a               []float32
-		num             int
-		stride          int
-		wantMin, wantMax float32
+		name                 string
+		a                    []float32
+		num                  int
+		stride               int
+		wantMin, wantMax     float32
 		wantMean, wantStddev float32
 	}{
 		{
-			name: "simple array",
-			a:    []float32{1, 2, 3, 4, 5},
-			num:  5,
-			stride: 1,
-			wantMin: 1,
-			wantMax: 5,
-			wantMean: 3,
+			name:       "simple array",
+			a:          []float32{1, 2, 3, 4, 5},
+			num:        5,
+			stride:     1,
+			wantMin:    1,
+			wantMax:    5,
+			wantMean:   3,
 			wantStddev: 1.4142135623730951, // approximate
 		},
 		{
-			name: "single element",
-			a:    []float32{42},
-			num:  1,
-			stride: 1,
-			wantMin: 42,
-			wantMax: 42,
-			wantMean: 42,
+			name:       "single element",
+			a:          []float32{42},
+			num:        1,
+			stride:     1,
+			wantMin:    42,
+			wantMax:    42,
+			wantMean:   42,
 			wantStddev: 0,
 		},
 		{
-			name: "all same values",
-			a:    []float32{5, 5, 5, 5},
-			num:  4,
-			stride: 1,
-			wantMin: 5,
-			wantMax: 5,
-			wantMean: 5,
+			name:       "all same values",
+			a:          []float32{5, 5, 5, 5},
+			num:        4,
+			stride:     1,
+			wantMin:    5,
+			wantMax:    5,
+			wantMean:   5,
 			wantStddev: 0,
 		},
 	}
@@ -118,40 +118,40 @@ func TestPercentileArr(t *testing.T) {
 		wantSumAboveP  float32
 	}{
 		{
-			name: "median (p50)",
-			a:    []float32{1, 2, 3, 4, 5},
-			num:  5,
-			stride: 1,
-			p:     0.5,
+			name:           "median (p50)",
+			a:              []float32{1, 2, 3, 4, 5},
+			num:            5,
+			stride:         1,
+			p:              0.5,
 			wantPercentile: 3,
-			wantSumAboveP: 9, // 4 + 5
+			wantSumAboveP:  9, // 4 + 5
 		},
 		{
-			name: "p25",
-			a:    []float32{1, 2, 3, 4, 5},
-			num:  5,
-			stride: 1,
-			p:     0.25,
+			name:           "p25",
+			a:              []float32{1, 2, 3, 4, 5},
+			num:            5,
+			stride:         1,
+			p:              0.25,
 			wantPercentile: 2,
-			wantSumAboveP: 12, // 3 + 4 + 5
+			wantSumAboveP:  12, // 3 + 4 + 5
 		},
 		{
-			name: "p75",
-			a:    []float32{1, 2, 3, 4, 5},
-			num:  5,
-			stride: 1,
-			p:     0.75,
+			name:           "p75",
+			a:              []float32{1, 2, 3, 4, 5},
+			num:            5,
+			stride:         1,
+			p:              0.75,
 			wantPercentile: 4,
-			wantSumAboveP: 5, // 5
+			wantSumAboveP:  5, // 5
 		},
 		{
-			name: "single element",
-			a:    []float32{42},
-			num:  1,
-			stride: 1,
-			p:     0.5,
+			name:           "single element",
+			a:              []float32{42},
+			num:            1,
+			stride:         1,
+			p:              0.5,
 			wantPercentile: 42,
-			wantSumAboveP: 0,
+			wantSumAboveP:  0,
 		},
 	}
 

@@ -3,7 +3,7 @@ package mat
 import (
 	"testing"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
 	"github.com/itohio/EasyRobot/pkg/core/math/vec"
 )
 
@@ -77,7 +77,7 @@ func TestNNLS(t *testing.T) {
 			A, B := tt.init(t)
 			if A == nil {
 				var result NNLSResult
-				err := NNLS(A, B, &result, primitive.DefaultRange)
+				err := NNLS(A, B, &result, fp32.DefaultRange)
 				if (err != nil) != tt.wantErr {
 					t.Errorf("NNLS() error = %v, wantErr %v", err, tt.wantErr)
 				}
@@ -93,7 +93,7 @@ func TestNNLS(t *testing.T) {
 			copy(BCopy, B)
 
 			var result NNLSResult
-			err := NNLS(ACopy, BCopy, &result, primitive.DefaultRange)
+			err := NNLS(ACopy, BCopy, &result, fp32.DefaultRange)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NNLS() error = %v, wantErr %v", err, tt.wantErr)
@@ -175,7 +175,7 @@ func TestLDP(t *testing.T) {
 			G, H := tt.init(t)
 			if G == nil {
 				var result LDPResult
-				err := LDP(G, H, &result, primitive.DefaultRange)
+				err := LDP(G, H, &result, fp32.DefaultRange)
 				if (err != nil) != tt.wantErr {
 					t.Errorf("LDP() error = %v, wantErr %v", err, tt.wantErr)
 				}
@@ -183,7 +183,7 @@ func TestLDP(t *testing.T) {
 			}
 
 			var result LDPResult
-			err := LDP(G, H, &result, primitive.DefaultRange)
+			err := LDP(G, H, &result, fp32.DefaultRange)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("LDP() error = %v, wantErr %v", err, tt.wantErr)

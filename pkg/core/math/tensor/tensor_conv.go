@@ -3,7 +3,7 @@ package tensor
 import (
 	"fmt"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
 )
 
 // Conv2D performs 2D convolution
@@ -11,7 +11,7 @@ import (
 // Kernel shape: [outChannels, inChannels, kernelH, kernelW]
 // Bias shape: [outChannels] (optional, can be nil)
 // Output shape: [batch, outChannels, outHeight, outWidth]
-// Uses primitive.Conv2D for optimized computation
+// Uses fp32 primitive.Conv2D for optimized computation
 func (t *Tensor) Conv2D(kernel, bias *Tensor, stride, padding []int) *Tensor {
 	if t == nil || kernel == nil {
 		return nil
@@ -84,8 +84,8 @@ func (t *Tensor) Conv2D(kernel, bias *Tensor, stride, padding []int) *Tensor {
 		Data: make([]float32, batchSize*outChannels*outHeight*outWidth),
 	}
 
-	// Call primitive.Conv2D
-	primitive.Conv2D(
+	// Call fp32.Conv2D
+	fp32.Conv2D(
 		result.Data,
 		t.Data,
 		kernel.Data,
@@ -136,7 +136,7 @@ func (t *Tensor) Conv2DTo(kernel, bias, dst *Tensor, stride, padding []int) *Ten
 // Kernel shape: [inChannels, outChannels, kernelH, kernelW] (transposed from Conv2D)
 // Bias shape: [outChannels] (optional, can be nil)
 // Output shape: [batch, outChannels, outHeight, outWidth]
-// Uses primitive.Conv2DTransposed for optimized computation
+// Uses fp32 primitive.Conv2DTransposed for optimized computation
 func (t *Tensor) Conv2DTransposed(kernel, bias *Tensor, stride, padding []int) *Tensor {
 	if t == nil || kernel == nil {
 		return nil
@@ -204,8 +204,8 @@ func (t *Tensor) Conv2DTransposed(kernel, bias *Tensor, stride, padding []int) *
 		Data: make([]float32, batchSize*outChannels*outHeight*outWidth),
 	}
 
-	// Call primitive.Conv2DTransposed
-	primitive.Conv2DTransposed(
+	// Call fp32.Conv2DTransposed
+	fp32.Conv2DTransposed(
 		result.Data,
 		t.Data,
 		kernel.Data,
@@ -1095,7 +1095,7 @@ func (t *Tensor) AdaptiveAvgPool2D(outputSize []int) *Tensor {
 // Im2Col converts image patches to columns (for convolution)
 // Input shape: [batch, channels, height, width]
 // Output shape: [batch*outHeight*outWidth, channels*kernelH*kernelW]
-// Uses primitive.Im2Col for optimized computation
+// Uses fp32.Im2Col for optimized computation
 func (t *Tensor) Im2Col(kernelSize, stride, padding []int) *Tensor {
 	if t == nil {
 		return nil
@@ -1141,8 +1141,8 @@ func (t *Tensor) Im2Col(kernelSize, stride, padding []int) *Tensor {
 		Data: make([]float32, colHeight*colWidth),
 	}
 
-	// Call primitive.Im2Col
-	primitive.Im2Col(
+	// Call fp32.Im2Col
+	fp32.Im2Col(
 		result.Data,
 		t.Data,
 		batchSize,
@@ -1163,7 +1163,7 @@ func (t *Tensor) Im2Col(kernelSize, stride, padding []int) *Tensor {
 // Col2Im converts columns back to image (inverse of Im2Col)
 // Input shape: [batch*outHeight*outWidth, channels*kernelH*kernelW]
 // Output shape: [batch, channels, height, width]
-// Uses primitive.Col2Im for optimized computation
+// Uses fp32.Col2Im for optimized computation
 func (t *Tensor) Col2Im(outputShape, kernelSize, stride, padding []int) *Tensor {
 	if t == nil {
 		return nil
@@ -1214,8 +1214,8 @@ func (t *Tensor) Col2Im(outputShape, kernelSize, stride, padding []int) *Tensor 
 		Data: make([]float32, batchSize*channels*height*width),
 	}
 
-	// Call primitive.Col2Im
-	primitive.Col2Im(
+	// Call fp32.Col2Im
+	fp32.Col2Im(
 		result.Data,
 		t.Data,
 		batchSize,

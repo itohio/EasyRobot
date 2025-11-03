@@ -4,7 +4,7 @@ import (
 	"unsafe"
 
 	"github.com/chewxy/math32"
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
 	"github.com/itohio/EasyRobot/pkg/core/math/vec"
 )
 
@@ -341,7 +341,7 @@ func (m Matrix) Add(m1 Matrix) Matrix {
 	m1Flat := m1.Flat()
 
 	// Use SumArr for element-wise addition
-	primitive.SumArr(mFlat, mFlat, m1Flat, total, 1, 1)
+	fp32.SumArr(mFlat, mFlat, m1Flat, total, 1, 1)
 
 	return m
 }
@@ -359,7 +359,7 @@ func (m Matrix) Sub(m1 Matrix) Matrix {
 	m1Flat := m1.Flat()
 
 	// Use DiffArr for element-wise subtraction
-	primitive.DiffArr(mFlat, mFlat, m1Flat, total, 1, 1)
+	fp32.DiffArr(mFlat, mFlat, m1Flat, total, 1, 1)
 
 	return m
 }
@@ -376,7 +376,7 @@ func (m Matrix) MulC(c float32) Matrix {
 	mFlat := m.Flat()
 
 	// Use Scal for scalar multiplication
-	primitive.Scal(mFlat, 1, total, c)
+	fp32.Scal(mFlat, 1, total, c)
 
 	return m
 }
@@ -393,7 +393,7 @@ func (m Matrix) DivC(c float32) Matrix {
 	mFlat := m.Flat()
 
 	// Use Scal for scalar division (multiply by 1/c)
-	primitive.Scal(mFlat, 1, total, 1.0/c)
+	fp32.Scal(mFlat, 1, total, 1.0/c)
 
 	return m
 }
@@ -428,7 +428,7 @@ func (m Matrix) Mul(a Matrix, b Matrix) Matrix {
 	ldC := N
 	ldA := K
 	ldB := N
-	primitive.Gemm_NN(mFlat, aFlat, bFlat, ldC, ldA, ldB, M, N, K, 1.0, 0.0)
+	fp32.Gemm_NN(mFlat, aFlat, bFlat, ldC, ldA, ldB, M, N, K, 1.0, 0.0)
 
 	return m
 }
@@ -442,7 +442,7 @@ func (m Matrix) MulDiag(a Matrix, b vec.Vector) Matrix {
 	// Use Hadamard product for element-wise multiplication
 	// For each row, multiply by corresponding b element
 	for i := 0; i < rows; i++ {
-		primitive.HadamardProduct(m[i], a[i], b, cols, 1, 1)
+		fp32.HadamardProduct(m[i], a[i], b, cols, 1, 1)
 	}
 
 	return m
@@ -461,7 +461,7 @@ func (m Matrix) MulVec(v vec.Vector, dst vec.Vector) vec.Vector {
 	matFlat := m.Flat()
 
 	// Use BLAS Level 2 Gemv_N: dst = 1.0 * mat * v + 0.0 * dst
-	primitive.Gemv_N(dst, matFlat, v, cols, rows, cols, 1.0, 0.0)
+	fp32.Gemv_N(dst, matFlat, v, cols, rows, cols, 1.0, 0.0)
 
 	return dst
 }
@@ -479,7 +479,7 @@ func (m Matrix) MulVecT(v vec.Vector, dst vec.Vector) vec.Vector {
 	matFlat := m.Flat()
 
 	// Use BLAS Level 2 Gemv_T: dst = 1.0 * mat^T * v + 0.0 * dst
-	primitive.Gemv_T(dst, matFlat, v, cols, rows, cols, 1.0, 0.0)
+	fp32.Gemv_T(dst, matFlat, v, cols, rows, cols, 1.0, 0.0)
 
 	return dst
 }
@@ -501,7 +501,7 @@ func (m Matrix) Det() float32 {
 			ratio = tmpj[i] / row[i]
 			// Use Axpy for row operation: tmpj = tmpj - ratio * row
 			// Axpy computes: y = alpha*x + y, so we use -ratio to get subtraction
-			primitive.Axpy(tmpj, row, 1, 1, size, -ratio)
+			fp32.Axpy(tmpj, row, 1, 1, size, -ratio)
 		}
 	}
 
@@ -529,7 +529,7 @@ func (m Matrix) LU(L, U Matrix) {
 
 	// Use Getrf for LU decomposition
 	ipiv := make([]int, size)
-	if err := primitive.Getrf(mFlat, LFlat, UFlat, ipiv, ldA, ldL, ldU, size, size); err != nil {
+	if err := fp32.Getrf(mFlat, LFlat, UFlat, ipiv, ldA, ldL, ldU, size, size); err != nil {
 		// Fall back to manual implementation if Getrf fails
 		// This maintains compatibility
 		for i := 0; i < size; i++ {

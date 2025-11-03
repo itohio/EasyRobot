@@ -8,7 +8,7 @@ import (
 	"errors"
 
 	"github.com/chewxy/math32"
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
 	"github.com/itohio/EasyRobot/pkg/core/math/vec"
 )
 
@@ -50,7 +50,7 @@ func (m Matrix) Cholesky(dst Matrix) error {
 			if j > 0 {
 				dstRowI := dst[i][:j]
 				dstRowJ := dst[j][:j]
-				sum -= primitive.Dot(dstRowI, dstRowJ, 1, 1, j)
+				sum -= fp32.Dot(dstRowI, dstRowJ, 1, 1, j)
 			}
 			if i == j {
 				// Diagonal element
@@ -102,7 +102,7 @@ func (m Matrix) CholeskySolve(b vec.Vector, dst vec.Vector) error {
 		if i > 0 {
 			LRow := L[i][:i]
 			yVec := y[:i]
-			sum -= primitive.Dot(LRow, yVec, 1, 1, i)
+			sum -= fp32.Dot(LRow, yVec, 1, 1, i)
 		}
 		if L[i][i] == 0 {
 			return errors.New("cholesky solve: singular matrix")
@@ -122,7 +122,7 @@ func (m Matrix) CholeskySolve(b vec.Vector, dst vec.Vector) error {
 			cols := len(L[0])
 			LColStart := (i+1)*cols + i // Start at row i+1, column i
 			dstVec := dst[i+1:]
-			sum -= primitive.Dot(LFlat[LColStart:], dstVec, cols, 1, n-i-1)
+			sum -= fp32.Dot(LFlat[LColStart:], dstVec, cols, 1, n-i-1)
 		}
 		if L[i][i] == 0 {
 			return errors.New("cholesky solve: singular matrix")

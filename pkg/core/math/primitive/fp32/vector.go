@@ -1,4 +1,4 @@
-package primitive
+package fp32
 
 // HadamardProduct computes element-wise product: dst[i] = a[i] * b[i]
 // Element-wise multiplication for tensor operations

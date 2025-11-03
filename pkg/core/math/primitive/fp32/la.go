@@ -1,4 +1,4 @@
-package primitive
+package fp32
 
 import (
 	"errors"

@@ -1,4 +1,4 @@
-package primitive
+package fp32
 
 // Convolve1DAdd computes 1D convolution and add: dst += conv(vec, kernel)
 // vec is vector of size N

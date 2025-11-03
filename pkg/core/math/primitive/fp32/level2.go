@@ -1,4 +1,4 @@
-package primitive
+package fp32
 
 // Gemv_N computes: y = alpha*A*x + beta*y (no transpose)
 // This is BLAS GEMV_N operation

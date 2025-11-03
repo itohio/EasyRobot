@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/chewxy/math32"
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
 )
 
@@ -55,7 +55,7 @@ func linearSingleSample(t, weight, bias *tensor.Tensor, inFeatures, outFeatures 
 	M := inFeatures
 	N := outFeatures
 
-	primitive.Gemv_T(
+	fp32.Gemv_T(
 		result.Data,
 		weight.Data,
 		t.Data,
@@ -66,7 +66,7 @@ func linearSingleSample(t, weight, bias *tensor.Tensor, inFeatures, outFeatures 
 	if bias != nil {
 		biasShape := bias.Shape()
 		if len(biasShape) == 1 && biasShape[0] == outFeatures {
-			primitive.Axpy(result.Data, bias.Data, 1, 1, outFeatures, 1.0)
+			fp32.Axpy(result.Data, bias.Data, 1, 1, outFeatures, 1.0)
 		}
 	}
 
@@ -80,7 +80,7 @@ func linearBatch(t, weight, bias *tensor.Tensor, batchSize, inFeatures, outFeatu
 		Data: make([]float32, batchSize*outFeatures),
 	}
 
-	primitive.Gemm_NN(
+	fp32.Gemm_NN(
 		result.Data,
 		t.Data,
 		weight.Data,
@@ -98,7 +98,7 @@ func linearBatch(t, weight, bias *tensor.Tensor, batchSize, inFeatures, outFeatu
 		if len(biasShape) == 1 && biasShape[0] == outFeatures {
 			for b := 0; b < batchSize; b++ {
 				offset := b * outFeatures
-				primitive.Axpy(result.Data[offset:], bias.Data, 1, 1, outFeatures, 1.0)
+				fp32.Axpy(result.Data[offset:], bias.Data, 1, 1, outFeatures, 1.0)
 			}
 		}
 	}

@@ -1,4 +1,4 @@
-package primitive
+package fp32
 
 // Gemm_NN computes: C = alpha*A*B + beta*C (neither transposed)
 // This is BLAS GEMM_NN operation

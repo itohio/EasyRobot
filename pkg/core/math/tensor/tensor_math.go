@@ -4,11 +4,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
 )
 
 // Add adds another tensor element-wise in-place.
-// Uses primitive.Axpy for efficient computation.
+// Uses fp32 primitive.Axpy for efficient computation.
 // Returns the tensor itself for method chaining.
 func (t *Tensor) Add(other *Tensor) *Tensor {
 	if t == nil || other == nil {
@@ -25,14 +25,14 @@ func (t *Tensor) Add(other *Tensor) *Tensor {
 		return t
 	}
 
-	// Use primitive.Axpy for contiguous case
+	// Use fp32.Axpy for contiguous case
 	size := t.Size()
-	primitive.Axpy(t.Data, other.Data, 1, 1, size, 1.0)
+	fp32.Axpy(t.Data, other.Data, 1, 1, size, 1.0)
 	return t
 }
 
 // Sub subtracts another tensor element-wise in-place.
-// Uses primitive.Axpy with alpha=-1.
+// Uses fp32 primitive.Axpy with alpha=-1.
 func (t *Tensor) Sub(other *Tensor) *Tensor {
 	if t == nil || other == nil {
 		return t
@@ -48,9 +48,9 @@ func (t *Tensor) Sub(other *Tensor) *Tensor {
 		return t
 	}
 
-	// Use primitive.Axpy for contiguous case
+	// Use fp32.Axpy for contiguous case
 	size := t.Size()
-	primitive.Axpy(t.Data, other.Data, 1, 1, size, -1.0)
+	fp32.Axpy(t.Data, other.Data, 1, 1, size, -1.0)
 	return t
 }
 
@@ -83,7 +83,7 @@ func (t *Tensor) Div(other *Tensor) *Tensor {
 }
 
 // Scale multiplies the tensor by a scalar in-place.
-// Uses primitive.Scal for efficient computation.
+// Uses fp32 primitive.Scal for efficient computation.
 func (t *Tensor) Scale(scalar float32) *Tensor {
 	if t == nil {
 		return t
@@ -95,9 +95,9 @@ func (t *Tensor) Scale(scalar float32) *Tensor {
 		return t
 	}
 
-	// Use primitive.Scal for contiguous case
+	// Use fp32.Scal for contiguous case
 	size := t.Size()
-	primitive.Scal(t.Data, 1, size, scalar)
+	fp32.Scal(t.Data, 1, size, scalar)
 	return t
 }
 
@@ -201,7 +201,7 @@ func (t *Tensor) Sum(dims ...int) *Tensor {
 		sum := float32(0)
 		if t.isContiguous() {
 			size := t.Size()
-			sum = primitive.Asum(t.Data, 1, size)
+			sum = fp32.Asum(t.Data, 1, size)
 		} else {
 			sum = t.sumAllStrided()
 		}
@@ -285,7 +285,7 @@ func (t *Tensor) Min(dims ...int) *Tensor {
 }
 
 // ArgMax returns indices of maximum elements along specified dimension.
-// Uses primitive.Iamax for vector case.
+// Uses fp32 primitive.Iamax for vector case.
 func (t *Tensor) ArgMax(dim int) *Tensor {
 	if t == nil {
 		return nil
@@ -301,7 +301,7 @@ func (t *Tensor) ArgMax(dim int) *Tensor {
 			// Handle strided case
 			return t.argMaxStrided(dim)
 		}
-		idx := primitive.Iamax(t.Data, 1, t.Size())
+		idx := fp32.Iamax(t.Data, 1, t.Size())
 		return &Tensor{
 			Dim:  []int{1},
 			Data: []float32{float32(idx)},
@@ -446,7 +446,7 @@ func (t *Tensor) scaleStridedRecursive(scalar float32, indices []int, strides []
 func (t *Tensor) copyTo(dst *Tensor) {
 	if t.isContiguous() && dst.isContiguous() && t.Size() == dst.Size() {
 		size := t.Size()
-		primitive.Copy(dst.Data, t.Data, 1, 1, size)
+		fp32.Copy(dst.Data, t.Data, 1, 1, size)
 		return
 	}
 

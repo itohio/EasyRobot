@@ -4,7 +4,7 @@ import (
 	"errors"
 
 	"github.com/chewxy/math32"
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
 )
 
 const (
@@ -42,12 +42,12 @@ func (m Matrix) Inverse(dst Matrix) error {
 	work := make([]float32, len(mFlat))
 	copy(work, mFlat)
 	ipiv := make([]int, rows)
-	if err := primitive.Getrf_IP(work, ipiv, ldA, rows, cols); err != nil {
+	if err := fp32.Getrf_IP(work, ipiv, ldA, rows, cols); err != nil {
 		return ErrSingular
 	}
 
 	// Use Getri to compute inverse from LU decomposition
-	if err := primitive.Getri(dstFlat, work, ldA, ldInv, rows, ipiv); err != nil {
+	if err := fp32.Getri(dstFlat, work, ldA, ldInv, rows, ipiv); err != nil {
 		return ErrSingular
 	}
 

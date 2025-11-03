@@ -5,7 +5,7 @@ package vec
 import (
 	"github.com/chewxy/math32"
 	"github.com/itohio/EasyRobot/pkg/core/math"
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
 )
 
 type Vector []float32
@@ -22,7 +22,7 @@ func (v Vector) Sum() float32 {
 	if len(v) == 0 {
 		return 0
 	}
-	return primitive.Sum(v, len(v), 1)
+	return fp32.Sum(v, len(v), 1)
 }
 
 func (v Vector) Slice(start, end int) Vector {
@@ -48,7 +48,7 @@ func (v Vector) SumSqr() float32 {
 	if len(v) == 0 {
 		return 0
 	}
-	return primitive.SqrSum(v, len(v), 1)
+	return fp32.SqrSum(v, len(v), 1)
 }
 
 func (v Vector) Magnitude() float32 {
@@ -107,7 +107,7 @@ func (v Vector) Neg() Vector {
 	if len(v) == 0 {
 		return v
 	}
-	primitive.Scal(v, 1, len(v), -1.0)
+	fp32.Scal(v, 1, len(v), -1.0)
 	return v
 }
 
@@ -116,7 +116,7 @@ func (v Vector) Add(v1 Vector) Vector {
 		return v
 	}
 	// v = v + v1  =>  v = v + 1.0 * v1
-	primitive.Axpy(v, v1, 1, 1, len(v), 1.0)
+	fp32.Axpy(v, v1, 1, 1, len(v), 1.0)
 	return v
 }
 
@@ -124,7 +124,7 @@ func (v Vector) AddC(c float32) Vector {
 	if len(v) == 0 {
 		return v
 	}
-	primitive.SumArrInPlace(v, c, len(v))
+	fp32.SumArrInPlace(v, c, len(v))
 	return v
 }
 
@@ -133,7 +133,7 @@ func (v Vector) Sub(v1 Vector) Vector {
 		return v
 	}
 	// v = v - v1  =>  v = v + (-1.0) * v1
-	primitive.Axpy(v, v1, 1, 1, len(v), -1.0)
+	fp32.Axpy(v, v1, 1, 1, len(v), -1.0)
 	return v
 }
 
@@ -141,7 +141,7 @@ func (v Vector) SubC(c float32) Vector {
 	if len(v) == 0 {
 		return v
 	}
-	primitive.DiffArrInPlace(v, c, len(v))
+	fp32.DiffArrInPlace(v, c, len(v))
 	return v
 }
 
@@ -149,7 +149,7 @@ func (v Vector) MulC(c float32) Vector {
 	if len(v) == 0 {
 		return v
 	}
-	primitive.Scal(v, 1, len(v), c)
+	fp32.Scal(v, 1, len(v), c)
 	return v
 }
 
@@ -157,7 +157,7 @@ func (v Vector) MulCAdd(c float32, v1 Vector) Vector {
 	if len(v) == 0 {
 		return v
 	}
-	primitive.Axpy(v, v1, 1, 1, len(v), c)
+	fp32.Axpy(v, v1, 1, 1, len(v), c)
 	return v
 }
 
@@ -166,7 +166,7 @@ func (v Vector) MulCSub(c float32, v1 Vector) Vector {
 		return v
 	}
 	// v = v - v1 * c  =>  v = v + (-c) * v1
-	primitive.Axpy(v, v1, 1, 1, len(v), -c)
+	fp32.Axpy(v, v1, 1, 1, len(v), -c)
 	return v
 }
 
@@ -174,7 +174,7 @@ func (v Vector) DivC(c float32) Vector {
 	if len(v) == 0 || c == 0 {
 		return v
 	}
-	primitive.Scal(v, 1, len(v), 1.0/c)
+	fp32.Scal(v, 1, len(v), 1.0/c)
 	return v
 }
 
@@ -309,7 +309,7 @@ func (v Vector) Multiply(v1 Vector) Vector {
 	if len(v) == 0 {
 		return v
 	}
-	primitive.HadamardProduct(v, v, v1, len(v), 1, 1)
+	fp32.HadamardProduct(v, v, v1, len(v), 1, 1)
 	return v
 }
 
@@ -317,7 +317,7 @@ func (v Vector) Dot(v1 Vector) float32 {
 	if len(v) == 0 || len(v1) == 0 || len(v) != len(v1) {
 		return 0
 	}
-	return primitive.Dot(v, v1, 1, 1, len(v))
+	return fp32.Dot(v, v1, 1, 1, len(v))
 }
 
 func (v Vector) Cross(v1 Vector) Vector {
