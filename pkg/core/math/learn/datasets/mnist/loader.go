@@ -1,6 +1,7 @@
 package mnist
 
 import (
+	"compress/gzip"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -26,7 +27,13 @@ func Load(filename string, maxSamples int) ([]Sample, error) {
 	}
 	defer file.Close()
 
-	reader := csv.NewReader(file)
+	gzipReader, err := gzip.NewReader(file)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create gzip reader: %w", err)
+	}
+	defer gzipReader.Close()
+
+	reader := csv.NewReader(gzipReader)
 	var samples []Sample
 
 	rowNum := 0
