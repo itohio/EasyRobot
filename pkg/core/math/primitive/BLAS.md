@@ -56,6 +56,20 @@ All batched operations are implemented in `batched.go`.
 | **Strided GEMM** | `GemmStrided(c, a, b, ldC, ldA, ldB, M, N, K, alpha, beta, batchCount, stridea, strideb, stridec)` | `batched.go` | ✅ |
 | **Batched GEMV** | `GemvBatched(y, a, x, ldA, M, N, alpha, beta, batchCount, strideA, strideX, strideY)` | `batched.go` | ✅ |
 
+## Quantized Operations
+
+All quantized INT8 operations are implemented in `quantized.go`.
+
+| Operation | Our Function | Implementation | Status |
+|-----------|--------------|----------------|--------|
+| **Copy_Q8** | `Copy_Q8(y, x, strideY, strideX, n)` | `quantized.go` | ✅ |
+| **Gemm_NN_Q8** | `Gemm_NN_Q8(output, input, weight, ldOutput, ldInput, ldWeight, M, N, K, inputScale, weightScale, outputScale, inputZero, weightZero, outputZero)` | `quantized.go` | ✅ |
+| **Gemm_NN_Q8_Accum** | `Gemm_NN_Q8_Accum(output, input, weight, ldOutput, ldInput, ldWeight, M, N, K, inputZero, weightZero)` | `quantized.go` | ✅ |
+| **Conv2D_Q8** | `Conv2D_Q8(output, input, weights, batchSize, inChannels, outChannels, inHeight, inWidth, outHeight, outWidth, kernelH, kernelW, strideH, strideW, padH, padW, bias, inputScale, weightScale, outputScale, inputZero, weightZero, outputZero)` | `quantized.go` | ✅ |
+| **Im2Col_Q8** | `Im2Col_Q8(col, im, batchSize, channels, height, width, kernelH, kernelW, padH, padW, strideH, strideW)` | `quantized.go` | ✅ |
+| **Col2Im_Q8** | `Col2Im_Q8(im, col, batchSize, channels, height, width, kernelH, kernelW, padH, padW, strideH, strideW)` | `quantized.go` | ✅ |
+| **GemmBatched_Q8** | `GemmBatched_Q8(output, input, weight, ldOutput, ldInput, ldWeight, M, N, K, inputScale, weightScale, outputScale, inputZero, weightZero, outputZero, batchCount, strideOutput, strideInput, strideWeight)` | `quantized.go` | ✅ |
+
 ## Tensor Operations
 
 All tensor operations are implemented in `tensor.go`.

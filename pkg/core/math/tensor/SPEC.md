@@ -8,6 +8,10 @@ The `tensor` package provides multi-dimensional tensor operations optimized for 
 
 **Note**: Neural network operations (Linear, ReLU, Sigmoid, Tanh, Softmax, MSE, CrossEntropy) are in the separate `math/nn` package.
 
+**Quantization**: For INT8 quantized computation support:
+- Design document: [QUANTIZATION_PLAN.md](./QUANTIZATION_PLAN.md)
+- Implementation roadmap: [QUANTIZATION_IMPLEMENTATION.md](./QUANTIZATION_IMPLEMENTATION.md)
+
 ## Design Principles
 
 1. **Row-Major Storage**: All tensors stored in row-major order (matching Go nested arrays layout `[][]float32`)
@@ -675,6 +679,7 @@ output := input.GlobalAvgPool2D()
 
 ### 🔮 Future Work
 
+- **Quantization**: INT8 quantized computations (see [QUANTIZATION_PLAN.md](./QUANTIZATION_PLAN.md))
 - **Views**: Zero-copy slicing with offset + strides (beyond Reshape)
 - **Advanced Broadcasting**: Efficient broadcasting without copying
 - **General Transpose**: Support arbitrary dimension permutation
@@ -685,14 +690,15 @@ output := input.GlobalAvgPool2D()
 
 ```
 pkg/core/math/tensor/
-├── dense.go              # Core tensor structure and basic operations
-├── tensor_math.go         # Element-wise operations and reductions
-├── tensor_linalg.go       # Linear algebra operations
-├── tensor_conv.go         # Convolution and pooling operations
-├── tensor_math_test.go    # Tests for element-wise operations
-├── tensor_linalg_test.go  # Tests for linear algebra
-├── tensor_conv_test.go    # Tests for convolution operations
-└── SPEC.md                # This file
+├── dense.go                  # Core tensor structure and basic operations
+├── tensor_math.go            # Element-wise operations and reductions
+├── tensor_linalg.go          # Linear algebra operations
+├── tensor_conv.go            # Convolution and pooling operations
+├── tensor_math_test.go       # Tests for element-wise operations
+├── tensor_linalg_test.go     # Tests for linear algebra
+├── tensor_conv_test.go       # Tests for convolution operations
+├── SPEC.md                   # This file
+└── QUANTIZATION_PLAN.md      # INT8 quantization implementation plan
 ```
 
 ## Integration with Primitive Package

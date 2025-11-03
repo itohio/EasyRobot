@@ -307,6 +307,7 @@ For detailed specifications, see [LA.md](LA.md).
 - ✅ **Batched**: Complete (GemmBatched, GemmStrided, GemvBatched)
 - ✅ **Tensor**: Complete (Conv2D, Conv2DTransposed, Im2Col, Col2Im)
 - ✅ **LAPACK**: Complete (GETRF/GETRI, GEQRF/ORGQR, GESVD, GEPSEU, GNNLS)
+- ✅ **Quantized**: Complete (INT8 quantized operations for neural network inference)
 - 🔮 **Future**: Symmetric, triangular, banded matrices
 
 ## Performance Targets
@@ -414,6 +415,65 @@ func GemvBatched(
 
 **Use Case:** Batch of feed-forward operations
 
+## Quantized Operations
+
+### File: `quantized.go`
+
+INT8 quantized operations for efficient neural network inference.
+
+**Quantization Scheme:**
+- Asymmetric quantization: `real_value = scale * (quantized_value - zero_point)`
+- Uses uint8 storage for quantized values
+- Intermediate calculations use int32 to avoid overflow
+
+| Operation | Function | Description | Status |
+|-----------|----------|-------------|--------|
+| Copy | Copy_Q8 | Copy quantized vector | ✅ |
+| GEMM | Gemm_NN_Q8 | Quantized matrix multiply with requantization | ✅ |
+| GEMM Accum | Gemm_NN_Q8_Accum | Quantized GEMM with int32 accumulator | ✅ |
+| Conv2D | Conv2D_Q8 | Quantized 2D convolution | ✅ |
+| Im2Col | Im2Col_Q8 | Image to column for quantized conv | ✅ |
+| Col2Im | Col2Im_Q8 | Column to image for quantized conv | ✅ |
+| Batched GEMM | GemmBatched_Q8 | Batched quantized GEMM | ✅ |
+
+### Gemm_NN_Q8: Quantized Matrix Multiplication
+
+```go
+// Gemm_NN_Q8: Quantized GEMM with zero-point corrections
+func Gemm_NN_Q8(
+    output, input, weight []uint8,
+    ldOutput, ldInput, ldWeight, M, N, K int,
+    inputScale, weightScale, outputScale float32,
+    inputZero, weightZero, outputZero int32,
+)
+```
+
+**Zero-Point Correction:**
+```
+C_int[i,j] = (sum(A_int[i,k] * B_int[k,j]) 
+             - inputZero * sum(B_int[k,j])
+             - weightZero * sum(A_int[i,k])
+             + inputZero * weightZero * K) * scale
+where scale = inputScale * weightScale / outputScale
+```
+
+### Conv2D_Q8: Quantized Convolution
+
+Uses Im2Col + quantized GEMM approach with int32 accumulator for bias.
+
+```go
+// Conv2D_Q8: Quantized 2D convolution
+func Conv2D_Q8(
+    output, input, weights []uint8,
+    batchSize, inChannels, outChannels int,
+    inHeight, inWidth, outHeight, outWidth int,
+    kernelH, kernelW, strideH, strideW, padH, padW int,
+    bias []int32,
+    inputScale, weightScale, outputScale float32,
+    inputZero, weightZero, outputZero int32,
+)
+```
+
 ## Tensor-Specific Operations
 
 ### File: `tensor.go`
@@ -479,6 +539,8 @@ pkg/core/math/primitive/
 ├── batched_test.go
 ├── la.go              # LAPACK operations (factorizations, decompositions)
 ├── la_test.go
+├── quantized.go       # Quantized INT8 operations for neural networks
+├── quantized_test.go
 ├── tensor.go          # Tensor operations (conv, pooling, etc.)
 ├── tensor_test.go
 ├── conv.go            # Convolution operations (legacy, to be merged)
@@ -539,6 +601,7 @@ Operation: For each output position (i,j):
 4. **Phase 4**: Implement Batched operations (GemmBatched, GemvBatched) ✅
 5. **Phase 5**: Implement Tensor operations (Conv2D, Im2Col) ✅
 6. **Phase 6**: Implement LAPACK operations (GETRF/GETRI, GEQRF/ORGQR, GESVD, GEPSEU, GNNLS) ✅
-7. **Phase 7**: Update mat/tensor packages to use new primitives
-8. **Phase 8**: Performance optimization and tiling
+7. **Phase 7**: Implement Quantized operations (INT8 quantization for neural networks) ✅
+8. **Phase 8**: Update mat/tensor packages to use new primitives
+9. **Phase 9**: Performance optimization and tiling
 
