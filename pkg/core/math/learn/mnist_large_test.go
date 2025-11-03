@@ -88,10 +88,11 @@ func TestMNISTLarge(t *testing.T) {
 		t.Fatalf("Failed to create dense1: %v", err)
 	}
 	relu4 := layers.NewReLU("relu4")
+	dropout1 := layers.NewDropout("dropout1", layers.WithDropoutRate(0.3), layers.WithTrainingMode(true))
 
 	dense2, err := layers.NewDense(64, 10, layers.WithCanLearn(true))
 	if err != nil {
-		t.Fatalf("Failed to create dense3: %v", err)
+		t.Fatalf("Failed to create dense2: %v", err)
 	}
 
 	model, err := nn.NewModelBuilder([]int{1, 1, 28, 28}).
@@ -104,6 +105,7 @@ func TestMNISTLarge(t *testing.T) {
 		AddLayer(flatten).
 		AddLayer(dense1).
 		AddLayer(relu4).
+		AddLayer(dropout1).
 		AddLayer(dense2).
 		Build()
 	if err != nil {
@@ -161,6 +163,8 @@ func TestMNISTLarge(t *testing.T) {
 
 	// Training loop - reduced epochs for speed
 	epochs := 2
+	// Ensure dropout is in training mode
+	dropout1.SetTrainingMode(true)
 	t.Log("\n=== Training ===")
 	for epoch := 0; epoch < epochs; epoch++ {
 		totalLoss := float32(0)
@@ -231,6 +235,8 @@ func TestMNISTLarge(t *testing.T) {
 	}
 
 	// Validation on test set
+	// Set dropout to inference mode for validation
+	dropout1.SetTrainingMode(false)
 	t.Log("\n=== Validation ===")
 	testCorrect := 0
 	totalTestLoss := float32(0)

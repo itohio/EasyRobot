@@ -112,20 +112,25 @@ func TestConv1DParameterAccess(t *testing.T) {
 	assert.Error(t, err, "Should return error for wrong weight shape")
 }
 
-func TestParameterAccessWithNilBias(t *testing.T) {
-	// Create a Dense layer without bias
-	dense, err := layers.NewDense(4, 2, layers.WithDenseBias(false))
-	require.NoError(t, err, "Should create Dense layer without bias")
+func TestParameterAccessWithBias(t *testing.T) {
+	// Create a Dense layer (bias is always created)
+	dense, err := layers.NewDense(4, 2)
+	require.NoError(t, err, "Should create Dense layer")
 
-	// Test getting bias should return empty tensor
+	// Test getting bias should return non-empty tensor
 	bias := dense.Bias()
-	assert.Len(t, bias.Dim, 0, "Bias should be empty when disabled")
+	assert.Len(t, bias.Dim, 1, "Bias should have dimensions")
+	assert.Equal(t, []int{2}, bias.Dim, "Bias shape should match")
 
-	// Test setting bias should return error
+	// Test setting bias should succeed
 	newBias := tensor.Tensor{
 		Dim:  []int{2},
 		Data: []float32{0.5, -0.5},
 	}
 	err = dense.SetBias(newBias)
-	assert.Error(t, err, "Should return error for setting bias on layer without bias")
+	require.NoError(t, err, "Should succeed setting bias")
+
+	// Verify bias was set
+	bias = dense.Bias()
+	assert.Equal(t, newBias.Data, bias.Data, "Bias data should match")
 }

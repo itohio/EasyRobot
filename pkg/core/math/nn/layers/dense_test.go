@@ -13,7 +13,7 @@ func TestNewDense(t *testing.T) {
 		name           string
 		inFeatures     int
 		outFeatures    int
-		opts           []interface{}
+		opts           []Option
 		expectError    bool
 		expectBias     bool
 		expectCanLearn bool
@@ -27,19 +27,10 @@ func TestNewDense(t *testing.T) {
 			expectCanLearn: false,
 		},
 		{
-			name:           "no_bias",
-			inFeatures:     4,
-			outFeatures:    2,
-			opts:           []interface{}{WithDenseBias(false)},
-			expectError:    false,
-			expectBias:     false,
-			expectCanLearn: false,
-		},
-		{
 			name:           "with_can_learn",
 			inFeatures:     4,
 			outFeatures:    2,
-			opts:           []interface{}{WithCanLearn(true)},
+			opts:           []Option{WithCanLearn(true)},
 			expectError:    false,
 			expectBias:     true,
 			expectCanLearn: true,
@@ -48,7 +39,7 @@ func TestNewDense(t *testing.T) {
 			name:        "with_name",
 			inFeatures:  4,
 			outFeatures: 2,
-			opts:        []interface{}{WithName("my_dense")},
+			opts:        []Option{WithName("my_dense")},
 			expectError: false,
 			expectBias:  true,
 		},
@@ -438,13 +429,6 @@ func TestDense_Bias(t *testing.T) {
 	assert.Equal(t, []int{2}, bias.Dim, "Bias shape should match")
 	assert.Len(t, bias.Data, 2, "Bias data size should match")
 
-	// Test without bias
-	dense2, err := NewDense(4, 2, WithDenseBias(false))
-	require.NoError(t, err, "Should create Dense layer")
-
-	bias = dense2.Bias()
-	assert.Len(t, bias.Dim, 0, "Bias should be empty when disabled")
-
 	// Test nil receiver
 	var nilDense *Dense
 	bias = nilDense.Bias()
@@ -499,13 +483,6 @@ func TestDense_SetBias(t *testing.T) {
 
 	err = dense.SetBias(tensor.Tensor{})
 	assert.Error(t, err, "Should return error for empty tensor")
-
-	// Test without bias
-	dense2, err := NewDense(4, 2, WithDenseBias(false))
-	require.NoError(t, err, "Should create Dense layer")
-
-	err = dense2.SetBias(newBias)
-	assert.Error(t, err, "Should return error for layer without bias")
 
 	var nilDense *Dense
 	err = nilDense.SetBias(newBias)
@@ -713,32 +690,6 @@ func TestDense_BackwardAccuracy(t *testing.T) {
 			expectedInputGrad:  []float32{1.0, 1.0}, // gradOutput @ weight^T = [1] @ [[1],[1]]^T = [1, 1]
 		},
 		{
-			name:        "1d_no_bias",
-			inFeatures:  2,
-			outFeatures: 1,
-			hasBias:     false,
-			inputShape:  []int{2},
-			input: tensor.Tensor{
-				Dim:  []int{2},
-				Data: []float32{1.0, 2.0},
-			},
-			weight: tensor.Tensor{
-				Dim:  []int{2, 1},
-				Data: []float32{1.0, 1.0},
-			},
-			bias: tensor.Tensor{
-				Dim:  []int{1},
-				Data: []float32{0.0},
-			},
-			gradOutput: tensor.Tensor{
-				Dim:  []int{1},
-				Data: []float32{1.0},
-			},
-			expectedWeightGrad: []float32{1.0, 2.0},
-			expectedBiasGrad:   nil, // No bias
-			expectedInputGrad:  []float32{1.0, 1.0},
-		},
-		{
 			name:        "1d_multi_output",
 			inFeatures:  3,
 			outFeatures: 2,
@@ -823,20 +774,16 @@ func TestDense_BackwardAccuracy(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			opts := []interface{}{WithCanLearn(true)}
-			if !tt.hasBias {
-				opts = append(opts, WithDenseBias(false))
-			}
+			opts := []Option{WithCanLearn(true)}
 			dense, err := NewDense(tt.inFeatures, tt.outFeatures, opts...)
 			require.NoError(t, err, "Should create Dense layer")
 
 			err = dense.SetWeight(tt.weight)
 			require.NoError(t, err, "SetWeight should succeed")
 
-			if tt.hasBias {
-				err = dense.SetBias(tt.bias)
-				require.NoError(t, err, "SetBias should succeed")
-			}
+			// Bias is always created, so always set it
+			err = dense.SetBias(tt.bias)
+			require.NoError(t, err, "SetBias should succeed")
 
 			err = dense.Init(tt.inputShape)
 			require.NoError(t, err, "Init should succeed")
@@ -862,10 +809,10 @@ func TestDense_BackwardAccuracy(t *testing.T) {
 					"Weight grad[%d] should match expected", i)
 			}
 
-			// Verify bias gradient
-			if tt.hasBias {
-				biasParam, _ := dense.Base.Parameter(ParamBiases)
-				require.NotNil(t, biasParam, "Bias parameter should exist")
+			// Verify bias gradient (bias is always created)
+			biasParam, _ := dense.Base.Parameter(ParamBiases)
+			require.NotNil(t, biasParam, "Bias parameter should exist")
+			if tt.expectedBiasGrad != nil {
 				require.NotEmpty(t, biasParam.Grad.Dim, "Bias grad should be allocated")
 				require.Len(t, biasParam.Grad.Data, len(tt.expectedBiasGrad), "Bias grad length should match")
 				for i := range tt.expectedBiasGrad {

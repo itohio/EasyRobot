@@ -16,20 +16,10 @@ type Dense struct {
 	hasBias     bool
 }
 
-// DenseOption represents an option for configuring a Dense layer.
-type DenseOption func(*Dense)
-
-// WithDenseBias sets whether to use a bias term.
-func WithDenseBias(useBias bool) DenseOption {
-	return func(d *Dense) {
-		d.hasBias = useBias
-	}
-}
-
 // NewDense creates a new Dense layer with the given input and output features.
 // Weight initialization is not handled here - weights must be set externally.
-// Accepts both DenseOption and BaseOption.
-func NewDense(inFeatures, outFeatures int, opts ...interface{}) (*Dense, error) {
+// Accepts Base Option types.
+func NewDense(inFeatures, outFeatures int, opts ...Option) (*Dense, error) {
 	if inFeatures <= 0 {
 		return nil, fmt.Errorf("Dense: inFeatures must be positive, got %d", inFeatures)
 	}
@@ -37,33 +27,17 @@ func NewDense(inFeatures, outFeatures int, opts ...interface{}) (*Dense, error) 
 		return nil, fmt.Errorf("Dense: outFeatures must be positive, got %d", outFeatures)
 	}
 
-	// Collect base options
-	var baseOpts []Option
-	denseOpts := []DenseOption{}
+	// Create Base with all options
+	base := NewBase("dense", opts...)
+
+	// Check if bias parameter was set via options (e.g., WithBiases)
+	_, hasBiasParam := base.Parameter(ParamBiases)
+
 	dense := &Dense{
+		Base:        base,
 		inFeatures:  inFeatures,
 		outFeatures: outFeatures,
-		hasBias:     true, // Default to having bias
-	}
-
-	// Separate options into base options and dense options
-	for _, opt := range opts {
-		switch v := opt.(type) {
-		case Option:
-			baseOpts = append(baseOpts, v)
-		case DenseOption:
-			denseOpts = append(denseOpts, v)
-		default:
-			return nil, fmt.Errorf("Dense: invalid option type")
-		}
-	}
-
-	// Create Base with options
-	dense.Base = NewBase("dense", baseOpts...)
-
-	// Apply dense-specific options
-	for _, opt := range denseOpts {
-		opt(dense)
+		hasBias:     true, // Always create bias by default
 	}
 
 	// Initialize weight parameter in map
@@ -76,8 +50,8 @@ func NewDense(inFeatures, outFeatures int, opts ...interface{}) (*Dense, error) 
 		RequiresGrad: dense.Base.CanLearn(),
 	})
 
-	// Create bias parameter if needed
-	if dense.hasBias {
+	// Create bias parameter if not already set via options
+	if !hasBiasParam {
 		biasData := tensor.Tensor{
 			Dim:  []int{outFeatures},
 			Data: make([]float32, outFeatures),
