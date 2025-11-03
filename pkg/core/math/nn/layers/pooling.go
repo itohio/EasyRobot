@@ -124,6 +124,9 @@ func (m *MaxPool2D) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 }
 
 // Backward computes gradients w.r.t. input.
+// For each output position, routes the gradient back to the input positions
+// that produced the maximum value during forward pass.
+// If multiple positions had the same max value, the gradient is divided equally among them.
 func (m *MaxPool2D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 	if m == nil {
 		return tensor.Tensor{}, fmt.Errorf("MaxPool2D.Backward: nil layer")
@@ -143,18 +146,96 @@ func (m *MaxPool2D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("MaxPool2D.Backward: output not stored, must call Forward first")
 	}
 
-	// For now, MaxPool2D backward is not implemented
-	if m.Base.CanLearn() {
-		return tensor.Tensor{}, fmt.Errorf("MaxPool2D.Backward: backward pass not yet implemented")
+	inputShape := input.Shape()
+	gradOutputShape := gradOutput.Shape()
+	outputShape := output.Shape()
+
+	// Validate shapes
+	if len(inputShape) != 4 || len(gradOutputShape) != 4 || len(outputShape) != 4 {
+		return tensor.Tensor{}, fmt.Errorf("MaxPool2D.Backward: expected 4D tensors, got input %v, gradOutput %v, output %v", inputShape, gradOutputShape, outputShape)
 	}
 
-	// For inference-only, we don't compute gradients
-	gradSize := gradOutput.Size()
+	batchSize := inputShape[0]
+	channels := inputShape[1]
+	inHeight := inputShape[2]
+	inWidth := inputShape[3]
+	outHeight := outputShape[2]
+	outWidth := outputShape[3]
+
+	// Initialize gradient input with zeros
 	gradInput := tensor.Tensor{
-		Dim:  make([]int, len(gradOutput.Dim)),
-		Data: make([]float32, gradSize),
+		Dim:  []int{batchSize, channels, inHeight, inWidth},
+		Data: make([]float32, batchSize*channels*inHeight*inWidth),
 	}
-	copy(gradInput.Dim, gradOutput.Dim)
+
+	// For each output position, route gradient back to input positions that produced the max
+	for b := 0; b < batchSize; b++ {
+		batchOffset := b * channels * inHeight * inWidth
+		outputBatchOffset := b * channels * outHeight * outWidth
+		gradOutputBatchOffset := b * channels * outHeight * outWidth
+
+		for c := 0; c < channels; c++ {
+			channelOffset := batchOffset + c*inHeight*inWidth
+			outputChannelOffset := outputBatchOffset + c*outHeight*outWidth
+			gradOutputChannelOffset := gradOutputBatchOffset + c*outHeight*outWidth
+
+			for outH := 0; outH < outHeight; outH++ {
+				for outW := 0; outW < outWidth; outW++ {
+					// Calculate input window position
+					startH := outH*m.strideH - m.padH
+					startW := outW*m.strideW - m.padW
+
+					// Get output value (max value from forward pass)
+					outputIdx := outputChannelOffset + outH*outWidth + outW
+					maxVal := output.Data[outputIdx]
+
+					// Get gradient for this output position
+					gradOutputIdx := gradOutputChannelOffset + outH*outWidth + outW
+					gradVal := gradOutput.Data[gradOutputIdx]
+
+					// Count how many input positions had the max value
+					maxCount := 0
+					for kh := 0; kh < m.kernelH; kh++ {
+						for kw := 0; kw < m.kernelW; kw++ {
+							inH := startH + kh
+							inW := startW + kw
+
+							if inH >= 0 && inH < inHeight && inW >= 0 && inW < inWidth {
+								inputIdx := channelOffset + inH*inWidth + inW
+								// Use epsilon to handle floating point comparison
+								epsilon := float32(1e-6)
+								diff := input.Data[inputIdx] - maxVal
+								if diff > -epsilon && diff < epsilon {
+									maxCount++
+								}
+							}
+						}
+					}
+
+					// Route gradient equally to all positions that had the max value
+					if maxCount > 0 {
+						gradPerPosition := gradVal / float32(maxCount)
+						for kh := 0; kh < m.kernelH; kh++ {
+							for kw := 0; kw < m.kernelW; kw++ {
+								inH := startH + kh
+								inW := startW + kw
+
+								if inH >= 0 && inH < inHeight && inW >= 0 && inW < inWidth {
+									inputIdx := channelOffset + inH*inWidth + inW
+									// Use epsilon to handle floating point comparison
+									epsilon := float32(1e-6)
+									diff := input.Data[inputIdx] - maxVal
+									if diff > -epsilon && diff < epsilon {
+										gradInput.Data[inputIdx] += gradPerPosition
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 
 	m.Base.StoreGrad(gradInput)
 	return gradInput, nil

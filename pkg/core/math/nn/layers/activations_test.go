@@ -1,6 +1,7 @@
 package layers
 
 import (
+	"math/rand"
 	"testing"
 
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
@@ -187,4 +188,186 @@ func TestSoftmax(t *testing.T) {
 	gradInput, err := softmax.Backward(gradOutput)
 	require.NoError(t, err, "Backward should succeed")
 	assert.Len(t, gradInput.Data, 3, "GradInput should have size 3")
+}
+
+// TestDropout tests the Dropout layer
+func TestDropout(t *testing.T) {
+	t.Run("inference_mode_passthrough", func(t *testing.T) {
+		dropout := NewDropout("dropout", WithTrainingMode(false))
+		input := tensor.Tensor{
+			Dim:  []int{4},
+			Data: []float32{1.0, 2.0, 3.0, 4.0},
+		}
+
+		err := dropout.Init([]int{4})
+		require.NoError(t, err)
+
+		output, err := dropout.Forward(input)
+		require.NoError(t, err)
+		assert.Equal(t, input.Data, output.Data, "Inference mode should pass through unchanged")
+
+		// Test backward
+		gradOutput := tensor.Tensor{
+			Dim:  []int{4},
+			Data: []float32{0.1, 0.2, 0.3, 0.4},
+		}
+		gradInput, err := dropout.Backward(gradOutput)
+		require.NoError(t, err)
+		assert.Equal(t, gradOutput.Data, gradInput.Data, "Inference mode backward should pass through unchanged")
+	})
+
+	t.Run("training_mode_p_zero", func(t *testing.T) {
+		dropout := NewDropout("dropout", WithDropoutRate(0.0), WithTrainingMode(true))
+		input := tensor.Tensor{
+			Dim:  []int{4},
+			Data: []float32{1.0, 2.0, 3.0, 4.0},
+		}
+
+		err := dropout.Init([]int{4})
+		require.NoError(t, err)
+
+		output, err := dropout.Forward(input)
+		require.NoError(t, err)
+		assert.Equal(t, input.Data, output.Data, "p=0 should pass through unchanged even in training")
+
+		gradOutput := tensor.Tensor{
+			Dim:  []int{4},
+			Data: []float32{0.1, 0.2, 0.3, 0.4},
+		}
+		gradInput, err := dropout.Backward(gradOutput)
+		require.NoError(t, err)
+		assert.Equal(t, gradOutput.Data, gradInput.Data, "p=0 backward should pass through unchanged")
+	})
+
+	t.Run("training_mode_deterministic", func(t *testing.T) {
+		// Use deterministic RNG for reproducible test
+		rng := rand.New(rand.NewSource(42))
+		dropout := NewDropout("dropout",
+			WithDropoutRate(0.5),
+			WithTrainingMode(true),
+			WithDropoutRNG(rng),
+		)
+
+		input := tensor.Tensor{
+			Dim:  []int{10},
+			Data: []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0},
+		}
+
+		err := dropout.Init([]int{10})
+		require.NoError(t, err)
+
+		output, err := dropout.Forward(input)
+		require.NoError(t, err)
+
+		// With p=0.5, some elements should be zero, others scaled by 2.0
+		scale := float32(1.0) / (1.0 - 0.5) // = 2.0
+		zeroCount := 0
+		scaledCount := 0
+
+		for i, val := range output.Data {
+			if val == 0 {
+				zeroCount++
+				assert.Equal(t, float32(0), val, "Dropped element should be zero")
+			} else {
+				scaledCount++
+				expected := input.Data[i] * scale
+				assert.InDelta(t, expected, val, 1e-6, "Non-dropped element should be scaled")
+			}
+		}
+
+		// With deterministic seed, we should get consistent results
+		assert.Greater(t, zeroCount, 0, "Some elements should be dropped")
+		assert.Greater(t, scaledCount, 0, "Some elements should be kept and scaled")
+
+		// Test backward
+		gradOutput := tensor.Tensor{
+			Dim:  make([]int, len(input.Dim)),
+			Data: make([]float32, len(input.Data)),
+		}
+		copy(gradOutput.Dim, input.Dim)
+		for i := range gradOutput.Data {
+			gradOutput.Data[i] = 1.0
+		}
+
+		gradInput, err := dropout.Backward(gradOutput)
+		require.NoError(t, err)
+
+		// Gradient should be multiplied by mask (0 or scale)
+		for i := range gradInput.Data {
+			if output.Data[i] == 0 {
+				assert.Equal(t, float32(0), gradInput.Data[i], "Gradient for dropped element should be zero")
+			} else {
+				assert.InDelta(t, scale, gradInput.Data[i], 1e-6, "Gradient for kept element should be scaled")
+			}
+		}
+	})
+
+	t.Run("shape_preservation", func(t *testing.T) {
+		shapes := [][]int{
+			{10},
+			{5, 4},
+			{2, 3, 4},
+		}
+
+		for _, shape := range shapes {
+			dropout := NewDropout("dropout", WithTrainingMode(false))
+			err := dropout.Init(shape)
+			require.NoError(t, err)
+
+			outputShape, err := dropout.OutputShape(shape)
+			require.NoError(t, err)
+			assert.Equal(t, shape, outputShape, "Output shape should match input shape")
+		}
+	})
+
+	t.Run("training_mode_setter", func(t *testing.T) {
+		dropout := NewDropout("dropout")
+		assert.False(t, dropout.TrainingMode(), "Default should be inference mode")
+
+		dropout.SetTrainingMode(true)
+		assert.True(t, dropout.TrainingMode(), "Should be in training mode after setting")
+
+		dropout.SetTrainingMode(false)
+		assert.False(t, dropout.TrainingMode(), "Should be in inference mode after setting")
+	})
+
+	t.Run("rate_getter", func(t *testing.T) {
+		dropout := NewDropout("dropout", WithDropoutRate(0.3))
+		assert.InDelta(t, 0.3, dropout.Rate(), 1e-6, "Rate should match set value")
+
+		dropout2 := NewDropout("dropout2") // Default rate
+		assert.InDelta(t, 0.5, dropout2.Rate(), 1e-6, "Default rate should be 0.5")
+	})
+
+	t.Run("invalid_rate_ignored", func(t *testing.T) {
+		// Invalid rates should be ignored, using default
+		dropout := NewDropout("dropout", WithDropoutRate(-0.1))
+		assert.InDelta(t, 0.5, dropout.Rate(), 1e-6, "Invalid negative rate should be ignored")
+
+		dropout2 := NewDropout("dropout2", WithDropoutRate(1.0))
+		assert.InDelta(t, 0.5, dropout2.Rate(), 1e-6, "Invalid rate >= 1 should be ignored")
+	})
+
+	t.Run("empty_input_error", func(t *testing.T) {
+		dropout := NewDropout("dropout")
+		err := dropout.Init([]int{})
+		require.Error(t, err, "Init with empty shape should error")
+
+		input := tensor.Tensor{Dim: []int{}, Data: []float32{}}
+		_, err = dropout.Forward(input)
+		require.Error(t, err, "Forward with empty input should error")
+	})
+
+	t.Run("backward_without_forward_error", func(t *testing.T) {
+		dropout := NewDropout("dropout")
+		err := dropout.Init([]int{4})
+		require.NoError(t, err)
+
+		gradOutput := tensor.Tensor{
+			Dim:  []int{4},
+			Data: []float32{1.0, 1.0, 1.0, 1.0},
+		}
+		_, err = dropout.Backward(gradOutput)
+		require.Error(t, err, "Backward without Forward should error")
+	})
 }

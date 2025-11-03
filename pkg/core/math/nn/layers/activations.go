@@ -3,6 +3,7 @@ package layers
 import (
 	"fmt"
 	"math"
+	"math/rand"
 
 	"github.com/chewxy/math32"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
@@ -521,4 +522,183 @@ func softmax2DCols(t *tensor.Tensor) {
 			}
 		}
 	}
+}
+
+// DropoutOption represents a configuration option for Dropout layer.
+type DropoutOption func(*Dropout)
+
+// WithDropoutRate returns a DropoutOption that sets the dropout rate.
+func WithDropoutRate(rate float32) DropoutOption {
+	return func(d *Dropout) {
+		if rate < 0 || rate >= 1 {
+			return // Invalid rate, ignore
+		}
+		d.p = rate
+	}
+}
+
+// WithTrainingMode returns a DropoutOption that sets the training mode.
+func WithTrainingMode(isTraining bool) DropoutOption {
+	return func(d *Dropout) {
+		d.isTraining = isTraining
+	}
+}
+
+// WithDropoutRNG returns a DropoutOption that sets the random number generator.
+func WithDropoutRNG(rng *rand.Rand) DropoutOption {
+	return func(d *Dropout) {
+		if rng != nil {
+			d.rng = rng
+		}
+	}
+}
+
+// Dropout layer implements dropout regularization as a Layer.
+// During training: randomly sets elements to zero with probability p, scales by 1/(1-p).
+// During inference: passes input through unchanged.
+type Dropout struct {
+	Base
+	p          float32       // Dropout rate (probability of dropping, 0.0 to 1.0)
+	isTraining bool          // Whether in training mode
+	mask       tensor.Tensor // Mask stored from forward pass (for backward)
+	rng        *rand.Rand    // Random number generator
+}
+
+// NewDropout creates a new Dropout layer.
+// Default dropout rate is 0.5, default training mode is false (inference).
+func NewDropout(name string, opts ...DropoutOption) *Dropout {
+	d := &Dropout{
+		Base:       NewBase("dropout", WithName(name)),
+		p:          0.5,
+		isTraining: false,
+		rng:        rand.New(rand.NewSource(rand.Int63())),
+	}
+
+	// Apply options
+	for _, opt := range opts {
+		opt(d)
+	}
+
+	return d
+}
+
+// Init initializes the layer.
+func (d *Dropout) Init(inputShape []int) error {
+	if len(inputShape) == 0 {
+		return fmt.Errorf("Dropout.Init: empty input shape")
+	}
+	// Output shape is same as input for Dropout
+	outputSize := 1
+	for _, dim := range inputShape {
+		outputSize *= dim
+	}
+	d.Base.AllocOutput(inputShape, outputSize)
+	return nil
+}
+
+// Forward computes dropout: during training, randomly zero elements with probability p and scale by 1/(1-p).
+// During inference, passes input through unchanged.
+func (d *Dropout) Forward(input tensor.Tensor) (tensor.Tensor, error) {
+	if len(input.Dim) == 0 {
+		return tensor.Tensor{}, fmt.Errorf("Dropout.Forward: empty input")
+	}
+
+	// Store input
+	d.Base.StoreInput(input)
+
+	// Get pre-allocated output tensor
+	output := d.Base.Output()
+	if len(output.Dim) == 0 {
+		return tensor.Tensor{}, fmt.Errorf("Dropout.Forward: output not allocated, must call Init first")
+	}
+
+	inputSize := input.Size()
+	scale := float32(1.0) / (1.0 - d.p)
+
+	if d.isTraining && d.p > 0 {
+		// Allocate or reuse mask tensor
+		if len(d.mask.Dim) == 0 || d.mask.Size() != inputSize {
+			d.mask = tensor.Tensor{
+				Dim:  make([]int, len(input.Dim)),
+				Data: make([]float32, inputSize),
+			}
+			copy(d.mask.Dim, input.Dim)
+		}
+
+		// Generate mask and apply dropout
+		for i := range output.Data {
+			if d.rng.Float32() < d.p {
+				// Drop this element
+				d.mask.Data[i] = 0
+				output.Data[i] = 0
+			} else {
+				// Keep this element, scale by 1/(1-p)
+				d.mask.Data[i] = scale
+				output.Data[i] = input.Data[i] * scale
+			}
+		}
+	} else {
+		// Inference mode: pass through unchanged
+		copy(output.Data, input.Data)
+		// Clear mask (not needed in inference)
+		d.mask = tensor.Tensor{}
+	}
+
+	d.Base.StoreOutput(output)
+	return output, nil
+}
+
+// Backward computes dropout gradient: gradInput = gradOutput * mask.
+func (d *Dropout) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
+	if len(gradOutput.Dim) == 0 {
+		return tensor.Tensor{}, fmt.Errorf("Dropout.Backward: empty gradOutput")
+	}
+
+	input := d.Base.Input()
+	if len(input.Dim) == 0 {
+		return tensor.Tensor{}, fmt.Errorf("Dropout.Backward: input not stored, must call Forward first")
+	}
+
+	// Allocate gradient tensor
+	gradSize := gradOutput.Size()
+	gradInput := tensor.Tensor{
+		Dim:  make([]int, len(gradOutput.Dim)),
+		Data: make([]float32, gradSize),
+	}
+	copy(gradInput.Dim, gradOutput.Dim)
+
+	if d.isTraining && d.p > 0 && len(d.mask.Data) > 0 {
+		// Training mode: multiply by mask (which contains 0 or scale)
+		for i := range gradInput.Data {
+			gradInput.Data[i] = gradOutput.Data[i] * d.mask.Data[i]
+		}
+	} else {
+		// Inference mode or no dropout: pass gradient through unchanged
+		copy(gradInput.Data, gradOutput.Data)
+	}
+
+	d.Base.StoreGrad(gradInput)
+	return gradInput, nil
+}
+
+// OutputShape returns the output shape (same as input shape for Dropout).
+func (d *Dropout) OutputShape(inputShape []int) ([]int, error) {
+	outputShape := make([]int, len(inputShape))
+	copy(outputShape, inputShape)
+	return outputShape, nil
+}
+
+// SetTrainingMode sets whether the layer is in training mode.
+func (d *Dropout) SetTrainingMode(isTraining bool) {
+	d.isTraining = isTraining
+}
+
+// TrainingMode returns whether the layer is in training mode.
+func (d *Dropout) TrainingMode() bool {
+	return d.isTraining
+}
+
+// Rate returns the dropout rate.
+func (d *Dropout) Rate() float32 {
+	return d.p
 }

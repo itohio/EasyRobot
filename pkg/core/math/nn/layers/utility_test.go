@@ -75,3 +75,87 @@ func TestReshape(t *testing.T) {
 	// Check that data is preserved
 	assert.Equal(t, inputTensor.Data, output.Data, "Data should be preserved")
 }
+
+// TestUnsqueeze tests the Unsqueeze layer
+func TestUnsqueeze(t *testing.T) {
+	t.Run("add_dim_at_beginning", func(t *testing.T) {
+		unsqueeze := NewUnsqueeze(0)
+		input := tensor.Tensor{
+			Dim:  []int{3, 4},
+			Data: []float32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+		}
+
+		err := unsqueeze.Init([]int{3, 4})
+		require.NoError(t, err)
+
+		output, err := unsqueeze.Forward(input)
+		require.NoError(t, err)
+		assert.Equal(t, []int{1, 3, 4}, output.Dim)
+		assert.Equal(t, input.Data, output.Data)
+	})
+
+	t.Run("add_dim_at_end", func(t *testing.T) {
+		unsqueeze := NewUnsqueeze(-1)
+		err := unsqueeze.Init([]int{3, 4})
+		require.NoError(t, err)
+
+		outputShape, err := unsqueeze.OutputShape([]int{3, 4})
+		require.NoError(t, err)
+		assert.Equal(t, []int{3, 4, 1}, outputShape)
+	})
+}
+
+// TestSqueeze tests the Squeeze layer
+func TestSqueeze(t *testing.T) {
+	t.Run("squeeze_all", func(t *testing.T) {
+		squeeze := NewSqueeze()
+		input := tensor.Tensor{
+			Dim:  []int{1, 3, 1, 4},
+			Data: []float32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+		}
+
+		err := squeeze.Init([]int{1, 3, 1, 4})
+		require.NoError(t, err)
+
+		output, err := squeeze.Forward(input)
+		require.NoError(t, err)
+		assert.Equal(t, []int{3, 4}, output.Dim)
+		assert.Equal(t, input.Data, output.Data)
+	})
+
+	t.Run("squeeze_specific_dim", func(t *testing.T) {
+		squeeze := NewSqueezeDims(0, 2)
+		err := squeeze.Init([]int{1, 3, 1, 4})
+		require.NoError(t, err)
+
+		outputShape, err := squeeze.OutputShape([]int{1, 3, 1, 4})
+		require.NoError(t, err)
+		assert.Equal(t, []int{3, 4}, outputShape)
+	})
+}
+
+// TestTranspose tests the Transpose layer
+func TestTranspose(t *testing.T) {
+	transpose := NewTranspose()
+	input := tensor.Tensor{
+		Dim:  []int{2, 3},
+		Data: []float32{1, 2, 3, 4, 5, 6},
+	}
+
+	err := transpose.Init([]int{2, 3})
+	require.NoError(t, err)
+
+	output, err := transpose.Forward(input)
+	require.NoError(t, err)
+	assert.Equal(t, []int{3, 2}, output.Dim)
+	assert.Equal(t, []float32{1, 4, 2, 5, 3, 6}, output.Data)
+
+	// Test backward
+	gradOutput := tensor.Tensor{
+		Dim:  []int{3, 2},
+		Data: []float32{1, 1, 1, 1, 1, 1},
+	}
+	gradInput, err := transpose.Backward(gradOutput)
+	require.NoError(t, err)
+	assert.Equal(t, []int{2, 3}, gradInput.Dim)
+}

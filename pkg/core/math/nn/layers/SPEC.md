@@ -309,8 +309,32 @@ The following layers are planned to be implemented based on the availability of 
 - **Type**: Dropout regularization
 - **Input**: Any shape
 - **Output**: Same as input
-- **Features**: Dropout rate, training/inference mode
-- **Tensor Support**: ❌ Not yet available
+- **Features**: Dropout rate, training/inference mode, random number generator
+- **File**: `activations.go`
+
+```go
+func NewDropout(name string, opts ...DropoutOption) *Dropout
+```
+
+**Options:**
+- `WithDropoutRate(rate float32)`: Sets dropout probability (0.0 to < 1.0), default 0.5
+- `WithTrainingMode(isTraining bool)`: Sets training mode, default false (inference)
+- `WithDropoutRNG(rng *rand.Rand)`: Sets random number generator
+
+**Behavior:**
+- **Training mode**: Randomly sets elements to zero with probability `p`, scales kept elements by `1/(1-p)`
+- **Inference mode**: Passes input through unchanged
+- **Backward**: Multiplies gradient by the mask (0 for dropped elements, scale for kept elements)
+
+**Example:**
+```go
+dropout := layers.NewDropout(
+    "dropout",
+    layers.WithDropoutRate(0.5),
+    layers.WithTrainingMode(true),
+)
+dropout.SetTrainingMode(false) // Switch to inference mode
+```
 
 ### Utility Layers
 
@@ -319,7 +343,21 @@ The following layers are planned to be implemented based on the availability of 
 - **Input**: Multiple tensors of compatible shapes
 - **Output**: Concatenated tensor
 - **Features**: Concatenate along specified dimension
-- **Tensor Support**: ❌ Not yet available
+- **File**: `utility.go`
+
+```go
+func NewConcatenate(dim int) *Concatenate
+```
+
+**Note**: This layer uses `ForwardMulti()` and `InitMulti()` for multiple inputs, as the standard Layer interface only supports single input.
+
+**Example:**
+```go
+concat := layers.NewConcatenate(0) // Concatenate along dimension 0
+err := concat.InitMulti([][]int{{2, 3}, {4, 3}}) // Two inputs with compatible shapes
+inputs := []tensor.Tensor{input1, input2}
+output, err := concat.ForwardMulti(inputs)
+```
 
 #### Add
 - **Type**: Element-wise addition
@@ -336,27 +374,70 @@ The following layers are planned to be implemented based on the availability of 
 #### Unsqueeze
 - **Type**: Add dimension
 - **Input**: Any shape
-- **Output**: Shape with added dimension
-- **Tensor Support**: ❌ Not yet available
+- **Output**: Shape with added dimension of size 1
+- **File**: `utility.go`
+
+```go
+func NewUnsqueeze(dim int) *Unsqueeze
+```
+
+**Example:**
+```go
+unsqueeze := layers.NewUnsqueeze(0) // Add dimension at position 0
+// [3, 4] -> [1, 3, 4]
+```
 
 #### Squeeze
 - **Type**: Remove dimension of size 1
 - **Input**: Any shape
 - **Output**: Shape with removed dimensions
-- **Tensor Support**: ❌ Not yet available
+- **File**: `utility.go`
+
+```go
+func NewSqueeze() *Squeeze              // Remove all size-1 dimensions
+func NewSqueezeDims(dims ...int) *Squeeze // Remove specific dimensions
+```
+
+**Example:**
+```go
+squeeze := layers.NewSqueeze() // Remove all size-1 dims
+// [1, 3, 1, 4] -> [3, 4]
+```
 
 #### Pad
 - **Type**: Padding
 - **Input**: Any shape
 - **Output**: Padded tensor
-- **Features**: Padding mode, padding values
-- **Tensor Support**: ❌ Not yet available
+- **Features**: Constant padding value, padding per dimension
+- **File**: `utility.go`
+
+```go
+func NewPad(padding []int, value float32) *Pad
+func NewPadReflect(padding []int) *Pad
+```
+
+**Padding format**: `[padBefore0, padAfter0, padBefore1, padAfter1, ...]`
+
+**Example:**
+```go
+pad := layers.NewPad([]int{1, 1, 2, 2}, 0.0) // Pad dim 0: 1 before/after, dim 1: 2 before/after
+```
 
 #### Transpose
 - **Type**: Transpose dimensions
-- **Input**: Any shape
+- **Input**: 2D tensors (currently)
 - **Output**: Transposed tensor
-- **Tensor Support**: ❌ Not yet available
+- **File**: `utility.go`
+
+```go
+func NewTranspose() *Transpose
+```
+
+**Example:**
+```go
+transpose := layers.NewTranspose()
+// [2, 3] -> [3, 2]
+```
 
 ### Residual Layers
 
@@ -396,7 +477,12 @@ The following layers are planned to be implemented based on the availability of 
 | Flatten | ✅ Implemented | Medium | tensor.Reshape |
 | Reshape | ✅ Implemented | Medium | tensor.Reshape |
 | BatchNorm2D | ⏳ Need tensor ops | Medium | - |
-| Dropout | ⏳ Need implementation | Medium | - |
+| Dropout | ✅ Implemented | Medium | - |
+| Concatenate | ✅ Implemented | Medium | - |
+| Unsqueeze | ✅ Implemented | Medium | - |
+| Squeeze | ✅ Implemented | Medium | - |
+| Pad | ✅ Implemented | Medium | - |
+| Transpose | ✅ Implemented | Medium | tensor.Transpose (2D only) |
 
 **Legend:**
 - ✅ Implemented
