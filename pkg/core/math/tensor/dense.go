@@ -6,14 +6,12 @@ type Tensor struct {
 	Data []float32
 }
 
-// Shape returns the shape (dimensions) of the tensor.
-func (t *Tensor) Shape() []int {
+// Shape returns a copy of the tensor's dimensions.
+func (t *Tensor) Shape() Shape {
 	if t == nil || t.Dim == nil {
 		return nil
 	}
-	shape := make([]int, len(t.Dim))
-	copy(shape, t.Dim)
-	return shape
+	return NewShape(t.Dim...)
 }
 
 // Size returns the total number of elements in the tensor.
@@ -21,26 +19,7 @@ func (t *Tensor) Size() int {
 	if t == nil || len(t.Dim) == 0 {
 		return 0
 	}
-	size := 1
-	for _, d := range t.Dim {
-		size *= d
-	}
-	return size
-}
-
-// computeStrides computes row-major strides from shape.
-// For shape [d0, d1, ..., dn], strides[i] = product of shape[i+1:]
-func computeStrides(shape []int) []int {
-	if len(shape) == 0 {
-		return nil
-	}
-	strides := make([]int, len(shape))
-	stride := 1
-	for i := len(shape) - 1; i >= 0; i-- {
-		strides[i] = stride
-		stride *= shape[i]
-	}
-	return strides
+	return Shape(t.Dim).Size()
 }
 
 // isContiguous checks if the tensor data is contiguous (no gaps).
@@ -48,7 +27,7 @@ func (t *Tensor) isContiguous() bool {
 	if t == nil || len(t.Dim) == 0 {
 		return true
 	}
-	strides := computeStrides(t.Dim)
+	strides := Shape(t.Dim).Strides()
 	expectedSize := strides[0] * t.Dim[0]
 	return len(t.Data) == expectedSize
 }
@@ -107,7 +86,7 @@ func (t *Tensor) At(indices ...int) float32 {
 	}
 
 	// Compute linear index using strides
-	strides := computeStrides(t.Dim)
+	strides := Shape(t.Dim).Strides()
 	idx := t.elementIndex(indices, strides)
 
 	if idx >= len(t.Data) {
@@ -136,7 +115,7 @@ func (t *Tensor) SetAt(indices []int, value float32) {
 	}
 
 	// Compute linear index using strides
-	strides := computeStrides(t.Dim)
+	strides := Shape(t.Dim).Strides()
 	idx := t.elementIndex(indices, strides)
 
 	if idx >= len(t.Data) {

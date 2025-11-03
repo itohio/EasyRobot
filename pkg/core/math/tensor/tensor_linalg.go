@@ -372,8 +372,8 @@ func (t *Tensor) Dot(other *Tensor) float32 {
 
 // dotStrided computes dot product for strided vectors
 func (t *Tensor) dotStrided(other *Tensor, n int) float32 {
-	tStrides := computeStrides(t.Dim)
-	otherStrides := computeStrides(other.Dim)
+	tStrides := Shape(t.Dim).Strides()
+	otherStrides := Shape(other.Dim).Strides()
 
 	var sum float32
 	for i := 0; i < n; i++ {
@@ -432,7 +432,7 @@ func (t *Tensor) Norm(ord int) float32 {
 // norm1Strided computes L1 norm for strided tensor
 func (t *Tensor) norm1Strided() float32 {
 	var sum float32
-	strides := computeStrides(t.Dim)
+	strides := Shape(t.Dim).Strides()
 	indices := make([]int, len(t.Dim))
 	t.norm1StridedRecursive(&sum, indices, strides, 0)
 	return sum
@@ -459,7 +459,7 @@ func (t *Tensor) norm1StridedRecursive(sum *float32, indices []int, strides []in
 // norm2Strided computes L2 norm for strided tensor
 func (t *Tensor) norm2Strided() float32 {
 	var sumSq float32
-	strides := computeStrides(t.Dim)
+	strides := Shape(t.Dim).Strides()
 	indices := make([]int, len(t.Dim))
 	t.norm2StridedRecursive(&sumSq, indices, strides, 0)
 	// Note: Need sqrt for L2 norm, but primitive.Nrm2 does that
@@ -539,7 +539,7 @@ func (t *Tensor) normalizeVector() *Tensor {
 		norm := result.Norm(1) // L2 norm
 		if norm > 0 {
 			scale := 1.0 / norm
-			result.scaleStrided(scale)
+			result.Scale(scale)
 		}
 		return result
 	}

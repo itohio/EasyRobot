@@ -35,14 +35,20 @@ func NewConv1D(
 		return nil, fmt.Errorf("Conv1D: stride must be positive, got %d", stride)
 	}
 
+	base := NewBase("conv1d", opts...)
+	hasBias := false // Default to no bias
+	if hint := base.BiasHint(); hint != nil {
+		hasBias = *hint
+	}
+
 	conv := &Conv1D{
-		Base:        NewBase("conv1d", opts...),
+		Base:        base,
 		inChannels:  inChannels,
 		outChannels: outChannels,
 		kernelLen:   kernelLen,
 		stride:      stride,
 		pad:         pad,
-		hasBias:     true, // Default to having bias
+		hasBias:     hasBias,
 	}
 
 	// Create kernel parameter: [outChannels, inChannels, kernelLen]

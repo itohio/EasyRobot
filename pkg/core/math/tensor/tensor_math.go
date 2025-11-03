@@ -19,15 +19,17 @@ func (t *Tensor) Add(other *Tensor) *Tensor {
 		panic(fmt.Sprintf("tensor.Add: shape mismatch: %v vs %v", t.Dim, other.Dim))
 	}
 
-	if !t.isContiguous() || !other.isContiguous() {
-		// Handle strided case
-		t.addStrided(other)
+	if t.isContiguous() && other.isContiguous() {
+		size := t.Size()
+		fp32.Axpy(t.Data, other.Data, 1, 1, size, 1.0)
 		return t
 	}
 
-	// Use fp32.Axpy for contiguous case
-	size := t.Size()
-	fp32.Axpy(t.Data, other.Data, 1, 1, size, 1.0)
+	shape := Shape(t.Dim)
+	otherShape := Shape(other.Dim)
+	stridesT := shape.Strides()
+	stridesOther := otherShape.Strides()
+	fp32.ElemAdd(t.Data, t.Data, other.Data, []int(shape), stridesT, stridesT, stridesOther)
 	return t
 }
 
@@ -42,15 +44,17 @@ func (t *Tensor) Sub(other *Tensor) *Tensor {
 		panic(fmt.Sprintf("tensor.Sub: shape mismatch: %v vs %v", t.Dim, other.Dim))
 	}
 
-	if !t.isContiguous() || !other.isContiguous() {
-		// Handle strided case
-		t.subStrided(other)
+	if t.isContiguous() && other.isContiguous() {
+		size := t.Size()
+		fp32.Axpy(t.Data, other.Data, 1, 1, size, -1.0)
 		return t
 	}
 
-	// Use fp32.Axpy for contiguous case
-	size := t.Size()
-	fp32.Axpy(t.Data, other.Data, 1, 1, size, -1.0)
+	shape := Shape(t.Dim)
+	otherShape := Shape(other.Dim)
+	stridesT := shape.Strides()
+	stridesOther := otherShape.Strides()
+	fp32.ElemSub(t.Data, t.Data, other.Data, []int(shape), stridesT, stridesT, stridesOther)
 	return t
 }
 
@@ -64,7 +68,11 @@ func (t *Tensor) Mul(other *Tensor) *Tensor {
 		panic(fmt.Sprintf("tensor.Mul: shape mismatch: %v vs %v", t.Dim, other.Dim))
 	}
 
-	t.mulStrided(other)
+	shape := Shape(t.Dim)
+	otherShape := Shape(other.Dim)
+	stridesT := shape.Strides()
+	stridesOther := otherShape.Strides()
+	fp32.ElemMul(t.Data, t.Data, other.Data, []int(shape), stridesT, stridesT, stridesOther)
 	return t
 }
 
@@ -78,7 +86,11 @@ func (t *Tensor) Div(other *Tensor) *Tensor {
 		panic(fmt.Sprintf("tensor.Div: shape mismatch: %v vs %v", t.Dim, other.Dim))
 	}
 
-	t.divStrided(other)
+	shape := Shape(t.Dim)
+	otherShape := Shape(other.Dim)
+	stridesT := shape.Strides()
+	stridesOther := otherShape.Strides()
+	fp32.ElemDiv(t.Data, t.Data, other.Data, []int(shape), stridesT, stridesT, stridesOther)
 	return t
 }
 
@@ -89,15 +101,15 @@ func (t *Tensor) Scale(scalar float32) *Tensor {
 		return t
 	}
 
-	if !t.isContiguous() {
-		// Handle strided case
-		t.scaleStrided(scalar)
+	shape := Shape(t.Dim)
+	strides := shape.Strides()
+	if t.isContiguous() {
+		size := t.Size()
+		fp32.Scal(t.Data, 1, size, scalar)
 		return t
 	}
 
-	// Use fp32.Scal for contiguous case
-	size := t.Size()
-	fp32.Scal(t.Data, 1, size, scalar)
+	fp32.ElemScale(t.Data, scalar, []int(shape), strides)
 	return t
 }
 
@@ -165,28 +177,35 @@ func (t *Tensor) BroadcastTo(shape []int) (*Tensor, error) {
 		return nil, fmt.Errorf("tensor.BroadcastTo: target shape %v has fewer dimensions than %v", shape, t.Dim)
 	}
 
-	// Check if broadcasting is possible
-	for i := 0; i < len(t.Dim); i++ {
-		targetDim := shape[len(shape)-len(t.Dim)+i]
-		if t.Dim[i] != 1 && t.Dim[i] != targetDim {
-			return nil, fmt.Errorf("tensor.BroadcastTo: cannot broadcast dimension %d: %d to %d", i, t.Dim[i], targetDim)
-		}
-	}
-
-	// For now, if shapes match exactly, return clone
-	// Future: implement efficient broadcasting without copying
+	// Simple clone when shapes already match
 	if t.sameShapeInt(shape) {
 		return t.Clone(), nil
 	}
 
-	// Create broadcasted tensor (simplified implementation)
-	// TODO: Implement efficient broadcasting
-	broadcasted := &Tensor{
-		Dim:  make([]int, len(shape)),
-		Data: t.Data,
+	// Validate broadcasting via primitive helper
+	if _, err := fp32.BroadcastStrides(t.Dim, Shape(t.Dim).Strides(), shape); err != nil {
+		return nil, fmt.Errorf("tensor.BroadcastTo: %w", err)
 	}
-	copy(broadcasted.Dim, shape)
-	return broadcasted, nil
+
+	size := sizeFromShape(shape)
+	result := &Tensor{
+		Dim:  make([]int, len(shape)),
+		Data: make([]float32, size),
+	}
+	copy(result.Dim, shape)
+
+	if err := fp32.ExpandTo(
+		result.Data,
+		t.Data,
+		result.Dim,
+		t.Dim,
+		Shape(result.Dim).Strides(),
+		Shape(t.Dim).Strides(),
+	); err != nil {
+		return nil, fmt.Errorf("tensor.BroadcastTo: %w", err)
+	}
+
+	return result, nil
 }
 
 // Sum computes sum along specified dimensions.
@@ -198,22 +217,15 @@ func (t *Tensor) Sum(dims ...int) *Tensor {
 
 	// If no dimensions specified, sum all elements
 	if len(dims) == 0 {
-		sum := float32(0)
 		if t.isContiguous() {
 			size := t.Size()
-			sum = fp32.Asum(t.Data, 1, size)
-		} else {
-			sum = t.sumAllStrided()
+			sum := fp32.Asum(t.Data, 1, size)
+			return &Tensor{Dim: []int{1}, Data: []float32{sum}}
 		}
-		// Return scalar tensor
-		return &Tensor{
-			Dim:  []int{1},
-			Data: []float32{sum},
-		}
+		return t.reduceTensor(nil, true, fp32.ReduceSum)
 	}
 
-	// Sum along specified dimensions
-	return t.sumDims(dims)
+	return t.reduceTensor(dims, true, fp32.ReduceSum)
 }
 
 // Mean computes mean along specified dimensions.
@@ -222,28 +234,7 @@ func (t *Tensor) Mean(dims ...int) *Tensor {
 		return nil
 	}
 
-	sum := t.Sum(dims...)
-	if sum == nil {
-		return nil
-	}
-
-	// Compute count of elements averaged
-	count := 1
-	if len(dims) == 0 {
-		count = t.Size()
-	} else {
-		for _, dim := range dims {
-			if dim >= 0 && dim < len(t.Dim) {
-				count *= t.Dim[dim]
-			}
-		}
-	}
-
-	if count > 0 {
-		sum.Scale(1.0 / float32(count))
-	}
-
-	return sum
+	return t.reduceTensor(dims, true, fp32.ReduceMean)
 }
 
 // Max computes maximum along specified dimensions.
@@ -252,17 +243,7 @@ func (t *Tensor) Max(dims ...int) *Tensor {
 		return nil
 	}
 
-	// If no dimensions specified, max of all elements
-	if len(dims) == 0 {
-		max := t.maxAll()
-		return &Tensor{
-			Dim:  []int{1},
-			Data: []float32{max},
-		}
-	}
-
-	// Max along specified dimensions
-	return t.maxDims(dims)
+	return t.reduceTensor(dims, true, fp32.ReduceMax)
 }
 
 // Min computes minimum along specified dimensions.
@@ -271,17 +252,7 @@ func (t *Tensor) Min(dims ...int) *Tensor {
 		return nil
 	}
 
-	// If no dimensions specified, min of all elements
-	if len(dims) == 0 {
-		min := t.minAll()
-		return &Tensor{
-			Dim:  []int{1},
-			Data: []float32{min},
-		}
-	}
-
-	// Min along specified dimensions
-	return t.minDims(dims)
+	return t.reduceTensor(dims, true, fp32.ReduceMin)
 }
 
 // ArgMax returns indices of maximum elements along specified dimension.
@@ -295,21 +266,19 @@ func (t *Tensor) ArgMax(dim int) *Tensor {
 		panic(fmt.Sprintf("tensor.ArgMax: dimension %d out of range for shape %v", dim, t.Dim))
 	}
 
-	// For 1D tensor, use primitive.Iamax
-	if len(t.Dim) == 1 {
-		if !t.isContiguous() {
-			// Handle strided case
-			return t.argMaxStrided(dim)
-		}
+	// For 1D tensor, prefer primitive.Iamax fast path
+	if len(t.Dim) == 1 && t.isContiguous() {
 		idx := fp32.Iamax(t.Data, 1, t.Size())
-		return &Tensor{
-			Dim:  []int{1},
-			Data: []float32{float32(idx)},
-		}
+		return &Tensor{Dim: []int{1}, Data: []float32{float32(idx)}}
 	}
 
-	// Multi-dimensional case
-	return t.argMaxDim(dim)
+	resultShape, axis := t.prepareArgmax(dim)
+	result := &Tensor{
+		Dim:  resultShape,
+		Data: make([]float32, sizeFromShape(resultShape)),
+	}
+	fp32.Argmax(result.Data, result.Dim, Shape(result.Dim).Strides(), t.Data, t.Dim, Shape(t.Dim).Strides(), axis)
+	return result
 }
 
 // Helper functions
@@ -338,463 +307,113 @@ func (t *Tensor) sameShapeInt(shape []int) bool {
 	return true
 }
 
-func (t *Tensor) addStrided(other *Tensor) {
-	strides := computeStrides(t.Dim)
-	otherStrides := computeStrides(other.Dim)
-	indices := make([]int, len(t.Dim))
-	t.addStridedRecursive(other, indices, strides, otherStrides, 0)
-}
+type reduceFunc func(dst []float32, dstShape []int, dstStrides []int, src []float32, srcShape []int, srcStrides []int, axes []int)
 
-func (t *Tensor) addStridedRecursive(other *Tensor, indices []int, strides, otherStrides []int, dim int) {
-	if dim == len(t.Dim) {
-		idx := t.elementIndex(indices, strides)
-		otherIdx := other.elementIndex(indices, otherStrides)
-		t.Data[idx] += other.Data[otherIdx]
-		return
+func (t *Tensor) reduceTensor(dims []int, scalarWhenEmpty bool, reducer reduceFunc) *Tensor {
+	if t == nil {
+		return nil
 	}
 
-	for i := 0; i < t.Dim[dim]; i++ {
-		indices[dim] = i
-		t.addStridedRecursive(other, indices, strides, otherStrides, dim+1)
-	}
-}
-
-func (t *Tensor) subStrided(other *Tensor) {
-	strides := computeStrides(t.Dim)
-	otherStrides := computeStrides(other.Dim)
-	indices := make([]int, len(t.Dim))
-	t.subStridedRecursive(other, indices, strides, otherStrides, 0)
-}
-
-func (t *Tensor) subStridedRecursive(other *Tensor, indices []int, strides, otherStrides []int, dim int) {
-	if dim == len(t.Dim) {
-		idx := t.elementIndex(indices, strides)
-		otherIdx := other.elementIndex(indices, otherStrides)
-		t.Data[idx] -= other.Data[otherIdx]
-		return
+	axes := t.normalizeAxes(dims)
+	dimSet := make(map[int]struct{}, len(axes))
+	for _, axis := range axes {
+		dimSet[axis] = struct{}{}
 	}
 
-	for i := 0; i < t.Dim[dim]; i++ {
-		indices[dim] = i
-		t.subStridedRecursive(other, indices, strides, otherStrides, dim+1)
-	}
-}
-
-func (t *Tensor) mulStrided(other *Tensor) {
-	strides := computeStrides(t.Dim)
-	otherStrides := computeStrides(other.Dim)
-	indices := make([]int, len(t.Dim))
-	t.mulStridedRecursive(other, indices, strides, otherStrides, 0)
-}
-
-func (t *Tensor) mulStridedRecursive(other *Tensor, indices []int, strides, otherStrides []int, dim int) {
-	if dim == len(t.Dim) {
-		idx := t.elementIndex(indices, strides)
-		otherIdx := other.elementIndex(indices, otherStrides)
-		t.Data[idx] *= other.Data[otherIdx]
-		return
-	}
-
-	for i := 0; i < t.Dim[dim]; i++ {
-		indices[dim] = i
-		t.mulStridedRecursive(other, indices, strides, otherStrides, dim+1)
-	}
-}
-
-func (t *Tensor) divStrided(other *Tensor) {
-	strides := computeStrides(t.Dim)
-	otherStrides := computeStrides(other.Dim)
-	indices := make([]int, len(t.Dim))
-	t.divStridedRecursive(other, indices, strides, otherStrides, 0)
-}
-
-func (t *Tensor) divStridedRecursive(other *Tensor, indices []int, strides, otherStrides []int, dim int) {
-	if dim == len(t.Dim) {
-		idx := t.elementIndex(indices, strides)
-		otherIdx := other.elementIndex(indices, otherStrides)
-		if other.Data[otherIdx] != 0 {
-			t.Data[idx] /= other.Data[otherIdx]
+	resultShape := make([]int, 0, len(t.Dim))
+	for i, d := range t.Dim {
+		if _, ok := dimSet[i]; !ok {
+			resultShape = append(resultShape, d)
 		}
-		return
+	}
+	if len(resultShape) == 0 && scalarWhenEmpty {
+		resultShape = []int{1}
 	}
 
-	for i := 0; i < t.Dim[dim]; i++ {
-		indices[dim] = i
-		t.divStridedRecursive(other, indices, strides, otherStrides, dim+1)
+	res := &Tensor{
+		Dim:  resultShape,
+		Data: make([]float32, sizeFromShape(resultShape)),
 	}
+
+	reducer(
+		res.Data,
+		res.Dim,
+		Shape(res.Dim).Strides(),
+		t.Data,
+		t.Dim,
+		Shape(t.Dim).Strides(),
+		axes,
+	)
+
+	return res
 }
 
-func (t *Tensor) scaleStrided(scalar float32) {
-	strides := computeStrides(t.Dim)
-	indices := make([]int, len(t.Dim))
-	t.scaleStridedRecursive(scalar, indices, strides, 0)
+func (t *Tensor) normalizeAxes(dims []int) []int {
+	if len(t.Dim) == 0 {
+		panic("tensor: reduction on empty tensor")
+	}
+
+	if len(dims) == 0 {
+		axes := make([]int, len(t.Dim))
+		for i := range axes {
+			axes[i] = i
+		}
+		return axes
+	}
+
+	axes := append([]int(nil), dims...)
+	if err := Shape(t.Dim).ValidateAxes(axes); err != nil {
+		panic(err)
+	}
+	return axes
 }
 
-func (t *Tensor) scaleStridedRecursive(scalar float32, indices []int, strides []int, dim int) {
-	if dim == len(t.Dim) {
-		idx := t.elementIndex(indices, strides)
-		t.Data[idx] *= scalar
-		return
+func (t *Tensor) prepareArgmax(dim int) ([]int, int) {
+	if len(t.Dim) == 0 {
+		panic("tensor.ArgMax: empty tensor")
+	}
+	if dim < 0 || dim >= len(t.Dim) {
+		panic(fmt.Sprintf("tensor.ArgMax: dimension %d out of range for shape %v", dim, t.Dim))
 	}
 
-	for i := 0; i < t.Dim[dim]; i++ {
-		indices[dim] = i
-		t.scaleStridedRecursive(scalar, indices, strides, dim+1)
+	shape := make([]int, 0, len(t.Dim)-1)
+	for i, d := range t.Dim {
+		if i != dim {
+			shape = append(shape, d)
+		}
 	}
+	if len(shape) == 0 {
+		shape = []int{1}
+	}
+
+	return shape, dim
 }
 
 func (t *Tensor) copyTo(dst *Tensor) {
-	if t.isContiguous() && dst.isContiguous() && t.Size() == dst.Size() {
-		size := t.Size()
+	if dst == nil {
+		return
+	}
+
+	if len(dst.Dim) != len(t.Dim) {
+		panic(fmt.Sprintf("tensor.copyTo: destination shape mismatch: %v vs %v", dst.Dim, t.Dim))
+	}
+
+	shape := Shape(t.Dim)
+	size := t.Size()
+	if size == 0 {
+		return
+	}
+
+	if t.isContiguous() && dst.isContiguous() {
 		fp32.Copy(dst.Data, t.Data, 1, 1, size)
 		return
 	}
 
-	// Strided copy
-	strides := computeStrides(t.Dim)
-	dstStrides := computeStrides(dst.Dim)
-	indices := make([]int, len(t.Dim))
-	t.copyStridedRecursive(dst, indices, strides, dstStrides, 0)
-}
-
-func (t *Tensor) copyStridedRecursive(dst *Tensor, indices []int, strides, dstStrides []int, dim int) {
-	if dim == len(t.Dim) {
-		idx := t.elementIndex(indices, strides)
-		dstIdx := dst.elementIndex(indices, dstStrides)
-		dst.Data[dstIdx] = t.Data[idx]
-		return
-	}
-
-	for i := 0; i < t.Dim[dim]; i++ {
-		indices[dim] = i
-		t.copyStridedRecursive(dst, indices, strides, dstStrides, dim+1)
-	}
-}
-
-func (t *Tensor) sumAllStrided() float32 {
-	strides := computeStrides(t.Dim)
-	indices := make([]int, len(t.Dim))
-	var sum float32
-	t.sumAllStridedRecursive(&sum, indices, strides, 0)
-	return sum
-}
-
-func (t *Tensor) sumAllStridedRecursive(sum *float32, indices []int, strides []int, dim int) {
-	if dim == len(t.Dim) {
-		idx := t.elementIndex(indices, strides)
-		*sum += t.Data[idx]
-		return
-	}
-
-	for i := 0; i < t.Dim[dim]; i++ {
-		indices[dim] = i
-		t.sumAllStridedRecursive(sum, indices, strides, dim+1)
-	}
-}
-
-func (t *Tensor) sumDims(dims []int) *Tensor {
-	// Create output shape (remove summed dimensions)
-	newShape := make([]int, 0, len(t.Dim))
-	dimSet := make(map[int]bool)
-	for _, d := range dims {
-		dimSet[d] = true
-	}
-
-	for i, d := range t.Dim {
-		if !dimSet[i] {
-			newShape = append(newShape, d)
-		}
-	}
-
-	if len(newShape) == 0 {
-		newShape = []int{1}
-	}
-
-	result := &Tensor{
-		Dim:  newShape,
-		Data: make([]float32, sizeFromShape(newShape)),
-	}
-
-	// Compute sums
-	indices := make([]int, len(t.Dim))
-	resultIndices := make([]int, len(newShape))
-	t.sumDimsRecursive(result, indices, resultIndices, dims, dimSet, 0, 0)
-
-	return result
-}
-
-func (t *Tensor) sumDimsRecursive(result *Tensor, indices, resultIndices []int, dims []int, dimSet map[int]bool, dim, resultDim int) {
-	if dim == len(t.Dim) {
-		// Map result indices
-		ri := 0
-		for i := 0; i < len(t.Dim); i++ {
-			if !dimSet[i] {
-				if ri < len(resultIndices) {
-					resultIndices[ri] = indices[i]
-					ri++
-				}
-			}
-		}
-		resultStrides := computeStrides(result.Dim)
-		resultIdx := result.elementIndex(resultIndices, resultStrides)
-		tStrides := computeStrides(t.Dim)
-		tIdx := t.elementIndex(indices, tStrides)
-		result.Data[resultIdx] += t.Data[tIdx]
-		return
-	}
-
-	for i := 0; i < t.Dim[dim]; i++ {
-		indices[dim] = i
-		t.sumDimsRecursive(result, indices, resultIndices, dims, dimSet, dim+1, resultDim)
-	}
-}
-
-func (t *Tensor) maxAll() float32 {
-	if t.Size() == 0 {
-		return 0
-	}
-	max := t.Data[0]
-	for i := 1; i < len(t.Data); i++ {
-		if t.Data[i] > max {
-			max = t.Data[i]
-		}
-	}
-	return max
-}
-
-func (t *Tensor) minAll() float32 {
-	if t.Size() == 0 {
-		return 0
-	}
-	min := t.Data[0]
-	for i := 1; i < len(t.Data); i++ {
-		if t.Data[i] < min {
-			min = t.Data[i]
-		}
-	}
-	return min
-}
-
-func (t *Tensor) maxDims(dims []int) *Tensor {
-	// Similar to sumDims but compute max instead
-	newShape := make([]int, 0, len(t.Dim))
-	dimSet := make(map[int]bool)
-	for _, d := range dims {
-		dimSet[d] = true
-	}
-
-	for i, d := range t.Dim {
-		if !dimSet[i] {
-			newShape = append(newShape, d)
-		}
-	}
-
-	if len(newShape) == 0 {
-		newShape = []int{1}
-	}
-
-	result := &Tensor{
-		Dim:  newShape,
-		Data: make([]float32, sizeFromShape(newShape)),
-	}
-
-	// Initialize with very small values
-	for i := range result.Data {
-		result.Data[i] = -1e30
-	}
-
-	indices := make([]int, len(t.Dim))
-	resultIndices := make([]int, len(newShape))
-	t.maxDimsRecursive(result, indices, resultIndices, dims, dimSet, 0, 0)
-
-	return result
-}
-
-func (t *Tensor) maxDimsRecursive(result *Tensor, indices, resultIndices []int, dims []int, dimSet map[int]bool, dim, resultDim int) {
-	if dim == len(t.Dim) {
-		ri := 0
-		for i := 0; i < len(t.Dim); i++ {
-			if !dimSet[i] {
-				if ri < len(resultIndices) {
-					resultIndices[ri] = indices[i]
-					ri++
-				}
-			}
-		}
-		resultStrides := computeStrides(result.Dim)
-		resultIdx := result.elementIndex(resultIndices, resultStrides)
-		tStrides := computeStrides(t.Dim)
-		tIdx := t.elementIndex(indices, tStrides)
-		if t.Data[tIdx] > result.Data[resultIdx] {
-			result.Data[resultIdx] = t.Data[tIdx]
-		}
-		return
-	}
-
-	for i := 0; i < t.Dim[dim]; i++ {
-		indices[dim] = i
-		t.maxDimsRecursive(result, indices, resultIndices, dims, dimSet, dim+1, resultDim)
-	}
-}
-
-func (t *Tensor) minDims(dims []int) *Tensor {
-	newShape := make([]int, 0, len(t.Dim))
-	dimSet := make(map[int]bool)
-	for _, d := range dims {
-		dimSet[d] = true
-	}
-
-	for i, d := range t.Dim {
-		if !dimSet[i] {
-			newShape = append(newShape, d)
-		}
-	}
-
-	if len(newShape) == 0 {
-		newShape = []int{1}
-	}
-
-	result := &Tensor{
-		Dim:  newShape,
-		Data: make([]float32, sizeFromShape(newShape)),
-	}
-
-	// Initialize with very large values
-	for i := range result.Data {
-		result.Data[i] = 1e30
-	}
-
-	indices := make([]int, len(t.Dim))
-	resultIndices := make([]int, len(newShape))
-	t.minDimsRecursive(result, indices, resultIndices, dims, dimSet, 0, 0)
-
-	return result
-}
-
-func (t *Tensor) minDimsRecursive(result *Tensor, indices, resultIndices []int, dims []int, dimSet map[int]bool, dim, resultDim int) {
-	if dim == len(t.Dim) {
-		ri := 0
-		for i := 0; i < len(t.Dim); i++ {
-			if !dimSet[i] {
-				if ri < len(resultIndices) {
-					resultIndices[ri] = indices[i]
-					ri++
-				}
-			}
-		}
-		resultStrides := computeStrides(result.Dim)
-		resultIdx := result.elementIndex(resultIndices, resultStrides)
-		tStrides := computeStrides(t.Dim)
-		tIdx := t.elementIndex(indices, tStrides)
-		if t.Data[tIdx] < result.Data[resultIdx] {
-			result.Data[resultIdx] = t.Data[tIdx]
-		}
-		return
-	}
-
-	for i := 0; i < t.Dim[dim]; i++ {
-		indices[dim] = i
-		t.minDimsRecursive(result, indices, resultIndices, dims, dimSet, dim+1, resultDim)
-	}
-}
-
-func (t *Tensor) argMaxStrided(dim int) *Tensor {
-	// For 1D case with striding
-	strides := computeStrides(t.Dim)
-	maxVal := t.Data[0]
-	maxIdx := 0
-	for i := 1; i < t.Size(); i++ {
-		val := t.Data[i*strides[0]]
-		if val > maxVal {
-			maxVal = val
-			maxIdx = i
-		}
-	}
-	return &Tensor{
-		Dim:  []int{1},
-		Data: []float32{float32(maxIdx)},
-	}
-}
-
-func (t *Tensor) argMaxDim(dim int) *Tensor {
-	// Create output shape (remove the dimension we're argmaxing over)
-	newShape := make([]int, 0, len(t.Dim)-1)
-	for i, d := range t.Dim {
-		if i != dim {
-			newShape = append(newShape, d)
-		}
-	}
-
-	if len(newShape) == 0 {
-		newShape = []int{1}
-	}
-
-	result := &Tensor{
-		Dim:  newShape,
-		Data: make([]float32, sizeFromShape(newShape)),
-	}
-
-	// Initialize with zeros and track max indices
-	maxVals := make([]float32, sizeFromShape(newShape))
-	for i := range maxVals {
-		maxVals[i] = -1e30
-	}
-
-	indices := make([]int, len(t.Dim))
-	resultIndices := make([]int, len(newShape))
-	t.argMaxDimRecursive(result, maxVals, indices, resultIndices, dim, 0)
-
-	return result
-}
-
-func (t *Tensor) argMaxDimRecursive(result *Tensor, maxVals []float32, indices, resultIndices []int, argMaxDim, dim int) {
-	if dim == len(t.Dim) {
-		// Build result indices (excluding argMaxDim)
-		ri := 0
-		for i := 0; i < len(t.Dim); i++ {
-			if i != argMaxDim {
-				if ri < len(resultIndices) {
-					resultIndices[ri] = indices[i]
-					ri++
-				}
-			}
-		}
-		resultStrides := computeStrides(result.Dim)
-		resultIdx := result.elementIndex(resultIndices, resultStrides)
-
-		tStrides := computeStrides(t.Dim)
-		tIdx := t.elementIndex(indices, tStrides)
-		val := t.Data[tIdx]
-
-		if val > maxVals[resultIdx] {
-			maxVals[resultIdx] = val
-			result.Data[resultIdx] = float32(indices[argMaxDim])
-		}
-		return
-	}
-
-	if dim == argMaxDim {
-		// Iterate over argMaxDim dimension
-		for i := 0; i < t.Dim[dim]; i++ {
-			indices[dim] = i
-			t.argMaxDimRecursive(result, maxVals, indices, resultIndices, argMaxDim, dim+1)
-		}
-	} else {
-		// Iterate over other dimensions
-		for i := 0; i < t.Dim[dim]; i++ {
-			indices[dim] = i
-			t.argMaxDimRecursive(result, maxVals, indices, resultIndices, argMaxDim, dim+1)
-		}
-	}
+	stridesSrc := shape.Strides()
+	stridesDst := Shape(dst.Dim).Strides()
+	fp32.ElemCopy(dst.Data, t.Data, []int(shape), stridesDst, stridesSrc)
 }
 
 func sizeFromShape(shape []int) int {
-	if len(shape) == 0 {
-		return 1
-	}
-	size := 1
-	for _, d := range shape {
-		size *= d
-	}
-	return size
+	return Shape(shape).Size()
 }

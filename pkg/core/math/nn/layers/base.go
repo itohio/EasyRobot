@@ -27,8 +27,10 @@ type Option func(*Base)
 // Layers embedding Base should implement Forward and Backward directly.
 type Base struct {
 	name     string
+	nameSet  bool // Whether name was explicitly set
 	prefix   string
 	canLearn bool
+	biasHint *bool // Optional bias hint for layers that support it
 	input    tensor.Tensor
 	output   tensor.Tensor
 	grad     tensor.Tensor            // Gradient tensor for backward pass
@@ -63,6 +65,7 @@ func NewBase(prefix string, opts ...Option) Base {
 func WithName(name string) Option {
 	return func(b *Base) {
 		b.name = name
+		b.nameSet = true
 	}
 }
 
@@ -70,6 +73,15 @@ func WithName(name string) Option {
 func WithCanLearn(canLearn bool) Option {
 	return func(b *Base) {
 		b.canLearn = canLearn
+	}
+}
+
+// WithBias returns an Option that sets whether the layer uses bias.
+// This is a hint for layers that support optional bias (like Conv1D, Conv2D).
+// Layers that don't support optional bias will ignore this option.
+func WithBias(hasBias bool) Option {
+	return func(b *Base) {
+		b.biasHint = &hasBias
 	}
 }
 
@@ -136,13 +148,14 @@ func (b *Base) initParam(idx ParamIndex) {
 }
 
 // Name returns the name of this layer.
-// If name is empty, automatically generates a default name as {prefix}_{layer_idx}_{shape}
+// If name was explicitly set (even to empty), returns that name.
+// Otherwise, automatically generates a default name as {prefix}_{layer_idx}_{shape}
 // if prefix is set, or {layer_idx}_{shape} if prefix is empty.
 func (b *Base) Name() string {
 	if b == nil {
 		return ""
 	}
-	if b.name != "" {
+	if b.nameSet {
 		return b.name
 	}
 	// Generate default name from prefix, layer_idx and shape
@@ -171,6 +184,15 @@ func (b *Base) SetName(name string) {
 		return
 	}
 	b.name = name
+	b.nameSet = name != ""
+}
+
+// BiasHint returns the bias hint if set, otherwise nil.
+func (b *Base) BiasHint() *bool {
+	if b == nil {
+		return nil
+	}
+	return b.biasHint
 }
 
 // CanLearn returns whether this layer computes gradients.

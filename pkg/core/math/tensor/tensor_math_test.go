@@ -443,6 +443,35 @@ func TestBroadcastTo(t *testing.T) {
 		if !result.sameShapeInt([]int{2, 3}) {
 			t.Errorf("Shape should be [2, 3], got %v", result.Dim)
 		}
+
+		if &result.Data[0] == &tensor.Data[0] {
+			t.Errorf("BroadcastTo should return a copy when shape matches")
+		}
+
+		for i := range tensor.Data {
+			if !floatEqual(result.Data[i], tensor.Data[i]) {
+				t.Errorf("Data[%d] = %f, expected %f", i, result.Data[i], tensor.Data[i])
+			}
+		}
+	})
+
+	t.Run("broadcast expand", func(t *testing.T) {
+		tensor := &Tensor{Dim: []int{1, 3}, Data: []float32{1, 2, 3}}
+		result, err := tensor.BroadcastTo([]int{2, 3})
+
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+
+		expected := []float32{1, 2, 3, 1, 2, 3}
+		if !result.sameShapeInt([]int{2, 3}) {
+			t.Fatalf("Shape should be [2,3], got %v", result.Dim)
+		}
+		for i := range expected {
+			if !floatEqual(result.Data[i], expected[i]) {
+				t.Errorf("Data[%d] = %f, expected %f", i, result.Data[i], expected[i])
+			}
+		}
 	})
 
 	t.Run("error: incompatible shapes", func(t *testing.T) {

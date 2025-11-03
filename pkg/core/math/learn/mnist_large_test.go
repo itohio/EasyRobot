@@ -27,7 +27,7 @@ func TestMNISTLarge(t *testing.T) {
 	const maxTestSamples = 250
 
 	// Load training data
-	trainPath := filepath.Join("datasets", "mnist", "mnist_train.csv")
+	trainPath := filepath.Join("datasets", "mnist", "mnist_train.csv.gz")
 	trainSamples, err := mnist.Load(trainPath, maxTrainSamples)
 	if err != nil {
 		t.Fatalf("Failed to load training data: %v", err)
@@ -35,7 +35,7 @@ func TestMNISTLarge(t *testing.T) {
 	t.Logf("Loaded %d training samples", len(trainSamples))
 
 	// Load test data
-	testPath := filepath.Join("datasets", "mnist", "mnist_test.csv")
+	testPath := filepath.Join("datasets", "mnist", "mnist_test.csv.gz")
 	testSamples, err := mnist.Load(testPath, maxTestSamples)
 	if err != nil {
 		t.Fatalf("Failed to load test data: %v", err)

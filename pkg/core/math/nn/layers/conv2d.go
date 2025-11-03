@@ -44,8 +44,14 @@ func NewConv2D(
 		return nil, fmt.Errorf("Conv2D: strideW must be positive, got %d", strideW)
 	}
 
+	base := NewBase("conv2d", opts...)
+	hasBias := false // Default to no bias
+	if hint := base.BiasHint(); hint != nil {
+		hasBias = *hint
+	}
+
 	conv := &Conv2D{
-		Base:        NewBase("conv2d"),
+		Base:        base,
 		inChannels:  inChannels,
 		outChannels: outChannels,
 		kernelH:     kernelH,
@@ -54,12 +60,7 @@ func NewConv2D(
 		strideW:     strideW,
 		padH:        padH,
 		padW:        padW,
-		hasBias:     true, // Default to having bias
-	}
-
-	// Apply options before initializing parameters
-	for _, opt := range opts {
-		opt(&conv.Base)
+		hasBias:     hasBias,
 	}
 
 	// Create kernel parameter: [outChannels, inChannels, kernelH, kernelW]

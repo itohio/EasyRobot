@@ -87,7 +87,11 @@ func TestBase_Name_Default(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			base := NewBase(tt.prefix, WithName(tt.existingName))
+			var opts []Option
+			if tt.existingName != "" {
+				opts = append(opts, WithName(tt.existingName))
+			}
+			base := NewBase(tt.prefix, opts...)
 			if tt.hasShape {
 				base.AllocOutput(tt.shape, 8)
 			}
