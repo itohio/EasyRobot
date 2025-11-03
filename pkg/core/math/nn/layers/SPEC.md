@@ -55,9 +55,10 @@ func NewDense(inFeatures, outFeatures int, opts ...DenseOption) (*Dense, error)
 ```
 
 **Options:**
-- `WithName(name string)`: Set layer name
-- `WithBias(useBias bool)`: Enable/disable bias
-- `WithCanLearn(canLearn bool)`: Enable gradient computation
+- Base options (via `Option` type): `WithName(name string)`, `WithCanLearn(canLearn bool)`
+- Dense-specific options (via `DenseOption` type): `WithDenseBias(useBias bool)`
+
+**Note**: The constructor accepts both `Option` and `DenseOption` types through `...interface{}`. Type safety is enforced at runtime.
 
 **Example:**
 ```go
@@ -410,8 +411,8 @@ All layers implement the `nn.Layer` interface:
 type Layer interface {
     Name() string
     Init(inputShape []int) error
-    Forward(ctx context.Context, input tensor.Tensor) (tensor.Tensor, error)
-    Backward(ctx context.Context, gradOutput tensor.Tensor) (tensor.Tensor, error)
+    Forward(input tensor.Tensor) (tensor.Tensor, error)
+    Backward(gradOutput tensor.Tensor) (tensor.Tensor, error)
     OutputShape(inputShape []int) ([]int, error)
     CanLearn() bool
     SetCanLearn(canLearn bool)
@@ -420,17 +421,16 @@ type Layer interface {
 }
 ```
 
-**ParameterLayer Interface:**
+**Note:** Forward and Backward methods do not take `context.Context` as a parameter. The interface does not require context for cancellation or timeouts.
 
-Layers with trainable parameters also implement:
+**Parameter Management:**
 
-```go
-type ParameterLayer interface {
-    Layer
-    Parameters() []*nn.Parameter
-    ZeroGrad()
-}
-```
+Layers with trainable parameters expose them via the `Parameters()` method:
+- `Base.Parameters()` returns `map[ParamIndex]Parameter` where values are Parameter structs (NOT pointers)
+- `Parameter` type is defined in the `layers` package (not `nn` package to avoid import cycles)
+- Layers embedding Base inherit this method via embedding
+- Parameters are stored as values in the map for efficiency and clarity
+- To update parameters, use `SetParam()` method on the layer
 
 ## Usage Examples
 
@@ -482,12 +482,9 @@ grad1, _ := layer1.Backward(gradRelu)
 
 // Update parameters
 optimizer := learn.NewSGD(0.01)
-for _, param := range layer1.Parameters() {
-    optimizer.Update(param)
-}
-for _, param := range layer2.Parameters() {
-    optimizer.Update(param)
-}
+// Model.Parameters() collects all parameters from all layers as map[string]Parameter
+// Model.Update() handles optimizer updates internally
+err := model.Update(optimizer)
 ```
 
 ## Testing
@@ -517,6 +514,58 @@ Layers are built on top of optimized tensor operations:
 - Tensor operations are optimized to minimize allocations
 - Base layer manages tensor lifecycle
 
+## Known Issues and Technical Debt
+
+### Code Quality Issues
+
+1. **Function Length**: Several backward pass functions exceed the 30-line guideline:
+   - `Dense.Backward()`: ~142 lines (should be split into helper functions)
+   - `Conv2D.Backward()`: ~162 lines (should be split into helper functions)
+   - `Conv1D.Backward()`: ~145 lines (should be split into helper functions)
+
+   **Recommendation**: Extract gradient computation logic into separate helper functions:
+   - `computeWeightGrad()`
+   - `computeBiasGrad()`
+   - `computeInputGrad()`
+
+2. **Dense Options Pattern**: `NewDense()` uses `...interface{}` for options, with runtime type checking:
+   ```go
+   func NewDense(inFeatures, outFeatures int, opts ...interface{}) (*Dense, error)
+   ```
+   
+   **Status**: ✅ Improved - Error message now includes the invalid type. The pattern works but loses compile-time type safety. This is acceptable for now as it allows both Option and DenseOption types.
+
+3. **AvgPool2D Prefix Bug**: `AvgPool2D` incorrectly uses "maxpool2d" prefix instead of "avgpool2d":
+   ```go:221:pooling.go
+   Base:    NewBase("maxpool2d"),
+   ```
+   
+   **Fix Required**: Change to `NewBase("avgpool2d")`
+
+### Design Issues
+
+4. **ParameterLayer Interface Removed**: 
+   - ✅ Fixed - ParameterLayer interface has been removed
+   - `Base.Parameters()` returns `map[ParamIndex]Parameter` (values, not pointers)
+   - `Parameter` type moved to `layers` package to avoid import cycles between `nn` and `layers`
+   - Parameters are stored and returned as values (not pointers) for clarity and efficiency
+   - `Model.Parameters()` collects parameters from layers via `ParametersAsInterface()` method
+   - `Model.Update()` works with parameter values and writes back via `SetParamInterface()` method
+   - This design avoids the complexity of pointer management while maintaining functionality
+
+5. **GlobalAvgPool2D Prefix**: Uses "avgpool2d" prefix instead of "globalavgpool2d":
+   ```go:367:pooling.go
+   Base: NewBase("avgpool2d"),
+   ```
+   
+   **Recommendation**: Change to `NewBase("globalavgpool2d")` for consistency.
+
+### Documentation Issues
+
+6. **SPEC.md Outdated**: SPEC.md incorrectly states that Forward/Backward take `context.Context`, but the actual Layer interface does not.
+
+7. **Missing Parameter Access Documentation**: SPEC.md shows `Parameters()` returning a slice, but Base returns a map.
+
 ## Future Enhancements
 
 1. **More Layers**: Conv3D, RNNs, LSTMs, Transformers
@@ -526,3 +575,5 @@ Layers are built on top of optimized tensor operations:
 5. **TensorFlow Lite Compatibility**: Layer-level TFLite export
 6. **Layer Pruning**: Remove redundant layers
 7. **Layer Fusion**: Combine multiple layers into one
+8. **Refactoring**: Split long backward pass functions into smaller helper functions
+9. **Type Safety**: Improve options pattern in Dense layer constructor

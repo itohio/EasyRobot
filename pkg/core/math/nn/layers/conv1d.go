@@ -6,12 +6,6 @@ import (
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
 )
 
-// Conv1D parameter indices
-const (
-	C1PARAM_WEIGHT = 0
-	C1PARAM_BIAS   = 1
-)
-
 // Conv1D represents a 1D convolution layer.
 type Conv1D struct {
 	Base
@@ -23,34 +17,10 @@ type Conv1D struct {
 	hasBias     bool
 }
 
-// Conv1DOption represents an option for configuring a Conv1D layer.
-type Conv1DOption func(*Conv1D)
-
-// WithConv1DName sets the name of the Conv1D layer.
-func WithConv1DName(name string) Conv1DOption {
-	return func(c *Conv1D) {
-		c.Base.SetName(name)
-	}
-}
-
-// WithConv1DBias sets whether to use a bias term.
-func WithConv1DBias(useBias bool) Conv1DOption {
-	return func(c *Conv1D) {
-		c.hasBias = useBias
-	}
-}
-
-// WithConv1DCanLearn sets whether this layer computes gradients.
-func WithConv1DCanLearn(canLearn bool) Conv1DOption {
-	return func(c *Conv1D) {
-		c.Base.SetCanLearn(canLearn)
-	}
-}
-
 // NewConv1D creates a new Conv1D layer.
 func NewConv1D(
 	inChannels, outChannels, kernelLen, stride, pad int,
-	opts ...Conv1DOption,
+	opts ...Option,
 ) (*Conv1D, error) {
 	if inChannels <= 0 {
 		return nil, fmt.Errorf("Conv1D: inChannels must be positive, got %d", inChannels)
@@ -66,7 +36,7 @@ func NewConv1D(
 	}
 
 	conv := &Conv1D{
-		Base:        NewBase(),
+		Base:        NewBase("conv1d", opts...),
 		inChannels:  inChannels,
 		outChannels: outChannels,
 		kernelLen:   kernelLen,
@@ -75,26 +45,16 @@ func NewConv1D(
 		hasBias:     true, // Default to having bias
 	}
 
-	// Apply options before initializing parameters
-	for _, opt := range opts {
-		opt(conv)
-	}
-
-	// Initialize Base parameters based on hasBias flag
-	numParams := 1 // weight
-	if conv.hasBias {
-		numParams = 2 // weight + bias
-	}
-	conv.Base.InitParams(numParams)
-
-	// Create weight parameter: [outChannels, inChannels, kernelLen]
-	weightSize := outChannels * inChannels * kernelLen
-	weightData := tensor.Tensor{
+	// Create kernel parameter: [outChannels, inChannels, kernelLen]
+	kernelSize := outChannels * inChannels * kernelLen
+	kernelData := tensor.Tensor{
 		Dim:  []int{outChannels, inChannels, kernelLen},
-		Data: make([]float32, weightSize),
+		Data: make([]float32, kernelSize),
 	}
-	conv.Base.Parameter(C1PARAM_WEIGHT).Data = weightData
-	conv.Base.Parameter(C1PARAM_WEIGHT).RequiresGrad = conv.Base.CanLearn()
+	conv.Base.SetParam(ParamKernels, Parameter{
+		Data:         kernelData,
+		RequiresGrad: conv.Base.CanLearn(),
+	})
 
 	// Create bias parameter if needed: [outChannels]
 	if conv.hasBias {
@@ -102,8 +62,10 @@ func NewConv1D(
 			Dim:  []int{outChannels},
 			Data: make([]float32, outChannels),
 		}
-		conv.Base.Parameter(C1PARAM_BIAS).Data = biasData
-		conv.Base.Parameter(C1PARAM_BIAS).RequiresGrad = conv.Base.CanLearn()
+		conv.Base.SetParam(ParamBiases, Parameter{
+			Data:         biasData,
+			RequiresGrad: conv.Base.CanLearn(),
+		})
 	}
 
 	return conv, nil
@@ -144,9 +106,6 @@ func (c *Conv1D) Init(inputShape []int) error {
 	outputSize := batchSize * c.outChannels * outLen
 	c.Base.AllocOutput(outputShape, outputSize)
 
-	// Set default name if not explicitly set
-	c.Base.SetDefaultName("Conv1D", outputShape)
-
 	return nil
 }
 
@@ -172,13 +131,19 @@ func (c *Conv1D) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 	// Compute convolution using tensor.Conv1D
 	// Note: tensor.Conv1D expects weight shape [outChannels, inChannels, kernelLen]
 	// which matches our parameter shape
-	weightParam := c.Base.Parameter(C1PARAM_WEIGHT)
+	kernelParam, ok := c.Base.Parameter(ParamKernels)
+	if !ok {
+		return tensor.Tensor{}, fmt.Errorf("Conv1D.Forward: kernel parameter not initialized")
+	}
 	var biasParam *tensor.Tensor
 	if c.hasBias {
-		biasParam = &c.Base.Parameter(C1PARAM_BIAS).Data
+		biasParamVal, ok := c.Base.Parameter(ParamBiases)
+		if ok {
+			biasParam = &biasParamVal.Data
+		}
 	}
 
-	result := input.Conv1D(&weightParam.Data, biasParam, c.stride, c.pad)
+	result := input.Conv1D(&kernelParam.Data, biasParam, c.stride, c.pad)
 
 	// Copy result to pre-allocated output
 	if len(result.Data) != len(output.Data) {
@@ -219,13 +184,16 @@ func (c *Conv1D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 	inLength := inputShape[2]
 	outLength := gradOutputShape[2]
 
-	// Get weight parameter
-	weightParam := c.Base.Parameter(C1PARAM_WEIGHT)
+	// Get kernel parameter
+	kernelParam, ok := c.Base.Parameter(ParamKernels)
+	if !ok {
+		return tensor.Tensor{}, fmt.Errorf("Conv1D.Backward: kernel parameter not initialized")
+	}
 
-	// Compute weight gradient: sum over batch of (correlation of input with gradOutput)
-	if c.Base.CanLearn() && weightParam.RequiresGrad {
-		if len(weightParam.Grad.Dim) == 0 {
-			weightParam.Grad = tensor.Tensor{
+	// Compute kernel gradient: sum over batch of (correlation of input with gradOutput)
+	if c.Base.CanLearn() && kernelParam.RequiresGrad {
+		if len(kernelParam.Grad.Dim) == 0 {
+			kernelParam.Grad = tensor.Tensor{
 				Dim:  []int{c.outChannels, c.inChannels, c.kernelLen},
 				Data: make([]float32, c.outChannels*c.inChannels*c.kernelLen),
 			}
@@ -256,16 +224,17 @@ func (c *Conv1D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 							}
 						}
 					}
-					weightParam.Grad.Data[weightGradIdx] += gradSum
+					kernelParam.Grad.Data[weightGradIdx] += gradSum
 				}
 			}
 		}
+		c.Base.SetParam(ParamKernels, kernelParam)
 	}
 
 	// Compute bias gradient: sum gradOutput over spatial dimensions and batch
 	if c.hasBias && c.Base.CanLearn() {
-		biasParam := c.Base.Parameter(C1PARAM_BIAS)
-		if biasParam.RequiresGrad {
+		biasParam, ok := c.Base.Parameter(ParamBiases)
+		if ok && biasParam.RequiresGrad {
 			if len(biasParam.Grad.Dim) == 0 {
 				biasParam.Grad = tensor.Tensor{
 					Dim:  []int{c.outChannels},
@@ -286,6 +255,7 @@ func (c *Conv1D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 				}
 				biasParam.Grad.Data[oc] += gradSum
 			}
+			c.Base.SetParam(ParamBiases, biasParam)
 		}
 	}
 
@@ -322,7 +292,7 @@ func (c *Conv1D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 							flippedK := c.kernelLen - 1 - k
 							weightIdx := weightOffset + flippedK
 							inputIdx := inputChanOffset + inPos
-							gradInput.Data[inputIdx] += gradVal * weightParam.Data.Data[weightIdx]
+							gradInput.Data[inputIdx] += gradVal * kernelParam.Data.Data[weightIdx]
 						}
 					}
 				}
@@ -357,16 +327,12 @@ func (c *Conv1D) OutputShape(inputShape []int) ([]int, error) {
 	return []int{batchSize, c.outChannels, outLen}, nil
 }
 
-// Weight returns the weight parameter tensor.
+// Weight returns the kernel parameter tensor.
 func (c *Conv1D) Weight() tensor.Tensor {
 	if c == nil {
 		return tensor.Tensor{}
 	}
-	weightParam := c.Base.Parameter(C1PARAM_WEIGHT)
-	if weightParam == nil {
-		return tensor.Tensor{}
-	}
-	return weightParam.Data
+	return c.Base.Kernels().Data
 }
 
 // Bias returns the bias parameter tensor.
@@ -374,14 +340,10 @@ func (c *Conv1D) Bias() tensor.Tensor {
 	if c == nil || !c.hasBias {
 		return tensor.Tensor{}
 	}
-	biasParam := c.Base.Parameter(C1PARAM_BIAS)
-	if biasParam == nil {
-		return tensor.Tensor{}
-	}
-	return biasParam.Data
+	return c.Base.Biases().Data
 }
 
-// SetWeight sets the weight parameter tensor.
+// SetWeight sets the kernel parameter tensor.
 func (c *Conv1D) SetWeight(weight tensor.Tensor) error {
 	if c == nil {
 		return fmt.Errorf("Conv1D.SetWeight: nil layer")
@@ -400,11 +362,12 @@ func (c *Conv1D) SetWeight(weight tensor.Tensor) error {
 				weight.Dim, expectedShape)
 		}
 	}
-	weightParam := c.Base.Parameter(C1PARAM_WEIGHT)
-	if weightParam == nil {
-		return fmt.Errorf("Conv1D.SetWeight: weight parameter not initialized")
+	kernelParam, ok := c.Base.Parameter(ParamKernels)
+	if !ok {
+		return fmt.Errorf("Conv1D.SetWeight: kernel parameter not initialized")
 	}
-	weightParam.Data = weight
+	kernelParam.Data = weight
+	c.Base.SetParam(ParamKernels, kernelParam)
 	return nil
 }
 
@@ -424,10 +387,11 @@ func (c *Conv1D) SetBias(bias tensor.Tensor) error {
 		return fmt.Errorf("Conv1D.SetBias: bias shape %v doesn't match expected [%d]",
 			bias.Dim, c.outChannels)
 	}
-	biasParam := c.Base.Parameter(C1PARAM_BIAS)
-	if biasParam == nil {
+	biasParam, ok := c.Base.Parameter(ParamBiases)
+	if !ok {
 		return fmt.Errorf("Conv1D.SetBias: bias parameter not initialized")
 	}
 	biasParam.Data = bias
+	c.Base.SetParam(ParamBiases, biasParam)
 	return nil
 }

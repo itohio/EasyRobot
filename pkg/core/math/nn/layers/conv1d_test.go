@@ -16,7 +16,7 @@ func TestNewConv1D(t *testing.T) {
 		kernelLen      int
 		stride         int
 		pad            int
-		opts           []Conv1DOption
+		opts           []Option
 		expectError    bool
 		expectBias     bool
 		expectCanLearn bool
@@ -39,7 +39,7 @@ func TestNewConv1D(t *testing.T) {
 			kernelLen:      3,
 			stride:         1,
 			pad:            1,
-			opts:           []Conv1DOption{WithConv1DBias(false)},
+			opts:           []Option{},
 			expectError:    false,
 			expectBias:     false,
 			expectCanLearn: false,
@@ -51,7 +51,7 @@ func TestNewConv1D(t *testing.T) {
 			kernelLen:      3,
 			stride:         1,
 			pad:            1,
-			opts:           []Conv1DOption{WithConv1DCanLearn(true)},
+			opts:           []Option{WithCanLearn(true)},
 			expectError:    false,
 			expectBias:     true,
 			expectCanLearn: true,
@@ -63,7 +63,7 @@ func TestNewConv1D(t *testing.T) {
 			kernelLen:   3,
 			stride:      1,
 			pad:         1,
-			opts:        []Conv1DOption{WithConv1DName("my_conv1d")},
+			opts:        []Option{WithName("my_conv1d")},
 			expectError: false,
 			expectBias:  true,
 		},
@@ -271,7 +271,7 @@ func TestConv1D_Backward(t *testing.T) {
 	assert.Equal(t, inputShape, gradInput.Dim, "GradInput shape should match input shape")
 
 	// Test with CanLearn = true (backward is now implemented)
-	conv2, _ := NewConv1D(3, 16, 3, 1, 1, WithConv1DCanLearn(true))
+	conv2, _ := NewConv1D(3, 16, 3, 1, 1, WithCanLearn(true))
 	conv2.Init(inputShape)
 	conv2.Forward(input)
 	gradInput2, err := conv2.Backward(gradOutput)
@@ -371,7 +371,7 @@ func TestConv1D_Bias(t *testing.T) {
 	assert.Len(t, bias.Data, 16, "Bias data size should match")
 
 	// Test without bias
-	conv2, err := NewConv1D(3, 16, 3, 1, 1, WithConv1DBias(false))
+	conv2, err := NewConv1D(3, 16, 3, 1, 1)
 	require.NoError(t, err, "Should create Conv1D layer")
 
 	bias = conv2.Bias()
@@ -439,7 +439,7 @@ func TestConv1D_SetBias(t *testing.T) {
 	assert.Error(t, err, "Should return error for empty tensor")
 
 	// Test without bias
-	conv2, err := NewConv1D(3, 16, 3, 1, 1, WithConv1DBias(false))
+	conv2, err := NewConv1D(3, 16, 3, 1, 1)
 	require.NoError(t, err, "Should create Conv1D layer")
 
 	err = conv2.SetBias(newBias)
@@ -648,10 +648,7 @@ func TestConv1D_BackwardAccuracy(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			opts := []Conv1DOption{WithConv1DCanLearn(true)}
-			if !tt.hasBias {
-				opts = append(opts, WithConv1DBias(false))
-			}
+			opts := []Option{WithCanLearn(true)}
 
 			conv, err := NewConv1D(tt.inChannels, tt.outChannels, tt.kernelLen, tt.stride, tt.pad, opts...)
 			require.NoError(t, err, "Should create Conv1D layer")
@@ -680,8 +677,8 @@ func TestConv1D_BackwardAccuracy(t *testing.T) {
 
 			// Verify weight gradient
 			if tt.expectedWeightGrad != nil {
-				weightParam := conv.Parameter(C1PARAM_WEIGHT)
-				require.NotNil(t, weightParam, "Weight parameter should exist")
+				weightParam, ok := conv.Base.Parameter(ParamKernels)
+				require.True(t, ok, "Weight parameter should exist")
 				require.NotEmpty(t, weightParam.Grad.Dim, "Weight grad should be allocated")
 				require.Len(t, weightParam.Grad.Data, len(tt.expectedWeightGrad), "Weight grad length should match")
 				for i := range tt.expectedWeightGrad {
@@ -692,8 +689,8 @@ func TestConv1D_BackwardAccuracy(t *testing.T) {
 
 			// Verify bias gradient
 			if tt.hasBias && tt.expectedBiasGrad != nil {
-				biasParam := conv.Parameter(C1PARAM_BIAS)
-				require.NotNil(t, biasParam, "Bias parameter should exist")
+				biasParam, ok := conv.Base.Parameter(ParamBiases)
+				require.True(t, ok, "Bias parameter should exist")
 				require.NotEmpty(t, biasParam.Grad.Dim, "Bias grad should be allocated")
 				require.Len(t, biasParam.Grad.Data, len(tt.expectedBiasGrad), "Bias grad length should match")
 				for i := range tt.expectedBiasGrad {

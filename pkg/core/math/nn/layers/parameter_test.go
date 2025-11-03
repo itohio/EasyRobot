@@ -58,7 +58,7 @@ func TestDenseParameterAccess(t *testing.T) {
 
 func TestConv2DParameterAccess(t *testing.T) {
 	// Create a Conv2D layer
-	conv2d, err := layers.NewConv2D(3, 16, 3, 3, 1, 1, 1, 1, layers.WithConv2DCanLearn(true))
+	conv2d, err := layers.NewConv2D(3, 16, 3, 3, 1, 1, 1, 1, layers.WithCanLearn(true))
 	require.NoError(t, err, "Should create Conv2D layer")
 
 	// Test getting initial weights
@@ -86,7 +86,7 @@ func TestConv2DParameterAccess(t *testing.T) {
 
 func TestConv1DParameterAccess(t *testing.T) {
 	// Create a Conv1D layer
-	conv1d, err := layers.NewConv1D(3, 16, 3, 1, 1, layers.WithConv1DCanLearn(true))
+	conv1d, err := layers.NewConv1D(3, 16, 3, 1, 1, layers.WithCanLearn(true))
 	require.NoError(t, err, "Should create Conv1D layer")
 
 	// Test getting initial weights

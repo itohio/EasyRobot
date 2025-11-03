@@ -3,6 +3,7 @@ package nn
 import (
 	"fmt"
 
+	"github.com/itohio/EasyRobot/pkg/core/math/nn/layers"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
 )
 
@@ -157,19 +158,47 @@ func (m *Model) Backward(gradOutput tensor.Tensor) error {
 }
 
 // Parameters returns all trainable parameters from all layers.
-func (m *Model) Parameters() []*Parameter {
+// Collects parameters from layers that have a Parameters() method returning map[interface{}]layers.Parameter.
+// Returns a combined map where keys are "layer_index:param_index" and values are layers.Parameter structs (not pointers).
+// Note: This method works with layers embedding Base, which have Parameters() returning map[layers.ParamIndex]layers.Parameter.
+// The layers.ParamIndex type is converted to interface{} to avoid import cycles.
+func (m *Model) Parameters() map[string]layers.Parameter {
 	if m == nil {
 		return nil
 	}
 
-	var params []*Parameter
-	for _, layer := range m.layers {
-		if paramLayer, ok := layer.(ParameterLayer); ok {
-			params = append(params, paramLayer.Parameters()...)
+	result := make(map[string]layers.Parameter)
+	for layerIdx, layer := range m.layers {
+		// Check if layer has ParametersAsInterface() or Parameters() method
+		// Layers embedding Base will have these methods promoted
+		// We use interface{} to avoid import cycles with layers package
+		type paramsGetterInterface interface {
+			ParametersAsInterface() map[interface{}]layers.Parameter
+		}
+		type paramsGetter interface {
+			Parameters() map[interface{}]layers.Parameter
+		}
+
+		// Try ParametersAsInterface first (from Base)
+		if pgi, ok := layer.(paramsGetterInterface); ok {
+			params := pgi.ParametersAsInterface()
+			for paramIdx, param := range params {
+				key := fmt.Sprintf("%d:%v", layerIdx, paramIdx)
+				result[key] = param
+			}
+		} else if pg, ok := layer.(paramsGetter); ok {
+			params := pg.Parameters()
+			for paramIdx, param := range params {
+				key := fmt.Sprintf("%d:%v", layerIdx, paramIdx)
+				result[key] = param
+			}
 		}
 	}
 
-	return params
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }
 
 // ZeroGrad zeros all parameter gradients.
@@ -179,8 +208,14 @@ func (m *Model) ZeroGrad() {
 	}
 
 	for _, layer := range m.layers {
-		if paramLayer, ok := layer.(ParameterLayer); ok {
-			paramLayer.ZeroGrad()
+		// Check if layer has ZeroGrad() method
+		// Layers embedding Base will have this method promoted
+		type zeroGradder interface {
+			ZeroGrad()
+		}
+
+		if zg, ok := layer.(zeroGradder); ok {
+			zg.ZeroGrad()
 		}
 	}
 }
@@ -196,19 +231,47 @@ func (m *Model) Update(optimizer interface{}) error {
 		return fmt.Errorf("model.Update: nil optimizer")
 	}
 
-	params := m.Parameters()
-	for _, param := range params {
-		// Use type assertion to get learn.Optimizer
-		// This allows us to keep learn package independent
-		type learnOptimizer interface {
-			Update(*Parameter) error
+	// Note: Update() works with parameters as values.
+	// For optimizers that need pointer access, we create temporary pointers.
+	// After optimization, parameters are written back to layers via SetParam.
+	for _, layer := range m.layers {
+		type paramsGetterInterface interface {
+			ParametersAsInterface() map[interface{}]layers.Parameter
 		}
-		if opt, ok := optimizer.(learnOptimizer); ok {
-			if err := opt.Update(param); err != nil {
-				return fmt.Errorf("model.Update: failed to update parameter: %w", err)
+		type paramSetterInterface interface {
+			SetParamInterface(interface{}, layers.Parameter)
+		}
+
+		var params map[interface{}]layers.Parameter
+		var ok bool
+
+		// Try ParametersAsInterface first (from Base)
+		if pgi, ok2 := layer.(paramsGetterInterface); ok2 {
+			params = pgi.ParametersAsInterface()
+			ok = true
+		}
+
+		if ok && params != nil {
+			if psi, ok2 := layer.(paramSetterInterface); ok2 {
+				for paramIdx, param := range params {
+					// Create a pointer to the parameter for optimizer
+					paramPtr := &param
+
+					// Use type assertion to get learn.Optimizer
+					type learnOptimizer interface {
+						Update(*layers.Parameter) error
+					}
+					if opt, ok3 := optimizer.(learnOptimizer); ok3 {
+						if err := opt.Update(paramPtr); err != nil {
+							return fmt.Errorf("model.Update: failed to update parameter: %w", err)
+						}
+						// Update the layer with the modified parameter
+						psi.SetParamInterface(paramIdx, *paramPtr)
+					} else {
+						return fmt.Errorf("model.Update: optimizer does not implement learn.Optimizer interface")
+					}
+				}
 			}
-		} else {
-			return fmt.Errorf("model.Update: optimizer does not implement learn.Optimizer interface")
 		}
 	}
 

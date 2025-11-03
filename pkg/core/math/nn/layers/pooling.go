@@ -43,7 +43,7 @@ func NewMaxPool2D(kernelH, kernelW, strideH, strideW, padH, padW int) (*MaxPool2
 	}
 
 	return &MaxPool2D{
-		Base:    NewBase(),
+		Base:    NewBase("maxpool2d"),
 		kernelH: kernelH,
 		kernelW: kernelW,
 		strideH: strideH,
@@ -218,7 +218,7 @@ func NewAvgPool2D(kernelH, kernelW, strideH, strideW, padH, padW int) (*AvgPool2
 	}
 
 	return &AvgPool2D{
-		Base:    NewBase(),
+		Base:    NewBase("avgpool2d"),
 		kernelH: kernelH,
 		kernelW: kernelW,
 		strideH: strideH,
@@ -364,7 +364,7 @@ type GlobalAvgPool2D struct {
 // NewGlobalAvgPool2D creates a new GlobalAvgPool2D layer.
 func NewGlobalAvgPool2D() *GlobalAvgPool2D {
 	return &GlobalAvgPool2D{
-		Base: NewBase(),
+		Base: NewBase("globalavgpool2d"),
 	}
 }
 

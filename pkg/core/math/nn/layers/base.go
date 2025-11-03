@@ -2,10 +2,12 @@ package layers
 
 import (
 	"fmt"
+	"sync/atomic"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/nn"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
 )
+
+var layerCounter int64
 
 // ParamIndex represents a typed parameter index for layers
 type ParamIndex int
@@ -24,22 +26,27 @@ type Option func(*Base)
 // Base provides common layer functionality that can be embedded by all layers.
 // Layers embedding Base should implement Forward and Backward directly.
 type Base struct {
-	name      string
-	canLearn  bool
-	input     tensor.Tensor
-	output    tensor.Tensor
-	grad      tensor.Tensor                // Gradient tensor for backward pass
-	params    map[ParamIndex]*nn.Parameter // Parameters map (new)
-	paramsOld []nn.Parameter               // Old slice-based params (for backward compatibility)
+	name     string
+	prefix   string
+	canLearn bool
+	input    tensor.Tensor
+	output   tensor.Tensor
+	grad     tensor.Tensor            // Gradient tensor for backward pass
+	params   map[ParamIndex]Parameter // Parameters map
+	layerIdx int64                    // Unique layer index assigned at creation
 }
 
 // NewBase creates a new Base layer with options.
-func NewBase(opts ...Option) Base {
+func NewBase(prefix string, opts ...Option) Base {
+	// Increment and capture global layer counter value for this layer
+	layerIdx := atomic.AddInt64(&layerCounter, 1)
+
 	b := Base{
-		name:      "",
-		canLearn:  false,
-		params:    make(map[ParamIndex]*nn.Parameter),
-		paramsOld: []nn.Parameter{},
+		name:     "",
+		prefix:   prefix,
+		canLearn: false,
+		params:   make(map[ParamIndex]Parameter),
+		layerIdx: layerIdx,
 	}
 
 	// Apply options
@@ -70,8 +77,10 @@ func WithCanLearn(canLearn bool) Option {
 func WithWeights(weight tensor.Tensor) Option {
 	return func(b *Base) {
 		b.initParam(ParamWeights)
-		b.params[ParamWeights].Data = weight
-		b.params[ParamWeights].RequiresGrad = b.canLearn
+		param := b.params[ParamWeights]
+		param.Data = weight
+		param.RequiresGrad = b.canLearn
+		b.params[ParamWeights] = param
 	}
 }
 
@@ -79,8 +88,10 @@ func WithWeights(weight tensor.Tensor) Option {
 func WithBiases(bias tensor.Tensor) Option {
 	return func(b *Base) {
 		b.initParam(ParamBiases)
-		b.params[ParamBiases].Data = bias
-		b.params[ParamBiases].RequiresGrad = b.canLearn
+		param := b.params[ParamBiases]
+		param.Data = bias
+		param.RequiresGrad = b.canLearn
+		b.params[ParamBiases] = param
 	}
 }
 
@@ -88,46 +99,70 @@ func WithBiases(bias tensor.Tensor) Option {
 func WithKernels(kernel tensor.Tensor) Option {
 	return func(b *Base) {
 		b.initParam(ParamKernels)
-		b.params[ParamKernels].Data = kernel
-		b.params[ParamKernels].RequiresGrad = b.canLearn
+		param := b.params[ParamKernels]
+		param.Data = kernel
+		param.RequiresGrad = b.canLearn
+		b.params[ParamKernels] = param
 	}
 }
 
 // WithParameter returns an Option that sets a parameter at the given index.
-func WithParameter(idx ParamIndex, param nn.Parameter) Option {
+func WithParameter(idx ParamIndex, param Parameter) Option {
 	return func(b *Base) {
 		b.initParam(idx)
-		*b.params[idx] = param
-		b.params[idx].RequiresGrad = b.canLearn
+		param.RequiresGrad = b.canLearn
+		b.params[idx] = param
 	}
 }
 
 // WithParameters returns an Option that sets multiple parameters.
 // Copies as many parameters as fit into Base.params.
-func WithParameters(params map[ParamIndex]nn.Parameter) Option {
+func WithParameters(params map[ParamIndex]Parameter) Option {
 	return func(b *Base) {
 		// Copy as many parameters as fit
 		for idx, param := range params {
 			b.initParam(idx)
-			*b.params[idx] = param
-			b.params[idx].RequiresGrad = b.canLearn
+			param.RequiresGrad = b.canLearn
+			b.params[idx] = param
 		}
 	}
 }
 
 // Helper to initialize a parameter if it doesn't exist
 func (b *Base) initParam(idx ParamIndex) {
-	if b.params[idx] == nil {
-		b.params[idx] = &nn.Parameter{}
+	if _, ok := b.params[idx]; !ok {
+		b.params[idx] = Parameter{}
 	}
 }
 
 // Name returns the name of this layer.
+// If name is empty, automatically generates a default name as {prefix}_{layer_idx}_{shape}
+// if prefix is set, or {layer_idx}_{shape} if prefix is empty.
 func (b *Base) Name() string {
 	if b == nil {
 		return ""
 	}
-	return b.name
+	if b.name != "" {
+		return b.name
+	}
+	// Generate default name from prefix, layer_idx and shape
+	var nameFormat string
+	if b.prefix != "" {
+		if len(b.output.Dim) > 0 {
+			shapeStr := fmt.Sprintf("%v", b.output.Dim)
+			nameFormat = fmt.Sprintf("%s_%d_%s", b.prefix, b.layerIdx, shapeStr)
+		} else {
+			nameFormat = fmt.Sprintf("%s_%d", b.prefix, b.layerIdx)
+		}
+	} else {
+		if len(b.output.Dim) > 0 {
+			shapeStr := fmt.Sprintf("%v", b.output.Dim)
+			nameFormat = fmt.Sprintf("%d_%s", b.layerIdx, shapeStr)
+		} else {
+			nameFormat = fmt.Sprintf("%d", b.layerIdx)
+		}
+	}
+	return nameFormat
 }
 
 // SetName sets the name of this layer.
@@ -136,23 +171,6 @@ func (b *Base) SetName(name string) {
 		return
 	}
 	b.name = name
-}
-
-// SetDefaultName sets a default name based on layer type and shape.
-func (b *Base) SetDefaultName(layerType string, shape []int) {
-	if b == nil {
-		return
-	}
-	if b.name != "" {
-		return // Don't override explicitly set name
-	}
-	// Generate name from layer type and shape
-	if len(shape) > 0 {
-		shapeStr := fmt.Sprintf("%v", shape)
-		b.name = fmt.Sprintf("%s_%s", layerType, shapeStr)
-	} else {
-		b.name = layerType
-	}
 }
 
 // CanLearn returns whether this layer computes gradients.
@@ -258,95 +276,74 @@ func (b *Base) StoreGrad(grad tensor.Tensor) {
 	b.setGrad(grad)
 }
 
-// InitParams initializes the old parameter array with the given number of parameters.
-// This is for backward compatibility. Layers should migrate to using params map.
-func (b *Base) InitParams(numParams int) {
+// Parameter returns the parameter at the given index and whether it exists.
+func (b *Base) Parameter(idx ParamIndex) (Parameter, bool) {
 	if b == nil {
-		return
+		return Parameter{}, false
 	}
-	b.paramsOld = make([]nn.Parameter, numParams)
+	param, ok := b.params[idx]
+	return param, ok
 }
 
-// Parameter returns the parameter at the given index from old slice (backward compatibility).
-func (b *Base) Parameter(idx int) *nn.Parameter {
-	if b == nil || idx < 0 || idx >= len(b.paramsOld) {
-		return nil
-	}
-	return &b.paramsOld[idx]
-}
-
-// Parameters returns all parameters from old slice (backward compatibility).
-// Also includes parameters from params map.
-func (b *Base) Parameters() []*nn.Parameter {
+// Parameters returns all parameters from the params map.
+// Returns map[ParamIndex]Parameter where values are Parameter structs (not pointers).
+func (b *Base) Parameters() map[ParamIndex]Parameter {
 	if b == nil {
 		return nil
 	}
 
-	// Start with old slice params
-	result := make([]*nn.Parameter, len(b.paramsOld))
-	for i := range b.paramsOld {
-		result[i] = &b.paramsOld[i]
-	}
-
-	// Add map params (for indices >= ParamCustom, or if not in slice)
+	result := make(map[ParamIndex]Parameter)
 	for idx, param := range b.params {
-		if param != nil {
-			if int(idx) >= int(ParamCustom) || int(idx) >= len(b.paramsOld) {
-				// Add new params that don't fit in slice
-				result = append(result, param)
-			} else if int(idx) < len(b.paramsOld) {
-				// Override slice param with map param if both exist
-				result[int(idx)] = param
-			}
-		}
+		result[idx] = param
 	}
-
 	if len(result) == 0 {
 		return nil
 	}
 	return result
 }
 
-// SetParameters sets all parameters from old slice (backward compatibility).
-func (b *Base) SetParameters(params []nn.Parameter) error {
+// ParametersAsInterface returns parameters as map[interface{}]Parameter to avoid import cycles.
+// This allows nn.Model to collect parameters without importing layers package.
+func (b *Base) ParametersAsInterface() map[interface{}]Parameter {
+	if b == nil {
+		return nil
+	}
+	if len(b.params) == 0 {
+		return nil
+	}
+
+	result := make(map[interface{}]Parameter)
+	for idx, param := range b.params {
+		result[idx] = param
+	}
+	return result
+}
+
+// SetParameters sets all parameters in the map.
+func (b *Base) SetParameters(params map[ParamIndex]Parameter) error {
 	if b == nil {
 		return fmt.Errorf("Base.SetParameters: nil layer")
 	}
-	if len(params) != len(b.paramsOld) {
-		return fmt.Errorf("Base.SetParameters: expected %d parameters, got %d", len(b.paramsOld), len(params))
+	for idx, param := range params {
+		b.params[idx] = param
 	}
-	b.paramsOld = make([]nn.Parameter, len(params))
-	copy(b.paramsOld, params)
 	return nil
 }
 
-// ZeroGrad zeros all parameter gradients (both old slice and new map).
+// ZeroGrad zeros all parameter gradients.
 func (b *Base) ZeroGrad() {
 	if b == nil {
 		return
 	}
-	// Zero old slice params
-	for i := range b.paramsOld {
-		b.paramsOld[i].ZeroGrad()
+	for idx := range b.params {
+		param := b.params[idx]
+		param.ZeroGrad()
+		b.params[idx] = param
 	}
-	// Zero map params
-	for _, param := range b.params {
-		if param != nil {
-			param.ZeroGrad()
-		}
-	}
-}
-
-// GetParam returns a parameter from the map at the given index.
-func (b *Base) GetParam(idx ParamIndex) *nn.Parameter {
-	if b == nil {
-		return nil
-	}
-	return b.params[idx]
 }
 
 // SetParam sets a parameter in the map at the given index.
-func (b *Base) SetParam(idx ParamIndex, param *nn.Parameter) {
+func (b *Base) SetParam(idx ParamIndex, param Parameter) {
 	if b == nil {
 		return
 	}
@@ -354,17 +351,39 @@ func (b *Base) SetParam(idx ParamIndex, param *nn.Parameter) {
 	b.params[idx] = param
 }
 
+// SetParamInterface sets a parameter using interface{} index to avoid import cycles.
+// This allows nn.Model to update parameters without importing layers package.
+func (b *Base) SetParamInterface(idx interface{}, param Parameter) {
+	if b == nil {
+		return
+	}
+	// Type assert idx to ParamIndex
+	if paramIdx, ok := idx.(ParamIndex); ok {
+		b.initParam(paramIdx)
+		b.params[paramIdx] = param
+	}
+}
+
 // Weights returns the weights parameter.
-func (b *Base) Weights() *nn.Parameter {
-	return b.GetParam(ParamWeights)
+func (b *Base) Weights() Parameter {
+	if b == nil {
+		return Parameter{}
+	}
+	return b.params[ParamWeights]
 }
 
 // Biases returns the biases parameter.
-func (b *Base) Biases() *nn.Parameter {
-	return b.GetParam(ParamBiases)
+func (b *Base) Biases() Parameter {
+	if b == nil {
+		return Parameter{}
+	}
+	return b.params[ParamBiases]
 }
 
 // Kernels returns the kernels parameter.
-func (b *Base) Kernels() *nn.Parameter {
-	return b.GetParam(ParamKernels)
+func (b *Base) Kernels() Parameter {
+	if b == nil {
+		return Parameter{}
+	}
+	return b.params[ParamKernels]
 }

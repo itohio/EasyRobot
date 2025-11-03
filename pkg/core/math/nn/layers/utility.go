@@ -16,7 +16,7 @@ type Flatten struct {
 // NewFlatten creates a new Flatten layer.
 func NewFlatten(startDim, endDim int) *Flatten {
 	return &Flatten{
-		Base:     NewBase(),
+		Base:     NewBase("flatten"),
 		startDim: startDim,
 		endDim:   endDim,
 	}
@@ -168,7 +168,7 @@ type Reshape struct {
 // NewReshape creates a new Reshape layer with the given target shape.
 func NewReshape(targetShape []int) *Reshape {
 	return &Reshape{
-		Base:        NewBase(),
+		Base:        NewBase("reshape"),
 		targetShape: append([]int(nil), targetShape...), // Copy slice
 	}
 }

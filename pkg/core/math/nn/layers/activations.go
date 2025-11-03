@@ -4,22 +4,9 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/nn"
+	"github.com/chewxy/math32"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
 )
-
-// shapesEqual is a local helper function.
-func shapesEqual(a, b []int) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
 
 const float32ExpMax = 88.0 // max value for exp to avoid overflow
 
@@ -31,7 +18,7 @@ type ReLU struct {
 // NewReLU creates a new ReLU layer.
 func NewReLU(name string) *ReLU {
 	return &ReLU{
-		Base: NewBase(WithName(name)),
+		Base: NewBase("relu", WithName(name)),
 	}
 }
 
@@ -124,7 +111,7 @@ type Sigmoid struct {
 // NewSigmoid creates a new Sigmoid layer.
 func NewSigmoid(name string) *Sigmoid {
 	return &Sigmoid{
-		Base: NewBase(WithName(name)),
+		Base: NewBase("sigmoid", WithName(name)),
 	}
 }
 
@@ -216,7 +203,7 @@ type Tanh struct {
 // NewTanh creates a new Tanh layer.
 func NewTanh(name string) *Tanh {
 	return &Tanh{
-		Base: NewBase(WithName(name)),
+		Base: NewBase("tanh", WithName(name)),
 	}
 }
 
@@ -303,7 +290,7 @@ type Softmax struct {
 // NewSoftmax creates a new Softmax layer for the given dimension.
 func NewSoftmax(name string, dim int) *Softmax {
 	return &Softmax{
-		Base: NewBase(WithName(name)),
+		Base: NewBase("softmax", WithName(name)),
 		dim:  dim,
 	}
 }
@@ -340,13 +327,8 @@ func (s *Softmax) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 	// Copy input to output first
 	copy(output.Data, input.Data)
 
-	// Apply softmax using the package-level function
-	inputPtr := &input
-	softmaxPtr := nn.Softmax(inputPtr, s.dim)
-	if softmaxPtr != inputPtr {
-		// Softmax created new tensor, copy it
-		copy(output.Data, softmaxPtr.Data)
-	}
+	// Apply softmax directly
+	softmaxTensor(&output, s.dim)
 
 	s.Base.StoreOutput(output)
 	return output, nil
@@ -428,4 +410,115 @@ func (s *Softmax) OutputShape(inputShape []int) ([]int, error) {
 	outputShape := make([]int, len(inputShape))
 	copy(outputShape, inputShape)
 	return outputShape, nil
+}
+
+// softmaxTensor applies softmax along specified dimension in-place.
+func softmaxTensor(t *tensor.Tensor, dim int) {
+	if t == nil || len(t.Dim) == 0 {
+		return
+	}
+
+	if dim < 0 || dim >= len(t.Dim) {
+		return
+	}
+
+	if len(t.Dim) == 1 {
+		softmax1D(t)
+		return
+	}
+
+	if len(t.Dim) == 2 {
+		if dim == 0 {
+			softmax2DRows(t)
+			return
+		} else if dim == 1 {
+			softmax2DCols(t)
+			return
+		}
+	}
+}
+
+func softmax1D(t *tensor.Tensor) {
+	if len(t.Data) == 0 {
+		return
+	}
+	maxVal := t.Data[0]
+	for i := 1; i < len(t.Data); i++ {
+		if t.Data[i] > maxVal {
+			maxVal = t.Data[i]
+		}
+	}
+
+	var sum float32
+	for i := range t.Data {
+		t.Data[i] = math32.Exp(t.Data[i] - maxVal)
+		sum += t.Data[i]
+	}
+
+	if sum > 0 {
+		for i := range t.Data {
+			t.Data[i] /= sum
+		}
+	}
+}
+
+func softmax2DRows(t *tensor.Tensor) {
+	if len(t.Dim) != 2 {
+		return
+	}
+	M, N := t.Dim[0], t.Dim[1]
+
+	for j := 0; j < N; j++ {
+		maxVal := t.Data[j]
+		for i := 1; i < M; i++ {
+			val := t.Data[i*N+j]
+			if val > maxVal {
+				maxVal = val
+			}
+		}
+
+		var sum float32
+		for i := 0; i < M; i++ {
+			val := t.Data[i*N+j] - maxVal
+			t.Data[i*N+j] = math32.Exp(val)
+			sum += t.Data[i*N+j]
+		}
+
+		if sum > 0 {
+			for i := 0; i < M; i++ {
+				t.Data[i*N+j] /= sum
+			}
+		}
+	}
+}
+
+func softmax2DCols(t *tensor.Tensor) {
+	if len(t.Dim) != 2 {
+		return
+	}
+	M, N := t.Dim[0], t.Dim[1]
+
+	for i := 0; i < M; i++ {
+		rowStart := i * N
+		maxVal := t.Data[rowStart]
+		for j := 1; j < N; j++ {
+			val := t.Data[rowStart+j]
+			if val > maxVal {
+				maxVal = val
+			}
+		}
+
+		var sum float32
+		for j := 0; j < N; j++ {
+			val := t.Data[rowStart+j] - maxVal
+			t.Data[rowStart+j] = math32.Exp(val)
+			sum += t.Data[rowStart+j]
+		}
+
+		if sum > 0 {
+			for j := 0; j < N; j++ {
+				t.Data[rowStart+j] /= sum
+			}
+		}
+	}
 }

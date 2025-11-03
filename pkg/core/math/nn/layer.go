@@ -43,14 +43,3 @@ type Layer interface {
 	// Output returns the output tensor from the last Forward pass.
 	Output() tensor.Tensor
 }
-
-// ParameterLayer extends Layer with trainable parameters.
-type ParameterLayer interface {
-	Layer
-
-	// Parameters returns all trainable parameters (weights, biases, etc.)
-	Parameters() []*Parameter
-
-	// ZeroGrad zeros out all parameter gradients
-	ZeroGrad()
-}
