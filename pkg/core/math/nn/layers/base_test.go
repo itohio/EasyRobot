@@ -29,7 +29,7 @@ func TestNewBase(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			base := NewBase(tt.input)
+			base := NewBase(WithName(tt.input))
 			require.NotNil(t, base, "Base should not be nil")
 			assert.Equal(t, tt.expected, base.Name(), "Name should match")
 			assert.False(t, base.CanLearn(), "Default CanLearn should be false")
@@ -38,7 +38,7 @@ func TestNewBase(t *testing.T) {
 }
 
 func TestBase_Name(t *testing.T) {
-	base := NewBase("test")
+	base := NewBase(WithName("test"))
 	assert.Equal(t, "test", base.Name(), "Name should match")
 
 	// Test nil receiver
@@ -47,7 +47,7 @@ func TestBase_Name(t *testing.T) {
 }
 
 func TestBase_SetName(t *testing.T) {
-	base := NewBase("old_name")
+	base := NewBase(WithName("old_name"))
 	base.SetName("new_name")
 	assert.Equal(t, "new_name", base.Name(), "Name should be updated")
 
@@ -89,7 +89,7 @@ func TestBase_SetDefaultName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			base := NewBase(tt.existingName)
+			base := NewBase(WithName(tt.existingName))
 			base.SetDefaultName(tt.layerType, tt.shape)
 			assert.Equal(t, tt.expected, base.Name(), "Name should match expected")
 
@@ -101,7 +101,7 @@ func TestBase_SetDefaultName(t *testing.T) {
 }
 
 func TestBase_CanLearn(t *testing.T) {
-	base := NewBase("test")
+	base := NewBase()
 	assert.False(t, base.CanLearn(), "Default CanLearn should be false")
 
 	base.SetCanLearn(true)
@@ -113,7 +113,7 @@ func TestBase_CanLearn(t *testing.T) {
 }
 
 func TestBase_SetCanLearn(t *testing.T) {
-	base := NewBase("test")
+	base := NewBase()
 	base.SetCanLearn(true)
 	assert.True(t, base.CanLearn(), "CanLearn should be true")
 
@@ -126,7 +126,7 @@ func TestBase_SetCanLearn(t *testing.T) {
 }
 
 func TestBase_Input(t *testing.T) {
-	base := NewBase("test")
+	base := NewBase()
 	input := tensor.Tensor{
 		Dim:  []int{2, 3},
 		Data: []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0},
@@ -144,7 +144,7 @@ func TestBase_Input(t *testing.T) {
 }
 
 func TestBase_Output(t *testing.T) {
-	base := NewBase("test")
+	base := NewBase()
 	output := tensor.Tensor{
 		Dim:  []int{2, 3},
 		Data: []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0},
@@ -162,7 +162,7 @@ func TestBase_Output(t *testing.T) {
 }
 
 func TestBase_Grad(t *testing.T) {
-	base := NewBase("test")
+	base := NewBase()
 	grad := tensor.Tensor{
 		Dim:  []int{2, 3},
 		Data: []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6},
@@ -202,7 +202,7 @@ func TestBase_AllocOutput(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			base := NewBase("test")
+			base := NewBase()
 			base.AllocOutput(tt.shape, tt.size)
 			output := base.Output()
 			assert.Equal(t, tt.expected, output.Dim, "Output dimensions should match")
@@ -238,7 +238,7 @@ func TestBase_AllocGrad(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			base := NewBase("test")
+			base := NewBase()
 			base.AllocGrad(tt.shape, tt.size)
 			grad := base.Grad()
 			assert.Equal(t, tt.expected, grad.Dim, "Grad dimensions should match")
@@ -272,7 +272,7 @@ func TestBase_InitParams(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			base := NewBase("test")
+			base := NewBase()
 			base.InitParams(tt.numParams)
 			params := base.Parameters()
 			if tt.numParams == 0 {
@@ -289,7 +289,7 @@ func TestBase_InitParams(t *testing.T) {
 }
 
 func TestBase_Parameter(t *testing.T) {
-	base := NewBase("test")
+	base := NewBase()
 	base.InitParams(3)
 
 	// Test valid index
@@ -313,7 +313,7 @@ func TestBase_Parameter(t *testing.T) {
 }
 
 func TestBase_Parameters(t *testing.T) {
-	base := NewBase("test")
+	base := NewBase()
 
 	// Test with no params
 	params := base.Parameters()
@@ -333,7 +333,7 @@ func TestBase_Parameters(t *testing.T) {
 }
 
 func TestBase_SetParameters(t *testing.T) {
-	base := NewBase("test")
+	base := NewBase()
 	base.InitParams(2)
 
 	newParams := []nn.Parameter{
@@ -373,7 +373,7 @@ func TestBase_SetParameters(t *testing.T) {
 }
 
 func TestBase_ZeroGrad(t *testing.T) {
-	base := NewBase("test")
+	base := NewBase()
 	base.InitParams(2)
 
 	// Set parameter data and enable gradients
@@ -416,7 +416,7 @@ func TestBase_ZeroGrad(t *testing.T) {
 }
 
 func TestBase_StoreInput(t *testing.T) {
-	base := NewBase("test")
+	base := NewBase()
 	input := tensor.Tensor{
 		Dim:  []int{2, 3},
 		Data: []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0},
@@ -429,7 +429,7 @@ func TestBase_StoreInput(t *testing.T) {
 }
 
 func TestBase_StoreOutput(t *testing.T) {
-	base := NewBase("test")
+	base := NewBase()
 	output := tensor.Tensor{
 		Dim:  []int{2, 3},
 		Data: []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0},
@@ -442,7 +442,7 @@ func TestBase_StoreOutput(t *testing.T) {
 }
 
 func TestBase_StoreGrad(t *testing.T) {
-	base := NewBase("test")
+	base := NewBase()
 	grad := tensor.Tensor{
 		Dim:  []int{2, 3},
 		Data: []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6},

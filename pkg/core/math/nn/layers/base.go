@@ -7,13 +7,15 @@ import (
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
 )
 
+// ParamIndex represents a typed parameter index for layers
+type ParamIndex int
+
 // Standard parameter indices
 const (
-	ParamWeight = 0
-	ParamBias   = 1
-
-	// Custom parameter indices start here
-	ParamCustom = 100
+	ParamWeights ParamIndex = 1
+	ParamBiases  ParamIndex = 2
+	ParamKernels ParamIndex = 3
+	ParamCustom  ParamIndex = 100
 )
 
 // Option represents a configuration option for layers.
@@ -26,32 +28,23 @@ type Base struct {
 	canLearn  bool
 	input     tensor.Tensor
 	output    tensor.Tensor
-	grad      tensor.Tensor         // Gradient tensor for backward pass
-	params    map[int]*nn.Parameter // Parameters map (new)
-	paramsOld []nn.Parameter        // Old slice-based params (for backward compatibility)
+	grad      tensor.Tensor                // Gradient tensor for backward pass
+	params    map[ParamIndex]*nn.Parameter // Parameters map (new)
+	paramsOld []nn.Parameter               // Old slice-based params (for backward compatibility)
 }
 
-// NewBase creates a new Base layer.
-// Can be called with:
-//   - String name: NewBase("name")
-//   - Options: NewBase(WithName("name"), WithCanLearn(true))
-func NewBase(opts ...interface{}) *Base {
-	b := &Base{
+// NewBase creates a new Base layer with options.
+func NewBase(opts ...Option) Base {
+	b := Base{
 		name:      "",
 		canLearn:  false,
-		params:    make(map[int]*nn.Parameter),
+		params:    make(map[ParamIndex]*nn.Parameter),
 		paramsOld: []nn.Parameter{},
 	}
 
 	// Apply options
 	for _, opt := range opts {
-		switch v := opt.(type) {
-		case string:
-			// Backward compatibility: single string is interpreted as name
-			b.name = v
-		case Option:
-			v(b)
-		}
+		opt(&b)
 	}
 
 	return b
@@ -73,26 +66,35 @@ func WithCanLearn(canLearn bool) Option {
 	}
 }
 
-// WithWeight returns an Option that sets the weight parameter at ParamWeight index.
-func WithWeight(weight tensor.Tensor) Option {
+// WithWeights returns an Option that sets the weight parameter at ParamWeights index.
+func WithWeights(weight tensor.Tensor) Option {
 	return func(b *Base) {
-		b.initParam(ParamWeight)
-		b.params[ParamWeight].Data = weight
-		b.params[ParamWeight].RequiresGrad = b.canLearn
+		b.initParam(ParamWeights)
+		b.params[ParamWeights].Data = weight
+		b.params[ParamWeights].RequiresGrad = b.canLearn
 	}
 }
 
-// WithBias returns an Option that sets the bias parameter at ParamBias index.
-func WithBias(bias tensor.Tensor) Option {
+// WithBiases returns an Option that sets the bias parameter at ParamBiases index.
+func WithBiases(bias tensor.Tensor) Option {
 	return func(b *Base) {
-		b.initParam(ParamBias)
-		b.params[ParamBias].Data = bias
-		b.params[ParamBias].RequiresGrad = b.canLearn
+		b.initParam(ParamBiases)
+		b.params[ParamBiases].Data = bias
+		b.params[ParamBiases].RequiresGrad = b.canLearn
+	}
+}
+
+// WithKernels returns an Option that sets the kernel parameter at ParamKernels index.
+func WithKernels(kernel tensor.Tensor) Option {
+	return func(b *Base) {
+		b.initParam(ParamKernels)
+		b.params[ParamKernels].Data = kernel
+		b.params[ParamKernels].RequiresGrad = b.canLearn
 	}
 }
 
 // WithParameter returns an Option that sets a parameter at the given index.
-func WithParameter(idx int, param nn.Parameter) Option {
+func WithParameter(idx ParamIndex, param nn.Parameter) Option {
 	return func(b *Base) {
 		b.initParam(idx)
 		*b.params[idx] = param
@@ -102,7 +104,7 @@ func WithParameter(idx int, param nn.Parameter) Option {
 
 // WithParameters returns an Option that sets multiple parameters.
 // Copies as many parameters as fit into Base.params.
-func WithParameters(params map[int]nn.Parameter) Option {
+func WithParameters(params map[ParamIndex]nn.Parameter) Option {
 	return func(b *Base) {
 		// Copy as many parameters as fit
 		for idx, param := range params {
@@ -114,7 +116,7 @@ func WithParameters(params map[int]nn.Parameter) Option {
 }
 
 // Helper to initialize a parameter if it doesn't exist
-func (b *Base) initParam(idx int) {
+func (b *Base) initParam(idx ParamIndex) {
 	if b.params[idx] == nil {
 		b.params[idx] = &nn.Parameter{}
 	}
@@ -289,12 +291,12 @@ func (b *Base) Parameters() []*nn.Parameter {
 	// Add map params (for indices >= ParamCustom, or if not in slice)
 	for idx, param := range b.params {
 		if param != nil {
-			if idx >= ParamCustom || idx >= len(b.paramsOld) {
+			if int(idx) >= int(ParamCustom) || int(idx) >= len(b.paramsOld) {
 				// Add new params that don't fit in slice
 				result = append(result, param)
-			} else if idx < len(b.paramsOld) {
+			} else if int(idx) < len(b.paramsOld) {
 				// Override slice param with map param if both exist
-				result[idx] = param
+				result[int(idx)] = param
 			}
 		}
 	}
@@ -336,7 +338,7 @@ func (b *Base) ZeroGrad() {
 }
 
 // GetParam returns a parameter from the map at the given index.
-func (b *Base) GetParam(idx int) *nn.Parameter {
+func (b *Base) GetParam(idx ParamIndex) *nn.Parameter {
 	if b == nil {
 		return nil
 	}
@@ -344,10 +346,25 @@ func (b *Base) GetParam(idx int) *nn.Parameter {
 }
 
 // SetParam sets a parameter in the map at the given index.
-func (b *Base) SetParam(idx int, param *nn.Parameter) {
+func (b *Base) SetParam(idx ParamIndex, param *nn.Parameter) {
 	if b == nil {
 		return
 	}
 	b.initParam(idx)
 	b.params[idx] = param
+}
+
+// Weights returns the weights parameter.
+func (b *Base) Weights() *nn.Parameter {
+	return b.GetParam(ParamWeights)
+}
+
+// Biases returns the biases parameter.
+func (b *Base) Biases() *nn.Parameter {
+	return b.GetParam(ParamBiases)
+}
+
+// Kernels returns the kernels parameter.
+func (b *Base) Kernels() *nn.Parameter {
+	return b.GetParam(ParamKernels)
 }

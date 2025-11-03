@@ -25,13 +25,13 @@ const float32ExpMax = 88.0 // max value for exp to avoid overflow
 
 // ReLU layer implements ReLU activation as a Layer.
 type ReLU struct {
-	*Base
+	Base
 }
 
 // NewReLU creates a new ReLU layer.
 func NewReLU(name string) *ReLU {
 	return &ReLU{
-		Base: NewBase(name),
+		Base: NewBase(WithName(name)),
 	}
 }
 
@@ -118,13 +118,13 @@ func (r *ReLU) OutputShape(inputShape []int) ([]int, error) {
 
 // Sigmoid layer implements sigmoid activation as a Layer.
 type Sigmoid struct {
-	*Base
+	Base
 }
 
 // NewSigmoid creates a new Sigmoid layer.
 func NewSigmoid(name string) *Sigmoid {
 	return &Sigmoid{
-		Base: NewBase(name),
+		Base: NewBase(WithName(name)),
 	}
 }
 
@@ -210,13 +210,13 @@ func (s *Sigmoid) OutputShape(inputShape []int) ([]int, error) {
 
 // Tanh layer implements tanh activation as a Layer.
 type Tanh struct {
-	*Base
+	Base
 }
 
 // NewTanh creates a new Tanh layer.
 func NewTanh(name string) *Tanh {
 	return &Tanh{
-		Base: NewBase(name),
+		Base: NewBase(WithName(name)),
 	}
 }
 
@@ -296,14 +296,14 @@ func (t *Tanh) OutputShape(inputShape []int) ([]int, error) {
 
 // Softmax layer implements softmax activation as a Layer.
 type Softmax struct {
-	*Base
+	Base
 	dim int // Dimension along which to apply softmax
 }
 
 // NewSoftmax creates a new Softmax layer for the given dimension.
 func NewSoftmax(name string, dim int) *Softmax {
 	return &Softmax{
-		Base: NewBase(name),
+		Base: NewBase(WithName(name)),
 		dim:  dim,
 	}
 }

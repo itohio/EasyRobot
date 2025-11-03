@@ -8,7 +8,7 @@ import (
 
 // Flatten represents a layer that flattens multi-dimensional input to 2D.
 type Flatten struct {
-	*Base
+	Base
 	startDim int // Start dimension to flatten from
 	endDim   int // End dimension to flatten to
 }
@@ -16,7 +16,7 @@ type Flatten struct {
 // NewFlatten creates a new Flatten layer.
 func NewFlatten(startDim, endDim int) *Flatten {
 	return &Flatten{
-		Base:     NewBase(""),
+		Base:     NewBase(),
 		startDim: startDim,
 		endDim:   endDim,
 	}
@@ -161,14 +161,14 @@ func (f *Flatten) OutputShape(inputShape []int) ([]int, error) {
 
 // Reshape represents a layer that reshapes the input tensor.
 type Reshape struct {
-	*Base
+	Base
 	targetShape []int
 }
 
 // NewReshape creates a new Reshape layer with the given target shape.
 func NewReshape(targetShape []int) *Reshape {
 	return &Reshape{
-		Base:        NewBase(""),
+		Base:        NewBase(),
 		targetShape: append([]int(nil), targetShape...), // Copy slice
 	}
 }

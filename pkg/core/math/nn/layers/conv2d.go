@@ -14,7 +14,7 @@ const (
 
 // Conv2D represents a 2D convolution layer.
 type Conv2D struct {
-	*Base
+	Base
 	inChannels  int
 	outChannels int
 	kernelH     int
@@ -32,9 +32,7 @@ type Conv2DOption func(*Conv2D)
 // WithConv2DName sets the name of the Conv2D layer.
 func WithConv2DName(name string) Conv2DOption {
 	return func(c *Conv2D) {
-		if c.Base != nil {
-			c.Base.SetName(name)
-		}
+		c.Base.SetName(name)
 	}
 }
 
@@ -48,9 +46,7 @@ func WithConv2DBias(useBias bool) Conv2DOption {
 // WithConv2DCanLearn sets whether this layer computes gradients.
 func WithConv2DCanLearn(canLearn bool) Conv2DOption {
 	return func(c *Conv2D) {
-		if c.Base != nil {
-			c.Base.SetCanLearn(canLearn)
-		}
+		c.Base.SetCanLearn(canLearn)
 	}
 }
 
@@ -79,7 +75,7 @@ func NewConv2D(
 	}
 
 	conv := &Conv2D{
-		Base:        NewBase(""),
+		Base:        NewBase(),
 		inChannels:  inChannels,
 		outChannels: outChannels,
 		kernelH:     kernelH,

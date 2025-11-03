@@ -3,23 +3,15 @@ package layers
 import (
 	"fmt"
 
+	"github.com/itohio/EasyRobot/pkg/core/math/nn"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
 )
 
-// Dense parameter indices (use standard ParamWeight, ParamBias from base)
-
-// interfaceSlice converts []Option to []interface{}
-func interfaceSlice(opts []Option) []interface{} {
-	result := make([]interface{}, len(opts))
-	for i, opt := range opts {
-		result[i] = opt
-	}
-	return result
-}
+// Dense parameter indices (use standard ParamWeights, ParamBiases from base)
 
 // Dense represents a fully connected (linear) layer.
 type Dense struct {
-	*Base
+	Base
 	inFeatures  int
 	outFeatures int
 	hasBias     bool
@@ -68,36 +60,33 @@ func NewDense(inFeatures, outFeatures int, opts ...interface{}) (*Dense, error) 
 	}
 
 	// Create Base with options
-	dense.Base = NewBase(interfaceSlice(baseOpts)...)
+	dense.Base = NewBase(baseOpts...)
 
 	// Apply dense-specific options
 	for _, opt := range denseOpts {
 		opt(dense)
 	}
 
-	// Initialize Base parameters based on hasBias flag
-	numParams := 1 // weight
-	if dense.hasBias {
-		numParams = 2 // weight + bias
-	}
-	dense.Base.InitParams(numParams)
-
-	// Create weight parameter: [inFeatures, outFeatures]
+	// Initialize weight parameter in map
 	weightData := tensor.Tensor{
 		Dim:  []int{inFeatures, outFeatures},
 		Data: make([]float32, inFeatures*outFeatures),
 	}
-	dense.Base.Parameter(ParamWeight).Data = weightData
-	dense.Base.Parameter(ParamWeight).RequiresGrad = dense.Base.CanLearn()
+	dense.Base.SetParam(ParamWeights, &nn.Parameter{
+		Data:         weightData,
+		RequiresGrad: dense.Base.CanLearn(),
+	})
 
-	// Create bias parameter if needed: [outFeatures]
+	// Create bias parameter if needed
 	if dense.hasBias {
 		biasData := tensor.Tensor{
 			Dim:  []int{outFeatures},
 			Data: make([]float32, outFeatures),
 		}
-		dense.Base.Parameter(ParamBias).Data = biasData
-		dense.Base.Parameter(ParamBias).RequiresGrad = dense.Base.CanLearn()
+		dense.Base.SetParam(ParamBiases, &nn.Parameter{
+			Data:         biasData,
+			RequiresGrad: dense.Base.CanLearn(),
+		})
 	}
 
 	return dense, nil
@@ -165,10 +154,10 @@ func (d *Dense) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 
 	// Compute linear transformation directly into output tensor
 	// output = input @ weight + bias
-	weightParam := d.Base.Parameter(ParamWeight)
+	weightParam := d.Base.GetParam(ParamWeights)
 	var biasParam *tensor.Tensor
 	if d.hasBias {
-		biasParam = &d.Base.Parameter(ParamBias).Data
+		biasParam = &d.Base.GetParam(ParamBiases).Data
 	}
 	if err := computeLinear(&input, &weightParam.Data, biasParam, &output); err != nil {
 		return tensor.Tensor{}, fmt.Errorf("Dense.Forward: Linear operation failed: %w", err)
@@ -262,7 +251,7 @@ func (d *Dense) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		// gradWeight shape: [inFeatures, outFeatures]
 		// gradWeight = input^T @ gradOutput
 		// Only compute gradients if CanLearn is true
-		weightParam := d.Base.Parameter(ParamWeight)
+		weightParam := d.Base.GetParam(ParamWeights)
 		if d.Base.CanLearn() && weightParam != nil && weightParam.RequiresGrad {
 			if len(weightParam.Grad.Dim) == 0 {
 				weightParam.Grad = tensor.Tensor{
@@ -282,7 +271,7 @@ func (d *Dense) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		// Compute gradient w.r.t. bias: gradBias = gradOutput
 		// Only compute gradients if CanLearn is true
 		if d.hasBias {
-			biasParam := d.Base.Parameter(ParamBias)
+			biasParam := d.Base.GetParam(ParamBiases)
 			if d.Base.CanLearn() && biasParam != nil && biasParam.RequiresGrad {
 				if len(biasParam.Grad.Dim) == 0 {
 					biasParam.Grad = tensor.Tensor{
@@ -314,7 +303,7 @@ func (d *Dense) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		// Compute gradient w.r.t. weight: sum over batch of (input^T @ gradOutput)
 		// Use MatMulTransposed: gradWeight = input^T @ gradOutput (accumulated over batch)
 		// Only compute gradients if CanLearn is true
-		weightParam := d.Base.Parameter(ParamWeight)
+		weightParam := d.Base.GetParam(ParamWeights)
 		if d.Base.CanLearn() && weightParam != nil && weightParam.RequiresGrad {
 			if len(weightParam.Grad.Dim) == 0 {
 				weightParam.Grad = tensor.Tensor{
@@ -332,7 +321,7 @@ func (d *Dense) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		// Compute gradient w.r.t. bias: sum over batch of gradOutput
 		// Only compute gradients if CanLearn is true
 		if d.hasBias {
-			biasParam := d.Base.Parameter(ParamBias)
+			biasParam := d.Base.GetParam(ParamBiases)
 			if d.Base.CanLearn() && biasParam != nil && biasParam.RequiresGrad {
 				if len(biasParam.Grad.Dim) == 0 {
 					biasParam.Grad = tensor.Tensor{
@@ -394,7 +383,7 @@ func (d *Dense) Weight() tensor.Tensor {
 	if d == nil {
 		return tensor.Tensor{}
 	}
-	weightParam := d.Base.Parameter(ParamWeight)
+	weightParam := d.Base.GetParam(ParamWeights)
 	if weightParam == nil {
 		return tensor.Tensor{}
 	}
@@ -406,7 +395,7 @@ func (d *Dense) Bias() tensor.Tensor {
 	if d == nil || !d.hasBias {
 		return tensor.Tensor{}
 	}
-	biasParam := d.Base.Parameter(ParamBias)
+	biasParam := d.Base.GetParam(ParamBiases)
 	if biasParam == nil {
 		return tensor.Tensor{}
 	}
@@ -429,7 +418,7 @@ func (d *Dense) SetWeight(weight tensor.Tensor) error {
 		return fmt.Errorf("Dense.SetWeight: weight shape %v doesn't match expected [%d, %d]",
 			weight.Dim, d.inFeatures, d.outFeatures)
 	}
-	weightParam := d.Base.Parameter(ParamWeight)
+	weightParam := d.Base.GetParam(ParamWeights)
 	if weightParam == nil {
 		return fmt.Errorf("Dense.SetWeight: weight parameter not initialized")
 	}
@@ -453,7 +442,7 @@ func (d *Dense) SetBias(bias tensor.Tensor) error {
 		return fmt.Errorf("Dense.SetBias: bias shape %v doesn't match expected [%d]",
 			bias.Dim, d.outFeatures)
 	}
-	biasParam := d.Base.Parameter(ParamBias)
+	biasParam := d.Base.GetParam(ParamBiases)
 	if biasParam == nil {
 		return fmt.Errorf("Dense.SetBias: bias parameter not initialized")
 	}

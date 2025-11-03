@@ -324,11 +324,11 @@ func TestDense_Backward(t *testing.T) {
 			assert.NotEmpty(t, gradInput2.Dim, "GradInput should have dimensions")
 
 			// Verify gradients were computed
-			weightParam := dense2.Parameter(ParamWeight)
+			weightParam := dense2.GetParam(ParamWeights)
 			assert.NotEmpty(t, weightParam.Grad.Dim, "Weight grad should be allocated")
 
 			if tt.name == "1d_input" || tt.name == "2d_input" {
-				biasParam := dense2.Parameter(ParamBias)
+				biasParam := dense2.GetParam(ParamBiases)
 				assert.NotEmpty(t, biasParam.Grad.Dim, "Bias grad should be allocated")
 			}
 		})
@@ -558,13 +558,13 @@ func TestDense_BackwardGradientComputation(t *testing.T) {
 	assert.InDelta(t, 1.0, gradInput.Data[1], 1e-6, "GradInput[1] should be 1.0")
 
 	// Check weight gradient: should be [1.0, 2.0] (input @ gradOutput)
-	weightParam := dense.Parameter(ParamWeight)
+	weightParam := dense.GetParam(ParamWeights)
 	assert.NotEmpty(t, weightParam.Grad.Dim, "Weight grad should be allocated")
 	assert.InDelta(t, 1.0, weightParam.Grad.Data[0], 1e-6, "Weight grad[0] should be 1.0")
 	assert.InDelta(t, 2.0, weightParam.Grad.Data[1], 1e-6, "Weight grad[1] should be 2.0")
 
 	// Check bias gradient: should be [1.0]
-	biasParam := dense.Parameter(ParamBias)
+	biasParam := dense.GetParam(ParamBiases)
 	assert.NotEmpty(t, biasParam.Grad.Dim, "Bias grad should be allocated")
 	assert.InDelta(t, 1.0, biasParam.Grad.Data[0], 1e-6, "Bias grad[0] should be 1.0")
 }
@@ -853,7 +853,7 @@ func TestDense_BackwardAccuracy(t *testing.T) {
 			require.NoError(t, err, "Backward should succeed")
 
 			// Verify weight gradient
-			weightParam := dense.Parameter(ParamWeight)
+			weightParam := dense.GetParam(ParamWeights)
 			require.NotNil(t, weightParam, "Weight parameter should exist")
 			require.NotEmpty(t, weightParam.Grad.Dim, "Weight grad should be allocated")
 			require.Len(t, weightParam.Grad.Data, len(tt.expectedWeightGrad), "Weight grad length should match")
@@ -864,7 +864,7 @@ func TestDense_BackwardAccuracy(t *testing.T) {
 
 			// Verify bias gradient
 			if tt.hasBias {
-				biasParam := dense.Parameter(ParamBias)
+				biasParam := dense.GetParam(ParamBiases)
 				require.NotNil(t, biasParam, "Bias parameter should exist")
 				require.NotEmpty(t, biasParam.Grad.Dim, "Bias grad should be allocated")
 				require.Len(t, biasParam.Grad.Data, len(tt.expectedBiasGrad), "Bias grad length should match")

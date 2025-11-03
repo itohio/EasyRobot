@@ -8,7 +8,7 @@ import (
 
 // MaxPool2D represents a 2D max pooling layer.
 type MaxPool2D struct {
-	*Base
+	Base
 	kernelH int
 	kernelW int
 	strideH int
@@ -23,9 +23,7 @@ type MaxPool2DOption func(*MaxPool2D)
 // WithMaxPool2DName sets the name of the MaxPool2D layer.
 func WithMaxPool2DName(name string) MaxPool2DOption {
 	return func(m *MaxPool2D) {
-		if m.Base != nil {
-			m.Base.SetName(name)
-		}
+		m.Base.SetName(name)
 	}
 }
 
@@ -45,7 +43,7 @@ func NewMaxPool2D(kernelH, kernelW, strideH, strideW, padH, padW int) (*MaxPool2
 	}
 
 	return &MaxPool2D{
-		Base:    NewBase(""),
+		Base:    NewBase(),
 		kernelH: kernelH,
 		kernelW: kernelW,
 		strideH: strideH,
@@ -185,7 +183,7 @@ func (m *MaxPool2D) OutputShape(inputShape []int) ([]int, error) {
 
 // AvgPool2D represents a 2D average pooling layer.
 type AvgPool2D struct {
-	*Base
+	Base
 	kernelH int
 	kernelW int
 	strideH int
@@ -200,9 +198,7 @@ type AvgPool2DOption func(*AvgPool2D)
 // WithAvgPool2DName sets the name of the AvgPool2D layer.
 func WithAvgPool2DName(name string) AvgPool2DOption {
 	return func(a *AvgPool2D) {
-		if a.Base != nil {
-			a.Base.SetName(name)
-		}
+		a.Base.SetName(name)
 	}
 }
 
@@ -222,7 +218,7 @@ func NewAvgPool2D(kernelH, kernelW, strideH, strideW, padH, padW int) (*AvgPool2
 	}
 
 	return &AvgPool2D{
-		Base:    NewBase(""),
+		Base:    NewBase(),
 		kernelH: kernelH,
 		kernelW: kernelW,
 		strideH: strideH,
@@ -362,13 +358,13 @@ func (a *AvgPool2D) OutputShape(inputShape []int) ([]int, error) {
 
 // GlobalAvgPool2D represents a global average pooling layer.
 type GlobalAvgPool2D struct {
-	*Base
+	Base
 }
 
 // NewGlobalAvgPool2D creates a new GlobalAvgPool2D layer.
 func NewGlobalAvgPool2D() *GlobalAvgPool2D {
 	return &GlobalAvgPool2D{
-		Base: NewBase(""),
+		Base: NewBase(),
 	}
 }
 
