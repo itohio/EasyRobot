@@ -192,39 +192,92 @@ func Syrk(c, a []float32, ldC, ldA, N, K int, alpha, beta float32)
 - C: N × N (symmetric, only upper or lower stored)
 - Operation: C += alpha * A * A^T
 
-## Supporting Operations
+## LAPACK Operations
 
-### File: `matrix.go`
+### File: `la.go`
 
-Matrix utility operations.
+Linear Algebra Package operations for matrix factorizations and decompositions. All operations use row-major storage. See [LA.md](LA.md) for detailed function specifications.
 
-| Function | Description | Status |
-|----------|-------------|--------|
-| MatCopy | Copy matrix | ⏳ |
-| MatCopyTranspose | Copy transpose | ⏳ |
-| MatScale | Scale matrix | ⏳ |
-| MatReduce | Reduce operations | ⏳ |
+| LAPACK | Function | Description | Status |
+|--------|----------|-------------|--------|
+| GETRF | Getrf | LU decomposition with pivoting | 🔮 |
+| GETRI | Getri | Matrix inversion using LU | 🔮 |
+| H1 | H1 | Construct Householder transformation | 🔮 |
+| H2 | H2 | Apply Householder to vector | 🔮 |
+| H3 | H3 | Apply Householder to matrix column | 🔮 |
+| GEQRF | Geqrf | QR decomposition | 🔮 |
+| ORGQR | Orgqr | Generate Q from QR | 🔮 |
+| GESVD | Gesvd | Singular value decomposition | 🔮 |
+| GEPSEU | Gepseu | Moore-Penrose pseudo-inverse | 🔮 |
+| GNNLS | Gnnls | Non-negative least squares | 🔮 |
+
+### LU Decomposition
 
 ```go
-// MatCopy: B = A (copy matrix)
-func MatCopy(b, a []float32, ldB, ldA, M, N int)
+// GETRF: A = P * L * U (LU decomposition with partial pivoting)
+func Getrf(a, l, u []float32, ipiv []int, ldA, ldL, ldU, M, N int) error
 
-// MatCopyTranspose: B = A^T (copy transpose)
-func MatCopyTranspose(b, a []float32, ldB, ldA, M, N int)
-// A: M × N, B: N × M
-
-// MatScale: A = alpha * A
-func MatScale(a []float32, ldA, M, N int, alpha float32)
-
-// MatMin: Find minimum element
-func MatMin(a []float32, ldA, M, N int) (val float32, row, col int)
-
-// MatMax: Find maximum element
-func MatMax(a []float32, ldA, M, N int) (val float32, row, col int)
-
-// MatMean: Compute mean of all elements
-func MatMean(a []float32, ldA, M, N int) float32
+// GETRF_IP: In-place LU decomposition (stores L and U in A)
+func Getrf_IP(a []float32, ipiv []int, ldA, M, N int) error
 ```
+
+### Matrix Inversion
+
+```go
+// GETRI: A^(-1) = U^(-1) * L^(-1) * P^T (uses LU from GETRF)
+func Getri(aInv, a []float32, ldA, N int, ipiv []int) error
+```
+
+### Householder Transformations
+
+Primitive Householder transformation functions used by QR decomposition and NNLS.
+
+```go
+// H1: Construct Householder transformation
+// Returns transformation parameter 'up'
+func H1(a []float32, col0, lpivot, l1 int, ldA int, rangeVal float32) (up float32, err error)
+
+// H2: Apply Householder transformation to vector
+// Applies transformation to vector zz in-place
+func H2(a, zz []float32, col0, lpivot, l1 int, up float32, ldA int, rangeVal float32) error
+
+// H3: Apply Householder transformation to matrix column
+// Applies transformation to column col1 of matrix a in-place
+func H3(a []float32, col0, lpivot, l1 int, up float32, col1 int, ldA int, rangeVal float32) error
+```
+
+### QR Decomposition
+
+```go
+// GEQRF: A = Q * R (QR decomposition using Householder reflections)
+func Geqrf(a []float32, tau []float32, ldA, M, N int) error
+
+// ORGQR: Generate Q from QR decomposition
+func Orgqr(q, a []float32, tau []float32, ldA, ldQ, M, N, K int) error
+```
+
+### SVD Decomposition
+
+```go
+// GESVD: A = U * Σ * V^T (singular value decomposition)
+func Gesvd(u, s, vt, a []float32, ldA, ldU, ldVt, M, N int) error
+```
+
+### Pseudo-Inverse
+
+```go
+// GEPSEU: A^+ = V * Σ^+ * U^T (Moore-Penrose pseudo-inverse)
+func Gepseu(aPinv, a []float32, ldA, ldApinv, M, N int) error
+```
+
+### Non-Negative Least Squares
+
+```go
+// GNNLS: Solve min ||AX - B|| subject to X >= 0
+func Gnnls(x, a, b []float32, ldA, M, N int) (rNorm float32, err error)
+```
+
+For detailed specifications, see [LA.md](LA.md).
 
 ## Stride Parameter Rules
 
@@ -253,6 +306,7 @@ func MatMean(a []float32, ldA, M, N int) float32
 - ✅ **Level 3**: Complete (GEMM_NN, GEMM_NT, GEMM_TN, GEMM_TT, SYRK, TRMM)
 - ✅ **Batched**: Complete (GemmBatched, GemmStrided, GemvBatched)
 - ✅ **Tensor**: Complete (Conv2D, Conv2DTransposed, Im2Col, Col2Im)
+- 🔮 **LAPACK**: Planned (GETRF/GETRI, GEQRF/ORGQR, GESVD, GEPSEU, GNNLS)
 - 🔮 **Future**: Symmetric, triangular, banded matrices
 
 ## Performance Targets
@@ -274,7 +328,6 @@ func MatMean(a []float32, ldA, M, N int) float32
 ## Migration from Current Implementation
 
 ### Current State
-- Matrix operations in `matrix.go`
 - Vector operations in `vector.go`, `array.go`
 - Uses row-major storage
 - Boolean transpose flags
@@ -424,11 +477,13 @@ pkg/core/math/primitive/
 ├── level3_test.go
 ├── batched.go         # Batched BLAS operations
 ├── batched_test.go
+├── la.go              # LAPACK operations (factorizations, decompositions)
+├── la_test.go
 ├── tensor.go          # Tensor operations (conv, pooling, etc.)
 ├── tensor_test.go
-├── matrix.go          # Matrix utility functions
-├── matrix_test.go
 ├── conv.go            # Convolution operations (legacy, to be merged)
+├── BLAS.md            # BLAS function mapping
+├── LA.md              # LAPACK function mapping
 ├── SPEC.md            # This file
 ```
 
@@ -478,11 +533,12 @@ Operation: For each output position (i,j):
 
 ## Next Steps
 
-1. **Phase 1**: Implement Level 1 operations with stride support
-2. **Phase 2**: Implement Level 2 operations (GEMV, GER)
-3. **Phase 3**: Implement Level 3 operations (GEMM)
-4. **Phase 4**: Implement Batched operations (GemmBatched, GemvBatched)
-5. **Phase 5**: Implement Tensor operations (Conv2D, Im2Col)
-6. **Phase 6**: Update mat/tensor packages to use new primitives
-7. **Phase 7**: Performance optimization and tiling
+1. **Phase 1**: Implement Level 1 operations with stride support ✅
+2. **Phase 2**: Implement Level 2 operations (GEMV, GER) ✅
+3. **Phase 3**: Implement Level 3 operations (GEMM) ✅
+4. **Phase 4**: Implement Batched operations (GemmBatched, GemvBatched) ✅
+5. **Phase 5**: Implement Tensor operations (Conv2D, Im2Col) ✅
+6. **Phase 6**: Implement LAPACK operations (GETRF/GETRI, GEQRF/ORGQR, GESVD, GEPSEU, GNNLS) 🔮
+7. **Phase 7**: Update mat/tensor packages to use new primitives
+8. **Phase 8**: Performance optimization and tiling
 
