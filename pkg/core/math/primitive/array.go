@@ -1,10 +1,13 @@
 package primitive
 
 import (
+	"sort"
+
 	"github.com/chewxy/math32"
 )
 
 // SumArr computes dst[i] = a[i] + b[i] for all i
+// Element-wise addition for tensor operations
 // num: number of elements
 // strideA, strideB: strides for a and b (default 1)
 func SumArr(dst, a, b []float32, num int, strideA, strideB int) {
@@ -25,6 +28,7 @@ func SumArr(dst, a, b []float32, num int, strideA, strideB int) {
 }
 
 // DiffArr computes dst[i] = a[i] - b[i] for all i
+// Element-wise subtraction for tensor operations
 func DiffArr(dst, a, b []float32, num int, strideA, strideB int) {
 	if num == 0 {
 		return
@@ -43,6 +47,7 @@ func DiffArr(dst, a, b []float32, num int, strideA, strideB int) {
 }
 
 // MulArr computes dst[i] = a[i] * b[i] for all i
+// Element-wise multiplication for tensor operations
 func MulArr(dst, a, b []float32, num int, strideA, strideB int) {
 	if num == 0 {
 		return
@@ -61,6 +66,7 @@ func MulArr(dst, a, b []float32, num int, strideA, strideB int) {
 }
 
 // DivArr computes dst[i] = a[i] / b[i] for all i
+// Element-wise division for tensor operations
 func DivArr(dst, a, b []float32, num int, strideA, strideB int) {
 	if num == 0 {
 		return
@@ -78,179 +84,8 @@ func DivArr(dst, a, b []float32, num int, strideA, strideB int) {
 	}
 }
 
-// SumArrConst computes dst[i] = src[i] + c for all i
-func SumArrConst(dst, src []float32, c float32, num int, stride int) {
-	if num == 0 {
-		return
-	}
-
-	ps := 0
-	pd := 0
-
-	for i := 0; i < num; i++ {
-		dst[pd] = src[ps] + c
-		ps += stride
-		pd++
-	}
-}
-
-// DiffArrConst computes dst[i] = src[i] - c for all i
-func DiffArrConst(dst, src []float32, c float32, num int, stride int) {
-	if num == 0 {
-		return
-	}
-
-	ps := 0
-	pd := 0
-
-	for i := 0; i < num; i++ {
-		dst[pd] = src[ps] - c
-		ps += stride
-		pd++
-	}
-}
-
-// MulArrConst computes dst[i] = src[i] * c for all i
-func MulArrConst(dst, src []float32, c float32, num int, stride int) {
-	if num == 0 {
-		return
-	}
-
-	ps := 0
-	pd := 0
-
-	for i := 0; i < num; i++ {
-		dst[pd] = src[ps] * c
-		ps += stride
-		pd++
-	}
-}
-
-// DivArrConst computes dst[i] = src[i] / c for all i
-func DivArrConst(dst, src []float32, c float32, num int, stride int) {
-	if num == 0 {
-		return
-	}
-
-	ps := 0
-	pd := 0
-
-	for i := 0; i < num; i++ {
-		dst[pd] = src[ps] / c
-		ps += stride
-		pd++
-	}
-}
-
-// SumArrInPlace computes dst[i] += c for all i (in-place)
-func SumArrInPlace(dst []float32, c float32, num int) {
-	if num == 0 {
-		return
-	}
-
-	for i := 0; i < num; i++ {
-		dst[i] += c
-	}
-}
-
-// DiffArrInPlace computes dst[i] -= c for all i (in-place)
-func DiffArrInPlace(dst []float32, c float32, num int) {
-	if num == 0 {
-		return
-	}
-
-	for i := 0; i < num; i++ {
-		dst[i] -= c
-	}
-}
-
-// MulArrInPlace computes dst[i] *= c for all i (in-place)
-func MulArrInPlace(dst []float32, c float32, num int) {
-	if num == 0 {
-		return
-	}
-
-	for i := 0; i < num; i++ {
-		dst[i] *= c
-	}
-}
-
-// DivArrInPlace computes dst[i] /= c for all i (in-place)
-func DivArrInPlace(dst []float32, c float32, num int) {
-	if num == 0 {
-		return
-	}
-
-	for i := 0; i < num; i++ {
-		dst[i] /= c
-	}
-}
-
-// SumArrAdd computes dst[i] += src[i] + c for all i (accumulate)
-func SumArrAdd(dst, src []float32, c float32, num int, stride int) {
-	if num == 0 {
-		return
-	}
-
-	ps := 0
-	pd := 0
-
-	for i := 0; i < num; i++ {
-		dst[pd] += src[ps] + c
-		ps += stride
-		pd++
-	}
-}
-
-// DiffArrAdd computes dst[i] += src[i] - c for all i (accumulate)
-func DiffArrAdd(dst, src []float32, c float32, num int, stride int) {
-	if num == 0 {
-		return
-	}
-
-	ps := 0
-	pd := 0
-
-	for i := 0; i < num; i++ {
-		dst[pd] += src[ps] - c
-		ps += stride
-		pd++
-	}
-}
-
-// MulArrAdd computes dst[i] += src[i] * c for all i (accumulate)
-func MulArrAdd(dst, src []float32, c float32, num int, stride int) {
-	if num == 0 {
-		return
-	}
-
-	ps := 0
-	pd := 0
-
-	for i := 0; i < num; i++ {
-		dst[pd] += src[ps] * c
-		ps += stride
-		pd++
-	}
-}
-
-// DivArrAdd computes dst[i] += src[i] / c for all i (accumulate)
-func DivArrAdd(dst, src []float32, c float32, num int, stride int) {
-	if num == 0 {
-		return
-	}
-
-	ps := 0
-	pd := 0
-
-	for i := 0; i < num; i++ {
-		dst[pd] += src[ps] / c
-		ps += stride
-		pd++
-	}
-}
-
 // Sum computes sum of array elements
+// Utility function for statistics
 func Sum(a []float32, num int, stride int) float32 {
 	if num == 0 {
 		return 0
@@ -268,6 +103,7 @@ func Sum(a []float32, num int, stride int) float32 {
 }
 
 // SqrSum computes sum of squares of array elements
+// Utility function for statistics
 func SqrSum(a []float32, num int, stride int) float32 {
 	if num == 0 {
 		return 0
@@ -285,80 +121,57 @@ func SqrSum(a []float32, num int, stride int) float32 {
 	return acc
 }
 
-// MinArr finds minimum value in array, returns value and index
-func MinArr(a []float32, num int, stride int) (min float32, index int) {
+// StatsArr computes min, max, mean, and standard deviation of array elements in one pass
+// Uses numerically stable algorithm for mean and stddev
+// min, max, mean, stddev: output parameters
+// a: input array
+// num: number of elements
+// stride: access stride
+func StatsArr(min, max, mean, stddev *float32, a []float32, num int, stride int) {
 	if num == 0 {
-		return 0, -1
-	}
-
-	min = math32.MaxFloat32
-	index = 0
-	pa := 0
-
-	for i := 0; i < num; i++ {
-		val := a[pa]
-		if val < min {
-			min = val
-			index = i
-		}
-		pa += stride
-	}
-
-	return min, index
-}
-
-// MaxArr finds maximum value in array, returns value and index
-func MaxArr(a []float32, num int, stride int) (max float32, index int) {
-	if num == 0 {
-		return 0, -1
-	}
-
-	max = -math32.MaxFloat32
-	index = 0
-	pa := 0
-
-	for i := 0; i < num; i++ {
-		val := a[pa]
-		if val > max {
-			max = val
-			index = i
-		}
-		pa += stride
-	}
-
-	return max, index
-}
-
-// MeanArr computes mean of array elements
-func MeanArr(a []float32, num int, stride int) float32 {
-	if num == 0 {
-		return 0
-	}
-
-	return Sum(a, num, stride) / float32(num)
-}
-
-// MomentsArr computes mean and standard deviation of array
-// Uses numerically stable algorithm
-func MomentsArr(mean, stddev *float32, a []float32, num int, stride int) {
-	if num < 2 {
-		if num == 1 {
-			*mean = a[0]
-			*stddev = 0
-		}
+		*min = 0
+		*max = 0
+		*mean = 0
+		*stddev = 0
 		return
 	}
 
+	if num == 1 {
+		val := a[0]
+		*min = val
+		*max = val
+		*mean = val
+		*stddev = 0
+		return
+	}
+
+	// Initialize min and max
+	pa := 0
+	*min = math32.MaxFloat32
+	*max = -math32.MaxFloat32
+
+	// Numerically stable algorithm for mean and stddev
 	K := a[0]
 	n := float32(num)
 	Ex := float32(0.0)
 	Ex2 := float32(0.0)
-	pa := 0
 
 	for i := 0; i < num; i++ {
-		tmp := a[pa] - K
+		val := a[pa]
+
+		// Update min/max
+		if val < *min {
+			*min = val
+		}
+		if val > *max {
+			*max = val
+		}
+
+		// Accumulate for mean and stddev
+		tmp := val - K
 		Ex += tmp
 		Ex2 += tmp * tmp
+
 		pa += stride
 	}
 
@@ -366,31 +179,110 @@ func MomentsArr(mean, stddev *float32, a []float32, num int, stride int) {
 	*stddev = math32.Sqrt((Ex2 - (Ex*Ex)/n) / n)
 }
 
-// WeightedMomentsArr computes weighted mean and standard deviation
-func WeightedMomentsArr(mean, stddev *float32, a, w []float32, num int, stride int) {
-	if num < 2 {
-		if num == 1 {
-			*mean = a[0] * w[0]
-			*stddev = 0
+// PercentileArr computes percentile value and sum of values above percentile
+// p: percentile value (0.0 to 1.0), e.g., 0.5 for median (p50)
+// sumAboveP: output parameter for sum of values > percentile
+// a: input array
+// num: number of elements
+// stride: access stride
+// Returns: percentile value
+func PercentileArr(p float32, sumAboveP *float32, a []float32, num int, stride int) float32 {
+	if num == 0 {
+		*sumAboveP = 0
+		return 0
+	}
+
+	if num == 1 {
+		*sumAboveP = 0
+		return a[0]
+	}
+
+	// Copy and collect values
+	values := make([]float32, num)
+	pa := 0
+	for i := 0; i < num; i++ {
+		values[i] = a[pa]
+		pa += stride
+	}
+
+	// Sort to find percentile
+	sort.Slice(values, func(i, j int) bool {
+		return values[i] < values[j]
+	})
+
+	// Calculate percentile index
+	percentileIdx := int(float32(num-1) * p)
+	if percentileIdx < 0 {
+		percentileIdx = 0
+	}
+	if percentileIdx >= num {
+		percentileIdx = num - 1
+	}
+	percentileVal := values[percentileIdx]
+
+	// Calculate sum of values above percentile
+	*sumAboveP = float32(0.0)
+	pa = 0
+	for i := 0; i < num; i++ {
+		val := a[pa]
+		if val > percentileVal {
+			*sumAboveP += val
 		}
+		pa += stride
+	}
+
+	return percentileVal
+}
+
+// SumArrAdd computes dst[i] += src[i] + c for all i (accumulate)
+// DEPRECATED: Use Axpy from level1.go for better performance: Axpy(dst, stride, num, 1.0, src, stride) then SumArrInPlace
+// Kept for backward compatibility with vec.go
+func SumArrAdd(dst, src []float32, c float32, num int, stride int) {
+	if num == 0 {
 		return
 	}
 
-	K := a[0] * w[0]
-	n := float32(num)
-	Ex := float32(0.0)
-	Ex2 := float32(0.0)
-	pa := 0
-	pw := 0
+	// Use Axpy for dst += src, then add c
+	Axpy(dst, src, stride, stride, num, 1.0)
+	if c != 0 {
+		SumArrInPlace(dst, c, num)
+	}
+}
 
-	for i := 0; i < num; i++ {
-		tmp := a[pa]*w[pw] - K
-		Ex += tmp
-		Ex2 += tmp * tmp
-		pa += stride
-		pw += stride
+// DiffArrInPlace computes dst[i] -= c for all i (in-place)
+// Utility function for scalar subtraction
+func DiffArrInPlace(dst []float32, c float32, num int) {
+	if num == 0 {
+		return
 	}
 
-	*mean = K + Ex/n
-	*stddev = math32.Sqrt((Ex2 - (Ex*Ex)/n) / n)
+	for i := 0; i < num; i++ {
+		dst[i] -= c
+	}
+}
+
+// MulArrAdd computes dst[i] += src[i] * c for all i (accumulate)
+// DEPRECATED: Use Axpy from level1.go: Axpy(dst, src, stride, stride, num, c)
+// Kept for backward compatibility with vec.go
+func MulArrAdd(dst, src []float32, c float32, num int, stride int) {
+	if num == 0 {
+		return
+	}
+
+	Axpy(dst, src, stride, stride, num, c)
+}
+
+// DivArrInPlace computes dst[i] /= c for all i (in-place)
+// DEPRECATED: Use Scal from level1.go: Scal(dst, stride, num, 1.0/c)
+// Kept for backward compatibility with vec.go
+func DivArrInPlace(dst []float32, c float32, num int) {
+	if num == 0 {
+		return
+	}
+
+	if c == 0 {
+		return // Avoid division by zero
+	}
+
+	Scal(dst, 1, num, 1.0/c)
 }

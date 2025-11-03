@@ -1,10 +1,7 @@
 package primitive
 
-import (
-	"github.com/chewxy/math32"
-)
-
 // HadamardProduct computes element-wise product: dst[i] = a[i] * b[i]
+// Element-wise multiplication for tensor operations
 func HadamardProduct(dst, a, b []float32, num int, strideA, strideB int) {
 	if num == 0 {
 		return
@@ -23,6 +20,7 @@ func HadamardProduct(dst, a, b []float32, num int, strideA, strideB int) {
 }
 
 // HadamardProductAdd computes element-wise product and add: dst[i] += a[i] * b[i]
+// Element-wise multiplication and addition for tensor operations
 func HadamardProductAdd(dst, a, b []float32, num int, strideA, strideB int) {
 	if num == 0 {
 		return
@@ -40,28 +38,16 @@ func HadamardProductAdd(dst, a, b []float32, num int, strideA, strideB int) {
 	}
 }
 
-// DotProduct computes dot product of two vectors
+// DotProduct is DEPRECATED: Use Dot from level1.go instead
+// This function is kept for backward compatibility
 func DotProduct(a, b []float32, num int, strideA, strideB int) float32 {
-	if num == 0 {
-		return 0
-	}
-
-	acc := float32(0.0)
-	pa := 0
-	pb := 0
-
-	for i := 0; i < num; i++ {
-		acc += a[pa] * b[pb]
-		pa += strideA
-		pb += strideB
-	}
-
-	return acc
+	return Dot(a, b, strideA, strideB, num)
 }
 
 // DotProduct2D computes dot product of KxL submatrix
 // a is NxM matrix, b is KxL matrix
 // Computes sum of element-wise products of KxL window
+// Specialized function for 2D matrix dot product (not BLAS)
 func DotProduct2D(a, b []float32, N, M, K, L int) float32 {
 	// a is NxM, accessed as a[i + j*N]
 	// b is KxL, accessed as b[i + j*K]
@@ -81,83 +67,41 @@ func DotProduct2D(a, b []float32, N, M, K, L int) float32 {
 }
 
 // NormalizeVec normalizes vector in-place: dst[i] = dst[i] / ||dst||
+// Uses Nrm2 from level1.go for norm calculation
 func NormalizeVec(dst []float32, num int, stride int) {
 	if num == 0 {
 		return
 	}
 
-	sumSq := SqrSum(dst, num, stride)
-	if sumSq == 0 {
+	norm := Nrm2(dst, stride, num)
+	if norm == 0 {
 		return
 	}
 
-	norm := math32.Sqrt(sumSq)
-	MulArrInPlace(dst, 1.0/norm, num)
+	// Use Scal for in-place scaling
+	Scal(dst, stride, num, 1.0/norm)
 }
 
-// OuterProduct computes outer product: dst = u * v^T
-// u is vector of size N, v is vector of size M
-// dst is NxM matrix (row-major)
-// If bias is true, adds extra column with u values
-func OuterProduct(dst, u, v []float32, N, M int, bias bool) {
-	if N == 0 || M == 0 {
+// MulArrInPlace computes dst[i] *= c for all i (in-place)
+// DEPRECATED: Use Scal from level1.go instead: Scal(dst, stride, num, c)
+// Kept for backward compatibility with vec.go
+func MulArrInPlace(dst []float32, c float32, num int) {
+	if num == 0 {
 		return
 	}
 
-	pd := 0
-
-	for i := 0; i < N; i++ {
-		ui := u[i]
-		for j := 0; j < M; j++ {
-			dst[pd] = ui * v[j]
-			pd++
-		}
-		if bias {
-			dst[pd] = ui
-			pd++
-		}
-	}
+	Scal(dst, 1, num, c)
 }
 
-// OuterProductConst computes scaled outer product: dst = alpha * u * v^T
-func OuterProductConst(dst, u, v []float32, N, M int, alpha float32, bias bool) {
-	if N == 0 || M == 0 {
+// SumArrInPlace computes dst[i] += c for all i (in-place)
+// Utility function for scalar addition
+// Note: Not directly replaceable with BLAS operations efficiently
+func SumArrInPlace(dst []float32, c float32, num int) {
+	if num == 0 {
 		return
 	}
 
-	pd := 0
-
-	for i := 0; i < N; i++ {
-		ui := u[i] * alpha
-		for j := 0; j < M; j++ {
-			dst[pd] = ui * v[j]
-			pd++
-		}
-		if bias {
-			dst[pd] = ui
-			pd++
-		}
+	for i := 0; i < num; i++ {
+		dst[i] += c
 	}
 }
-
-// OuterProductAddConst computes scaled outer product and add: dst += alpha * u * v^T
-func OuterProductAddConst(dst, u, v []float32, N, M int, alpha float32, bias bool) {
-	if N == 0 || M == 0 {
-		return
-	}
-
-	pd := 0
-
-	for i := 0; i < N; i++ {
-		ui := u[i] * alpha
-		for j := 0; j < M; j++ {
-			dst[pd] += ui * v[j]
-			pd++
-		}
-		if bias {
-			dst[pd] += ui
-			pd++
-		}
-	}
-}
-

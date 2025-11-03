@@ -22,7 +22,7 @@ func Convolve1DAdd(dst, vec, kernel []float32, N, M int, stride int, transposed 
 		pd := 0
 
 		for i := 0; i < dstSize && pv+M <= N; i++ {
-			acc := DotProduct(vec[pv:], kernel, M, 1, 1)
+			acc := Dot(vec[pv:], kernel, 1, 1, M)
 			dst[pd] += acc
 			pv += stride
 			pd++
