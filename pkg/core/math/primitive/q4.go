@@ -1,26 +1,30 @@
 package primitive
 
-// This file implements quantized (INT8/UINT8) versions of BLAS operations
-// for efficient low-precision neural network inference.
+// This file implements quantized (INT4/UINT4) versions of BLAS operations
+// for ultra-efficient low-precision neural network inference.
 //
 // Quantization follows the asymmetric scheme:
 //   real_value = scale * (quantized_value - zero_point)
 //
-// All quantized operations use uint8 storage, which represents the range:
-//   - For symmetric quantization: [-128, 127] with zero_point = 128
-//   - For asymmetric quantization: [min, max] mapped to [0, 255]
+// All quantized operations use uint8 storage (unpacked), with values clamped to [0,15]
+// which represents the range:
+//   - For symmetric quantization: [-8, 7] with zero_point = 8
+//   - For asymmetric quantization: [min, max] mapped to [0, 15]
 //
 // Intermediate calculations use int32 to avoid overflow.
 //
-// Reference: "Quantization and Training of Neural Networks for Efficient
-// Integer-Arithmetic-Only Inference" (Jacob et al., 2018)
+// Note: Unlike true 4-bit packing where 2 values share a byte, this implementation
+// stores each 4-bit value in its own byte for simplicity and compatibility with
+// existing BLAS-style interfaces.
+//
+// Reference: "Efficient Inference with TensorRT-LLM Quantization" (NVIDIA, 2024)
 
-// Copy_Q8 copies quantized vector: y = x
+// Copy_Q4 copies quantized vector: y = x
 // y: destination uint8 vector
 // x: source uint8 vector
 // strideY, strideX: access strides
 // n: vector length
-func Copy_Q8(y, x []uint8, strideY, strideX, n int) {
+func Copy_Q4(y, x []uint8, strideY, strideX, n int) {
 	if n == 0 {
 		return
 	}
@@ -35,7 +39,7 @@ func Copy_Q8(y, x []uint8, strideY, strideX, n int) {
 	}
 }
 
-// Gemm_NN_Q8 computes quantized matrix multiplication: C = A*B
+// Gemm_NN_Q4 computes quantized matrix multiplication: C = A*B
 // This implements the quantized GEMM with zero-point corrections
 //
 // output: M × N matrix (uint8, stored as row-major, ldOutput ≥ N)
@@ -45,7 +49,7 @@ func Copy_Q8(y, x []uint8, strideY, strideX, n int) {
 // Quantization parameters:
 //
 //	inputScale, weightScale, outputScale: scales for input, weight, output
-//	inputZero, weightZero, outputZero: zero points (int32)
+//	inputZero, weightZero, outputZero: zero points (int32, range 0-15)
 //
 // The zero-point correction formula:
 //
@@ -55,8 +59,8 @@ func Copy_Q8(y, x []uint8, strideY, strideX, n int) {
 //	             + inputZero * weightZero * K) * scale
 //
 // where scale = inputScale * weightScale / outputScale
-func Gemm_NN_Q8(
-	output []uint8, input, weight []uint8,
+func Gemm_NN_Q4(
+	output, input, weight []uint8,
 	ldOutput, ldInput, ldWeight, M, N, K int,
 	inputScale, weightScale, outputScale float32,
 	inputZero, weightZero, outputZero int32,
@@ -115,11 +119,11 @@ func Gemm_NN_Q8(
 			// Since we're working in quantized space, we need to convert to output space
 			outputVal := int32(float32(sum)*scale) + outputZero
 
-			// Clamp to uint8 range [0, 255]
+			// Clamp to uint4 range [0, 15]
 			if outputVal < 0 {
 				outputVal = 0
-			} else if outputVal > 255 {
-				outputVal = 255
+			} else if outputVal > 15 {
+				outputVal = 15
 			}
 
 			output[po+j] = uint8(outputVal)
@@ -129,14 +133,14 @@ func Gemm_NN_Q8(
 	}
 }
 
-// Gemm_NN_Q8_Accum computes quantized matrix multiplication with int32 accumulator
-// This variant outputs int32 values instead of requantizing to uint8
+// Gemm_NN_Q4_Accum computes quantized matrix multiplication with int32 accumulator
+// This variant outputs int32 values instead of requantizing to uint4
 // Useful for layers that need higher precision before quantization
 //
 // output: M × N matrix (int32, row-major, ldOutput ≥ N) - accumulator buffer
 // input: M × K matrix (uint8, row-major, ldInput ≥ K)
 // weight: K × N matrix (uint8, row-major, ldWeight ≥ N)
-func Gemm_NN_Q8_Accum(
+func Gemm_NN_Q4_Accum(
 	output []int32, input, weight []uint8,
 	ldOutput, ldInput, ldWeight, M, N, K int,
 	inputZero, weightZero int32,
@@ -194,7 +198,7 @@ func Gemm_NN_Q8_Accum(
 	}
 }
 
-// Conv2D_Q8 performs quantized 2D convolution with batched input
+// Conv2D_Q4 performs quantized 2D convolution with batched input
 // Uses Im2Col + quantized GEMM approach
 //
 // output: [batchSize, outChannels, outHeight, outWidth] (uint8)
@@ -206,7 +210,7 @@ func Gemm_NN_Q8_Accum(
 //
 //	inputScale, weightScale, outputScale: scales
 //	inputZero, weightZero, outputZero: zero points
-func Conv2D_Q8(
+func Conv2D_Q4(
 	output, input, weights []uint8,
 	batchSize, inChannels, outChannels int,
 	inHeight, inWidth int,
@@ -230,7 +234,7 @@ func Conv2D_Q8(
 	im2col := make([]uint8, im2colSize*kernelSize)
 
 	// Step 1: Convert input to columns using Im2Col (uint8 version)
-	Im2Col_Q8(im2col, input, batchSize, inChannels, inHeight, inWidth,
+	Im2Col_Q4(im2col, input, batchSize, inChannels, inHeight, inWidth,
 		kernelH, kernelW, padH, padW, strideH, strideW)
 
 	// Step 2: Reshape weights for GEMM
@@ -242,7 +246,7 @@ func Conv2D_Q8(
 
 	// Step 4: Perform quantized GEMM with accumulator
 	// gemmOutput: [outChannels, im2colSize]
-	Gemm_NN_Q8_Accum(gemmAccum, weights, im2col,
+	Gemm_NN_Q4_Accum(gemmAccum, weights, im2col,
 		im2colSize,  // ldOutput
 		kernelSize,  // ldInput (weights)
 		kernelSize,  // ldWeight (im2col)
@@ -274,11 +278,11 @@ func Conv2D_Q8(
 			// Requantize
 			outputVal := int32(float32(gemmAccum[gemmIdx])*scale) + outputZero
 
-			// Clamp to uint8 range [0, 255]
+			// Clamp to uint4 range [0, 15]
 			if outputVal < 0 {
 				outputVal = 0
-			} else if outputVal > 255 {
-				outputVal = 255
+			} else if outputVal > 15 {
+				outputVal = 15
 			}
 
 			gemmAccum[gemmIdx] = outputVal
@@ -305,8 +309,8 @@ func Conv2D_Q8(
 	}
 }
 
-// Im2Col_Q8 converts image patches to columns for quantized GEMM-based convolution
-// This is the uint8 version of Im2Col
+// Im2Col_Q4 converts image patches to columns for quantized GEMM-based convolution
+// This is the uint8 version of Im2Col (4-bit values stored in uint8)
 //
 // col: output columns [batchSize*outHeight*outWidth, channels*kernelH*kernelW] (uint8)
 // im: input image [batchSize, channels, height, width] (uint8)
@@ -315,7 +319,7 @@ func Conv2D_Q8(
 // kernelH, kernelW: kernel spatial dimensions
 // padH, padW: padding values
 // strideH, strideW: stride values
-func Im2Col_Q8(
+func Im2Col_Q4(
 	col, im []uint8,
 	batchSize, channels int,
 	height, width int,
@@ -370,12 +374,12 @@ func Im2Col_Q8(
 	}
 }
 
-// Col2Im_Q8 converts columns back to image for quantized convolution
+// Col2Im_Q4 converts columns back to image for quantized convolution
 // This accumulates uint8 values (used in backpropagation)
 //
 // im: output image [batchSize, channels, height, width] (uint8)
 // col: input columns [batchSize*outHeight*outWidth, channels*kernelH*kernelW] (uint8)
-func Col2Im_Q8(
+func Col2Im_Q4(
 	im, col []uint8,
 	batchSize, channels int,
 	height, width int,
@@ -422,10 +426,10 @@ func Col2Im_Q8(
 								// Accumulate to output image
 								imIdx := channelOffset + inH*width + inW
 
-								// Saturating addition for uint8
+								// Saturating addition for uint8 (clamped to 4-bit range)
 								sum := int16(im[imIdx]) + int16(col[colIdx])
-								if sum > 255 {
-									im[imIdx] = 255
+								if sum > 15 {
+									im[imIdx] = 15
 								} else if sum < 0 {
 									im[imIdx] = 0
 								} else {
@@ -441,12 +445,12 @@ func Col2Im_Q8(
 	}
 }
 
-// GemmBatched_Q8 computes batched quantized matrix multiplication
+// GemmBatched_Q4 computes batched quantized matrix multiplication
 // This processes multiple quantized matrices simultaneously
 //
 // output, input, weight: batched matrices (uint8)
 // All matrices have the same dimensions within each batch
-func GemmBatched_Q8(
+func GemmBatched_Q4(
 	output, input, weight []uint8,
 	ldOutput, ldInput, ldWeight, M, N, K int,
 	inputScale, weightScale, outputScale float32,
@@ -465,7 +469,7 @@ func GemmBatched_Q8(
 		offsetWeight := k * strideWeight
 
 		// Call quantized GEMM for this batch
-		Gemm_NN_Q8(
+		Gemm_NN_Q4(
 			output[offsetOutput:],
 			input[offsetInput:],
 			weight[offsetWeight:],
@@ -477,7 +481,7 @@ func GemmBatched_Q8(
 	}
 }
 
-// Conv2DTransposed_Q8 performs quantized 2D transposed convolution with batched input
+// Conv2DTransposed_Q4 performs quantized 2D transposed convolution with batched input
 // Uses direct implementation without Im2Col
 //
 // output: [batchSize, outChannels, outHeight, outWidth] (uint8)
@@ -488,8 +492,8 @@ func GemmBatched_Q8(
 // Quantization parameters:
 //
 //	inputScale, weightScale, outputScale: scales
-//	inputZero, weightZero, outputZero: zero points
-func Conv2DTransposed_Q8(
+//	inputZero, weightZero, outputZero: zero points (int32, range 0-15)
+func Conv2DTransposed_Q4(
 	output, input, weights []uint8,
 	batchSize, inChannels, outChannels int,
 	inHeight, inWidth int,
@@ -588,11 +592,11 @@ func Conv2DTransposed_Q8(
 						outIdx := ocOffset + outH*outWidth + outW
 						// Requantize bias addition
 						outputVal := int32(output[outIdx]) + biasVal
-						// Clamp to uint8 range
+						// Clamp to uint4 range [0, 15]
 						if outputVal < 0 {
 							outputVal = 0
-						} else if outputVal > 255 {
-							outputVal = 255
+						} else if outputVal > 15 {
+							outputVal = 15
 						}
 						output[outIdx] = uint8(outputVal)
 					}
@@ -604,11 +608,11 @@ func Conv2DTransposed_Q8(
 	// Final requantization pass
 	for i := 0; i < outputSize; i++ {
 		outputVal := int32(float32(output[i])*scale) + outputZero
-		// Clamp to uint8 range [0, 255]
+		// Clamp to uint4 range [0, 15]
 		if outputVal < 0 {
 			outputVal = 0
-		} else if outputVal > 255 {
-			outputVal = 255
+		} else if outputVal > 15 {
+			outputVal = 15
 		}
 		output[i] = uint8(outputVal)
 	}
