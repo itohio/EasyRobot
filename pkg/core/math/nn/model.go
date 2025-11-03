@@ -221,7 +221,8 @@ func (m *Model) ZeroGrad() {
 }
 
 // Update updates all parameters using optimizer.
-// Optimizer is from math/learn package.
+// Optimizer must implement the learn.Optimizer interface.
+// Use TrainStep from learn package for full training loop.
 func (m *Model) Update(optimizer interface{}) error {
 	if m == nil {
 		return fmt.Errorf("model.Update: nil model")

@@ -13,10 +13,15 @@ This document describes the implemented neural network framework in `pkg/core/ma
 #### Layer Interface
 ```go
 type Layer interface {
-    Forward(ctx context.Context, input *tensor.Tensor) (*tensor.Tensor, error)
-    Backward(ctx context.Context, gradOutput *tensor.Tensor) (*tensor.Tensor, error)
+    Name() string
+    Init(inputShape []int) error
+    Forward(input tensor.Tensor) (tensor.Tensor, error)
+    Backward(gradOutput tensor.Tensor) (tensor.Tensor, error)
     OutputShape(inputShape []int) ([]int, error)
     CanLearn() bool
+    SetCanLearn(canLearn bool)
+    Input() tensor.Tensor
+    Output() tensor.Tensor
 }
 ```
 
@@ -24,51 +29,38 @@ type Layer interface {
 - Layers store their own input/output state from Forward pass
 - Backward uses stored input/output - no need to pass them
 - `CanLearn()` controls whether gradients are computed (default: false for inference-only)
-
-#### ParameterLayer Interface
-```go
-type ParameterLayer interface {
-    Layer
-    Parameters() []*Parameter
-    ZeroGrad()
-}
-```
+- All layers are in `pkg/core/math/nn/layers/` subdirectory
 
 **File**: `layer.go`
-
-#### Parameter Type
-```go
-type Parameter struct {
-    Data        *tensor.Tensor
-    Grad        *tensor.Tensor
-    RequiresGrad bool
-}
-
-func (p *Parameter) ZeroGrad()
-func (p *Parameter) Update(optimizer Optimizer) error
-```
-
-**File**: `parameter.go`
-
-#### Activation Interface
-```go
-type Activation interface {
-    Forward(input *tensor.Tensor) *tensor.Tensor
-    Backward(gradOutput *tensor.Tensor, input, output *tensor.Tensor) *tensor.Tensor
-}
-```
-
-**File**: `activation.go`
 
 #### LossFunction Interface
 ```go
 type LossFunction interface {
-    Compute(pred, target *tensor.Tensor) (float32, error)
-    Gradient(pred, target *tensor.Tensor) (*tensor.Tensor, error)
+    Compute(pred, target tensor.Tensor) (float32, error)
+    Gradient(pred, target tensor.Tensor) (tensor.Tensor, error)
 }
 ```
 
 **File**: `loss.go`
+
+#### Parameter Type
+
+**Note**: Parameter type is in `math/nn/layers` package.
+
+```go
+// In pkg/core/math/nn/layers package
+type Parameter struct {
+    Data         tensor.Tensor  // Value type, not pointer!
+    Grad         tensor.Tensor
+    RequiresGrad bool
+}
+
+func (p Parameter) ZeroGrad()
+func (p Parameter) InitXavier(fanIn, fanOut int)
+func (p Parameter) InitXavierNormal(fanIn, fanOut int)
+```
+
+**File**: `pkg/core/math/nn/layers/parameter.go`
 
 #### Optimizer Interface
 
@@ -77,7 +69,7 @@ type LossFunction interface {
 ```go
 // In math/learn package
 type Optimizer interface {
-    Update(param *nn.Parameter) error
+    Update(param *layers.Parameter) error
 }
 ```
 
@@ -85,105 +77,25 @@ type Optimizer interface {
 
 ### Implemented Layers
 
-#### Dense Layer
-Fully connected (linear) layer.
+All layers are in `pkg/core/math/nn/layers/` subdirectory. See `layers/SPEC.md` for detailed documentation.
 
-```go
-type Dense struct {
-    weight      *Parameter
-    bias        *Parameter
-    activation  Activation
-    inFeatures  int
-    outFeatures int
-    canLearn    bool
-    input       *tensor.Tensor // Stored input from Forward
-    output      *tensor.Tensor // Stored output from Forward
-}
+**Implemented Layers**:
+- **Dense**: Fully connected layer
+- **Conv1D**: 1D convolution
+- **Conv2D**: 2D convolution
+- **MaxPool2D**: Max pooling
+- **AvgPool2D**: Average pooling
+- **GlobalAvgPool2D**: Global average pooling
+- **Flatten**: Flattens tensor
+- **Reshape**: Reshapes tensor
+- **ReLU**: ReLU activation
+- **Sigmoid**: Sigmoid activation
+- **Tanh**: Tanh activation
+- **Softmax**: Softmax activation
 
-func NewDense(inFeatures, outFeatures int, opts ...DenseOption) (*Dense, error)
-func WithActivation(activation Activation) DenseOption
-func WithBias(useBias bool) DenseOption
-func WithCanLearn(canLearn bool) DenseOption
-```
+All layers embed `Base` which provides parameter management, gradient tracking, and common functionality.
 
-**Features**:
-- Forward pass: `output = input @ weight + bias`
-- Optional activation function
-- Optional bias (can be disabled)
-- Stores input/output during Forward for Backward
-- Backward pass with gradient computation (only if CanLearn is true)
-- Shape validation
-- CanLearn defaults to false (inference-only by default)
-
-**File**: `dense.go`
-
-#### ActivationLayer
-Wrapper that converts an Activation to a Layer.
-
-```go
-type ActivationLayer struct {
-    activation Activation
-}
-
-func NewActivationLayer(activation Activation) *ActivationLayer
-```
-
-**File**: `activation_layer.go`
-
-### Implemented Activation Functions
-
-All activation functions implement the `Activation` interface.
-
-#### ReLU
-```go
-type ReLUActivation struct{}
-func NewReLU() *ReLUActivation
-```
-
-**Features**:
-- Forward: `max(0, input)` (in-place)
-- Backward: gradient passed through where input > 0
-
-**File**: `activations.go`
-
-#### Sigmoid
-```go
-type SigmoidActivation struct{}
-func NewSigmoid() *SigmoidActivation
-```
-
-**Features**:
-- Forward: `1 / (1 + exp(-input))`
-- Backward: `gradOutput * output * (1 - output)`
-
-**File**: `activations.go`
-
-#### Tanh
-```go
-type TanhActivationType struct{}
-func NewTanh() *TanhActivationType
-```
-
-**Features**:
-- Forward: `tanh(input)`
-- Backward: `gradOutput * (1 - output^2)`
-
-**File**: `activations.go`
-
-#### Softmax
-```go
-type SoftmaxActivationType struct {
-    dim int
-}
-func NewSoftmax(dim int) *SoftmaxActivationType
-```
-
-**Features**:
-- Forward: softmax along specified dimension
-- Backward: handles normalization properly
-- Supports 1D and 2D tensors
-
-**File**: `activations.go`
+**File**: `layers/`
 
 ### Implemented Loss Functions
 
@@ -304,12 +216,12 @@ func (b *ModelBuilder) Build() (*Model, error)
 Performs a complete training step: forward pass, loss computation, backward pass, and weight update.
 
 ```go
-func TrainStep(model *Model, optimizer interface{}, lossFn LossFunction, input, target *tensor.Tensor) (float32, error)
+func TrainStep(model *Model, optimizer Optimizer, lossFn LossFunction, input, target tensor.Tensor) (float32, error)
 ```
 
-**Note**: `optimizer` parameter should be from `math/learn` package (e.g., `learn.NewSGD(0.01)`).
+**Note**: This function is now in `math/learn` package. `optimizer` must implement `learn.Optimizer` interface (e.g., `learn.NewSGD(0.01)`).
 
-**File**: `training.go`
+**File**: `math/learn/training.go`
 
 ### Utilities
 
@@ -370,29 +282,37 @@ import "github.com/itohio/EasyRobot/pkg/core/math/learn"
 lossFn := nn.NewCategoricalCrossEntropy(true)
 optimizer := learn.NewSGD(0.01)
 
-loss, err := nn.TrainStep(model, optimizer, lossFn, input, target)
+loss, err := learn.TrainStep(model, optimizer, lossFn, input, target)
 ```
 
 ## File Structure
 
 ```
 pkg/core/math/nn/
-├── activation.go           # Activation interface
-├── activation_layer.go     # ActivationLayer wrapper
-├── activations.go          # ReLU, Sigmoid, Tanh, Softmax implementations
 ├── builder.go              # ModelBuilder for constructing models
-├── dense.go                # Dense/Linear layer
-├── layer.go                # Layer and ParameterLayer interfaces
+├── layer.go                # Layer interface
 ├── loss.go                 # LossFunction interface
 ├── losses.go               # MSE, CrossEntropy, CategoricalCrossEntropy
 ├── model.go                # Model type and operations
 ├── nn.go                   # Legacy functions (Linear, activations, losses)
-├── parameter.go            # Parameter type
-├── training.go             # TrainStep function
 ├── validation.go           # Shape validation utilities
+├── layers/                 # Layer implementations
+│   ├── base.go             # Base layer (parameter management)
+│   ├── dense.go            # Dense/Linear layer
+│   ├── activations.go      # ReLU, Sigmoid, Tanh, Softmax
+│   ├── conv1d.go           # Conv1D layer
+│   ├── conv2d.go           # Conv2D layer
+│   ├── pooling.go          # MaxPool2D, AvgPool2D, GlobalAvgPool2D
+│   ├── reshape.go          # Reshape, Flatten layers
+│   ├── parameter.go        # Parameter type
+│   └── SPEC.md             # Layers package documentation
 └── SPEC.md                 # This file
 
-Note: Optimizers are in `math/learn/optimizer.go`, not in `math/nn`.
+pkg/core/math/learn/
+├── optimizer.go            # Optimizer interface and SGD implementation
+├── training.go             # TrainStep function
+├── xor_test.go             # XOR training test
+└── LEARN_SPEC.md           # Learn package documentation
 ```
 
 ## Design Principles

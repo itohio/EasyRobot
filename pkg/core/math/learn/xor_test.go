@@ -1,4 +1,4 @@
-package nn_test
+package learn_test
 
 import (
 	"math/rand"
@@ -85,7 +85,7 @@ func TestXOR(t *testing.T) {
 
 		// Train on all 4 examples
 		for i := range inputs {
-			loss, err := nn.TrainStep(model, optimizer, lossFn, inputs[i], targets[i])
+			loss, err := learn.TrainStep(model, optimizer, lossFn, inputs[i], targets[i])
 			if err != nil {
 				t.Fatalf("TrainStep failed at epoch %d, sample %d: %v", epoch, i, err)
 			}

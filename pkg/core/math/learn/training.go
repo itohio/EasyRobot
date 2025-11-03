@@ -1,14 +1,15 @@
-package nn
+package learn
 
 import (
 	"fmt"
 
+	"github.com/itohio/EasyRobot/pkg/core/math/nn"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
 )
 
 // TrainStep performs a single training step: forward pass, loss computation, backward pass, and weight update.
-// Optimizer should be from math/learn package.
-func TrainStep(model *Model, optimizer interface{}, lossFn LossFunction, input, target tensor.Tensor) (float32, error) {
+// Optimizer must implement the Optimizer interface.
+func TrainStep(model *nn.Model, optimizer Optimizer, lossFn nn.LossFunction, input, target tensor.Tensor) (float32, error) {
 	if model == nil {
 		return 0, fmt.Errorf("TrainStep: nil model")
 	}
