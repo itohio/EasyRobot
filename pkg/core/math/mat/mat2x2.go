@@ -105,6 +105,24 @@ func (m *Matrix2x2) SetDiagonal(v vec.Vector2D) *Matrix2x2 {
 	return m
 }
 
+// FromDiagonal2x2 creates a 2x2 diagonal matrix from diagonal values.
+// Returns a matrix with zeros everywhere except the diagonal.
+func FromDiagonal2x2(d0, d1 float32) Matrix2x2 {
+	m := Matrix2x2{}
+	m[0][0] = d0
+	m[1][1] = d1
+	return m
+}
+
+// FromVector2x2 creates a 2x2 diagonal matrix from a 2D vector.
+// The vector elements become the diagonal elements of the matrix.
+func FromVector2x2(v vec.Vector2D) Matrix2x2 {
+	m := Matrix2x2{}
+	m[0][0] = v[0]
+	m[1][1] = v[1]
+	return m
+}
+
 func (m *Matrix2x2) Submatrix(row, col int, m1 Matrix) Matrix {
 	cols := len(m1[0])
 	for i, m1row := range m1 {
@@ -261,7 +279,6 @@ func (m *Matrix2x2) Det() float32 {
 	return det
 }
 
-//
 // LU decomposition into two triangular matrices
 // NOTE: Assume, that l&u matrices are set to zero
 // Matrix must be square and M, L and U matrix sizes must be equal

@@ -165,6 +165,26 @@ func (m *Matrix3x3) SetDiagonal(v vec.Vector3D) *Matrix3x3 {
 	return m
 }
 
+// FromDiagonal3x3 creates a 3x3 diagonal matrix from diagonal values.
+// Returns a matrix with zeros everywhere except the diagonal.
+func FromDiagonal3x3(d0, d1, d2 float32) Matrix3x3 {
+	m := Matrix3x3{}
+	m[0][0] = d0
+	m[1][1] = d1
+	m[2][2] = d2
+	return m
+}
+
+// FromVector3x3 creates a 3x3 diagonal matrix from a 3D vector.
+// The vector elements become the diagonal elements of the matrix.
+func FromVector3x3(v vec.Vector3D) Matrix3x3 {
+	m := Matrix3x3{}
+	m[0][0] = v[0]
+	m[1][1] = v[1]
+	m[2][2] = v[2]
+	return m
+}
+
 func (m *Matrix3x3) Submatrix(row, col int, m1 Matrix) Matrix {
 	cols := len(m1[0])
 	for i, m1row := range m1 {
@@ -321,7 +341,6 @@ func (m *Matrix3x3) Det() float32 {
 	return det
 }
 
-//
 // LU decomposition into two triangular matrices
 // NOTE: Assume, that l&u matrices are set to zero
 // Matrix must be square and M, L and U matrix sizes must be equal
@@ -357,8 +376,8 @@ func (m *Matrix3x3) LU(L, U *Matrix3x3) {
 	}
 }
 
-/// https://math.stackexchange.com/questions/893984/conversion-of-rotation-matrix-to-quaternion
-/// Must be at least 3x3 matrix
+// / https://math.stackexchange.com/questions/893984/conversion-of-rotation-matrix-to-quaternion
+// / Must be at least 3x3 matrix
 func (m *Matrix3x3) Quaternion() (q *vec.Quaternion) {
 	var t float32
 	if m[2][2] < 0 {

@@ -2,7 +2,9 @@ package mat
 
 import (
 	"errors"
+
 	"github.com/chewxy/math32"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
 )
 
 const (
@@ -30,43 +32,23 @@ func (m Matrix) Inverse(dst Matrix) error {
 		return ErrNotSquare
 	}
 
-	// Check if matrix is singular
-	det := m.Det()
-	if math32.Abs(det) < SingularityTolerance {
+	// Flatten matrices (zero-copy if contiguous)
+	mFlat := m.Flat()
+	dstFlat := dst.Flat()
+	ldA := len(m[0])
+	ldInv := len(dst[0])
+
+	// Use Getrf_IP for LU decomposition (in-place)
+	work := make([]float32, len(mFlat))
+	copy(work, mFlat)
+	ipiv := make([]int, rows)
+	if err := primitive.Getrf_IP(work, ipiv, ldA, rows, cols); err != nil {
 		return ErrSingular
 	}
 
-	// LU decomposition
-	L := New(rows, cols)
-	U := New(rows, cols)
-	m.LU(L, U)
-
-	// Identity matrix
-	I := New(rows, cols)
-	I.Eye()
-
-	// Solve L * Y = I for Y (forward substitution)
-	Y := New(rows, cols)
-	for col := 0; col < cols; col++ {
-		for row := 0; row < rows; row++ {
-			sum := I[row][col]
-			for k := 0; k < row; k++ {
-				sum -= L[row][k] * Y[k][col]
-			}
-			Y[row][col] = sum / L[row][row]
-		}
-	}
-
-	// Solve U * X = Y for X (back substitution)
-	// X is the inverse
-	for col := 0; col < cols; col++ {
-		for row := rows - 1; row >= 0; row-- {
-			sum := Y[row][col]
-			for k := row + 1; k < rows; k++ {
-				sum -= U[row][k] * dst[k][col]
-			}
-			dst[row][col] = sum / U[row][row]
-		}
+	// Use Getri to compute inverse from LU decomposition
+	if err := primitive.Getri(dstFlat, work, ldA, ldInv, rows, ipiv); err != nil {
+		return ErrSingular
 	}
 
 	return nil

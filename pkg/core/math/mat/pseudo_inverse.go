@@ -2,6 +2,8 @@ package mat
 
 import (
 	"errors"
+
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
 )
 
 var (
@@ -10,8 +12,7 @@ var (
 )
 
 // PseudoInverse calculates Moore-Penrose pseudo-inverse of a rectangular matrix.
-// For overdetermined (rows >= cols): J+ = (J^T * J)^(-1) * J^T
-// For underdetermined (rows < cols): J+ = J^T * (J * J^T)^(-1)
+// Uses SVD-based implementation: A^+ = V * Σ^+ * U^T
 // Destination matrix must be properly sized (cols × rows).
 func (m Matrix) PseudoInverse(dst Matrix) error {
 	rows := len(m)
@@ -23,32 +24,15 @@ func (m Matrix) PseudoInverse(dst Matrix) error {
 		return ErrPseudoInverseFailed
 	}
 
-	// Transpose
-	mT := New(cols, rows)
-	mT.Transpose(m)
+	// Flatten matrices (zero-copy if contiguous)
+	mFlat := m.Flat()
+	dstFlat := dst.Flat()
+	ldA := len(m[0])
+	ldApinv := len(dst[0])
 
-	if rows >= cols {
-		// Overdetermined: J+ = (J^T * J)^(-1) * J^T
-		JTJ := New(cols, cols)
-		JTJ.Mul(mT, m)
-
-		JTJInv := New(cols, cols)
-		if err := JTJ.Inverse(JTJInv); err != nil {
-			return ErrPseudoInverseFailed
-		}
-
-		dst.Mul(JTJInv, mT)
-	} else {
-		// Underdetermined: J+ = J^T * (J * J^T)^(-1)
-		JJT := New(rows, rows)
-		JJT.Mul(m, mT)
-
-		JJTInv := New(rows, rows)
-		if err := JJT.Inverse(JJTInv); err != nil {
-			return ErrPseudoInverseFailed
-		}
-
-		dst.Mul(mT, JJTInv)
+	// Use Gepseu for pseudo-inverse computation
+	if err := primitive.Gepseu(dstFlat, mFlat, ldA, ldApinv, rows, cols); err != nil {
+		return ErrPseudoInverseFailed
 	}
 
 	return nil

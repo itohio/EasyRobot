@@ -6,7 +6,9 @@ package mat
 
 import (
 	"errors"
+
 	"github.com/chewxy/math32"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
 	"github.com/itohio/EasyRobot/pkg/core/math/vec"
 )
 
@@ -44,8 +46,11 @@ func (m Matrix) Cholesky(dst Matrix) error {
 	for i := 0; i < n; i++ {
 		for j := 0; j <= i; j++ {
 			sum = m[i][j]
-			for k := 0; k < j; k++ {
-				sum -= dst[i][k] * dst[j][k]
+			// Use Dot for inner product
+			if j > 0 {
+				dstRowI := dst[i][:j]
+				dstRowJ := dst[j][:j]
+				sum -= primitive.Dot(dstRowI, dstRowJ, 1, 1, j)
 			}
 			if i == j {
 				// Diagonal element
@@ -87,11 +92,17 @@ func (m Matrix) CholeskySolve(b vec.Vector, dst vec.Vector) error {
 	}
 
 	// Solve L * y = b (forward substitution)
+	// Note: Trmv computes y = L*x (multiplication), not L^(-1)*x (solving)
+	// So we use manual forward substitution optimized with Dot
 	y := make(vec.Vector, n)
+	copy(y, b)
 	for i := 0; i < n; i++ {
-		sum := b[i]
-		for j := 0; j < i; j++ {
-			sum -= L[i][j] * y[j]
+		sum := y[i]
+		// Use Dot for inner product
+		if i > 0 {
+			LRow := L[i][:i]
+			yVec := y[:i]
+			sum -= primitive.Dot(LRow, yVec, 1, 1, i)
 		}
 		if L[i][i] == 0 {
 			return errors.New("cholesky solve: singular matrix")
@@ -100,10 +111,18 @@ func (m Matrix) CholeskySolve(b vec.Vector, dst vec.Vector) error {
 	}
 
 	// Solve L^T * x = y (backward substitution)
+	// Note: Trmv computes y = op(A)*x (multiplication), not op(A)^(-1)*x (solving)
+	// So we use manual backward substitution optimized with Dot
 	for i := n - 1; i >= 0; i-- {
 		sum := y[i]
-		for j := i + 1; j < n; j++ {
-			sum -= L[j][i] * dst[j] // L^T[i][j] = L[j][i]
+		// Use Dot for inner product (accessing L columns)
+		if i < n-1 {
+			// Extract column i of L (rows i+1 to n-1) using flattened matrix
+			LFlat := L.Flat()
+			cols := len(L[0])
+			LColStart := (i+1)*cols + i // Start at row i+1, column i
+			dstVec := dst[i+1:]
+			sum -= primitive.Dot(LFlat[LColStart:], dstVec, cols, 1, n-i-1)
 		}
 		if L[i][i] == 0 {
 			return errors.New("cholesky solve: singular matrix")
@@ -113,4 +132,3 @@ func (m Matrix) CholeskySolve(b vec.Vector, dst vec.Vector) error {
 
 	return nil
 }
-

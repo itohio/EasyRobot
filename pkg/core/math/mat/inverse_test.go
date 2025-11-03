@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/chewxy/math32"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestMatrix_Inverse(t *testing.T) {
@@ -26,9 +27,7 @@ func TestMatrix_Inverse(t *testing.T) {
 				product.Mul(m, inv)
 				identity := New(3, 3)
 				identity.Eye()
-				if !matricesEqual(product, identity, 1e-5) {
-					t.Errorf("M * M^-1 should equal identity, got %v", product)
-				}
+				assert.True(t, matricesEqual(product, identity, 1e-5), "M * M^-1 should equal identity")
 			},
 		},
 		{
@@ -44,9 +43,7 @@ func TestMatrix_Inverse(t *testing.T) {
 				product.Mul(m, inv)
 				identity := New(3, 3)
 				identity.Eye()
-				if !matricesEqual(product, identity, 1e-5) {
-					t.Errorf("M * M^-1 should equal identity")
-				}
+				assert.True(t, matricesEqual(product, identity, 1e-5), "M * M^-1 should equal identity")
 			},
 		},
 		{
@@ -62,9 +59,7 @@ func TestMatrix_Inverse(t *testing.T) {
 				product.Mul(m, inv)
 				identity := New(2, 2)
 				identity.Eye()
-				if !matricesEqual(product, identity, 1e-5) {
-					t.Errorf("M * M^-1 should equal identity, got %v", product)
-				}
+				assert.True(t, matricesEqual(product, identity, 1e-5), "M * M^-1 should equal identity")
 			},
 		},
 		{
@@ -92,9 +87,10 @@ func TestMatrix_Inverse(t *testing.T) {
 			dst := New(len(m), len(m[0]))
 			err := m.Inverse(dst)
 
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Matrix.Inverse() error = %v, wantErr %v", err, tt.wantErr)
-				return
+			if tt.wantErr {
+				assert.Error(t, err, "Matrix.Inverse() should return error")
+			} else {
+				assert.NoError(t, err, "Matrix.Inverse() should not return error")
 			}
 
 			if tt.verify != nil && err == nil {
@@ -124,9 +120,7 @@ func TestMatrix2x2_Inverse(t *testing.T) {
 				product.Mul(*m, *inv)
 				var identity Matrix2x2
 				identity.Eye()
-				if !matrices2x2Equal(&product, &identity, 1e-5) {
-					t.Errorf("M * M^-1 should equal identity")
-				}
+				assert.True(t, matrices2x2Equal(&product, &identity, 1e-5), "M * M^-1 should equal identity")
 			},
 		},
 		{
@@ -143,9 +137,7 @@ func TestMatrix2x2_Inverse(t *testing.T) {
 				product.Mul(*m, *inv)
 				var identity Matrix2x2
 				identity.Eye()
-				if !matrices2x2Equal(&product, &identity, 1e-5) {
-					t.Errorf("M * M^-1 should equal identity")
-				}
+				assert.True(t, matrices2x2Equal(&product, &identity, 1e-5), "M * M^-1 should equal identity")
 			},
 		},
 		{
@@ -165,9 +157,10 @@ func TestMatrix2x2_Inverse(t *testing.T) {
 			var dst Matrix2x2
 			err := m.Inverse(&dst)
 
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Matrix2x2.Inverse() error = %v, wantErr %v", err, tt.wantErr)
-				return
+			if tt.wantErr {
+				assert.Error(t, err, "Matrix2x2.Inverse() should return error")
+			} else {
+				assert.NoError(t, err, "Matrix2x2.Inverse() should not return error")
 			}
 
 			if tt.verify != nil && err == nil {
@@ -197,9 +190,7 @@ func TestMatrix3x3_Inverse(t *testing.T) {
 				product.Mul(*m, *inv)
 				var identity Matrix3x3
 				identity.Eye()
-				if !matrices3x3Equal(&product, &identity, 1e-5) {
-					t.Errorf("M * M^-1 should equal identity")
-				}
+				assert.True(t, matrices3x3Equal(&product, &identity, 1e-5), "M * M^-1 should equal identity")
 			},
 		},
 		{
@@ -215,9 +206,7 @@ func TestMatrix3x3_Inverse(t *testing.T) {
 				product.Mul(*m, *inv)
 				var identity Matrix3x3
 				identity.Eye()
-				if !matrices3x3Equal(&product, &identity, 1e-5) {
-					t.Errorf("M * M^-1 should equal identity")
-				}
+				assert.True(t, matrices3x3Equal(&product, &identity, 1e-5), "M * M^-1 should equal identity")
 			},
 		},
 	}
@@ -228,9 +217,10 @@ func TestMatrix3x3_Inverse(t *testing.T) {
 			var dst Matrix3x3
 			err := m.Inverse(&dst)
 
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Matrix3x3.Inverse() error = %v, wantErr %v", err, tt.wantErr)
-				return
+			if tt.wantErr {
+				assert.Error(t, err, "Matrix3x3.Inverse() should return error")
+			} else {
+				assert.NoError(t, err, "Matrix3x3.Inverse() should not return error")
 			}
 
 			if tt.verify != nil && err == nil {
@@ -260,9 +250,7 @@ func TestMatrix4x4_Inverse(t *testing.T) {
 				product.Mul(*m, *inv)
 				var identity Matrix4x4
 				identity.Eye()
-				if !matrices4x4Equal(&product, &identity, 1e-5) {
-					t.Errorf("M * M^-1 should equal identity")
-				}
+				assert.True(t, matrices4x4Equal(&product, &identity, 1e-5), "M * M^-1 should equal identity")
 			},
 		},
 	}
@@ -273,9 +261,10 @@ func TestMatrix4x4_Inverse(t *testing.T) {
 			var dst Matrix4x4
 			err := m.Inverse(&dst)
 
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Matrix4x4.Inverse() error = %v, wantErr %v", err, tt.wantErr)
-				return
+			if tt.wantErr {
+				assert.Error(t, err, "Matrix4x4.Inverse() should return error")
+			} else {
+				assert.NoError(t, err, "Matrix4x4.Inverse() should not return error")
 			}
 
 			if tt.verify != nil && err == nil {

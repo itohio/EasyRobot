@@ -9,7 +9,9 @@ package mat
 
 import (
 	"errors"
+
 	"github.com/chewxy/math32"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
 	"github.com/itohio/EasyRobot/pkg/core/math/vec"
 )
 
@@ -25,9 +27,10 @@ type NNLSResult struct {
 // A must be (m x n), B must be (m length), X will be (n length)
 // Note: A and B are modified during computation (they contain Q*A and Q*B on output)
 // Returns error code:
-//   nil = success
-//   ErrNNLSBadDimensions = bad dimensions (m<=0 or n<=0)
-//   ErrNNLSMaxIterations = maximum number (3n) of iterations exceeded
+//
+//	nil = success
+//	ErrNNLSBadDimensions = bad dimensions (m<=0 or n<=0)
+//	ErrNNLSMaxIterations = maximum number (3n) of iterations exceeded
 func NNLS(A Matrix, B vec.Vector, dst *NNLSResult, rangeVal float32) error {
 	if len(A) == 0 || len(A[0]) == 0 {
 		return ErrNNLSBadDimensions
@@ -44,326 +47,41 @@ func NNLS(A Matrix, B vec.Vector, dst *NNLSResult, rangeVal float32) error {
 		return ErrNNLSBadDimensions
 	}
 
+	// Flatten matrices (zero-copy if contiguous)
+	AFlat := A.Flat()
+	BFlat := make([]float32, len(B))
+	copy(BFlat, B) // Copy B since Gnnls modifies it
+	ldA := len(A[0])
+
 	// Allocate result vectors
 	dst.X = make(vec.Vector, n)
 	dst.W = make(vec.Vector, n)
-	ZZ := make(vec.Vector, m)
-	index := make([]int, n)
 
-	const (
-		zero   = 0.0
-		two    = 2.0
-		factor = 0.0001
-	)
-
-	// Initialize
-	for i := 0; i < n; i++ {
-		dst.X[i] = 0
-		index[i] = i
+	// Use Gnnls for non-negative least squares
+	rNorm, err := primitive.Gnnls(dst.X, AFlat, BFlat, ldA, m, n)
+	if err != nil {
+		if err == primitive.ErrBadDimensions {
+			return ErrNNLSBadDimensions
+		}
+		if err == primitive.ErrMaxIterations {
+			return ErrNNLSMaxIterations
+		}
+		return err
 	}
+	dst.RNorm = rNorm
 
-	iz2 := n - 1 // Set Z
-	iz1 := 0
-	nsetp := -1 // No Set P
-	npp1 := 0
+	// Compute dual vector W = A^T * (B - A*X)
+	// For compatibility with original interface
+	// Compute residual: res = B - A*X
+	res := make(vec.Vector, m)
+	copy(res, B)
+	// res = B - A*X using Gemv
+	AFlatCopy := A.Flat() // Use original A (Gnnls modified it)
+	primitive.Gemv_N(res, AFlatCopy, dst.X, ldA, m, n, -1.0, 1.0)
 
-	itmax := 3 * n
-	iter := 0
+	// W = A^T * res using Gemv_T
+	primitive.Gemv_T(dst.W, AFlatCopy, res, ldA, m, n, 1.0, 0.0)
 
-	// Main Loop
-	for {
-		if iz1 > iz2 || nsetp >= m-1 {
-			goto terminate // Quit if all coefficients are already in solution
-		}
-
-		// Compute Components of the Dual (Negative Gradient) Vector W
-		for iz := iz1; iz <= iz2; iz++ {
-			j := index[iz]
-			var sm float32 = zero
-			for l := npp1; l < m; l++ {
-				sm += A[l][j] * B[l]
-			}
-			dst.W[j] = sm
-		}
-
-		// Find Largest Positive W[j]
-		var wmax float32
-		var izmax int
-		var j int
-		var up float32
-		var found bool
-
-		for {
-			wmax = zero
-			izmax = -1
-			for iz := iz1; iz <= iz2; iz++ {
-				jTest := index[iz]
-				if dst.W[jTest] > wmax {
-					wmax = dst.W[jTest]
-					izmax = iz
-				}
-			}
-
-			if wmax <= 0 {
-				goto terminate // Quit - Kuhn-Tucker Conditions Are Satisfied
-			}
-
-			iz := izmax
-			j = index[iz]
-
-			// The Sign of W[j] is OK for j to Be Moved to Set P.
-			// Begin the Transformation and Check New Diagonal Element to Avoid
-			// Near Linear Dependence
-
-			asave := A[npp1][j]
-
-			up, err := A.H1(j, npp1, npp1+1, rangeVal)
-			if err != nil {
-				return err
-			}
-			if up == 0 {
-				dst.W[j] = 0
-				found = false
-				continue
-			}
-
-			var unorm float32 = zero
-			for l := 0; l <= nsetp; l++ {
-				unorm += A[l][j] * A[l][j]
-			}
-			unorm = math32.Sqrt(unorm)
-
-			if (unorm + math32.Abs(A[npp1][j])*factor) > unorm {
-				// Col j is Sufficiently Independent
-				// Copy B into ZZ, update ZZ
-				// Solve for Ztest ( = Proposed New Value for X[j] )
-
-				for l := 0; l < m; l++ {
-					ZZ[l] = B[l]
-				}
-				if err := A.H2(j, npp1, npp1+1, up, ZZ, rangeVal); err != nil {
-					return err
-				}
-
-				// See if ztest is Positive
-				// Reject j as a Candidate to be Moved from Set Z to Set P
-				// Restore A(npp1,j), Set W(j)=0., and Loop Back to Test Dual
-
-				if A[npp1][j] == 0 {
-					A[npp1][j] = asave
-					dst.W[j] = 0
-					continue
-				}
-
-				ztest := ZZ[npp1] / A[npp1][j]
-				if ztest > 0 {
-					found = true
-					break
-				}
-			}
-
-			if found {
-				break
-			}
-
-			// Coeffs Again
-			A[npp1][j] = asave
-			dst.W[j] = 0
-		}
-
-		// The Index j=index(iz) has been Selected to be Moved from
-		// Set Z to Set P. Update B, Update Indices, Apply Householder
-		// Transformation to Cols in New Set Z, Zero Subdiagonal ELTS
-		// in Col j, Set W(j)=0.
-
-		for l := 0; l < m; l++ {
-			B[l] = ZZ[l]
-		}
-
-		index[izmax] = index[iz1]
-		index[iz1] = j
-		jSelected := j
-		upSelected := up
-		iz1++
-		nsetp = npp1
-		npp1++
-
-		if iz1 <= iz2 {
-			for jz := iz1; jz <= iz2; jz++ {
-				jj := index[jz]
-				if err := A.H3(jSelected, nsetp, npp1, upSelected, jj, rangeVal); err != nil {
-					return err
-				}
-			}
-		}
-
-		if nsetp != m-1 {
-			for l := npp1; l < m; l++ {
-				A[l][jSelected] = zero
-			}
-		}
-		dst.W[jSelected] = 0
-
-		// Solve Triangular System
-		// Store Temporal Solution in ZZ
-
-		for l := 0; l <= nsetp; l++ {
-			ip := nsetp - l
-			if l != 0 {
-				jj := index[ip+1]
-				for ii := 0; ii <= ip; ii++ {
-					ZZ[ii] -= A[ii][jj] * ZZ[ip+1]
-				}
-			}
-			jj := index[ip]
-			if A[ip][jj] == 0 {
-				return ErrNNLSSingular
-			}
-			ZZ[ip] /= A[ip][jj]
-		}
-
-		// Secondary Loop
-		for {
-			iter++ // Iteration Counter
-			if iter > itmax {
-				return ErrNNLSMaxIterations
-			}
-
-			// See if all new Constrained Coeffs are Feasible
-			var alpha float32 = two
-			var jj int
-			for ip := 0; ip <= nsetp; ip++ {
-				l := index[ip]
-				if ZZ[ip] <= 0 {
-					var t float32 = -dst.X[l] / (ZZ[ip] - dst.X[l])
-					if alpha > t {
-						alpha = t
-						jj = ip
-					}
-				}
-			}
-
-			// If all new constrained Coeffs are Feasible then alpha will
-			// still = 2. If so exit from Secondary Loop
-
-			if alpha == two {
-				break // Exit from Secondary Loop
-			}
-
-			// Otherwise use alpha which will be between 0. and 1. To
-			// Interpolate between the old X and new ZZ.
-
-			for ip := 0; ip <= nsetp; ip++ {
-				l := index[ip]
-				dst.X[l] += alpha * (ZZ[ip] - dst.X[l])
-			}
-
-			// Modify A and B and the Index Arrays to Move Coefficient i
-			// from Set P to Set Z
-
-			i := index[jj]
-
-			for {
-				dst.X[i] = zero
-
-				if jj != nsetp {
-					jj++
-					for jCol := jj; jCol <= nsetp; jCol++ {
-						ii := index[jCol]
-						index[jCol-1] = ii
-						cc, ss, sig := G1(A[jCol-1][ii], A[jCol][ii])
-						A[jCol-1][ii] = sig
-						A[jCol][ii] = zero
-						for l := 0; l < n; l++ {
-							if l != ii {
-								var x, y float32
-								x = A[jCol-1][l]
-								y = A[jCol][l]
-								G2(cc, ss, &x, &y)
-								A[jCol-1][l] = x
-								A[jCol][l] = y
-							}
-						}
-						var x, y float32
-						x = B[jCol-1]
-						y = B[jCol]
-						G2(cc, ss, &x, &y)
-						B[jCol-1] = x
-						B[jCol] = y
-					}
-				}
-
-				npp1 = nsetp
-				nsetp--
-				iz1--
-				index[iz1] = i
-
-				// See if the Remaining Coeffs in Set P are Feasible. They should
-				// be because of the Way alpha was Determined.
-				// If any are infeasible it is Due to Round-off Error. Any
-				// that are Nonpositive will be set to zero
-				// and Moved from Set P to Set Z.
-
-				var found bool
-				for jj := 0; jj <= nsetp; jj++ {
-					i = index[jj]
-					if dst.X[i] <= zero {
-						found = true
-						break
-					}
-				}
-				if !found {
-					break
-				}
-			}
-
-			// Copy B into ZZ. Then Solve again and Loop Back.
-
-			for i := 0; i < m; i++ {
-				ZZ[i] = B[i]
-			}
-
-			for l := 0; l <= nsetp; l++ {
-				ip := nsetp - l
-				if l != 0 {
-					jj := index[ip+1]
-					for ii := 0; ii <= ip; ii++ {
-						ZZ[ii] -= A[ii][jj] * ZZ[ip+1]
-					}
-				}
-				jj := index[ip]
-				if A[ip][jj] == 0 {
-					return ErrNNLSSingular
-				}
-				ZZ[ip] /= A[ip][jj]
-			}
-		}
-
-		// End of Secondary Loop
-
-		for ip := 0; ip <= nsetp; ip++ {
-			i := index[ip]
-			dst.X[i] = ZZ[ip]
-		}
-	} // All New Coeffs are Positive. Loop Back to Beginning
-
-	// End of Main Loop
-
-terminate:
-	// Compute the norm of the Final Residual Vector
-	var sm float32 = zero
-
-	if npp1 >= m {
-		for j := 0; j < n; j++ {
-			dst.W[j] = zero
-		}
-	} else {
-		for i := npp1; i < m; i++ {
-			sm += B[i] * B[i]
-		}
-	}
-
-	dst.RNorm = math32.Sqrt(sm)
 	return nil
 }
 
@@ -384,10 +102,11 @@ type LDPResult struct {
 // Minimize ||X|| subject to G*X >= H
 // G must be (m x n), H must be (m length), X will be (n length)
 // Returns error code:
-//   nil = success
-//   ErrLDPBadDimensions = bad dimensions
-//   ErrLDPMaxIterations = maximum iterations (NNLS)
-//   ErrLDPIncompatible = constraints incompatible
+//
+//	nil = success
+//	ErrLDPBadDimensions = bad dimensions
+//	ErrLDPMaxIterations = maximum iterations (NNLS)
+//	ErrLDPIncompatible = constraints incompatible
 func LDP(G Matrix, H vec.Vector, dst *LDPResult, rangeVal float32) error {
 	if len(G) == 0 || len(G[0]) == 0 {
 		return ErrLDPBadDimensions
@@ -486,4 +205,3 @@ var (
 	ErrLDPMaxIterations = errors.New("ldp: maximum iterations (NNLS) exceeded")
 	ErrLDPIncompatible  = errors.New("ldp: constraints incompatible")
 )
-
