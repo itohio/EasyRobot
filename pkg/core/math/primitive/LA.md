@@ -19,8 +19,8 @@ Computes the inverse of a matrix using LU decomposition with partial pivoting.
 
 | LAPACK Function | Our Function | Implementation | Status |
 |----------------|--------------|----------------|--------|
-| **GETRF** | `Getrf(a, ldA, ipiv, M, N)` | `la.go` | 🔮 |
-| **GETRI** | `Getri(aInv, a, ldA, ipiv, N)` | `la.go` | 🔮 |
+| **GETRF** | `Getrf(a, ldA, ipiv, M, N)` | `la.go` | ✅ |
+| **GETRI** | `Getri(aInv, a, ldA, ipiv, N)` | `la.go` | ✅ |
 
 **Function Signatures:**
 ```go
@@ -51,7 +51,7 @@ Computes LU decomposition with partial pivoting: A = P * L * U.
 
 | LAPACK Function | Our Function | Implementation | Status |
 |----------------|--------------|----------------|--------|
-| **GETRF** | `Getrf(a, l, u, ipiv, ldA, M, N)` | `la.go` | 🔮 |
+| **GETRF** | `Getrf(a, l, u, ipiv, ldA, M, N)` | `la.go` | ✅ |
 
 **Function Signatures:**
 ```go
@@ -88,9 +88,9 @@ Low-level Householder transformation functions used by QR decomposition and NNLS
 
 | Function | Our Function | Implementation | Status |
 |----------|--------------|----------------|--------|
-| **H1** | `H1(a, up, col0, lpivot, l1, ldA, rangeVal)` | `la.go` | 🔮 |
-| **H2** | `H2(a, zz, col0, lpivot, l1, up, ldA, rangeVal)` | `la.go` | 🔮 |
-| **H3** | `H3(a, col0, lpivot, l1, up, col1, ldA, rangeVal)` | `la.go` | 🔮 |
+| **H1** | `H1(a, up, col0, lpivot, l1, ldA, rangeVal)` | `la.go` | ✅ |
+| **H2** | `H2(a, zz, col0, lpivot, l1, up, ldA, rangeVal)` | `la.go` | ✅ |
+| **H3** | `H3(a, col0, lpivot, l1, up, col1, ldA, rangeVal)` | `la.go` | ✅ |
 
 **Function Signatures:**
 ```go
@@ -152,8 +152,8 @@ Computes QR decomposition using Householder reflections.
 
 | LAPACK Function | Our Function | Implementation | Status |
 |----------------|--------------|----------------|--------|
-| **GEQRF** | `Geqrf(a, tau, ldA, M, N)` | `la.go` | 🔮 |
-| **ORGQR** | `Orgqr(q, a, tau, ldA, ldQ, M, N, K)` | `la.go` | 🔮 |
+| **GEQRF** | `Geqrf(a, tau, ldA, M, N)` | `la.go` | ✅ |
+| **ORGQR** | `Orgqr(q, a, tau, ldA, ldQ, M, N, K)` | `la.go` | ✅ |
 
 **Function Signatures:**
 ```go
@@ -185,7 +185,7 @@ Computes singular value decomposition using bidiagonalization and QR iteration.
 
 | LAPACK Function | Our Function | Implementation | Status |
 |----------------|--------------|----------------|--------|
-| **GESVD** | `Gesvd(u, s, vt, a, ldA, ldU, ldVt, M, N)` | `la.go` | 🔮 |
+| **GESVD** | `Gesvd(u, s, vt, a, ldA, ldU, ldVt, M, N)` | `la.go` | ✅ |
 
 **Function Signatures:**
 ```go
@@ -214,7 +214,7 @@ Computes the pseudo-inverse using SVD decomposition.
 
 | Operation | Our Function | Implementation | Status |
 |-----------|--------------|----------------|--------|
-| **Pseudo-Inverse** | `Gepseu(aPinv, a, ldA, ldApinv, M, N)` | `la.go` | 🔮 |
+| **Pseudo-Inverse** | `Gepseu(aPinv, a, ldA, ldApinv, M, N)` | `la.go` | ✅ |
 
 **Function Signatures:**
 ```go
@@ -240,7 +240,7 @@ Solves constrained least squares problem: min ||AX - B|| subject to X ≥ 0.
 
 | Operation | Our Function | Implementation | Status |
 |-----------|--------------|----------------|--------|
-| **NNLS** | `Gnnls(x, a, b, ldA, M, N)` | `la.go` | 🔮 |
+| **NNLS** | `Gnnls(x, a, b, ldA, M, N)` | `la.go` | ✅ |
 
 **Function Signatures:**
 ```go

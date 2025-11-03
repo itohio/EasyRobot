@@ -55,6 +55,59 @@ func imin(a, b int) int {
 	return b
 }
 
+// pytag computes sqrt(a²+b²) without overflow.
+// Used in SVD and other numerical algorithms to avoid numerical overflow.
+func pytag(a, b float32) float32 {
+	absa := math32.Abs(a)
+	absb := math32.Abs(b)
+	if absa > absb {
+		return absa * math32.Sqrt(1.0+(absb/absa)*(absb/absa))
+	}
+	if absb == 0.0 {
+		return 0.0
+	}
+	return absb * math32.Sqrt(1.0+(absa/absb)*(absa/absb))
+}
+
+// G1 computes Givens rotation matrix.
+// Computes [cs  sn] such that [cs  sn] [a] -> [sig]
+//
+//	[-sn cs]           [-sn cs] [b]    [0 ]
+//
+// Returns cosine (cs), sine (sn), and sigma (sig = sqrt(a²+b²))
+func G1(a, b float32) (cs, sn, sig float32) {
+	var xr, yr float32
+
+	if math32.Abs(a) > math32.Abs(b) {
+		xr = b / a
+		yr = math32.Sqrt(1 + xr*xr)
+		cs = sign(1/yr, a)
+		sn = cs * xr
+		sig = math32.Abs(a) * yr
+	} else {
+		if b == 0 {
+			sig = 0
+			cs = 0
+			sn = 1
+		} else {
+			xr = a / b
+			yr = math32.Sqrt(1 + xr*xr)
+			sn = sign(1/yr, b)
+			cs = sn * xr
+			sig = math32.Abs(b) * yr
+		}
+	}
+	return cs, sn, sig
+}
+
+// G2 applies Givens rotation to (x, y).
+// Applies the rotation computed by G1 to the pair (x, y).
+func G2(cs, sn float32, x, y *float32) {
+	xr := cs*(*x) + sn*(*y)
+	*y = -sn*(*x) + cs*(*y)
+	*x = xr
+}
+
 // Get matrix element at row i, column j (row-major storage)
 func getElem(a []float32, ldA, i, j int) float32 {
 	return a[i*ldA+j]
@@ -579,16 +632,28 @@ func Orgqr(q, a []float32, tau []float32, ldA, ldQ, M, N, K int) error {
 	K = imin(K, minMN)
 	for k = K - 1; k >= 0; k-- {
 		if tau[k] != 0.0 {
-			// Apply transformation to columns k to M-1 of Q
-			for j = k; j < M; j++ {
-				sum = 0.0
-				for i = k; i < M; i++ {
-					sum += getElem(a, ldA, i, k) * getElem(q, ldQ, i, j)
-				}
-				tauVal = sum / tau[k]
-				for i = k; i < M; i++ {
-					val := getElem(q, ldQ, i, j) - tauVal*getElem(a, ldA, i, k)
-					setElem(q, ldQ, i, j, val)
+			// Apply Householder transformation: H = I - tau * v * v^T
+			// Standard LAPACK formula: x_new = x - v * (v^T * x) * (2 / (v^T * v))
+			// Compute v^T * v (norm squared of Householder vector)
+			vNormSq := float32(0.0)
+			for i = k; i < M; i++ {
+				val := getElem(a, ldA, i, k)
+				vNormSq += val * val
+			}
+
+			if vNormSq > 0.0 {
+				// Apply transformation to columns k to M-1 of Q
+				tauNorm := 2.0 / vNormSq
+				for j = k; j < M; j++ {
+					sum = 0.0
+					for i = k; i < M; i++ {
+						sum += getElem(a, ldA, i, k) * getElem(q, ldQ, i, j)
+					}
+					tauVal = sum * tauNorm
+					for i = k; i < M; i++ {
+						val := getElem(q, ldQ, i, j) - tauVal*getElem(a, ldA, i, k)
+						setElem(q, ldQ, i, j, val)
+					}
 				}
 			}
 		}
@@ -601,8 +666,7 @@ func Orgqr(q, a []float32, tau []float32, ldA, ldQ, M, N, K int) error {
 // A^+ = V * Σ^+ * U^T where Σ^+ is pseudo-inverse of diagonal matrix
 // Input: a contains M × N matrix
 // Output: aPinv contains N × M pseudo-inverse (row-major, ldApinv ≥ M)
-// This implementation uses QR decomposition for overdetermined systems
-// For full SVD-based implementation, use GESVD
+// Algorithm: Uses GESVD for full SVD-based implementation
 func Gepseu(aPinv, a []float32, ldA, ldApinv, M, N int) error {
 	if M <= 0 || N <= 0 {
 		return ErrBadDimensions
@@ -614,9 +678,43 @@ func Gepseu(aPinv, a []float32, ldA, ldApinv, M, N int) error {
 		return ErrBadDimensions
 	}
 
-	// Full implementation requires GESVD
-	// Placeholder indicates this needs full SVD-based implementation
-	return errors.New("GEPSEU: requires GESVD - full implementation pending")
+	minMN := imin(M, N)
+
+	// Allocate working matrices for SVD
+	u := make([]float32, M*M)
+	s := make([]float32, minMN)
+	vt := make([]float32, N*N)
+	ldU := M
+	ldVt := N
+
+	// Compute SVD: A = U * Σ * V^T
+	if err := Gesvd(u, s, vt, a, ldA, ldU, ldVt, M, N); err != nil {
+		return err
+	}
+
+	// Tolerance for singular values (treat values below this as zero)
+	const tol = float32(1e-10)
+
+	// Compute pseudo-inverse: A^+ = V * Σ^+ * U^T
+	// where Σ^+[i] = 1/s[i] if |s[i]| > tol, else 0
+	// A^+[i,j] = sum_k (V[i,k] * Σ^+[k] * U[j,k])
+	for i := 0; i < N; i++ {
+		for j := 0; j < M; j++ {
+			var sum float32 = 0.0
+			for k := 0; k < minMN; k++ {
+				if math32.Abs(s[k]) > tol {
+					// A^+[i,j] = V[i,k] * (1/s[k]) * U[j,k]
+					// Note: vt is V^T, so vt[k][i] = V[i][k]
+					vik := getElem(vt, ldVt, k, i)
+					ujk := getElem(u, ldU, j, k)
+					sum += vik * (1.0 / s[k]) * ujk
+				}
+			}
+			setElem(aPinv, ldApinv, i, j, sum)
+		}
+	}
+
+	return nil
 }
 
 // GESVD: Compute SVD decomposition A = U * Σ * V^T
@@ -626,29 +724,667 @@ func Gepseu(aPinv, a []float32, ldA, ldApinv, M, N int) error {
 //	s contains min(M,N) singular values (sorted descending)
 //	vt contains N × N right singular vectors transposed (row-major, ldVt ≥ N)
 //
-// NOTE: This is a placeholder implementation. Full SVD requires bidiagonalization
-// and QR iteration as implemented in mat/svd.go. For production use, consider
-// using the mat package implementation.
+// Algorithm: Golub-Reinsch (Householder bidiagonalization + QR iteration)
+// Reference: Numerical Recipes in C, W. H. Press et al.
 func Gesvd(u, s, vt, a []float32, ldA, ldU, ldVt, M, N int) error {
-	// Full SVD implementation is complex and would require ~300+ lines
-	// This is a placeholder that indicates the function needs full implementation
-	// based on the algorithm in mat/svd.go
-	return errors.New("GESVD: full implementation pending - use mat.SVD for now")
+	if M <= 0 || N <= 0 {
+		return ErrBadDimensions
+	}
+	if len(a) < M*ldA {
+		return ErrBadDimensions
+	}
+	if len(u) < M*ldU {
+		return ErrBadDimensions
+	}
+	if len(s) < imin(M, N) {
+		return ErrBadDimensions
+	}
+	if len(vt) < N*ldVt {
+		return ErrBadDimensions
+	}
+
+	// Create working copy of matrix A (since we modify it)
+	// Work matrix will be used for U accumulation
+	work := make([]float32, M*ldA)
+	copy(work, a)
+
+	// Working vector for bidiagonalization
+	rv1 := make([]float32, N)
+
+	// Initialize U output matrix as identity (will accumulate transformations)
+	for i := 0; i < M; i++ {
+		for j := 0; j < M; j++ {
+			if i == j {
+				setElem(u, ldU, i, j, 1.0)
+			} else {
+				setElem(u, ldU, i, j, 0.0)
+			}
+		}
+	}
+
+	var flag bool
+	var i, its, j, jj, k, l, nm int
+	var anorm, c, f, g, h, sVal, scale, x, y, z float32
+
+	// Householder reduction to bidiagonal form
+	g = 0.0
+	scale = 0.0
+	anorm = 0.0
+	for i = 0; i < N; i++ {
+		l = i + 1
+		rv1[i] = scale * g
+		g = 0.0
+		sVal = 0.0
+		scale = 0.0
+
+		if i < M {
+			for k = i; k < M; k++ {
+				scale += math32.Abs(getElem(work, ldA, k, i))
+			}
+			if scale != 0.0 {
+				for k = i; k < M; k++ {
+					val := getElem(work, ldA, k, i) / scale
+					setElem(work, ldA, k, i, val)
+					sVal += val * val
+				}
+				f = getElem(work, ldA, i, i)
+				g = -sign(math32.Sqrt(sVal), f)
+				h = f*g - sVal
+				setElem(work, ldA, i, i, f-g)
+				for j = l; j < N; j++ {
+					sVal = 0.0
+					for k = i; k < M; k++ {
+						sVal += getElem(work, ldA, k, i) * getElem(work, ldA, k, j)
+					}
+					f = sVal / h
+					for k = i; k < M; k++ {
+						val := getElem(work, ldA, k, j) + f*getElem(work, ldA, k, i)
+						setElem(work, ldA, k, j, val)
+					}
+				}
+				for k = i; k < M; k++ {
+					val := getElem(work, ldA, k, i) * scale
+					setElem(work, ldA, k, i, val)
+				}
+			}
+		}
+		s[i] = scale * g
+		g = 0.0
+		sVal = 0.0
+		scale = 0.0
+
+		if i < M && i != (N-1) {
+			for k = l; k < N; k++ {
+				scale += math32.Abs(getElem(work, ldA, i, k))
+			}
+			if scale != 0.0 {
+				for k = l; k < N; k++ {
+					val := getElem(work, ldA, i, k) / scale
+					setElem(work, ldA, i, k, val)
+					sVal += val * val
+				}
+				f = getElem(work, ldA, i, l)
+				g = -sign(math32.Sqrt(sVal), f)
+				h = f*g - sVal
+				setElem(work, ldA, i, l, f-g)
+				for k = l; k < N; k++ {
+					rv1[k] = getElem(work, ldA, i, k) / h
+				}
+				for j = l; j < M; j++ {
+					sVal = 0.0
+					for k = l; k < N; k++ {
+						sVal += getElem(work, ldA, j, k) * getElem(work, ldA, i, k)
+					}
+					for k = l; k < N; k++ {
+						val := getElem(work, ldA, j, k) + sVal*rv1[k]
+						setElem(work, ldA, j, k, val)
+					}
+				}
+				for k = l; k < N; k++ {
+					val := getElem(work, ldA, i, k) * scale
+					setElem(work, ldA, i, k, val)
+				}
+			}
+		}
+		anorm = fmax(anorm, math32.Abs(s[i])+math32.Abs(rv1[i]))
+	}
+
+	// Accumulation of right-hand transformation
+	for i = N - 1; i >= 0; i-- {
+		if i < (N - 1) {
+			if g != 0.0 {
+				for j = l; j < N; j++ {
+					val := (getElem(work, ldA, i, j) / getElem(work, ldA, i, l)) / g
+					setElem(vt, ldVt, j, i, val)
+				}
+				for j = l; j < N; j++ {
+					sVal = 0.0
+					for k = l; k < N; k++ {
+						sVal += getElem(work, ldA, i, k) * getElem(vt, ldVt, k, j)
+					}
+					for k = l; k < N; k++ {
+						val := getElem(vt, ldVt, k, j) + sVal*getElem(vt, ldVt, k, i)
+						setElem(vt, ldVt, k, j, val)
+					}
+				}
+			}
+			for j = l; j < N; j++ {
+				setElem(vt, ldVt, i, j, 0.0)
+				setElem(vt, ldVt, j, i, 0.0)
+			}
+		}
+		setElem(vt, ldVt, i, i, 1.0)
+		g = rv1[i]
+		l = i
+	}
+
+	// Accumulation of left-hand transformations
+	// Apply transformations to U matrix
+	minMN := imin(M, N)
+	for i = minMN - 1; i >= 0; i-- {
+		l = i + 1
+		g = s[i]
+		for j = l; j < N; j++ {
+			setElem(work, ldA, i, j, 0.0)
+		}
+		if g != 0.0 {
+			g = 1.0 / g
+			for j = l; j < M; j++ {
+				sVal = 0.0
+				for k = l; k < M; k++ {
+					sVal += getElem(work, ldA, k, i) * getElem(work, ldA, k, j)
+				}
+				f = (sVal / getElem(work, ldA, i, i)) * g
+				for k = i; k < M; k++ {
+					val := getElem(work, ldA, k, j) + f*getElem(work, ldA, k, i)
+					setElem(work, ldA, k, j, val)
+				}
+			}
+			for j = i; j < M; j++ {
+				val := getElem(work, ldA, j, i) * g
+				setElem(work, ldA, j, i, val)
+			}
+		} else {
+			for j = i; j < M; j++ {
+				setElem(work, ldA, j, i, 0.0)
+			}
+		}
+		val := getElem(work, ldA, i, i) + 1.0
+		setElem(work, ldA, i, i, val)
+	}
+
+	// Copy accumulated U from work to output u
+	// Work matrix now contains the accumulated U
+	for i = 0; i < M; i++ {
+		for j = 0; j < M && j < N; j++ {
+			setElem(u, ldU, i, j, getElem(work, ldA, i, j))
+		}
+		// Fill remaining columns with identity if M > N
+		for j = N; j < M; j++ {
+			if i == j {
+				setElem(u, ldU, i, j, 1.0)
+			} else {
+				setElem(u, ldU, i, j, 0.0)
+			}
+		}
+	}
+
+	// Diagonalization of the bidiagonal form: Loop over singular values
+	maxIterations := 30
+	for k = N - 1; k >= 0; k-- {
+		for its = 1; its <= maxIterations; its++ {
+			flag = true
+			for l = k; l >= 0; l-- {
+				nm = l - 1
+				if float32(math32.Abs(rv1[l])+anorm) == anorm {
+					flag = false
+					break
+				}
+				if nm >= 0 && float32(math32.Abs(s[nm])+anorm) == anorm {
+					break
+				}
+			}
+			if flag {
+				c = 0.0
+				sVal = 1.0
+				for i = l; i <= k; i++ {
+					f = sVal * rv1[i]
+					rv1[i] = c * rv1[i]
+					if float32(math32.Abs(f)+anorm) == anorm {
+						break
+					}
+					g = s[i]
+					h = pytag(f, g)
+					s[i] = h
+					h = 1.0 / h
+					c = g * h
+					sVal = -f * h
+					for j = 0; j < M; j++ {
+						y = getElem(u, ldU, j, nm)
+						z = getElem(u, ldU, j, i)
+						setElem(u, ldU, j, nm, y*c+z*sVal)
+						setElem(u, ldU, j, i, z*c-y*sVal)
+					}
+				}
+			}
+			z = s[k]
+			if l == k {
+				// Convergence
+				if z < 0.0 {
+					// Singular value is made nonnegative
+					s[k] = -z
+					for j = 0; j < N; j++ {
+						val := getElem(vt, ldVt, j, k)
+						setElem(vt, ldVt, j, k, -val)
+					}
+				}
+				break
+			}
+			if its == maxIterations {
+				return ErrMaxIterations
+			}
+			x = s[l]
+			nm = k - 1
+			y = s[nm]
+			g = rv1[nm]
+			h = rv1[k]
+			f = ((y-z)*(y+z) + (g-h)*(g+h)) / (2.0 * h * y)
+			g = pytag(f, 1.0)
+			f = ((x-z)*(x+z) + h*((y/(f+sign(g, f)))-h)) / x
+			c = 1.0
+			sVal = 1.0
+			// Next QR transformation
+			for j = l; j < nm+1; j++ {
+				i = j + 1
+				g = rv1[i]
+				y = s[i]
+				h = sVal * g
+				g = c * g
+				z = pytag(f, h)
+				rv1[j] = z
+				c = f / z
+				sVal = h / z
+				f = x*c + g*sVal
+				g = g*c - x*sVal
+				h = y * sVal
+				y *= c
+				for jj = 0; jj < N; jj++ {
+					x = getElem(vt, ldVt, jj, j)
+					z = getElem(vt, ldVt, jj, i)
+					setElem(vt, ldVt, jj, j, x*c+z*sVal)
+					setElem(vt, ldVt, jj, i, z*c-x*sVal)
+				}
+				z = pytag(f, h)
+				s[j] = z
+				// Rotation can be arbitrary if z = 0
+				if z != 0.0 {
+					z = 1.0 / z
+					c = f * z
+					sVal = h * z
+				}
+				f = c*g + sVal*y
+				x = c*y - sVal*g
+				for jj = 0; jj < M; jj++ {
+					y = getElem(u, ldU, jj, j)
+					z = getElem(u, ldU, jj, i)
+					setElem(u, ldU, jj, j, y*c+z*sVal)
+					setElem(u, ldU, jj, i, z*c-y*sVal)
+				}
+			}
+			rv1[l] = 0.0
+			rv1[k] = f
+			s[k] = x
+		}
+	}
+
+	return nil
 }
 
 // GNNLS: Solve non-negative least squares min ||AX - B|| subject to X >= 0
 // Input: a contains M × N matrix (row-major, ldA ≥ N)
 //
-//	b contains M × 1 right-hand side vector
+//	b contains M × 1 right-hand side vector (modified in-place)
 //
 // Output: x contains N × 1 solution vector (non-negative)
 // Returns: residual norm ||AX - B||
-// NOTE: This is a placeholder implementation. Full NNLS requires Lawson-Hanson
-// active set method as implemented in mat/nnls.go (~500 lines). For production use,
-// consider using the mat package implementation.
+// Algorithm: Lawson-Hanson active set method with Householder QR decomposition
+// Reference: C. L. Lawson and R. J. Hanson, 'Solving Least Squares Problems'
 func Gnnls(x, a, b []float32, ldA, M, N int) (rNorm float32, err error) {
-	// Full NNLS implementation is complex and would require ~500+ lines
-	// This is a placeholder that indicates the function needs full implementation
-	// based on the algorithm in mat/nnls.go
-	return 0, errors.New("GNNLS: full implementation pending - use mat.NNLS for now")
+	if M <= 0 || N <= 0 {
+		return 0, ErrBadDimensions
+	}
+	if len(a) < M*ldA {
+		return 0, ErrBadDimensions
+	}
+	if len(b) < M {
+		return 0, ErrBadDimensions
+	}
+	if len(x) < N {
+		return 0, ErrBadDimensions
+	}
+
+	const (
+		zero   = float32(0.0)
+		two    = float32(2.0)
+		factor = float32(0.0001)
+	)
+
+	// Working vectors
+	zz := make([]float32, M)
+	w := make([]float32, N)
+	index := make([]int, N)
+
+	// Initialize solution vector
+	for i := 0; i < N; i++ {
+		x[i] = zero
+		index[i] = i
+	}
+
+	// Set Z indices
+	iz2 := N - 1
+	iz1 := 0
+	nsetp := -1
+	npp1 := 0
+
+	itmax := 3 * N
+	iter := 0
+
+	// Main Loop
+	for {
+		if iz1 > iz2 || nsetp >= M-1 {
+			goto terminate // Quit if all coefficients are already in solution
+		}
+
+		// Compute Components of the Dual (Negative Gradient) Vector W
+		for iz := iz1; iz <= iz2; iz++ {
+			j := index[iz]
+			var sm float32 = zero
+			for l := npp1; l < M; l++ {
+				sm += getElem(a, ldA, l, j) * b[l]
+			}
+			w[j] = sm
+		}
+
+		// Find Largest Positive W[j]
+		var wmax float32
+		var izmax int
+		var j int
+		var up float32
+		var found bool
+
+		for {
+			wmax = zero
+			izmax = -1
+			for iz := iz1; iz <= iz2; iz++ {
+				jTest := index[iz]
+				if w[jTest] > wmax {
+					wmax = w[jTest]
+					izmax = iz
+				}
+			}
+
+			if wmax <= zero {
+				goto terminate // Quit - Kuhn-Tucker Conditions Are Satisfied
+			}
+
+			iz := izmax
+			j = index[iz]
+
+			// The Sign of W[j] is OK for j to Be Moved to Set P.
+			// Begin the Transformation and Check New Diagonal Element to Avoid
+			// Near Linear Dependence
+
+			asave := getElem(a, ldA, npp1, j)
+
+			up, err = H1(a, j, npp1, npp1+1, ldA, DefaultRange)
+			if err != nil {
+				return 0, err
+			}
+			if up == zero {
+				w[j] = zero
+				found = false
+				continue
+			}
+
+			var unorm float32 = zero
+			for l := 0; l <= nsetp; l++ {
+				val := getElem(a, ldA, l, j)
+				unorm += val * val
+			}
+			unorm = math32.Sqrt(unorm)
+
+			if (unorm + math32.Abs(getElem(a, ldA, npp1, j))*factor) > unorm {
+				// Col j is Sufficiently Independent
+				// Copy B into ZZ, update ZZ
+				// Solve for Ztest ( = Proposed New Value for X[j] )
+
+				for l := 0; l < M; l++ {
+					zz[l] = b[l]
+				}
+				if err := H2(a, zz, j, npp1, npp1+1, up, ldA, DefaultRange); err != nil {
+					return 0, err
+				}
+
+				// See if ztest is Positive
+				// Reject j as a Candidate to be Moved from Set Z to Set P
+				// Restore A(npp1,j), Set W(j)=0., and Loop Back to Test Dual
+
+				if getElem(a, ldA, npp1, j) == zero {
+					setElem(a, ldA, npp1, j, asave)
+					w[j] = zero
+					continue
+				}
+
+				ztest := zz[npp1] / getElem(a, ldA, npp1, j)
+				if ztest > zero {
+					found = true
+					break
+				}
+			}
+
+			if found {
+				break
+			}
+
+			// Coeffs Again
+			setElem(a, ldA, npp1, j, asave)
+			w[j] = zero
+		}
+
+		// The Index j=index(iz) has been Selected to be Moved from
+		// Set Z to Set P. Update B, Update Indices, Apply Householder
+		// Transformation to Cols in New Set Z, Zero Subdiagonal ELTS
+		// in Col j, Set W(j)=0.
+
+		for l := 0; l < M; l++ {
+			b[l] = zz[l]
+		}
+
+		index[izmax] = index[iz1]
+		index[iz1] = j
+		jSelected := j
+		upSelected := up
+		iz1++
+		nsetp = npp1
+		npp1++
+
+		if iz1 <= iz2 {
+			for jz := iz1; jz <= iz2; jz++ {
+				jj := index[jz]
+				if err := H3(a, jSelected, nsetp, npp1, upSelected, jj, ldA, DefaultRange); err != nil {
+					return 0, err
+				}
+			}
+		}
+
+		if nsetp != M-1 {
+			for l := npp1; l < M; l++ {
+				setElem(a, ldA, l, jSelected, zero)
+			}
+		}
+		w[jSelected] = zero
+
+		// Solve Triangular System
+		// Store Temporal Solution in ZZ
+
+		for l := 0; l <= nsetp; l++ {
+			ip := nsetp - l
+			if l != 0 {
+				jj := index[ip+1]
+				for ii := 0; ii <= ip; ii++ {
+					zz[ii] -= getElem(a, ldA, ii, jj) * zz[ip+1]
+				}
+			}
+			jj := index[ip]
+			ajj := getElem(a, ldA, ip, jj)
+			if ajj == zero {
+				return 0, ErrSingularMatrix
+			}
+			zz[ip] /= ajj
+		}
+
+		// Secondary Loop
+		for {
+			iter++ // Iteration Counter
+			if iter > itmax {
+				return 0, ErrMaxIterations
+			}
+
+			// See if all new Constrained Coeffs are Feasible
+			var alpha float32 = two
+			var jj int
+			for ip := 0; ip <= nsetp; ip++ {
+				l := index[ip]
+				if zz[ip] <= zero {
+					var t float32 = -x[l] / (zz[ip] - x[l])
+					if alpha > t {
+						alpha = t
+						jj = ip
+					}
+				}
+			}
+
+			// If all new constrained Coeffs are Feasible then alpha will
+			// still = 2. If so exit from Secondary Loop
+
+			if alpha == two {
+				break // Exit from Secondary Loop
+			}
+
+			// Otherwise use alpha which will be between 0. and 1. To
+			// Interpolate between the old X and new ZZ.
+
+			for ip := 0; ip <= nsetp; ip++ {
+				l := index[ip]
+				x[l] += alpha * (zz[ip] - x[l])
+			}
+
+			// Modify A and B and the Index Arrays to Move Coefficient i
+			// from Set P to Set Z
+
+			i := index[jj]
+
+			for {
+				x[i] = zero
+
+				if jj != nsetp {
+					jj++
+					for jCol := jj; jCol <= nsetp; jCol++ {
+						ii := index[jCol]
+						index[jCol-1] = ii
+						cc, ss, sig := G1(getElem(a, ldA, jCol-1, ii), getElem(a, ldA, jCol, ii))
+						setElem(a, ldA, jCol-1, ii, sig)
+						setElem(a, ldA, jCol, ii, zero)
+						for l := 0; l < N; l++ {
+							if l != ii {
+								var xVal, yVal float32
+								xVal = getElem(a, ldA, jCol-1, l)
+								yVal = getElem(a, ldA, jCol, l)
+								G2(cc, ss, &xVal, &yVal)
+								setElem(a, ldA, jCol-1, l, xVal)
+								setElem(a, ldA, jCol, l, yVal)
+							}
+						}
+						var xVal, yVal float32
+						xVal = b[jCol-1]
+						yVal = b[jCol]
+						G2(cc, ss, &xVal, &yVal)
+						b[jCol-1] = xVal
+						b[jCol] = yVal
+					}
+				}
+
+				npp1 = nsetp
+				nsetp--
+				iz1--
+				index[iz1] = i
+
+				// See if the Remaining Coeffs in Set P are Feasible. They should
+				// be because of the Way alpha was Determined.
+				// If any are infeasible it is Due to Round-off Error. Any
+				// that are Nonpositive will be set to zero
+				// and Moved from Set P to Set Z.
+
+				found = false
+				for jj := 0; jj <= nsetp; jj++ {
+					i = index[jj]
+					if x[i] <= zero {
+						found = true
+						break
+					}
+				}
+				if !found {
+					break
+				}
+			}
+
+			// Copy B into ZZ. Then Solve again and Loop Back.
+
+			for i := 0; i < M; i++ {
+				zz[i] = b[i]
+			}
+
+			for l := 0; l <= nsetp; l++ {
+				ip := nsetp - l
+				if l != 0 {
+					jj := index[ip+1]
+					for ii := 0; ii <= ip; ii++ {
+						zz[ii] -= getElem(a, ldA, ii, jj) * zz[ip+1]
+					}
+				}
+				jj := index[ip]
+				ajj := getElem(a, ldA, ip, jj)
+				if ajj == zero {
+					return 0, ErrSingularMatrix
+				}
+				zz[ip] /= ajj
+			}
+		}
+
+		// End of Secondary Loop
+
+		for ip := 0; ip <= nsetp; ip++ {
+			i := index[ip]
+			x[i] = zz[ip]
+		}
+	} // All New Coeffs are Positive. Loop Back to Beginning
+
+	// End of Main Loop
+
+terminate:
+	// Compute the norm of the Final Residual Vector
+	var sm float32 = zero
+
+	if npp1 >= M {
+		for j := 0; j < N; j++ {
+			w[j] = zero
+		}
+	} else {
+		for i := npp1; i < M; i++ {
+			sm += b[i] * b[i]
+		}
+	}
+
+	rNorm = math32.Sqrt(sm)
+	return rNorm, nil
 }
