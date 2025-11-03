@@ -6,4 +6,3 @@ type Searcher interface {
 	// Returns path as list of nodes, or nil if no path exists
 	Search(start, goal Node) Path
 }
-

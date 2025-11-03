@@ -79,4 +79,3 @@ func findComponent(g Graph, start Node, visited map[Node]bool) []Node {
 
 	return component
 }
-

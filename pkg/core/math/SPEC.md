@@ -160,8 +160,7 @@ The math library provides mathematical primitives optimized for robotics applica
 **Purpose**: Multi-dimensional array operations
 
 **Types**:
-- `tensor.Dense`: Dense tensor representation
-- `tensor.Sparse`: Sparse tensor representation
+- `tensor.Tensor`: Dense tensor representation
 
 **Status**: Planned/partial implementation
 

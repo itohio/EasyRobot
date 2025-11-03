@@ -93,4 +93,3 @@ func BFSFunc(g Graph, start, goal Node) Path {
 	bfs := NewBFS(g)
 	return bfs.Search(start, goal)
 }
-
