@@ -54,11 +54,23 @@ func TestMatrix_SVD(t *testing.T) {
 			},
 		},
 		{
-			name: "2x3 rectangular matrix",
+			name: "2x3 rectangular matrix (M < N, not supported)",
 			init: func(t *testing.T) Matrix {
 				return New(2, 3,
 					1, 0, 0,
 					0, 2, 0)
+			},
+			wantErr: true, // M < N requires transposition by caller
+			verify:  nil,
+		},
+		{
+			name: "4x3 overdetermined rectangular matrix",
+			init: func(t *testing.T) Matrix {
+				return New(4, 3,
+					1, 0, 0,
+					0, 1, 0,
+					0, 0, 1,
+					1, 1, 1)
 			},
 			wantErr: false,
 			verify: func(m Matrix, result *SVDResult, t *testing.T) {
@@ -67,6 +79,17 @@ func TestMatrix_SVD(t *testing.T) {
 				}
 				verifySVDReconstruction(m, result, t)
 			},
+		},
+		{
+			name: "3x4 underdetermined rectangular matrix (M < N, not supported)",
+			init: func(t *testing.T) Matrix {
+				return New(3, 4,
+					1, 0, 0, 0,
+					0, 1, 0, 0,
+					0, 0, 1, 0)
+			},
+			wantErr: true, // M < N requires transposition by caller
+			verify:  nil,
 		},
 		{
 			name: "zero matrix",
@@ -88,6 +111,22 @@ func TestMatrix_SVD(t *testing.T) {
 				return nil
 			},
 			wantErr: true,
+			verify:  nil,
+		},
+		{
+			name: "Jacobian-like 6x8 (M < N, not supported)",
+			init: func(t *testing.T) Matrix {
+				// Simulate Jacobian for 8 joints controlling 6DOF (position + orientation)
+				// Well-conditioned matrix with distinct singular values
+				return New(6, 8,
+					0.8, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1,
+					0.2, 0.7, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0,
+					0.0, 0.2, 0.6, 0.2, 0.0, 0.0, 0.0, 0.0,
+					0.0, 0.0, 0.3, 0.5, 0.2, 0.0, 0.0, 0.0,
+					0.0, 0.0, 0.0, 0.4, 0.4, 0.2, 0.0, 0.0,
+					0.0, 0.0, 0.0, 0.0, 0.5, 0.3, 0.2, 0.0)
+			},
+			wantErr: true, // M < N requires transposition by caller
 			verify:  nil,
 		},
 	}
@@ -157,4 +196,3 @@ func verifySVDReconstruction(m Matrix, result *SVDResult, t *testing.T) {
 		}
 	}
 }
-

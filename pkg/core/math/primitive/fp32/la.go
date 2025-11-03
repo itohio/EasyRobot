@@ -682,15 +682,26 @@ func Gepseu(aPinv, a []float32, ldA, ldApinv, M, N int) error {
 
 	// Allocate working matrices for SVD
 	u := make([]float32, M*M)
-	s := make([]float32, minMN)
+	s := make([]float32, N) // Singular values vector - allocate N even though only minMN are used
 	vt := make([]float32, N*N)
 	ldU := M
 	ldVt := N
 
 	// Compute SVD: A = U * Σ * V^T
+	// Note: Gesvd returns V (not V^T) in vt
 	if err := Gesvd(u, s, vt, a, ldA, ldU, ldVt, M, N); err != nil {
 		return err
 	}
+
+	// Transpose V to get V^T (pseudo-inverse expects V^T, consistent with svd.go)
+	vTemp := make([]float32, N*N)
+	for i := 0; i < N; i++ {
+		for j := 0; j < N; j++ {
+			vTemp[i*N+j] = getElem(vt, ldVt, j, i) // V^T[i][j] = V[j][i]
+		}
+	}
+	vt = vTemp
+	// ldVt stays N since it's still N×N
 
 	// Tolerance for singular values (treat values below this as zero)
 	const tol = float32(1e-10)
@@ -698,15 +709,16 @@ func Gepseu(aPinv, a []float32, ldA, ldApinv, M, N int) error {
 	// Compute pseudo-inverse: A^+ = V * Σ^+ * U^T
 	// where Σ^+[i] = 1/s[i] if |s[i]| > tol, else 0
 	// A^+[i,j] = sum_k (V[i,k] * Σ^+[k] * U[j,k])
+	// Since vt now contains V^T, we use vt[k][i] = V^T[k][i] = V[i][k]
 	for i := 0; i < N; i++ {
 		for j := 0; j < M; j++ {
 			var sum float32 = 0.0
 			for k := 0; k < minMN; k++ {
 				if math32.Abs(s[k]) > tol {
 					// A^+[i,j] = V[i,k] * (1/s[k]) * U[j,k]
-					// Note: vt is V^T, so vt[k][i] = V[i][k]
-					vik := getElem(vt, ldVt, k, i)
-					ujk := getElem(u, ldU, j, k)
+					// vt[k][i] = V^T[k][i] = V[i][k]
+					vik := getElem(vt, ldVt, k, i) // V^T[k][i] = V[i][k]
+					ujk := getElem(u, ldU, j, k)   // U[j][k]
 					sum += vik * (1.0 / s[k]) * ujk
 				}
 			}
@@ -726,9 +738,22 @@ func Gepseu(aPinv, a []float32, ldA, ldApinv, M, N int) error {
 //
 // Algorithm: Golub-Reinsch (Householder bidiagonalization + QR iteration)
 // Reference: Numerical Recipes in C, W. H. Press et al.
+// Gesvd computes Singular Value Decomposition using Golub-Reinsch algorithm.
+// A = U * S * V^T where:
+//   - A is M×N (input matrix, row-major, ldA >= N)
+//   - U is M×M (left singular vectors, row-major, ldU >= M)
+//   - S is N (singular values, only first min(M,N) are meaningful)
+//   - V^T is N×N (right singular vectors transposed, row-major, ldVt >= N)
+//
+// REQUIREMENT: M >= N (rows >= cols). The algorithm does not support M < N.
+// For M < N cases, transpose the input matrix first.
 func Gesvd(u, s, vt, a []float32, ldA, ldU, ldVt, M, N int) error {
 	if M <= 0 || N <= 0 {
 		return ErrBadDimensions
+	}
+	// Golub-Reinsch algorithm requires M >= N
+	if M < N {
+		return ErrBadDimensions // M < N not supported
 	}
 	if len(a) < M*ldA {
 		return ErrBadDimensions
@@ -736,7 +761,7 @@ func Gesvd(u, s, vt, a []float32, ldA, ldU, ldVt, M, N int) error {
 	if len(u) < M*ldU {
 		return ErrBadDimensions
 	}
-	if len(s) < imin(M, N) {
+	if len(s) < N {
 		return ErrBadDimensions
 	}
 	if len(vt) < N*ldVt {
@@ -744,21 +769,22 @@ func Gesvd(u, s, vt, a []float32, ldA, ldU, ldVt, M, N int) error {
 	}
 
 	// Create working copy of matrix A (since we modify it)
-	// Work matrix will be used for U accumulation
-	work := make([]float32, M*ldA)
-	copy(work, a)
+	// Work matrix will be used for bidiagonalization - needs M rows and N columns
+	work := make([]float32, M*N)
+	for i := 0; i < M; i++ {
+		for j := 0; j < N; j++ {
+			setElem(work, N, i, j, getElem(a, ldA, i, j))
+		}
+	}
 
 	// Working vector for bidiagonalization
 	rv1 := make([]float32, N)
 
-	// Initialize U output matrix as identity (will accumulate transformations)
-	for i := 0; i < M; i++ {
-		for j := 0; j < M; j++ {
-			if i == j {
-				setElem(u, ldU, i, j, 1.0)
-			} else {
-				setElem(u, ldU, i, j, 0.0)
-			}
+	// Initialize output matrices
+	// Vt will accumulate transformations
+	for i := 0; i < N; i++ {
+		for j := 0; j < N; j++ {
+			setElem(vt, ldVt, i, j, 0.0)
 		}
 	}
 
@@ -779,32 +805,32 @@ func Gesvd(u, s, vt, a []float32, ldA, ldU, ldVt, M, N int) error {
 
 		if i < M {
 			for k = i; k < M; k++ {
-				scale += math32.Abs(getElem(work, ldA, k, i))
+				scale += math32.Abs(getElem(work, N, k, i))
 			}
 			if scale != 0.0 {
 				for k = i; k < M; k++ {
-					val := getElem(work, ldA, k, i) / scale
-					setElem(work, ldA, k, i, val)
+					val := getElem(work, N, k, i) / scale
+					setElem(work, N, k, i, val)
 					sVal += val * val
 				}
-				f = getElem(work, ldA, i, i)
+				f = getElem(work, N, i, i)
 				g = -sign(math32.Sqrt(sVal), f)
 				h = f*g - sVal
-				setElem(work, ldA, i, i, f-g)
+				setElem(work, N, i, i, f-g)
 				for j = l; j < N; j++ {
 					sVal = 0.0
 					for k = i; k < M; k++ {
-						sVal += getElem(work, ldA, k, i) * getElem(work, ldA, k, j)
+						sVal += getElem(work, N, k, i) * getElem(work, N, k, j)
 					}
 					f = sVal / h
 					for k = i; k < M; k++ {
-						val := getElem(work, ldA, k, j) + f*getElem(work, ldA, k, i)
-						setElem(work, ldA, k, j, val)
+						val := getElem(work, N, k, j) + f*getElem(work, N, k, i)
+						setElem(work, N, k, j, val)
 					}
 				}
 				for k = i; k < M; k++ {
-					val := getElem(work, ldA, k, i) * scale
-					setElem(work, ldA, k, i, val)
+					val := getElem(work, N, k, i) * scale
+					setElem(work, N, k, i, val)
 				}
 			}
 		}
@@ -815,34 +841,34 @@ func Gesvd(u, s, vt, a []float32, ldA, ldU, ldVt, M, N int) error {
 
 		if i < M && i != (N-1) {
 			for k = l; k < N; k++ {
-				scale += math32.Abs(getElem(work, ldA, i, k))
+				scale += math32.Abs(getElem(work, N, i, k))
 			}
 			if scale != 0.0 {
 				for k = l; k < N; k++ {
-					val := getElem(work, ldA, i, k) / scale
-					setElem(work, ldA, i, k, val)
+					val := getElem(work, N, i, k) / scale
+					setElem(work, N, i, k, val)
 					sVal += val * val
 				}
-				f = getElem(work, ldA, i, l)
+				f = getElem(work, N, i, l)
 				g = -sign(math32.Sqrt(sVal), f)
 				h = f*g - sVal
-				setElem(work, ldA, i, l, f-g)
+				setElem(work, N, i, l, f-g)
 				for k = l; k < N; k++ {
-					rv1[k] = getElem(work, ldA, i, k) / h
+					rv1[k] = getElem(work, N, i, k) / h
 				}
 				for j = l; j < M; j++ {
 					sVal = 0.0
 					for k = l; k < N; k++ {
-						sVal += getElem(work, ldA, j, k) * getElem(work, ldA, i, k)
+						sVal += getElem(work, N, j, k) * getElem(work, N, i, k)
 					}
 					for k = l; k < N; k++ {
-						val := getElem(work, ldA, j, k) + sVal*rv1[k]
-						setElem(work, ldA, j, k, val)
+						val := getElem(work, N, j, k) + sVal*rv1[k]
+						setElem(work, N, j, k, val)
 					}
 				}
 				for k = l; k < N; k++ {
-					val := getElem(work, ldA, i, k) * scale
-					setElem(work, ldA, i, k, val)
+					val := getElem(work, N, i, k) * scale
+					setElem(work, N, i, k, val)
 				}
 			}
 		}
@@ -854,13 +880,13 @@ func Gesvd(u, s, vt, a []float32, ldA, ldU, ldVt, M, N int) error {
 		if i < (N - 1) {
 			if g != 0.0 {
 				for j = l; j < N; j++ {
-					val := (getElem(work, ldA, i, j) / getElem(work, ldA, i, l)) / g
+					val := (getElem(work, N, i, j) / getElem(work, N, i, l)) / g
 					setElem(vt, ldVt, j, i, val)
 				}
 				for j = l; j < N; j++ {
 					sVal = 0.0
 					for k = l; k < N; k++ {
-						sVal += getElem(work, ldA, i, k) * getElem(vt, ldVt, k, j)
+						sVal += getElem(work, N, i, k) * getElem(vt, ldVt, k, j)
 					}
 					for k = l; k < N; k++ {
 						val := getElem(vt, ldVt, k, j) + sVal*getElem(vt, ldVt, k, i)
@@ -879,54 +905,38 @@ func Gesvd(u, s, vt, a []float32, ldA, ldU, ldVt, M, N int) error {
 	}
 
 	// Accumulation of left-hand transformations
-	// Apply transformations to U matrix
+	// Apply transformations to U matrix - work matrix accumulates U
 	minMN := imin(M, N)
 	for i = minMN - 1; i >= 0; i-- {
 		l = i + 1
 		g = s[i]
 		for j = l; j < N; j++ {
-			setElem(work, ldA, i, j, 0.0)
+			setElem(work, N, i, j, 0.0)
 		}
 		if g != 0.0 {
 			g = 1.0 / g
-			for j = l; j < M; j++ {
+			for j = l; j < N; j++ {
 				sVal = 0.0
 				for k = l; k < M; k++ {
-					sVal += getElem(work, ldA, k, i) * getElem(work, ldA, k, j)
+					sVal += getElem(work, N, k, i) * getElem(work, N, k, j)
 				}
-				f = (sVal / getElem(work, ldA, i, i)) * g
+				f = (sVal / getElem(work, N, i, i)) * g
 				for k = i; k < M; k++ {
-					val := getElem(work, ldA, k, j) + f*getElem(work, ldA, k, i)
-					setElem(work, ldA, k, j, val)
+					val := getElem(work, N, k, j) + f*getElem(work, N, k, i)
+					setElem(work, N, k, j, val)
 				}
 			}
 			for j = i; j < M; j++ {
-				val := getElem(work, ldA, j, i) * g
-				setElem(work, ldA, j, i, val)
+				val := getElem(work, N, j, i) * g
+				setElem(work, N, j, i, val)
 			}
 		} else {
 			for j = i; j < M; j++ {
-				setElem(work, ldA, j, i, 0.0)
+				setElem(work, N, j, i, 0.0)
 			}
 		}
-		val := getElem(work, ldA, i, i) + 1.0
-		setElem(work, ldA, i, i, val)
-	}
-
-	// Copy accumulated U from work to output u
-	// Work matrix now contains the accumulated U
-	for i = 0; i < M; i++ {
-		for j = 0; j < M && j < N; j++ {
-			setElem(u, ldU, i, j, getElem(work, ldA, i, j))
-		}
-		// Fill remaining columns with identity if M > N
-		for j = N; j < M; j++ {
-			if i == j {
-				setElem(u, ldU, i, j, 1.0)
-			} else {
-				setElem(u, ldU, i, j, 0.0)
-			}
-		}
+		val := getElem(work, N, i, i) + 1.0
+		setElem(work, N, i, i, val)
 	}
 
 	// Diagonalization of the bidiagonal form: Loop over singular values
@@ -960,10 +970,10 @@ func Gesvd(u, s, vt, a []float32, ldA, ldU, ldVt, M, N int) error {
 					c = g * h
 					sVal = -f * h
 					for j = 0; j < M; j++ {
-						y = getElem(u, ldU, j, nm)
-						z = getElem(u, ldU, j, i)
-						setElem(u, ldU, j, nm, y*c+z*sVal)
-						setElem(u, ldU, j, i, z*c-y*sVal)
+						y = getElem(work, N, j, nm)
+						z = getElem(work, N, j, i)
+						setElem(work, N, j, nm, y*c+z*sVal)
+						setElem(work, N, j, i, z*c-y*sVal)
 					}
 				}
 			}
@@ -1025,15 +1035,58 @@ func Gesvd(u, s, vt, a []float32, ldA, ldU, ldVt, M, N int) error {
 				f = c*g + sVal*y
 				x = c*y - sVal*g
 				for jj = 0; jj < M; jj++ {
-					y = getElem(u, ldU, jj, j)
-					z = getElem(u, ldU, jj, i)
-					setElem(u, ldU, jj, j, y*c+z*sVal)
-					setElem(u, ldU, jj, i, z*c-y*sVal)
+					y = getElem(work, N, jj, j)
+					z = getElem(work, N, jj, i)
+					setElem(work, N, jj, j, y*c+z*sVal)
+					setElem(work, N, jj, i, z*c-y*sVal)
 				}
 			}
 			rv1[l] = 0.0
 			rv1[k] = f
 			s[k] = x
+		}
+	}
+
+	// Copy accumulated U from work to output u (work is M x N, but U is M x M)
+	for i = 0; i < M; i++ {
+		for j = 0; j < N && j < M; j++ {
+			setElem(u, ldU, i, j, getElem(work, N, i, j))
+		}
+		// For M > N, compute remaining columns to complete orthonormal basis
+		// Use Gram-Schmidt on standard basis vectors
+		for j = N; j < M; j++ {
+			// Start with standard basis vector e_j = [0,0,...,1,...,0] at position j
+			for k := 0; k < M; k++ {
+				if k == j {
+					setElem(u, ldU, k, j, 1.0)
+				} else {
+					setElem(u, ldU, k, j, 0.0)
+				}
+			}
+			// Subtract projections onto previous columns
+			for k := 0; k < j; k++ {
+				var dot float32
+				for l := 0; l < M; l++ {
+					dot += getElem(u, ldU, l, j) * getElem(u, ldU, l, k)
+				}
+				for l = 0; l < M; l++ {
+					val := getElem(u, ldU, l, j) - dot*getElem(u, ldU, l, k)
+					setElem(u, ldU, l, j, val)
+				}
+			}
+			// Normalize
+			var norm float32
+			for k := 0; k < M; k++ {
+				val := getElem(u, ldU, k, j)
+				norm += val * val
+			}
+			norm = math32.Sqrt(norm)
+			if norm > 0.0 {
+				for k := 0; k < M; k++ {
+					val := getElem(u, ldU, k, j) / norm
+					setElem(u, ldU, k, j, val)
+				}
+			}
 		}
 	}
 

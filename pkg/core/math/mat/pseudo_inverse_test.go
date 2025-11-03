@@ -47,7 +47,7 @@ func TestMatrix_PseudoInverse(t *testing.T) {
 			verify: func(m, inv Matrix, t *testing.T) {
 				// Verify property: J * J+ * J ≈ J
 				product := New(len(m), len(m[0]))
-				temp := New(len(inv), len(inv[0]))
+				temp := New(len(inv), len(m[0]))
 				temp.Mul(inv, m)
 				product.Mul(m, temp)
 				if !matricesEqualPseudo(product, m, 1e-4) {
@@ -56,26 +56,69 @@ func TestMatrix_PseudoInverse(t *testing.T) {
 			},
 		},
 		{
-			name: "underdetermined (rows < cols)",
+			name: "inverse kinematics style (12x6)",
 			init: func(t *testing.T) Matrix {
-				// 3x4 matrix
+				// 12x6 Jacobian-like matrix (more rows than columns)
+				return New(12, 6,
+					0.5, 0.2, 0.0, 0.1, 0.0, 0.0,
+					0.0, 0.4, 0.1, 0.0, 0.1, 0.0,
+					0.1, 0.0, 0.3, 0.0, 0.0, 0.2,
+					0.0, 0.0, 0.2, 0.3, 0.0, 0.1,
+					0.0, 0.1, 0.0, 0.2, 0.3, 0.0,
+					0.2, 0.0, 0.0, 0.0, 0.2, 0.3,
+					0.1, 0.3, 0.1, 0.0, 0.0, 0.0,
+					0.0, 0.0, 0.2, 0.1, 0.2, 0.0,
+					0.3, 0.0, 0.0, 0.0, 0.1, 0.2,
+					0.0, 0.2, 0.0, 0.3, 0.0, 0.1,
+					0.2, 0.0, 0.2, 0.0, 0.3, 0.0,
+					0.0, 0.1, 0.0, 0.2, 0.1, 0.2,
+				)
+			},
+			wantErr: false,
+			verify: func(m, inv Matrix, t *testing.T) {
+				// Expected pseudo-inverse precomputed with NumPy (docs/plans/pseudo_inverse_tests_plan.md)
+				expected := New(len(inv), len(inv[0]),
+					1.5346348, -0.5399058, -0.057963353, 0.05531098, -0.18769343, -0.04218724, -0.010949009, -0.0973809, 0.5570757, -0.15041275, 0.40444237, -0.38828078,
+					0.048741672, 1.4737898, -0.06868416, -0.47949466, 0.02109717, 0.027236871, 0.9924481, -0.28520334, -0.16371873, 0.38508058, -0.36539483, 0.2387547,
+					-0.19677354, 0.23583847, 1.5246581, 0.89247644, -0.6029631, -0.61114264, 0.42340428, 0.80194575, -0.37328258, -0.357438, 0.68896925, -0.50218076,
+					0.6360959, -0.77838767, -0.4703555, 1.276248, 0.63161665, -0.5941097, -0.4460648, 0.24280052, -0.22442055, 1.0667464, -0.20128892, 0.41444343,
+					-0.5285297, 0.28925854, -0.67638963, -0.6350227, 1.3033646, 0.6097841, -0.27589446, 0.6106739, 0.10362083, -0.36750656, 1.0322511, 0.15935738,
+					-0.9209273, 0.20296101, 0.8850613, -0.10471474, -0.52099085, 1.5310466, 0.0006892399, -0.5411376, 0.7413075, 0.2796766, -0.78356475, 0.98958045,
+				)
+				if !matricesEqualPseudo(inv, expected, 5e-4) {
+					t.Errorf("inverse kinematics pseudo-inverse mismatch with NumPy reference")
+				}
+
+				// Validate Moore-Penrose identities within float32 tolerance.
+				tempJJPlus := New(len(inv), len(m[0]))
+				tempJJPlus.Mul(inv, m)
+				jjp := New(len(m), len(m[0]))
+				jjp.Mul(m, tempJJPlus)
+				if !matricesEqualPseudo(jjp, m, 5e-4) {
+					t.Errorf("J * J+ * J should equal J for IK case")
+				}
+
+				tempPlusJJ := New(len(inv), len(m[0]))
+				tempPlusJJ.Mul(inv, m)
+				pjjp := New(len(inv), len(inv[0]))
+				pjjp.Mul(tempPlusJJ, inv)
+				if !matricesEqualPseudo(pjjp, inv, 5e-4) {
+					t.Errorf("J+ * J * J+ should equal J+ for IK case")
+				}
+			},
+		},
+		{
+			name: "underdetermined (rows < cols, not supported)",
+			init: func(t *testing.T) Matrix {
+				// 3x4 matrix - not supported (M < N)
 				return New(3, 4,
 					1, 0, 0, 0,
 					0, 1, 0, 0,
 					0, 0, 1, 0,
 				)
 			},
-			wantErr: false,
-			verify: func(m, inv Matrix, t *testing.T) {
-				// Verify property: J * J+ * J ≈ J
-				product := New(len(m), len(m[0]))
-				temp := New(len(inv), len(inv[0]))
-				temp.Mul(inv, m)
-				product.Mul(m, temp)
-				if !matricesEqualPseudo(product, m, 1e-4) {
-					t.Errorf("J * J+ * J should equal J, got difference")
-				}
-			},
+			wantErr: true, // M < N requires transposition (not implemented in PseudoInverse)
+			verify:  nil,
 		},
 	}
 
