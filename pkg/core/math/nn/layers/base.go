@@ -302,23 +302,6 @@ func (b *Base) Parameters() map[ParamIndex]Parameter {
 	return result
 }
 
-// ParametersAsInterface returns parameters as map[interface{}]Parameter to avoid import cycles.
-// This allows nn.Model to collect parameters without importing layers package.
-func (b *Base) ParametersAsInterface() map[interface{}]Parameter {
-	if b == nil {
-		return nil
-	}
-	if len(b.params) == 0 {
-		return nil
-	}
-
-	result := make(map[interface{}]Parameter)
-	for idx, param := range b.params {
-		result[idx] = param
-	}
-	return result
-}
-
 // SetParameters sets all parameters in the map.
 func (b *Base) SetParameters(params map[ParamIndex]Parameter) error {
 	if b == nil {
@@ -349,19 +332,6 @@ func (b *Base) SetParam(idx ParamIndex, param Parameter) {
 	}
 	b.initParam(idx)
 	b.params[idx] = param
-}
-
-// SetParamInterface sets a parameter using interface{} index to avoid import cycles.
-// This allows nn.Model to update parameters without importing layers package.
-func (b *Base) SetParamInterface(idx interface{}, param Parameter) {
-	if b == nil {
-		return
-	}
-	// Type assert idx to ParamIndex
-	if paramIdx, ok := idx.(ParamIndex); ok {
-		b.initParam(paramIdx)
-		b.params[paramIdx] = param
-	}
 }
 
 // Weights returns the weights parameter.

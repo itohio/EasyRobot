@@ -549,8 +549,8 @@ Layers are built on top of optimized tensor operations:
    - `Base.Parameters()` returns `map[ParamIndex]Parameter` (values, not pointers)
    - `Parameter` type moved to `layers` package to avoid import cycles between `nn` and `layers`
    - Parameters are stored and returned as values (not pointers) for clarity and efficiency
-   - `Model.Parameters()` collects parameters from layers via `ParametersAsInterface()` method
-   - `Model.Update()` works with parameter values and writes back via `SetParamInterface()` method
+   - `Model.Parameters()` collects parameters from layers via `Parameters()` method returning `map[ParamIndex]Parameter`
+   - `Model.Update()` works with parameter values and writes back via `SetParam()` method
    - This design avoids the complexity of pointer management while maintaining functionality
 
 5. **GlobalAvgPool2D Prefix**: Uses "avgpool2d" prefix instead of "globalavgpool2d":

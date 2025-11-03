@@ -64,16 +64,15 @@ func (p Parameter) InitXavierNormal(fanIn, fanOut int)
 
 #### Optimizer Interface
 
-**Note**: Optimizer interface is in `math/learn` package, not `math/nn`.
-
 ```go
-// In math/learn package
 type Optimizer interface {
     Update(param *layers.Parameter) error
 }
 ```
 
-**File**: `math/learn/optimizer.go`
+**File**: `model.go`
+
+**Note**: The interface is in the `nn` package because it's used by `Model.Update()`. Implementations (like `SGD`) are in `math/learn`.
 
 ### Implemented Layers
 
@@ -168,11 +167,11 @@ type Model struct {
     Output     *tensor.Tensor // Output tensor (set after Forward)
 }
 
-func (m *Model) Forward(ctx context.Context, input *tensor.Tensor) (*tensor.Tensor, error)
-func (m *Model) Backward(ctx context.Context, gradOutput *tensor.Tensor) error
-func (m *Model) Parameters() []*Parameter
+func (m *Model) Forward(input tensor.Tensor) (tensor.Tensor, error)
+func (m *Model) Backward(gradOutput tensor.Tensor) error
+func (m *Model) Parameters() map[string]layers.Parameter
 func (m *Model) ZeroGrad()
-func (m *Model) Update(optimizer interface{}) error // Optimizer from math/learn package
+func (m *Model) Update(optimizer Optimizer) error
 ```
 
 **Features**:
@@ -219,7 +218,7 @@ Performs a complete training step: forward pass, loss computation, backward pass
 func TrainStep(model *Model, optimizer Optimizer, lossFn LossFunction, input, target tensor.Tensor) (float32, error)
 ```
 
-**Note**: This function is now in `math/learn` package. `optimizer` must implement `learn.Optimizer` interface (e.g., `learn.NewSGD(0.01)`).
+**Note**: This function is now in `math/learn` package. `optimizer` must implement `nn.Optimizer` interface (e.g., `learn.NewSGD(0.01)`).
 
 **File**: `math/learn/training.go`
 
