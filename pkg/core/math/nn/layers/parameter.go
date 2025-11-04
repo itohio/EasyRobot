@@ -21,18 +21,15 @@ func (p *Parameter) ZeroGrad() {
 		return
 	}
 
-	if len(p.Grad.Dim) == 0 {
+	if p.Grad.Shape().Rank() == 0 {
 		// Lazy allocation: create gradient tensor with same shape as data
-		p.Grad = tensor.Tensor{
-			Dim:  make([]int, len(p.Data.Dim)),
-			Data: make([]float32, p.Data.Size()),
-		}
-		copy(p.Grad.Dim, p.Data.Dim)
+		p.Grad = *tensor.New(tensor.DTFP32, p.Data.Shape())
 	}
 
 	// Zero all gradient values
-	for i := range p.Grad.Data {
-		p.Grad.Data[i] = 0
+	gradData := p.Grad.Data()
+	for i := range gradData {
+		gradData[i] = 0
 	}
 }
 
@@ -46,8 +43,9 @@ func InitXavier(param *Parameter, fanIn, fanOut int, rng *rand.Rand) {
 
 	limit := float32(math.Sqrt(6.0 / float64(fanIn+fanOut)))
 
-	for i := range param.Data.Data {
-		param.Data.Data[i] = (rng.Float32()*2 - 1) * limit
+	data := param.Data.Data()
+	for i := range data {
+		data[i] = (rng.Float32()*2 - 1) * limit
 	}
 }
 
@@ -60,7 +58,8 @@ func InitXavierNormal(param *Parameter, fanIn, fanOut int, rng *rand.Rand) {
 
 	stddev := float32(math.Sqrt(2.0 / float64(fanIn+fanOut)))
 
-	for i := range param.Data.Data {
-		param.Data.Data[i] = float32(rng.NormFloat64()) * stddev
+	data := param.Data.Data()
+	for i := range data {
+		data[i] = float32(rng.NormFloat64()) * stddev
 	}
 }

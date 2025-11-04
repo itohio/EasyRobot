@@ -64,11 +64,7 @@ func NewConv2D(
 	}
 
 	// Create kernel parameter: [outChannels, inChannels, kernelH, kernelW]
-	kernelSize := outChannels * inChannels * kernelH * kernelW
-	kernelData := tensor.Tensor{
-		Dim:  []int{outChannels, inChannels, kernelH, kernelW},
-		Data: make([]float32, kernelSize),
-	}
+	kernelData := *tensor.New(tensor.DTFP32, tensor.NewShape(outChannels, inChannels, kernelH, kernelW))
 	conv.Base.SetParam(ParamKernels, Parameter{
 		Data:         kernelData,
 		RequiresGrad: conv.Base.CanLearn(),
@@ -76,10 +72,7 @@ func NewConv2D(
 
 	// Create bias parameter if needed: [outChannels]
 	if conv.hasBias {
-		biasData := tensor.Tensor{
-			Dim:  []int{outChannels},
-			Data: make([]float32, outChannels),
-		}
+		biasData := *tensor.New(tensor.DTFP32, tensor.NewShape(outChannels))
 		conv.Base.SetParam(ParamBiases, Parameter{
 			Data:         biasData,
 			RequiresGrad: conv.Base.CanLearn(),
@@ -139,7 +132,7 @@ func (c *Conv2D) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("Conv2D.Forward: nil layer")
 	}
 
-	if len(input.Dim) == 0 {
+	if input.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Conv2D.Forward: empty input")
 	}
 
@@ -148,7 +141,7 @@ func (c *Conv2D) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 
 	// Get pre-allocated output tensor
 	output := c.Base.Output()
-	if len(output.Dim) == 0 {
+	if output.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Conv2D.Forward: output not allocated, must call Init first")
 	}
 
@@ -170,11 +163,11 @@ func (c *Conv2D) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 	result := input.Conv2D(&kernelParam.Data, biasParam, []int{c.strideH, c.strideW}, []int{c.padH, c.padW})
 
 	// Copy result to pre-allocated output
-	if len(result.Data) != len(output.Data) {
+	if len(result.Data()) != len(output.Data()) {
 		return tensor.Tensor{}, fmt.Errorf("Conv2D.Forward: result size %d doesn't match output size %d",
-			len(result.Data), len(output.Data))
+			len(result.Data()), len(output.Data()))
 	}
-	copy(output.Data, result.Data)
+	copy(output.Data(), result.Data())
 
 	// Store output
 	c.Base.StoreOutput(output)
@@ -187,17 +180,17 @@ func (c *Conv2D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("Conv2D.Backward: nil layer")
 	}
 
-	if len(gradOutput.Dim) == 0 {
+	if gradOutput.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Conv2D.Backward: empty gradOutput")
 	}
 
 	input := c.Base.Input()
-	if len(input.Dim) == 0 {
+	if input.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Conv2D.Backward: input not stored, must call Forward first")
 	}
 
 	output := c.Base.Output()
-	if len(output.Dim) == 0 {
+	if output.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Conv2D.Backward: output not stored, must call Forward first")
 	}
 
@@ -218,11 +211,8 @@ func (c *Conv2D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 
 	// Compute kernel gradient: sum over batch of (correlation of input with gradOutput)
 	if c.Base.CanLearn() && kernelParam.RequiresGrad {
-		if len(kernelParam.Grad.Dim) == 0 {
-			kernelParam.Grad = tensor.Tensor{
-				Dim:  []int{c.outChannels, c.inChannels, c.kernelH, c.kernelW},
-				Data: make([]float32, c.outChannels*c.inChannels*c.kernelH*c.kernelW),
-			}
+		if kernelParam.Grad.Shape().Rank() == 0 {
+			kernelParam.Grad = *tensor.New(tensor.DTFP32, tensor.NewShape(c.outChannels, c.inChannels, c.kernelH, c.kernelW))
 		}
 
 		// For each output channel, input channel, and kernel position
@@ -248,14 +238,14 @@ func (c *Conv2D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 									if inH >= 0 && inH < inHeight && inW >= 0 && inW < inWidth {
 										inputIdx := inputChanOffset + inH*inWidth + inW
 										gradIdx := gradChanOffset + outH*outWidth + outW
-										if inputIdx < len(input.Data) && gradIdx < len(gradOutput.Data) {
-											gradSum += input.Data[inputIdx] * gradOutput.Data[gradIdx]
+										if inputIdx < len(input.Data()) && gradIdx < len(gradOutput.Data()) {
+											gradSum += input.Data()[inputIdx] * gradOutput.Data()[gradIdx]
 										}
 									}
 								}
 							}
 						}
-						kernelParam.Grad.Data[weightGradIdx] += gradSum
+						kernelParam.Grad.Data()[weightGradIdx] += gradSum
 					}
 				}
 			}
@@ -267,11 +257,8 @@ func (c *Conv2D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 	if c.hasBias && c.Base.CanLearn() {
 		biasParam, ok := c.Base.Parameter(ParamBiases)
 		if ok && biasParam.RequiresGrad {
-			if len(biasParam.Grad.Dim) == 0 {
-				biasParam.Grad = tensor.Tensor{
-					Dim:  []int{c.outChannels},
-					Data: make([]float32, c.outChannels),
-				}
+			if biasParam.Grad.Shape().Rank() == 0 {
+				biasParam.Grad = *tensor.New(tensor.DTFP32, tensor.NewShape(c.outChannels))
 			}
 
 			for oc := 0; oc < c.outChannels; oc++ {
@@ -281,23 +268,20 @@ func (c *Conv2D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 					for outH := 0; outH < outHeight; outH++ {
 						for outW := 0; outW < outWidth; outW++ {
 							gradIdx := gradChanOffset + outH*outWidth + outW
-							if gradIdx < len(gradOutput.Data) {
-								gradSum += gradOutput.Data[gradIdx]
+							if gradIdx < len(gradOutput.Data()) {
+								gradSum += gradOutput.Data()[gradIdx]
 							}
 						}
 					}
 				}
-				biasParam.Grad.Data[oc] += gradSum
+				biasParam.Grad.Data()[oc] += gradSum
 			}
 			c.Base.SetParam(ParamBiases, biasParam)
 		}
 	}
 
 	// Compute input gradient: transposed convolution of gradOutput with flipped weights
-	gradInput := tensor.Tensor{
-		Dim:  []int{batchSize, c.inChannels, inHeight, inWidth},
-		Data: make([]float32, batchSize*c.inChannels*inHeight*inWidth),
-	}
+	gradInput := *tensor.New(tensor.DTFP32, tensor.NewShape(batchSize, c.inChannels, inHeight, inWidth))
 
 	// For each input channel, accumulate gradients from all output channels
 	for ic := 0; ic < c.inChannels; ic++ {
@@ -313,10 +297,10 @@ func (c *Conv2D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 				for outH := 0; outH < outHeight; outH++ {
 					for outW := 0; outW < outWidth; outW++ {
 						gradIdx := gradChanOffset + outH*outWidth + outW
-						if gradIdx >= len(gradOutput.Data) {
+						if gradIdx >= len(gradOutput.Data()) {
 							continue // Skip if out of bounds (shouldn't happen with correct shapes)
 						}
-						gradVal := gradOutput.Data[gradIdx]
+						gradVal := gradOutput.Data()[gradIdx]
 
 						// For each kernel position, apply to input gradient
 						for kh := 0; kh < c.kernelH; kh++ {
@@ -331,7 +315,7 @@ func (c *Conv2D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 									flippedKw := c.kernelW - 1 - kw
 									weightIdx := weightOffset + flippedKh*c.kernelW + flippedKw
 									inputIdx := inputChanOffset + inH*inWidth + inW
-									gradInput.Data[inputIdx] += gradVal * kernelParam.Data.Data[weightIdx]
+									gradInput.Data()[inputIdx] += gradVal * kernelParam.Data.Data()[weightIdx]
 								}
 							}
 						}
@@ -391,18 +375,19 @@ func (c *Conv2D) SetWeight(weight tensor.Tensor) error {
 	if c == nil {
 		return fmt.Errorf("Conv2D.SetWeight: nil layer")
 	}
-	if len(weight.Dim) == 0 {
+	if weight.Shape().Rank() == 0 {
 		return fmt.Errorf("Conv2D.SetWeight: empty weight tensor")
 	}
 	// Validate shape matches expected
-	if len(weight.Dim) != 4 {
-		return fmt.Errorf("Conv2D.SetWeight: weight must be 4D, got %dD", len(weight.Dim))
+	weightShape := weight.Shape()
+	if weightShape.Rank() != 4 {
+		return fmt.Errorf("Conv2D.SetWeight: weight must be 4D, got %dD", weightShape.Rank())
 	}
-	expectedShape := []int{c.outChannels, c.inChannels, c.kernelH, c.kernelW}
+	expectedShape := tensor.NewShape(c.outChannels, c.inChannels, c.kernelH, c.kernelW)
 	for i, dim := range expectedShape {
-		if i >= len(weight.Dim) || weight.Dim[i] != dim {
+		if i >= len(weightShape) || weightShape[i] != dim {
 			return fmt.Errorf("Conv2D.SetWeight: weight shape %v doesn't match expected %v",
-				weight.Dim, expectedShape)
+				weightShape, expectedShape)
 		}
 	}
 	kernelParam, ok := c.Base.Parameter(ParamKernels)
@@ -422,13 +407,14 @@ func (c *Conv2D) SetBias(bias tensor.Tensor) error {
 	if !c.hasBias {
 		return fmt.Errorf("Conv2D.SetBias: layer has no bias")
 	}
-	if len(bias.Dim) == 0 {
+	if bias.Shape().Rank() == 0 {
 		return fmt.Errorf("Conv2D.SetBias: empty bias tensor")
 	}
 	// Validate shape matches expected
-	if len(bias.Dim) != 1 || bias.Dim[0] != c.outChannels {
+	biasShape := bias.Shape()
+	if biasShape.Rank() != 1 || biasShape[0] != c.outChannels {
 		return fmt.Errorf("Conv2D.SetBias: bias shape %v doesn't match expected [%d]",
-			bias.Dim, c.outChannels)
+			biasShape, c.outChannels)
 	}
 	biasParam, ok := c.Base.Parameter(ParamBiases)
 	if !ok {

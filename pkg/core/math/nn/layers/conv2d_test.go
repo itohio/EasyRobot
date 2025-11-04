@@ -444,7 +444,7 @@ func TestConv2D_SetWeight(t *testing.T) {
 	require.NoError(t, err, "Should create Conv2D layer")
 
 	newWeight := tensor.Tensor{
-		Dim:  []int{16, 3, 3, 3},
+		Dim: []int{16, 3, 3, 3},
 		Data: make([]float32, 16*3*3*3),
 	}
 	for i := range newWeight.Data {
@@ -474,7 +474,7 @@ func TestConv2D_SetBias(t *testing.T) {
 	require.NoError(t, err, "Should create Conv2D layer")
 
 	newBias := tensor.Tensor{
-		Dim:  []int{16},
+		Dim: []int{16},
 		Data: make([]float32, 16),
 	}
 	for i := range newBias.Data {
@@ -547,11 +547,11 @@ func TestConv2D_ComputeOutput(t *testing.T) {
 				},
 			},
 			weight: tensor.Tensor{
-				Dim:  []int{1, 1, 2, 2},
+				Dim: []int{1, 1, 2, 2},
 				Data: []float32{1.0, 1.0, 1.0, 1.0},
 			},
 			bias: tensor.Tensor{
-				Dim:  []int{1},
+				Dim: []int{1},
 				Data: []float32{0.0},
 			},
 			expectedShape: []int{1, 1, 4, 4},
@@ -585,11 +585,11 @@ func TestConv2D_ComputeOutput(t *testing.T) {
 				},
 			},
 			weight: tensor.Tensor{
-				Dim:  []int{1, 1, 2, 2},
+				Dim: []int{1, 1, 2, 2},
 				Data: []float32{1.0, 1.0, 1.0, 1.0},
 			},
 			bias: tensor.Tensor{
-				Dim:  []int{1},
+				Dim: []int{1},
 				Data: []float32{0.0},
 			},
 			expectedShape: []int{1, 1, 3, 3},
@@ -670,11 +670,11 @@ func TestConv2D_BackwardAccuracy(t *testing.T) {
 				Data: []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0},
 			},
 			weight: tensor.Tensor{
-				Dim:  []int{1, 1, 2, 2},
+				Dim: []int{1, 1, 2, 2},
 				Data: []float32{1.0, 1.0, 1.0, 1.0}, // All weights are 1.0
 			},
 			bias: tensor.Tensor{
-				Dim:  []int{1},
+				Dim: []int{1},
 				Data: []float32{0.0},
 			},
 			gradOutput: tensor.Tensor{
@@ -745,19 +745,19 @@ func TestConv2D_BackwardAccuracy(t *testing.T) {
 			hasBias:     false,
 			inputShape:  []int{1, 1, 3, 3},
 			input: tensor.Tensor{
-				Dim:  []int{1, 1, 3, 3},
+				Dim: []int{1, 1, 3, 3},
 				Data: []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0},
 			},
 			weight: tensor.Tensor{
-				Dim:  []int{1, 1, 2, 2},
+				Dim: []int{1, 1, 2, 2},
 				Data: []float32{1.0, 1.0, 1.0, 1.0},
 			},
 			bias: tensor.Tensor{
-				Dim:  []int{1},
+				Dim: []int{1},
 				Data: []float32{0.0},
 			},
 			gradOutput: tensor.Tensor{
-				Dim:  []int{1, 1, 2, 2},
+				Dim: []int{1, 1, 2, 2},
 				Data: []float32{1.0, 1.0, 1.0, 1.0},
 			},
 			expectedWeightGrad: []float32{12.0, 16.0, 24.0, 28.0},

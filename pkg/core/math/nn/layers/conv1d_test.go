@@ -116,14 +116,14 @@ func TestNewConv1D(t *testing.T) {
 				require.NotNil(t, conv, "Conv1D should not be nil")
 
 				weight := conv.Weight()
-				assert.Equal(t, []int{tt.outChannels, tt.inChannels, tt.kernelLen}, weight.Dim, "Weight shape should match")
+				assert.Equal(t, []int{tt.outChannels, tt.inChannels, tt.kernelLen}, weight.Shape().ToSlice(), "Weight shape should match")
 
 				if tt.expectBias {
 					bias := conv.Bias()
-					assert.Equal(t, []int{tt.outChannels}, bias.Dim, "Bias shape should match")
+					assert.Equal(t, []int{tt.outChannels}, bias.Shape().ToSlice(), "Bias shape should match")
 				} else {
 					bias := conv.Bias()
-					assert.Len(t, bias.Dim, 0, "Bias should be empty when disabled")
+					assert.Equal(t, 0, bias.Shape().Rank(), "Bias should be empty when disabled")
 				}
 
 				if tt.name == "with_name" {
@@ -187,7 +187,7 @@ func TestConv1D_Init(t *testing.T) {
 			} else {
 				require.NoError(t, err, "Init should succeed")
 				output := conv.Output()
-				assert.NotEmpty(t, output.Dim, "Output should be allocated")
+				assert.True(t, output.Shape().Rank() > 0, "Output should be allocated")
 			}
 		})
 	}
@@ -206,23 +206,21 @@ func TestConv1D_Forward(t *testing.T) {
 	err = conv.Init(inputShape)
 	require.NoError(t, err, "Init should succeed")
 
-	input := tensor.Tensor{
-		Dim:  inputShape,
-		Data: make([]float32, 30),
-	}
-	for i := range input.Data {
-		input.Data[i] = float32(i) * 0.1
+	input := *tensor.New(tensor.DTFP32, tensor.NewShape(inputShape...))
+	inputData := input.Data()
+	for i := range inputData {
+		inputData[i] = float32(i) * 0.1
 	}
 
 	output, err := conv.Forward(input)
 	require.NoError(t, err, "Forward should succeed")
-	assert.NotEmpty(t, output.Dim, "Output should have dimensions")
-	assert.NotEmpty(t, output.Data, "Output should have data")
+	assert.True(t, output.Shape().Rank() > 0, "Output should have dimensions")
+	assert.True(t, len(output.Data()) > 0, "Output should have data")
 
 	// Verify output shape
 	expectedShape, err := conv.OutputShape(inputShape)
 	require.NoError(t, err, "OutputShape should succeed")
-	assert.Equal(t, expectedShape, output.Dim, "Output shape should match")
+	assert.Equal(t, expectedShape, output.Shape().ToSlice(), "Output shape should match")
 
 	// Test error cases
 	var nilConv *Conv1D
@@ -247,10 +245,7 @@ func TestConv1D_Backward(t *testing.T) {
 	err = conv.Init(inputShape)
 	require.NoError(t, err, "Init should succeed")
 
-	input := tensor.Tensor{
-		Dim:  inputShape,
-		Data: make([]float32, 30),
-	}
+	input := *tensor.New(tensor.DTFP32, tensor.NewShape(inputShape...))
 	_, err = conv.Forward(input)
 	require.NoError(t, err, "Forward should succeed")
 
@@ -259,16 +254,13 @@ func TestConv1D_Backward(t *testing.T) {
 	for _, dim := range outputShape {
 		outputSize *= dim
 	}
-	gradOutput := tensor.Tensor{
-		Dim:  outputShape,
-		Data: make([]float32, outputSize),
-	}
+	gradOutput := *tensor.New(tensor.DTFP32, tensor.NewShape(outputShape...))
 
 	// Test with CanLearn = false (inference-only)
 	gradInput, err := conv.Backward(gradOutput)
 	require.NoError(t, err, "Backward should succeed for inference-only")
-	assert.NotEmpty(t, gradInput.Dim, "GradInput should have dimensions")
-	assert.Equal(t, inputShape, gradInput.Dim, "GradInput shape should match input shape")
+	assert.True(t, gradInput.Shape().Rank() > 0, "GradInput should have dimensions")
+	assert.Equal(t, inputShape, gradInput.Shape().ToSlice(), "GradInput shape should match input shape")
 
 	// Test with CanLearn = true (backward is now implemented)
 	conv2, _ := NewConv1D(3, 16, 3, 1, 1, WithCanLearn(true))
@@ -276,8 +268,8 @@ func TestConv1D_Backward(t *testing.T) {
 	conv2.Forward(input)
 	gradInput2, err := conv2.Backward(gradOutput)
 	require.NoError(t, err, "Backward should succeed when CanLearn is true")
-	assert.NotEmpty(t, gradInput2.Dim, "GradInput should have dimensions")
-	assert.Equal(t, inputShape, gradInput2.Dim, "GradInput shape should match input shape")
+	assert.True(t, gradInput2.Shape().Rank() > 0, "GradInput should have dimensions")
+	assert.Equal(t, inputShape, gradInput2.Shape().ToSlice(), "GradInput shape should match input shape")
 
 	// Test error cases
 	var nilConv *Conv1D
@@ -387,22 +379,20 @@ func TestConv1D_SetWeight(t *testing.T) {
 	conv, err := NewConv1D(3, 16, 3, 1, 1)
 	require.NoError(t, err, "Should create Conv1D layer")
 
-	newWeight := tensor.Tensor{
-		Dim:  []int{16, 3, 3},
-		Data: make([]float32, 16*3*3),
-	}
-	for i := range newWeight.Data {
-		newWeight.Data[i] = float32(i) * 0.01
+	newWeight := *tensor.New(tensor.DTFP32, tensor.NewShape(16, 3, 3))
+	newWeightData := newWeight.Data()
+	for i := range newWeightData {
+		newWeightData[i] = float32(i) * 0.01
 	}
 
 	err = conv.SetWeight(newWeight)
 	require.NoError(t, err, "SetWeight should succeed")
 
 	weight := conv.Weight()
-	assert.Equal(t, newWeight.Data, weight.Data, "Weight data should match")
+	assert.Equal(t, newWeight.Data(), weight.Data(), "Weight data should match")
 
 	// Test error cases
-	err = conv.SetWeight(tensor.Tensor{Dim: []int{16, 4, 3}, Data: make([]float32, 192)})
+	err = conv.SetWeight(*tensor.New(tensor.DTFP32, tensor.NewShape(16, 4, 3)))
 	assert.Error(t, err, "Should return error for wrong shape")
 
 	err = conv.SetWeight(tensor.Tensor{})
@@ -417,22 +407,20 @@ func TestConv1D_SetBias(t *testing.T) {
 	conv, err := NewConv1D(3, 16, 3, 1, 1, WithBias(true))
 	require.NoError(t, err, "Should create Conv1D layer")
 
-	newBias := tensor.Tensor{
-		Dim:  []int{16},
-		Data: make([]float32, 16),
-	}
-	for i := range newBias.Data {
-		newBias.Data[i] = float32(i) * 0.01
+	newBias := *tensor.New(tensor.DTFP32, tensor.NewShape(16))
+	newBiasData := newBias.Data()
+	for i := range newBiasData {
+		newBiasData[i] = float32(i) * 0.01
 	}
 
 	err = conv.SetBias(newBias)
 	require.NoError(t, err, "SetBias should succeed")
 
 	bias := conv.Bias()
-	assert.Equal(t, newBias.Data, bias.Data, "Bias data should match")
+	assert.Equal(t, newBias.Data(), bias.Data(), "Bias data should match")
 
 	// Test error cases
-	err = conv.SetBias(tensor.Tensor{Dim: []int{17}, Data: make([]float32, 17)})
+	err = conv.SetBias(*tensor.New(tensor.DTFP32, tensor.NewShape(17)))
 	assert.Error(t, err, "Should return error for wrong shape")
 
 	err = conv.SetBias(tensor.Tensor{})
@@ -455,7 +443,7 @@ func TestConv1D_ComputeOutput(t *testing.T) {
 	// Helper to create weight tensor for Conv1D
 	createConv1DWeight := func(outChannels, inChannels, kernelLen int, weightData []float32) tensor.Tensor {
 		return tensor.Tensor{
-			Dim:  []int{outChannels, inChannels, kernelLen},
+			Dim: []int{outChannels, inChannels, kernelLen},
 			Data: weightData,
 		}
 	}
@@ -502,7 +490,7 @@ func TestConv1D_ComputeOutput(t *testing.T) {
 				return weightData
 			}()),
 			bias: tensor.Tensor{
-				Dim:  []int{3},
+				Dim: []int{3},
 				Data: []float32{0.0, 0.0, 0.0},
 			},
 			expectedShape: []int{1, 3, 3},
@@ -569,19 +557,19 @@ func TestConv1D_BackwardAccuracy(t *testing.T) {
 			hasBias:     true,
 			inputShape:  []int{1, 1, 4},
 			input: tensor.Tensor{
-				Dim:  []int{1, 1, 4},
+				Dim: []int{1, 1, 4},
 				Data: []float32{1.0, 2.0, 3.0, 4.0},
 			},
 			weight: tensor.Tensor{
-				Dim:  []int{1, 1, 2},
+				Dim: []int{1, 1, 2},
 				Data: []float32{1.0, 1.0},
 			},
 			bias: tensor.Tensor{
-				Dim:  []int{1},
+				Dim: []int{1},
 				Data: []float32{0.0},
 			},
 			gradOutput: tensor.Tensor{
-				Dim:  []int{1, 1, 3},
+				Dim: []int{1, 1, 3},
 				Data: []float32{1.0, 1.0, 1.0},
 			},
 			// Weight grad: correlation of input with gradOutput
@@ -625,19 +613,19 @@ func TestConv1D_BackwardAccuracy(t *testing.T) {
 			hasBias:     false,
 			inputShape:  []int{1, 1, 4},
 			input: tensor.Tensor{
-				Dim:  []int{1, 1, 4},
+				Dim: []int{1, 1, 4},
 				Data: []float32{1.0, 2.0, 3.0, 4.0},
 			},
 			weight: tensor.Tensor{
-				Dim:  []int{1, 1, 2},
+				Dim: []int{1, 1, 2},
 				Data: []float32{1.0, 1.0},
 			},
 			bias: tensor.Tensor{
-				Dim:  []int{1},
+				Dim: []int{1},
 				Data: []float32{0.0},
 			},
 			gradOutput: tensor.Tensor{
-				Dim:  []int{1, 1, 3},
+				Dim: []int{1, 1, 3},
 				Data: []float32{1.0, 1.0, 1.0},
 			},
 			expectedWeightGrad: []float32{6.0, 9.0},

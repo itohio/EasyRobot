@@ -95,7 +95,7 @@ func (m *MaxPool2D) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("MaxPool2D.Forward: nil layer")
 	}
 
-	if len(input.Dim) == 0 {
+	if input.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("MaxPool2D.Forward: empty input")
 	}
 
@@ -104,7 +104,7 @@ func (m *MaxPool2D) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 
 	// Get pre-allocated output tensor
 	output := m.Base.Output()
-	if len(output.Dim) == 0 {
+	if output.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("MaxPool2D.Forward: output not allocated, must call Init first")
 	}
 
@@ -112,11 +112,11 @@ func (m *MaxPool2D) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 	result := input.MaxPool2D([]int{m.kernelH, m.kernelW}, []int{m.strideH, m.strideW}, []int{m.padH, m.padW})
 
 	// Copy result to pre-allocated output
-	if len(result.Data) != len(output.Data) {
+	if len(result.Data()) != len(output.Data()) {
 		return tensor.Tensor{}, fmt.Errorf("MaxPool2D.Forward: result size %d doesn't match output size %d",
-			len(result.Data), len(output.Data))
+			len(result.Data()), len(output.Data()))
 	}
-	copy(output.Data, result.Data)
+	copy(output.Data(), result.Data())
 
 	// Store output
 	m.Base.StoreOutput(output)
@@ -132,17 +132,17 @@ func (m *MaxPool2D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("MaxPool2D.Backward: nil layer")
 	}
 
-	if len(gradOutput.Dim) == 0 {
+	if gradOutput.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("MaxPool2D.Backward: empty gradOutput")
 	}
 
 	input := m.Base.Input()
-	if len(input.Dim) == 0 {
+	if input.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("MaxPool2D.Backward: input not stored, must call Forward first")
 	}
 
 	output := m.Base.Output()
-	if len(output.Dim) == 0 {
+	if output.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("MaxPool2D.Backward: output not stored, must call Forward first")
 	}
 
@@ -163,10 +163,11 @@ func (m *MaxPool2D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 	outWidth := outputShape[3]
 
 	// Initialize gradient input with zeros
-	gradInput := tensor.Tensor{
-		Dim:  []int{batchSize, channels, inHeight, inWidth},
-		Data: make([]float32, batchSize*channels*inHeight*inWidth),
-	}
+	gradInput := *tensor.New(tensor.DTFP32, tensor.NewShape(batchSize, channels, inHeight, inWidth))
+	inputData := input.Data()
+	outputData := output.Data()
+	gradOutputData := gradOutput.Data()
+	gradInputData := gradInput.Data()
 
 	// For each output position, route gradient back to input positions that produced the max
 	for b := 0; b < batchSize; b++ {
@@ -187,11 +188,11 @@ func (m *MaxPool2D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 
 					// Get output value (max value from forward pass)
 					outputIdx := outputChannelOffset + outH*outWidth + outW
-					maxVal := output.Data[outputIdx]
+					maxVal := outputData[outputIdx]
 
 					// Get gradient for this output position
 					gradOutputIdx := gradOutputChannelOffset + outH*outWidth + outW
-					gradVal := gradOutput.Data[gradOutputIdx]
+					gradVal := gradOutputData[gradOutputIdx]
 
 					// Count how many input positions had the max value
 					maxCount := 0
@@ -204,7 +205,7 @@ func (m *MaxPool2D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 								inputIdx := channelOffset + inH*inWidth + inW
 								// Use epsilon to handle floating point comparison
 								epsilon := float32(1e-6)
-								diff := input.Data[inputIdx] - maxVal
+								diff := inputData[inputIdx] - maxVal
 								if diff > -epsilon && diff < epsilon {
 									maxCount++
 								}
@@ -224,9 +225,9 @@ func (m *MaxPool2D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 									inputIdx := channelOffset + inH*inWidth + inW
 									// Use epsilon to handle floating point comparison
 									epsilon := float32(1e-6)
-									diff := input.Data[inputIdx] - maxVal
+									diff := inputData[inputIdx] - maxVal
 									if diff > -epsilon && diff < epsilon {
-										gradInput.Data[inputIdx] += gradPerPosition
+										gradInputData[inputIdx] += gradPerPosition
 									}
 								}
 							}
@@ -351,7 +352,7 @@ func (a *AvgPool2D) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("AvgPool2D.Forward: nil layer")
 	}
 
-	if len(input.Dim) == 0 {
+	if input.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("AvgPool2D.Forward: empty input")
 	}
 
@@ -360,7 +361,7 @@ func (a *AvgPool2D) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 
 	// Get pre-allocated output tensor
 	output := a.Base.Output()
-	if len(output.Dim) == 0 {
+	if output.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("AvgPool2D.Forward: output not allocated, must call Init first")
 	}
 
@@ -368,11 +369,11 @@ func (a *AvgPool2D) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 	result := input.AvgPool2D([]int{a.kernelH, a.kernelW}, []int{a.strideH, a.strideW}, []int{a.padH, a.padW})
 
 	// Copy result to pre-allocated output
-	if len(result.Data) != len(output.Data) {
+	if len(result.Data()) != len(output.Data()) {
 		return tensor.Tensor{}, fmt.Errorf("AvgPool2D.Forward: result size %d doesn't match output size %d",
-			len(result.Data), len(output.Data))
+			len(result.Data()), len(output.Data()))
 	}
-	copy(output.Data, result.Data)
+	copy(output.Data(), result.Data())
 
 	// Store output
 	a.Base.StoreOutput(output)
@@ -385,17 +386,17 @@ func (a *AvgPool2D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("AvgPool2D.Backward: nil layer")
 	}
 
-	if len(gradOutput.Dim) == 0 {
+	if gradOutput.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("AvgPool2D.Backward: empty gradOutput")
 	}
 
 	input := a.Base.Input()
-	if len(input.Dim) == 0 {
+	if input.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("AvgPool2D.Backward: input not stored, must call Forward first")
 	}
 
 	output := a.Base.Output()
-	if len(output.Dim) == 0 {
+	if output.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("AvgPool2D.Backward: output not stored, must call Forward first")
 	}
 
@@ -405,12 +406,7 @@ func (a *AvgPool2D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 	}
 
 	// For inference-only, we don't compute gradients
-	gradSize := gradOutput.Size()
-	gradInput := tensor.Tensor{
-		Dim:  make([]int, len(gradOutput.Dim)),
-		Data: make([]float32, gradSize),
-	}
-	copy(gradInput.Dim, gradOutput.Dim)
+	gradInput := *tensor.New(tensor.DTFP32, gradOutput.Shape())
 
 	a.Base.StoreGrad(gradInput)
 	return gradInput, nil
@@ -477,7 +473,7 @@ func (g *GlobalAvgPool2D) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("GlobalAvgPool2D.Forward: nil layer")
 	}
 
-	if len(input.Dim) == 0 {
+	if input.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("GlobalAvgPool2D.Forward: empty input")
 	}
 
@@ -486,7 +482,7 @@ func (g *GlobalAvgPool2D) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 
 	// Get pre-allocated output tensor
 	output := g.Base.Output()
-	if len(output.Dim) == 0 {
+	if output.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("GlobalAvgPool2D.Forward: output not allocated, must call Init first")
 	}
 
@@ -494,11 +490,11 @@ func (g *GlobalAvgPool2D) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 	result := input.GlobalAvgPool2D()
 
 	// Copy result to pre-allocated output
-	if len(result.Data) != len(output.Data) {
+	if len(result.Data()) != len(output.Data()) {
 		return tensor.Tensor{}, fmt.Errorf("GlobalAvgPool2D.Forward: result size %d doesn't match output size %d",
-			len(result.Data), len(output.Data))
+			len(result.Data()), len(output.Data()))
 	}
-	copy(output.Data, result.Data)
+	copy(output.Data(), result.Data())
 
 	// Store output
 	g.Base.StoreOutput(output)
@@ -511,17 +507,17 @@ func (g *GlobalAvgPool2D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, err
 		return tensor.Tensor{}, fmt.Errorf("GlobalAvgPool2D.Backward: nil layer")
 	}
 
-	if len(gradOutput.Dim) == 0 {
+	if gradOutput.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("GlobalAvgPool2D.Backward: empty gradOutput")
 	}
 
 	input := g.Base.Input()
-	if len(input.Dim) == 0 {
+	if input.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("GlobalAvgPool2D.Backward: input not stored, must call Forward first")
 	}
 
 	output := g.Base.Output()
-	if len(output.Dim) == 0 {
+	if output.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("GlobalAvgPool2D.Backward: output not stored, must call Forward first")
 	}
 
@@ -531,12 +527,7 @@ func (g *GlobalAvgPool2D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, err
 	}
 
 	// For inference-only, we don't compute gradients
-	gradSize := gradOutput.Size()
-	gradInput := tensor.Tensor{
-		Dim:  make([]int, len(gradOutput.Dim)),
-		Data: make([]float32, gradSize),
-	}
-	copy(gradInput.Dim, gradOutput.Dim)
+	gradInput := *tensor.New(tensor.DTFP32, gradOutput.Shape())
 
 	g.Base.StoreGrad(gradInput)
 	return gradInput, nil

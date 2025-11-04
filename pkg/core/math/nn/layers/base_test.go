@@ -132,56 +132,47 @@ func TestBase_SetCanLearn(t *testing.T) {
 
 func TestBase_Input(t *testing.T) {
 	base := NewBase("")
-	input := tensor.Tensor{
-		Dim:  []int{2, 3},
-		Data: []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0},
-	}
+	input := *tensor.FromFloat32(tensor.NewShape(2, 3), []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0})
 
 	base.StoreInput(input)
 	retrieved := base.Input()
-	assert.Equal(t, input.Dim, retrieved.Dim, "Input dimensions should match")
-	assert.Equal(t, input.Data, retrieved.Data, "Input data should match")
+	assert.Equal(t, input.Shape().ToSlice(), retrieved.Shape().ToSlice(), "Input dimensions should match")
+	assert.Equal(t, input.Data(), retrieved.Data(), "Input data should match")
 
 	// Test nil receiver
 	var nilBase *Base
 	retrieved = nilBase.Input()
-	assert.Len(t, retrieved.Dim, 0, "Nil base should return empty tensor")
+	assert.Equal(t, 0, retrieved.Rank(), "Nil base should return empty tensor")
 }
 
 func TestBase_Output(t *testing.T) {
 	base := NewBase("")
-	output := tensor.Tensor{
-		Dim:  []int{2, 3},
-		Data: []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0},
-	}
+	output := *tensor.FromFloat32(tensor.NewShape(2, 3), []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0})
 
 	base.StoreOutput(output)
 	retrieved := base.Output()
-	assert.Equal(t, output.Dim, retrieved.Dim, "Output dimensions should match")
-	assert.Equal(t, output.Data, retrieved.Data, "Output data should match")
+	assert.Equal(t, output.Shape().ToSlice(), retrieved.Shape().ToSlice(), "Output dimensions should match")
+	assert.Equal(t, output.Data(), retrieved.Data(), "Output data should match")
 
 	// Test nil receiver
 	var nilBase *Base
 	retrieved = nilBase.Output()
-	assert.Len(t, retrieved.Dim, 0, "Nil base should return empty tensor")
+	assert.Equal(t, 0, retrieved.Rank(), "Nil base should return empty tensor")
 }
 
 func TestBase_Grad(t *testing.T) {
 	base := NewBase("")
-	grad := tensor.Tensor{
-		Dim:  []int{2, 3},
-		Data: []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6},
-	}
+	grad := *tensor.FromFloat32(tensor.NewShape(2, 3), []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6})
 
 	base.StoreGrad(grad)
 	retrieved := base.Grad()
-	assert.Equal(t, grad.Dim, retrieved.Dim, "Grad dimensions should match")
-	assert.Equal(t, grad.Data, retrieved.Data, "Grad data should match")
+	assert.Equal(t, grad.Shape().ToSlice(), retrieved.Shape().ToSlice(), "Grad dimensions should match")
+	assert.Equal(t, grad.Data(), retrieved.Data(), "Grad data should match")
 
 	// Test nil receiver
 	var nilBase *Base
 	retrieved = nilBase.Grad()
-	assert.Len(t, retrieved.Dim, 0, "Nil base should return empty tensor")
+	assert.Equal(t, 0, retrieved.Rank(), "Nil base should return empty tensor")
 }
 
 func TestBase_AllocOutput(t *testing.T) {
@@ -210,8 +201,8 @@ func TestBase_AllocOutput(t *testing.T) {
 			base := NewBase("")
 			base.AllocOutput(tt.shape, tt.size)
 			output := base.Output()
-			assert.Equal(t, tt.expected, output.Dim, "Output dimensions should match")
-			assert.Len(t, output.Data, tt.size, "Output data size should match")
+			assert.Equal(t, tt.expected, output.Shape().ToSlice(), "Output dimensions should match")
+			assert.Equal(t, tt.size, output.Size(), "Output data size should match")
 
 			// Test nil receiver
 			var nilBase *Base
@@ -246,8 +237,8 @@ func TestBase_AllocGrad(t *testing.T) {
 			base := NewBase("")
 			base.AllocGrad(tt.shape, tt.size)
 			grad := base.Grad()
-			assert.Equal(t, tt.expected, grad.Dim, "Grad dimensions should match")
-			assert.Len(t, grad.Data, tt.size, "Grad data size should match")
+			assert.Equal(t, tt.expected, grad.Shape().ToSlice(), "Grad dimensions should match")
+			assert.Equal(t, tt.size, grad.Size(), "Grad data size should match")
 
 			// Test nil receiver
 			var nilBase *Base
@@ -276,10 +267,7 @@ func TestBase_SetParam(t *testing.T) {
 			base := NewBase("")
 			for i := 0; i < tt.numParams; i++ {
 				base.SetParam(ParamIndex(i), Parameter{
-					Data: tensor.Tensor{
-						Dim:  []int{2},
-						Data: []float32{1.0, 2.0},
-					},
+					Data:         *tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
 					RequiresGrad: true,
 				})
 			}
@@ -296,28 +284,22 @@ func TestBase_SetParam(t *testing.T) {
 func TestBase_Parameter(t *testing.T) {
 	base := NewBase("")
 	base.SetParam(ParamWeights, Parameter{
-		Data: tensor.Tensor{
-			Dim:  []int{2},
-			Data: []float32{1.0, 2.0},
-		},
+		Data:         *tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
 		RequiresGrad: true,
 	})
 	base.SetParam(ParamBiases, Parameter{
-		Data: tensor.Tensor{
-			Dim:  []int{2},
-			Data: []float32{3.0, 4.0},
-		},
+		Data:         *tensor.FromFloat32(tensor.NewShape(2), []float32{3.0, 4.0}),
 		RequiresGrad: true,
 	})
 
 	// Test valid index
 	param, ok := base.Parameter(ParamWeights)
 	assert.True(t, ok, "Parameter should exist")
-	assert.NotNil(t, param.Data.Data, "Parameter data should not be nil")
+	assert.True(t, len(param.Data.Shape().ToSlice()) > 0, "Parameter should have shape")
 
 	param, ok = base.Parameter(ParamBiases)
 	assert.True(t, ok, "Parameter should exist")
-	assert.NotNil(t, param.Data.Data, "Parameter data should not be nil")
+	assert.True(t, len(param.Data.Shape().ToSlice()) > 0, "Parameter should have shape")
 
 	// Test invalid index
 	_, ok = base.Parameter(ParamCustom)
@@ -338,17 +320,11 @@ func TestBase_Parameters(t *testing.T) {
 
 	// Test with params
 	base.SetParam(ParamWeights, Parameter{
-		Data: tensor.Tensor{
-			Dim:  []int{2},
-			Data: []float32{1.0, 2.0},
-		},
+		Data:         *tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
 		RequiresGrad: true,
 	})
 	base.SetParam(ParamBiases, Parameter{
-		Data: tensor.Tensor{
-			Dim:  []int{2},
-			Data: []float32{3.0, 4.0},
-		},
+		Data:         *tensor.FromFloat32(tensor.NewShape(2), []float32{3.0, 4.0}),
 		RequiresGrad: false,
 	})
 	params = base.Parameters()
@@ -367,17 +343,11 @@ func TestBase_SetParameters(t *testing.T) {
 
 	newParams := map[ParamIndex]Parameter{
 		ParamWeights: {
-			Data: tensor.Tensor{
-				Dim:  []int{2},
-				Data: []float32{1.0, 2.0},
-			},
+			Data:         *tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
 			RequiresGrad: true,
 		},
 		ParamBiases: {
-			Data: tensor.Tensor{
-				Dim:  []int{3},
-				Data: []float32{3.0, 4.0, 5.0},
-			},
+			Data:         *tensor.FromFloat32(tensor.NewShape(3), []float32{3.0, 4.0, 5.0}),
 			RequiresGrad: false,
 		},
 	}
@@ -388,8 +358,8 @@ func TestBase_SetParameters(t *testing.T) {
 	// Verify parameters were set
 	params := base.Parameters()
 	require.Len(t, params, 2, "Parameters should have length 2")
-	assert.Equal(t, newParams[ParamWeights].Data.Data, params[ParamWeights].Data.Data, "Weights parameter data should match")
-	assert.Equal(t, newParams[ParamBiases].Data.Data, params[ParamBiases].Data.Data, "Biases parameter data should match")
+	assert.Equal(t, newParams[ParamWeights].Data.Shape().ToSlice(), params[ParamWeights].Data.Shape().ToSlice(), "Weights parameter shape should match")
+	assert.Equal(t, newParams[ParamBiases].Data.Shape().ToSlice(), params[ParamBiases].Data.Shape().ToSlice(), "Biases parameter shape should match")
 
 	// Test nil receiver
 	var nilBase *Base
@@ -400,26 +370,14 @@ func TestBase_SetParameters(t *testing.T) {
 func TestBase_ZeroGrad(t *testing.T) {
 	base := NewBase("")
 	base.SetParam(ParamWeights, Parameter{
-		Data: tensor.Tensor{
-			Dim:  []int{2},
-			Data: []float32{1.0, 2.0},
-		},
+		Data:         *tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
 		RequiresGrad: true,
-		Grad: tensor.Tensor{
-			Dim:  []int{2},
-			Data: []float32{1.0, 2.0},
-		},
+		Grad:         *tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
 	})
 	base.SetParam(ParamBiases, Parameter{
-		Data: tensor.Tensor{
-			Dim:  []int{3},
-			Data: []float32{3.0, 4.0, 5.0},
-		},
+		Data:         *tensor.FromFloat32(tensor.NewShape(3), []float32{3.0, 4.0, 5.0}),
 		RequiresGrad: true,
-		Grad: tensor.Tensor{
-			Dim:  []int{3},
-			Data: []float32{3.0, 4.0, 5.0},
-		},
+		Grad:         *tensor.FromFloat32(tensor.NewShape(3), []float32{3.0, 4.0, 5.0}),
 	})
 
 	// Zero gradients
@@ -427,12 +385,12 @@ func TestBase_ZeroGrad(t *testing.T) {
 
 	// Verify gradients are zeroed
 	param0, _ := base.Parameter(ParamWeights)
-	for i := 0; i < len(param0.Grad.Data); i++ {
-		assert.Equal(t, float32(0.0), param0.Grad.Data[i], "Param0 grad should be zero")
+	for i := 0; i < len(param0.Grad.Data()); i++ {
+		assert.Equal(t, float32(0.0), param0.Grad.Data()[i], "Param0 grad should be zero")
 	}
 	param1, _ := base.Parameter(ParamBiases)
-	for i := 0; i < len(param1.Grad.Data); i++ {
-		assert.Equal(t, float32(0.0), param1.Grad.Data[i], "Param1 grad should be zero")
+	for i := 0; i < len(param1.Grad.Data()); i++ {
+		assert.Equal(t, float32(0.0), param1.Grad.Data()[i], "Param1 grad should be zero")
 	}
 
 	// Test nil receiver
@@ -442,39 +400,30 @@ func TestBase_ZeroGrad(t *testing.T) {
 
 func TestBase_StoreInput(t *testing.T) {
 	base := NewBase("")
-	input := tensor.Tensor{
-		Dim:  []int{2, 3},
-		Data: []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0},
-	}
+	input := *tensor.FromFloat32(tensor.NewShape(2, 3), []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0})
 
 	base.StoreInput(input)
 	retrieved := base.Input()
-	assert.Equal(t, input.Dim, retrieved.Dim, "Input dimensions should match")
-	assert.Equal(t, input.Data, retrieved.Data, "Input data should match")
+	assert.Equal(t, input.Shape().ToSlice(), retrieved.Shape().ToSlice(), "Input dimensions should match")
+	assert.Equal(t, input.Data(), retrieved.Data(), "Input data should match")
 }
 
 func TestBase_StoreOutput(t *testing.T) {
 	base := NewBase("")
-	output := tensor.Tensor{
-		Dim:  []int{2, 3},
-		Data: []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0},
-	}
+	output := *tensor.FromFloat32(tensor.NewShape(2, 3), []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0})
 
 	base.StoreOutput(output)
 	retrieved := base.Output()
-	assert.Equal(t, output.Dim, retrieved.Dim, "Output dimensions should match")
-	assert.Equal(t, output.Data, retrieved.Data, "Output data should match")
+	assert.Equal(t, output.Shape().ToSlice(), retrieved.Shape().ToSlice(), "Output dimensions should match")
+	assert.Equal(t, output.Data(), retrieved.Data(), "Output data should match")
 }
 
 func TestBase_StoreGrad(t *testing.T) {
 	base := NewBase("")
-	grad := tensor.Tensor{
-		Dim:  []int{2, 3},
-		Data: []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6},
-	}
+	grad := *tensor.FromFloat32(tensor.NewShape(2, 3), []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6})
 
 	base.StoreGrad(grad)
 	retrieved := base.Grad()
-	assert.Equal(t, grad.Dim, retrieved.Dim, "Grad dimensions should match")
-	assert.Equal(t, grad.Data, retrieved.Data, "Grad data should match")
+	assert.Equal(t, grad.Shape().ToSlice(), retrieved.Shape().ToSlice(), "Grad dimensions should match")
+	assert.Equal(t, grad.Data(), retrieved.Data(), "Grad data should match")
 }

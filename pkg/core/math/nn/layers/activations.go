@@ -39,7 +39,7 @@ func (r *ReLU) Init(inputShape []int) error {
 
 // Forward computes ReLU: output = max(0, input).
 func (r *ReLU) Forward(input tensor.Tensor) (tensor.Tensor, error) {
-	if len(input.Dim) == 0 {
+	if input.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("ReLU.Forward: empty input")
 	}
 
@@ -48,16 +48,18 @@ func (r *ReLU) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 
 	// Get pre-allocated output tensor
 	output := r.Base.Output()
-	if len(output.Dim) == 0 {
+	if output.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("ReLU.Forward: output not allocated, must call Init first")
 	}
 
 	// ReLU: output = max(0, input)
-	for i := range output.Data {
-		if input.Data[i] > 0 {
-			output.Data[i] = input.Data[i]
+	inputData := input.Data()
+	outputData := output.Data()
+	for i := range outputData {
+		if inputData[i] > 0 {
+			outputData[i] = inputData[i]
 		} else {
-			output.Data[i] = 0
+			outputData[i] = 0
 		}
 	}
 
@@ -67,29 +69,28 @@ func (r *ReLU) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 
 // Backward computes ReLU gradient: gradInput = gradOutput * (input > 0 ? 1 : 0).
 func (r *ReLU) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
-	if len(gradOutput.Dim) == 0 {
+	if gradOutput.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("ReLU.Backward: empty gradOutput")
 	}
 
 	input := r.Base.Input()
-	if len(input.Dim) == 0 {
+	if input.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("ReLU.Backward: input not stored, must call Forward first")
 	}
 
 	// Allocate gradient tensor
 	gradSize := gradOutput.Size()
-	gradInput := tensor.Tensor{
-		Dim:  make([]int, len(gradOutput.Dim)),
-		Data: make([]float32, gradSize),
-	}
-	copy(gradInput.Dim, gradOutput.Dim)
+	gradInput := *tensor.FromFloat32(gradOutput.Shape(), make([]float32, gradSize))
 
 	// ReLU derivative: 1 if input > 0, else 0
-	for i := range gradInput.Data {
-		if input.Data[i] > 0 {
-			gradInput.Data[i] = gradOutput.Data[i]
+	gradInputData := gradInput.Data()
+	inputData := input.Data()
+	gradOutputData := gradOutput.Data()
+	for i := range gradInputData {
+		if inputData[i] > 0 {
+			gradInputData[i] = gradOutputData[i]
 		} else {
-			gradInput.Data[i] = 0
+			gradInputData[i] = 0
 		}
 	}
 
@@ -132,7 +133,7 @@ func (s *Sigmoid) Init(inputShape []int) error {
 
 // Forward computes sigmoid: output = 1 / (1 + exp(-input)).
 func (s *Sigmoid) Forward(input tensor.Tensor) (tensor.Tensor, error) {
-	if len(input.Dim) == 0 {
+	if input.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Sigmoid.Forward: empty input")
 	}
 
@@ -141,19 +142,21 @@ func (s *Sigmoid) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 
 	// Get pre-allocated output tensor
 	output := s.Base.Output()
-	if len(output.Dim) == 0 {
+	if output.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Sigmoid.Forward: output not allocated, must call Init first")
 	}
 
 	// Sigmoid: output = 1 / (1 + exp(-input))
-	for i := range output.Data {
-		x := -input.Data[i]
+	inputData := input.Data()
+	outputData := output.Data()
+	for i := range outputData {
+		x := -inputData[i]
 		if x > float32ExpMax {
-			output.Data[i] = 0.0
+			outputData[i] = 0.0
 		} else if x < -float32ExpMax {
-			output.Data[i] = 1.0
+			outputData[i] = 1.0
 		} else {
-			output.Data[i] = 1.0 / (1.0 + float32(math.Exp(float64(x))))
+			outputData[i] = 1.0 / (1.0 + float32(math.Exp(float64(x))))
 		}
 	}
 
@@ -163,26 +166,25 @@ func (s *Sigmoid) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 
 // Backward computes sigmoid gradient: gradInput = gradOutput * output * (1 - output).
 func (s *Sigmoid) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
-	if len(gradOutput.Dim) == 0 {
+	if gradOutput.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Sigmoid.Backward: empty gradOutput")
 	}
 
 	output := s.Base.Output()
-	if len(output.Dim) == 0 {
+	if output.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Sigmoid.Backward: output not stored, must call Forward first")
 	}
 
 	// Allocate gradient tensor
 	gradSize := gradOutput.Size()
-	gradInput := tensor.Tensor{
-		Dim:  make([]int, len(gradOutput.Dim)),
-		Data: make([]float32, gradSize),
-	}
-	copy(gradInput.Dim, gradOutput.Dim)
+	gradInput := *tensor.FromFloat32(gradOutput.Shape(), make([]float32, gradSize))
 
 	// Sigmoid derivative: output * (1 - output)
-	for i := range gradInput.Data {
-		gradInput.Data[i] = gradOutput.Data[i] * output.Data[i] * (1 - output.Data[i])
+	gradInputData := gradInput.Data()
+	gradOutputData := gradOutput.Data()
+	outputData := output.Data()
+	for i := range gradInputData {
+		gradInputData[i] = gradOutputData[i] * outputData[i] * (1 - outputData[i])
 	}
 
 	s.Base.StoreGrad(gradInput)
@@ -224,7 +226,7 @@ func (t *Tanh) Init(inputShape []int) error {
 
 // Forward computes tanh: output = tanh(input).
 func (t *Tanh) Forward(input tensor.Tensor) (tensor.Tensor, error) {
-	if len(input.Dim) == 0 {
+	if input.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Tanh.Forward: empty input")
 	}
 
@@ -233,14 +235,16 @@ func (t *Tanh) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 
 	// Get pre-allocated output tensor
 	output := t.Base.Output()
-	if len(output.Dim) == 0 {
+	if output.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Tanh.Forward: output not allocated, must call Init first")
 	}
 
 	// Tanh: output = tanh(input)
-	for i := range output.Data {
-		x := float64(input.Data[i])
-		output.Data[i] = float32(math.Tanh(x))
+	inputData := input.Data()
+	outputData := output.Data()
+	for i := range outputData {
+		x := float64(inputData[i])
+		outputData[i] = float32(math.Tanh(x))
 	}
 
 	t.Base.StoreOutput(output)
@@ -249,26 +253,24 @@ func (t *Tanh) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 
 // Backward computes tanh gradient: gradInput = gradOutput * (1 - output^2).
 func (t *Tanh) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
-	if len(gradOutput.Dim) == 0 {
+	if gradOutput.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Tanh.Backward: empty gradOutput")
 	}
 
 	output := t.Base.Output()
-	if len(output.Dim) == 0 {
+	if output.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Tanh.Backward: output not stored, must call Forward first")
 	}
 
 	// Allocate gradient tensor
-	gradSize := gradOutput.Size()
-	gradInput := tensor.Tensor{
-		Dim:  make([]int, len(gradOutput.Dim)),
-		Data: make([]float32, gradSize),
-	}
-	copy(gradInput.Dim, gradOutput.Dim)
+	gradInput := *tensor.New(tensor.DTFP32, gradOutput.Shape())
 
 	// Tanh derivative: 1 - output^2
-	for i := range gradInput.Data {
-		gradInput.Data[i] = gradOutput.Data[i] * (1 - output.Data[i]*output.Data[i])
+	gradInputData := gradInput.Data()
+	gradOutputData := gradOutput.Data()
+	outputData := output.Data()
+	for i := range gradInputData {
+		gradInputData[i] = gradOutputData[i] * (1 - outputData[i]*outputData[i])
 	}
 
 	t.Base.StoreGrad(gradInput)
@@ -312,7 +314,7 @@ func (s *Softmax) Init(inputShape []int) error {
 
 // Forward computes softmax: output = softmax(input, dim).
 func (s *Softmax) Forward(input tensor.Tensor) (tensor.Tensor, error) {
-	if len(input.Dim) == 0 {
+	if input.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Softmax.Forward: empty input")
 	}
 
@@ -321,12 +323,12 @@ func (s *Softmax) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 
 	// Get pre-allocated output tensor
 	output := s.Base.Output()
-	if len(output.Dim) == 0 {
+	if output.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Softmax.Forward: output not allocated, must call Init first")
 	}
 
 	// Copy input to output first
-	copy(output.Data, input.Data)
+	copy(output.Data(), input.Data())
 
 	// Apply softmax directly
 	softmaxTensor(&output, s.dim)
@@ -337,66 +339,68 @@ func (s *Softmax) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 
 // Backward computes softmax gradient: gradInput = output * (gradOutput - sum(gradOutput * output)).
 func (s *Softmax) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
-	if len(gradOutput.Dim) == 0 {
+	if gradOutput.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Softmax.Backward: empty gradOutput")
 	}
 
 	output := s.Base.Output()
-	if len(output.Dim) == 0 {
+	if output.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Softmax.Backward: output not stored, must call Forward first")
 	}
 
 	// Allocate gradient tensor
-	gradSize := gradOutput.Size()
-	gradInput := tensor.Tensor{
-		Dim:  make([]int, len(gradOutput.Dim)),
-		Data: make([]float32, gradSize),
-	}
-	copy(gradInput.Dim, gradOutput.Dim)
+	gradInput := *tensor.New(tensor.DTFP32, gradOutput.Shape())
+
+	// Get data slices
+	gradOutputData := gradOutput.Data()
+	outputData := output.Data()
+	gradInputData := gradInput.Data()
 
 	// Softmax backward: output * (gradOutput - sum(gradOutput * output))
-	if len(output.Dim) == 1 {
+	if output.Shape().Rank() == 1 {
 		// 1D case: compute sum over all elements
 		var sum float32
-		for i := range gradOutput.Data {
-			sum += gradOutput.Data[i] * output.Data[i]
+		for i := range gradOutputData {
+			sum += gradOutputData[i] * outputData[i]
 		}
 		// Apply: output * (gradOutput - sum)
-		for i := range gradInput.Data {
-			gradInput.Data[i] = output.Data[i] * (gradOutput.Data[i] - sum)
+		for i := range gradInputData {
+			gradInputData[i] = outputData[i] * (gradOutputData[i] - sum)
 		}
-	} else if len(output.Dim) == 2 {
+	} else if output.Shape().Rank() == 2 {
 		if s.dim == 1 {
 			// Softmax along columns (dim 1): each row independently
-			M, N := output.Dim[0], output.Dim[1]
+			outputShape := output.Shape()
+			M, N := outputShape[0], outputShape[1]
 			for i := 0; i < M; i++ {
 				rowStart := i * N
 				var sum float32
 				// Compute sum for this row
 				for j := 0; j < N; j++ {
 					idx := rowStart + j
-					sum += gradOutput.Data[idx] * output.Data[idx]
+					sum += gradOutputData[idx] * outputData[idx]
 				}
 				// Apply gradient for this row
 				for j := 0; j < N; j++ {
 					idx := rowStart + j
-					gradInput.Data[idx] = output.Data[idx] * (gradOutput.Data[idx] - sum)
+					gradInputData[idx] = outputData[idx] * (gradOutputData[idx] - sum)
 				}
 			}
 		} else if s.dim == 0 {
 			// Softmax along rows (dim 0): each column independently
-			M, N := output.Dim[0], output.Dim[1]
+			outputShape := output.Shape()
+			M, N := outputShape[0], outputShape[1]
 			for j := 0; j < N; j++ {
 				var sum float32
 				// Compute sum for this column
 				for i := 0; i < M; i++ {
 					idx := i*N + j
-					sum += gradOutput.Data[idx] * output.Data[idx]
+					sum += gradOutputData[idx] * outputData[idx]
 				}
 				// Apply gradient for this column
 				for i := 0; i < M; i++ {
 					idx := i*N + j
-					gradInput.Data[idx] = output.Data[idx] * (gradOutput.Data[idx] - sum)
+					gradInputData[idx] = outputData[idx] * (gradOutputData[idx] - sum)
 				}
 			}
 		}
@@ -415,20 +419,21 @@ func (s *Softmax) OutputShape(inputShape []int) ([]int, error) {
 
 // softmaxTensor applies softmax along specified dimension in-place.
 func softmaxTensor(t *tensor.Tensor, dim int) {
-	if t == nil || len(t.Dim) == 0 {
+	if t == nil || t.Shape().Rank() == 0 {
 		return
 	}
 
-	if dim < 0 || dim >= len(t.Dim) {
+	if dim < 0 || dim >= t.Shape().Rank() {
 		return
 	}
 
-	if len(t.Dim) == 1 {
+	tShape := t.Shape()
+	if tShape.Rank() == 1 {
 		softmax1D(t)
 		return
 	}
 
-	if len(t.Dim) == 2 {
+	if tShape.Rank() == 2 {
 		if dim == 0 {
 			softmax2DRows(t)
 			return
@@ -440,39 +445,42 @@ func softmaxTensor(t *tensor.Tensor, dim int) {
 }
 
 func softmax1D(t *tensor.Tensor) {
-	if len(t.Data) == 0 {
+	data := t.Data()
+	if len(data) == 0 {
 		return
 	}
-	maxVal := t.Data[0]
-	for i := 1; i < len(t.Data); i++ {
-		if t.Data[i] > maxVal {
-			maxVal = t.Data[i]
+	maxVal := data[0]
+	for i := 1; i < len(data); i++ {
+		if data[i] > maxVal {
+			maxVal = data[i]
 		}
 	}
 
 	var sum float32
-	for i := range t.Data {
-		t.Data[i] = math32.Exp(t.Data[i] - maxVal)
-		sum += t.Data[i]
+	for i := range data {
+		data[i] = math32.Exp(data[i] - maxVal)
+		sum += data[i]
 	}
 
 	if sum > 0 {
-		for i := range t.Data {
-			t.Data[i] /= sum
+		for i := range data {
+			data[i] /= sum
 		}
 	}
 }
 
 func softmax2DRows(t *tensor.Tensor) {
-	if len(t.Dim) != 2 {
+	tShape := t.Shape()
+	if tShape.Rank() != 2 {
 		return
 	}
-	M, N := t.Dim[0], t.Dim[1]
+	data := t.Data()
+	M, N := tShape[0], tShape[1]
 
 	for j := 0; j < N; j++ {
-		maxVal := t.Data[j]
+		maxVal := data[j]
 		for i := 1; i < M; i++ {
-			val := t.Data[i*N+j]
+			val := data[i*N+j]
 			if val > maxVal {
 				maxVal = val
 			}
@@ -480,30 +488,32 @@ func softmax2DRows(t *tensor.Tensor) {
 
 		var sum float32
 		for i := 0; i < M; i++ {
-			val := t.Data[i*N+j] - maxVal
-			t.Data[i*N+j] = math32.Exp(val)
-			sum += t.Data[i*N+j]
+			val := data[i*N+j] - maxVal
+			data[i*N+j] = math32.Exp(val)
+			sum += data[i*N+j]
 		}
 
 		if sum > 0 {
 			for i := 0; i < M; i++ {
-				t.Data[i*N+j] /= sum
+				data[i*N+j] /= sum
 			}
 		}
 	}
 }
 
 func softmax2DCols(t *tensor.Tensor) {
-	if len(t.Dim) != 2 {
+	tShape := t.Shape()
+	if tShape.Rank() != 2 {
 		return
 	}
-	M, N := t.Dim[0], t.Dim[1]
+	data := t.Data()
+	M, N := tShape[0], tShape[1]
 
 	for i := 0; i < M; i++ {
 		rowStart := i * N
-		maxVal := t.Data[rowStart]
+		maxVal := data[rowStart]
 		for j := 1; j < N; j++ {
-			val := t.Data[rowStart+j]
+			val := data[rowStart+j]
 			if val > maxVal {
 				maxVal = val
 			}
@@ -511,14 +521,14 @@ func softmax2DCols(t *tensor.Tensor) {
 
 		var sum float32
 		for j := 0; j < N; j++ {
-			val := t.Data[rowStart+j] - maxVal
-			t.Data[rowStart+j] = math32.Exp(val)
-			sum += t.Data[rowStart+j]
+			val := data[rowStart+j] - maxVal
+			data[rowStart+j] = math32.Exp(val)
+			sum += data[rowStart+j]
 		}
 
 		if sum > 0 {
 			for j := 0; j < N; j++ {
-				t.Data[rowStart+j] /= sum
+				data[rowStart+j] /= sum
 			}
 		}
 	}
@@ -599,7 +609,7 @@ func (d *Dropout) Init(inputShape []int) error {
 // Forward computes dropout: during training, randomly zero elements with probability p and scale by 1/(1-p).
 // During inference, passes input through unchanged.
 func (d *Dropout) Forward(input tensor.Tensor) (tensor.Tensor, error) {
-	if len(input.Dim) == 0 {
+	if input.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Dropout.Forward: empty input")
 	}
 
@@ -608,7 +618,7 @@ func (d *Dropout) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 
 	// Get pre-allocated output tensor
 	output := d.Base.Output()
-	if len(output.Dim) == 0 {
+	if output.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Dropout.Forward: output not allocated, must call Init first")
 	}
 
@@ -617,29 +627,28 @@ func (d *Dropout) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 
 	if d.isTraining && d.p > 0 {
 		// Allocate or reuse mask tensor
-		if len(d.mask.Dim) == 0 || d.mask.Size() != inputSize {
-			d.mask = tensor.Tensor{
-				Dim:  make([]int, len(input.Dim)),
-				Data: make([]float32, inputSize),
-			}
-			copy(d.mask.Dim, input.Dim)
+		if d.mask.Shape().Rank() == 0 || d.mask.Size() != inputSize {
+			d.mask = *tensor.New(tensor.DTFP32, input.Shape())
 		}
 
 		// Generate mask and apply dropout
-		for i := range output.Data {
+		inputData := input.Data()
+		outputData := output.Data()
+		maskData := d.mask.Data()
+		for i := range outputData {
 			if d.rng.Float32() < d.p {
 				// Drop this element
-				d.mask.Data[i] = 0
-				output.Data[i] = 0
+				maskData[i] = 0
+				outputData[i] = 0
 			} else {
 				// Keep this element, scale by 1/(1-p)
-				d.mask.Data[i] = scale
-				output.Data[i] = input.Data[i] * scale
+				maskData[i] = scale
+				outputData[i] = inputData[i] * scale
 			}
 		}
 	} else {
 		// Inference mode: pass through unchanged
-		copy(output.Data, input.Data)
+		copy(output.Data(), input.Data())
 		// Clear mask (not needed in inference)
 		d.mask = tensor.Tensor{}
 	}
@@ -650,31 +659,29 @@ func (d *Dropout) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 
 // Backward computes dropout gradient: gradInput = gradOutput * mask.
 func (d *Dropout) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
-	if len(gradOutput.Dim) == 0 {
+	if gradOutput.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Dropout.Backward: empty gradOutput")
 	}
 
 	input := d.Base.Input()
-	if len(input.Dim) == 0 {
+	if input.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Dropout.Backward: input not stored, must call Forward first")
 	}
 
 	// Allocate gradient tensor
-	gradSize := gradOutput.Size()
-	gradInput := tensor.Tensor{
-		Dim:  make([]int, len(gradOutput.Dim)),
-		Data: make([]float32, gradSize),
-	}
-	copy(gradInput.Dim, gradOutput.Dim)
+	gradInput := *tensor.New(tensor.DTFP32, gradOutput.Shape())
 
-	if d.isTraining && d.p > 0 && len(d.mask.Data) > 0 {
+	if d.isTraining && d.p > 0 && len(d.mask.Data()) > 0 {
 		// Training mode: multiply by mask (which contains 0 or scale)
-		for i := range gradInput.Data {
-			gradInput.Data[i] = gradOutput.Data[i] * d.mask.Data[i]
+		gradInputData := gradInput.Data()
+		gradOutputData := gradOutput.Data()
+		maskData := d.mask.Data()
+		for i := range gradInputData {
+			gradInputData[i] = gradOutputData[i] * maskData[i]
 		}
 	} else {
 		// Inference mode or no dropout: pass gradient through unchanged
-		copy(gradInput.Data, gradOutput.Data)
+		copy(gradInput.Data(), gradOutput.Data())
 	}
 
 	d.Base.StoreGrad(gradInput)

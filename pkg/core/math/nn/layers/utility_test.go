@@ -20,7 +20,7 @@ func TestFlatten(t *testing.T) {
 		{
 			name: "2d_to_1d",
 			input: tensor.Tensor{
-				Dim:  []int{2, 3},
+				Dim: []int{2, 3},
 				Data: []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0},
 			},
 			startDim:     0,
@@ -30,7 +30,7 @@ func TestFlatten(t *testing.T) {
 		{
 			name: "4d_to_2d",
 			input: tensor.Tensor{
-				Dim:  []int{1, 2, 2, 2},
+				Dim: []int{1, 2, 2, 2},
 				Data: []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0},
 			},
 			startDim:     1,
@@ -58,7 +58,7 @@ func TestReshape(t *testing.T) {
 	reshape := NewReshape([]int{2, 4})
 
 	inputTensor := tensor.Tensor{
-		Dim:  []int{1, 8},
+		Dim: []int{1, 8},
 		Data: []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0},
 	}
 
@@ -81,7 +81,7 @@ func TestUnsqueeze(t *testing.T) {
 	t.Run("add_dim_at_beginning", func(t *testing.T) {
 		unsqueeze := NewUnsqueeze(0)
 		input := tensor.Tensor{
-			Dim:  []int{3, 4},
+			Dim: []int{3, 4},
 			Data: []float32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
 		}
 
@@ -110,7 +110,7 @@ func TestSqueeze(t *testing.T) {
 	t.Run("squeeze_all", func(t *testing.T) {
 		squeeze := NewSqueeze()
 		input := tensor.Tensor{
-			Dim:  []int{1, 3, 1, 4},
+			Dim: []int{1, 3, 1, 4},
 			Data: []float32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
 		}
 
@@ -138,7 +138,7 @@ func TestSqueeze(t *testing.T) {
 func TestTranspose(t *testing.T) {
 	transpose := NewTranspose()
 	input := tensor.Tensor{
-		Dim:  []int{2, 3},
+		Dim: []int{2, 3},
 		Data: []float32{1, 2, 3, 4, 5, 6},
 	}
 
@@ -152,7 +152,7 @@ func TestTranspose(t *testing.T) {
 
 	// Test backward
 	gradOutput := tensor.Tensor{
-		Dim:  []int{3, 2},
+		Dim: []int{3, 2},
 		Data: []float32{1, 1, 1, 1, 1, 1},
 	}
 	gradInput, err := transpose.Backward(gradOutput)

@@ -161,15 +161,15 @@ func (b *Base) Name() string {
 	// Generate default name from prefix, layer_idx and shape
 	var nameFormat string
 	if b.prefix != "" {
-		if len(b.output.Dim) > 0 {
-			shapeStr := fmt.Sprintf("%v", b.output.Dim)
+		if b.output.Shape().Rank() > 0 {
+			shapeStr := fmt.Sprintf("%v", b.output.Shape().ToSlice())
 			nameFormat = fmt.Sprintf("%s_%d_%s", b.prefix, b.layerIdx, shapeStr)
 		} else {
 			nameFormat = fmt.Sprintf("%s_%d", b.prefix, b.layerIdx)
 		}
 	} else {
-		if len(b.output.Dim) > 0 {
-			shapeStr := fmt.Sprintf("%v", b.output.Dim)
+		if b.output.Shape().Rank() > 0 {
+			shapeStr := fmt.Sprintf("%v", b.output.Shape().ToSlice())
 			nameFormat = fmt.Sprintf("%d_%s", b.layerIdx, shapeStr)
 		} else {
 			nameFormat = fmt.Sprintf("%d", b.layerIdx)
@@ -264,11 +264,7 @@ func (b *Base) AllocOutput(shape []int, size int) {
 	if b == nil {
 		return
 	}
-	b.output = tensor.Tensor{
-		Dim:  make([]int, len(shape)),
-		Data: make([]float32, size),
-	}
-	copy(b.output.Dim, shape)
+	b.output = *tensor.FromFloat32(tensor.NewShape(shape...), make([]float32, size))
 }
 
 // AllocGrad allocates the gradient tensor with the given shape and size.
@@ -276,11 +272,7 @@ func (b *Base) AllocGrad(shape []int, size int) {
 	if b == nil {
 		return
 	}
-	b.grad = tensor.Tensor{
-		Dim:  make([]int, len(shape)),
-		Data: make([]float32, size),
-	}
-	copy(b.grad.Dim, shape)
+	b.grad = *tensor.FromFloat32(tensor.NewShape(shape...), make([]float32, size))
 }
 
 // Helper method for layers to store input during Forward.

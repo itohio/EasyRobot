@@ -68,7 +68,7 @@ func (f *Flatten) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("Flatten.Forward: nil layer")
 	}
 
-	if len(input.Dim) == 0 {
+	if input.Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Flatten.Forward: empty input")
 	}
 
@@ -77,16 +77,16 @@ func (f *Flatten) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 
 	// Get pre-allocated output tensor
 	output := f.Base.Output()
-	if len(output.Dim) == 0 {
+	if output.Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Flatten.Forward: output not allocated, must call Init first")
 	}
 
 	// Flatten is just a reshape - copy data (same memory for contiguous tensors)
-	if len(input.Data) != len(output.Data) {
+	if input.Size() != output.Size() {
 		return tensor.Tensor{}, fmt.Errorf("Flatten.Forward: input size %d doesn't match output size %d",
-			len(input.Data), len(output.Data))
+			input.Size(), output.Size())
 	}
-	copy(output.Data, input.Data)
+	copy(output.Data(), input.Data())
 
 	// Store output
 	f.Base.StoreOutput(output)
@@ -99,28 +99,23 @@ func (f *Flatten) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("Flatten.Backward: nil layer")
 	}
 
-	if len(gradOutput.Dim) == 0 {
+	if gradOutput.Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Flatten.Backward: empty gradOutput")
 	}
 
 	input := f.Base.Input()
-	if len(input.Dim) == 0 {
+	if input.Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Flatten.Backward: input not stored, must call Forward first")
 	}
 
 	// Gradient is just reshaping back
-	gradSize := input.Size()
-	gradInput := tensor.Tensor{
-		Dim:  make([]int, len(input.Dim)),
-		Data: make([]float32, gradSize),
-	}
-	copy(gradInput.Dim, input.Dim)
+	gradInput := *tensor.New(tensor.DTFP32, input.Shape())
 
-	if len(gradOutput.Data) != len(gradInput.Data) {
+	if gradOutput.Size() != gradInput.Size() {
 		return tensor.Tensor{}, fmt.Errorf("Flatten.Backward: gradOutput size %d doesn't match input size %d",
-			len(gradOutput.Data), len(gradInput.Data))
+			gradOutput.Size(), gradInput.Size())
 	}
-	copy(gradInput.Data, gradOutput.Data)
+	copy(gradInput.Data(), gradOutput.Data())
 
 	f.Base.StoreGrad(gradInput)
 	return gradInput, nil
@@ -216,7 +211,7 @@ func (r *Reshape) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("Reshape.Forward: nil layer")
 	}
 
-	if len(input.Dim) == 0 {
+	if input.Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Reshape.Forward: empty input")
 	}
 
@@ -225,16 +220,16 @@ func (r *Reshape) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 
 	// Get pre-allocated output tensor
 	output := r.Base.Output()
-	if len(output.Dim) == 0 {
+	if output.Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Reshape.Forward: output not allocated, must call Init first")
 	}
 
 	// Reshape is just copying data with different dimensions
-	if len(input.Data) != len(output.Data) {
+	if input.Size() != output.Size() {
 		return tensor.Tensor{}, fmt.Errorf("Reshape.Forward: input size %d doesn't match output size %d",
-			len(input.Data), len(output.Data))
+			input.Size(), output.Size())
 	}
-	copy(output.Data, input.Data)
+	copy(output.Data(), input.Data())
 
 	// Store output
 	r.Base.StoreOutput(output)
@@ -247,28 +242,23 @@ func (r *Reshape) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("Reshape.Backward: nil layer")
 	}
 
-	if len(gradOutput.Dim) == 0 {
+	if gradOutput.Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Reshape.Backward: empty gradOutput")
 	}
 
 	input := r.Base.Input()
-	if len(input.Dim) == 0 {
+	if input.Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Reshape.Backward: input not stored, must call Forward first")
 	}
 
 	// Gradient is just reshaping back to input shape
-	gradSize := input.Size()
-	gradInput := tensor.Tensor{
-		Dim:  make([]int, len(input.Dim)),
-		Data: make([]float32, gradSize),
-	}
-	copy(gradInput.Dim, input.Dim)
+	gradInput := *tensor.New(tensor.DTFP32, input.Shape())
 
-	if len(gradOutput.Data) != len(gradInput.Data) {
+	if gradOutput.Size() != gradInput.Size() {
 		return tensor.Tensor{}, fmt.Errorf("Reshape.Backward: gradOutput size %d doesn't match input size %d",
-			len(gradOutput.Data), len(gradInput.Data))
+			gradOutput.Size(), gradInput.Size())
 	}
-	copy(gradInput.Data, gradOutput.Data)
+	copy(gradInput.Data(), gradOutput.Data())
 
 	r.Base.StoreGrad(gradInput)
 	return gradInput, nil
@@ -374,23 +364,23 @@ func (u *Unsqueeze) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("Unsqueeze.Forward: nil layer")
 	}
 
-	if len(input.Dim) == 0 {
+	if input.Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Unsqueeze.Forward: empty input")
 	}
 
 	u.Base.StoreInput(input)
 
 	output := u.Base.Output()
-	if len(output.Dim) == 0 {
+	if output.Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Unsqueeze.Forward: output not allocated, must call Init first")
 	}
 
 	// Unsqueeze is just a reshape - copy data
-	if len(input.Data) != len(output.Data) {
+	if input.Size() != output.Size() {
 		return tensor.Tensor{}, fmt.Errorf("Unsqueeze.Forward: input size %d doesn't match output size %d",
-			len(input.Data), len(output.Data))
+			input.Size(), output.Size())
 	}
-	copy(output.Data, input.Data)
+	copy(output.Data(), input.Data())
 
 	u.Base.StoreOutput(output)
 	return output, nil
@@ -402,27 +392,22 @@ func (u *Unsqueeze) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("Unsqueeze.Backward: nil layer")
 	}
 
-	if len(gradOutput.Dim) == 0 {
+	if gradOutput.Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Unsqueeze.Backward: empty gradOutput")
 	}
 
 	input := u.Base.Input()
-	if len(input.Dim) == 0 {
+	if input.Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Unsqueeze.Backward: input not stored, must call Forward first")
 	}
 
-	gradSize := input.Size()
-	gradInput := tensor.Tensor{
-		Dim:  make([]int, len(input.Dim)),
-		Data: make([]float32, gradSize),
-	}
-	copy(gradInput.Dim, input.Dim)
+	gradInput := *tensor.New(tensor.DTFP32, input.Shape())
 
-	if len(gradOutput.Data) != len(gradInput.Data) {
+	if gradOutput.Size() != gradInput.Size() {
 		return tensor.Tensor{}, fmt.Errorf("Unsqueeze.Backward: gradOutput size %d doesn't match input size %d",
-			len(gradOutput.Data), len(gradInput.Data))
+			gradOutput.Size(), gradInput.Size())
 	}
-	copy(gradInput.Data, gradOutput.Data)
+	copy(gradInput.Data(), gradOutput.Data())
 
 	u.Base.StoreGrad(gradInput)
 	return gradInput, nil
@@ -535,23 +520,23 @@ func (s *Squeeze) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("Squeeze.Forward: nil layer")
 	}
 
-	if len(input.Dim) == 0 {
+	if input.Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Squeeze.Forward: empty input")
 	}
 
 	s.Base.StoreInput(input)
 
 	output := s.Base.Output()
-	if len(output.Dim) == 0 {
+	if output.Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Squeeze.Forward: output not allocated, must call Init first")
 	}
 
 	// Squeeze is just a reshape - copy data
-	if len(input.Data) != len(output.Data) {
+	if input.Size() != output.Size() {
 		return tensor.Tensor{}, fmt.Errorf("Squeeze.Forward: input size %d doesn't match output size %d",
-			len(input.Data), len(output.Data))
+			input.Size(), output.Size())
 	}
-	copy(output.Data, input.Data)
+	copy(output.Data(), input.Data())
 
 	s.Base.StoreOutput(output)
 	return output, nil
@@ -563,27 +548,22 @@ func (s *Squeeze) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("Squeeze.Backward: nil layer")
 	}
 
-	if len(gradOutput.Dim) == 0 {
+	if gradOutput.Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Squeeze.Backward: empty gradOutput")
 	}
 
 	input := s.Base.Input()
-	if len(input.Dim) == 0 {
+	if input.Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Squeeze.Backward: input not stored, must call Forward first")
 	}
 
-	gradSize := input.Size()
-	gradInput := tensor.Tensor{
-		Dim:  make([]int, len(input.Dim)),
-		Data: make([]float32, gradSize),
-	}
-	copy(gradInput.Dim, input.Dim)
+	gradInput := *tensor.New(tensor.DTFP32, input.Shape())
 
-	if len(gradOutput.Data) != len(gradInput.Data) {
+	if gradOutput.Size() != gradInput.Size() {
 		return tensor.Tensor{}, fmt.Errorf("Squeeze.Backward: gradOutput size %d doesn't match input size %d",
-			len(gradOutput.Data), len(gradInput.Data))
+			gradOutput.Size(), gradInput.Size())
 	}
-	copy(gradInput.Data, gradOutput.Data)
+	copy(gradInput.Data(), gradOutput.Data())
 
 	s.Base.StoreGrad(gradInput)
 	return gradInput, nil
@@ -658,33 +638,29 @@ func (t *Transpose) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("Transpose.Forward: nil layer")
 	}
 
-	if len(input.Dim) == 0 {
+	if input.Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Transpose.Forward: empty input")
 	}
 
-	if len(input.Dim) != 2 {
-		return tensor.Tensor{}, fmt.Errorf("Transpose.Forward: only 2D tensors supported, got shape %v", input.Dim)
+	if input.Rank() != 2 {
+		return tensor.Tensor{}, fmt.Errorf("Transpose.Forward: only 2D tensors supported, got shape %v", input.Shape().ToSlice())
 	}
 
 	t.Base.StoreInput(input)
 
 	output := t.Base.Output()
-	if len(output.Dim) == 0 {
+	if output.Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Transpose.Forward: output not allocated, must call Init first")
 	}
 
 	// Use tensor.Transpose
-	tensorPtr := &tensor.Tensor{
-		Dim:  input.Dim,
-		Data: input.Data,
-	}
-	transposed := tensorPtr.Transpose()
+	transposed := input.Transpose()
 	if transposed == nil {
 		return tensor.Tensor{}, fmt.Errorf("Transpose.Forward: transpose failed")
 	}
 
 	// Copy transposed data to output
-	copy(output.Data, transposed.Data)
+	copy(output.Data(), transposed.Data())
 
 	t.Base.StoreOutput(output)
 	return output, nil
@@ -696,32 +672,23 @@ func (t *Transpose) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("Transpose.Backward: nil layer")
 	}
 
-	if len(gradOutput.Dim) == 0 {
+	if gradOutput.Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Transpose.Backward: empty gradOutput")
 	}
 
 	input := t.Base.Input()
-	if len(input.Dim) == 0 {
+	if input.Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Transpose.Backward: input not stored, must call Forward first")
 	}
 
 	// Gradient of transpose is transpose of gradient
-	tensorPtr := &tensor.Tensor{
-		Dim:  gradOutput.Dim,
-		Data: gradOutput.Data,
-	}
-	transposed := tensorPtr.Transpose()
+	transposed := gradOutput.Transpose()
 	if transposed == nil {
 		return tensor.Tensor{}, fmt.Errorf("Transpose.Backward: transpose failed")
 	}
 
-	gradSize := input.Size()
-	gradInput := tensor.Tensor{
-		Dim:  make([]int, len(input.Dim)),
-		Data: make([]float32, gradSize),
-	}
-	copy(gradInput.Dim, input.Dim)
-	copy(gradInput.Data, transposed.Data)
+	gradInput := *tensor.New(tensor.DTFP32, input.Shape())
+	copy(gradInput.Data(), transposed.Data())
 
 	t.Base.StoreGrad(gradInput)
 	return gradInput, nil
@@ -831,20 +798,20 @@ func (p *Pad) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("Pad.Forward: nil layer")
 	}
 
-	if len(input.Dim) == 0 {
+	if input.Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Pad.Forward: empty input")
 	}
 
 	p.Base.StoreInput(input)
 
 	output := p.Base.Output()
-	if len(output.Dim) == 0 {
+	if output.Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Pad.Forward: output not allocated, must call Init first")
 	}
 
 	// Initialize output with padding value
-	for i := range output.Data {
-		output.Data[i] = p.value
+	for i := range output.Data() {
+		output.Data()[i] = p.value
 	}
 
 	// Copy input data to the appropriate position in output
@@ -857,11 +824,11 @@ func (p *Pad) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 // applyPadding copies input data to output with padding.
 func (p *Pad) applyPadding(input, output tensor.Tensor) {
 	// Compute strides for both tensors
-	inputStrides := computeStrides(input.Dim)
-	outputStrides := computeStrides(output.Dim)
+	inputStrides := computeStrides(input.Shape().ToSlice())
+	outputStrides := computeStrides(output.Shape().ToSlice())
 
 	// Recursively copy data with padding offset
-	p.copyWithPadding(input.Dim, input.Data, inputStrides, 0, output.Dim, output.Data, outputStrides, make([]int, len(output.Dim)), 0)
+	p.copyWithPadding(input.Shape().ToSlice(), input.Data(), inputStrides, 0, output.Shape().ToSlice(), output.Data(), outputStrides, make([]int, output.Rank()), 0)
 }
 
 // computeStrides computes row-major strides from shape.
@@ -908,27 +875,22 @@ func (p *Pad) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("Pad.Backward: nil layer")
 	}
 
-	if len(gradOutput.Dim) == 0 {
+	if gradOutput.Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Pad.Backward: empty gradOutput")
 	}
 
 	input := p.Base.Input()
-	if len(input.Dim) == 0 {
+	if input.Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Pad.Backward: input not stored, must call Forward first")
 	}
 
-	gradSize := input.Size()
-	gradInput := tensor.Tensor{
-		Dim:  make([]int, len(input.Dim)),
-		Data: make([]float32, gradSize),
-	}
-	copy(gradInput.Dim, input.Dim)
+	gradInput := *tensor.New(tensor.DTFP32, input.Shape())
 
 	// Extract gradient from padded region
-	inputStrides := computeStrides(input.Dim)
-	outputStrides := computeStrides(gradOutput.Dim)
-	p.extractGradient(input.Dim, gradInput.Data, inputStrides, 0,
-		gradOutput.Dim, gradOutput.Data, outputStrides, make([]int, len(gradOutput.Dim)), 0)
+	inputStrides := computeStrides(input.Shape().ToSlice())
+	outputStrides := computeStrides(gradOutput.Shape().ToSlice())
+	p.extractGradient(input.Shape().ToSlice(), gradInput.Data(), inputStrides, 0,
+		gradOutput.Shape().ToSlice(), gradOutput.Data(), outputStrides, make([]int, gradOutput.Rank()), 0)
 
 	p.Base.StoreGrad(gradInput)
 	return gradInput, nil
@@ -1007,8 +969,7 @@ func (c *Concatenate) SetInputs(inputs []tensor.Tensor) {
 	c.shapes = make([][]int, len(inputs))
 	for i, input := range inputs {
 		c.inputs[i] = input
-		c.shapes[i] = make([]int, len(input.Dim))
-		copy(c.shapes[i], input.Dim)
+		c.shapes[i] = input.Shape().ToSlice()
 	}
 }
 
@@ -1100,7 +1061,7 @@ func (c *Concatenate) ForwardMulti(inputs []tensor.Tensor) (tensor.Tensor, error
 
 	// Validate inputs
 	for i, input := range inputs {
-		if len(input.Dim) == 0 {
+		if input.Rank() == 0 {
 			return tensor.Tensor{}, fmt.Errorf("Concatenate.ForwardMulti: empty input[%d]", i)
 		}
 	}
@@ -1110,7 +1071,7 @@ func (c *Concatenate) ForwardMulti(inputs []tensor.Tensor) (tensor.Tensor, error
 	copy(c.inputs, inputs)
 
 	output := c.Base.Output()
-	if len(output.Dim) == 0 {
+	if output.Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Concatenate.ForwardMulti: output not allocated, must call Init first")
 	}
 
@@ -1126,22 +1087,23 @@ func (c *Concatenate) concatenateTensors(inputs []tensor.Tensor, output tensor.T
 	// Compute output offset for each input
 	outputOffset := 0
 	inputStrides := make([][]int, len(inputs))
-	outputStrides := computeStrides(output.Dim)
+	outputStrides := computeStrides(output.Shape().ToSlice())
 
 	for i, input := range inputs {
-		inputStrides[i] = computeStrides(input.Dim)
+		inputStrides[i] = computeStrides(input.Shape().ToSlice())
 	}
 
 	// For each input, copy its data to the appropriate position in output
 	for inputIdx, input := range inputs {
-		c.copyTensorToOutput(input, inputStrides[inputIdx], output, outputStrides, outputOffset, 0, make([]int, len(input.Dim)))
+		c.copyTensorToOutput(input, inputStrides[inputIdx], output, outputStrides, outputOffset, 0, make([]int, input.Rank()))
 		// Update offset for next input along concatenation dimension
 		if inputIdx < len(inputs)-1 {
 			// Compute size of this input along concatenation dimension
 			inputSize := 1
-			for i := 0; i < len(input.Dim); i++ {
+			inputShape := input.Shape().ToSlice()
+			for i := 0; i < len(inputShape); i++ {
 				if i == c.dim {
-					inputSize *= input.Dim[i]
+					inputSize *= inputShape[i]
 				}
 			}
 			outputOffset += inputSize * outputStrides[c.dim]
@@ -1152,7 +1114,8 @@ func (c *Concatenate) concatenateTensors(inputs []tensor.Tensor, output tensor.T
 // copyTensorToOutput copies tensor data to output at given offset.
 func (c *Concatenate) copyTensorToOutput(input tensor.Tensor, inputStrides []int,
 	output tensor.Tensor, outputStrides []int, outputOffset int, dim int, indices []int) {
-	if dim == len(input.Dim) {
+	inputShape := input.Shape().ToSlice()
+	if dim == len(inputShape) {
 		// Base case: copy single element
 		inputIdx := 0
 		for i, idx := range indices {
@@ -1169,12 +1132,12 @@ func (c *Concatenate) copyTensorToOutput(input tensor.Tensor, inputStrides []int
 		if dim > 0 && len(indices) > c.dim {
 			outputIdx += indices[c.dim] * outputStrides[c.dim]
 		}
-		output.Data[outputIdx] = input.Data[inputIdx]
+		output.Data()[outputIdx] = input.Data()[inputIdx]
 		return
 	}
 
 	// Recursive case: iterate over current dimension
-	for i := 0; i < input.Dim[dim]; i++ {
+	for i := 0; i < inputShape[dim]; i++ {
 		if len(indices) <= dim {
 			indices = append(indices, i)
 		} else {
@@ -1192,7 +1155,7 @@ func (c *Concatenate) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) 
 		return tensor.Tensor{}, fmt.Errorf("Concatenate.Backward: nil layer")
 	}
 
-	if len(gradOutput.Dim) == 0 {
+	if gradOutput.Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("Concatenate.Backward: empty gradOutput")
 	}
 
@@ -1215,7 +1178,7 @@ func (c *Concatenate) BackwardMulti(gradOutput tensor.Tensor) ([]tensor.Tensor, 
 		return nil, fmt.Errorf("Concatenate.BackwardMulti: nil layer")
 	}
 
-	if len(gradOutput.Dim) == 0 {
+	if gradOutput.Rank() == 0 {
 		return nil, fmt.Errorf("Concatenate.BackwardMulti: empty gradOutput")
 	}
 
@@ -1224,29 +1187,25 @@ func (c *Concatenate) BackwardMulti(gradOutput tensor.Tensor) ([]tensor.Tensor, 
 	}
 
 	grads := make([]tensor.Tensor, len(c.inputs))
-	outputStrides := computeStrides(gradOutput.Dim)
+	outputStrides := computeStrides(gradOutput.Shape().ToSlice())
 
 	// Split gradient for each input
 	outputOffset := 0
 	for i, input := range c.inputs {
-		gradSize := input.Size()
-		grads[i] = tensor.Tensor{
-			Dim:  make([]int, len(input.Dim)),
-			Data: make([]float32, gradSize),
-		}
-		copy(grads[i].Dim, input.Dim)
+		grads[i] = *tensor.New(tensor.DTFP32, input.Shape())
 
-		inputStrides := computeStrides(input.Dim)
+		inputStrides := computeStrides(input.Shape().ToSlice())
 		// Extract gradient slice for this input
 		c.extractGradientSlice(gradOutput, outputStrides, outputOffset,
-			grads[i], inputStrides, 0, make([]int, len(input.Dim)))
+			grads[i], inputStrides, 0, make([]int, input.Rank()))
 
 		// Update offset for next input
 		if i < len(c.inputs)-1 {
 			inputSize := 1
-			for j := 0; j < len(input.Dim); j++ {
+			inputShape := input.Shape().ToSlice()
+			for j := 0; j < len(inputShape); j++ {
 				if j == c.dim {
-					inputSize *= input.Dim[j]
+					inputSize *= inputShape[j]
 				}
 			}
 			outputOffset += inputSize * outputStrides[c.dim]
@@ -1264,7 +1223,8 @@ func (c *Concatenate) BackwardMulti(gradOutput tensor.Tensor) ([]tensor.Tensor, 
 // extractGradientSlice extracts a slice of gradient for one input.
 func (c *Concatenate) extractGradientSlice(gradOutput tensor.Tensor, outputStrides []int, outputOffset int,
 	gradInput tensor.Tensor, inputStrides []int, dim int, indices []int) {
-	if dim == len(gradInput.Dim) {
+	gradInputShape := gradInput.Shape().ToSlice()
+	if dim == len(gradInputShape) {
 		// Base case: copy single element
 		inputIdx := 0
 		for i, idx := range indices {
@@ -1280,12 +1240,12 @@ func (c *Concatenate) extractGradientSlice(gradOutput tensor.Tensor, outputStrid
 		if len(indices) > c.dim {
 			outputIdx += indices[c.dim] * outputStrides[c.dim]
 		}
-		gradInput.Data[inputIdx] = gradOutput.Data[outputIdx]
+		gradInput.Data()[inputIdx] = gradOutput.Data()[outputIdx]
 		return
 	}
 
 	// Recursive case
-	for i := 0; i < gradInput.Dim[dim]; i++ {
+	for i := 0; i < gradInputShape[dim]; i++ {
 		if len(indices) <= dim {
 			indices = append(indices, i)
 		} else {

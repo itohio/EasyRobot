@@ -91,7 +91,7 @@ func (m *Model) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("model.Forward: nil model")
 	}
 
-	if len(input.Dim) == 0 {
+	if input.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("model.Forward: empty input")
 	}
 
