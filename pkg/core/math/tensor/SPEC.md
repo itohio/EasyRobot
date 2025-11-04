@@ -2,11 +2,9 @@
 
 ## Overview
 
-The `tensor` package provides multi-dimensional tensor operations optimized for embedded systems with minimal allocations, supporting neural network inference, computer vision, and general numerical computing. All tensors use **row-major** storage layout matching Go nested arrays.
+The `tensor` package provides multi-dimensional tensor operations optimized for embedded systems with minimal allocations, supporting numerical computing, computer vision, and machine learning applications. All tensors use **row-major** storage layout matching Go nested arrays.
 
-**Foundation**: This package builds on the `math/primitive` package which provides BLAS levels 1-3 and LAPACK operations with zero allocations, stride-based access, and row-major storage. See [primitive/SPEC.md](../primitive/SPEC.md), [primitive/BLAS.md](../primitive/BLAS.md), and [primitive/LA.md](../primitive/LA.md) for details.
-
-**Note**: Neural network operations (Linear, ReLU, Sigmoid, Tanh, Softmax, MSE, CrossEntropy) are in the separate `math/nn` package.
+**Foundation**: This package builds on the `math/primitive/fp32` package which provides BLAS levels 1-3 operations with zero allocations, stride-based access, and row-major storage. See [primitive/SPEC.md](../primitive/SPEC.md) for details.
 
 **Quantization**: For INT8 quantized computation support:
 - Design document: [QUANTIZATION_PLAN.md](./QUANTIZATION_PLAN.md)
@@ -76,32 +74,81 @@ For higher-dimensional tensors, storage is batch-major then row-major:
 
 ```go
 type Tensor struct {
-    Dim  []int      // Dimensions (e.g., [batch, height, width, channels])
-    Data []float32  // Flat data storage (single allocation)
+    dtype DataType  // Data type (currently FP32)
+    shape Shape     // Tensor dimensions
+    data  []float32 // Flat data storage (single allocation)
 }
 ```
 
 **Characteristics:**
-- Variable dimensions (runtime-determined)
+- Typed data storage with extensible DataType system
+- Shape abstraction for dimension management
 - Single contiguous backing array (`[]float32`)
-- Shape and data stored separately
-- Strides computed on-demand from shape
-- No internal copying for views (future: add offset + strides for zero-copy views)
+- Zero-copy operations where possible
+- Row-major storage layout (matching Go nested arrays)
+
+### DataType
+
+```go
+type DataType uint8
+
+const (
+    DTFP32 DataType = iota // 32-bit floating point (default)
+)
+```
+
+**Current Support:**
+- `DTFP32`: 32-bit floating point tensors (primary data type)
+- Extensible for future data types (INT8, FP16, etc.)
+
+### Shape
+
+```go
+type Shape []int // Represents tensor dimensions
+```
+
+**Shape Methods:**
+- `Rank() int`: Returns number of dimensions
+- `Size() int`: Returns total number of elements
+- `Strides() []int`: Computes row-major strides
+- `IsContiguous(strides []int) bool`: Checks if strides represent contiguous layout
+- `ValidateAxes(axes []int) error`: Validates dimension indices
+
+### Tensor Creation
+
+```go
+// New creates a new tensor with the provided data type and shape
+// The underlying buffer is zero-initialized
+func New(dtype DataType, shape Shape) *Tensor
+
+// FromFloat32 constructs an FP32 tensor from an existing backing slice
+// If data is nil, a new buffer is allocated. The slice is used directly (no copy)
+func FromFloat32(shape Shape, data []float32) *Tensor
+```
 
 ### Helper Functions
 
 ```go
-// Shape returns the shape (dimensions) of the tensor
-func (t *Tensor) Shape() []int
+// DataType returns the tensor's data type
+func (t *Tensor) DataType() DataType
+
+// Shape returns a copy of the tensor's shape
+func (t *Tensor) Shape() Shape
+
+// Rank returns the number of dimensions
+func (t *Tensor) Rank() int
 
 // Size returns the total number of elements in the tensor
 func (t *Tensor) Size() int
 
-// Clone creates a deep copy of the tensor
-func (t *Tensor) Clone() *Tensor
+// Data returns the underlying data slice (zero-copy)
+func (t *Tensor) Data() []float32
 
 // Flat returns the underlying data slice (zero-copy)
 func (t *Tensor) Flat() []float32
+
+// Clone creates a deep copy of the tensor
+func (t *Tensor) Clone() *Tensor
 
 // At returns the element at the given indices
 func (t *Tensor) At(indices ...int) float32
@@ -109,7 +156,7 @@ func (t *Tensor) At(indices ...int) float32
 // SetAt sets the element at the given indices
 func (t *Tensor) SetAt(indices []int, value float32)
 
-// Reshape returns a new tensor with the same data but different shape (zero-copy)
+// Reshape returns a new tensor with the same data but different shape (zero-copy when possible)
 func (t *Tensor) Reshape(newShape []int) *Tensor
 ```
 
@@ -119,26 +166,30 @@ func (t *Tensor) Reshape(newShape []int) *Tensor
 - Both functions validate indices and compute linear index using strides
 
 **Data Access:**
-- `Flat() []float32`: Returns the underlying data slice directly (zero-copy access)
+- `Data() []float32` / `Flat() []float32`: Returns the underlying data slice directly (zero-copy access)
 
 **Reshaping:**
 - `Reshape(newShape []int) *Tensor`: Creates a new tensor view with different shape but same data
 - The total number of elements must remain the same
-- Returns a zero-copy view sharing the same underlying data slice
+- Returns a zero-copy view when possible
 
-## Element-Wise Operations
+## Tensor Operations
 
-### In-Place Operations
+Beyond basic element-wise operations, the tensor package provides higher-level operations optimized for neural network computations and general numerical computing.
+
+### Element-Wise Operations
+
+#### In-Place Operations
 
 All in-place operations modify the tensor and return self for method chaining.
 
 | Function | Description | Primitive Used | Status |
 |----------|-------------|----------------|--------|
-| `Add(other *Tensor) *Tensor` | Add tensor element-wise | `primitive.Axpy` | ✅ |
-| `Sub(other *Tensor) *Tensor` | Subtract tensor element-wise | `primitive.Axpy` (alpha=-1) | ✅ |
-| `Mul(other *Tensor) *Tensor` | Multiply element-wise | - | ✅ |
-| `Div(other *Tensor) *Tensor` | Divide element-wise | - | ✅ |
-| `Scale(scalar float32) *Tensor` | Multiply by scalar | `primitive.Scal` | ✅ |
+| `Add(other *Tensor) *Tensor` | Add tensor element-wise | `fp32.Axpy` | ✅ |
+| `Sub(other *Tensor) *Tensor` | Subtract tensor element-wise | `fp32.Axpy` (alpha=-1) | ✅ |
+| `Mul(other *Tensor) *Tensor` | Multiply element-wise | `fp32.ElemMul` | ✅ |
+| `Div(other *Tensor) *Tensor` | Divide element-wise | `fp32.ElemDiv` | ✅ |
+| `Scale(scalar float32) *Tensor` | Multiply by scalar | `fp32.Scal` | ✅ |
 
 **Function Signatures:**
 
@@ -179,6 +230,8 @@ func (t *Tensor) Scale(scalar float32) *Tensor
 func (t *Tensor) AddTo(other *Tensor, dst *Tensor) *Tensor
 
 // MulTo: result = t * other (element-wise)
+// If dst is nil, creates new tensor
+// If dst is provided, uses it (must match shape)
 func (t *Tensor) MulTo(other *Tensor, dst *Tensor) *Tensor
 ```
 
@@ -247,15 +300,15 @@ func (t *Tensor) BroadcastTo(shape []int) (*Tensor, error)
 
 ## Linear Algebra Operations
 
-All linear algebra operations use `math/primitive` BLAS/LAPACK functions.
+All linear algebra operations use `math/primitive/fp32` functions for optimal performance.
 
 ### Matrix Operations
 
 | Function | Description | Primitive Used | Status |
 |----------|-------------|----------------|--------|
-| `MatMul(other *Tensor) *Tensor` | Matrix multiplication | `primitive.Gemm_*`, `GemmBatched`, `GemmStrided` | ✅ |
+| `MatMul(other *Tensor) *Tensor` | Matrix multiplication | `fp32.Gemm_*`, `GemmBatched`, `GemmStrided` | ✅ |
 | `MatMulTo(other, dst *Tensor) *Tensor` | Matrix multiply to destination | - | ✅ |
-| `Transpose(dims ...int) *Tensor` | Transpose dimensions | - | ✅ (2D only) |
+| `Transpose(dims ...int) *Tensor` | Transpose dimensions | Manual implementation | ✅ (2D only) |
 | `TransposeTo(dst *Tensor, dims ...int) *Tensor` | Transpose to destination | - | ✅ (2D only) |
 
 **Function Signatures:**
@@ -280,23 +333,29 @@ func (t *Tensor) TransposeTo(dst *Tensor, dims ...int) *Tensor
 
 **MatMul Details:**
 - Automatically detects 2D vs batched cases
-- Uses `primitive.Gemm_NN` for 2D case
-- Uses `primitive.GemmStrided` for batched contiguous tensors
-- Uses `primitive.GemmBatched` for batched strided access
-- Handles leading dimensions automatically from tensor shape
+- Uses `fp32.Gemm_NN` for 2D case
+- Uses `fp32.GemmStrided` for batched contiguous tensors
+- Uses `fp32.GemmBatched` for batched strided access
+- Handles broadcasting for compatible batch dimensions
+- Supports three broadcasting patterns:
+  - Same batch size: `[B, M, K] × [B, K, N]`
+  - Broadcast first: `[M, K] × [B, K, N]`
+  - Broadcast second: `[B, M, K] × [K, N]`
 
 ### Dot Products and Norms
 
 | Function | Description | Primitive Used | Status |
 |----------|-------------|----------------|--------|
-| `Dot(other *Tensor) float32` | Dot product | `primitive.Dot` (vector case) | ✅ |
-| `Norm(ord int) float32` | Vector/matrix norm | `primitive.Nrm2`, `primitive.Asum` | ✅ |
-| `Normalize(dim int) *Tensor` | Normalize along dimension | `primitive.Nrm2` + `primitive.Scal` | ✅ |
+| `Dot(other *Tensor) float32` | Dot product | `fp32.Dot` (vector case) | ✅ |
+| `Norm(ord int) float32` | Vector/matrix norm | `fp32.Nrm2`, `fp32.Asum` | ✅ |
+| `Normalize(dim int) *Tensor` | Normalize along dimension | `fp32.Nrm2` + `fp32.Scal` | ✅ |
 
 **Function Signatures:**
 
 ```go
 // Dot: Dot product (vector) or Frobenius inner product (matrix)
+// Vector case: dot product of two 1D tensors
+// Matrix case: Frobenius inner product (sum of element-wise products)
 func (t *Tensor) Dot(other *Tensor) float32
 
 // Norm: Compute norm
@@ -309,20 +368,22 @@ func (t *Tensor) Norm(ord int) float32
 func (t *Tensor) Normalize(dim int) *Tensor
 ```
 
+**Norm Details:**
+- L1 norm (`ord=0`): Sum of absolute values
+- L2 norm (`ord=1`): Euclidean norm (square root of sum of squares)
+- Frobenius norm (`ord=2`): Same as L2 norm for flattened matrices
+
 ## Convolution Operations
 
-All convolution operations use `math/primitive` tensor operations.
+All convolution operations use `math/primitive/fp32` functions for optimized computation.
 
 ### 2D Convolution
 
 | Function | Description | Primitive Used | Status |
 |----------|-------------|----------------|--------|
-| `Conv2D(kernel, bias, stride, padding) *Tensor` | 2D convolution | `primitive.Conv2D` | ✅ |
+| `Conv2D(kernel, bias, stride, padding) *Tensor` | 2D convolution | `fp32.Conv2D` | ✅ |
 | `Conv2DTo(kernel, bias, dst, stride, padding) *Tensor` | Conv to destination | - | ✅ |
-| `Conv2DTransposed(kernel, bias, stride, padding) *Tensor` | Transposed 2D convolution | `primitive.Conv2DTransposed` | ✅ |
-| `DepthwiseConv2D(kernel, bias, stride, padding) *Tensor` | Depthwise separable convolution | - | ✅ |
-| `GroupConv2D(kernel, bias, stride, padding, groups) *Tensor` | Grouped convolution | - | ✅ |
-| `DilatedConv2D(kernel, bias, stride, padding, dilation) *Tensor` | Dilated (atrous) convolution | - | ✅ |
+| `Conv2DTransposed(kernel, bias, stride, padding) *Tensor` | Transposed 2D convolution | `fp32.Conv2DTransposed` | ✅ |
 
 **Function Signatures:**
 
@@ -375,9 +436,9 @@ func (t *Tensor) Conv1D(kernel, bias *Tensor, stride, padding int) *Tensor
 
 ### 3D Convolution
 
-| Function | Description | Status |
-|----------|-------------|--------|
-| `Conv3D(kernel, bias, stride, padding) *Tensor` | 3D convolution | ✅ |
+| Function | Description | Primitive Used | Status |
+|----------|-------------|----------------|--------|
+| `Conv3D(kernel, bias, stride, padding) *Tensor` | 3D convolution | `fp32.Conv3D` | ✅ |
 
 **Function Signature:**
 
@@ -427,14 +488,20 @@ func (t *Tensor) GroupConv2D(kernel, bias *Tensor, stride, padding []int, groups
 func (t *Tensor) DilatedConv2D(kernel, bias *Tensor, stride, padding, dilation []int) *Tensor
 ```
 
+**Dilated Convolution Details:**
+- Effective kernel size: `(kernelH-1)*dilationH + 1` × `(kernelW-1)*dilationW + 1`
+- Output dimensions: `(inHeight + 2*padH - effKernelH) / strideH + 1`
+
 ## Pooling Operations
 
-| Function | Description | Status |
-|----------|-------------|--------|
-| `MaxPool2D(kernelSize, stride, padding) *Tensor` | Max pooling | ✅ |
-| `AvgPool2D(kernelSize, stride, padding) *Tensor` | Average pooling | ✅ |
-| `GlobalAvgPool2D() *Tensor` | Global average pooling | ✅ |
-| `AdaptiveAvgPool2D(outputSize) *Tensor` | Adaptive average pooling | ✅ |
+All pooling operations use `math/primitive/fp32` functions for optimized computation.
+
+| Function | Description | Primitive Used | Status |
+|----------|-------------|----------------|--------|
+| `MaxPool2D(kernelSize, stride, padding) *Tensor` | Max pooling | `fp32.MaxPool2D` | ✅ |
+| `AvgPool2D(kernelSize, stride, padding) *Tensor` | Average pooling | `fp32.AvgPool2D` | ✅ |
+| `GlobalAvgPool2D() *Tensor` | Global average pooling | `fp32.GlobalAvgPool2D` | ✅ |
+| `AdaptiveAvgPool2D(outputSize) *Tensor` | Adaptive average pooling | `fp32.AdaptiveAvgPool2D` | ✅ |
 
 **Function Signatures:**
 
@@ -467,15 +534,23 @@ func (t *Tensor) AdaptiveAvgPool2D(outputSize []int) *Tensor
 
 **Output Dimension Calculation:**
 
+For `MaxPool2D` and `AvgPool2D`:
 - `outHeight = (inHeight + 2*padH - kernelH) / strideH + 1`
 - `outWidth = (inWidth + 2*padW - kernelW) / strideW + 1`
+
+For `GlobalAvgPool2D`:
+- Reduces spatial dimensions to 1×1 per channel
+
+For `AdaptiveAvgPool2D`:
+- Output dimensions exactly match `outputSize` parameters
+- Uses adaptive kernel sizes to achieve target output dimensions
 
 ## Unfolding/Folding Operations
 
 | Function | Description | Primitive Used | Status |
 |----------|-------------|----------------|--------|
-| `Im2Col(kernelSize, stride, padding) *Tensor` | Image to column | `primitive.Im2Col` | ✅ |
-| `Col2Im(outputShape, kernelSize, stride, padding) *Tensor` | Column to image | `primitive.Col2Im` | ✅ |
+| `Im2Col(kernelSize, stride, padding) *Tensor` | Image to column | `fp32.Im2Col` | ✅ |
+| `Col2Im(outputShape, kernelSize, stride, padding) *Tensor` | Column to image | `fp32.Col2Im` | ✅ |
 
 **Function Signatures:**
 
@@ -578,23 +653,18 @@ if t.isContiguous() {
 
 ```go
 // Create tensor from shape (zeros)
-t := &tensor.Tensor{
-    Dim:  []int{2, 3},
-    Data: make([]float32, 6),
-}
+t := tensor.New(tensor.DTFP32, tensor.NewShape(2, 3))
 
-// Create tensor from values
-t := &tensor.Tensor{
-    Dim:  []int{2, 3},
-    Data: []float32{1, 2, 3, 4, 5, 6},
-}
+// Create tensor from existing data
+data := []float32{1, 2, 3, 4, 5, 6}
+t := tensor.FromFloat32(tensor.NewShape(2, 3), data)
 ```
 
 ### Element-Wise Operations
 
 ```go
-a := &tensor.Tensor{Dim: []int{2, 3}, Data: []float32{1, 2, 3, 4, 5, 6}}
-b := &tensor.Tensor{Dim: []int{2, 3}, Data: []float32{1, 1, 1, 1, 1, 1}}
+a := tensor.FromFloat32(tensor.NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
+b := tensor.FromFloat32(tensor.NewShape(2, 3), []float32{1, 1, 1, 1, 1, 1})
 
 // In-place addition (modifies a)
 a.Add(b)
@@ -610,17 +680,17 @@ a.Scale(2.0)
 
 ```go
 // 2D matrix multiplication
-a := &tensor.Tensor{Dim: []int{32, 64}, Data: make([]float32, 32*64)}
-b := &tensor.Tensor{Dim: []int{64, 128}, Data: make([]float32, 64*128)}
+a := tensor.New(tensor.DTFP32, tensor.NewShape(32, 64))
+b := tensor.New(tensor.DTFP32, tensor.NewShape(64, 128))
 c := a.MatMul(b) // Result: [32, 128]
 
 // Batched matrix multiplication
-a := &tensor.Tensor{Dim: []int{8, 32, 64}, Data: make([]float32, 8*32*64)}
-b := &tensor.Tensor{Dim: []int{8, 64, 128}, Data: make([]float32, 8*64*128)}
+a := tensor.New(tensor.DTFP32, tensor.NewShape(8, 32, 64))
+b := tensor.New(tensor.DTFP32, tensor.NewShape(8, 64, 128))
 c := a.MatMul(b) // Result: [8, 32, 128]
 
 // Transpose
-a := &tensor.Tensor{Dim: []int{2, 3}, Data: []float32{1, 2, 3, 4, 5, 6}}
+a := tensor.FromFloat32(tensor.NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
 aT := a.Transpose() // Result: [3, 2]
 ```
 
@@ -628,20 +698,9 @@ aT := a.Transpose() // Result: [3, 2]
 
 ```go
 // 2D Convolution
-input := &tensor.Tensor{
-    Dim:  []int{1, 3, 224, 224}, // [batch, channels, height, width]
-    Data: make([]float32, 1*3*224*224),
-}
-
-kernel := &tensor.Tensor{
-    Dim:  []int{64, 3, 3, 3}, // [outChannels, inChannels, kernelH, kernelW]
-    Data: make([]float32, 64*3*3*3),
-}
-
-bias := &tensor.Tensor{
-    Dim:  []int{64},
-    Data: make([]float32, 64),
-}
+input := tensor.New(tensor.DTFP32, tensor.NewShape(1, 3, 224, 224)) // [batch, channels, height, width]
+kernel := tensor.New(tensor.DTFP32, tensor.NewShape(64, 3, 3, 3))  // [outChannels, inChannels, kernelH, kernelW]
+bias := tensor.New(tensor.DTFP32, tensor.NewShape(64))              // [outChannels]
 
 output := input.Conv2D(kernel, bias, []int{1, 1}, []int{1, 1})
 // Result: [1, 64, 224, 224] (with stride=1, padding=1)
@@ -703,23 +762,29 @@ pkg/core/math/tensor/
 
 ## Integration with Primitive Package
 
-All tensor operations delegate to `math/primitive` when possible:
+All tensor operations delegate to `math/primitive/fp32` when possible:
 
 | Tensor Operation | Primitive Function | Use Case |
 |-----------------|-------------------|----------|
-| `Add`, `Sub` | `Axpy` | Contiguous element-wise add/sub |
-| `Scale` | `Scal` | Contiguous scalar multiplication |
-| `Sum` | `Asum` | Vector sum (L1 norm) |
-| `ArgMax` | `Iamax` | Vector argmax |
-| `MatMul` | `Gemm_*`, `GemmBatched`, `GemmStrided` | Matrix multiplication |
-| `Dot` | `Dot` | Vector dot product |
-| `Norm` (L2) | `Nrm2` | L2 norm |
-| `Norm` (L1) | `Asum` | L1 norm |
-| `Normalize` | `Nrm2` + `Scal` | Vector normalization |
-| `Conv2D` | `Conv2D` | 2D convolution |
-| `Conv2DTransposed` | `Conv2DTransposed` | Transposed convolution |
-| `Im2Col` | `Im2Col` | Image to column |
-| `Col2Im` | `Col2Im` | Column to image |
+| `Add`, `Sub` | `fp32.Axpy` | Contiguous element-wise add/sub |
+| `Scale` | `fp32.Scal` | Contiguous scalar multiplication |
+| `Sum` | `fp32.Asum` | Vector sum (L1 norm) |
+| `ArgMax` | `fp32.Iamax` | Vector argmax |
+| `MatMul` | `fp32.Gemm_*`, `GemmBatched`, `GemmStrided` | Matrix multiplication |
+| `Dot` | `fp32.Dot` | Vector dot product |
+| `Norm` (L2) | `fp32.Nrm2` | L2 norm |
+| `Norm` (L1) | `fp32.Asum` | L1 norm |
+| `Normalize` | `fp32.Nrm2` + `fp32.Scal` | Vector normalization |
+| `Conv2D` | `fp32.Conv2D` | 2D convolution |
+| `Conv2DTransposed` | `fp32.Conv2DTransposed` | Transposed convolution |
+| `Conv3D` | `fp32.Conv3D` | 3D convolution |
+| `MaxPool2D` | `fp32.MaxPool2D` | Max pooling |
+| `AvgPool2D` | `fp32.AvgPool2D` | Average pooling |
+| `GlobalAvgPool2D` | `fp32.GlobalAvgPool2D` | Global average pooling |
+| `AdaptiveAvgPool2D` | `fp32.AdaptiveAvgPool2D` | Adaptive average pooling |
+| `Im2Col` | `fp32.Im2Col` | Image to column |
+| `Col2Im` | `fp32.Col2Im` | Column to image |
+| `BroadcastTo` | `fp32.ExpandTo` | Broadcasting operations |
 
 ## Error Handling
 
@@ -758,4 +823,18 @@ See test files for examples:
 - `tensor_math_test.go` - Element-wise and reduction operations
 - `tensor_linalg_test.go` - Linear algebra operations
 - `tensor_conv_test.go` - Convolution and pooling operations
+
+## Testing
+
+All operations have comprehensive unit tests:
+- Basic functionality tests
+- Edge case tests (empty tensors, zero dimensions)
+- Shape validation tests
+- Numerical accuracy tests
+
+See test files for examples:
+- `tensor_math_test.go` - Element-wise and reduction operations
+- `tensor_linalg_test.go` - Linear algebra operations
+- `tensor_conv_test.go` - Convolution and pooling operations
+
 

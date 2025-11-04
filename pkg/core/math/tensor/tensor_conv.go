@@ -295,6 +295,325 @@ func (t *Tensor) Conv1D(kernel, bias *Tensor, stride, padding int) *Tensor {
 	return result
 }
 
+// Conv1DTo performs 1D convolution and stores result in dst (or creates new tensor if dst is nil).
+func (t *Tensor) Conv1DTo(kernel, bias *Tensor, dst *Tensor, stride, padding int) *Tensor {
+	if t == nil || kernel == nil {
+		return nil
+	}
+
+	tShape := t.Shape()
+	kernelShape := kernel.Shape()
+
+	// Handle both 2D [batch, inChannels, length] and 3D [inChannels, length] input
+	var batchSize int
+	var inChannels int
+	var length int
+
+	if len(tShape) == 2 {
+		// [inChannels, length]
+		inChannels = tShape[0]
+		length = tShape[1]
+		batchSize = 1
+	} else if len(tShape) == 3 {
+		// [batch, inChannels, length]
+		batchSize = tShape[0]
+		inChannels = tShape[1]
+		length = tShape[2]
+	} else {
+		panic(fmt.Sprintf("tensor.Conv1DTo: input must be 2D [inChannels, length] or 3D [batch, inChannels, length], got %v", tShape))
+	}
+
+	// Validate kernel shape: [outChannels, inChannels, kernelLen]
+	if len(kernelShape) != 3 {
+		panic(fmt.Sprintf("tensor.Conv1DTo: kernel must be 3D [outChannels, inChannels, kernelLen], got %v", kernelShape))
+	}
+
+	if kernelShape[1] != inChannels {
+		panic(fmt.Sprintf("tensor.Conv1DTo: kernel inChannels %d doesn't match input inChannels %d", kernelShape[1], inChannels))
+	}
+
+	outChannels := kernelShape[0]
+	kernelLen := kernelShape[2]
+
+	// Calculate output length
+	outLen := (length+2*padding-kernelLen)/stride + 1
+
+	// Determine output shape
+	var outputShape []int
+	if len(tShape) == 2 {
+		outputShape = []int{outChannels, outLen}
+	} else {
+		outputShape = []int{batchSize, outChannels, outLen}
+	}
+
+	// Allocate destination if needed
+	expectedShape := NewShape(outputShape...)
+	if dst == nil {
+		dst = New(DTFP32, expectedShape)
+	} else {
+		if len(dst.Shape()) != len(expectedShape) {
+			panic(fmt.Sprintf("tensor.Conv1DTo: destination shape %v doesn't match expected shape %v", dst.Shape(), expectedShape))
+		}
+		for i, dim := range dst.Shape() {
+			if dim != expectedShape[i] {
+				panic(fmt.Sprintf("tensor.Conv1DTo: destination shape %v doesn't match expected shape %v", dst.Shape(), expectedShape))
+			}
+		}
+	}
+
+	// Create 4D views of input and kernel tensors (share data)
+	input4D := &Tensor{dtype: t.dtype, shape: NewShape(batchSize, inChannels, length, 1), data: t.data}
+	kernel4D := &Tensor{dtype: kernel.dtype, shape: NewShape(outChannels, inChannels, kernelLen, 1), data: kernel.data}
+
+	// Create 4D view of output tensor (shares data with dst)
+	output4D := &Tensor{dtype: dst.dtype, shape: NewShape(batchSize, outChannels, outLen, 1), data: dst.data}
+
+	// Use Conv2DTo with width=1
+	input4D.Conv2DTo(kernel4D, bias, output4D, []int{stride, 1}, []int{padding, 0})
+
+	return dst
+}
+
+// Conv2DKernelGrad computes kernel gradients for 2D convolution
+// Returns the kernel gradient tensor with the same shape as the kernel
+func (t *Tensor) Conv2DKernelGrad(outputGrad *Tensor, kernel *Tensor, stride, padding []int) *Tensor {
+	if t == nil || outputGrad == nil || kernel == nil {
+		return nil
+	}
+
+	tShape := t.Shape()
+	outputGradShape := outputGrad.Shape()
+	kernelShape := kernel.Shape()
+
+	// Validate input shape: [batch, inChannels, height, width]
+	if len(tShape) != 4 {
+		panic(fmt.Sprintf("tensor.Conv2DKernelGrad: input must be 4D [batch, inChannels, height, width], got %v", tShape))
+	}
+
+	batchSize := tShape[0]
+	inChannels := tShape[1]
+	inHeight := tShape[2]
+	inWidth := tShape[3]
+
+	// Validate output gradient shape: [batch, outChannels, outHeight, outWidth]
+	if len(outputGradShape) != 4 {
+		panic(fmt.Sprintf("tensor.Conv2DKernelGrad: outputGrad must be 4D [batch, outChannels, outHeight, outWidth], got %v", outputGradShape))
+	}
+
+	if outputGradShape[0] != batchSize {
+		panic(fmt.Sprintf("tensor.Conv2DKernelGrad: outputGrad batch size %d doesn't match input batch size %d", outputGradShape[0], batchSize))
+	}
+
+	outChannels := outputGradShape[1]
+	outHeight := outputGradShape[2]
+	outWidth := outputGradShape[3]
+
+	// Validate kernel shape: [outChannels, inChannels, kernelH, kernelW]
+	if len(kernelShape) != 4 {
+		panic(fmt.Sprintf("tensor.Conv2DKernelGrad: kernel must be 4D [outChannels, inChannels, kernelH, kernelW], got %v", kernelShape))
+	}
+
+	if kernelShape[0] != outChannels || kernelShape[1] != inChannels {
+		panic(fmt.Sprintf("tensor.Conv2DKernelGrad: kernel shape %v doesn't match expected [outChannels=%d, inChannels=%d, kernelH, kernelW]", kernelShape, outChannels, inChannels))
+	}
+
+	kernelH := kernelShape[2]
+	kernelW := kernelShape[3]
+
+	// Validate stride and padding
+	if len(stride) != 2 {
+		panic(fmt.Sprintf("tensor.Conv2DKernelGrad: stride must have 2 elements [strideH, strideW], got %v", stride))
+	}
+	if len(padding) != 2 {
+		panic(fmt.Sprintf("tensor.Conv2DKernelGrad: padding must have 2 elements [padH, padW], got %v", padding))
+	}
+
+	strideH := stride[0]
+	strideW := stride[1]
+	padH := padding[0]
+	padW := padding[1]
+
+	// Create kernel gradient tensor
+	kernelGrad := New(t.dtype, kernelShape)
+
+	// Call fp32.Conv2DKernelGrad
+	fp32.Conv2DKernelGrad(
+		kernelGrad.data,
+		t.data,
+		outputGrad.data,
+		batchSize,
+		inChannels,
+		outChannels,
+		inHeight,
+		inWidth,
+		outHeight,
+		outWidth,
+		kernelH,
+		kernelW,
+		strideH,
+		strideW,
+		padH,
+		padW,
+	)
+
+	return kernelGrad
+}
+
+// Conv1DKernelGrad computes kernel gradients for 1D convolution
+// Returns the kernel gradient tensor with the same shape as the kernel
+func (t *Tensor) Conv1DKernelGrad(outputGrad *Tensor, kernel *Tensor, stride, padding int) *Tensor {
+	if t == nil || outputGrad == nil || kernel == nil {
+		return nil
+	}
+
+	tShape := t.Shape()
+	outputGradShape := outputGrad.Shape()
+	kernelShape := kernel.Shape()
+
+	// Handle both 2D [inChannels, length] and 3D [batch, inChannels, length] input
+	var batchSize int
+	var inChannels int
+	var inLength int
+
+	if len(tShape) == 2 {
+		// [inChannels, length]
+		inChannels = tShape[0]
+		inLength = tShape[1]
+		batchSize = 1
+	} else if len(tShape) == 3 {
+		// [batch, inChannels, length]
+		batchSize = tShape[0]
+		inChannels = tShape[1]
+		inLength = tShape[2]
+	} else {
+		panic(fmt.Sprintf("tensor.Conv1DKernelGrad: input must be 2D [inChannels, length] or 3D [batch, inChannels, length], got %v", tShape))
+	}
+
+	// Handle both 2D [outChannels, length] and 3D [batch, outChannels, length] output gradient
+	var outChannels int
+	var outLength int
+
+	if len(outputGradShape) == 2 {
+		// [outChannels, length]
+		outChannels = outputGradShape[0]
+		outLength = outputGradShape[1]
+		if batchSize != 1 {
+			panic(fmt.Sprintf("tensor.Conv1DKernelGrad: outputGrad batch size doesn't match input"))
+		}
+	} else if len(outputGradShape) == 3 {
+		// [batch, outChannels, length]
+		if outputGradShape[0] != batchSize {
+			panic(fmt.Sprintf("tensor.Conv1DKernelGrad: outputGrad batch size %d doesn't match input batch size %d", outputGradShape[0], batchSize))
+		}
+		outChannels = outputGradShape[1]
+		outLength = outputGradShape[2]
+	} else {
+		panic(fmt.Sprintf("tensor.Conv1DKernelGrad: outputGrad must be 2D [outChannels, length] or 3D [batch, outChannels, length], got %v", outputGradShape))
+	}
+
+	// Validate kernel shape: [outChannels, inChannels, kernelLen]
+	if len(kernelShape) != 3 {
+		panic(fmt.Sprintf("tensor.Conv1DKernelGrad: kernel must be 3D [outChannels, inChannels, kernelLen], got %v", kernelShape))
+	}
+
+	if kernelShape[0] != outChannels || kernelShape[1] != inChannels {
+		panic(fmt.Sprintf("tensor.Conv1DKernelGrad: kernel shape %v doesn't match expected [outChannels=%d, inChannels=%d, kernelLen]", kernelShape, outChannels, inChannels))
+	}
+
+	kernelLen := kernelShape[2]
+
+	// Create kernel gradient tensor
+	kernelGrad := New(t.dtype, kernelShape)
+
+	// Call fp32.Conv1DKernelGrad
+	fp32.Conv1DKernelGrad(
+		kernelGrad.data,
+		t.data,
+		outputGrad.data,
+		batchSize,
+		inChannels,
+		outChannels,
+		inLength,
+		outLength,
+		kernelLen,
+		stride,
+		padding,
+	)
+
+	return kernelGrad
+}
+
+// Conv1DTransposed performs transposed 1D convolution (deconvolution)
+// Input shape: [batch, inChannels, inLength]
+// Kernel shape: [outChannels, inChannels, kernelLen] (forward kernel format)
+// Output shape: [batch, inChannels, outLength] (note: outputs inChannels, not outChannels)
+// This accepts the forward kernel format and internally transposes it
+func (t *Tensor) Conv1DTransposed(kernel *Tensor, bias *Tensor, stride, padding int) *Tensor {
+	if t == nil || kernel == nil {
+		return nil
+	}
+
+	tShape := t.Shape()
+	kernelShape := kernel.Shape()
+
+	// Handle both 2D [inChannels, length] and 3D [batch, inChannels, length] input
+	var batchSize int
+	var inChannels int
+	var inLength int
+
+	if len(tShape) == 2 {
+		// [inChannels, length]
+		inChannels = tShape[0]
+		inLength = tShape[1]
+		batchSize = 1
+	} else if len(tShape) == 3 {
+		// [batch, inChannels, length]
+		batchSize = tShape[0]
+		inChannels = tShape[1]
+		inLength = tShape[2]
+	} else {
+		panic(fmt.Sprintf("tensor.Conv1DTransposed: input must be 2D [inChannels, length] or 3D [batch, inChannels, length], got %v", tShape))
+	}
+
+	// Validate kernel shape: [outChannels, inChannels, kernelLen] (forward format)
+	if len(kernelShape) != 3 {
+		panic(fmt.Sprintf("tensor.Conv1DTransposed: kernel must be 3D [outChannels, inChannels, kernelLen], got %v", kernelShape))
+	}
+
+	inChannelsKernel := kernelShape[1]
+	if kernelShape[0] != inChannels {
+		panic(fmt.Sprintf("tensor.Conv1DTransposed: kernel outChannels %d doesn't match input inChannels %d", kernelShape[0], inChannels))
+	}
+
+	kernelLen := kernelShape[2]
+
+	// Transpose kernel from [outChannels, inChannels, kernelLen] to [outChannels, inChannels, kernelLen]
+	// For transposed conv, we want [inChannels, outChannels, kernelLen] -> [16, 3, K]
+	// But wait, for Conv2DTransposed, kernel should be [inChannels, outChannels, kernelH, kernelW]
+	// where inChannels is input channels to transposed conv (16), outChannels is output channels (3)
+	// So kernel should be [16, 3, K] which is the original forward kernel [16, 3, K]!
+	// No transpose needed!
+
+	// Reshape to 4D for Conv2DTransposed: add width=1 dimension
+	// Input: [batch, inChannels, length] -> [batch, inChannels, length, 1]
+	// Kernel: [inChannels, outChannels, kernelLen] -> [inChannels, outChannels, kernelLen, 1]
+	input4D := t.Clone().Reshape([]int{batchSize, inChannels, inLength, 1})
+	kernel4D := kernel.Clone().Reshape([]int{inChannels, inChannelsKernel, kernelLen, 1})
+
+	// Use Conv2DTransposed with width=1
+	result4D := input4D.Conv2DTransposed(kernel4D, bias, []int{stride, 1}, []int{padding, 0})
+
+	// Reshape back to 3D: [batch, inChannelsKernel, outLength, 1] -> [batch, inChannelsKernel, outLength]
+	result := result4D.Reshape([]int{batchSize, inChannelsKernel, result4D.Shape()[2]})
+
+	// If original was 2D, remove batch dimension
+	if len(tShape) == 2 {
+		result = result.Reshape([]int{inChannelsKernel, result.Shape()[2]})
+	}
+
+	return result
+}
+
 // MaxPool2D performs max pooling operation
 // Input shape: [batch, channels, height, width]
 // Output shape: [batch, channels, outHeight, outWidth]

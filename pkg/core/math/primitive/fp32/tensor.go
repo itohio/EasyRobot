@@ -217,6 +217,127 @@ func Conv2D(
 	}
 }
 
+// Conv2DKernelGrad computes kernel gradients for 2D convolution
+// input: [batchSize, inChannels, inHeight, inWidth]
+// outputGrad: [batchSize, outChannels, outHeight, outWidth]
+// kernelGrad: [outChannels, inChannels, kernelH, kernelW] (output)
+func Conv2DKernelGrad(
+	kernelGrad, input, outputGrad []float32,
+	batchSize, inChannels, outChannels int,
+	inHeight, inWidth int,
+	outHeight, outWidth int,
+	kernelH, kernelW int,
+	strideH, strideW int,
+	padH, padW int,
+) {
+	if batchSize == 0 || inChannels == 0 || outChannels == 0 {
+		return
+	}
+
+	kernelSize := inChannels * kernelH * kernelW
+	im2colSize := batchSize * outHeight * outWidth
+
+	// Allocate temporary buffers
+	inputIm2Col := make([]float32, im2colSize*kernelSize)
+	outputGradFlat := make([]float32, im2colSize*outChannels)
+
+	// Step 1: Convert input to columns using Im2Col
+	// inputIm2Col: [batchSize*outHeight*outWidth, inChannels*kernelH*kernelW]
+	Im2Col(inputIm2Col, input, batchSize, inChannels, inHeight, inWidth,
+		kernelH, kernelW, padH, padW, strideH, strideW)
+
+	// Step 2: Flatten output gradient to matrix format
+	// outputGrad: [batchSize, outChannels, outHeight, outWidth] -> [batchSize*outHeight*outWidth, outChannels]
+	for b := 0; b < batchSize; b++ {
+		for outH := 0; outH < outHeight; outH++ {
+			for outW := 0; outW < outWidth; outW++ {
+				for oc := 0; oc < outChannels; oc++ {
+					srcIdx := b*outChannels*outHeight*outWidth +
+						oc*outHeight*outWidth +
+						outH*outWidth + outW
+					dstIdx := (b*outHeight*outWidth+outH*outWidth+outW)*outChannels + oc
+					outputGradFlat[dstIdx] = outputGrad[srcIdx]
+				}
+			}
+		}
+	}
+
+	// Step 3: Compute kernel gradients using GEMM
+	// kernelGrad = outputGradFlat^T * inputIm2Col
+	// outputGradFlat: [im2colSize, outChannels] (we treat as [outChannels, im2colSize] for GEMM)
+	// inputIm2Col: [im2colSize, kernelSize]
+	// kernelGrad: [outChannels, kernelSize]
+
+	// We use GEMM_NN: C = alpha*A*B + beta*C
+	// A (outputGradFlat^T): M=outChannels, K=im2colSize
+	// B (inputIm2Col): K=im2colSize, N=kernelSize
+	// Result C: [outChannels, kernelSize]
+
+	Gemm_NN(kernelGrad, outputGradFlat, inputIm2Col,
+		kernelSize,  // ldC (kernelGrad leading dimension = kernelSize)
+		im2colSize,  // ldA (outputGradFlat leading dimension = im2colSize, but we access as transposed)
+		kernelSize,  // ldB (inputIm2Col leading dimension = kernelSize)
+		outChannels, // M (output channels)
+		kernelSize,  // N (kernel size)
+		im2colSize,  // K (im2col size)
+		1.0,         // alpha
+		0.0,         // beta
+	)
+}
+
+// Conv1DKernelGrad computes kernel gradients for 1D convolution
+// input: [batchSize, inChannels, inLength]
+// outputGrad: [batchSize, outChannels, outLength]
+// kernelGrad: [outChannels, inChannels, kernelLen] (output)
+func Conv1DKernelGrad(
+	kernelGrad, input, outputGrad []float32,
+	batchSize, inChannels, outChannels int,
+	inLength, outLength int,
+	kernelLen int,
+	stride, padding int,
+) {
+	if batchSize == 0 || inChannels == 0 || outChannels == 0 {
+		return
+	}
+
+	kernelSize := inChannels * kernelLen
+	im2colSize := batchSize * outLength
+
+	// Allocate temporary buffers
+	inputIm2Col := make([]float32, im2colSize*kernelSize)
+	outputGradFlat := make([]float32, im2colSize*outChannels)
+
+	// Step 1: Convert input to columns using Im2Col (treating as 2D with width=1)
+	Im2Col(inputIm2Col, input, batchSize, inChannels, inLength, 1,
+		kernelLen, 1, padding, 0, stride, 1)
+
+	// Step 2: Flatten output gradient to matrix format
+	// outputGrad: [batchSize, outChannels, outLength] -> [batchSize*outLength, outChannels]
+	for b := 0; b < batchSize; b++ {
+		for outL := 0; outL < outLength; outL++ {
+			for oc := 0; oc < outChannels; oc++ {
+				srcIdx := b*outChannels*outLength +
+					oc*outLength + outL
+				dstIdx := (b*outLength+outL)*outChannels + oc
+				outputGradFlat[dstIdx] = outputGrad[srcIdx]
+			}
+		}
+	}
+
+	// Step 3: Compute kernel gradients using GEMM
+	// Same as 2D case
+	Gemm_NN(kernelGrad, outputGradFlat, inputIm2Col,
+		kernelSize,  // ldC
+		im2colSize,  // ldA
+		kernelSize,  // ldB
+		outChannels, // M
+		kernelSize,  // N
+		im2colSize,  // K
+		1.0,         // alpha
+		0.0,         // beta
+	)
+}
+
 // Conv2DTransposed performs transposed 2D convolution (deconvolution)
 // This is the inverse operation of Conv2D
 // output: [batchSize, outChannels, outHeight, outWidth]

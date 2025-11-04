@@ -90,6 +90,33 @@ func Iamax(x []float32, stride, n int) int
 - `n`: Vector length
 - `alpha`: Scalar multiplier
 
+### Non-BLAS Utility Functions
+
+These functions exist in `array.go` and `vector.go` for tensor operations and statistics:
+
+#### From `array.go`:
+- `SumArr`, `DiffArr`, `MulArr`, `DivArr` - Element-wise operations (for tensor ops)
+- `Sum`, `SqrSum` - Utility reductions for statistics
+- `StatsArr` - Computes min, max, mean, and standard deviation in one pass
+- `PercentileArr` - Computes percentile value and sum of values above percentile
+- `SumArrInPlace` - In-place scalar addition (utility)
+- `MulArrInPlace` - **DEPRECATED**: Use `Scal` from level1.go instead, kept for backward compatibility
+
+**Removed (replaced by BLAS operations):**
+- `SumArrConst`, `DiffArrConst`, `MulArrConst`, `DivArrConst` → Use `Axpy`, `Scal` from level1.go
+- `MinArr`, `MaxArr`, `MeanArr`, `MomentsArr` → Use `StatsArr`
+- `WeightedMomentsArr` → Removed (not needed)
+
+#### From `vector.go`:
+- `HadamardProduct` - Element-wise product (for tensor ops)
+- `HadamardProductAdd` - Element-wise product and add (for tensor ops)
+- `DotProduct` - **DEPRECATED**: Use `Dot` from level1.go, kept for backward compatibility
+- `DotProduct2D` - 2D matrix dot product (specialized, not BLAS)
+- `NormalizeVec` - Vector normalization (uses `Nrm2` from level1.go)
+
+**Removed (replaced by BLAS operations):**
+- `OuterProduct`, `OuterProductConst`, `OuterProductAddConst` → Use `Ger` from level2.go
+
 ## BLAS Level 2: Matrix-Vector Operations
 
 ### File: `level2.go`
@@ -196,7 +223,7 @@ func Syrk(c, a []float32, ldC, ldA, N, K int, alpha, beta float32)
 
 ### File: `la.go`
 
-Linear Algebra Package operations for matrix factorizations and decompositions. All operations use row-major storage. See [LA.md](LA.md) for detailed function specifications.
+Linear Algebra Package operations for matrix factorizations and decompositions. All operations use row-major storage.
 
 | LAPACK | Function | Description | Status |
 |--------|----------|-------------|--------|
@@ -211,73 +238,250 @@ Linear Algebra Package operations for matrix factorizations and decompositions. 
 | GEPSEU | Gepseu | Moore-Penrose pseudo-inverse | ✅ |
 | GNNLS | Gnnls | Non-negative least squares | ✅ |
 
-### LU Decomposition
+### Design Principles for LAPACK Operations
 
-```go
-// GETRF: A = P * L * U (LU decomposition with partial pivoting)
-func Getrf(a, l, u []float32, ipiv []int, ldA, ldL, ldU, M, N int) error
-
-// GETRF_IP: In-place LU decomposition (stores L and U in A)
-func Getrf_IP(a []float32, ipiv []int, ldA, M, N int) error
-```
+1. **Row-Major Storage**: All matrices stored in row-major order (Go nested arrays layout)
+2. **Zero Allocations**: No internal memory allocations in hot paths
+3. **Stride-Based**: All operations accept leading dimension (ld) parameters
+4. **LAPACK Naming**: Follow LAPACK naming conventions where applicable
+5. **Explicit Dimensions**: Always specify dimensions explicitly
+6. **In-Place Support**: Many operations support in-place computation
 
 ### Matrix Inversion
 
+#### GETRI: General Matrix Inversion
+
+Computes the inverse of a matrix using LU decomposition with partial pivoting.
+
 ```go
-// GETRI: A^(-1) = U^(-1) * L^(-1) * P^T (uses LU from GETRF)
+// GETRF: Compute LU decomposition with partial pivoting
+// A = P * L * U
+// Returns pivot indices in ipiv (length min(M,N))
+func Getrf(a []float32, ldA, M, N int, ipiv []int) error
+
+// GETRI: Compute inverse using LU decomposition
+// A^(-1) = U^(-1) * L^(-1) * P^T
+// Input: a contains LU decomposition from GETRF, ipiv contains pivots
+// Output: aInv contains the inverse
 func Getri(aInv, a []float32, ldA, N int, ipiv []int) error
 ```
 
+**Dimensions:**
+- A: N × N square matrix (row-major, ldA ≥ N)
+- ipiv: pivot indices (length N)
+- Result: A^(-1) in aInv
+
+**Note:** GETRF modifies input matrix A in-place. GETRI uses the LU decomposition from GETRF.
+
+### LU Decomposition
+
+#### GETRF: LU Factorization with Partial Pivoting
+
+Computes LU decomposition with partial pivoting: A = P * L * U.
+
+```go
+// GETRF: Compute LU decomposition with partial pivoting
+// A = P * L * U
+// On input: a contains M × N matrix (row-major, ldA ≥ N)
+// On output: l contains M × min(M,N) lower triangular matrix (unit diagonal)
+//           u contains min(M,N) × N upper triangular matrix
+//           ipiv contains pivot indices (length min(M,N))
+func Getrf(a, l, u []float32, ipiv []int, ldA, ldL, ldU, M, N int) error
+
+// Alternative in-place version (stores LU in A):
+// GETRF_IP: Compute LU decomposition with partial pivoting (in-place)
+// On input: a contains M × N matrix
+// On output: a contains L (below diagonal) and U (on/above diagonal)
+//           ipiv contains pivot indices
+func Getrf_IP(a []float32, ipiv []int, ldA, M, N int) error
+```
+
+**Dimensions:**
+- A: M × N matrix (row-major, ldA ≥ N)
+- L: M × min(M,N) lower triangular (unit diagonal, row-major, ldL ≥ min(M,N))
+- U: min(M,N) × N upper triangular (row-major, ldU ≥ N)
+- ipiv: pivot indices (length min(M,N))
+- Result: A = P * L * U where P is permutation matrix from ipiv
+
+**Note:** GETRF can work in-place (storing L and U in A) or with separate output matrices. The in-place version modifies A to contain L (below diagonal) and U (on/above diagonal).
+
 ### Householder Transformations
 
-Primitive Householder transformation functions used by QR decomposition and NNLS.
+#### H1, H2, H3: Householder Transform Primitives
+
+Low-level Householder transformation functions used by QR decomposition and NNLS. Reference: C. L. Lawson and R. J. Hanson, 'Solving Least Squares Problems'.
 
 ```go
 // H1: Construct Householder transformation
-// Returns transformation parameter 'up'
+// Computes transformation parameter 'up' for Householder reflector
+// Input: a contains M × N matrix (row-major, ldA ≥ N)
+//        col0: column index of the pivot vector
+//        lpivot: pivot row index
+//        l1: starting row index for transformation
+//        rangeVal: regularization parameter for numerical stability (typically 1e30)
+// Output: up: transformation parameter (returned)
+//         a: modified (pivot element contains transformation value)
 func H1(a []float32, col0, lpivot, l1 int, ldA int, rangeVal float32) (up float32, err error)
 
 // H2: Apply Householder transformation to vector
-// Applies transformation to vector zz in-place
+// Applies transformation I + u*u^T/b to vector zz
+// Input: a contains M × N matrix (row-major, ldA ≥ N)
+//        zz: vector to transform (modified in-place)
+//        col0: column index of the pivot vector in a
+//        lpivot: pivot row index
+//        l1: starting row index for transformation
+//        up: transformation parameter from H1
+//        rangeVal: regularization parameter
 func H2(a, zz []float32, col0, lpivot, l1 int, up float32, ldA int, rangeVal float32) error
 
 // H3: Apply Householder transformation to matrix column
-// Applies transformation to column col1 of matrix a in-place
+// Applies transformation I + u*u^T/b to column col1 of matrix a
+// Input: a contains M × N matrix (row-major, ldA ≥ N)
+//        col0: column index of the pivot vector (contains Householder vector)
+//        lpivot: pivot row index
+//        l1: starting row index for transformation
+//        up: transformation parameter from H1
+//        col1: column index to transform
+//        rangeVal: regularization parameter
+// Output: a: column col1 is transformed in-place
 func H3(a []float32, col0, lpivot, l1 int, up float32, col1 int, ldA int, rangeVal float32) error
 ```
 
+**Dimensions:**
+- A: M × N matrix (row-major, ldA ≥ N)
+- zz: vector of length M
+- col0, col1: column indices (0 ≤ col0, col1 < N)
+- lpivot: pivot row index (0 ≤ lpivot < l1 < M)
+- l1: starting row index for transformation
+- rangeVal: regularization parameter (typically 1e30 for float32)
+
+**Operation:**
+- H1: Constructs Householder reflector `H = I - 2*u*u^T/(u^T*u)` where `u` is stored in column `col0` starting from row `lpivot`
+- H2: Applies transformation to vector: `zz = H * zz` where H uses reflector from H1
+- H3: Applies transformation to matrix column: `a[:,col1] = H * a[:,col1]` where H uses reflector from H1
+
+**Usage:** These functions are building blocks for QR decomposition (GEQRF) and NNLS (GNNLS). H1 constructs the transformation, H2 and H3 apply it to vectors and matrix columns respectively.
+
 ### QR Decomposition
 
+#### GEQRF: QR Factorization
+
+Computes QR decomposition using Householder reflections.
+
 ```go
-// GEQRF: A = Q * R (QR decomposition using Householder reflections)
+// GEQRF: Compute QR decomposition A = Q * R
+// On input: a contains M × N matrix
+// On output: a contains R in upper triangular part and Householder vectors below diagonal
+//           tau contains scalar factors for Householder vectors (length min(M,N))
 func Geqrf(a []float32, tau []float32, ldA, M, N int) error
 
-// ORGQR: Generate Q from QR decomposition
+// ORGQR: Generate orthogonal matrix Q from QR decomposition
+// Input: a and tau from GEQRF
+// Output: q contains M × M orthogonal matrix Q
 func Orgqr(q, a []float32, tau []float32, ldA, ldQ, M, N, K int) error
 ```
 
+**Dimensions:**
+- A: M × N matrix (row-major, ldA ≥ N)
+- tau: scalar factors (length min(M,N))
+- Q: M × M orthogonal matrix (row-major, ldQ ≥ M)
+- R: N × N upper triangular (stored in upper part of a)
+
+**Note:** GEQRF modifies input matrix A in-place. Lower triangular part contains Householder vectors.
+
 ### SVD Decomposition
 
+#### GESVD: Singular Value Decomposition
+
+Computes singular value decomposition using bidiagonalization and QR iteration.
+
 ```go
-// GESVD: A = U * Σ * V^T (singular value decomposition)
+// GESVD: Compute SVD decomposition A = U * Σ * V^T
+// On input: a contains M × N matrix
+// On output: u contains M × M left singular vectors (row-major, ldU ≥ M)
+//           s contains min(M,N) singular values (sorted descending)
+//           vt contains N × N right singular vectors transposed (row-major, ldVt ≥ N)
 func Gesvd(u, s, vt, a []float32, ldA, ldU, ldVt, M, N int) error
 ```
 
+**Dimensions:**
+- A: M × N matrix (row-major, ldA ≥ N)
+- U: M × M left singular vectors (row-major, ldU ≥ M)
+- s: singular values (length min(M,N), sorted descending)
+- Vt: N × N right singular vectors transposed (row-major, ldVt ≥ N)
+- Result: A = U * diag(s) * Vt
+
+**Note:** Input matrix A may be modified during computation.
+
 ### Pseudo-Inverse
 
+#### GEPSEU: Moore-Penrose Pseudo-Inverse
+
+Computes the pseudo-inverse using SVD decomposition.
+
 ```go
-// GEPSEU: A^+ = V * Σ^+ * U^T (Moore-Penrose pseudo-inverse)
+// GEPSEU: Compute Moore-Penrose pseudo-inverse A^+
+// A^+ = V * Σ^+ * U^T where Σ^+ is pseudo-inverse of diagonal matrix
+// Input: a contains M × N matrix
+// Output: aPinv contains N × M pseudo-inverse (row-major, ldApinv ≥ M)
 func Gepseu(aPinv, a []float32, ldA, ldApinv, M, N int) error
 ```
 
-### Non-Negative Least Squares
+**Dimensions:**
+- A: M × N matrix (row-major, ldA ≥ N)
+- A^+: N × M pseudo-inverse (row-major, ldApinv ≥ M)
+- Result: A * A^+ = I_M (if M ≥ N) or A^+ * A = I_N (if N ≥ M)
+
+**Algorithm:** Uses GESVD internally and computes A^+ = V * diag(s^+) * U^T where s^+[i] = 1/s[i] if |s[i]| > tolerance, else 0.
+
+### Non-Negative Least Squares (NNLS)
+
+#### GNNLS: Non-Negative Least Squares
+
+Solves constrained least squares problem: min ||AX - B|| subject to X ≥ 0.
 
 ```go
-// GNNLS: Solve min ||AX - B|| subject to X >= 0
+// GNNLS: Solve non-negative least squares min ||AX - B|| subject to X >= 0
+// Input: a contains M × N matrix (row-major, ldA ≥ N)
+//        b contains M × 1 right-hand side vector
+// Output: x contains N × 1 solution vector (non-negative)
+// Returns: residual norm ||AX - B||
 func Gnnls(x, a, b []float32, ldA, M, N int) (rNorm float32, err error)
 ```
 
-For detailed specifications, see [LA.md](LA.md).
+**Dimensions:**
+- A: M × N matrix (row-major, ldA ≥ N)
+- B: M × 1 right-hand side vector
+- X: N × 1 solution vector (all elements ≥ 0)
+- Result: minimizes ||AX - B||_2 subject to X ≥ 0
+
+**Algorithm:** Lawson-Hanson active set method with Householder QR decomposition.
+
+**Note:** Input matrix A and vector B may be modified during computation.
+
+### Row-Major Considerations
+
+Since all operations use row-major storage (matching Go's `[][]float32` layout), the function signatures differ from standard LAPACK (which uses column-major):
+
+1. **Leading Dimension**: `ldA ≥ N` (number of columns) for row-major, vs `ldA ≥ M` (number of rows) for column-major
+2. **Transpose Operations**: May need special handling for operations that transpose internally
+3. **Householder Vectors**: Stored below diagonal in row-major matrices (vs above diagonal in column-major)
+
+## Activation Functions
+
+Activation functions are implemented as neural network layers in the `math/nn/layers` package. These provide both forward and backward operations for automatic differentiation and are not part of the primitive linear algebra operations.
+
+### Implemented Activation Functions
+
+| Function | Description | Location | Status |
+|----------|-------------|----------|--------|
+| **ReLU** | Rectified Linear Unit | `math/nn/layers/activations.go` | ✅ |
+| **Sigmoid** | Logistic function | `math/nn/layers/activations.go` | ✅ |
+| **Tanh** | Hyperbolic tangent | `math/nn/layers/activations.go` | ✅ |
+| **Softmax** | Normalized exponential | `math/nn/layers/activations.go` | ✅ |
+| **Dropout** | Random dropout | `math/nn/layers/activations.go` | ✅ |
+
+See `math/nn/layers/activations.go` and the tensor package SPEC.md for detailed documentation of activation function implementations.
 
 ## Stride Parameter Rules
 
