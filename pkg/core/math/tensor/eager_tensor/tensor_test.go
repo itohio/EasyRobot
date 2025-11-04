@@ -1,8 +1,9 @@
-package tensor
+package eager_tensor
 
 import (
 	"testing"
 
+	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -14,17 +15,17 @@ func TestFlat(t *testing.T) {
 	}{
 		{
 			name:     "2x2 tensor",
-			tensor:   FromFloat32(NewShape(2, 2), []float32{1, 2, 3, 4}),
+			tensor:   FromFloat32(types.NewShape(2, 2), []float32{1, 2, 3, 4}),
 			expected: []float32{1, 2, 3, 4},
 		},
 		{
 			name:     "1D tensor",
-			tensor:   FromFloat32(NewShape(5), []float32{1, 2, 3, 4, 5}),
+			tensor:   FromFloat32(types.NewShape(5), []float32{1, 2, 3, 4, 5}),
 			expected: []float32{1, 2, 3, 4, 5},
 		},
 		{
 			name:     "3D tensor",
-			tensor:   FromFloat32(NewShape(2, 2, 2), []float32{1, 2, 3, 4, 5, 6, 7, 8}),
+			tensor:   FromFloat32(types.NewShape(2, 2, 2), []float32{1, 2, 3, 4, 5, 6, 7, 8}),
 			expected: []float32{1, 2, 3, 4, 5, 6, 7, 8},
 		},
 		{
@@ -36,7 +37,7 @@ func TestFlat(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.tensor.Flat()
+			result := tt.tensor.Data().([]float32)
 
 			if tt.tensor.Empty() {
 				if result != nil {
@@ -51,11 +52,11 @@ func TestFlat(t *testing.T) {
 			}
 
 			// Verify it's the same underlying slice (zero-copy)
-			tensorData := tt.tensor.Data()
+			tensorData := tt.tensor.Data().([]float32)
 			if len(tensorData) > 0 {
 				originalFirst := tensorData[0]
 				result[0] = 999.0
-				if tt.tensor.Data()[0] != 999.0 {
+				if tt.tensor.Data().([]float32)[0] != 999.0 {
 					t.Errorf("Flat() should return same slice (zero-copy), but modifying result didn't modify original")
 				}
 				// Restore
@@ -70,7 +71,7 @@ func TestFlat(t *testing.T) {
 }
 
 func TestAt(t *testing.T) {
-	tensor := FromFloat32(NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
+	tensor := FromFloat32(types.NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
 
 	tests := []struct {
 		name        string
@@ -143,13 +144,13 @@ func TestAt(t *testing.T) {
 	}
 
 	// Test 3D tensor
-	tensor3D := FromFloat32(NewShape(2, 2, 2), []float32{1, 2, 3, 4, 5, 6, 7, 8})
+	tensor3D := FromFloat32(types.NewShape(2, 2, 2), []float32{1, 2, 3, 4, 5, 6, 7, 8})
 	result := tensor3D.At(1, 0, 1)
 	assert.InDelta(t, 6.0, result, 1e-6, "At(1, 0, 1) for 3D tensor = %f, expected 6.0", result)
 }
 
 func TestSetAt(t *testing.T) {
-	tensor := FromFloat32(NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
+	tensor := FromFloat32(types.NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
 
 	tests := []struct {
 		name        string
@@ -222,56 +223,56 @@ func TestReshape(t *testing.T) {
 	tests := []struct {
 		name        string
 		tensor      Tensor
-		newShape    []int
+		shape       []int
 		expected    []float32
 		shouldPanic bool
 	}{
 		{
 			name:     "2x2 to 1x4",
-			tensor:   FromFloat32(NewShape(2, 2), []float32{1, 2, 3, 4}),
-			newShape: []int{1, 4},
+			tensor:   FromFloat32(types.NewShape(2, 2), []float32{1, 2, 3, 4}),
+			shape:    []int{1, 4},
 			expected: []float32{1, 2, 3, 4},
 		},
 		{
 			name:     "2x2 to 4",
-			tensor:   FromFloat32(NewShape(2, 2), []float32{1, 2, 3, 4}),
-			newShape: []int{4},
+			tensor:   FromFloat32(types.NewShape(2, 2), []float32{1, 2, 3, 4}),
+			shape:    []int{4},
 			expected: []float32{1, 2, 3, 4},
 		},
 		{
 			name:     "6 to 2x3",
-			tensor:   FromFloat32(NewShape(6), []float32{1, 2, 3, 4, 5, 6}),
-			newShape: []int{2, 3},
+			tensor:   FromFloat32(types.NewShape(6), []float32{1, 2, 3, 4, 5, 6}),
+			shape:    []int{2, 3},
 			expected: []float32{1, 2, 3, 4, 5, 6},
 		},
 		{
 			name:     "2x2x2 to 8",
-			tensor:   FromFloat32(NewShape(2, 2, 2), []float32{1, 2, 3, 4, 5, 6, 7, 8}),
-			newShape: []int{8},
+			tensor:   FromFloat32(types.NewShape(2, 2, 2), []float32{1, 2, 3, 4, 5, 6, 7, 8}),
+			shape:    []int{8},
 			expected: []float32{1, 2, 3, 4, 5, 6, 7, 8},
 		},
 		{
 			name:     "2x2x2 to 4x2",
-			tensor:   FromFloat32(NewShape(2, 2, 2), []float32{1, 2, 3, 4, 5, 6, 7, 8}),
-			newShape: []int{4, 2},
+			tensor:   FromFloat32(types.NewShape(2, 2, 2), []float32{1, 2, 3, 4, 5, 6, 7, 8}),
+			shape:    []int{4, 2},
 			expected: []float32{1, 2, 3, 4, 5, 6, 7, 8},
 		},
 		{
 			name:        "size mismatch",
-			tensor:      FromFloat32(NewShape(2, 2), []float32{1, 2, 3, 4}),
-			newShape:    []int{5},
+			tensor:      FromFloat32(types.NewShape(2, 2), []float32{1, 2, 3, 4}),
+			shape:       []int{5},
 			shouldPanic: true,
 		},
 		{
 			name:        "zero dimension",
-			tensor:      FromFloat32(NewShape(2, 2), []float32{1, 2, 3, 4}),
-			newShape:    []int{0, 4},
+			tensor:      FromFloat32(types.NewShape(2, 2), []float32{1, 2, 3, 4}),
+			shape:       []int{0, 4},
 			shouldPanic: true,
 		},
 		{
 			name:        "negative dimension",
-			tensor:      FromFloat32(NewShape(2, 2), []float32{1, 2, 3, 4}),
-			newShape:    []int{-1, 4},
+			tensor:      FromFloat32(types.NewShape(2, 2), []float32{1, 2, 3, 4}),
+			shape:       []int{-1, 4},
 			shouldPanic: true,
 		},
 	}
@@ -291,7 +292,7 @@ func TestReshape(t *testing.T) {
 				}
 			}()
 
-			result := tt.tensor.Reshape(tt.newShape)
+			result := tt.tensor.Reshape(tt.shape)
 
 			if tt.shouldPanic {
 				return
@@ -303,28 +304,28 @@ func TestReshape(t *testing.T) {
 
 			// Verify shape
 			resultShape := result.Shape()
-			if len(resultShape) != len(tt.newShape) {
-				t.Errorf("Reshape() shape length = %d, expected %d", len(resultShape), len(tt.newShape))
+			if len(resultShape) != len(tt.shape) {
+				t.Errorf("Reshape() shape length = %d, expected %d", len(resultShape), len(tt.shape))
 			}
 
-			for i := range tt.newShape {
-				if resultShape[i] != tt.newShape[i] {
-					t.Errorf("Reshape() Shape()[%d] = %d, expected %d", i, resultShape[i], tt.newShape[i])
+			for i := range tt.shape {
+				if resultShape[i] != tt.shape[i] {
+					t.Errorf("Reshape() Shape()[%d] = %d, expected %d", i, resultShape[i], tt.shape[i])
 				}
 			}
 
 			// Verify data is the same (zero-copy)
-			resultData := result.Data()
+			resultData := result.Data().([]float32)
 			if len(resultData) != len(tt.expected) {
 				t.Errorf("Reshape() Data length = %d, expected %d", len(resultData), len(tt.expected))
 			}
 
 			// Verify it's the same underlying slice (zero-copy)
-			tensorData := tt.tensor.Data()
+			tensorData := tt.tensor.Data().([]float32)
 			if len(tensorData) > 0 {
 				originalFirst := tensorData[0]
 				resultData[0] = 999.0
-				if tt.tensor.Data()[0] != 999.0 {
+				if tt.tensor.Data().([]float32)[0] != 999.0 {
 					t.Errorf("Reshape() should return same slice (zero-copy), but modifying result didn't modify original")
 				}
 				// Restore
@@ -340,7 +341,7 @@ func TestReshape(t *testing.T) {
 
 func TestTensorIterator(t *testing.T) {
 	t.Run("iterate all elements", func(t *testing.T) {
-		tensor := FromFloat32(NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
+		tensor := FromFloat32(types.NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
 
 		expected := []float32{1, 2, 3, 4, 5, 6}
 		var got []float32
@@ -353,7 +354,7 @@ func TestTensorIterator(t *testing.T) {
 	})
 
 	t.Run("set all elements", func(t *testing.T) {
-		tensor := FromFloat32(NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
+		tensor := FromFloat32(types.NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
 
 		value := float32(10.0)
 		for elem := range tensor.Elements() {
@@ -363,7 +364,7 @@ func TestTensorIterator(t *testing.T) {
 
 		// Verify all values were set
 		value = float32(10.0)
-		data := tensor.Data()
+		data := tensor.Data().([]float32)
 		for i := range data {
 			assert.Equal(t, value, data[i])
 			value++
@@ -371,7 +372,7 @@ func TestTensorIterator(t *testing.T) {
 	})
 
 	t.Run("get and set operations", func(t *testing.T) {
-		tensor := FromFloat32(NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
+		tensor := FromFloat32(types.NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
 
 		// Double all values
 		for elem := range tensor.Elements() {
@@ -380,14 +381,14 @@ func TestTensorIterator(t *testing.T) {
 		}
 
 		expected := []float32{2, 4, 6, 8, 10, 12}
-		data := tensor.Data()
+		data := tensor.Data().([]float32)
 		for i := range expected {
 			assert.Equal(t, expected[i], data[i])
 		}
 	})
 
 	t.Run("fix first dimension", func(t *testing.T) {
-		tensor := FromFloat32(NewShape(2, 3, 4), make([]float32, 2*3*4))
+		tensor := FromFloat32(types.NewShape(2, 3, 4), make([]float32, 2*3*4))
 
 		// Initialize with index values
 		idx := 0
@@ -408,7 +409,7 @@ func TestTensorIterator(t *testing.T) {
 	})
 
 	t.Run("fix multiple dimensions", func(t *testing.T) {
-		tensor := FromFloat32(NewShape(2, 3, 4, 5), make([]float32, 2*3*4*5))
+		tensor := FromFloat32(types.NewShape(2, 3, 4, 5), make([]float32, 2*3*4*5))
 
 		// Fix dimensions 0 and 2, iterate over 1 and 3
 		count := 0
@@ -422,7 +423,7 @@ func TestTensorIterator(t *testing.T) {
 	})
 
 	t.Run("fix all dimensions", func(t *testing.T) {
-		tensor := FromFloat32(NewShape(2, 3, 4), []float32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24})
+		tensor := FromFloat32(types.NewShape(2, 3, 4), []float32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24})
 
 		// Fix all dimensions - should iterate once
 		count := 0
@@ -438,7 +439,7 @@ func TestTensorIterator(t *testing.T) {
 	})
 
 	t.Run("row-major order", func(t *testing.T) {
-		tensor := FromFloat32(NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
+		tensor := FromFloat32(types.NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
 
 		var got []float32
 		for elem := range tensor.Elements() {
@@ -452,7 +453,7 @@ func TestTensorIterator(t *testing.T) {
 
 	t.Run("empty tensor", func(t *testing.T) {
 		// Empty shape has size 1 (scalar)
-		tensor := FromFloat32(NewShape(), []float32{42})
+		tensor := FromFloat32(types.NewShape(), []float32{42})
 
 		count := 0
 		var value float32
@@ -466,7 +467,7 @@ func TestTensorIterator(t *testing.T) {
 	})
 
 	t.Run("modify during iteration", func(t *testing.T) {
-		tensor := FromFloat32(NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
+		tensor := FromFloat32(types.NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
 
 		// Modify elements as we iterate
 		for elem := range tensor.Elements() {
@@ -475,14 +476,14 @@ func TestTensorIterator(t *testing.T) {
 		}
 
 		expected := []float32{11, 12, 13, 14, 15, 16}
-		data := tensor.Data()
+		data := tensor.Data().([]float32)
 		for i := range expected {
 			assert.Equal(t, expected[i], data[i])
 		}
 	})
 
 	t.Run("single dimension", func(t *testing.T) {
-		tensor := FromFloat32(NewShape(3), []float32{10, 20, 30})
+		tensor := FromFloat32(types.NewShape(3), []float32{10, 20, 30})
 
 		var got []float32
 		for elem := range tensor.Elements() {

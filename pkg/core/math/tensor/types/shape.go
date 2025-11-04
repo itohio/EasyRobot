@@ -1,4 +1,4 @@
-package tensor
+package types
 
 import (
 	"fmt"
@@ -37,6 +37,19 @@ func (s Shape) Size() int {
 		size *= d
 	}
 	return size
+}
+
+// Equal checks if two shapes are equal.
+func (s Shape) Equal(other Shape) bool {
+	if len(s) != len(other) {
+		return false
+	}
+	for i := range s {
+		if s[i] != other[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // Strides computes row-major strides for the shape.
@@ -101,6 +114,13 @@ func (s Shape) ToSlice() []int {
 	out := make([]int, len(s))
 	copy(out, s)
 	return out
+}
+
+func (s Shape) Clone() Shape {
+	if s == nil {
+		return nil
+	}
+	return NewShape(s...)
 }
 
 // Iterator creates an iterator that fixes specified dimensions and iterates over the remaining ones.

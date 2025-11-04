@@ -95,24 +95,30 @@ func TanhGrad(dst, gradOutput, output []float32, size int) {
 }
 
 // Softmax1D applies softmax to a 1D array in-place: dst[i] = exp(dst[i] - max) / sum(exp(dst[j] - max))
-func Softmax1D(dst []float32, size int) {
+func Softmax1D(src, dst []float32, size int) {
 	if size <= 0 {
 		return
 	}
 
+	// Avoid bounds checks by explicitly slicing once
+	src = src[:size]
+	dst = dst[:size]
+
 	// Find max value for numerical stability
-	maxVal := dst[0]
+	maxVal := src[0]
 	for i := 1; i < size; i++ {
-		if dst[i] > maxVal {
-			maxVal = dst[i]
+		v := src[i]
+		if v > maxVal {
+			maxVal = v
 		}
 	}
 
 	// Compute exp(x - max) and sum
 	var sum float32
 	for i := 0; i < size; i++ {
-		dst[i] = float32(math.Exp(float64(dst[i] - maxVal)))
-		sum += dst[i]
+		val := float32(math.Exp(float64(src[i] - maxVal)))
+		dst[i] = val
+		sum += val
 	}
 
 	// Normalize

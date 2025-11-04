@@ -1,18 +1,19 @@
-package tensor
+package eager_tensor
 
 import (
 	"fmt"
 
 	"github.com/chewxy/math32"
 	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
+	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
 )
 
 // MatMul performs matrix multiplication with another tensor.
 // For 2D tensors: [M, K] × [K, N] = [M, N]
 // For batched tensors: [B, M, K] × [B, K, N] = [B, M, N] or [M, K] × [B, K, N] = [B, M, N]
 // Uses fp32 primitive.Gemm_NN by default. Automatically handles leading dimensions.
-func (t Tensor) MatMul(other Tensor) *Tensor {
-	if t.shape == nil || other.shape == nil {
+func (t Tensor) MatMul(other types.Tensor) types.Tensor {
+	if t.shape == nil || other == nil || other.Shape() == nil {
 		return nil
 	}
 
@@ -33,8 +34,8 @@ func (t Tensor) MatMul(other Tensor) *Tensor {
 }
 
 // MatMulTo performs matrix multiplication and stores result in dst (or creates new tensor if dst is nil).
-func (t Tensor) MatMulTo(other Tensor, dst *Tensor) *Tensor {
-	if t.shape == nil || other.shape == nil {
+func (t Tensor) MatMulTo(other types.Tensor, dst types.Tensor) types.Tensor {
+	if t.shape == nil || other == nil || other.Shape() == nil {
 		return nil
 	}
 
@@ -47,38 +48,43 @@ func (t Tensor) MatMulTo(other Tensor, dst *Tensor) *Tensor {
 		return result
 	}
 
-	resultVal := *result
-	if !resultVal.sameShape(*dst) {
-		panic(fmt.Sprintf("tensor.MatMulTo: destination shape mismatch: %v vs %v", dst.Shape(), result.Shape()))
+	if !t.Shape().Equal(result.Shape()) || !t.Shape().Equal(dst.Shape()) {
+		panic(fmt.Sprintf("tensor.MatMulTo: destination shape mismatch: %v vs %v v.s. %v", dst.Shape(), result.Shape(), dst.Shape()))
 	}
 
 	// Copy result to dst
-	resultVal.copyTo(dst)
+	copyTensorData(result, dst)
 	return dst
 }
 
 // matMul2D performs matrix multiplication for 2D tensors: [M, K] × [K, N] = [M, N]
-func (t Tensor) matMul2D(other Tensor) *Tensor {
-	M := t.shape[0]
-	K := t.shape[1]
-	K2 := other.shape[0]
-	N := other.shape[1]
+func (t Tensor) matMul2D(other types.Tensor) types.Tensor {
+	tShape := t.Shape()
+	otherShape := other.Shape()
+	M := tShape[0]
+	K := tShape[1]
+	K2 := otherShape[0]
+	N := otherShape[1]
 
 	if K != K2 {
-		panic(fmt.Sprintf("tensor.MatMul: dimension mismatch: %v × %v", t.shape, other.shape))
+		panic(fmt.Sprintf("tensor.MatMul: dimension mismatch: %v × %v", tShape, otherShape))
 	}
 
 	ldA := K
 	ldB := N
 	ldC := N
 
-	result := New(t.dtype, NewShape(M, N))
+	result := New(t.DataType(), types.NewShape(M, N))
 	resultPtr := &result
 
+	tData := types.GetTensorData[[]float32](&t)
+	otherData := types.GetTensorData[[]float32](other)
+	resultData := types.GetTensorData[[]float32](resultPtr)
+
 	fp32.Gemm_NN(
-		resultPtr.data,
-		t.data,
-		other.data,
+		resultData,
+		tData,
+		otherData,
 		ldC, ldA, ldB,
 		M, N, K,
 		1.0, 0.0,
@@ -88,7 +94,7 @@ func (t Tensor) matMul2D(other Tensor) *Tensor {
 }
 
 // matMulBatched handles batched matrix multiplication
-func (t Tensor) matMulBatched(other Tensor) *Tensor {
+func (t Tensor) matMulBatched(other types.Tensor) types.Tensor {
 	tShape := t.Shape()
 	otherShape := other.Shape()
 
@@ -134,7 +140,7 @@ func (t Tensor) matMulBatched(other Tensor) *Tensor {
 }
 
 // matMulSameBatch handles [B, M, K] × [B, K, N]
-func (t Tensor) matMulSameBatch(other Tensor, batchSize, M, N, K int) *Tensor {
+func (t Tensor) matMulSameBatch(other types.Tensor, batchSize, M, N, K int) types.Tensor {
 	ldA := K
 	ldB := N
 	ldC := N
@@ -147,14 +153,18 @@ func (t Tensor) matMulSameBatch(other Tensor, batchSize, M, N, K int) *Tensor {
 	resultShape[len(resultShape)-2] = M
 	resultShape[len(resultShape)-1] = N
 
-	result := New(t.dtype, NewShape(resultShape...))
+	result := New(t.DataType(), types.NewShape(resultShape...))
 	resultPtr := &result
 
-	if t.isContiguous() && other.isContiguous() {
+	tData := types.GetTensorData[[]float32](&t)
+	otherData := types.GetTensorData[[]float32](other)
+	resultData := types.GetTensorData[[]float32](resultPtr)
+
+	if t.isContiguous() && isTensorContiguous(other) {
 		fp32.GemmStrided(
-			resultPtr.data,
-			t.data,
-			other.data,
+			resultData,
+			tData,
+			otherData,
 			ldC, ldA, ldB,
 			M, N, K,
 			1.0, 0.0,
@@ -165,9 +175,9 @@ func (t Tensor) matMulSameBatch(other Tensor, batchSize, M, N, K int) *Tensor {
 		)
 	} else {
 		fp32.GemmBatched(
-			resultPtr.data,
-			t.data,
-			other.data,
+			resultData,
+			tData,
+			otherData,
 			ldC, ldA, ldB,
 			M, N, K,
 			1.0, 0.0,
@@ -182,21 +192,25 @@ func (t Tensor) matMulSameBatch(other Tensor, batchSize, M, N, K int) *Tensor {
 }
 
 // matMulBroadcastFirst handles [M, K] × [B, K, N] (broadcast first tensor)
-func (t Tensor) matMulBroadcastFirst(other Tensor, batchSize, M, N, K int) *Tensor {
+func (t Tensor) matMulBroadcastFirst(other types.Tensor, batchSize, M, N, K int) types.Tensor {
 	resultShape := []int{batchSize, M, N}
-	result := New(t.dtype, NewShape(resultShape...))
+	result := New(t.DataType(), types.NewShape(resultShape...))
 	resultPtr := &result
 
 	sliceSize := K * N
 	dstSize := M * N
 
+	tData := types.GetTensorData[[]float32](&t)
+	otherData := types.GetTensorData[[]float32](other)
+	resultData := types.GetTensorData[[]float32](resultPtr)
+
 	for b := 0; b < batchSize; b++ {
 		sliceOffset := b * sliceSize
 		dstOffset := b * dstSize
 		fp32.Gemm_NN(
-			resultPtr.data[dstOffset:],
-			t.data,
-			other.data[sliceOffset:],
+			resultData[dstOffset:],
+			tData,
+			otherData[sliceOffset:],
 			N, K, N,
 			M, N, K,
 			1.0, 0.0,
@@ -207,11 +221,11 @@ func (t Tensor) matMulBroadcastFirst(other Tensor, batchSize, M, N, K int) *Tens
 }
 
 // matMulBroadcastSecond handles [B, M, K] × [K, N] (broadcast second tensor)
-func (t Tensor) matMulBroadcastSecond(other Tensor, batchSize, M, N, K int) *Tensor {
+func (t Tensor) matMulBroadcastSecond(other types.Tensor, batchSize, M, N, K int) types.Tensor {
 	resultShape := append([]int(nil), t.shape...)
 	resultShape[len(resultShape)-1] = N
 
-	result := New(t.dtype, NewShape(resultShape...))
+	result := New(t.DataType(), types.NewShape(resultShape...))
 	resultPtr := &result
 
 	ldA := K
@@ -220,14 +234,18 @@ func (t Tensor) matMulBroadcastSecond(other Tensor, batchSize, M, N, K int) *Ten
 	tStride := M * K
 	resultStride := M * N
 
+	tData := types.GetTensorData[[]float32](&t)
+	otherData := types.GetTensorData[[]float32](other)
+	resultData := types.GetTensorData[[]float32](resultPtr)
+
 	for b := 0; b < batchSize; b++ {
 		tOffset := b * tStride
 		resultOffset := b * resultStride
 
 		fp32.Gemm_NN(
-			resultPtr.data[resultOffset:],
-			t.data[tOffset:],
-			other.data,
+			resultData[resultOffset:],
+			tData[tOffset:],
+			otherData,
 			ldC, ldA, ldB,
 			M, N, K,
 			1.0, 0.0,
@@ -239,7 +257,7 @@ func (t Tensor) matMulBroadcastSecond(other Tensor, batchSize, M, N, K int) *Ten
 
 // Transpose transposes tensor dimensions. Currently supports 2D transpose.
 // Future: support arbitrary dimension permutation.
-func (t Tensor) Transpose(dims ...int) *Tensor {
+func (t Tensor) Transpose(dims ...int) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
@@ -263,18 +281,18 @@ func (t Tensor) Transpose(dims ...int) *Tensor {
 }
 
 // transpose2D transposes a 2D tensor: [M, N] -> [N, M]
-func (t Tensor) transpose2D() *Tensor {
+func (t Tensor) transpose2D() types.Tensor {
 	if t.shape.Rank() != 2 {
 		panic("tensor.transpose2D: tensor must be 2D")
 	}
 
 	M, N := t.shape[0], t.shape[1]
-	result := New(t.dtype, NewShape(N, M))
+	result := New(t.DataType(), types.NewShape(N, M))
 	resultPtr := &result
 
 	// Transpose: result[j][i] = t[i][j]
-	resultData := resultPtr.data
-	tData := t.data
+	resultData := types.GetTensorData[[]float32](resultPtr)
+	tData := types.GetTensorData[[]float32](&t)
 	for i := 0; i < M; i++ {
 		for j := 0; j < N; j++ {
 			resultData[j*M+i] = tData[i*N+j]
@@ -285,7 +303,7 @@ func (t Tensor) transpose2D() *Tensor {
 }
 
 // TransposeTo transposes tensor and stores result in dst (or creates new tensor if dst is nil).
-func (t Tensor) TransposeTo(dst *Tensor, dims ...int) *Tensor {
+func (t Tensor) TransposeTo(dst types.Tensor, dims ...int) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
@@ -299,13 +317,12 @@ func (t Tensor) TransposeTo(dst *Tensor, dims ...int) *Tensor {
 		return result
 	}
 
-	resultVal := *result
-	if !resultVal.sameShape(*dst) {
+	if !t.Shape().Equal(result.Shape()) || !t.Shape().Equal(dst.Shape()) {
 		panic(fmt.Sprintf("tensor.TransposeTo: destination shape mismatch: %v vs %v", dst.Shape(), result.Shape()))
 	}
 
 	// Copy result to dst
-	resultVal.copyTo(dst)
+	copyTensorData(result, dst)
 	return dst
 }
 
@@ -313,8 +330,8 @@ func (t Tensor) TransposeTo(dst *Tensor, dims ...int) *Tensor {
 // For vectors: dot product of two 1D tensors
 // For matrices: Frobenius inner product (sum of element-wise products)
 // Uses fp32 primitive.Dot for vector case.
-func (t Tensor) Dot(other Tensor) float32 {
-	if t.shape == nil || other.shape == nil {
+func (t Tensor) Dot(other types.Tensor) float32 {
+	if t.shape == nil || other == nil || other.Shape() == nil {
 		return 0
 	}
 
@@ -327,8 +344,10 @@ func (t Tensor) Dot(other Tensor) float32 {
 			panic(fmt.Sprintf("tensor.Dot: vector size mismatch: %d vs %d", tShape[0], otherShape[0]))
 		}
 
-		if t.isContiguous() && other.isContiguous() {
-			return fp32.Dot(t.data, other.data, 1, 1, tShape[0])
+		tData := types.GetTensorData[[]float32](&t)
+		otherData := types.GetTensorData[[]float32](other)
+		if t.isContiguous() && isTensorContiguous(other) {
+			return fp32.Dot(tData, otherData, 1, 1, tShape[0])
 		}
 
 		// Strided case
@@ -336,7 +355,7 @@ func (t Tensor) Dot(other Tensor) float32 {
 	}
 
 	// Matrix Frobenius inner product: sum of all element-wise products
-	if !t.sameShape(other) {
+	if !t.Shape().Equal(other.Shape()) {
 		panic(fmt.Sprintf("tensor.Dot: shape mismatch for Frobenius product: %v vs %v", tShape, otherShape))
 	}
 
@@ -345,13 +364,13 @@ func (t Tensor) Dot(other Tensor) float32 {
 }
 
 // dotStrided computes dot product for strided vectors
-func (t Tensor) dotStrided(other Tensor, n int) float32 {
+func (t Tensor) dotStrided(other types.Tensor, n int) float32 {
 	tStrides := t.shape.Strides()
-	otherStrides := other.shape.Strides()
+	otherStrides := other.Shape().Strides()
 
 	var sum float32
-	tData := t.data
-	otherData := other.data
+	tData := types.GetTensorData[[]float32](&t)
+	otherData := types.GetTensorData[[]float32](other)
 	for i := 0; i < n; i++ {
 		tIdx := i * tStrides[0]
 		otherIdx := i * otherStrides[0]
@@ -361,11 +380,11 @@ func (t Tensor) dotStrided(other Tensor, n int) float32 {
 }
 
 // dotFrobenius computes Frobenius inner product (sum of element-wise products)
-func (t Tensor) dotFrobenius(other Tensor) float32 {
+func (t Tensor) dotFrobenius(other types.Tensor) float32 {
 	var sum float32
 	size := t.Size()
-	tData := t.data
-	otherData := other.data
+	tData := types.GetTensorData[[]float32](&t)
+	otherData := types.GetTensorData[[]float32](other)
 	for i := 0; i < size; i++ {
 		sum += tData[i] * otherData[i]
 	}
@@ -384,21 +403,24 @@ func (t Tensor) Norm(ord int) float32 {
 	case 0:
 		// L1 norm
 		if t.isContiguous() {
-			return fp32.Asum(t.data, 1, t.Size())
+			tData := types.GetTensorData[[]float32](&t)
+			return fp32.Asum(tData, 1, t.Size())
 		}
 		return t.norm1Strided()
 
 	case 1:
 		// L2 norm (Euclidean norm)
 		if t.isContiguous() {
-			return fp32.Nrm2(t.data, 1, t.Size())
+			tData := types.GetTensorData[[]float32](&t)
+			return fp32.Nrm2(tData, 1, t.Size())
 		}
 		return t.norm2Strided()
 
 	case 2:
 		// Frobenius norm for matrices (same as L2 norm on flattened matrix)
 		if t.isContiguous() {
-			return fp32.Nrm2(t.data, 1, t.Size())
+			tData := types.GetTensorData[[]float32](&t)
+			return fp32.Nrm2(tData, 1, t.Size())
 		}
 		return t.norm2Strided()
 
@@ -419,7 +441,8 @@ func (t Tensor) norm1Strided() float32 {
 func (t Tensor) norm1StridedRecursive(sum *float32, indices []int, strides []int, dim int) {
 	if dim == t.shape.Rank() {
 		idx := t.elementIndex(indices, strides)
-		val := t.data[idx]
+		tData := types.GetTensorData[[]float32](&t)
+		val := tData[idx]
 		if val < 0 {
 			*sum -= val
 		} else {
@@ -474,7 +497,8 @@ func (t Tensor) sqrtApprox(x float32) float32 {
 func (t Tensor) norm2StridedRecursive(sum *float32, indices []int, strides []int, dim int) {
 	if dim == t.shape.Rank() {
 		idx := t.elementIndex(indices, strides)
-		val := t.data[idx]
+		tData := types.GetTensorData[[]float32](&t)
+		val := tData[idx]
 		*sum += val * val
 		return
 	}
@@ -489,7 +513,7 @@ func (t Tensor) norm2StridedRecursive(sum *float32, indices []int, strides []int
 // For vectors (1D): normalizes the entire vector
 // For matrices (2D): normalizes along specified dimension (0=rows, 1=columns)
 // Uses fp32 primitive.Nrm2 + fp32 primitive.Scal for efficient computation.
-func (t Tensor) Normalize(dim int) *Tensor {
+func (t Tensor) Normalize(dim int) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
@@ -509,10 +533,10 @@ func (t Tensor) Normalize(dim int) *Tensor {
 }
 
 // normalizeVector normalizes a 1D vector
-func (t Tensor) normalizeVector() *Tensor {
+func (t Tensor) normalizeVector() types.Tensor {
 	result := t.Clone()
 
-	if !result.isContiguous() {
+	if !isTensorContiguous(result) {
 		// Handle strided case
 		norm := result.Norm(1) // L2 norm
 		if norm > 0 {
@@ -523,7 +547,7 @@ func (t Tensor) normalizeVector() *Tensor {
 	}
 
 	// Use fp32 operations
-	resultData := result.data
+	resultData := types.GetTensorData[[]float32](result)
 	norm := fp32.Nrm2(resultData, 1, result.Size())
 	if norm > 0 {
 		fp32.Scal(resultData, 1, result.Size(), 1.0/norm)
@@ -533,7 +557,7 @@ func (t Tensor) normalizeVector() *Tensor {
 }
 
 // normalizeMatrixDim normalizes a matrix along specified dimension
-func (t Tensor) normalizeMatrixDim(dim int) *Tensor {
+func (t Tensor) normalizeMatrixDim(dim int) types.Tensor {
 	shape := t.Shape()
 	if dim < 0 || dim >= shape.Rank() {
 		panic(fmt.Sprintf("tensor.Normalize: dimension %d out of range for shape %v", dim, shape))
@@ -542,7 +566,7 @@ func (t Tensor) normalizeMatrixDim(dim int) *Tensor {
 	result := t.Clone()
 
 	M, N := shape[0], shape[1]
-	resultData := result.data
+	resultData := types.GetTensorData[[]float32](result)
 
 	if dim == 0 {
 		// Normalize along rows (each row becomes unit vector)

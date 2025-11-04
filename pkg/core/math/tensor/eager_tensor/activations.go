@@ -1,14 +1,13 @@
-package tensor
+package eager_tensor
 
 import (
-	"math/rand"
-
 	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
+	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
 )
 
 // ReLU applies the Rectified Linear Unit activation function: dst[i] = max(0, t[i])
 // If dst is nil, applies in-place on t. Otherwise writes to dst.
-func (t *Tensor) ReLU(dst *Tensor) *Tensor {
+func (t Tensor) ReLU(dst types.Tensor) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
@@ -16,21 +15,24 @@ func (t *Tensor) ReLU(dst *Tensor) *Tensor {
 	size := t.Size()
 	if dst == nil {
 		// Apply in-place
-		fp32.ReLU(t.data, t.data, size)
+		tData := types.GetTensorData[[]float32](&t)
+		fp32.ReLU(tData, tData, size)
 		return t
 	}
 
-	if !dst.sameShape(*t) {
+	if !t.Shape().Equal(dst.Shape()) {
 		panic("tensor.ReLU: destination shape mismatch")
 	}
 
-	fp32.ReLU(dst.data, t.data, size)
+	dstData := types.GetTensorData[[]float32](dst)
+	tData := types.GetTensorData[[]float32](t)
+	fp32.ReLU(dstData, tData, size)
 	return dst
 }
 
 // Sigmoid applies the sigmoid activation function: dst[i] = 1 / (1 + exp(-t[i]))
 // If dst is nil, applies in-place on t. Otherwise writes to dst.
-func (t *Tensor) Sigmoid(dst *Tensor) *Tensor {
+func (t Tensor) Sigmoid(dst types.Tensor) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
@@ -38,21 +40,24 @@ func (t *Tensor) Sigmoid(dst *Tensor) *Tensor {
 	size := t.Size()
 	if dst == nil {
 		// Apply in-place
-		fp32.Sigmoid(t.data, t.data, size)
+		tData := types.GetTensorData[[]float32](&t)
+		fp32.Sigmoid(tData, tData, size)
 		return t
 	}
 
-	if !dst.sameShape(*t) {
+	if !t.Shape().Equal(dst.Shape()) {
 		panic("tensor.Sigmoid: destination shape mismatch")
 	}
 
-	fp32.Sigmoid(dst.data, t.data, size)
+	dstData := types.GetTensorData[[]float32](dst)
+	tData := types.GetTensorData[[]float32](t)
+	fp32.Sigmoid(dstData, tData, size)
 	return dst
 }
 
 // Tanh applies the hyperbolic tangent activation function: dst[i] = tanh(t[i])
 // If dst is nil, applies in-place on t. Otherwise writes to dst.
-func (t *Tensor) Tanh(dst *Tensor) *Tensor {
+func (t Tensor) Tanh(dst types.Tensor) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
@@ -60,22 +65,25 @@ func (t *Tensor) Tanh(dst *Tensor) *Tensor {
 	size := t.Size()
 	if dst == nil {
 		// Apply in-place
-		fp32.Tanh(t.data, t.data, size)
+		tData := types.GetTensorData[[]float32](&t)
+		fp32.Tanh(tData, tData, size)
 		return t
 	}
 
-	if !dst.sameShape(*t) {
+	if !t.Shape().Equal(dst.Shape()) {
 		panic("tensor.Tanh: destination shape mismatch")
 	}
 
-	fp32.Tanh(dst.data, t.data, size)
+	dstData := types.GetTensorData[[]float32](dst)
+	tData := types.GetTensorData[[]float32](t)
+	fp32.Tanh(dstData, tData, size)
 	return dst
 }
 
 // Softmax applies softmax along the specified dimension.
 // Currently supports 1D tensors and 2D tensors with dim=0 (rows) or dim=1 (columns).
 // If dst is nil, applies in-place on t. Otherwise writes to dst.
-func (t *Tensor) Softmax(dim int, dst *Tensor) *Tensor {
+func (t Tensor) Softmax(dim int, dst types.Tensor) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
@@ -85,39 +93,23 @@ func (t *Tensor) Softmax(dim int, dst *Tensor) *Tensor {
 	}
 
 	if dst == nil {
-		// Apply in-place
-		if t.shape.Rank() == 1 {
-			fp32.Softmax1D(t.data, t.Size())
-		} else if t.shape.Rank() == 2 {
-			if dim == 0 {
-				fp32.Softmax2DRows(t.data, t.shape[0], t.shape[1])
-			} else if dim == 1 {
-				fp32.Softmax2DCols(t.data, t.shape[0], t.shape[1])
-			} else {
-				panic("tensor.Softmax: invalid dimension for 2D tensor")
-			}
-		} else {
-			panic("tensor.Softmax: only 1D and 2D tensors supported")
-		}
-		return t
+		dst = t
 	}
 
-	if !dst.sameShape(*t) {
+	if !t.Shape().Equal(dst.Shape()) {
 		panic("tensor.Softmax: destination shape mismatch")
 	}
 
-	// Copy source to destination if different
-	if dst != t {
-		t.copyTo(dst)
-	}
+	dstData := types.GetTensorData[[]float32](dst)
+	dstShape := dst.Shape()
 
 	if t.shape.Rank() == 1 {
-		fp32.Softmax1D(dst.data, dst.Size())
+		fp32.Softmax1D(types.GetTensorData[[]float32](t), dstData, dst.Size())
 	} else if t.shape.Rank() == 2 {
 		if dim == 0 {
-			fp32.Softmax2DRows(dst.data, dst.shape[0], dst.shape[1])
+			fp32.Softmax2DRows(dstData, dstShape[0], dstShape[1])
 		} else if dim == 1 {
-			fp32.Softmax2DCols(dst.data, dst.shape[0], dst.shape[1])
+			fp32.Softmax2DCols(dstData, dstShape[0], dstShape[1])
 		} else {
 			panic("tensor.Softmax: invalid dimension for 2D tensor")
 		}
@@ -131,25 +123,27 @@ func (t *Tensor) Softmax(dim int, dst *Tensor) *Tensor {
 // DropoutForward applies dropout during training.
 // mask[i] should contain 0.0 for dropped elements, scale (1/(1-p)) for kept elements.
 // Modifies the tensor in-place: t[i] *= mask[i]
-func (t *Tensor) DropoutForward(mask Tensor) *Tensor {
-	if t.shape == nil || mask.shape == nil {
+func (t Tensor) DropoutForward(mask types.Tensor) types.Tensor {
+	if t.shape == nil || mask == nil || mask.Shape() == nil {
 		return t
 	}
 
-	tVal := *t
-	if !tVal.sameShape(mask) {
+	if !t.Shape().Equal(mask.Shape()) {
 		panic("tensor.DropoutForward: mask shape mismatch")
 	}
 
+	maskData := types.GetTensorData[[]float32](mask)
 	size := t.Size()
-	fp32.ElemMul(t.data, t.data, mask.data, []int{size}, []int{1}, []int{1}, []int{1})
+	tData := types.GetTensorData[[]float32](&t)
+	fp32.ElemMul(tData, tData, maskData, []int{size}, []int{1}, []int{1}, []int{1})
 	return t
 }
 
 // DropoutMask generates a dropout mask tensor with the given dropout rate.
 // mask[i] = 0.0 if dropped (with probability p), scale otherwise.
 // scale = 1.0 / (1.0 - p) for inverted dropout.
-func (t *Tensor) DropoutMask(p float32, scale float32, rng *rand.Rand) *Tensor {
+// rng is typed as interface{} to avoid importing math/rand in interface; actual type is *rand.Rand.
+func (t Tensor) DropoutMask(p float32, scale float32, rng interface{}) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
@@ -159,11 +153,19 @@ func (t *Tensor) DropoutMask(p float32, scale float32, rng *rand.Rand) *Tensor {
 		return t
 	}
 
+	// Type assert to *rand.Rand for random generation
+	randRng, ok := rng.(interface {
+		Float32() float32
+	})
+	if !ok {
+		panic("tensor.DropoutMask: rng must implement Float32() method")
+	}
+
 	// For now, use direct data access since random generation is layer-specific
 	// In the future, this could be moved to fp32 package with a random interface
-	data := t.Data()
+	data := types.GetTensorData[[]float32](&t)
 	for i := range data {
-		if rng.Float32() < p {
+		if randRng.Float32() < p {
 			data[i] = 0.0
 		} else {
 			data[i] = scale

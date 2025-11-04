@@ -10,6 +10,147 @@ The `tensor` package provides multi-dimensional tensor operations optimized for 
 - Design document: [QUANTIZATION_PLAN.md](./QUANTIZATION_PLAN.md)
 - Implementation roadmap: [QUANTIZATION_IMPLEMENTATION.md](./QUANTIZATION_IMPLEMENTATION.md)
 
+## Tensor Interface Architecture
+
+**⚠️ IMPORTANT: The `types.Tensor` interface is the authoritative source of truth for all Tensor capabilities.**
+
+The tensor package uses an **interface-based design** where `types.Tensor` is the public API interface and `eager_tensor.Tensor` is the concrete implementation. This design enables:
+
+- **Multiple implementations**: Future support for lazy evaluation, views, sparse tensors, etc.
+- **Better testability**: Interface-based design facilitates dependency injection and mocking
+- **Extensibility**: New tensor types can be added without breaking consumers
+- **Type safety**: All operations work with the interface, ensuring consistent behavior
+
+### Tensor Interface (`types.Tensor`)
+
+**The `types.Tensor` interface defined in `tensor/types/tensor.go` is the authoritative source of truth for all Tensor capabilities and operations.**
+
+- All tensor capabilities are defined in this interface
+- All concrete implementations (currently `eager_tensor.Tensor`) must satisfy this interface
+- The interface documentation (docstrings) defines the contract for all operations
+- When adding new operations, they must be added to this interface first
+- Implementation details may vary, but the interface contract is fixed
+
+**Core Properties and Access Methods:**
+
+```go
+type Tensor interface {
+    // Core Properties and Access
+    DataType() DataType
+    Data() any              // Returns underlying data as any (supports multiple data types)
+    Shape() Shape
+    Rank() int
+    Size() int
+    Empty() bool
+    At(indices ...int) float32
+    SetAt(indices []int, value float32)
+    Elements(fixedAxisValuePairs ...int) func(func(Element) bool)
+    Clone() Tensor                 // Returns Tensor interface
+    Reshape(newShape []int) Tensor // Returns Tensor interface
+    
+    // ... (all other operations)
+}
+```
+
+**Key Interface Methods:**
+
+- **`DataType() DataType`**: Returns the tensor's data type (e.g., `DTFP32`)
+- **`Data() any`**: Returns the underlying data storage as `any`. For FP32 tensors, this returns `[]float32`. For future quantized types (INT8, INT16), this will return the appropriate slice type. This method enables type-agnostic data access while maintaining type safety through `DataType()`.
+- **`Shape() Shape`**: Returns the tensor's shape (dimensions)
+- **`Rank() int`**: Returns the number of dimensions
+- **`Size() int`**: Returns the total number of elements
+- **`Empty() bool`**: Returns true if the tensor is empty (no shape or data)
+- **`At(indices ...int) float32`**: Access element at multi-dimensional indices
+- **`SetAt(indices []int, value float32)`**: Set element at multi-dimensional indices
+- **`Elements(...)`**: Create iterator over tensor elements (Go 1.22+ range-over-function)
+- **`Clone() Tensor`**: Create a deep copy (returns Tensor interface)
+- **`Reshape(newShape []int) Tensor`**: Reshape tensor (returns Tensor interface)
+
+**Operation Methods:**
+
+All operations return `Tensor` interface (not pointers), enabling:
+- Method chaining: `t.Add(other).Scale(2.0).ReLU(nil)`
+- Interface-based return types compatible with all implementations
+- Clear ownership semantics
+
+**Interface Design Notes:**
+
+- **Return Types**: All operations return `Tensor` interface, not concrete types or pointers
+- **Parameter Types**: Operations accept `Tensor` interface parameters, enabling interoperability between implementations
+- **Data Access**: `Data() any` provides type-agnostic access; use `DataType()` to determine the actual type and cast accordingly
+- **Future Extensibility**: The interface is designed to support multiple data types (FP32, INT8, INT16) and tensor implementations (eager, lazy, views)
+
+**Data Method Type Safety:**
+
+```go
+// Example: Accessing data with type safety
+t := tensor.New(tensor.DTFP32, shape)
+switch t.DataType() {
+case tensor.DTFP32:
+    data := t.Data().([]float32)
+    // Use data...
+case tensor.DTINT8:
+    data := t.Data().([]int8)
+    // Use data...
+}
+```
+
+**Complete Interface Method Categories:**
+
+The `types.Tensor` interface includes the following method categories:
+
+1. **Core Properties and Access** (11 methods)
+   - `DataType()`, `Data()`, `Shape()`, `Rank()`, `Size()`, `Empty()`
+   - `At()`, `SetAt()`, `Elements()`, `Clone()`, `Reshape()`
+
+2. **Element-wise Operations (In-Place)** (14 methods)
+   - `Add()`, `Sub()`, `Mul()`, `Div()`, `Scale()`
+   - `Square()`, `Sqrt()`, `Exp()`, `Log()`, `Pow()`
+   - `Abs()`, `Sign()`, `Cos()`, `Sin()`, `Negative()`
+
+3. **Element-wise Operations (Non-Mutating)** (2 methods)
+   - `AddTo()`, `MulTo()`
+
+4. **Comparison Operations** (4 methods)
+   - `Equal()`, `GreaterThan()`, `Greater()`, `Less()`
+
+5. **Conditional Operations** (1 method)
+   - `Where()`
+
+6. **Reduction Operations** (5 methods)
+   - `Sum()`, `Mean()`, `Max()`, `Min()`, `ArgMax()`
+
+7. **Broadcasting** (1 method)
+   - `BroadcastTo()`
+
+8. **Linear Algebra Operations** (10 methods)
+   - `MatMul()`, `MatMulTo()`, `MatMulTransposed()`, `MatVecMulTransposed()`
+   - `Transpose()`, `TransposeTo()`, `Dot()`, `Norm()`, `Normalize()`, `AddScaled()`
+
+9. **Convolution Operations** (6 methods)
+   - `Conv1D()`, `Conv1DTo()`, `Conv2D()`, `Conv2DTo()`, `Conv2DTransposed()`, `Conv2DKernelGrad()`
+
+10. **Pooling Operations** (4 methods)
+    - `MaxPool2D()`, `AvgPool2D()`, `GlobalAvgPool2D()`, `AdaptiveAvgPool2D()`
+
+11. **Image/Column Conversion** (2 methods)
+    - `Im2Col()`, `Col2Im()`
+
+12. **Activation Functions** (4 methods)
+    - `ReLU()`, `Sigmoid()`, `Tanh()`, `Softmax()`
+
+13. **Dropout Operations** (2 methods)
+    - `DropoutForward()`, `DropoutMask()`
+
+**Total: 65 methods** defining the complete tensor operation contract.
+
+**Current Implementation:**
+
+- **`eager_tensor.Tensor`**: Concrete struct implementing `types.Tensor` with eager execution semantics
+- All operations are computed immediately when called
+- Data stored in contiguous `[]float32` slice for FP32 tensors
+- All methods satisfy the `types.Tensor` interface contract
+
 ## Design Principles
 
 1. **Row-Major Storage**: All tensors stored in row-major order (matching Go nested arrays layout `[][]float32`)
@@ -20,7 +161,8 @@ The `tensor` package provides multi-dimensional tensor operations optimized for 
 6. **Primitive Integration**: All linear algebra uses `math/primitive` BLAS/LAPACK operations
 7. **Float32 Precision**: Uses `float32` for embedded-friendly precision
 8. **Batch Support**: Automatic handling of batched operations
-9. **Value Semantics**: Tensor arguments are passed by value (`Tensor`), not by pointer. This enables efficient zero-copy operations while maintaining clear ownership semantics. Return values are pointers (`*Tensor`) to indicate newly allocated tensors.
+9. **Interface-Based Design**: The `types.Tensor` interface is the public API. All operations accept and return `Tensor` interface, enabling multiple implementations and future extensibility. Concrete implementations (e.g., `eager_tensor.Tensor`) satisfy the interface.
+10. **Value Semantics**: Tensor arguments are passed by value (`Tensor` interface), not by pointer. Operations return `Tensor` interface to indicate newly allocated or modified tensors, enabling method chaining and clear ownership semantics.
 
 ## Tensor Storage Layout
 
@@ -143,8 +285,8 @@ func (t Tensor) Rank() int
 // Size returns the total number of elements in the tensor
 func (t Tensor) Size() int
 
-// Clone creates a deep copy of the tensor
-func (t Tensor) Clone() *Tensor
+// Clone creates a deep copy of the tensor (returns Tensor interface)
+func (t Tensor) Clone() Tensor
 
 // At returns the element at the given indices
 func (t Tensor) At(indices ...int) float32
@@ -157,14 +299,15 @@ func (t *Tensor) SetAt(indices []int, value float32)
 func (t *Tensor) Elements(fixedAxisValuePairs ...int) func(func(Element) bool)
 
 // Reshape returns a new tensor with the same data but different shape (zero-copy when possible)
-func (t Tensor) Reshape(newShape []int) *Tensor
+func (t Tensor) Reshape(newShape []int) Tensor
 
-// Data returns the underlying data slice (zero-copy)
-// Deprecated: Use Elements() for element access instead
-func (t Tensor) Data() []float32
+// Data returns the underlying data storage as any (part of types.Tensor interface)
+// Returns []float32 for FP32 tensors, []int8 for INT8 tensors, etc.
+// Use DataType() to determine the actual type before type assertion
+func (t Tensor) Data() any
 
 // Flat returns the underlying data slice (zero-copy)
-// Deprecated: Use Elements() for element access instead
+// Deprecated: Use Data() with type assertion instead
 func (t Tensor) Flat() []float32
 ```
 
@@ -206,13 +349,20 @@ func (s Shape) Iterator(fixedAxisValuePairs ...int) func(func([]int) bool)
   - Iterates in row-major order (last dimension changes fastest)
   - Recommended for neural network operations over direct data access
 
-**Data Access (Deprecated):**
-- `Data() []float32`: ⚠️ **Deprecated** - Use `Elements()` instead
-- `Flat() []float32`: ⚠️ **Deprecated** - Use `Elements()` instead
-- Direct access to underlying data is discouraged for neural network operations as it bypasses tensor abstractions
+**Data Access:**
+
+- **`Data() any`**: Returns the underlying data storage as `any`. This is part of the `types.Tensor` interface and supports multiple data types:
+  - For FP32 tensors: Returns `[]float32`
+  - For INT8 tensors (future): Returns `[]int8`
+  - For INT16 tensors (future): Returns `[]int16`
+  - Use `DataType()` to determine the actual type before casting
+  - **Note**: Direct data access bypasses tensor abstractions; prefer `Elements()` for iteration when possible
+- **`Flat() []float32`**: ⚠️ **Deprecated** - Use `Data()` with type assertion instead
+- **Recommendation**: For element iteration, prefer `Elements()` iterator; for low-level data access (e.g., integration with external libraries), use `Data()` with proper type checking
 
 **Reshaping:**
-- `Reshape(newShape []int) *Tensor`: Creates a new tensor view with different shape but same data
+- `Reshape(newShape []int) Tensor`: Creates a new tensor view with different shape but same data
+- Returns `Tensor` interface (part of `types.Tensor` interface)
 - The total number of elements must remain the same
 - Returns a zero-copy view when possible
 

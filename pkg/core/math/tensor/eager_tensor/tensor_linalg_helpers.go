@@ -1,9 +1,10 @@
-package tensor
+package eager_tensor
 
 import (
 	"fmt"
 
 	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
+	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
 )
 
 // MatVecMulTransposed performs matrix-vector multiplication with matrix transposed: y = alpha*A^T*x + beta*y
@@ -12,8 +13,8 @@ import (
 // result: [N] tensor (output vector)
 // Uses fp32 primitive.Gemv_T internally.
 // NOTE: Does not guarantee returning a
-func (t *Tensor) MatVecMulTransposed(matrix Tensor, vector Tensor, alpha, beta float32) *Tensor {
-	if t.shape == nil || matrix.shape == nil || vector.shape == nil {
+func (t Tensor) MatVecMulTransposed(matrix types.Tensor, vector types.Tensor, alpha, beta float32) types.Tensor {
+	if t.shape == nil || matrix == nil || matrix.Shape() == nil || vector == nil || vector.Shape() == nil {
 		return nil
 	}
 
@@ -38,10 +39,10 @@ func (t *Tensor) MatVecMulTransposed(matrix Tensor, vector Tensor, alpha, beta f
 	tShape := t.Shape()
 	if len(tShape) == 1 && tShape[0] == N {
 		// Reuse provided tensor if shape matches
-		result = *t
+		result = t
 	} else {
 		// Create new result tensor
-		result = New(t.dtype, NewShape(N))
+		result = New(t.DataType(), types.NewShape(N))
 	}
 	resultPtr := &result
 
@@ -49,11 +50,14 @@ func (t *Tensor) MatVecMulTransposed(matrix Tensor, vector Tensor, alpha, beta f
 	ldA := N
 
 	// Use primitive.Gemv_T
+	matrixData := types.GetTensorData[[]float32](matrix)
+	vectorData := types.GetTensorData[[]float32](vector)
+	resultData := types.GetTensorData[[]float32](resultPtr)
 	fp32.Gemv_T(
-		resultPtr.data, // y (output)
-		matrix.data,    // A (matrix)
-		vector.data,    // x (vector)
-		ldA, M, N,      // leading dimension, rows, cols
+		resultData, // y (output)
+		matrixData, // A (matrix)
+		vectorData, // x (vector)
+		ldA, M, N,  // leading dimension, rows, cols
 		alpha, beta, // scaling factors
 	)
 
@@ -66,8 +70,8 @@ func (t *Tensor) MatVecMulTransposed(matrix Tensor, vector Tensor, alpha, beta f
 // If both are false: uses Gemm_NN (A @ B)
 // If both are true: uses Gemm_TT (A^T @ B^T)
 // Returns result tensor (creates new one if dst is nil, otherwise uses dst).
-func (t Tensor) MatMulTransposed(other Tensor, transposeA, transposeB bool, dst *Tensor) *Tensor {
-	if t.shape == nil || other.shape == nil {
+func (t Tensor) MatMulTransposed(other types.Tensor, transposeA, transposeB bool, dst types.Tensor) types.Tensor {
+	if t.shape == nil || other == nil || other.Shape() == nil {
 		return nil
 	}
 
@@ -113,25 +117,43 @@ func (t Tensor) MatMulTransposed(other Tensor, transposeA, transposeB bool, dst 
 	}
 
 	// Prepare result tensor
-	var result *Tensor
+	var result Tensor
 	if dst != nil {
 		dstShape := dst.Shape()
-		if len(dstShape) == 0 {
-			dst.reset(dst.dtype, resultShape, nil)
+		// Check if dst has correct shape, if not create new one
+		if len(dstShape) == len(resultShape) {
+			match := true
+			for i := range dstShape {
+				if dstShape[i] != resultShape[i] {
+					match = false
+					break
+				}
+			}
+			if match {
+				// Can use dst, but need to cast - this is a limitation
+				// For now, create new tensor to avoid casting
+				result = New(t.DataType(), types.NewShape(resultShape...))
+			} else {
+				result = New(t.DataType(), types.NewShape(resultShape...))
+			}
+		} else {
+			result = New(t.DataType(), types.NewShape(resultShape...))
 		}
-		result = dst
 	} else {
-		resultVal := New(t.dtype, NewShape(resultShape...))
-		result = &resultVal
+		result = New(t.DataType(), types.NewShape(resultShape...))
 	}
 
 	// Handle 2D case
+	tData := types.GetTensorData[[]float32](&t)
+	otherData := types.GetTensorData[[]float32](other)
+	resultData := types.GetTensorData[[]float32](&result)
+
 	if len(tShape) == 2 && len(otherShape) == 2 {
 		switch {
 		case !transposeA && !transposeB:
 			// Gemm_NN: C = A @ B
 			fp32.Gemm_NN(
-				result.data, t.data, other.data,
+				resultData, tData, otherData,
 				ldC, ldA, ldB,
 				M, N, K1,
 				1.0, 0.0,
@@ -139,7 +161,7 @@ func (t Tensor) MatMulTransposed(other Tensor, transposeA, transposeB bool, dst 
 		case !transposeA && transposeB:
 			// Gemm_NT: C = A @ B^T
 			fp32.Gemm_NT(
-				result.data, t.data, other.data,
+				resultData, tData, otherData,
 				ldC, ldA, ldB,
 				M, N, K1,
 				1.0, 0.0,
@@ -147,7 +169,7 @@ func (t Tensor) MatMulTransposed(other Tensor, transposeA, transposeB bool, dst 
 		case transposeA && !transposeB:
 			// Gemm_TN: C = A^T @ B
 			fp32.Gemm_TN(
-				result.data, t.data, other.data,
+				resultData, tData, otherData,
 				ldC, ldA, ldB,
 				M, N, K1,
 				1.0, 0.0,
@@ -155,11 +177,16 @@ func (t Tensor) MatMulTransposed(other Tensor, transposeA, transposeB bool, dst 
 		case transposeA && transposeB:
 			// Gemm_TT: C = A^T @ B^T
 			fp32.Gemm_TT(
-				result.data, t.data, other.data,
+				resultData, tData, otherData,
 				ldC, ldA, ldB,
 				M, N, K1,
 				1.0, 0.0,
 			)
+		}
+		// If dst was provided and has correct shape, copy result to dst
+		if dst != nil {
+			copyTensorData(result, dst)
+			return dst
 		}
 		return result
 	}
@@ -179,6 +206,10 @@ func (t Tensor) MatMulTransposed(other Tensor, transposeA, transposeB bool, dst 
 		otherStride := K2 * N
 		resultStride := M * N
 
+		tData := types.GetTensorData[[]float32](&t)
+		otherData := types.GetTensorData[[]float32](other)
+		resultData := types.GetTensorData[[]float32](&result)
+
 		for b := 0; b < batchSize; b++ {
 			tOffset := b * tStride
 			otherOffset := b * otherStride
@@ -187,43 +218,48 @@ func (t Tensor) MatMulTransposed(other Tensor, transposeA, transposeB bool, dst 
 			switch {
 			case !transposeA && !transposeB:
 				fp32.Gemm_NN(
-					result.data[resultOffset:],
-					t.data[tOffset:],
-					other.data[otherOffset:],
+					resultData[resultOffset:],
+					tData[tOffset:],
+					otherData[otherOffset:],
 					ldC, ldA, ldB,
 					M, N, K1,
 					1.0, 0.0,
 				)
 			case !transposeA && transposeB:
 				fp32.Gemm_NT(
-					result.data[resultOffset:],
-					t.data[tOffset:],
-					other.data[otherOffset:],
+					resultData[resultOffset:],
+					tData[tOffset:],
+					otherData[otherOffset:],
 					ldC, ldA, ldB,
 					M, N, K1,
 					1.0, 0.0,
 				)
 			case transposeA && !transposeB:
 				fp32.Gemm_TN(
-					result.data[resultOffset:],
-					t.data[tOffset:],
-					other.data[otherOffset:],
+					resultData[resultOffset:],
+					tData[tOffset:],
+					otherData[otherOffset:],
 					ldC, ldA, ldB,
 					M, N, K1,
 					1.0, 0.0,
 				)
 			case transposeA && transposeB:
 				fp32.Gemm_TT(
-					result.data[resultOffset:],
-					t.data[tOffset:],
-					other.data[otherOffset:],
+					resultData[resultOffset:],
+					tData[tOffset:],
+					otherData[otherOffset:],
 					ldC, ldA, ldB,
 					M, N, K1,
 					1.0, 0.0,
 				)
 			}
 		}
-		return result
+		// If dst was provided and has correct shape, copy result to dst
+		if dst != nil {
+			copyTensorData(&result, dst)
+			return dst
+		}
+		return &result
 	}
 
 	panic(fmt.Sprintf("tensor.MatMulTransposed: unsupported tensor shapes: %v × %v", tShape, otherShape))
@@ -232,29 +268,30 @@ func (t Tensor) MatMulTransposed(other Tensor, transposeA, transposeB bool, dst 
 // AddScaled adds a scaled tensor to this tensor in-place: t = t + alpha * other
 // Uses fp32 primitive.Axpy internally.
 // Returns the tensor itself for method chaining.
-func (t *Tensor) AddScaled(other Tensor, alpha float32) *Tensor {
-	if t.shape == nil || other.shape == nil {
+func (t Tensor) AddScaled(other types.Tensor, alpha float32) types.Tensor {
+	if t.shape == nil || other == nil || other.Shape() == nil {
 		return t
 	}
 
-	tVal := *t
-	if !tVal.sameShape(other) {
+	tVal := t
+	if !tVal.Shape().Equal(other.Shape()) {
 		panic(fmt.Sprintf("tensor.AddScaled: shape mismatch: %v vs %v", t.Shape(), other.Shape()))
 	}
 
-	if !t.isContiguous() || !other.isContiguous() {
+	tData := types.GetTensorData[[]float32](&t)
+	otherData := types.GetTensorData[[]float32](other)
+
+	if !t.isContiguous() || !isTensorContiguous(other) {
 		// Handle strided case manually
 		size := t.Size()
-		tData := t.data
-		otherData := other.data
 		for i := 0; i < size; i++ {
 			tData[i] += alpha * otherData[i]
 		}
-		return t
+		return &t
 	}
 
 	// Use primitive.Axpy for contiguous case
 	size := t.Size()
-	fp32.Axpy(t.data, other.data, 1, 1, size, alpha)
-	return t
+	fp32.Axpy(tData, otherData, 1, 1, size, alpha)
+	return &t
 }
