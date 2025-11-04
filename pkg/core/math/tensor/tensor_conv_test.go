@@ -9,7 +9,7 @@ import (
 func TestConv2D(t *testing.T) {
 	t.Run("basic 2D convolution", func(t *testing.T) {
 		// Input: [1, 1, 4, 4] (batch, channels, height, width)
-		input := FromFloat32([]int{1, 1, 4, 4}, []float32{
+		input := FromFloat32(NewShape(1, 1, 4, 4), []float32{
 			1, 2, 3, 4,
 			5, 6, 7, 8,
 			9, 10, 11, 12,
@@ -17,14 +17,14 @@ func TestConv2D(t *testing.T) {
 		})
 
 		// Kernel: [1, 1, 3, 3] (outChannels, inChannels, kernelH, kernelW)
-		kernel := FromFloat32([]int{1, 1, 3, 3}, []float32{
+		kernel := FromFloat32(NewShape(1, 1, 3, 3), []float32{
 			1, 0, -1,
 			1, 0, -1,
 			1, 0, -1,
 		})
 
 		// Bias: [1]
-		bias := FromFloat32([]int{1}, []float32{0})
+		bias := FromFloat32(NewShape(1), []float32{0})
 
 		result := input.Conv2D(kernel, bias, []int{1, 1}, []int{0, 0})
 
@@ -39,14 +39,14 @@ func TestConv2D(t *testing.T) {
 
 	t.Run("with padding and stride", func(t *testing.T) {
 		// Input: [1, 1, 3, 3]
-		input := FromFloat32([]int{1, 1, 3, 3}, []float32{
+		input := FromFloat32(NewShape(1, 1, 3, 3), []float32{
 			1, 2, 3,
 			4, 5, 6,
 			7, 8, 9,
 		})
 
 		// Kernel: [1, 1, 2, 2]
-		kernel := FromFloat32([]int{1, 1, 2, 2}, []float32{
+		kernel := FromFloat32(NewShape(1, 1, 2, 2), []float32{
 			1, 1,
 			1, 1,
 		})
@@ -64,14 +64,14 @@ func TestConv2D(t *testing.T) {
 
 	t.Run("with multiple channels", func(t *testing.T) {
 		// Input: [1, 2, 3, 3] (batch, inChannels, height, width)
-		input := New(DTFP32, 1, 2, 3, 3)
+		input := New(DTFP32, NewShape(1, 2, 3, 3))
 		inputData := input.Data()
 		for i := range inputData {
 			inputData[i] = float32(i + 1)
 		}
 
 		// Kernel: [1, 2, 2, 2] (outChannels, inChannels, kernelH, kernelW)
-		kernel := FromFloat32([]int{1, 2, 2, 2}, []float32{
+		kernel := FromFloat32(NewShape(1, 2, 2, 2), []float32{
 			1, 1, 1, 1, // channel 0, filter 0
 			1, 1, 1, 1, // channel 1, filter 0
 		})
@@ -91,13 +91,13 @@ func TestConv2D(t *testing.T) {
 func TestConv2DTransposed(t *testing.T) {
 	t.Run("basic transposed convolution", func(t *testing.T) {
 		// Input: [1, 1, 2, 2]
-		input := FromFloat32([]int{1, 1, 2, 2}, []float32{
+		input := FromFloat32(NewShape(1, 1, 2, 2), []float32{
 			1, 2,
 			3, 4,
 		})
 
 		// Kernel: [1, 1, 2, 2] (inChannels, outChannels, kernelH, kernelW)
-		kernel := FromFloat32([]int{1, 1, 2, 2}, []float32{
+		kernel := FromFloat32(NewShape(1, 1, 2, 2), []float32{
 			1, 1,
 			1, 1,
 		})
@@ -117,13 +117,13 @@ func TestConv2DTransposed(t *testing.T) {
 func TestConv1D(t *testing.T) {
 	t.Run("basic 1D convolution", func(t *testing.T) {
 		// Input: [2, 5] (inChannels, length)
-		input := FromFloat32([]int{2, 5}, []float32{
+		input := FromFloat32(NewShape(2, 5), []float32{
 			1, 2, 3, 4, 5, // channel 0
 			6, 7, 8, 9, 10, // channel 1
 		})
 
 		// Kernel: [1, 2, 3] (outChannels, inChannels, kernelLen)
-		kernel := FromFloat32([]int{1, 2, 3}, []float32{
+		kernel := FromFloat32(NewShape(1, 2, 3), []float32{
 			1, 1, 1, // channel 0, filter 0
 			1, 1, 1, // channel 1, filter 0
 		})
@@ -141,13 +141,13 @@ func TestConv1D(t *testing.T) {
 
 	t.Run("with batch", func(t *testing.T) {
 		// Input: [2, 2, 5] (batch, inChannels, length)
-		input := New(DTFP32, 2, 2, 5)
+		input := New(DTFP32, NewShape(2, 2, 5))
 		inputData := input.Data()
 		for i := range inputData {
 			inputData[i] = float32(i + 1)
 		}
 
-		kernel := FromFloat32([]int{1, 2, 3}, []float32{1, 1, 1, 1, 1, 1})
+		kernel := FromFloat32(NewShape(1, 2, 3), []float32{1, 1, 1, 1, 1, 1})
 
 		result := input.Conv1D(kernel, nil, 1, 0)
 
@@ -162,7 +162,7 @@ func TestConv1D(t *testing.T) {
 
 func TestMaxPool2D(t *testing.T) {
 	t.Run("basic max pooling", func(t *testing.T) {
-		input := FromFloat32([]int{1, 1, 4, 4}, []float32{
+		input := FromFloat32(NewShape(1, 1, 4, 4), []float32{
 			1, 2, 3, 4,
 			5, 6, 7, 8,
 			9, 10, 11, 12,
@@ -187,7 +187,7 @@ func TestMaxPool2D(t *testing.T) {
 	})
 
 	t.Run("with stride and padding", func(t *testing.T) {
-		input := FromFloat32([]int{1, 1, 3, 3}, []float32{
+		input := FromFloat32(NewShape(1, 1, 3, 3), []float32{
 			1, 2, 3,
 			4, 5, 6,
 			7, 8, 9,
@@ -207,7 +207,7 @@ func TestMaxPool2D(t *testing.T) {
 
 func TestAvgPool2D(t *testing.T) {
 	t.Run("basic average pooling", func(t *testing.T) {
-		input := FromFloat32([]int{1, 1, 4, 4}, []float32{
+		input := FromFloat32(NewShape(1, 1, 4, 4), []float32{
 			1, 2, 3, 4,
 			5, 6, 7, 8,
 			9, 10, 11, 12,
@@ -227,15 +227,13 @@ func TestAvgPool2D(t *testing.T) {
 		// Check that average pooling works (first window: avg of [1,2,5,6] = 3.5)
 		expected := float32(3.5)
 		resultData := result.Data()
-		if !floatEqual(resultData[0], expected) {
-			t.Errorf("AvgPool[0] = %f, expected %f", resultData[0], expected)
-		}
+		assert.InDelta(t, expected, resultData[0], 1e-5, "AvgPool[0] = %f, expected %f", resultData[0], expected)
 	})
 }
 
 func TestGlobalAvgPool2D(t *testing.T) {
 	t.Run("global average pooling", func(t *testing.T) {
-		input := FromFloat32([]int{1, 2, 2, 2}, []float32{ // [batch, channels, height, width]
+		input := FromFloat32(NewShape(1, 2, 2, 2), []float32{ // [batch, channels, height, width]
 			1, 2, // channel 0, row 0
 			3, 4, // channel 0, row 1
 			5, 6, // channel 1, row 0
@@ -255,22 +253,18 @@ func TestGlobalAvgPool2D(t *testing.T) {
 		resultData := result.Data()
 		// Channel 0: avg of [1,2,3,4] = 2.5
 		expected0 := float32(2.5)
-		if !floatEqual(resultData[0], expected0) {
-			t.Errorf("GlobalAvgPool[0] = %f, expected %f", resultData[0], expected0)
-		}
+		assert.InDelta(t, expected0, resultData[0], 1e-5, "GlobalAvgPool[0] = %f, expected %f", resultData[0], expected0)
 
 		// Channel 1: avg of [5,6,7,8] = 6.5
 		expected1 := float32(6.5)
-		if !floatEqual(resultData[1], expected1) {
-			t.Errorf("GlobalAvgPool[1] = %f, expected %f", resultData[1], expected1)
-		}
+		assert.InDelta(t, expected1, resultData[1], 1e-5, "GlobalAvgPool[1] = %f, expected %f", resultData[1], expected1)
 	})
 }
 
 func TestIm2Col(t *testing.T) {
 	t.Run("basic Im2Col", func(t *testing.T) {
 		// Input: [1, 1, 3, 3]
-		input := FromFloat32([]int{1, 1, 3, 3}, []float32{
+		input := FromFloat32(NewShape(1, 1, 3, 3), []float32{
 			1, 2, 3,
 			4, 5, 6,
 			7, 8, 9,
@@ -293,7 +287,7 @@ func TestIm2Col(t *testing.T) {
 func TestCol2Im(t *testing.T) {
 	t.Run("basic Col2Im", func(t *testing.T) {
 		// Input columns: [4, 4] (from 1 batch, 2x2 output, 1 channel, 2x2 kernel)
-		col := New(DTFP32, 4, 4)
+		col := New(DTFP32, NewShape(4, 4))
 		colData := col.Data()
 		for i := range colData {
 			colData[i] = float32(i + 1)
@@ -314,7 +308,7 @@ func TestCol2Im(t *testing.T) {
 func TestDepthwiseConv2D(t *testing.T) {
 	t.Run("basic depthwise convolution", func(t *testing.T) {
 		// Input: [1, 2, 3, 3] - batch=1, channels=2, height=3, width=3
-		input := FromFloat32([]int{1, 2, 3, 3}, []float32{
+		input := FromFloat32(NewShape(1, 2, 3, 3), []float32{
 			// Channel 0
 			1, 2, 3,
 			4, 5, 6,
@@ -326,7 +320,7 @@ func TestDepthwiseConv2D(t *testing.T) {
 		})
 
 		// Kernel: [2, 1, 2, 2] - channels=2, 1, kernelH=2, kernelW=2
-		kernel := FromFloat32([]int{2, 1, 2, 2}, []float32{
+		kernel := FromFloat32(NewShape(2, 1, 2, 2), []float32{
 			// Channel 0 kernel
 			1, 1,
 			1, 1,
@@ -335,7 +329,7 @@ func TestDepthwiseConv2D(t *testing.T) {
 			2, 2,
 		})
 
-		bias := FromFloat32([]int{2}, []float32{0.5, 1.0})
+		bias := FromFloat32(NewShape(2), []float32{0.5, 1.0})
 
 		result := input.DepthwiseConv2D(kernel, bias, []int{1, 1}, []int{0, 0})
 
@@ -356,10 +350,10 @@ func TestDepthwiseConv2D(t *testing.T) {
 	})
 
 	t.Run("depthwise with 3D kernel", func(t *testing.T) {
-		input := FromFloat32([]int{1, 2, 2, 2}, []float32{1, 2, 3, 4, 5, 6, 7, 8})
+		input := FromFloat32(NewShape(1, 2, 2, 2), []float32{1, 2, 3, 4, 5, 6, 7, 8})
 
 		// Kernel: [2, 2, 2] - channels=2, kernelH=2, kernelW=2
-		kernel := FromFloat32([]int{2, 2, 2}, []float32{
+		kernel := FromFloat32(NewShape(2, 2, 2), []float32{
 			1, 1, // Channel 0 kernel
 			1, 1,
 			2, 2, // Channel 1 kernel
@@ -379,7 +373,7 @@ func TestDepthwiseConv2D(t *testing.T) {
 func TestGroupConv2D(t *testing.T) {
 	t.Run("grouped convolution with 2 groups", func(t *testing.T) {
 		// Input: [1, 4, 2, 2] - batch=1, channels=4, height=2, width=2
-		input := New(DTFP32, 1, 4, 2, 2)
+		input := New(DTFP32, NewShape(1, 4, 2, 2))
 		inputData := input.Data()
 		for i := range inputData {
 			inputData[i] = float32(i + 1)
@@ -387,7 +381,7 @@ func TestGroupConv2D(t *testing.T) {
 
 		// Kernel: [4, 2, 1, 1] - outChannels=4, inChannels/groups=2, kernelH=1, kernelW=1
 		// With groups=2, we have 2 groups, each processing 2 input channels to produce 2 output channels
-		kernel := New(DTFP32, 4, 2, 1, 1)
+		kernel := New(DTFP32, NewShape(4, 2, 1, 1))
 		kernelData := kernel.Data()
 		for i := range kernelData {
 			kernelData[i] = float32(i + 1)
@@ -408,14 +402,14 @@ func TestGroupConv2D(t *testing.T) {
 func TestDilatedConv2D(t *testing.T) {
 	t.Run("dilated convolution", func(t *testing.T) {
 		// Input: [1, 1, 5, 5]
-		input := New(DTFP32, 1, 1, 5, 5)
+		input := New(DTFP32, NewShape(1, 1, 5, 5))
 		inputData := input.Data()
 		for i := range inputData {
 			inputData[i] = float32(i + 1)
 		}
 
 		// Kernel: [1, 1, 3, 3]
-		kernel := FromFloat32([]int{1, 1, 3, 3}, []float32{1, 0, 0, 0, 1, 0, 0, 0, 1})
+		kernel := FromFloat32(NewShape(1, 1, 3, 3), []float32{1, 0, 0, 0, 1, 0, 0, 0, 1})
 
 		// Dilation: [2, 2] - effective kernel size becomes (3-1)*2+1 = 5
 		result := input.DilatedConv2D(kernel, nil, []int{1, 1}, []int{0, 0}, []int{2, 2})
@@ -434,16 +428,16 @@ func TestDilatedConv2D(t *testing.T) {
 func TestConv3D(t *testing.T) {
 	t.Run("basic 3D convolution", func(t *testing.T) {
 		// Input: [1, 1, 3, 3, 3] - batch=1, channels=1, depth=3, height=3, width=3
-		input := New(DTFP32, 1, 1, 3, 3, 3)
+		input := New(DTFP32, NewShape(1, 1, 3, 3, 3))
 		inputData := input.Data()
 		for i := range inputData {
 			inputData[i] = float32(i + 1)
 		}
 
 		// Kernel: [1, 1, 2, 2, 2] - outChannels=1, inChannels=1, kernelD=2, kernelH=2, kernelW=2
-		kernel := FromFloat32([]int{1, 1, 2, 2, 2}, []float32{1, 1, 1, 1, 1, 1, 1, 1})
+		kernel := FromFloat32(NewShape(1, 1, 2, 2, 2), []float32{1, 1, 1, 1, 1, 1, 1, 1})
 
-		bias := FromFloat32([]int{1}, []float32{0.0})
+		bias := FromFloat32(NewShape(1), []float32{0.0})
 
 		result := input.Conv3D(kernel, bias, []int{1, 1, 1}, []int{0, 0, 0})
 
@@ -467,7 +461,7 @@ func TestConv3D(t *testing.T) {
 func TestAdaptiveAvgPool2D(t *testing.T) {
 	t.Run("adaptive average pooling to 2x2", func(t *testing.T) {
 		// Input: [1, 1, 4, 4]
-		input := FromFloat32([]int{1, 1, 4, 4}, []float32{
+		input := FromFloat32(NewShape(1, 1, 4, 4), []float32{
 			1, 2, 3, 4,
 			5, 6, 7, 8,
 			9, 10, 11, 12,
@@ -493,14 +487,12 @@ func TestAdaptiveAvgPool2D(t *testing.T) {
 		expected := []float32{3.5, 5.5, 11.5, 13.5}
 		resultData := result.Data()
 		for i := range expected {
-			if !floatEqual(resultData[i], expected[i]) {
-				t.Errorf("Data[%d] = %f, expected %f", i, resultData[i], expected[i])
-			}
+			assert.InDelta(t, expected[i], resultData[i], 1e-5, "Data[%d] = %f, expected %f", i, resultData[i], expected[i])
 		}
 	})
 
 	t.Run("adaptive average pooling to 1x1", func(t *testing.T) {
-		input := FromFloat32([]int{1, 2, 3, 3}, []float32{
+		input := FromFloat32(NewShape(1, 2, 3, 3), []float32{
 			// Channel 0
 			1, 2, 3,
 			4, 5, 6,
@@ -526,14 +518,12 @@ func TestAdaptiveAvgPool2D(t *testing.T) {
 		expected := []float32{5.0, 50.0}
 		resultData := result.Data()
 		for i := range expected {
-			if !floatEqual(resultData[i], expected[i]) {
-				t.Errorf("Data[%d] = %f, expected %f", i, resultData[i], expected[i])
-			}
+			assert.InDelta(t, expected[i], resultData[i], 1e-5, "Data[%d] = %f, expected %f", i, resultData[i], expected[i])
 		}
 	})
 
 	t.Run("adaptive average pooling to larger size", func(t *testing.T) {
-		input := FromFloat32([]int{1, 1, 2, 2}, []float32{1, 2, 3, 4})
+		input := FromFloat32(NewShape(1, 1, 2, 2), []float32{1, 2, 3, 4})
 
 		result := input.AdaptiveAvgPool2D([]int{4, 4})
 

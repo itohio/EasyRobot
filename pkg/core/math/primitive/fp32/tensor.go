@@ -312,3 +312,488 @@ func Conv2DTransposed(
 		}
 	}
 }
+
+// MaxPool2D performs 2D max pooling on batched input
+// dst: output [batchSize, channels, outHeight, outWidth]
+// src: input [batchSize, channels, height, width]
+// outHeight = (height + 2*padH - kernelH) / strideH + 1
+// outWidth = (width + 2*padW - kernelW) / strideW + 1
+func MaxPool2D(
+	dst, src []float32,
+	batchSize, channels, height, width int,
+	kernelH, kernelW, strideH, strideW, padH, padW int,
+) {
+	if batchSize == 0 || channels == 0 || height == 0 || width == 0 {
+		return
+	}
+
+	outHeight := (height+2*padH-kernelH)/strideH + 1
+	outWidth := (width+2*padW-kernelW)/strideW + 1
+
+	// Process each batch, channel, and output position
+	for b := 0; b < batchSize; b++ {
+		batchOffset := b * channels * height * width
+		dstBatchOffset := b * channels * outHeight * outWidth
+
+		for c := 0; c < channels; c++ {
+			channelOffset := batchOffset + c*height*width
+			dstChannelOffset := dstBatchOffset + c*outHeight*outWidth
+
+			for outH := 0; outH < outHeight; outH++ {
+				for outW := 0; outW < outWidth; outW++ {
+					// Calculate input window position
+					startH := outH*strideH - padH
+					startW := outW*strideW - padW
+
+					// Find max in window
+					maxVal := float32(-1e30)
+					for kh := 0; kh < kernelH; kh++ {
+						for kw := 0; kw < kernelW; kw++ {
+							inH := startH + kh
+							inW := startW + kw
+
+							if inH >= 0 && inH < height && inW >= 0 && inW < width {
+								idx := channelOffset + inH*width + inW
+								val := src[idx]
+								if val > maxVal {
+									maxVal = val
+								}
+							}
+						}
+					}
+
+					// Store max
+					dstIdx := dstChannelOffset + outH*outWidth + outW
+					dst[dstIdx] = maxVal
+				}
+			}
+		}
+	}
+}
+
+// AvgPool2D performs 2D average pooling on batched input
+// dst: output [batchSize, channels, outHeight, outWidth]
+// src: input [batchSize, channels, height, width]
+// outHeight = (height + 2*padH - kernelH) / strideH + 1
+// outWidth = (width + 2*padW - kernelW) / strideW + 1
+func AvgPool2D(
+	dst, src []float32,
+	batchSize, channels, height, width int,
+	kernelH, kernelW, strideH, strideW, padH, padW int,
+) {
+	if batchSize == 0 || channels == 0 || height == 0 || width == 0 {
+		return
+	}
+
+	outHeight := (height+2*padH-kernelH)/strideH + 1
+	outWidth := (width+2*padW-kernelW)/strideW + 1
+
+	// Process each batch, channel, and output position
+	for b := 0; b < batchSize; b++ {
+		batchOffset := b * channels * height * width
+		dstBatchOffset := b * channels * outHeight * outWidth
+
+		for c := 0; c < channels; c++ {
+			channelOffset := batchOffset + c*height*width
+			dstChannelOffset := dstBatchOffset + c*outHeight*outWidth
+
+			for outH := 0; outH < outHeight; outH++ {
+				for outW := 0; outW < outWidth; outW++ {
+					startH := outH*strideH - padH
+					startW := outW*strideW - padW
+
+					var sum float32
+					var count int
+
+					for kh := 0; kh < kernelH; kh++ {
+						for kw := 0; kw < kernelW; kw++ {
+							inH := startH + kh
+							inW := startW + kw
+
+							if inH >= 0 && inH < height && inW >= 0 && inW < width {
+								idx := channelOffset + inH*width + inW
+								sum += src[idx]
+								count++
+							}
+						}
+					}
+
+					// Store average
+					dstIdx := dstChannelOffset + outH*outWidth + outW
+					if count > 0 {
+						dst[dstIdx] = sum / float32(count)
+					} else {
+						dst[dstIdx] = 0
+					}
+				}
+			}
+		}
+	}
+}
+
+// GlobalAvgPool2D performs global average pooling
+// dst: output [batchSize, channels]
+// src: input [batchSize, channels, height, width]
+func GlobalAvgPool2D(
+	dst, src []float32,
+	batchSize, channels, height, width int,
+) {
+	if batchSize == 0 || channels == 0 || height == 0 || width == 0 {
+		return
+	}
+
+	// Process each batch and channel
+	for b := 0; b < batchSize; b++ {
+		batchOffset := b * channels * height * width
+		dstBatchOffset := b * channels
+
+		for c := 0; c < channels; c++ {
+			channelOffset := batchOffset + c*height*width
+
+			var sum float32
+			count := height * width
+
+			for h := 0; h < height; h++ {
+				for w := 0; w < width; w++ {
+					idx := channelOffset + h*width + w
+					sum += src[idx]
+				}
+			}
+
+			// Store average
+			dstIdx := dstBatchOffset + c
+			dst[dstIdx] = sum / float32(count)
+		}
+	}
+}
+
+// AdaptiveAvgPool2D performs adaptive average pooling to a fixed output size
+// dst: output [batchSize, channels, outHeight, outWidth]
+// src: input [batchSize, channels, height, width]
+// This divides the input into approximately equal regions and averages each region
+func AdaptiveAvgPool2D(
+	dst, src []float32,
+	batchSize, channels, height, width, outHeight, outWidth int,
+) {
+	if batchSize == 0 || channels == 0 || height == 0 || width == 0 || outHeight == 0 || outWidth == 0 {
+		return
+	}
+
+	// Process each batch, channel, and output position
+	for b := 0; b < batchSize; b++ {
+		batchOffset := b * channels * height * width
+		dstBatchOffset := b * channels * outHeight * outWidth
+
+		for c := 0; c < channels; c++ {
+			channelOffset := batchOffset + c*height*width
+			dstChannelOffset := dstBatchOffset + c*outHeight*outWidth
+
+			for outH := 0; outH < outHeight; outH++ {
+				for outW := 0; outW < outWidth; outW++ {
+					// Calculate the region in input to average
+					// We divide the input evenly across output positions
+					hStart := (outH * height) / outHeight
+					hEnd := ((outH + 1) * height) / outHeight
+					wStart := (outW * width) / outWidth
+					wEnd := ((outW + 1) * width) / outWidth
+
+					var sum float32
+					count := 0
+
+					for h := hStart; h < hEnd; h++ {
+						for w := wStart; w < wEnd; w++ {
+							idx := channelOffset + h*width + w
+							sum += src[idx]
+							count++
+						}
+					}
+
+					// Store average
+					dstIdx := dstChannelOffset + outH*outWidth + outW
+					if count > 0 {
+						dst[dstIdx] = sum / float32(count)
+					} else {
+						dst[dstIdx] = 0
+					}
+				}
+			}
+		}
+	}
+}
+
+// DepthwiseConv2D performs depthwise 2D convolution
+// dst: output [batchSize, channels, outHeight, outWidth]
+// src: input [batchSize, channels, height, width]
+// kernel: depthwise kernels [channels, kernelH, kernelW]
+// bias: bias terms [channels] (optional, can be nil)
+// outHeight = (height + 2*padH - kernelH) / strideH + 1
+// outWidth = (width + 2*padW - kernelW) / strideW + 1
+func DepthwiseConv2D(
+	dst, src, kernel, bias []float32,
+	batchSize, channels, height, width int,
+	kernelH, kernelW, strideH, strideW, padH, padW int,
+) {
+	if batchSize == 0 || channels == 0 || height == 0 || width == 0 {
+		return
+	}
+
+	outHeight := (height+2*padH-kernelH)/strideH + 1
+	outWidth := (width+2*padW-kernelW)/strideW + 1
+
+	// Process each batch, channel separately (depthwise)
+	for b := 0; b < batchSize; b++ {
+		batchOffset := b * channels * height * width
+		dstBatchOffset := b * channels * outHeight * outWidth
+
+		for c := 0; c < channels; c++ {
+			channelOffset := batchOffset + c*height*width
+			dstChannelOffset := dstBatchOffset + c*outHeight*outWidth
+			kernelOffset := c * kernelH * kernelW
+
+			// Perform 2D convolution for this channel
+			for outH := 0; outH < outHeight; outH++ {
+				for outW := 0; outW < outWidth; outW++ {
+					var sum float32
+
+					for kh := 0; kh < kernelH; kh++ {
+						for kw := 0; kw < kernelW; kw++ {
+							inH := outH*strideH + kh - padH
+							inW := outW*strideW + kw - padW
+
+							if inH >= 0 && inH < height && inW >= 0 && inW < width {
+								inIdx := channelOffset + inH*width + inW
+								kernelIdx := kernelOffset + kh*kernelW + kw
+								sum += src[inIdx] * kernel[kernelIdx]
+							}
+						}
+					}
+
+					// Add bias if provided
+					if bias != nil {
+						sum += bias[c]
+					}
+
+					// Store result
+					outIdx := dstChannelOffset + outH*outWidth + outW
+					dst[outIdx] = sum
+				}
+			}
+		}
+	}
+}
+
+// GroupConv2D performs grouped 2D convolution
+// dst: output [batchSize, outChannels, outHeight, outWidth]
+// src: input [batchSize, inChannels, height, width]
+// kernel: grouped kernels [outChannels, inChannels/groups, kernelH, kernelW]
+// bias: bias terms [outChannels] (optional, can be nil)
+// groups: number of groups (inChannels and outChannels must be divisible by groups)
+// outHeight = (height + 2*padH - kernelH) / strideH + 1
+// outWidth = (width + 2*padW - kernelW) / strideW + 1
+func GroupConv2D(
+	dst, src, kernel, bias []float32,
+	batchSize, inChannels, outChannels, height, width int,
+	kernelH, kernelW, strideH, strideW, padH, padW, groups int,
+) {
+	if batchSize == 0 || inChannels == 0 || outChannels == 0 || height == 0 || width == 0 {
+		return
+	}
+
+	outHeight := (height+2*padH-kernelH)/strideH + 1
+	outWidth := (width+2*padW-kernelW)/strideW + 1
+
+	channelsPerGroup := inChannels / groups
+	outChannelsPerGroup := outChannels / groups
+
+	// Process each group separately
+	for g := 0; g < groups; g++ {
+		inputChanStart := g * channelsPerGroup
+		outputChanStart := g * outChannelsPerGroup
+		kernelChanStart := g * outChannelsPerGroup * channelsPerGroup * kernelH * kernelW
+
+		// For each output channel in this group
+		for oc := 0; oc < outChannelsPerGroup; oc++ {
+			outChan := outputChanStart + oc
+			kernelOffset := kernelChanStart + oc*channelsPerGroup*kernelH*kernelW
+
+			// Process each batch
+			for b := 0; b < batchSize; b++ {
+				dstBatchOffset := b * outChannels * outHeight * outWidth
+				dstChannelOffset := dstBatchOffset + outChan*outHeight*outWidth
+
+				// Perform convolution over input channels in this group
+				for outH := 0; outH < outHeight; outH++ {
+					for outW := 0; outW < outWidth; outW++ {
+						var sum float32
+
+						for ic := 0; ic < channelsPerGroup; ic++ {
+							inChan := inputChanStart + ic
+							srcBatchOffset := b * inChannels * height * width
+							srcChannelOffset := srcBatchOffset + inChan*height*width
+							kernelChanOffset := kernelOffset + ic*kernelH*kernelW
+
+							for kh := 0; kh < kernelH; kh++ {
+								for kw := 0; kw < kernelW; kw++ {
+									inH := outH*strideH + kh - padH
+									inW := outW*strideW + kw - padW
+
+									if inH >= 0 && inH < height && inW >= 0 && inW < width {
+										srcIdx := srcChannelOffset + inH*width + inW
+										kernelIdx := kernelChanOffset + kh*kernelW + kw
+										sum += src[srcIdx] * kernel[kernelIdx]
+									}
+								}
+							}
+						}
+
+						// Add bias if provided
+						if bias != nil {
+							sum += bias[outChan]
+						}
+
+						// Store result
+						dstIdx := dstChannelOffset + outH*outWidth + outW
+						dst[dstIdx] = sum
+					}
+				}
+			}
+		}
+	}
+}
+
+// DilatedConv2D performs dilated 2D convolution
+// dst: output [batchSize, outChannels, outHeight, outWidth]
+// src: input [batchSize, inChannels, height, width]
+// kernel: kernels [outChannels, inChannels, kernelH, kernelW]
+// bias: bias terms [outChannels] (optional, can be nil)
+// dilationH, dilationW: dilation factors
+// outHeight = (height + 2*padH - ((kernelH-1)*dilationH + 1)) / strideH + 1
+// outWidth = (width + 2*padW - ((kernelW-1)*dilationW + 1)) / strideW + 1
+func DilatedConv2D(
+	dst, src, kernel, bias []float32,
+	batchSize, inChannels, outChannels, height, width int,
+	kernelH, kernelW, strideH, strideW, padH, padW, dilationH, dilationW int,
+) {
+	if batchSize == 0 || inChannels == 0 || outChannels == 0 || height == 0 || width == 0 {
+		return
+	}
+
+	outHeight := (height+2*padH-((kernelH-1)*dilationH+1))/strideH + 1
+	outWidth := (width+2*padW-((kernelW-1)*dilationW+1))/strideW + 1
+
+	// Process each batch and output channel
+	for b := 0; b < batchSize; b++ {
+		srcBatchOffset := b * inChannels * height * width
+		dstBatchOffset := b * outChannels * outHeight * outWidth
+
+		for oc := 0; oc < outChannels; oc++ {
+			kernelOffset := oc * inChannels * kernelH * kernelW
+			dstChannelOffset := dstBatchOffset + oc*outHeight*outWidth
+
+			for outH := 0; outH < outHeight; outH++ {
+				for outW := 0; outW < outWidth; outW++ {
+					var sum float32
+
+					for ic := 0; ic < inChannels; ic++ {
+						srcChannelOffset := srcBatchOffset + ic*height*width
+						kernelChannelOffset := kernelOffset + ic*kernelH*kernelW
+
+						for kh := 0; kh < kernelH; kh++ {
+							for kw := 0; kw < kernelW; kw++ {
+								// Apply dilation
+								inH := outH*strideH + kh*dilationH - padH
+								inW := outW*strideW + kw*dilationW - padW
+
+								if inH >= 0 && inH < height && inW >= 0 && inW < width {
+									srcIdx := srcChannelOffset + inH*width + inW
+									kernelIdx := kernelChannelOffset + kh*kernelW + kw
+									sum += src[srcIdx] * kernel[kernelIdx]
+								}
+							}
+						}
+					}
+
+					// Add bias if provided
+					if bias != nil {
+						sum += bias[oc]
+					}
+
+					// Store result
+					dstIdx := dstChannelOffset + outH*outWidth + outW
+					dst[dstIdx] = sum
+				}
+			}
+		}
+	}
+}
+
+// Conv3D performs 3D convolution
+// dst: output [batchSize, outChannels, outDepth, outHeight, outWidth]
+// src: input [batchSize, inChannels, depth, height, width]
+// kernel: kernels [outChannels, inChannels, kernelD, kernelH, kernelW]
+// bias: bias terms [outChannels] (optional, can be nil)
+// outDepth = (depth + 2*padD - kernelD) / strideD + 1
+// outHeight = (height + 2*padH - kernelH) / strideH + 1
+// outWidth = (width + 2*padW - kernelW) / strideW + 1
+func Conv3D(
+	dst, src, kernel, bias []float32,
+	batchSize, inChannels, outChannels, depth, height, width int,
+	kernelD, kernelH, kernelW, strideD, strideH, strideW, padD, padH, padW int,
+) {
+	if batchSize == 0 || inChannels == 0 || outChannels == 0 || depth == 0 || height == 0 || width == 0 {
+		return
+	}
+
+	outDepth := (depth+2*padD-kernelD)/strideD + 1
+	outHeight := (height+2*padH-kernelH)/strideH + 1
+	outWidth := (width+2*padW-kernelW)/strideW + 1
+
+	// Process each batch and output channel
+	for b := 0; b < batchSize; b++ {
+		srcBatchOffset := b * inChannels * depth * height * width
+		dstBatchOffset := b * outChannels * outDepth * outHeight * outWidth
+
+		for oc := 0; oc < outChannels; oc++ {
+			kernelOffset := oc * inChannels * kernelD * kernelH * kernelW
+			dstChannelOffset := dstBatchOffset + oc*outDepth*outHeight*outWidth
+
+			for outD := 0; outD < outDepth; outD++ {
+				for outH := 0; outH < outHeight; outH++ {
+					for outW := 0; outW < outWidth; outW++ {
+						var sum float32
+
+						for ic := 0; ic < inChannels; ic++ {
+							srcChannelOffset := srcBatchOffset + ic*depth*height*width
+							kernelChannelOffset := kernelOffset + ic*kernelD*kernelH*kernelW
+
+							for kd := 0; kd < kernelD; kd++ {
+								for kh := 0; kh < kernelH; kh++ {
+									for kw := 0; kw < kernelW; kw++ {
+										inD := outD*strideD + kd - padD
+										inH := outH*strideH + kh - padH
+										inW := outW*strideW + kw - padW
+
+										if inD >= 0 && inD < depth && inH >= 0 && inH < height && inW >= 0 && inW < width {
+											srcIdx := srcChannelOffset + inD*height*width + inH*width + inW
+											kernelIdx := kernelChannelOffset + kd*kernelH*kernelW + kh*kernelW + kw
+											sum += src[srcIdx] * kernel[kernelIdx]
+										}
+									}
+								}
+							}
+						}
+
+						// Add bias if provided
+						if bias != nil {
+							sum += bias[oc]
+						}
+
+						// Store result
+						dstIdx := dstChannelOffset + outD*outHeight*outWidth + outH*outWidth + outW
+						dst[dstIdx] = sum
+					}
+				}
+			}
+		}
+	}
+}

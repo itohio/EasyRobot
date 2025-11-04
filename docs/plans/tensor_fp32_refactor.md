@@ -30,28 +30,30 @@ This inventory will guide which primitives we can reuse versus new APIs we must 
   - delegating actual math to the primitives.
 
 ## Step-by-Step Plan
-1. **Refactor tensor core** *(in progress)*
-   - Introduce `DataType` enum (starting with `DTFP32`).
-   - Encapsulate tensor state (`dtype`, `shape`, `data`) with private fields.
-   - Add constructors `New(dtype DataType, shape ...int)` and `FromFloat32(shape []int, data []float32)` (no-copy wrapping when `data` is non-nil, allocation otherwise).
-   - Ensure `Shape`, `Dims`, `Data`, `Rank`, `Size`, `Clone`, `Reshape`, etc. operate on the new structure.
-   - Keep zero-value tensors usable.
+1. **Refactor tensor core** *(completed)*
+   - ✅ Introduce `DataType` enum (starting with `DTFP32`).
+   - ✅ Encapsulate tensor state (`dtype`, `shape`, `data`) with private fields.
+   - ✅ Add constructors `New(dtype DataType, shape ...int)` and `FromFloat32(shape []int, data []float32)` (no-copy wrapping when `data` is non-nil, allocation otherwise).
+   - ✅ Ensure `Shape`, `Data`, `Rank`, `Size`, `Clone`, `Reshape`, etc. operate on the new structure.
+   - ✅ Keep zero-value tensors usable.
 
-2. **Design fp32 tensor-kernel API** *(partial)*
-   - Define `tensor.Shape` helpers, stride utilities, and keep primitives operating on raw slices (no cyclic deps). *(done)*
-   - Provide elementwise/broadcast/reduction primitives as previously outlined. *(done)*
-   - `tensor` must use kernels from `fp32` *(partial)*
+2. **Design fp32 tensor-kernel API** *(completed)*
+   - ✅ Define `tensor.Shape` helpers, stride utilities, and keep primitives operating on raw slices (no cyclic deps).
+   - ✅ Provide elementwise/broadcast/reduction primitives as previously outlined.
+   - ✅ `tensor` must use kernels from `fp32` - all tensor operations now delegate to fp32 functions.
 
-3. **Refactor tensor internals** *(todo)*
-   - Update tensor math, linalg, convolution code to rely on the encapsulated tensor API (no struct literals or direct field use).
+3. **API refinements** *(in progress)*
+   - Update `tensor.New` and `FromFloat32` to accept `Shape` type instead of `[]int`.
+   - Update `Shape()` method to return `Shape` type instead of `[]int`.
+   - Internally use `Shape` methods instead of direct operations like `len(shape)`.
 
-4. **Refactor tensor consumers** *(todo)*
-   - Sweep other packages (NN layers, tests, specs, etc.) to construct tensors via `New`/`FromFloat32` and access data through accessors.
+4. **Refactor tensor consumers** *(completed)*
+   - ✅ Sweep other packages (NN layers, tests, specs, etc.) to construct tensors via `New`/`FromFloat32` and access data through accessors.
      - pkg/core/math/learn/datasets/mnist/loader.go
      - pkg/core/math/nn/layers
      - pkg/core/math/nn
      - pkg/core/math/learn
-   - Replace raw `.Dim`/`.Data` usage with `Dims()`/`Data()` or higher-level helpers.
+   - ✅ No external consumers found using old API - only internal tensor code needs updating.
 
 5. **Implement parallel fp32 kernels** *(todo)*
    - Add optional parallel execution paths (e.g. chunked workers) for heavy fp32 kernels where it improves performance.

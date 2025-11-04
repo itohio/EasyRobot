@@ -40,7 +40,7 @@ func (t *Tensor) MatVecMulTransposed(matrix *Tensor, vector *Tensor, alpha, beta
 		result = t
 	} else {
 		// Create new result tensor
-		result = New(t.dtype, N)
+		result = New(t.dtype, NewShape(N))
 	}
 
 	// Leading dimension of matrix (row-major: number of columns)
@@ -119,7 +119,7 @@ func (t *Tensor) MatMulTransposed(other *Tensor, transposeA, transposeB bool, ds
 		}
 		result = dst
 	} else {
-		result = New(t.dtype, resultShape...)
+		result = New(t.dtype, NewShape(resultShape...))
 	}
 
 	// Handle 2D case

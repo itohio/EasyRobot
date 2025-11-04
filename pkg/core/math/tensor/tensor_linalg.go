@@ -71,7 +71,7 @@ func (t *Tensor) matMul2D(other *Tensor) *Tensor {
 	ldB := N
 	ldC := N
 
-	result := New(t.dtype, M, N)
+	result := New(t.dtype, NewShape(M, N))
 
 	fp32.Gemm_NN(
 		result.data,
@@ -145,7 +145,7 @@ func (t *Tensor) matMulSameBatch(other *Tensor, batchSize, M, N, K int) *Tensor 
 	resultShape[len(resultShape)-2] = M
 	resultShape[len(resultShape)-1] = N
 
-	result := New(t.dtype, resultShape...)
+	result := New(t.dtype, NewShape(resultShape...))
 
 	if t.isContiguous() && other.isContiguous() {
 		fp32.GemmStrided(
@@ -181,7 +181,7 @@ func (t *Tensor) matMulSameBatch(other *Tensor, batchSize, M, N, K int) *Tensor 
 // matMulBroadcastFirst handles [M, K] × [B, K, N] (broadcast first tensor)
 func (t *Tensor) matMulBroadcastFirst(other *Tensor, batchSize, M, N, K int) *Tensor {
 	resultShape := []int{batchSize, M, N}
-	result := New(t.dtype, resultShape...)
+	result := New(t.dtype, NewShape(resultShape...))
 
 	sliceSize := K * N
 	dstSize := M * N
@@ -207,7 +207,7 @@ func (t *Tensor) matMulBroadcastSecond(other *Tensor, batchSize, M, N, K int) *T
 	resultShape := append([]int(nil), t.shape...)
 	resultShape[len(resultShape)-1] = N
 
-	result := New(t.dtype, resultShape...)
+	result := New(t.dtype, NewShape(resultShape...))
 
 	ldA := K
 	ldB := N
@@ -264,7 +264,7 @@ func (t *Tensor) transpose2D() *Tensor {
 	}
 
 	M, N := t.shape[0], t.shape[1]
-	result := New(t.dtype, N, M)
+	result := New(t.dtype, NewShape(N, M))
 
 	// Transpose: result[j][i] = t[i][j]
 	resultData := result.data

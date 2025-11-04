@@ -2,6 +2,8 @@ package tensor
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestFlat(t *testing.T) {
@@ -12,17 +14,17 @@ func TestFlat(t *testing.T) {
 	}{
 		{
 			name:     "2x2 tensor",
-			tensor:   FromFloat32([]int{2, 2}, []float32{1, 2, 3, 4}),
+			tensor:   FromFloat32(NewShape(2, 2), []float32{1, 2, 3, 4}),
 			expected: []float32{1, 2, 3, 4},
 		},
 		{
 			name:     "1D tensor",
-			tensor:   FromFloat32([]int{5}, []float32{1, 2, 3, 4, 5}),
+			tensor:   FromFloat32(NewShape(5), []float32{1, 2, 3, 4, 5}),
 			expected: []float32{1, 2, 3, 4, 5},
 		},
 		{
 			name:     "3D tensor",
-			tensor:   FromFloat32([]int{2, 2, 2}, []float32{1, 2, 3, 4, 5, 6, 7, 8}),
+			tensor:   FromFloat32(NewShape(2, 2, 2), []float32{1, 2, 3, 4, 5, 6, 7, 8}),
 			expected: []float32{1, 2, 3, 4, 5, 6, 7, 8},
 		},
 		{
@@ -61,16 +63,14 @@ func TestFlat(t *testing.T) {
 			}
 
 			for i := range tt.expected {
-				if !floatEqual(result[i], tt.expected[i]) {
-					t.Errorf("Flat()[%d] = %f, expected %f", i, result[i], tt.expected[i])
-				}
+				assert.InDeltaf(t, tt.expected[i], result[i], 1e-6, "Flat()[%d] = %f, expected %f", i, result[i], tt.expected[i])
 			}
 		})
 	}
 }
 
 func TestAt(t *testing.T) {
-	tensor := FromFloat32([]int{2, 3}, []float32{1, 2, 3, 4, 5, 6})
+	tensor := FromFloat32(NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
 
 	tests := []struct {
 		name        string
@@ -136,22 +136,20 @@ func TestAt(t *testing.T) {
 			}()
 
 			result := tensor.At(tt.indices...)
-			if !tt.shouldPanic && !floatEqual(result, tt.expected) {
-				t.Errorf("At(%v) = %f, expected %f", tt.indices, result, tt.expected)
+			if !tt.shouldPanic {
+				assert.InDelta(t, tt.expected, result, 1e-6, "At(%v) = %f, expected %f", tt.indices, result, tt.expected)
 			}
 		})
 	}
 
 	// Test 3D tensor
-	tensor3D := FromFloat32([]int{2, 2, 2}, []float32{1, 2, 3, 4, 5, 6, 7, 8})
+	tensor3D := FromFloat32(NewShape(2, 2, 2), []float32{1, 2, 3, 4, 5, 6, 7, 8})
 	result := tensor3D.At(1, 0, 1)
-	if !floatEqual(result, 6.0) {
-		t.Errorf("At(1, 0, 1) for 3D tensor = %f, expected 6.0", result)
-	}
+	assert.InDelta(t, 6.0, result, 1e-6, "At(1, 0, 1) for 3D tensor = %f, expected 6.0", result)
 }
 
 func TestSetAt(t *testing.T) {
-	tensor := FromFloat32([]int{2, 3}, []float32{1, 2, 3, 4, 5, 6})
+	tensor := FromFloat32(NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
 
 	tests := []struct {
 		name        string
@@ -209,10 +207,8 @@ func TestSetAt(t *testing.T) {
 					} else {
 						// Verify the value was set
 						result := tensorCopy.At(tt.indices...)
-						if !floatEqual(result, tt.expected) {
-							t.Errorf("After SetAt(%v, %f), At(%v) = %f, expected %f",
-								tt.indices, tt.value, tt.indices, result, tt.expected)
-						}
+						assert.InDeltaf(t, tt.expected, result, 1e-6, "After SetAt(%v, %f), At(%v) = %f, expected %f",
+							tt.indices, tt.value, tt.indices, result, tt.expected)
 					}
 				}
 			}()
@@ -232,49 +228,49 @@ func TestReshape(t *testing.T) {
 	}{
 		{
 			name:     "2x2 to 1x4",
-			tensor:   FromFloat32([]int{2, 2}, []float32{1, 2, 3, 4}),
+			tensor:   FromFloat32(NewShape(2, 2), []float32{1, 2, 3, 4}),
 			newShape: []int{1, 4},
 			expected: []float32{1, 2, 3, 4},
 		},
 		{
 			name:     "2x2 to 4",
-			tensor:   FromFloat32([]int{2, 2}, []float32{1, 2, 3, 4}),
+			tensor:   FromFloat32(NewShape(2, 2), []float32{1, 2, 3, 4}),
 			newShape: []int{4},
 			expected: []float32{1, 2, 3, 4},
 		},
 		{
 			name:     "6 to 2x3",
-			tensor:   FromFloat32([]int{6}, []float32{1, 2, 3, 4, 5, 6}),
+			tensor:   FromFloat32(NewShape(6), []float32{1, 2, 3, 4, 5, 6}),
 			newShape: []int{2, 3},
 			expected: []float32{1, 2, 3, 4, 5, 6},
 		},
 		{
 			name:     "2x2x2 to 8",
-			tensor:   FromFloat32([]int{2, 2, 2}, []float32{1, 2, 3, 4, 5, 6, 7, 8}),
+			tensor:   FromFloat32(NewShape(2, 2, 2), []float32{1, 2, 3, 4, 5, 6, 7, 8}),
 			newShape: []int{8},
 			expected: []float32{1, 2, 3, 4, 5, 6, 7, 8},
 		},
 		{
 			name:     "2x2x2 to 4x2",
-			tensor:   FromFloat32([]int{2, 2, 2}, []float32{1, 2, 3, 4, 5, 6, 7, 8}),
+			tensor:   FromFloat32(NewShape(2, 2, 2), []float32{1, 2, 3, 4, 5, 6, 7, 8}),
 			newShape: []int{4, 2},
 			expected: []float32{1, 2, 3, 4, 5, 6, 7, 8},
 		},
 		{
 			name:        "size mismatch",
-			tensor:      FromFloat32([]int{2, 2}, []float32{1, 2, 3, 4}),
+			tensor:      FromFloat32(NewShape(2, 2), []float32{1, 2, 3, 4}),
 			newShape:    []int{5},
 			shouldPanic: true,
 		},
 		{
 			name:        "zero dimension",
-			tensor:      FromFloat32([]int{2, 2}, []float32{1, 2, 3, 4}),
+			tensor:      FromFloat32(NewShape(2, 2), []float32{1, 2, 3, 4}),
 			newShape:    []int{0, 4},
 			shouldPanic: true,
 		},
 		{
 			name:        "negative dimension",
-			tensor:      FromFloat32([]int{2, 2}, []float32{1, 2, 3, 4}),
+			tensor:      FromFloat32(NewShape(2, 2), []float32{1, 2, 3, 4}),
 			newShape:    []int{-1, 4},
 			shouldPanic: true,
 		},
@@ -336,16 +332,12 @@ func TestReshape(t *testing.T) {
 			}
 
 			for i := range tt.expected {
-				if !floatEqual(resultData[i], tt.expected[i]) {
-					t.Errorf("Reshape() Data[%d] = %f, expected %f", i, resultData[i], tt.expected[i])
-				}
+				assert.InDeltaf(t, tt.expected[i], resultData[i], 1e-5, "Reshape() Data[%d] = %f, expected %f", i, resultData[i], tt.expected[i])
 			}
 		})
 	}
 
 	// Test nil tensor
 	result := (*Tensor)(nil).Reshape([]int{1})
-	if result != nil {
-		t.Errorf("Reshape() of nil tensor should return nil, got %v", result)
-	}
+	assert.Nil(t, result, "Reshape() of nil tensor should return nil")
 }

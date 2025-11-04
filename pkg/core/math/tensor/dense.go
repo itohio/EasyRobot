@@ -11,8 +11,7 @@ type Tensor struct {
 
 // New creates a new tensor with the provided data type and shape.
 // The underlying buffer is zero-initialized.
-func New(dtype DataType, dims ...int) *Tensor {
-	shape := NewShape(dims...)
+func New(dtype DataType, shape Shape) *Tensor {
 	size := shape.Size()
 	buf := make([]float32, size)
 	return &Tensor{dtype: dtype, shape: shape, data: buf}
@@ -20,9 +19,8 @@ func New(dtype DataType, dims ...int) *Tensor {
 
 // FromFloat32 constructs an FP32 tensor from an existing backing slice.
 // If data is nil, a new buffer is allocated. The slice is used directly (no copy).
-func FromFloat32(shape []int, data []float32) *Tensor {
-	s := NewShape(shape...)
-	size := s.Size()
+func FromFloat32(shape Shape, data []float32) *Tensor {
+	size := shape.Size()
 	var buf []float32
 	if data == nil {
 		buf = make([]float32, size)
@@ -32,7 +30,7 @@ func FromFloat32(shape []int, data []float32) *Tensor {
 		}
 		buf = data
 	}
-	return &Tensor{dtype: DTFP32, shape: s, data: buf}
+	return &Tensor{dtype: DTFP32, shape: shape, data: buf}
 }
 
 // DataType returns the tensor's data type.
@@ -56,7 +54,7 @@ func (t *Tensor) Rank() int {
 	if t == nil {
 		return 0
 	}
-	return len(t.shape)
+	return t.shape.Rank()
 }
 
 // Size returns the total number of elements in the tensor.
@@ -102,7 +100,7 @@ func (t *Tensor) isContiguous() bool {
 	if t == nil {
 		return true
 	}
-	if len(t.shape) == 0 {
+	if t.shape.Rank() == 0 {
 		return true
 	}
 	strides := t.shape.Strides()
@@ -122,14 +120,14 @@ func (t *Tensor) elementIndex(indices []int, strides []int) int {
 // At returns the element at the given indices.
 // Indices must match the tensor's dimensions.
 func (t *Tensor) At(indices ...int) float32 {
-	if t == nil || (len(t.shape) == 0 && len(indices) == 0) {
+	if t == nil || (t.shape.Rank() == 0 && len(indices) == 0) {
 		if len(t.data) == 0 {
 			panic("tensor.At: empty tensor")
 		}
 		return t.data[0]
 	}
 
-	if len(indices) != len(t.shape) {
+	if len(indices) != t.shape.Rank() {
 		panic("tensor.At: number of indices must match tensor dimensions")
 	}
 
@@ -150,7 +148,7 @@ func (t *Tensor) At(indices ...int) float32 {
 // SetAt sets the element at the given indices.
 // Indices must match the tensor's dimensions.
 func (t *Tensor) SetAt(indices []int, value float32) {
-	if t == nil || (len(t.shape) == 0 && len(indices) == 0) {
+	if t == nil || (t.shape.Rank() == 0 && len(indices) == 0) {
 		if t == nil || len(t.data) == 0 {
 			panic("tensor.SetAt: cannot set element of nil or empty tensor")
 		}
@@ -158,7 +156,7 @@ func (t *Tensor) SetAt(indices []int, value float32) {
 		return
 	}
 
-	if len(indices) != len(t.shape) {
+	if len(indices) != t.shape.Rank() {
 		panic("tensor.SetAt: number of indices must match tensor dimensions")
 	}
 

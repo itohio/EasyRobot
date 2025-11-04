@@ -3,6 +3,8 @@ package tensor
 import (
 	"math"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestAdd(t *testing.T) {
@@ -14,27 +16,27 @@ func TestAdd(t *testing.T) {
 	}{
 		{
 			name:     "2x2 addition",
-			t1:       FromFloat32([]int{2, 2}, []float32{1, 2, 3, 4}),
-			t2:       FromFloat32([]int{2, 2}, []float32{5, 6, 7, 8}),
+			t1:       FromFloat32(NewShape(2, 2), []float32{1, 2, 3, 4}),
+			t2:       FromFloat32(NewShape(2, 2), []float32{5, 6, 7, 8}),
 			expected: []float32{6, 8, 10, 12},
 		},
 		{
 			name:     "1D addition",
-			t1:       FromFloat32([]int{3}, []float32{1, 2, 3}),
-			t2:       FromFloat32([]int{3}, []float32{4, 5, 6}),
+			t1:       FromFloat32(NewShape(3), []float32{1, 2, 3}),
+			t2:       FromFloat32(NewShape(3), []float32{4, 5, 6}),
 			expected: []float32{5, 7, 9},
 		},
 		{
 			name:     "scalar-like 1x1",
-			t1:       FromFloat32([]int{1, 1}, []float32{10}),
-			t2:       FromFloat32([]int{1, 1}, []float32{20}),
+			t1:       FromFloat32(NewShape(1, 1), []float32{10}),
+			t2:       FromFloat32(NewShape(1, 1), []float32{20}),
 			expected: []float32{30},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			original := tt.t1.Clone()
+			originalT2 := tt.t2.Clone()
 			result := tt.t1.Add(tt.t2)
 
 			if result != tt.t1 {
@@ -43,16 +45,19 @@ func TestAdd(t *testing.T) {
 
 			t1Data := tt.t1.Data()
 			for i := range tt.expected {
-				if !floatEqual(t1Data[i], tt.expected[i]) {
-					t.Errorf("Data[%d] = %f, expected %f", i, t1Data[i], tt.expected[i])
-				}
+				assert.InDelta(t, float64(tt.expected[i]), float64(t1Data[i]), 1e-6)
+
 			}
 
-			// Verify t2 is unchanged (check first element as simple verification)
+			// Verify tt.t1 was changed (equals expected)
+			for i := range tt.expected {
+				assert.InDelta(t, float64(tt.expected[i]), float64(tt.t1.Data()[i]), 1e-6, "t1 changed at %d", i)
+			}
+			// Verify tt.t2 was not modified
+			originalT2Data := originalT2.Data()
 			t2Data := tt.t2.Data()
-			originalData := original.Data()
-			if len(t2Data) > 0 && t2Data[0] != originalData[0] {
-				// Actually, verify both t1 changed and t2 unchanged properly
+			for i := range originalT2Data {
+				assert.InDelta(t, float64(originalT2Data[i]), float64(t2Data[i]), 1e-6, "t2 modified at %d: got %f, expected %f", i, t2Data[i], originalT2Data[i])
 			}
 		})
 	}
@@ -67,14 +72,14 @@ func TestSub(t *testing.T) {
 	}{
 		{
 			name:     "2x2 subtraction",
-			t1:       FromFloat32([]int{2, 2}, []float32{10, 20, 30, 40}),
-			t2:       FromFloat32([]int{2, 2}, []float32{1, 2, 3, 4}),
+			t1:       FromFloat32(NewShape(2, 2), []float32{10, 20, 30, 40}),
+			t2:       FromFloat32(NewShape(2, 2), []float32{1, 2, 3, 4}),
 			expected: []float32{9, 18, 27, 36},
 		},
 		{
 			name:     "1D subtraction",
-			t1:       FromFloat32([]int{3}, []float32{10, 20, 30}),
-			t2:       FromFloat32([]int{3}, []float32{1, 2, 3}),
+			t1:       FromFloat32(NewShape(3), []float32{10, 20, 30}),
+			t2:       FromFloat32(NewShape(3), []float32{1, 2, 3}),
 			expected: []float32{9, 18, 27},
 		},
 	}
@@ -89,9 +94,7 @@ func TestSub(t *testing.T) {
 
 			t1Data := tt.t1.Data()
 			for i := range tt.expected {
-				if !floatEqual(t1Data[i], tt.expected[i]) {
-					t.Errorf("Data[%d] = %f, expected %f", i, t1Data[i], tt.expected[i])
-				}
+				assert.InDeltaf(t, float64(tt.expected[i]), float64(t1Data[i]), 1e-6, "Data[%d] = %f, expected %f", i, t1Data[i], tt.expected[i])
 			}
 		})
 	}
@@ -106,14 +109,14 @@ func TestMul(t *testing.T) {
 	}{
 		{
 			name:     "2x2 multiplication",
-			t1:       FromFloat32([]int{2, 2}, []float32{2, 3, 4, 5}),
-			t2:       FromFloat32([]int{2, 2}, []float32{2, 2, 2, 2}),
+			t1:       FromFloat32(NewShape(2, 2), []float32{2, 3, 4, 5}),
+			t2:       FromFloat32(NewShape(2, 2), []float32{2, 2, 2, 2}),
 			expected: []float32{4, 6, 8, 10},
 		},
 		{
 			name:     "1D multiplication",
-			t1:       FromFloat32([]int{3}, []float32{1, 2, 3}),
-			t2:       FromFloat32([]int{3}, []float32{2, 3, 4}),
+			t1:       FromFloat32(NewShape(3), []float32{1, 2, 3}),
+			t2:       FromFloat32(NewShape(3), []float32{2, 3, 4}),
 			expected: []float32{2, 6, 12},
 		},
 	}
@@ -126,11 +129,9 @@ func TestMul(t *testing.T) {
 				t.Errorf("Mul should return self for chaining")
 			}
 
+			t1Data := tt.t1.Data()
 			for i := range tt.expected {
-				t1Data := tt.t1.Data()
-				if !floatEqual(t1Data[i], tt.expected[i]) {
-					t.Errorf("Data[%d] = %f, expected %f", i, t1Data[i], tt.expected[i])
-				}
+				assert.InDeltaf(t, float64(tt.expected[i]), float64(t1Data[i]), 1e-6, "Data[%d] = %f, expected %f", i, t1Data[i], tt.expected[i])
 			}
 		})
 	}
@@ -145,8 +146,8 @@ func TestDiv(t *testing.T) {
 	}{
 		{
 			name:     "2x2 division",
-			t1:       FromFloat32([]int{2, 2}, []float32{10, 20, 30, 40}),
-			t2:       FromFloat32([]int{2, 2}, []float32{2, 4, 5, 8}),
+			t1:       FromFloat32(NewShape(2, 2), []float32{10, 20, 30, 40}),
+			t2:       FromFloat32(NewShape(2, 2), []float32{2, 4, 5, 8}),
 			expected: []float32{5, 5, 6, 5},
 		},
 	}
@@ -161,9 +162,7 @@ func TestDiv(t *testing.T) {
 
 			for i := range tt.expected {
 				t1Data := tt.t1.Data()
-				if !floatEqual(t1Data[i], tt.expected[i]) {
-					t.Errorf("Data[%d] = %f, expected %f", i, t1Data[i], tt.expected[i])
-				}
+				assert.InDeltaf(t, float64(tt.expected[i]), float64(t1Data[i]), 1e-6, "Data[%d] = %f, expected %f", i, t1Data[i], tt.expected[i])
 			}
 		})
 	}
@@ -178,19 +177,19 @@ func TestScale(t *testing.T) {
 	}{
 		{
 			name:     "scale by 2",
-			t:        FromFloat32([]int{2, 2}, []float32{1, 2, 3, 4}),
+			t:        FromFloat32(NewShape(2, 2), []float32{1, 2, 3, 4}),
 			scalar:   2.0,
 			expected: []float32{2, 4, 6, 8},
 		},
 		{
 			name:     "scale by 0.5",
-			t:        FromFloat32([]int{3}, []float32{2, 4, 6}),
+			t:        FromFloat32(NewShape(3), []float32{2, 4, 6}),
 			scalar:   0.5,
 			expected: []float32{1, 2, 3},
 		},
 		{
 			name:     "scale by 0",
-			t:        FromFloat32([]int{2, 2}, []float32{1, 2, 3, 4}),
+			t:        FromFloat32(NewShape(2, 2), []float32{1, 2, 3, 4}),
 			scalar:   0.0,
 			expected: []float32{0, 0, 0, 0},
 		},
@@ -206,9 +205,7 @@ func TestScale(t *testing.T) {
 
 			for i := range tt.expected {
 				tData := tt.t.Data()
-				if !floatEqual(tData[i], tt.expected[i]) {
-					t.Errorf("Data[%d] = %f, expected %f", i, tData[i], tt.expected[i])
-				}
+				assert.InDelta(t, float64(tt.expected[i]), float64(tData[i]), 1e-6, "Data[%d] = %f, expected %f", i, tData[i], tt.expected[i])
 			}
 		})
 	}
@@ -216,8 +213,8 @@ func TestScale(t *testing.T) {
 
 func TestAddTo(t *testing.T) {
 	t.Run("create new tensor", func(t *testing.T) {
-		t1 := FromFloat32([]int{2, 2}, []float32{1, 2, 3, 4})
-		t2 := FromFloat32([]int{2, 2}, []float32{5, 6, 7, 8})
+		t1 := FromFloat32(NewShape(2, 2), []float32{1, 2, 3, 4})
+		t2 := FromFloat32(NewShape(2, 2), []float32{5, 6, 7, 8})
 
 		result := t1.AddTo(t2, nil)
 
@@ -228,9 +225,7 @@ func TestAddTo(t *testing.T) {
 		expected := []float32{6, 8, 10, 12}
 		resultData := result.Data()
 		for i := range expected {
-			if !floatEqual(resultData[i], expected[i]) {
-				t.Errorf("Data[%d] = %f, expected %f", i, resultData[i], expected[i])
-			}
+			assert.InDelta(t, float64(expected[i]), float64(resultData[i]), 1e-6, "Data[%d] = %f, expected %f", i, resultData[i], expected[i])
 		}
 
 		// Original tensors should be unchanged
@@ -242,9 +237,9 @@ func TestAddTo(t *testing.T) {
 	})
 
 	t.Run("use destination tensor", func(t *testing.T) {
-		t1 := FromFloat32([]int{2, 2}, []float32{1, 2, 3, 4})
-		t2 := FromFloat32([]int{2, 2}, []float32{5, 6, 7, 8})
-		dst := New(DTFP32, 2, 2)
+		t1 := FromFloat32(NewShape(2, 2), []float32{1, 2, 3, 4})
+		t2 := FromFloat32(NewShape(2, 2), []float32{5, 6, 7, 8})
+		dst := New(DTFP32, NewShape(2, 2))
 
 		result := t1.AddTo(t2, dst)
 
@@ -255,9 +250,7 @@ func TestAddTo(t *testing.T) {
 		expected := []float32{6, 8, 10, 12}
 		dstData := dst.Data()
 		for i := range expected {
-			if !floatEqual(dstData[i], expected[i]) {
-				t.Errorf("Data[%d] = %f, expected %f", i, dstData[i], expected[i])
-			}
+			assert.InDelta(t, float64(expected[i]), float64(dstData[i]), 1e-6)
 		}
 	})
 }
@@ -272,21 +265,21 @@ func TestSum(t *testing.T) {
 	}{
 		{
 			name:     "sum all elements",
-			t:        FromFloat32([]int{2, 2}, []float32{1, 2, 3, 4}),
+			t:        FromFloat32(NewShape(2, 2), []float32{1, 2, 3, 4}),
 			dims:     nil,
 			expected: []float32{10},
 			expShape: []int{1},
 		},
 		{
 			name:     "sum along first dimension",
-			t:        FromFloat32([]int{2, 3}, []float32{1, 2, 3, 4, 5, 6}),
+			t:        FromFloat32(NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6}),
 			dims:     []int{0},
 			expected: []float32{5, 7, 9},
 			expShape: []int{3},
 		},
 		{
 			name:     "sum along second dimension",
-			t:        FromFloat32([]int{2, 3}, []float32{1, 2, 3, 4, 5, 6}),
+			t:        FromFloat32(NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6}),
 			dims:     []int{1},
 			expected: []float32{6, 15},
 			expShape: []int{2},
@@ -320,7 +313,7 @@ func TestSum(t *testing.T) {
 
 func TestMean(t *testing.T) {
 	t.Run("mean of all elements", func(t *testing.T) {
-		tensor := FromFloat32([]int{2, 2}, []float32{1, 2, 3, 4})
+		tensor := FromFloat32(NewShape(2, 2), []float32{1, 2, 3, 4})
 		result := tensor.Mean()
 		expected := float32(10.0 / 4.0)
 
@@ -329,21 +322,17 @@ func TestMean(t *testing.T) {
 			t.Fatalf("Expected 1 element, got %d", len(resultData))
 		}
 
-		if !floatEqual(resultData[0], expected) {
-			t.Errorf("Mean = %f, expected %f", resultData[0], expected)
-		}
+		assert.InDelta(t, float64(expected), float64(resultData[0]), 1e-6)
 	})
 
 	t.Run("mean along dimension", func(t *testing.T) {
-		tensor := FromFloat32([]int{2, 3}, []float32{1, 2, 3, 4, 5, 6})
+		tensor := FromFloat32(NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
 		result := tensor.Mean(0)
 		expected := []float32{2.5, 3.5, 4.5} // (1+4)/2, (2+5)/2, (3+6)/2
 
 		for i := range expected {
 			resultData := result.Data()
-			if !floatEqual(resultData[i], expected[i]) {
-				t.Errorf("Data[%d] = %f, expected %f", i, resultData[i], expected[i])
-			}
+			assert.InDelta(t, float64(expected[i]), float64(resultData[i]), 1e-6, "Data[%d] = %f, expected %f", i, resultData[i], expected[i])
 		}
 	})
 }
@@ -357,13 +346,13 @@ func TestMax(t *testing.T) {
 	}{
 		{
 			name:     "max of all elements",
-			t:        FromFloat32([]int{2, 2}, []float32{1, 5, 3, 2}),
+			t:        FromFloat32(NewShape(2, 2), []float32{1, 5, 3, 2}),
 			dims:     nil,
 			expected: []float32{5},
 		},
 		{
 			name:     "max along dimension",
-			t:        FromFloat32([]int{2, 3}, []float32{1, 5, 3, 2, 4, 6}),
+			t:        FromFloat32(NewShape(2, 3), []float32{1, 5, 3, 2, 4, 6}),
 			dims:     []int{1},
 			expected: []float32{5, 6},
 		},
@@ -392,13 +381,13 @@ func TestMin(t *testing.T) {
 	}{
 		{
 			name:     "min of all elements",
-			t:        FromFloat32([]int{2, 2}, []float32{5, 2, 3, 1}),
+			t:        FromFloat32(NewShape(2, 2), []float32{5, 2, 3, 1}),
 			dims:     nil,
 			expected: []float32{1},
 		},
 		{
 			name:     "min along dimension",
-			t:        FromFloat32([]int{2, 3}, []float32{5, 2, 3, 1, 4, 6}),
+			t:        FromFloat32(NewShape(2, 3), []float32{5, 2, 3, 1, 4, 6}),
 			dims:     []int{1},
 			expected: []float32{2, 1},
 		},
@@ -420,7 +409,7 @@ func TestMin(t *testing.T) {
 
 func TestArgMax(t *testing.T) {
 	t.Run("1D tensor", func(t *testing.T) {
-		tensor := FromFloat32([]int{5}, []float32{1, 5, 3, 2, 4})
+		tensor := FromFloat32(NewShape(5), []float32{1, 5, 3, 2, 4})
 		result := tensor.ArgMax(0)
 
 		resultData := result.Data()
@@ -436,23 +425,21 @@ func TestArgMax(t *testing.T) {
 
 	t.Run("2D tensor along dimension", func(t *testing.T) {
 		// 2x3 tensor, argmax along dim 1
-		tensor := FromFloat32([]int{2, 3}, []float32{1, 5, 3, 2, 4, 6})
+		tensor := FromFloat32(NewShape(2, 3), []float32{1, 5, 3, 2, 4, 6})
 		result := tensor.ArgMax(1)
 
 		// Expected: [1, 2] (indices of max in each row)
 		expected := []float32{1, 2}
 		for i := range expected {
 			resultData := result.Data()
-			if !floatEqual(resultData[i], expected[i]) {
-				t.Errorf("Data[%d] = %f, expected %f", i, resultData[i], expected[i])
-			}
+			assert.InDelta(t, float64(expected[i]), float64(resultData[i]), 1e-6, "Data[%d] = %f, expected %f", i, resultData[i], expected[i])
 		}
 	})
 }
 
 func TestBroadcastTo(t *testing.T) {
 	t.Run("already correct shape", func(t *testing.T) {
-		tensor := FromFloat32([]int{2, 3}, []float32{1, 2, 3, 4, 5, 6})
+		tensor := FromFloat32(NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
 		result, err := tensor.BroadcastTo([]int{2, 3})
 
 		if err != nil {
@@ -477,7 +464,7 @@ func TestBroadcastTo(t *testing.T) {
 	})
 
 	t.Run("broadcast expand", func(t *testing.T) {
-		tensor := FromFloat32([]int{1, 3}, []float32{1, 2, 3})
+		tensor := FromFloat32(NewShape(1, 3), []float32{1, 2, 3})
 		result, err := tensor.BroadcastTo([]int{2, 3})
 
 		if err != nil {
@@ -490,14 +477,12 @@ func TestBroadcastTo(t *testing.T) {
 		}
 		for i := range expected {
 			resultData := result.Data()
-			if !floatEqual(resultData[i], expected[i]) {
-				t.Errorf("Data[%d] = %f, expected %f", i, resultData[i], expected[i])
-			}
+			assert.InDeltaf(t, float64(expected[i]), float64(resultData[i]), 1e-6, "Data[%d] = %f, expected %f", i, resultData[i], expected[i])
 		}
 	})
 
 	t.Run("error: incompatible shapes", func(t *testing.T) {
-		tensor := FromFloat32([]int{2, 3}, []float32{1, 2, 3, 4, 5, 6})
+		tensor := FromFloat32(NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
 		_, err := tensor.BroadcastTo([]int{3, 4})
 
 		if err == nil {

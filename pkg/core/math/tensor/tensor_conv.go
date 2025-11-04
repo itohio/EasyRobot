@@ -79,7 +79,7 @@ func (t *Tensor) Conv2D(kernel, bias *Tensor, stride, padding []int) *Tensor {
 	}
 
 	// Create output tensor
-	result := New(t.dtype, batchSize, outChannels, outHeight, outWidth)
+	result := New(t.dtype, NewShape(batchSize, outChannels, outHeight, outWidth))
 
 	// Call fp32.Conv2D
 	fp32.Conv2D(
@@ -196,7 +196,7 @@ func (t *Tensor) Conv2DTransposed(kernel, bias *Tensor, stride, padding []int) *
 	}
 
 	// Create output tensor
-	result := New(t.dtype, batchSize, outChannels, outHeight, outWidth)
+	result := New(t.dtype, NewShape(batchSize, outChannels, outHeight, outWidth))
 
 	// Call fp32.Conv2DTransposed
 	fp32.Conv2DTransposed(
@@ -334,47 +334,15 @@ func (t *Tensor) MaxPool2D(kernelSize, stride, padding []int) *Tensor {
 	outHeight := (inHeight+2*padH-kernelH)/strideH + 1
 	outWidth := (inWidth+2*padW-kernelW)/strideW + 1
 
-	result := New(t.dtype, batchSize, channels, outHeight, outWidth)
+	result := New(t.dtype, NewShape(batchSize, channels, outHeight, outWidth))
 
-	// Perform max pooling
-	for b := 0; b < batchSize; b++ {
-		batchOffset := b * channels * inHeight * inWidth
-		resultBatchOffset := b * channels * outHeight * outWidth
-
-		for c := 0; c < channels; c++ {
-			channelOffset := batchOffset + c*inHeight*inWidth
-			resultChannelOffset := resultBatchOffset + c*outHeight*outWidth
-
-			for outH := 0; outH < outHeight; outH++ {
-				for outW := 0; outW < outWidth; outW++ {
-					// Calculate input window position
-					startH := outH*strideH - padH
-					startW := outW*strideW - padW
-
-					// Find max in window
-					maxVal := float32(-1e30)
-					for kh := 0; kh < kernelH; kh++ {
-						for kw := 0; kw < kernelW; kw++ {
-							inH := startH + kh
-							inW := startW + kw
-
-							if inH >= 0 && inH < inHeight && inW >= 0 && inW < inWidth {
-								idx := channelOffset + inH*inWidth + inW
-								val := t.data[idx]
-								if val > maxVal {
-									maxVal = val
-								}
-							}
-						}
-					}
-
-					// Store max
-					resultIdx := resultChannelOffset + outH*outWidth + outW
-					result.data[resultIdx] = maxVal
-				}
-			}
-		}
-	}
+	// Perform max pooling using fp32
+	fp32.MaxPool2D(
+		result.Data(),
+		t.Data(),
+		batchSize, channels, inHeight, inWidth,
+		kernelH, kernelW, strideH, strideW, padH, padW,
+	)
 
 	return result
 }
@@ -407,47 +375,15 @@ func (t *Tensor) AvgPool2D(kernelSize, stride, padding []int) *Tensor {
 	outHeight := (inHeight+2*padH-kernelH)/strideH + 1
 	outWidth := (inWidth+2*padW-kernelW)/strideW + 1
 
-	result := New(t.dtype, batchSize, channels, outHeight, outWidth)
+	result := New(t.dtype, NewShape(batchSize, channels, outHeight, outWidth))
 
-	// Perform average pooling
-	for b := 0; b < batchSize; b++ {
-		batchOffset := b * channels * inHeight * inWidth
-		resultBatchOffset := b * channels * outHeight * outWidth
-
-		for c := 0; c < channels; c++ {
-			channelOffset := batchOffset + c*inHeight*inWidth
-			resultChannelOffset := resultBatchOffset + c*outHeight*outWidth
-
-			for outH := 0; outH < outHeight; outH++ {
-				for outW := 0; outW < outWidth; outW++ {
-					startH := outH*strideH - padH
-					startW := outW*strideW - padW
-
-					var sum float32
-					var count int
-
-					for kh := 0; kh < kernelH; kh++ {
-						for kw := 0; kw < kernelW; kw++ {
-							inH := startH + kh
-							inW := startW + kw
-
-							if inH >= 0 && inH < inHeight && inW >= 0 && inW < inWidth {
-								idx := channelOffset + inH*inWidth + inW
-								sum += t.data[idx]
-								count++
-							}
-						}
-					}
-
-					// Store average
-					resultIdx := resultChannelOffset + outH*outWidth + outW
-					if count > 0 {
-						result.data[resultIdx] = sum / float32(count)
-					}
-				}
-			}
-		}
-	}
+	// Perform average pooling using fp32
+	fp32.AvgPool2D(
+		result.Data(),
+		t.Data(),
+		batchSize, channels, inHeight, inWidth,
+		kernelH, kernelW, strideH, strideW, padH, padW,
+	)
 
 	return result
 }
@@ -470,29 +406,14 @@ func (t *Tensor) GlobalAvgPool2D() *Tensor {
 	height := tShape[2]
 	width := tShape[3]
 
-	result := New(t.dtype, batchSize, channels)
+	result := New(t.dtype, NewShape(batchSize, channels))
 
-	size := height * width
-
-	// Average over spatial dimensions for each channel
-	for b := 0; b < batchSize; b++ {
-		batchOffset := b * channels * height * width
-		resultBatchOffset := b * channels
-
-		for c := 0; c < channels; c++ {
-			channelOffset := batchOffset + c*height*width
-
-			var sum float32
-			for h := 0; h < height; h++ {
-				for w := 0; w < width; w++ {
-					idx := channelOffset + h*width + w
-					sum += t.data[idx]
-				}
-			}
-
-			result.data[resultBatchOffset+c] = sum / float32(size)
-		}
-	}
+	// Perform global average pooling using fp32
+	fp32.GlobalAvgPool2D(
+		result.Data(),
+		t.Data(),
+		batchSize, channels, height, width,
+	)
 
 	return result
 }
@@ -563,54 +484,30 @@ func (t *Tensor) DepthwiseConv2D(kernel, bias *Tensor, stride, padding []int) *T
 		}
 	}
 
-	result := New(t.dtype, batchSize, inChannels, outHeight, outWidth)
+	result := New(t.dtype, NewShape(batchSize, inChannels, outHeight, outWidth))
 
-	// For depthwise convolution, process each channel separately
-	// This is essentially Conv2D with groups=inChannels
-	for c := 0; c < inChannels; c++ {
-		// Extract single channel kernel
-		var kernelData []float32
-		if len(kernelShape) == 4 {
-			kernelOffset := c * kernelH * kernelW
-			kernelData = kernel.data[kernelOffset : kernelOffset+kernelH*kernelW]
-		} else {
-			kernelOffset := c * kernelH * kernelW
-			kernelData = kernel.data[kernelOffset : kernelOffset+kernelH*kernelW]
+	// Convert kernel to 3D format [channels, kernelH, kernelW] for fp32 function
+	kernelData := kernel.Data()
+	if len(kernelShape) == 4 {
+		// Convert from [channels, 1, kernelH, kernelW] to [channels, kernelH, kernelW]
+		kernel3D := make([]float32, inChannels*kernelH*kernelW)
+		for c := 0; c < inChannels; c++ {
+			srcOffset := c * kernelH * kernelW
+			dstOffset := c * kernelH * kernelW
+			copy(kernel3D[dstOffset:dstOffset+kernelH*kernelW], kernelData[srcOffset:srcOffset+kernelH*kernelW])
 		}
-
-		// Process each batch
-		for b := 0; b < batchSize; b++ {
-			inputOffset := b*inChannels*inHeight*inWidth + c*inHeight*inWidth
-			outputOffset := b*inChannels*outHeight*outWidth + c*outHeight*outWidth
-
-			// Perform 2D convolution for this channel
-			for outH := 0; outH < outHeight; outH++ {
-				for outW := 0; outW < outWidth; outW++ {
-					var sum float32
-
-					for kh := 0; kh < kernelH; kh++ {
-						for kw := 0; kw < kernelW; kw++ {
-							inH := outH*strideH + kh - padH
-							inW := outW*strideW + kw - padW
-
-							if inH >= 0 && inH < inHeight && inW >= 0 && inW < inWidth {
-								inIdx := inputOffset + inH*inWidth + inW
-								kernelIdx := kh*kernelW + kw
-								sum += t.data[inIdx] * kernelData[kernelIdx]
-							}
-						}
-					}
-
-					if bias != nil {
-						sum += biasData[c]
-					}
-
-					outIdx := outputOffset + outH*outWidth + outW
-					result.data[outIdx] = sum
-				}
-			}
-		}
+		kernelData = kernel3D
 	}
+
+	// Perform depthwise convolution using fp32
+	fp32.DepthwiseConv2D(
+		result.Data(),
+		t.Data(),
+		kernelData,
+		biasData,
+		batchSize, inChannels, inHeight, inWidth,
+		kernelH, kernelW, strideH, strideW, padH, padW,
+	)
 
 	return result
 }
@@ -657,7 +554,6 @@ func (t *Tensor) GroupConv2D(kernel, bias *Tensor, stride, padding []int, groups
 		panic(fmt.Sprintf("tensor.GroupConv2D: outChannels %d must be divisible by groups %d", outChannels, groups))
 	}
 
-	outChannelsPerGroup := outChannels / groups
 	kernelH := kernelShape[2]
 	kernelW := kernelShape[3]
 
@@ -686,58 +582,17 @@ func (t *Tensor) GroupConv2D(kernel, bias *Tensor, stride, padding []int, groups
 		}
 	}
 
-	result := New(t.dtype, batchSize, outChannels, outHeight, outWidth)
+	result := New(t.dtype, NewShape(batchSize, outChannels, outHeight, outWidth))
 
-	// Process each group separately
-	for g := 0; g < groups; g++ {
-		inputChanStart := g * channelsPerGroup
-		outputChanStart := g * outChannelsPerGroup
-		kernelChanStart := g * outChannelsPerGroup * channelsPerGroup * kernelH * kernelW
-
-		// For each output channel in this group
-		for oc := 0; oc < outChannelsPerGroup; oc++ {
-			outChan := outputChanStart + oc
-			kernelOffset := kernelChanStart + oc*channelsPerGroup*kernelH*kernelW
-
-			// Process each batch
-			for b := 0; b < batchSize; b++ {
-				outputOffset := b*outChannels*outHeight*outWidth + outChan*outHeight*outWidth
-
-				// Perform convolution over input channels in this group
-				for outH := 0; outH < outHeight; outH++ {
-					for outW := 0; outW < outWidth; outW++ {
-						var sum float32
-
-						for ic := 0; ic < channelsPerGroup; ic++ {
-							inChan := inputChanStart + ic
-							inputOffset := b*inChannels*inHeight*inWidth + inChan*inHeight*inWidth
-							kernelChanOffset := kernelOffset + ic*kernelH*kernelW
-
-							for kh := 0; kh < kernelH; kh++ {
-								for kw := 0; kw < kernelW; kw++ {
-									inH := outH*strideH + kh - padH
-									inW := outW*strideW + kw - padW
-
-									if inH >= 0 && inH < inHeight && inW >= 0 && inW < inWidth {
-										inIdx := inputOffset + inH*inWidth + inW
-										kernelIdx := kernelChanOffset + kh*kernelW + kw
-										sum += t.data[inIdx] * kernel.data[kernelIdx]
-									}
-								}
-							}
-						}
-
-						if bias != nil {
-							sum += biasData[outChan]
-						}
-
-						outIdx := outputOffset + outH*outWidth + outW
-						result.data[outIdx] = sum
-					}
-				}
-			}
-		}
-	}
+	// Perform grouped convolution using fp32
+	fp32.GroupConv2D(
+		result.Data(),
+		t.Data(),
+		kernel.Data(),
+		biasData,
+		batchSize, inChannels, outChannels, inHeight, inWidth,
+		kernelH, kernelW, strideH, strideW, padH, padW, groups,
+	)
 
 	return result
 }
@@ -811,50 +666,17 @@ func (t *Tensor) DilatedConv2D(kernel, bias *Tensor, stride, padding, dilation [
 		}
 	}
 
-	result := New(t.dtype, batchSize, outChannels, outHeight, outWidth)
+	result := New(t.dtype, NewShape(batchSize, outChannels, outHeight, outWidth))
 
-	// Process each batch and output channel
-	for b := 0; b < batchSize; b++ {
-		inputOffset := b * inChannels * inHeight * inWidth
-		outputOffset := b * outChannels * outHeight * outWidth
-
-		for oc := 0; oc < outChannels; oc++ {
-			kernelOffset := oc * inChannels * kernelH * kernelW
-			outputChanOffset := outputOffset + oc*outHeight*outWidth
-
-			for outH := 0; outH < outHeight; outH++ {
-				for outW := 0; outW < outWidth; outW++ {
-					var sum float32
-
-					for ic := 0; ic < inChannels; ic++ {
-						inputChanOffset := inputOffset + ic*inHeight*inWidth
-						kernelChanOffset := kernelOffset + ic*kernelH*kernelW
-
-						for kh := 0; kh < kernelH; kh++ {
-							for kw := 0; kw < kernelW; kw++ {
-								// Apply dilation
-								inH := outH*strideH + kh*dilationH - padH
-								inW := outW*strideW + kw*dilationW - padW
-
-								if inH >= 0 && inH < inHeight && inW >= 0 && inW < inWidth {
-									inIdx := inputChanOffset + inH*inWidth + inW
-									kernelIdx := kernelChanOffset + kh*kernelW + kw
-									sum += t.data[inIdx] * kernel.data[kernelIdx]
-								}
-							}
-						}
-					}
-
-					if bias != nil {
-						sum += biasData[oc]
-					}
-
-					outIdx := outputChanOffset + outH*outWidth + outW
-					result.data[outIdx] = sum
-				}
-			}
-		}
-	}
+	// Perform dilated convolution using fp32
+	fp32.DilatedConv2D(
+		result.Data(),
+		t.Data(),
+		kernel.Data(),
+		biasData,
+		batchSize, inChannels, outChannels, inHeight, inWidth,
+		kernelH, kernelW, strideH, strideW, padH, padW, dilationH, dilationW,
+	)
 
 	return result
 }
@@ -925,54 +747,17 @@ func (t *Tensor) Conv3D(kernel, bias *Tensor, stride, padding []int) *Tensor {
 		}
 	}
 
-	result := New(t.dtype, batchSize, outChannels, outDepth, outHeight, outWidth)
+	result := New(t.dtype, NewShape(batchSize, outChannels, outDepth, outHeight, outWidth))
 
-	// Process each batch and output channel
-	for b := 0; b < batchSize; b++ {
-		inputOffset := b * inChannels * depth * height * width
-		outputOffset := b * outChannels * outDepth * outHeight * outWidth
-
-		for oc := 0; oc < outChannels; oc++ {
-			kernelOffset := oc * inChannels * kernelD * kernelH * kernelW
-			outputChanOffset := outputOffset + oc*outDepth*outHeight*outWidth
-
-			for outD := 0; outD < outDepth; outD++ {
-				for outH := 0; outH < outHeight; outH++ {
-					for outW := 0; outW < outWidth; outW++ {
-						var sum float32
-
-						for ic := 0; ic < inChannels; ic++ {
-							inputChanOffset := inputOffset + ic*depth*height*width
-							kernelChanOffset := kernelOffset + ic*kernelD*kernelH*kernelW
-
-							for kd := 0; kd < kernelD; kd++ {
-								for kh := 0; kh < kernelH; kh++ {
-									for kw := 0; kw < kernelW; kw++ {
-										inD := outD*strideD + kd - padD
-										inH := outH*strideH + kh - padH
-										inW := outW*strideW + kw - padW
-
-										if inD >= 0 && inD < depth && inH >= 0 && inH < height && inW >= 0 && inW < width {
-											inIdx := inputChanOffset + inD*height*width + inH*width + inW
-											kernelIdx := kernelChanOffset + kd*kernelH*kernelW + kh*kernelW + kw
-											sum += t.data[inIdx] * kernel.data[kernelIdx]
-										}
-									}
-								}
-							}
-						}
-
-						if bias != nil {
-							sum += biasData[oc]
-						}
-
-						outIdx := outputChanOffset + outD*outHeight*outWidth + outH*outWidth + outW
-						result.data[outIdx] = sum
-					}
-				}
-			}
-		}
-	}
+	// Perform 3D convolution using fp32
+	fp32.Conv3D(
+		result.Data(),
+		t.Data(),
+		kernel.Data(),
+		biasData,
+		batchSize, inChannels, outChannels, depth, height, width,
+		kernelD, kernelH, kernelW, strideD, strideH, strideW, padD, padH, padW,
+	)
 
 	return result
 }
@@ -1007,48 +792,14 @@ func (t *Tensor) AdaptiveAvgPool2D(outputSize []int) *Tensor {
 		panic(fmt.Sprintf("tensor.AdaptiveAvgPool2D: outputSize must be positive, got %v", outputSize))
 	}
 
-	result := New(t.dtype, batchSize, channels, outHeight, outWidth)
+	result := New(t.dtype, NewShape(batchSize, channels, outHeight, outWidth))
 
-	// Process each batch and channel
-	for b := 0; b < batchSize; b++ {
-		for c := 0; c < channels; c++ {
-			inputOffset := b*channels*height*width + c*height*width
-			outputOffset := b*channels*outHeight*outWidth + c*outHeight*outWidth
-
-			for outH := 0; outH < outHeight; outH++ {
-				for outW := 0; outW < outWidth; outW++ {
-					// Calculate adaptive region bounds
-					startH := outH * height / outHeight
-					endH := (outH + 1) * height / outHeight
-					if endH > height {
-						endH = height
-					}
-
-					startW := outW * width / outWidth
-					endW := (outW + 1) * width / outWidth
-					if endW > width {
-						endW = width
-					}
-
-					// Compute average over adaptive region
-					var sum float32
-					count := 0
-
-					for h := startH; h < endH; h++ {
-						for w := startW; w < endW; w++ {
-							inIdx := inputOffset + h*width + w
-							sum += t.data[inIdx]
-							count++
-						}
-					}
-
-					if count > 0 {
-						result.data[outputOffset+outH*outWidth+outW] = sum / float32(count)
-					}
-				}
-			}
-		}
-	}
+	// Perform adaptive average pooling using fp32
+	fp32.AdaptiveAvgPool2D(
+		result.Data(),
+		t.Data(),
+		batchSize, channels, height, width, outHeight, outWidth,
+	)
 
 	return result
 }
@@ -1097,7 +848,7 @@ func (t *Tensor) Im2Col(kernelSize, stride, padding []int) *Tensor {
 	colHeight := batchSize * outHeight * outWidth
 	colWidth := channels * kernelH * kernelW
 
-	result := New(t.dtype, colHeight, colWidth)
+	result := New(t.dtype, NewShape(colHeight, colWidth))
 
 	// Call fp32.Im2Col
 	fp32.Im2Col(
@@ -1167,7 +918,7 @@ func (t *Tensor) Col2Im(outputShape, kernelSize, stride, padding []int) *Tensor 
 		panic(fmt.Sprintf("tensor.Col2Im: col height %d doesn't match expected %d", colHeight, batchSize*outHeight*outWidth))
 	}
 
-	result := New(t.dtype, batchSize, channels, height, width)
+	result := New(t.dtype, NewShape(batchSize, channels, height, width))
 
 	// Call fp32.Col2Im
 	fp32.Col2Im(

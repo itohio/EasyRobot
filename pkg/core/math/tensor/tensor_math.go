@@ -176,7 +176,7 @@ func (t *Tensor) BroadcastTo(shape []int) (*Tensor, error) {
 		return nil, fmt.Errorf("tensor.BroadcastTo: %w", err)
 	}
 
-	result := New(t.dtype, shape...)
+	result := New(t.dtype, NewShape(shape...))
 	if err := fp32.ExpandTo(
 		result.data,
 		t.data,
@@ -203,7 +203,7 @@ func (t *Tensor) Sum(dims ...int) *Tensor {
 		if t.isContiguous() {
 			size := t.Size()
 			sum := fp32.Asum(t.data, 1, size)
-			return FromFloat32([]int{1}, []float32{sum})
+			return FromFloat32(NewShape(1), []float32{sum})
 		}
 		return t.reduceTensor(nil, true, fp32.ReduceSum)
 	}
@@ -251,11 +251,11 @@ func (t *Tensor) ArgMax(dim int) *Tensor {
 
 	if len(t.shape) == 1 && t.isContiguous() {
 		idx := fp32.Iamax(t.data, 1, t.Size())
-		return FromFloat32([]int{1}, []float32{float32(idx)})
+		return FromFloat32(NewShape(1), []float32{float32(idx)})
 	}
 
 	resultShape, axis := t.prepareArgmax(dim)
-	result := New(t.dtype, resultShape...)
+	result := New(t.dtype, NewShape(resultShape...))
 	fp32.Argmax(
 		result.data,
 		result.shape.ToSlice(),
@@ -320,7 +320,7 @@ func (t *Tensor) reduceTensor(dims []int, scalarWhenEmpty bool, reducer reduceFu
 		resultShape = []int{1}
 	}
 
-	res := New(t.dtype, resultShape...)
+	res := New(t.dtype, NewShape(resultShape...))
 
 	reducer(
 		res.data,
