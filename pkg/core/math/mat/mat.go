@@ -340,8 +340,8 @@ func (m Matrix) Add(m1 Matrix) Matrix {
 	mFlat := m.Flat()
 	m1Flat := m1.Flat()
 
-	// Use SumArr for element-wise addition
-	fp32.SumArr(mFlat, mFlat, m1Flat, total, 1, 1)
+	// Use ElemAdd for element-wise addition
+	fp32.ElemAdd(mFlat, mFlat, m1Flat, []int{total}, []int{1}, []int{1}, []int{1})
 
 	return m
 }
@@ -358,8 +358,8 @@ func (m Matrix) Sub(m1 Matrix) Matrix {
 	mFlat := m.Flat()
 	m1Flat := m1.Flat()
 
-	// Use DiffArr for element-wise subtraction
-	fp32.DiffArr(mFlat, mFlat, m1Flat, total, 1, 1)
+	// Use ElemSub for element-wise subtraction
+	fp32.ElemSub(mFlat, mFlat, m1Flat, []int{total}, []int{1}, []int{1}, []int{1})
 
 	return m
 }
@@ -442,7 +442,7 @@ func (m Matrix) MulDiag(a Matrix, b vec.Vector) Matrix {
 	// Use Hadamard product for element-wise multiplication
 	// For each row, multiply by corresponding b element
 	for i := 0; i < rows; i++ {
-		fp32.HadamardProduct(m[i], a[i], b, cols, 1, 1)
+		fp32.ElemMul(m[i], a[i], b, []int{cols}, []int{1}, []int{1}, []int{1})
 	}
 
 	return m

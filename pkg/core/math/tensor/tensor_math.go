@@ -399,3 +399,47 @@ func (t *Tensor) copyTo(dst *Tensor) {
 	stridesDst := dst.shape.Strides()
 	fp32.ElemCopy(dst.data, t.data, []int(t.shape), stridesDst, stridesSrc)
 }
+
+// Where creates a new tensor by selecting elements from a where condition is true, otherwise from b.
+// condition, a, b must have compatible shapes.
+func (t *Tensor) Where(condition, a, b *Tensor) *Tensor {
+	if t == nil || condition == nil || a == nil || b == nil {
+		return nil
+	}
+
+	if !condition.sameShape(a) || !condition.sameShape(b) {
+		panic("tensor.Where: shape mismatch")
+	}
+
+	result := t.Clone()
+	shape := t.Shape().ToSlice()
+	strides := fp32.ComputeStrides(shape)
+
+	fp32.ElemWhere(
+		result.data, condition.data, a.data, b.data,
+		shape, strides, strides, strides, strides,
+	)
+	return result
+}
+
+// GreaterThan creates a tensor with 1.0 where t > other, 0.0 otherwise.
+// t and other must have compatible shapes.
+func (t *Tensor) GreaterThan(other *Tensor) *Tensor {
+	if t == nil || other == nil {
+		return nil
+	}
+
+	if !t.sameShape(other) {
+		panic("tensor.GreaterThan: shape mismatch")
+	}
+
+	result := New(t.dtype, t.shape)
+	shape := t.Shape().ToSlice()
+	strides := fp32.ComputeStrides(shape)
+
+	fp32.ElemGreaterThan(
+		result.data, t.data, other.data,
+		shape, strides, strides, strides,
+	)
+	return result
+}

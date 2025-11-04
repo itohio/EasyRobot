@@ -1,24 +1,5 @@
 package fp32
 
-// HadamardProduct computes element-wise product: dst[i] = a[i] * b[i]
-// Element-wise multiplication for tensor operations
-func HadamardProduct(dst, a, b []float32, num int, strideA, strideB int) {
-	if num == 0 {
-		return
-	}
-
-	pa := 0
-	pb := 0
-	pd := 0
-
-	for i := 0; i < num; i++ {
-		dst[pd] = a[pa] * b[pb]
-		pa += strideA
-		pb += strideB
-		pd++
-	}
-}
-
 // HadamardProductAdd computes element-wise product and add: dst[i] += a[i] * b[i]
 // Element-wise multiplication and addition for tensor operations
 func HadamardProductAdd(dst, a, b []float32, num int, strideA, strideB int) {
@@ -36,12 +17,6 @@ func HadamardProductAdd(dst, a, b []float32, num int, strideA, strideB int) {
 		pb += strideB
 		pd++
 	}
-}
-
-// DotProduct is DEPRECATED: Use Dot from level1.go instead
-// This function is kept for backward compatibility
-func DotProduct(a, b []float32, num int, strideA, strideB int) float32 {
-	return Dot(a, b, strideA, strideB, num)
 }
 
 // DotProduct2D computes dot product of KxL submatrix
@@ -80,17 +55,6 @@ func NormalizeVec(dst []float32, num int, stride int) {
 
 	// Use Scal for in-place scaling
 	Scal(dst, stride, num, 1.0/norm)
-}
-
-// MulArrInPlace computes dst[i] *= c for all i (in-place)
-// DEPRECATED: Use Scal from level1.go instead: Scal(dst, stride, num, c)
-// Kept for backward compatibility with vec.go
-func MulArrInPlace(dst []float32, c float32, num int) {
-	if num == 0 {
-		return
-	}
-
-	Scal(dst, 1, num, c)
 }
 
 // SumArrInPlace computes dst[i] += c for all i (in-place)

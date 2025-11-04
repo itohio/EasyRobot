@@ -6,42 +6,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestSumArr(t *testing.T) {
-	a := []float32{1, 2, 3, 4}
-	b := []float32{5, 6, 7, 8}
-	dst := make([]float32, 4)
-
-	SumArr(dst, a, b, 4, 1, 1)
-	assert.Equal(t, []float32{6, 8, 10, 12}, dst)
-}
-
-func TestDiffArr(t *testing.T) {
-	a := []float32{5, 6, 7, 8}
-	b := []float32{1, 2, 3, 4}
-	dst := make([]float32, 4)
-
-	DiffArr(dst, a, b, 4, 1, 1)
-	assert.Equal(t, []float32{4, 4, 4, 4}, dst)
-}
-
-func TestMulArr(t *testing.T) {
-	a := []float32{1, 2, 3, 4}
-	b := []float32{2, 2, 2, 2}
-	dst := make([]float32, 4)
-
-	MulArr(dst, a, b, 4, 1, 1)
-	assert.Equal(t, []float32{2, 4, 6, 8}, dst)
-}
-
-func TestDivArr(t *testing.T) {
-	a := []float32{4, 6, 8, 10}
-	b := []float32{2, 2, 2, 2}
-	dst := make([]float32, 4)
-
-	DivArr(dst, a, b, 4, 1, 1)
-	assert.Equal(t, []float32{2, 3, 4, 5}, dst)
-}
-
 func TestSum(t *testing.T) {
 	a := []float32{1, 2, 3, 4}
 	result := Sum(a, 4, 1)
@@ -169,10 +133,4 @@ func TestSumArrInPlace(t *testing.T) {
 	dst := []float32{1, 2, 3, 4}
 	SumArrInPlace(dst, 10, 4)
 	assert.Equal(t, []float32{11, 12, 13, 14}, dst)
-}
-
-func TestMulArrInPlace(t *testing.T) {
-	dst := []float32{1, 2, 3, 4}
-	MulArrInPlace(dst, 2.0, 4)
-	assert.Equal(t, []float32{2, 4, 6, 8}, dst)
 }

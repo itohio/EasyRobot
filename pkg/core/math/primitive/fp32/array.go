@@ -7,82 +7,6 @@ import (
 )
 
 // SumArr computes dst[i] = a[i] + b[i] for all i
-// Element-wise addition for tensor operations
-// num: number of elements
-// strideA, strideB: strides for a and b (default 1)
-func SumArr(dst, a, b []float32, num int, strideA, strideB int) {
-	if num == 0 {
-		return
-	}
-
-	pa := 0
-	pb := 0
-	pd := 0
-
-	for i := 0; i < num; i++ {
-		dst[pd] = a[pa] + b[pb]
-		pa += strideA
-		pb += strideB
-		pd++
-	}
-}
-
-// DiffArr computes dst[i] = a[i] - b[i] for all i
-// Element-wise subtraction for tensor operations
-func DiffArr(dst, a, b []float32, num int, strideA, strideB int) {
-	if num == 0 {
-		return
-	}
-
-	pa := 0
-	pb := 0
-	pd := 0
-
-	for i := 0; i < num; i++ {
-		dst[pd] = a[pa] - b[pb]
-		pa += strideA
-		pb += strideB
-		pd++
-	}
-}
-
-// MulArr computes dst[i] = a[i] * b[i] for all i
-// Element-wise multiplication for tensor operations
-func MulArr(dst, a, b []float32, num int, strideA, strideB int) {
-	if num == 0 {
-		return
-	}
-
-	pa := 0
-	pb := 0
-	pd := 0
-
-	for i := 0; i < num; i++ {
-		dst[pd] = a[pa] * b[pb]
-		pa += strideA
-		pb += strideB
-		pd++
-	}
-}
-
-// DivArr computes dst[i] = a[i] / b[i] for all i
-// Element-wise division for tensor operations
-func DivArr(dst, a, b []float32, num int, strideA, strideB int) {
-	if num == 0 {
-		return
-	}
-
-	pa := 0
-	pb := 0
-	pd := 0
-
-	for i := 0; i < num; i++ {
-		dst[pd] = a[pa] / b[pb]
-		pa += strideA
-		pb += strideB
-		pd++
-	}
-}
 
 // Sum computes sum of array elements
 // Utility function for statistics
@@ -234,21 +158,6 @@ func PercentileArr(p float32, sumAboveP *float32, a []float32, num int, stride i
 	return percentileVal
 }
 
-// SumArrAdd computes dst[i] += src[i] + c for all i (accumulate)
-// DEPRECATED: Use Axpy from level1.go for better performance: Axpy(dst, stride, num, 1.0, src, stride) then SumArrInPlace
-// Kept for backward compatibility with vec.go
-func SumArrAdd(dst, src []float32, c float32, num int, stride int) {
-	if num == 0 {
-		return
-	}
-
-	// Use Axpy for dst += src, then add c
-	Axpy(dst, src, stride, stride, num, 1.0)
-	if c != 0 {
-		SumArrInPlace(dst, c, num)
-	}
-}
-
 // DiffArrInPlace computes dst[i] -= c for all i (in-place)
 // Utility function for scalar subtraction
 func DiffArrInPlace(dst []float32, c float32, num int) {
@@ -259,30 +168,4 @@ func DiffArrInPlace(dst []float32, c float32, num int) {
 	for i := 0; i < num; i++ {
 		dst[i] -= c
 	}
-}
-
-// MulArrAdd computes dst[i] += src[i] * c for all i (accumulate)
-// DEPRECATED: Use Axpy from level1.go: Axpy(dst, src, stride, stride, num, c)
-// Kept for backward compatibility with vec.go
-func MulArrAdd(dst, src []float32, c float32, num int, stride int) {
-	if num == 0 {
-		return
-	}
-
-	Axpy(dst, src, stride, stride, num, c)
-}
-
-// DivArrInPlace computes dst[i] /= c for all i (in-place)
-// DEPRECATED: Use Scal from level1.go: Scal(dst, stride, num, 1.0/c)
-// Kept for backward compatibility with vec.go
-func DivArrInPlace(dst []float32, c float32, num int) {
-	if num == 0 {
-		return
-	}
-
-	if c == 0 {
-		return // Avoid division by zero
-	}
-
-	Scal(dst, 1, num, 1.0/c)
 }

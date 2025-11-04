@@ -266,9 +266,3 @@ func Softmax2DColsGrad(dst, gradOutput, output []float32, rows, cols int) {
 		}
 	}
 }
-
-// ElemMask applies element-wise mask multiplication: dst[i] = src[i] * mask[i]
-// This is used for both dropout forward and backward operations.
-func ElemMask(dst, src, mask []float32, size int) {
-	HadamardProduct(dst, src, mask, size, 1, 1)
-}

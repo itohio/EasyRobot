@@ -67,7 +67,21 @@ func (r *ReLU) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("ReLU.Backward: input not stored, must call Forward first")
 	}
 
-	// Compute ReLU gradient using tensor method
+	// Alternative: ReLU gradient using primitives (equivalent to input.ReLUGrad)
+	// mask = (input > 0)  // 1.0 where input > 0, 0.0 otherwise
+	// gradInput = gradOutput * mask
+
+	// Alternative 1: Using tensor primitives
+	// zeroTensor := tensor.New(tensor.DTFP32, input.Shape())
+	// mask := input.GreaterThan(zeroTensor)
+	// gradInput := gradOutput.Mul(mask)
+
+	// Alternative 2: Using element-wise primitives directly
+	// gradInput[i] = gradOutput[i] * (input[i] > 0 ? 1.0 : 0.0)
+	// This is equivalent to: gradInput.Where(input.GreaterThan(zeroTensor), gradOutput, zeroTensor)
+
+	// For now, use the existing tensor.ReLUGrad for simplicity
+	// In a full primitive-based implementation, we'd compose from ElemWhere + ElemGreaterThan
 	gradInput := input.ReLUGrad(&gradOutput, nil)
 
 	r.Base.StoreGrad(*gradInput)

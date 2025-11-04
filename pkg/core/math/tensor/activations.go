@@ -185,7 +185,7 @@ func (t *Tensor) DropoutForward(mask *Tensor) *Tensor {
 	}
 
 	size := t.Size()
-	fp32.ElemMask(t.data, t.data, mask.data, size)
+	fp32.ElemMul(t.data, t.data, mask.data, []int{size}, []int{1}, []int{1}, []int{1})
 	return t
 }
 
@@ -208,7 +208,7 @@ func (t *Tensor) DropoutBackward(gradOutput, mask *Tensor, dst *Tensor) *Tensor 
 	}
 
 	size := gradOutput.Size()
-	fp32.ElemMask(dst.data, gradOutput.data, mask.data, size)
+	fp32.ElemMul(dst.data, gradOutput.data, mask.data, []int{size}, []int{1}, []int{1}, []int{1})
 	return dst
 }
 

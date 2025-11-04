@@ -309,7 +309,7 @@ func (v Vector) Multiply(v1 Vector) Vector {
 	if len(v) == 0 {
 		return v
 	}
-	fp32.HadamardProduct(v, v, v1, len(v), 1, 1)
+	fp32.ElemMul(v, v, v1, []int{len(v)}, []int{1}, []int{1}, []int{1})
 	return v
 }
 

@@ -786,6 +786,46 @@ All tensor operations delegate to `math/primitive/fp32` when possible:
 | `Col2Im` | `fp32.Col2Im` | Column to image |
 | `BroadcastTo` | `fp32.ExpandTo` | Broadcasting operations |
 
+## Deprecated Gradient Functions
+
+**⚠️ IMPORTANT**: Specific gradient computation functions are deprecated in favor of composing gradients from primitives in layer implementations.
+
+### Deprecated Tensor Gradient Functions
+
+The following tensor-level gradient functions are **DEPRECATED** and will be removed in a future version:
+
+| Function | Replacement |
+|----------|-------------|
+| `tensor.ReLUGrad(gradOutput, dst)` | Compose from `tensor.Where()` + `tensor.GreaterThan()` in layer implementations |
+| `tensor.SigmoidGrad(gradOutput, dst)` | Compose from element-wise operations in layer implementations |
+| `tensor.TanhGrad(gradOutput, dst)` | Compose from element-wise operations in layer implementations |
+| `tensor.SoftmaxGrad(gradOutput, dim, dst)` | Compose from element-wise and reduction operations in layer implementations |
+| `tensor.Conv2DKernelGrad(outputGrad, kernel, stride, padding)` | Compose from `Im2Col` + `MatMul` operations in layer implementations |
+| `tensor.Conv1DKernelGrad(outputGrad, kernel, stride, padding)` | Compose from matrix operations in layer implementations |
+
+### Architectural Rationale
+
+Gradient computations should be composed from mathematical primitives rather than implemented as pre-built algorithms. This provides:
+
+- **Better separation of concerns**: Primitives in `fp32`/`tensor`, algorithms in `layers`
+- **Improved composability**: Easy to create new gradient operations
+- **Enhanced testability**: Primitives tested independently
+- **Greater flexibility**: Layer-specific gradient logic stays in layers
+
+### Migration Path
+
+Replace direct gradient function calls in layer `Backward()` methods with compositions using primitives:
+
+```go
+// OLD: Direct gradient function call
+gradInput := input.ReLUGrad(&gradOutput, nil)
+
+// NEW: Compose from primitives
+zeroTensor := tensor.ZerosLike(input)
+mask := input.GreaterThan(zeroTensor)
+gradInput := gradOutput.Mul(mask)
+```
+
 ## Error Handling
 
 Operations that fail validation typically panic with descriptive error messages:

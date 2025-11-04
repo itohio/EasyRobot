@@ -115,6 +115,27 @@ func ElemCopy(dst, src []float32, shape []int, stridesDst, stridesSrc []int) {
 	}
 }
 
+// ElemWhere writes elements from a where condition is true, otherwise from b.
+// condition, a, b must have compatible shapes/strides.
+func ElemWhere(dst, condition, a, b []float32, shape []int, stridesDst, stridesCond, stridesA, stridesB []int) {
+	applyElemTernary(dst, condition, a, b, shape, stridesDst, stridesCond, stridesA, stridesB, func(cv, av, bv float32) float32 {
+		if cv > 0 { // condition > 0 means true
+			return av
+		}
+		return bv
+	})
+}
+
+// ElemGreaterThan writes 1.0 where a > b, 0.0 otherwise.
+func ElemGreaterThan(dst, a, b []float32, shape []int, stridesDst, stridesA, stridesB []int) {
+	applyElemBinary(dst, a, b, shape, stridesDst, stridesA, stridesB, func(av, bv float32) float32 {
+		if av > bv {
+			return 1.0
+		}
+		return 0.0
+	})
+}
+
 func applyElemBinary(dst, a, b []float32, shape []int, stridesDst, stridesA, stridesB []int, op func(float32, float32) float32) {
 	size := SizeFromShape(shape)
 	if len(shape) == 0 || size == 0 {
@@ -140,6 +161,39 @@ func applyElemBinary(dst, a, b []float32, shape []int, stridesDst, stridesA, str
 		aIdx := offsets[1]
 		bIdx := offsets[2]
 		dst[dIdx] = op(a[aIdx], b[bIdx])
+		if !advanceOffsets(shape, indices, offsets, strideSet) {
+			break
+		}
+	}
+}
+
+func applyElemTernary(dst, condition, a, b []float32, shape []int, stridesDst, stridesCond, stridesA, stridesB []int, op func(float32, float32, float32) float32) {
+	size := SizeFromShape(shape)
+	if len(shape) == 0 || size == 0 {
+		return
+	}
+
+	stridesDst = EnsureStrides(stridesDst, shape)
+	stridesCond = EnsureStrides(stridesCond, shape)
+	stridesA = EnsureStrides(stridesA, shape)
+	stridesB = EnsureStrides(stridesB, shape)
+
+	if IsContiguous(stridesDst, shape) && IsContiguous(stridesCond, shape) && IsContiguous(stridesA, shape) && IsContiguous(stridesB, shape) {
+		for i := 0; i < size; i++ {
+			dst[i] = op(condition[i], a[i], b[i])
+		}
+		return
+	}
+
+	indices := make([]int, len(shape))
+	offsets := make([]int, 4)
+	strideSet := [][]int{stridesDst, stridesCond, stridesA, stridesB}
+	for {
+		dIdx := offsets[0]
+		cIdx := offsets[1]
+		aIdx := offsets[2]
+		bIdx := offsets[3]
+		dst[dIdx] = op(condition[cIdx], a[aIdx], b[bIdx])
 		if !advanceOffsets(shape, indices, offsets, strideSet) {
 			break
 		}
