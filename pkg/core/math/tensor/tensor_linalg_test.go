@@ -3,6 +3,8 @@ package tensor
 import (
 	"math"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestMatMul2D(t *testing.T) {
@@ -15,22 +17,22 @@ func TestMatMul2D(t *testing.T) {
 	}{
 		{
 			name:     "2x3 × 3x2 = 2x2",
-			t1:       &Tensor{Dim: []int{2, 3}, Data: []float32{1, 2, 3, 4, 5, 6}},
-			t2:       &Tensor{Dim: []int{3, 2}, Data: []float32{1, 2, 3, 4, 5, 6}},
+			t1:       FromFloat32([]int{2, 3}, []float32{1, 2, 3, 4, 5, 6}),
+			t2:       FromFloat32([]int{3, 2}, []float32{1, 2, 3, 4, 5, 6}),
 			expected: []float32{22, 28, 49, 64}, // [1*1+2*3+3*5, 1*2+2*4+3*6, 4*1+5*3+6*5, 4*2+5*4+6*6]
 			expShape: []int{2, 2},
 		},
 		{
 			name:     "1x4 × 4x1 = 1x1",
-			t1:       &Tensor{Dim: []int{1, 4}, Data: []float32{1, 2, 3, 4}},
-			t2:       &Tensor{Dim: []int{4, 1}, Data: []float32{1, 2, 3, 4}},
+			t1:       FromFloat32([]int{1, 4}, []float32{1, 2, 3, 4}),
+			t2:       FromFloat32([]int{4, 1}, []float32{1, 2, 3, 4}),
 			expected: []float32{30}, // 1*1+2*2+3*3+4*4
 			expShape: []int{1, 1},
 		},
 		{
 			name:     "3x2 × 2x4 = 3x4",
-			t1:       &Tensor{Dim: []int{3, 2}, Data: []float32{1, 2, 3, 4, 5, 6}},
-			t2:       &Tensor{Dim: []int{2, 4}, Data: []float32{1, 2, 3, 4, 5, 6, 7, 8}},
+			t1:       FromFloat32([]int{3, 2}, []float32{1, 2, 3, 4, 5, 6}),
+			t2:       FromFloat32([]int{2, 4}, []float32{1, 2, 3, 4, 5, 6, 7, 8}),
 			expected: []float32{11, 14, 17, 20, 23, 30, 37, 44, 35, 46, 57, 68},
 			expShape: []int{3, 4},
 		},
@@ -40,20 +42,16 @@ func TestMatMul2D(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.t1.MatMul(tt.t2)
 
-			if len(result.Dim) != len(tt.expShape) {
-				t.Fatalf("Shape length mismatch: got %v, expected %v", result.Dim, tt.expShape)
-			}
+			resultShape := result.Shape()
+			assert.Equal(t, len(tt.expShape), len(resultShape), "Shape length mismatch")
 
 			for i := range tt.expShape {
-				if result.Dim[i] != tt.expShape[i] {
-					t.Errorf("Dim[%d] = %d, expected %d", i, result.Dim[i], tt.expShape[i])
-				}
+				assert.Equal(t, tt.expShape[i], resultShape[i], "Shape dimension %d mismatch", i)
 			}
 
+			resultData := result.Data()
 			for i := range tt.expected {
-				if !floatEqual(result.Data[i], tt.expected[i]) {
-					t.Errorf("Data[%d] = %f, expected %f", i, result.Data[i], tt.expected[i])
-				}
+				assert.InDelta(t, tt.expected[i], resultData[i], 1e-6, "Data[%d] mismatch", i)
 			}
 		})
 	}
@@ -62,52 +60,55 @@ func TestMatMul2D(t *testing.T) {
 func TestMatMulBatched(t *testing.T) {
 	t.Run("2x3x2 × 2x2x4 = 2x3x4", func(t *testing.T) {
 		// Batch of 2, each is 3×2 and 2×4
-		t1 := &Tensor{Dim: []int{2, 3, 2}, Data: []float32{
+		t1 := FromFloat32([]int{2, 3, 2}, []float32{
 			1, 2, 3, 4, 5, 6, // First batch: 3×2
 			1, 2, 3, 4, 5, 6, // Second batch: 3×2
-		}}
-		t2 := &Tensor{Dim: []int{2, 2, 4}, Data: []float32{
+		})
+		t2 := FromFloat32([]int{2, 2, 4}, []float32{
 			1, 2, 3, 4, 5, 6, 7, 8, // First batch: 2×4
 			1, 2, 3, 4, 5, 6, 7, 8, // Second batch: 2×4
-		}}
+		})
 
 		result := t1.MatMul(t2)
 
 		expectedShape := []int{2, 3, 4}
-		if len(result.Dim) != len(expectedShape) {
-			t.Fatalf("Shape mismatch: got %v, expected %v", result.Dim, expectedShape)
+		resultShape := result.Shape()
+		if len(resultShape) != len(expectedShape) {
+			t.Fatalf("Shape mismatch: got %v, expected %v", resultShape, expectedShape)
 		}
 
 		for i := range expectedShape {
-			if result.Dim[i] != expectedShape[i] {
-				t.Errorf("Dim[%d] = %d, expected %d", i, result.Dim[i], expectedShape[i])
+			if resultShape[i] != expectedShape[i] {
+				t.Errorf("Dim[%d] = %d, expected %d", i, resultShape[i], expectedShape[i])
 			}
 		}
 
 		// Check first element of result: [0,0,0] = [1,2] × [1;5] = 1*1+2*5 = 11
-		if !floatEqual(result.Data[0], 11.0) {
-			t.Errorf("result[0] = %f, expected 11.0", result.Data[0])
+		resultData := result.Data()
+		if !floatEqual(resultData[0], 11.0) {
+			t.Errorf("result[0] = %f, expected 11.0", resultData[0])
 		}
 	})
 
 	t.Run("3x2 × 2x2x4 = 2x3x4 (broadcast first)", func(t *testing.T) {
-		t1 := &Tensor{Dim: []int{3, 2}, Data: []float32{1, 2, 3, 4, 5, 6}}
-		t2 := &Tensor{Dim: []int{2, 2, 4}, Data: []float32{
+		t1 := FromFloat32([]int{3, 2}, []float32{1, 2, 3, 4, 5, 6})
+		t2 := FromFloat32([]int{2, 2, 4}, []float32{
 			1, 2, 3, 4, 5, 6, 7, 8, // First batch
 			1, 2, 3, 4, 5, 6, 7, 8, // Second batch
-		}}
+		})
 
 		result := t1.MatMul(t2)
 
 		expectedShape := []int{2, 3, 4}
-		if len(result.Dim) != len(expectedShape) {
-			t.Fatalf("Shape mismatch: got %v, expected %v", result.Dim, expectedShape)
+		resultShape := result.Shape()
+		if len(resultShape) != len(expectedShape) {
+			t.Fatalf("Shape mismatch: got %v, expected %v", resultShape, expectedShape)
 		}
 
 		// Result should have shape [2, 3, 4]
 		for i := range expectedShape {
-			if result.Dim[i] != expectedShape[i] {
-				t.Errorf("Dim[%d] = %d, expected %d", i, result.Dim[i], expectedShape[i])
+			if resultShape[i] != expectedShape[i] {
+				t.Errorf("Dim[%d] = %d, expected %d", i, resultShape[i], expectedShape[i])
 			}
 		}
 	})
@@ -115,8 +116,8 @@ func TestMatMulBatched(t *testing.T) {
 
 func TestMatMulTo(t *testing.T) {
 	t.Run("create new tensor", func(t *testing.T) {
-		t1 := &Tensor{Dim: []int{2, 3}, Data: []float32{1, 2, 3, 4, 5, 6}}
-		t2 := &Tensor{Dim: []int{3, 2}, Data: []float32{1, 2, 3, 4, 5, 6}}
+		t1 := FromFloat32([]int{2, 3}, []float32{1, 2, 3, 4, 5, 6})
+		t2 := FromFloat32([]int{3, 2}, []float32{1, 2, 3, 4, 5, 6})
 
 		result := t1.MatMulTo(t2, nil)
 
@@ -125,28 +126,26 @@ func TestMatMulTo(t *testing.T) {
 		}
 
 		expectedShape := []int{2, 2}
+		resultShape := result.Shape()
 		for i := range expectedShape {
-			if result.Dim[i] != expectedShape[i] {
-				t.Errorf("Dim[%d] = %d, expected %d", i, result.Dim[i], expectedShape[i])
+			if resultShape[i] != expectedShape[i] {
+				t.Errorf("Dim[%d] = %d, expected %d", i, resultShape[i], expectedShape[i])
 			}
 		}
 	})
 
 	t.Run("use destination tensor", func(t *testing.T) {
-		t1 := &Tensor{Dim: []int{2, 3}, Data: []float32{1, 2, 3, 4, 5, 6}}
-		t2 := &Tensor{Dim: []int{3, 2}, Data: []float32{1, 2, 3, 4, 5, 6}}
-		dst := &Tensor{Dim: []int{2, 2}, Data: make([]float32, 4)}
+		t1 := FromFloat32([]int{2, 3}, []float32{1, 2, 3, 4, 5, 6})
+		t2 := FromFloat32([]int{3, 2}, []float32{1, 2, 3, 4, 5, 6})
+		dst := New(DTFP32, 2, 2)
 
 		result := t1.MatMulTo(t2, dst)
 
-		if result != dst {
-			t.Errorf("MatMulTo should return dst")
-		}
+		assert.Equal(t, dst, result, "MatMulTo should return dst")
 
 		// Check that dst was filled
-		if dst.Data[0] == 0 {
-			t.Error("dst should be filled with result")
-		}
+		dstData := dst.Data()
+		assert.NotEqual(t, float32(0), dstData[0], "dst should be filled with result")
 	})
 }
 
@@ -159,13 +158,13 @@ func TestTranspose2D(t *testing.T) {
 	}{
 		{
 			name:     "2x3 transpose",
-			t:        &Tensor{Dim: []int{2, 3}, Data: []float32{1, 2, 3, 4, 5, 6}},
+			t:        FromFloat32([]int{2, 3}, []float32{1, 2, 3, 4, 5, 6}),
 			expected: []float32{1, 4, 2, 5, 3, 6}, // [1,2,3; 4,5,6]^T = [1,4; 2,5; 3,6]
 			expShape: []int{3, 2},
 		},
 		{
 			name:     "3x2 transpose",
-			t:        &Tensor{Dim: []int{3, 2}, Data: []float32{1, 2, 3, 4, 5, 6}},
+			t:        FromFloat32([]int{3, 2}, []float32{1, 2, 3, 4, 5, 6}),
 			expected: []float32{1, 3, 5, 2, 4, 6}, // [1,2; 3,4; 5,6]^T = [1,3,5; 2,4,6]
 			expShape: []int{2, 3},
 		},
@@ -175,19 +174,17 @@ func TestTranspose2D(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.t.Transpose()
 
-			if len(result.Dim) != len(tt.expShape) {
-				t.Fatalf("Shape length mismatch: got %v, expected %v", result.Dim, tt.expShape)
-			}
+			resultShape := result.Shape()
+			assert.Equal(t, len(tt.expShape), len(resultShape), "Shape length mismatch")
 
 			for i := range tt.expShape {
-				if result.Dim[i] != tt.expShape[i] {
-					t.Errorf("Dim[%d] = %d, expected %d", i, result.Dim[i], tt.expShape[i])
-				}
+				assert.Equal(t, tt.expShape[i], resultShape[i], "Shape dimension %d mismatch", i)
 			}
 
+			resultData := result.Data()
 			for i := range tt.expected {
-				if !floatEqual(result.Data[i], tt.expected[i]) {
-					t.Errorf("Data[%d] = %f, expected %f", i, result.Data[i], tt.expected[i])
+				if !floatEqual(resultData[i], tt.expected[i]) {
+					t.Errorf("Data[%d] = %f, expected %f", i, resultData[i], tt.expected[i])
 				}
 			}
 		})
@@ -196,7 +193,7 @@ func TestTranspose2D(t *testing.T) {
 
 func TestTransposeTo(t *testing.T) {
 	t.Run("create new tensor", func(t *testing.T) {
-		t1 := &Tensor{Dim: []int{2, 3}, Data: []float32{1, 2, 3, 4, 5, 6}}
+		t1 := FromFloat32([]int{2, 3}, []float32{1, 2, 3, 4, 5, 6})
 
 		result := t1.TransposeTo(nil)
 
@@ -205,34 +202,32 @@ func TestTransposeTo(t *testing.T) {
 		}
 
 		expectedShape := []int{3, 2}
+		resultShape := result.Shape()
 		for i := range expectedShape {
-			if result.Dim[i] != expectedShape[i] {
-				t.Errorf("Dim[%d] = %d, expected %d", i, result.Dim[i], expectedShape[i])
+			if resultShape[i] != expectedShape[i] {
+				t.Errorf("Dim[%d] = %d, expected %d", i, resultShape[i], expectedShape[i])
 			}
 		}
 	})
 
 	t.Run("use destination tensor", func(t *testing.T) {
-		t1 := &Tensor{Dim: []int{2, 3}, Data: []float32{1, 2, 3, 4, 5, 6}}
-		dst := &Tensor{Dim: []int{3, 2}, Data: make([]float32, 6)}
+		t1 := FromFloat32([]int{2, 3}, []float32{1, 2, 3, 4, 5, 6})
+		dst := New(DTFP32, 3, 2)
 
 		result := t1.TransposeTo(dst)
 
-		if result != dst {
-			t.Errorf("TransposeTo should return dst")
-		}
+		assert.Equal(t, dst, result, "TransposeTo should return dst")
 
 		// Check that dst was filled
-		if dst.Data[0] == 0 {
-			t.Error("dst should be filled with result")
-		}
+		dstData := dst.Data()
+		assert.NotEqual(t, float32(0), dstData[0], "dst should be filled with result")
 	})
 }
 
 func TestDot(t *testing.T) {
 	t.Run("vector dot product", func(t *testing.T) {
-		t1 := &Tensor{Dim: []int{3}, Data: []float32{1, 2, 3}}
-		t2 := &Tensor{Dim: []int{3}, Data: []float32{4, 5, 6}}
+		t1 := FromFloat32([]int{3}, []float32{1, 2, 3})
+		t2 := FromFloat32([]int{3}, []float32{4, 5, 6})
 
 		result := t1.Dot(t2)
 		expected := float32(1*4 + 2*5 + 3*6) // 4 + 10 + 18 = 32
@@ -243,8 +238,8 @@ func TestDot(t *testing.T) {
 	})
 
 	t.Run("matrix Frobenius inner product", func(t *testing.T) {
-		t1 := &Tensor{Dim: []int{2, 3}, Data: []float32{1, 2, 3, 4, 5, 6}}
-		t2 := &Tensor{Dim: []int{2, 3}, Data: []float32{1, 1, 1, 1, 1, 1}}
+		t1 := FromFloat32([]int{2, 3}, []float32{1, 2, 3, 4, 5, 6})
+		t2 := FromFloat32([]int{2, 3}, []float32{1, 1, 1, 1, 1, 1})
 
 		result := t1.Dot(t2)
 		expected := float32(1 + 2 + 3 + 4 + 5 + 6) // 21
@@ -264,25 +259,25 @@ func TestNorm(t *testing.T) {
 	}{
 		{
 			name:     "L1 norm of vector",
-			t:        &Tensor{Dim: []int{3}, Data: []float32{3, -4, 5}},
+			t:        FromFloat32([]int{3}, []float32{3, -4, 5}),
 			ord:      0,
 			expected: 12.0, // |3| + |-4| + |5| = 12
 		},
 		{
 			name:     "L2 norm of vector",
-			t:        &Tensor{Dim: []int{3}, Data: []float32{3, 4, 0}},
+			t:        FromFloat32([]int{3}, []float32{3, 4, 0}),
 			ord:      1,
 			expected: 5.0, // sqrt(3^2 + 4^2 + 0^2) = 5
 		},
 		{
 			name:     "Frobenius norm of matrix",
-			t:        &Tensor{Dim: []int{2, 2}, Data: []float32{3, 4, 0, 0}},
+			t:        FromFloat32([]int{2, 2}, []float32{3, 4, 0, 0}),
 			ord:      2,
 			expected: 5.0, // sqrt(3^2 + 4^2 + 0^2 + 0^2) = 5
 		},
 		{
 			name:     "L2 norm of matrix (same as Frobenius)",
-			t:        &Tensor{Dim: []int{2, 2}, Data: []float32{1, 0, 0, 1}},
+			t:        FromFloat32([]int{2, 2}, []float32{1, 0, 0, 1}),
 			ord:      1,
 			expected: float32(math.Sqrt(2)), // sqrt(1 + 0 + 0 + 1) = sqrt(2)
 		},
@@ -301,7 +296,7 @@ func TestNorm(t *testing.T) {
 
 func TestNormalize(t *testing.T) {
 	t.Run("normalize vector", func(t *testing.T) {
-		t1 := &Tensor{Dim: []int{3}, Data: []float32{3, 4, 0}}
+		t1 := FromFloat32([]int{3}, []float32{3, 4, 0})
 		result := t1.Normalize(0)
 
 		// After normalization, L2 norm should be 1
@@ -312,34 +307,38 @@ func TestNormalize(t *testing.T) {
 
 		// Check first element: 3/5 = 0.6
 		expectedFirst := float32(3.0 / 5.0)
-		if !floatEqual(result.Data[0], expectedFirst) {
-			t.Errorf("result[0] = %f, expected %f", result.Data[0], expectedFirst)
+		resultData := result.Data()
+		if !floatEqual(resultData[0], expectedFirst) {
+			t.Errorf("result[0] = %f, expected %f", resultData[0], expectedFirst)
 		}
 	})
 
 	t.Run("normalize matrix along rows", func(t *testing.T) {
-		t1 := &Tensor{Dim: []int{2, 3}, Data: []float32{3, 4, 0, 0, 0, 0}}
+		t1 := FromFloat32([]int{2, 3}, []float32{3, 4, 0, 0, 0, 0})
 		result := t1.Normalize(0)
 
 		// First row should have L2 norm = 1
-		firstRowNorm := float32(math.Sqrt(float64(result.Data[0]*result.Data[0] + result.Data[1]*result.Data[1] + result.Data[2]*result.Data[2])))
+		resultData := result.Data()
+		firstRowNorm := float32(math.Sqrt(float64(resultData[0]*resultData[0] + resultData[1]*resultData[1] + resultData[2]*resultData[2])))
 		if !floatEqual(firstRowNorm, 1.0) {
 			t.Errorf("First row norm = %f, expected 1.0", firstRowNorm)
 		}
 
 		// First row: [3,4,0] normalized = [3/5, 4/5, 0]
 		expectedFirst := float32(3.0 / 5.0)
-		if !floatEqual(result.Data[0], expectedFirst) {
-			t.Errorf("result[0] = %f, expected %f", result.Data[0], expectedFirst)
+		resultData = result.Data()
+		if !floatEqual(resultData[0], expectedFirst) {
+			t.Errorf("result[0] = %f, expected %f", resultData[0], expectedFirst)
 		}
 	})
 
 	t.Run("normalize matrix along columns", func(t *testing.T) {
-		t1 := &Tensor{Dim: []int{2, 3}, Data: []float32{3, 0, 0, 4, 0, 0}}
+		t1 := FromFloat32([]int{2, 3}, []float32{3, 0, 0, 4, 0, 0})
 		result := t1.Normalize(1)
 
 		// First column should have L2 norm = 1
-		firstColNorm := float32(math.Sqrt(float64(result.Data[0]*result.Data[0] + result.Data[3]*result.Data[3])))
+		resultData := result.Data()
+		firstColNorm := float32(math.Sqrt(float64(resultData[0]*resultData[0] + resultData[3]*resultData[3])))
 		if !floatEqual(firstColNorm, 1.0) {
 			t.Errorf("First column norm = %f, expected 1.0", firstColNorm)
 		}

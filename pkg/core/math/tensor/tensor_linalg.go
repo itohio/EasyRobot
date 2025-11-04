@@ -58,34 +58,28 @@ func (t *Tensor) MatMulTo(other *Tensor, dst *Tensor) *Tensor {
 
 // matMul2D performs matrix multiplication for 2D tensors: [M, K] × [K, N] = [M, N]
 func (t *Tensor) matMul2D(other *Tensor) *Tensor {
-	M := t.Dim[0]
-	K := t.Dim[1]
-	K2 := other.Dim[0]
-	N := other.Dim[1]
+	M := t.shape[0]
+	K := t.shape[1]
+	K2 := other.shape[0]
+	N := other.shape[1]
 
 	if K != K2 {
-		panic(fmt.Sprintf("tensor.MatMul: dimension mismatch: %v × %v", t.Dim, other.Dim))
+		panic(fmt.Sprintf("tensor.MatMul: dimension mismatch: %v × %v", t.shape, other.shape))
 	}
 
-	// Leading dimensions for row-major matrices
-	ldA := K // A is [M, K], columns = K
-	ldB := N // B is [K, N], columns = N
-	ldC := N // C is [M, N], columns = N
+	ldA := K
+	ldB := N
+	ldC := N
 
-	// Create output tensor
-	result := &Tensor{
-		Dim:  []int{M, N},
-		Data: make([]float32, M*N),
-	}
+	result := New(t.dtype, M, N)
 
-	// Use fp32.Gemm_NN
 	fp32.Gemm_NN(
-		result.Data,   // C
-		t.Data,        // A
-		other.Data,    // B
-		ldC, ldA, ldB, // leading dimensions
-		M, N, K, // dimensions
-		1.0, 0.0, // alpha, beta
+		result.data,
+		t.data,
+		other.data,
+		ldC, ldA, ldB,
+		M, N, K,
+		1.0, 0.0,
 	)
 
 	return result
@@ -139,47 +133,38 @@ func (t *Tensor) matMulBatched(other *Tensor) *Tensor {
 
 // matMulSameBatch handles [B, M, K] × [B, K, N]
 func (t *Tensor) matMulSameBatch(other *Tensor, batchSize, M, N, K int) *Tensor {
-	// Leading dimensions
 	ldA := K
 	ldB := N
 	ldC := N
 
-	// Compute strides
 	tStride := M * K
 	otherStride := K * N
 	resultStride := M * N
 
-	// Create output tensor
-	resultShape := make([]int, len(t.Dim))
-	copy(resultShape, t.Dim)
+	resultShape := append([]int(nil), t.shape...)
 	resultShape[len(resultShape)-2] = M
 	resultShape[len(resultShape)-1] = N
 
-	result := &Tensor{
-		Dim:  resultShape,
-		Data: make([]float32, batchSize*M*N),
-	}
+	result := New(t.dtype, resultShape...)
 
-	// Check if contiguous (can use GemmStrided)
 	if t.isContiguous() && other.isContiguous() {
 		fp32.GemmStrided(
-			result.Data,   // C
-			t.Data,        // A
-			other.Data,    // B
-			ldC, ldA, ldB, // leading dimensions
-			M, N, K, // dimensions
-			1.0, 0.0, // alpha, beta
-			batchSize,    // batch count
-			tStride,      // strideA
-			otherStride,  // strideB
-			resultStride, // strideC
+			result.data,
+			t.data,
+			other.data,
+			ldC, ldA, ldB,
+			M, N, K,
+			1.0, 0.0,
+			batchSize,
+			tStride,
+			otherStride,
+			resultStride,
 		)
 	} else {
-		// Use GemmBatched (handles strided access)
 		fp32.GemmBatched(
-			result.Data,
-			t.Data,
-			other.Data,
+			result.data,
+			t.data,
+			other.data,
 			ldC, ldA, ldB,
 			M, N, K,
 			1.0, 0.0,
@@ -195,32 +180,20 @@ func (t *Tensor) matMulSameBatch(other *Tensor, batchSize, M, N, K int) *Tensor 
 
 // matMulBroadcastFirst handles [M, K] × [B, K, N] (broadcast first tensor)
 func (t *Tensor) matMulBroadcastFirst(other *Tensor, batchSize, M, N, K int) *Tensor {
-	// Replicate t for each batch element
-	resultShape := make([]int, len(other.Dim))
-	copy(resultShape, other.Dim)
-	resultShape[len(resultShape)-2] = M
+	resultShape := []int{batchSize, M, N}
+	result := New(t.dtype, resultShape...)
 
-	result := &Tensor{
-		Dim:  resultShape,
-		Data: make([]float32, batchSize*M*N),
-	}
+	sliceSize := K * N
+	dstSize := M * N
 
-	ldA := K
-	ldB := N
-	ldC := N
-	otherStride := K * N
-	resultStride := M * N
-
-	// For each batch, multiply t with other[batch]
 	for b := 0; b < batchSize; b++ {
-		otherOffset := b * otherStride
-		resultOffset := b * resultStride
-
+		sliceOffset := b * sliceSize
+		dstOffset := b * dstSize
 		fp32.Gemm_NN(
-			result.Data[resultOffset:],
-			t.Data,
-			other.Data[otherOffset:],
-			ldC, ldA, ldB,
+			result.data[dstOffset:],
+			t.data,
+			other.data[sliceOffset:],
+			N, K, N,
 			M, N, K,
 			1.0, 0.0,
 		)
@@ -231,14 +204,10 @@ func (t *Tensor) matMulBroadcastFirst(other *Tensor, batchSize, M, N, K int) *Te
 
 // matMulBroadcastSecond handles [B, M, K] × [K, N] (broadcast second tensor)
 func (t *Tensor) matMulBroadcastSecond(other *Tensor, batchSize, M, N, K int) *Tensor {
-	resultShape := make([]int, len(t.Dim))
-	copy(resultShape, t.Dim)
+	resultShape := append([]int(nil), t.shape...)
 	resultShape[len(resultShape)-1] = N
 
-	result := &Tensor{
-		Dim:  resultShape,
-		Data: make([]float32, batchSize*M*N),
-	}
+	result := New(t.dtype, resultShape...)
 
 	ldA := K
 	ldB := N
@@ -246,15 +215,14 @@ func (t *Tensor) matMulBroadcastSecond(other *Tensor, batchSize, M, N, K int) *T
 	tStride := M * K
 	resultStride := M * N
 
-	// For each batch, multiply t[batch] with other
 	for b := 0; b < batchSize; b++ {
 		tOffset := b * tStride
 		resultOffset := b * resultStride
 
 		fp32.Gemm_NN(
-			result.Data[resultOffset:],
-			t.Data[tOffset:],
-			other.Data,
+			result.data[resultOffset:],
+			t.data[tOffset:],
+			other.data,
 			ldC, ldA, ldB,
 			M, N, K,
 			1.0, 0.0,
@@ -291,20 +259,19 @@ func (t *Tensor) Transpose(dims ...int) *Tensor {
 
 // transpose2D transposes a 2D tensor: [M, N] -> [N, M]
 func (t *Tensor) transpose2D() *Tensor {
-	if len(t.Dim) != 2 {
+	if len(t.shape) != 2 {
 		panic("tensor.transpose2D: tensor must be 2D")
 	}
 
-	M, N := t.Dim[0], t.Dim[1]
-	result := &Tensor{
-		Dim:  []int{N, M},
-		Data: make([]float32, M*N),
-	}
+	M, N := t.shape[0], t.shape[1]
+	result := New(t.dtype, N, M)
 
 	// Transpose: result[j][i] = t[i][j]
+	resultData := result.data
+	tData := t.data
 	for i := 0; i < M; i++ {
 		for j := 0; j < N; j++ {
-			result.Data[j*M+i] = t.Data[i*N+j]
+			resultData[j*M+i] = tData[i*N+j]
 		}
 	}
 
@@ -354,7 +321,7 @@ func (t *Tensor) Dot(other *Tensor) float32 {
 		}
 
 		if t.isContiguous() && other.isContiguous() {
-			return fp32.Dot(t.Data, other.Data, 1, 1, tShape[0])
+			return fp32.Dot(t.data, other.data, 1, 1, tShape[0])
 		}
 
 		// Strided case
@@ -372,14 +339,16 @@ func (t *Tensor) Dot(other *Tensor) float32 {
 
 // dotStrided computes dot product for strided vectors
 func (t *Tensor) dotStrided(other *Tensor, n int) float32 {
-	tStrides := Shape(t.Dim).Strides()
-	otherStrides := Shape(other.Dim).Strides()
+	tStrides := t.shape.Strides()
+	otherStrides := other.shape.Strides()
 
 	var sum float32
+	tData := t.data
+	otherData := other.data
 	for i := 0; i < n; i++ {
 		tIdx := i * tStrides[0]
 		otherIdx := i * otherStrides[0]
-		sum += t.Data[tIdx] * other.Data[otherIdx]
+		sum += tData[tIdx] * otherData[otherIdx]
 	}
 	return sum
 }
@@ -388,8 +357,10 @@ func (t *Tensor) dotStrided(other *Tensor, n int) float32 {
 func (t *Tensor) dotFrobenius(other *Tensor) float32 {
 	var sum float32
 	size := t.Size()
+	tData := t.data
+	otherData := other.data
 	for i := 0; i < size; i++ {
-		sum += t.Data[i] * other.Data[i]
+		sum += tData[i] * otherData[i]
 	}
 	return sum
 }
@@ -406,21 +377,21 @@ func (t *Tensor) Norm(ord int) float32 {
 	case 0:
 		// L1 norm
 		if t.isContiguous() {
-			return fp32.Asum(t.Data, 1, t.Size())
+			return fp32.Asum(t.data, 1, t.Size())
 		}
 		return t.norm1Strided()
 
 	case 1:
 		// L2 norm (Euclidean norm)
 		if t.isContiguous() {
-			return fp32.Nrm2(t.Data, 1, t.Size())
+			return fp32.Nrm2(t.data, 1, t.Size())
 		}
 		return t.norm2Strided()
 
 	case 2:
 		// Frobenius norm for matrices (same as L2 norm on flattened matrix)
 		if t.isContiguous() {
-			return fp32.Nrm2(t.Data, 1, t.Size())
+			return fp32.Nrm2(t.data, 1, t.Size())
 		}
 		return t.norm2Strided()
 
@@ -432,16 +403,16 @@ func (t *Tensor) Norm(ord int) float32 {
 // norm1Strided computes L1 norm for strided tensor
 func (t *Tensor) norm1Strided() float32 {
 	var sum float32
-	strides := Shape(t.Dim).Strides()
-	indices := make([]int, len(t.Dim))
+	strides := t.shape.Strides()
+	indices := make([]int, len(t.shape))
 	t.norm1StridedRecursive(&sum, indices, strides, 0)
 	return sum
 }
 
 func (t *Tensor) norm1StridedRecursive(sum *float32, indices []int, strides []int, dim int) {
-	if dim == len(t.Dim) {
+	if dim == len(t.shape) {
 		idx := t.elementIndex(indices, strides)
-		val := t.Data[idx]
+		val := t.data[idx]
 		if val < 0 {
 			*sum -= val
 		} else {
@@ -450,7 +421,7 @@ func (t *Tensor) norm1StridedRecursive(sum *float32, indices []int, strides []in
 		return
 	}
 
-	for i := 0; i < t.Dim[dim]; i++ {
+	for i := 0; i < t.shape[dim]; i++ {
 		indices[dim] = i
 		t.norm1StridedRecursive(sum, indices, strides, dim+1)
 	}
@@ -459,8 +430,8 @@ func (t *Tensor) norm1StridedRecursive(sum *float32, indices []int, strides []in
 // norm2Strided computes L2 norm for strided tensor
 func (t *Tensor) norm2Strided() float32 {
 	var sumSq float32
-	strides := Shape(t.Dim).Strides()
-	indices := make([]int, len(t.Dim))
+	strides := t.shape.Strides()
+	indices := make([]int, len(t.shape))
 	t.norm2StridedRecursive(&sumSq, indices, strides, 0)
 	// Note: Need sqrt for L2 norm, but primitive.Nrm2 does that
 	// For now, compute manually
@@ -494,14 +465,14 @@ func (t *Tensor) sqrtApprox(x float32) float32 {
 }
 
 func (t *Tensor) norm2StridedRecursive(sum *float32, indices []int, strides []int, dim int) {
-	if dim == len(t.Dim) {
+	if dim == len(t.shape) {
 		idx := t.elementIndex(indices, strides)
-		val := t.Data[idx]
+		val := t.data[idx]
 		*sum += val * val
 		return
 	}
 
-	for i := 0; i < t.Dim[dim]; i++ {
+	for i := 0; i < t.shape[dim]; i++ {
 		indices[dim] = i
 		t.norm2StridedRecursive(sum, indices, strides, dim+1)
 	}
@@ -545,9 +516,10 @@ func (t *Tensor) normalizeVector() *Tensor {
 	}
 
 	// Use fp32 operations
-	norm := fp32.Nrm2(result.Data, 1, result.Size())
+	resultData := result.data
+	norm := fp32.Nrm2(resultData, 1, result.Size())
 	if norm > 0 {
-		fp32.Scal(result.Data, 1, result.Size(), 1.0/norm)
+		fp32.Scal(resultData, 1, result.Size(), 1.0/norm)
 	}
 
 	return result
@@ -555,18 +527,20 @@ func (t *Tensor) normalizeVector() *Tensor {
 
 // normalizeMatrixDim normalizes a matrix along specified dimension
 func (t *Tensor) normalizeMatrixDim(dim int) *Tensor {
-	if dim < 0 || dim >= len(t.Dim) {
-		panic(fmt.Sprintf("tensor.Normalize: dimension %d out of range for shape %v", dim, t.Dim))
+	shape := t.Shape()
+	if dim < 0 || dim >= len(shape) {
+		panic(fmt.Sprintf("tensor.Normalize: dimension %d out of range for shape %v", dim, shape))
 	}
 
 	result := t.Clone()
 
-	M, N := t.Dim[0], t.Dim[1]
+	M, N := shape[0], shape[1]
+	resultData := result.data
 
 	if dim == 0 {
 		// Normalize along rows (each row becomes unit vector)
 		for i := 0; i < M; i++ {
-			rowData := result.Data[i*N : (i+1)*N]
+			rowData := resultData[i*N : (i+1)*N]
 			norm := fp32.Nrm2(rowData, 1, N)
 			if norm > 0 {
 				fp32.Scal(rowData, 1, N, 1.0/norm)
@@ -578,13 +552,13 @@ func (t *Tensor) normalizeMatrixDim(dim int) *Tensor {
 			// Extract column (stride access)
 			colData := make([]float32, M)
 			for i := 0; i < M; i++ {
-				colData[i] = result.Data[i*N+j]
+				colData[i] = resultData[i*N+j]
 			}
 			norm := fp32.Nrm2(colData, 1, M)
 			if norm > 0 {
 				scale := 1.0 / norm
 				for i := 0; i < M; i++ {
-					result.Data[i*N+j] *= scale
+					resultData[i*N+j] *= scale
 				}
 			}
 		}

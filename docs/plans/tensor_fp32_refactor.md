@@ -1,6 +1,7 @@
 ## Goal
 - decouple float32-specific tensor math from `pkg/core/math/tensor` so data-type agnostic tensor wrappers can delegate to primitives.
 - prepare ground for future multi-dtype tensor support (e.g. TF Lite layers) by consolidating fp32 kernels under `pkg/core/math/primitive/fp32`.
+- encapsulate tensor state behind a typed API so callers cannot mutate shape/data directly.
 
 ## Current Pain Points
 - `tensor` package mixes shape/stride management with low-level loop kernels, making dtype specialization hard.
@@ -29,48 +30,38 @@ This inventory will guide which primitives we can reuse versus new APIs we must 
   - delegating actual math to the primitives.
 
 ## Step-by-Step Plan
-1. **Inventory existing kernels**
-   - catalogue tensor methods that already call `fp32` (`Add`, `Scale`, MatMul wrappers) vs those with bespoke loops.
-   - document required signatures for each candidate primitive (inputs: data slice, shape, strides, axes, etc.).
+1. **Refactor tensor core** *(in progress)*
+   - Introduce `DataType` enum (starting with `DTFP32`).
+   - Encapsulate tensor state (`dtype`, `shape`, `data`) with private fields.
+   - Add constructors `New(dtype DataType, shape ...int)` and `FromFloat32(shape []int, data []float32)` (no-copy wrapping when `data` is non-nil, allocation otherwise).
+   - Ensure `Shape`, `Dims`, `Data`, `Rank`, `Size`, `Clone`, `Reshape`, etc. operate on the new structure.
+   - Keep zero-value tensors usable.
 
-2. **Design fp32 tensor-kernel API**
-   - define a `tensor.Shape` type (`type Shape []int`) hosting shape/stride helpers so they can be reused across dtypes; fp32 kernels will accept the derived `[]int` data.
-   - add lightweight helpers in `tensor` (e.g. `Shape.Strides()`, `Shape.Size()`, `Shape.IsContiguous(strides []int)`) and make fp32 utilities operate on raw slices to avoid duplication.
-   - define core elementwise APIs accepting `dst`, `a`, `b`, `shape`, `strides`.
-   - design reduction APIs returning scalars or writing into preallocated buffers, supporting axis lists.
-   - **Proposed API surface** (all under `primitive/fp32`):
-     - Shape utilities move under `tensor.Shape`, so fp32 only needs helper shims for safety when called directly.
-     - Elementwise (contiguous+strided):
-       - `ElemAdd(dst, a, b []float32, shape []int, stridesDst, stridesA, stridesB []int)`
-       - `ElemSub(...)`, `ElemMul(...)`, `ElemDiv(...)` (same signature).
-       - `ElemScale(dst []float32, scalar float32, shape []int, stridesDst []int)`.
-       - `ElemCopy(dst, src []float32, shape []int, stridesDst, stridesSrc []int)`.
-     - Broadcast helpers:
-       - `BroadcastStrides(shape, broadcastShape []int) ([]int, error)` to compute effective strides.
-       - `ExpandTo(dst, src []float32, dstShape, srcShape []int, dstStrides, srcStrides []int)` for materializing views when needed.
-     - Reductions:
-       - `ReduceSum(dst []float32, src []float32, srcShape []int, axes []int, keepDims bool)`.
-       - `ReduceMax(...)`, `ReduceMin(...)`, `ReduceMean(...)` implemented on top of sum/count.
-       - `Argmax(dst []int, src []float32, srcShape []int, axis int)` returning indices (int slice) while optionally writing float32 for compatibility.
-     - Utilities:
-       - `IndexLinear(indices []int, strides []int) int` (shared with tensor for validation loops).
-       - `ValidateAxes(shape []int, axes []int) error` to mirror current panic messages before delegating.
-   - All functions accept explicit shape/stride metadata so they can perform contiguous fast-paths internally and fall back to generic loops otherwise.
-   - **Usage & dependency boundary**: `tensor.Shape` lives in `pkg/core/math/tensor` and is only consumed by higher-level tensor code (and future dtype-aware packages). The fp32 primitives stay decoupled by continuing to work with raw `[]int` shapes/strides, so there is no `primitive ↔ tensor` import cycle. Callers convert between the two (`Shape(t.Dim)` or `shape.Slice()`) when crossing the boundary.
+2. **Design fp32 tensor-kernel API** *(partial)*
+   - Define `tensor.Shape` helpers, stride utilities, and keep primitives operating on raw slices (no cyclic deps). *(done)*
+   - Provide elementwise/broadcast/reduction primitives as previously outlined. *(done)*
+   - `tensor` must use kernels from `fp32` *(partial)*
 
-3. **Implement fps32 kernels incrementally**
-   - start with contiguous fast paths using existing BLAS-like routines (`Axpy`, `Scal`, `Dot`).
-   - add generic stride-aware loops reused across operations (single-pass walkers, no callbacks, minimal allocations).
-   - unit-test kernels in `pkg/core/math/primitive/fp32/tensor_test.go` mirroring current tensor tests.
+3. **Refactor tensor internals** *(todo)*
+   - Update tensor math, linalg, convolution code to rely on the encapsulated tensor API (no struct literals or direct field use).
 
-4. **Refactor tensor package**
-   - replace recursive helpers with calls into new primitives.
-   - keep tensor-specific shape checks and higher-level orchestration.
-   - ensure behavior/edge cases remain unchanged (panic messages, broadcasting semantics).
+4. **Refactor tensor consumers** *(todo)*
+   - Sweep other packages (NN layers, tests, specs, etc.) to construct tensors via `New`/`FromFloat32` and access data through accessors.
+     - pkg/core/math/learn/datasets/mnist/loader.go
+     - pkg/core/math/nn/layers
+     - pkg/core/math/nn
+     - pkg/core/math/learn
+   - Replace raw `.Dim`/`.Data` usage with `Dims()`/`Data()` or higher-level helpers.
 
-5. **Validation**
-   - extend existing tensor tests to cover both contiguous and non-contiguous (reshaped) cases.
-   - run full `go test ./pkg/core/math/tensor ./pkg/core/math/primitive/fp32` and targeted benchmarks once walkers are stabilized.
+5. **Implement parallel fp32 kernels** *(todo)*
+   - Add optional parallel execution paths (e.g. chunked workers) for heavy fp32 kernels where it improves performance.
+   - Gate with sensible heuristics to avoid overhead on small workloads.
+
+6. **Tests & benchmarks** *(todo)*
+   - Re-run targeted packages (`tensor`, `primitive/fp32`, NN layers) and existing benchmarks to confirm no regressions.
+
+7. **Eliminate panics** *(todo)*
+   - After the API is in place and consumers updated, replace remaining runtime panics inside tensor methods with error returns or documented invariants.
 
 ## Out of Scope (Future Work)
 - Introducing non-fp32 tensor data types (bf16/int8) — planned once fp32 kernels are centralized.

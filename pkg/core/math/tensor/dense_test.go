@@ -12,17 +12,17 @@ func TestFlat(t *testing.T) {
 	}{
 		{
 			name:     "2x2 tensor",
-			tensor:   &Tensor{Dim: []int{2, 2}, Data: []float32{1, 2, 3, 4}},
+			tensor:   FromFloat32([]int{2, 2}, []float32{1, 2, 3, 4}),
 			expected: []float32{1, 2, 3, 4},
 		},
 		{
 			name:     "1D tensor",
-			tensor:   &Tensor{Dim: []int{5}, Data: []float32{1, 2, 3, 4, 5}},
+			tensor:   FromFloat32([]int{5}, []float32{1, 2, 3, 4, 5}),
 			expected: []float32{1, 2, 3, 4, 5},
 		},
 		{
 			name:     "3D tensor",
-			tensor:   &Tensor{Dim: []int{2, 2, 2}, Data: []float32{1, 2, 3, 4, 5, 6, 7, 8}},
+			tensor:   FromFloat32([]int{2, 2, 2}, []float32{1, 2, 3, 4, 5, 6, 7, 8}),
 			expected: []float32{1, 2, 3, 4, 5, 6, 7, 8},
 		},
 		{
@@ -49,10 +49,11 @@ func TestFlat(t *testing.T) {
 			}
 
 			// Verify it's the same underlying slice (zero-copy)
-			if len(tt.tensor.Data) > 0 {
-				originalFirst := tt.tensor.Data[0]
+			tensorData := tt.tensor.Data()
+			if len(tensorData) > 0 {
+				originalFirst := tensorData[0]
 				result[0] = 999.0
-				if tt.tensor.Data[0] != 999.0 {
+				if tt.tensor.Data()[0] != 999.0 {
 					t.Errorf("Flat() should return same slice (zero-copy), but modifying result didn't modify original")
 				}
 				// Restore
@@ -69,7 +70,7 @@ func TestFlat(t *testing.T) {
 }
 
 func TestAt(t *testing.T) {
-	tensor := &Tensor{Dim: []int{2, 3}, Data: []float32{1, 2, 3, 4, 5, 6}}
+	tensor := FromFloat32([]int{2, 3}, []float32{1, 2, 3, 4, 5, 6})
 
 	tests := []struct {
 		name        string
@@ -142,7 +143,7 @@ func TestAt(t *testing.T) {
 	}
 
 	// Test 3D tensor
-	tensor3D := &Tensor{Dim: []int{2, 2, 2}, Data: []float32{1, 2, 3, 4, 5, 6, 7, 8}}
+	tensor3D := FromFloat32([]int{2, 2, 2}, []float32{1, 2, 3, 4, 5, 6, 7, 8})
 	result := tensor3D.At(1, 0, 1)
 	if !floatEqual(result, 6.0) {
 		t.Errorf("At(1, 0, 1) for 3D tensor = %f, expected 6.0", result)
@@ -150,7 +151,7 @@ func TestAt(t *testing.T) {
 }
 
 func TestSetAt(t *testing.T) {
-	tensor := &Tensor{Dim: []int{2, 3}, Data: []float32{1, 2, 3, 4, 5, 6}}
+	tensor := FromFloat32([]int{2, 3}, []float32{1, 2, 3, 4, 5, 6})
 
 	tests := []struct {
 		name        string
@@ -231,49 +232,49 @@ func TestReshape(t *testing.T) {
 	}{
 		{
 			name:     "2x2 to 1x4",
-			tensor:   &Tensor{Dim: []int{2, 2}, Data: []float32{1, 2, 3, 4}},
+			tensor:   FromFloat32([]int{2, 2}, []float32{1, 2, 3, 4}),
 			newShape: []int{1, 4},
 			expected: []float32{1, 2, 3, 4},
 		},
 		{
 			name:     "2x2 to 4",
-			tensor:   &Tensor{Dim: []int{2, 2}, Data: []float32{1, 2, 3, 4}},
+			tensor:   FromFloat32([]int{2, 2}, []float32{1, 2, 3, 4}),
 			newShape: []int{4},
 			expected: []float32{1, 2, 3, 4},
 		},
 		{
 			name:     "6 to 2x3",
-			tensor:   &Tensor{Dim: []int{6}, Data: []float32{1, 2, 3, 4, 5, 6}},
+			tensor:   FromFloat32([]int{6}, []float32{1, 2, 3, 4, 5, 6}),
 			newShape: []int{2, 3},
 			expected: []float32{1, 2, 3, 4, 5, 6},
 		},
 		{
 			name:     "2x2x2 to 8",
-			tensor:   &Tensor{Dim: []int{2, 2, 2}, Data: []float32{1, 2, 3, 4, 5, 6, 7, 8}},
+			tensor:   FromFloat32([]int{2, 2, 2}, []float32{1, 2, 3, 4, 5, 6, 7, 8}),
 			newShape: []int{8},
 			expected: []float32{1, 2, 3, 4, 5, 6, 7, 8},
 		},
 		{
 			name:     "2x2x2 to 4x2",
-			tensor:   &Tensor{Dim: []int{2, 2, 2}, Data: []float32{1, 2, 3, 4, 5, 6, 7, 8}},
+			tensor:   FromFloat32([]int{2, 2, 2}, []float32{1, 2, 3, 4, 5, 6, 7, 8}),
 			newShape: []int{4, 2},
 			expected: []float32{1, 2, 3, 4, 5, 6, 7, 8},
 		},
 		{
 			name:        "size mismatch",
-			tensor:      &Tensor{Dim: []int{2, 2}, Data: []float32{1, 2, 3, 4}},
+			tensor:      FromFloat32([]int{2, 2}, []float32{1, 2, 3, 4}),
 			newShape:    []int{5},
 			shouldPanic: true,
 		},
 		{
 			name:        "zero dimension",
-			tensor:      &Tensor{Dim: []int{2, 2}, Data: []float32{1, 2, 3, 4}},
+			tensor:      FromFloat32([]int{2, 2}, []float32{1, 2, 3, 4}),
 			newShape:    []int{0, 4},
 			shouldPanic: true,
 		},
 		{
 			name:        "negative dimension",
-			tensor:      &Tensor{Dim: []int{2, 2}, Data: []float32{1, 2, 3, 4}},
+			tensor:      FromFloat32([]int{2, 2}, []float32{1, 2, 3, 4}),
 			newShape:    []int{-1, 4},
 			shouldPanic: true,
 		},
@@ -305,35 +306,38 @@ func TestReshape(t *testing.T) {
 			}
 
 			// Verify shape
-			if len(result.Dim) != len(tt.newShape) {
-				t.Errorf("Reshape() shape length = %d, expected %d", len(result.Dim), len(tt.newShape))
+			resultShape := result.Shape()
+			if len(resultShape) != len(tt.newShape) {
+				t.Errorf("Reshape() shape length = %d, expected %d", len(resultShape), len(tt.newShape))
 			}
 
 			for i := range tt.newShape {
-				if result.Dim[i] != tt.newShape[i] {
-					t.Errorf("Reshape() Dim[%d] = %d, expected %d", i, result.Dim[i], tt.newShape[i])
+				if resultShape[i] != tt.newShape[i] {
+					t.Errorf("Reshape() Shape()[%d] = %d, expected %d", i, resultShape[i], tt.newShape[i])
 				}
 			}
 
 			// Verify data is the same (zero-copy)
-			if len(result.Data) != len(tt.expected) {
-				t.Errorf("Reshape() Data length = %d, expected %d", len(result.Data), len(tt.expected))
+			resultData := result.Data()
+			if len(resultData) != len(tt.expected) {
+				t.Errorf("Reshape() Data length = %d, expected %d", len(resultData), len(tt.expected))
 			}
 
 			// Verify it's the same underlying slice (zero-copy)
-			if len(tt.tensor.Data) > 0 {
-				originalFirst := tt.tensor.Data[0]
-				result.Data[0] = 999.0
-				if tt.tensor.Data[0] != 999.0 {
+			tensorData := tt.tensor.Data()
+			if len(tensorData) > 0 {
+				originalFirst := tensorData[0]
+				resultData[0] = 999.0
+				if tt.tensor.Data()[0] != 999.0 {
 					t.Errorf("Reshape() should return same slice (zero-copy), but modifying result didn't modify original")
 				}
 				// Restore
-				result.Data[0] = originalFirst
+				resultData[0] = originalFirst
 			}
 
 			for i := range tt.expected {
-				if !floatEqual(result.Data[i], tt.expected[i]) {
-					t.Errorf("Reshape() Data[%d] = %f, expected %f", i, result.Data[i], tt.expected[i])
+				if !floatEqual(resultData[i], tt.expected[i]) {
+					t.Errorf("Reshape() Data[%d] = %f, expected %f", i, resultData[i], tt.expected[i])
 				}
 			}
 		})

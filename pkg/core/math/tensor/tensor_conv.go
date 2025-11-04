@@ -65,11 +65,11 @@ func (t *Tensor) Conv2D(kernel, bias *Tensor, stride, padding []int) *Tensor {
 	if bias != nil {
 		biasShape := bias.Shape()
 		if len(biasShape) == 1 && biasShape[0] == outChannels {
-			biasData = bias.Data
+			biasData = bias.Data()
 		} else if len(biasShape) == 0 {
 			// Scalar bias - expand to [outChannels]
 			biasData = make([]float32, outChannels)
-			val := bias.Data[0]
+			val := bias.Data()[0]
 			for i := range biasData {
 				biasData[i] = val
 			}
@@ -79,16 +79,13 @@ func (t *Tensor) Conv2D(kernel, bias *Tensor, stride, padding []int) *Tensor {
 	}
 
 	// Create output tensor
-	result := &Tensor{
-		Dim:  []int{batchSize, outChannels, outHeight, outWidth},
-		Data: make([]float32, batchSize*outChannels*outHeight*outWidth),
-	}
+	result := New(t.dtype, batchSize, outChannels, outHeight, outWidth)
 
 	// Call fp32.Conv2D
 	fp32.Conv2D(
-		result.Data,
-		t.Data,
-		kernel.Data,
+		result.data,
+		t.data,
+		kernel.data,
 		batchSize,
 		inChannels,
 		outChannels,
@@ -192,23 +189,20 @@ func (t *Tensor) Conv2DTransposed(kernel, bias *Tensor, stride, padding []int) *
 	if bias != nil {
 		biasShape := bias.Shape()
 		if len(biasShape) == 1 && biasShape[0] == outChannels {
-			biasData = bias.Data
+			biasData = bias.Data()
 		} else {
 			panic(fmt.Sprintf("tensor.Conv2DTransposed: bias must be 1D [outChannels], got %v", biasShape))
 		}
 	}
 
 	// Create output tensor
-	result := &Tensor{
-		Dim:  []int{batchSize, outChannels, outHeight, outWidth},
-		Data: make([]float32, batchSize*outChannels*outHeight*outWidth),
-	}
+	result := New(t.dtype, batchSize, outChannels, outHeight, outWidth)
 
 	// Call fp32.Conv2DTransposed
 	fp32.Conv2DTransposed(
-		result.Data,
-		t.Data,
-		kernel.Data,
+		result.data,
+		t.data,
+		kernel.data,
 		batchSize,
 		inChannels,
 		outChannels,
@@ -280,31 +274,22 @@ func (t *Tensor) Conv1D(kernel, bias *Tensor, stride, padding int) *Tensor {
 	// Kernel: [outChannels, inChannels, kernelLen] -> [outChannels, inChannels, kernelLen, 1]
 	// Output: [batch, outChannels, outLen] -> [batch, outChannels, outLen, 1]
 
-	input4D := &Tensor{
-		Dim:  []int{batchSize, inChannels, length, 1},
-		Data: t.Data,
-	}
+	// Reshape to 4D for Conv2D: add width=1 dimension
+	// Input: [batch, inChannels, length] -> [batch, inChannels, length, 1]
+	input4D := t.Clone().Reshape([]int{batchSize, inChannels, length, 1})
 
-	kernel4D := &Tensor{
-		Dim:  []int{outChannels, inChannels, kernelLen, 1},
-		Data: kernel.Data,
-	}
+	// Kernel: [outChannels, inChannels, kernelLen] -> [outChannels, inChannels, kernelLen, 1]
+	kernel4D := kernel.Clone().Reshape([]int{outChannels, inChannels, kernelLen, 1})
 
 	// Use Conv2D with width=1
 	result4D := input4D.Conv2D(kernel4D, bias, []int{stride, 1}, []int{padding, 0})
 
 	// Reshape back to 3D: [batch, outChannels, outLen, 1] -> [batch, outChannels, outLen]
-	result := &Tensor{
-		Dim:  []int{batchSize, outChannels, outLen},
-		Data: result4D.Data,
-	}
+	result := result4D.Reshape([]int{batchSize, outChannels, outLen})
 
 	// If original was 2D, remove batch dimension
 	if len(tShape) == 2 {
-		result = &Tensor{
-			Dim:  []int{outChannels, outLen},
-			Data: result.Data,
-		}
+		result = result.Reshape([]int{outChannels, outLen})
 	}
 
 	return result
@@ -349,10 +334,7 @@ func (t *Tensor) MaxPool2D(kernelSize, stride, padding []int) *Tensor {
 	outHeight := (inHeight+2*padH-kernelH)/strideH + 1
 	outWidth := (inWidth+2*padW-kernelW)/strideW + 1
 
-	result := &Tensor{
-		Dim:  []int{batchSize, channels, outHeight, outWidth},
-		Data: make([]float32, batchSize*channels*outHeight*outWidth),
-	}
+	result := New(t.dtype, batchSize, channels, outHeight, outWidth)
 
 	// Perform max pooling
 	for b := 0; b < batchSize; b++ {
@@ -378,7 +360,7 @@ func (t *Tensor) MaxPool2D(kernelSize, stride, padding []int) *Tensor {
 
 							if inH >= 0 && inH < inHeight && inW >= 0 && inW < inWidth {
 								idx := channelOffset + inH*inWidth + inW
-								val := t.Data[idx]
+								val := t.data[idx]
 								if val > maxVal {
 									maxVal = val
 								}
@@ -388,7 +370,7 @@ func (t *Tensor) MaxPool2D(kernelSize, stride, padding []int) *Tensor {
 
 					// Store max
 					resultIdx := resultChannelOffset + outH*outWidth + outW
-					result.Data[resultIdx] = maxVal
+					result.data[resultIdx] = maxVal
 				}
 			}
 		}
@@ -425,10 +407,7 @@ func (t *Tensor) AvgPool2D(kernelSize, stride, padding []int) *Tensor {
 	outHeight := (inHeight+2*padH-kernelH)/strideH + 1
 	outWidth := (inWidth+2*padW-kernelW)/strideW + 1
 
-	result := &Tensor{
-		Dim:  []int{batchSize, channels, outHeight, outWidth},
-		Data: make([]float32, batchSize*channels*outHeight*outWidth),
-	}
+	result := New(t.dtype, batchSize, channels, outHeight, outWidth)
 
 	// Perform average pooling
 	for b := 0; b < batchSize; b++ {
@@ -454,7 +433,7 @@ func (t *Tensor) AvgPool2D(kernelSize, stride, padding []int) *Tensor {
 
 							if inH >= 0 && inH < inHeight && inW >= 0 && inW < inWidth {
 								idx := channelOffset + inH*inWidth + inW
-								sum += t.Data[idx]
+								sum += t.data[idx]
 								count++
 							}
 						}
@@ -463,7 +442,7 @@ func (t *Tensor) AvgPool2D(kernelSize, stride, padding []int) *Tensor {
 					// Store average
 					resultIdx := resultChannelOffset + outH*outWidth + outW
 					if count > 0 {
-						result.Data[resultIdx] = sum / float32(count)
+						result.data[resultIdx] = sum / float32(count)
 					}
 				}
 			}
@@ -491,10 +470,7 @@ func (t *Tensor) GlobalAvgPool2D() *Tensor {
 	height := tShape[2]
 	width := tShape[3]
 
-	result := &Tensor{
-		Dim:  []int{batchSize, channels},
-		Data: make([]float32, batchSize*channels),
-	}
+	result := New(t.dtype, batchSize, channels)
 
 	size := height * width
 
@@ -510,11 +486,11 @@ func (t *Tensor) GlobalAvgPool2D() *Tensor {
 			for h := 0; h < height; h++ {
 				for w := 0; w < width; w++ {
 					idx := channelOffset + h*width + w
-					sum += t.Data[idx]
+					sum += t.data[idx]
 				}
 			}
 
-			result.Data[resultBatchOffset+c] = sum / float32(size)
+			result.data[resultBatchOffset+c] = sum / float32(size)
 		}
 	}
 
@@ -581,16 +557,13 @@ func (t *Tensor) DepthwiseConv2D(kernel, bias *Tensor, stride, padding []int) *T
 	if bias != nil {
 		biasShape := bias.Shape()
 		if len(biasShape) == 1 && biasShape[0] == inChannels {
-			biasData = bias.Data
+			biasData = bias.Data()
 		} else {
 			panic(fmt.Sprintf("tensor.DepthwiseConv2D: bias must be 1D [inChannels], got %v", biasShape))
 		}
 	}
 
-	result := &Tensor{
-		Dim:  []int{batchSize, inChannels, outHeight, outWidth},
-		Data: make([]float32, batchSize*inChannels*outHeight*outWidth),
-	}
+	result := New(t.dtype, batchSize, inChannels, outHeight, outWidth)
 
 	// For depthwise convolution, process each channel separately
 	// This is essentially Conv2D with groups=inChannels
@@ -599,10 +572,10 @@ func (t *Tensor) DepthwiseConv2D(kernel, bias *Tensor, stride, padding []int) *T
 		var kernelData []float32
 		if len(kernelShape) == 4 {
 			kernelOffset := c * kernelH * kernelW
-			kernelData = kernel.Data[kernelOffset : kernelOffset+kernelH*kernelW]
+			kernelData = kernel.data[kernelOffset : kernelOffset+kernelH*kernelW]
 		} else {
 			kernelOffset := c * kernelH * kernelW
-			kernelData = kernel.Data[kernelOffset : kernelOffset+kernelH*kernelW]
+			kernelData = kernel.data[kernelOffset : kernelOffset+kernelH*kernelW]
 		}
 
 		// Process each batch
@@ -623,7 +596,7 @@ func (t *Tensor) DepthwiseConv2D(kernel, bias *Tensor, stride, padding []int) *T
 							if inH >= 0 && inH < inHeight && inW >= 0 && inW < inWidth {
 								inIdx := inputOffset + inH*inWidth + inW
 								kernelIdx := kh*kernelW + kw
-								sum += t.Data[inIdx] * kernelData[kernelIdx]
+								sum += t.data[inIdx] * kernelData[kernelIdx]
 							}
 						}
 					}
@@ -633,7 +606,7 @@ func (t *Tensor) DepthwiseConv2D(kernel, bias *Tensor, stride, padding []int) *T
 					}
 
 					outIdx := outputOffset + outH*outWidth + outW
-					result.Data[outIdx] = sum
+					result.data[outIdx] = sum
 				}
 			}
 		}
@@ -707,16 +680,13 @@ func (t *Tensor) GroupConv2D(kernel, bias *Tensor, stride, padding []int, groups
 	if bias != nil {
 		biasShape := bias.Shape()
 		if len(biasShape) == 1 && biasShape[0] == outChannels {
-			biasData = bias.Data
+			biasData = bias.Data()
 		} else {
 			panic(fmt.Sprintf("tensor.GroupConv2D: bias must be 1D [outChannels], got %v", biasShape))
 		}
 	}
 
-	result := &Tensor{
-		Dim:  []int{batchSize, outChannels, outHeight, outWidth},
-		Data: make([]float32, batchSize*outChannels*outHeight*outWidth),
-	}
+	result := New(t.dtype, batchSize, outChannels, outHeight, outWidth)
 
 	// Process each group separately
 	for g := 0; g < groups; g++ {
@@ -751,7 +721,7 @@ func (t *Tensor) GroupConv2D(kernel, bias *Tensor, stride, padding []int, groups
 									if inH >= 0 && inH < inHeight && inW >= 0 && inW < inWidth {
 										inIdx := inputOffset + inH*inWidth + inW
 										kernelIdx := kernelChanOffset + kh*kernelW + kw
-										sum += t.Data[inIdx] * kernel.Data[kernelIdx]
+										sum += t.data[inIdx] * kernel.data[kernelIdx]
 									}
 								}
 							}
@@ -762,7 +732,7 @@ func (t *Tensor) GroupConv2D(kernel, bias *Tensor, stride, padding []int, groups
 						}
 
 						outIdx := outputOffset + outH*outWidth + outW
-						result.Data[outIdx] = sum
+						result.data[outIdx] = sum
 					}
 				}
 			}
@@ -835,16 +805,13 @@ func (t *Tensor) DilatedConv2D(kernel, bias *Tensor, stride, padding, dilation [
 	if bias != nil {
 		biasShape := bias.Shape()
 		if len(biasShape) == 1 && biasShape[0] == outChannels {
-			biasData = bias.Data
+			biasData = bias.Data()
 		} else {
 			panic(fmt.Sprintf("tensor.DilatedConv2D: bias must be 1D [outChannels], got %v", biasShape))
 		}
 	}
 
-	result := &Tensor{
-		Dim:  []int{batchSize, outChannels, outHeight, outWidth},
-		Data: make([]float32, batchSize*outChannels*outHeight*outWidth),
-	}
+	result := New(t.dtype, batchSize, outChannels, outHeight, outWidth)
 
 	// Process each batch and output channel
 	for b := 0; b < batchSize; b++ {
@@ -872,7 +839,7 @@ func (t *Tensor) DilatedConv2D(kernel, bias *Tensor, stride, padding, dilation [
 								if inH >= 0 && inH < inHeight && inW >= 0 && inW < inWidth {
 									inIdx := inputChanOffset + inH*inWidth + inW
 									kernelIdx := kernelChanOffset + kh*kernelW + kw
-									sum += t.Data[inIdx] * kernel.Data[kernelIdx]
+									sum += t.data[inIdx] * kernel.data[kernelIdx]
 								}
 							}
 						}
@@ -883,7 +850,7 @@ func (t *Tensor) DilatedConv2D(kernel, bias *Tensor, stride, padding, dilation [
 					}
 
 					outIdx := outputChanOffset + outH*outWidth + outW
-					result.Data[outIdx] = sum
+					result.data[outIdx] = sum
 				}
 			}
 		}
@@ -952,16 +919,13 @@ func (t *Tensor) Conv3D(kernel, bias *Tensor, stride, padding []int) *Tensor {
 	if bias != nil {
 		biasShape := bias.Shape()
 		if len(biasShape) == 1 && biasShape[0] == outChannels {
-			biasData = bias.Data
+			biasData = bias.Data()
 		} else {
 			panic(fmt.Sprintf("tensor.Conv3D: bias must be 1D [outChannels], got %v", biasShape))
 		}
 	}
 
-	result := &Tensor{
-		Dim:  []int{batchSize, outChannels, outDepth, outHeight, outWidth},
-		Data: make([]float32, batchSize*outChannels*outDepth*outHeight*outWidth),
-	}
+	result := New(t.dtype, batchSize, outChannels, outDepth, outHeight, outWidth)
 
 	// Process each batch and output channel
 	for b := 0; b < batchSize; b++ {
@@ -991,7 +955,7 @@ func (t *Tensor) Conv3D(kernel, bias *Tensor, stride, padding []int) *Tensor {
 										if inD >= 0 && inD < depth && inH >= 0 && inH < height && inW >= 0 && inW < width {
 											inIdx := inputChanOffset + inD*height*width + inH*width + inW
 											kernelIdx := kernelChanOffset + kd*kernelH*kernelW + kh*kernelW + kw
-											sum += t.Data[inIdx] * kernel.Data[kernelIdx]
+											sum += t.data[inIdx] * kernel.data[kernelIdx]
 										}
 									}
 								}
@@ -1003,7 +967,7 @@ func (t *Tensor) Conv3D(kernel, bias *Tensor, stride, padding []int) *Tensor {
 						}
 
 						outIdx := outputChanOffset + outD*outHeight*outWidth + outH*outWidth + outW
-						result.Data[outIdx] = sum
+						result.data[outIdx] = sum
 					}
 				}
 			}
@@ -1043,10 +1007,7 @@ func (t *Tensor) AdaptiveAvgPool2D(outputSize []int) *Tensor {
 		panic(fmt.Sprintf("tensor.AdaptiveAvgPool2D: outputSize must be positive, got %v", outputSize))
 	}
 
-	result := &Tensor{
-		Dim:  []int{batchSize, channels, outHeight, outWidth},
-		Data: make([]float32, batchSize*channels*outHeight*outWidth),
-	}
+	result := New(t.dtype, batchSize, channels, outHeight, outWidth)
 
 	// Process each batch and channel
 	for b := 0; b < batchSize; b++ {
@@ -1076,13 +1037,13 @@ func (t *Tensor) AdaptiveAvgPool2D(outputSize []int) *Tensor {
 					for h := startH; h < endH; h++ {
 						for w := startW; w < endW; w++ {
 							inIdx := inputOffset + h*width + w
-							sum += t.Data[inIdx]
+							sum += t.data[inIdx]
 							count++
 						}
 					}
 
 					if count > 0 {
-						result.Data[outputOffset+outH*outWidth+outW] = sum / float32(count)
+						result.data[outputOffset+outH*outWidth+outW] = sum / float32(count)
 					}
 				}
 			}
@@ -1136,15 +1097,12 @@ func (t *Tensor) Im2Col(kernelSize, stride, padding []int) *Tensor {
 	colHeight := batchSize * outHeight * outWidth
 	colWidth := channels * kernelH * kernelW
 
-	result := &Tensor{
-		Dim:  []int{colHeight, colWidth},
-		Data: make([]float32, colHeight*colWidth),
-	}
+	result := New(t.dtype, colHeight, colWidth)
 
 	// Call fp32.Im2Col
 	fp32.Im2Col(
-		result.Data,
-		t.Data,
+		result.data,
+		t.data,
 		batchSize,
 		channels,
 		height,
@@ -1209,15 +1167,12 @@ func (t *Tensor) Col2Im(outputShape, kernelSize, stride, padding []int) *Tensor 
 		panic(fmt.Sprintf("tensor.Col2Im: col height %d doesn't match expected %d", colHeight, batchSize*outHeight*outWidth))
 	}
 
-	result := &Tensor{
-		Dim:  []int{batchSize, channels, height, width},
-		Data: make([]float32, batchSize*channels*height*width),
-	}
+	result := New(t.dtype, batchSize, channels, height, width)
 
 	// Call fp32.Col2Im
 	fp32.Col2Im(
-		result.Data,
-		t.Data,
+		result.data,
+		t.data,
 		batchSize,
 		channels,
 		height,

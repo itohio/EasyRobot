@@ -5,6 +5,7 @@
 - low level algorithms and hot paths as optimized as possible <- consider possibility to segregate by architecture
 - Do not use Docker when working on unit tests
 - Use Python libraries via helper programs to verify results for math primitives
+- Use testify in unit tests
 
 # General rules
 - Prefer composition over inheritance

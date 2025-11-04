@@ -34,15 +34,13 @@ func (t *Tensor) MatVecMulTransposed(matrix *Tensor, vector *Tensor, alpha, beta
 
 	// Ensure result tensor has correct shape
 	var result *Tensor
-	if len(t.Dim) == 1 && t.Dim[0] == N {
+	tShape := t.Shape()
+	if len(tShape) == 1 && tShape[0] == N {
 		// Reuse provided tensor if shape matches
 		result = t
 	} else {
 		// Create new result tensor
-		result = &Tensor{
-			Dim:  []int{N},
-			Data: make([]float32, N),
-		}
+		result = New(t.dtype, N)
 	}
 
 	// Leading dimension of matrix (row-major: number of columns)
@@ -50,9 +48,9 @@ func (t *Tensor) MatVecMulTransposed(matrix *Tensor, vector *Tensor, alpha, beta
 
 	// Use primitive.Gemv_T
 	fp32.Gemv_T(
-		result.Data, // y (output)
-		matrix.Data, // A (matrix)
-		vector.Data, // x (vector)
+		result.data, // y (output)
+		matrix.data, // A (matrix)
+		vector.data, // x (vector)
 		ldA, M, N,   // leading dimension, rows, cols
 		alpha, beta, // scaling factors
 	)
@@ -115,16 +113,13 @@ func (t *Tensor) MatMulTransposed(other *Tensor, transposeA, transposeB bool, ds
 	// Prepare result tensor
 	var result *Tensor
 	if dst != nil {
-		if len(dst.Dim) == 0 {
-			dst.Dim = resultShape
-			dst.Data = make([]float32, outputSize)
+		dstShape := dst.Shape()
+		if len(dstShape) == 0 {
+			dst.reset(dst.dtype, resultShape, nil)
 		}
 		result = dst
 	} else {
-		result = &Tensor{
-			Dim:  resultShape,
-			Data: make([]float32, outputSize),
-		}
+		result = New(t.dtype, resultShape...)
 	}
 
 	// Handle 2D case
@@ -133,7 +128,7 @@ func (t *Tensor) MatMulTransposed(other *Tensor, transposeA, transposeB bool, ds
 		case !transposeA && !transposeB:
 			// Gemm_NN: C = A @ B
 			fp32.Gemm_NN(
-				result.Data, t.Data, other.Data,
+				result.data, t.data, other.data,
 				ldC, ldA, ldB,
 				M, N, K1,
 				1.0, 0.0,
@@ -141,7 +136,7 @@ func (t *Tensor) MatMulTransposed(other *Tensor, transposeA, transposeB bool, ds
 		case !transposeA && transposeB:
 			// Gemm_NT: C = A @ B^T
 			fp32.Gemm_NT(
-				result.Data, t.Data, other.Data,
+				result.data, t.data, other.data,
 				ldC, ldA, ldB,
 				M, N, K1,
 				1.0, 0.0,
@@ -149,7 +144,7 @@ func (t *Tensor) MatMulTransposed(other *Tensor, transposeA, transposeB bool, ds
 		case transposeA && !transposeB:
 			// Gemm_TN: C = A^T @ B
 			fp32.Gemm_TN(
-				result.Data, t.Data, other.Data,
+				result.data, t.data, other.data,
 				ldC, ldA, ldB,
 				M, N, K1,
 				1.0, 0.0,
@@ -157,7 +152,7 @@ func (t *Tensor) MatMulTransposed(other *Tensor, transposeA, transposeB bool, ds
 		case transposeA && transposeB:
 			// Gemm_TT: C = A^T @ B^T
 			fp32.Gemm_TT(
-				result.Data, t.Data, other.Data,
+				result.data, t.data, other.data,
 				ldC, ldA, ldB,
 				M, N, K1,
 				1.0, 0.0,
@@ -189,36 +184,36 @@ func (t *Tensor) MatMulTransposed(other *Tensor, transposeA, transposeB bool, ds
 			switch {
 			case !transposeA && !transposeB:
 				fp32.Gemm_NN(
-					result.Data[resultOffset:],
-					t.Data[tOffset:],
-					other.Data[otherOffset:],
+					result.data[resultOffset:],
+					t.data[tOffset:],
+					other.data[otherOffset:],
 					ldC, ldA, ldB,
 					M, N, K1,
 					1.0, 0.0,
 				)
 			case !transposeA && transposeB:
 				fp32.Gemm_NT(
-					result.Data[resultOffset:],
-					t.Data[tOffset:],
-					other.Data[otherOffset:],
+					result.data[resultOffset:],
+					t.data[tOffset:],
+					other.data[otherOffset:],
 					ldC, ldA, ldB,
 					M, N, K1,
 					1.0, 0.0,
 				)
 			case transposeA && !transposeB:
 				fp32.Gemm_TN(
-					result.Data[resultOffset:],
-					t.Data[tOffset:],
-					other.Data[otherOffset:],
+					result.data[resultOffset:],
+					t.data[tOffset:],
+					other.data[otherOffset:],
 					ldC, ldA, ldB,
 					M, N, K1,
 					1.0, 0.0,
 				)
 			case transposeA && transposeB:
 				fp32.Gemm_TT(
-					result.Data[resultOffset:],
-					t.Data[tOffset:],
-					other.Data[otherOffset:],
+					result.data[resultOffset:],
+					t.data[tOffset:],
+					other.data[otherOffset:],
 					ldC, ldA, ldB,
 					M, N, K1,
 					1.0, 0.0,
@@ -240,20 +235,22 @@ func (t *Tensor) AddScaled(other *Tensor, alpha float32) *Tensor {
 	}
 
 	if !t.sameShape(other) {
-		panic(fmt.Sprintf("tensor.AddScaled: shape mismatch: %v vs %v", t.Dim, other.Dim))
+		panic(fmt.Sprintf("tensor.AddScaled: shape mismatch: %v vs %v", t.Shape(), other.Shape()))
 	}
 
 	if !t.isContiguous() || !other.isContiguous() {
 		// Handle strided case manually
 		size := t.Size()
+		tData := t.data
+		otherData := other.data
 		for i := 0; i < size; i++ {
-			t.Data[i] += alpha * other.Data[i]
+			tData[i] += alpha * otherData[i]
 		}
 		return t
 	}
 
 	// Use primitive.Axpy for contiguous case
 	size := t.Size()
-	fp32.Axpy(t.Data, other.Data, 1, 1, size, alpha)
+	fp32.Axpy(t.data, other.data, 1, 1, size, alpha)
 	return t
 }
