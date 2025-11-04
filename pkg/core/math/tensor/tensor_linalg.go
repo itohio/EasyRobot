@@ -240,17 +240,17 @@ func (t *Tensor) Transpose(dims ...int) *Tensor {
 	}
 
 	shape := t.Shape()
-	if len(shape) == 2 {
+	if shape.Rank() == 2 {
 		// Simple 2D transpose: [M, N] -> [N, M]
 		return t.transpose2D()
 	}
 
 	// For now, only support 2D transpose
 	if len(dims) == 0 {
-		if len(shape) == 2 {
+		if shape.Rank() == 2 {
 			return t.transpose2D()
 		}
-		panic(fmt.Sprintf("tensor.Transpose: need dims for %dD tensor", len(shape)))
+		panic(fmt.Sprintf("tensor.Transpose: need dims for %dD tensor", shape.Rank()))
 	}
 
 	// Future: implement general transpose with dimension permutation
@@ -259,7 +259,7 @@ func (t *Tensor) Transpose(dims ...int) *Tensor {
 
 // transpose2D transposes a 2D tensor: [M, N] -> [N, M]
 func (t *Tensor) transpose2D() *Tensor {
-	if len(t.shape) != 2 {
+	if t.shape.Rank() != 2 {
 		panic("tensor.transpose2D: tensor must be 2D")
 	}
 
@@ -404,13 +404,13 @@ func (t *Tensor) Norm(ord int) float32 {
 func (t *Tensor) norm1Strided() float32 {
 	var sum float32
 	strides := t.shape.Strides()
-	indices := make([]int, len(t.shape))
+	indices := make([]int, t.shape.Rank())
 	t.norm1StridedRecursive(&sum, indices, strides, 0)
 	return sum
 }
 
 func (t *Tensor) norm1StridedRecursive(sum *float32, indices []int, strides []int, dim int) {
-	if dim == len(t.shape) {
+	if dim == t.shape.Rank() {
 		idx := t.elementIndex(indices, strides)
 		val := t.data[idx]
 		if val < 0 {
@@ -431,7 +431,7 @@ func (t *Tensor) norm1StridedRecursive(sum *float32, indices []int, strides []in
 func (t *Tensor) norm2Strided() float32 {
 	var sumSq float32
 	strides := t.shape.Strides()
-	indices := make([]int, len(t.shape))
+	indices := make([]int, t.shape.Rank())
 	t.norm2StridedRecursive(&sumSq, indices, strides, 0)
 	// Note: Need sqrt for L2 norm, but primitive.Nrm2 does that
 	// For now, compute manually
@@ -465,7 +465,7 @@ func (t *Tensor) sqrtApprox(x float32) float32 {
 }
 
 func (t *Tensor) norm2StridedRecursive(sum *float32, indices []int, strides []int, dim int) {
-	if dim == len(t.shape) {
+	if dim == t.shape.Rank() {
 		idx := t.elementIndex(indices, strides)
 		val := t.data[idx]
 		*sum += val * val
@@ -488,12 +488,12 @@ func (t *Tensor) Normalize(dim int) *Tensor {
 	}
 
 	shape := t.Shape()
-	if len(shape) == 1 {
+	if shape.Rank() == 1 {
 		// Vector normalization
 		return t.normalizeVector()
 	}
 
-	if len(shape) == 2 {
+	if shape.Rank() == 2 {
 		// Matrix normalization along dimension
 		return t.normalizeMatrixDim(dim)
 	}
@@ -528,7 +528,7 @@ func (t *Tensor) normalizeVector() *Tensor {
 // normalizeMatrixDim normalizes a matrix along specified dimension
 func (t *Tensor) normalizeMatrixDim(dim int) *Tensor {
 	shape := t.Shape()
-	if dim < 0 || dim >= len(shape) {
+	if dim < 0 || dim >= shape.Rank() {
 		panic(fmt.Sprintf("tensor.Normalize: dimension %d out of range for shape %v", dim, shape))
 	}
 

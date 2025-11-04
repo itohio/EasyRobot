@@ -164,7 +164,7 @@ func (t *Tensor) BroadcastTo(shape []int) (*Tensor, error) {
 		return nil, errors.New("tensor.BroadcastTo: nil tensor")
 	}
 
-	if len(shape) < len(t.shape) {
+	if len(shape) < t.shape.Rank() {
 		return nil, fmt.Errorf("tensor.BroadcastTo: target shape %v has fewer dimensions than %v", shape, t.shape)
 	}
 
@@ -245,11 +245,11 @@ func (t *Tensor) ArgMax(dim int) *Tensor {
 		return nil
 	}
 
-	if dim < 0 || dim >= len(t.shape) {
+	if dim < 0 || dim >= t.shape.Rank() {
 		panic(fmt.Sprintf("tensor.ArgMax: dimension %d out of range for shape %v", dim, t.shape))
 	}
 
-	if len(t.shape) == 1 && t.isContiguous() {
+	if t.shape.Rank() == 1 && t.isContiguous() {
 		idx := fp32.Iamax(t.data, 1, t.Size())
 		return FromFloat32(NewShape(1), []float32{float32(idx)})
 	}
@@ -274,7 +274,7 @@ func (t *Tensor) sameShape(other *Tensor) bool {
 	if t == nil || other == nil {
 		return false
 	}
-	if len(t.shape) != len(other.shape) {
+	if t.shape.Rank() != other.shape.Rank() {
 		return false
 	}
 	for i := range t.shape {
@@ -286,7 +286,7 @@ func (t *Tensor) sameShape(other *Tensor) bool {
 }
 
 func (t *Tensor) sameShapeInt(shape []int) bool {
-	if len(t.shape) != len(shape) {
+	if t.shape.Rank() != len(shape) {
 		return false
 	}
 	for i := range t.shape {
@@ -310,7 +310,7 @@ func (t *Tensor) reduceTensor(dims []int, scalarWhenEmpty bool, reducer reduceFu
 		dimSet[axis] = struct{}{}
 	}
 
-	resultShape := make([]int, 0, len(t.shape))
+	resultShape := make([]int, 0, t.shape.Rank())
 	for i, d := range t.shape {
 		if _, ok := dimSet[i]; !ok {
 			resultShape = append(resultShape, d)
@@ -336,12 +336,12 @@ func (t *Tensor) reduceTensor(dims []int, scalarWhenEmpty bool, reducer reduceFu
 }
 
 func (t *Tensor) normalizeAxes(dims []int) []int {
-	if len(t.shape) == 0 {
+	if t.shape.Rank() == 0 {
 		panic("tensor: reduction on empty tensor")
 	}
 
 	if len(dims) == 0 {
-		axes := make([]int, len(t.shape))
+		axes := make([]int, t.shape.Rank())
 		for i := range axes {
 			axes[i] = i
 		}
@@ -356,14 +356,14 @@ func (t *Tensor) normalizeAxes(dims []int) []int {
 }
 
 func (t *Tensor) prepareArgmax(dim int) ([]int, int) {
-	if len(t.shape) == 0 {
+	if t.shape.Rank() == 0 {
 		panic("tensor.ArgMax: empty tensor")
 	}
-	if dim < 0 || dim >= len(t.shape) {
+	if dim < 0 || dim >= t.shape.Rank() {
 		panic(fmt.Sprintf("tensor.ArgMax: dimension %d out of range for shape %v", dim, t.shape))
 	}
 
-	shape := make([]int, 0, len(t.shape)-1)
+	shape := make([]int, 0, t.shape.Rank()-1)
 	for i, d := range t.shape {
 		if i != dim {
 			shape = append(shape, d)
@@ -381,7 +381,7 @@ func (t *Tensor) copyTo(dst *Tensor) {
 		return
 	}
 
-	if len(dst.shape) != len(t.shape) {
+	if dst.shape.Rank() != t.shape.Rank() {
 		panic(fmt.Sprintf("tensor.copyTo: destination shape mismatch: %v vs %v", dst.shape, t.shape))
 	}
 
