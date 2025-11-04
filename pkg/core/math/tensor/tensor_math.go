@@ -496,3 +496,166 @@ func FullLike(t Tensor, value float32) *Tensor {
 	}
 	return resultPtr
 }
+
+// Square computes element-wise square in-place: t[i] = t[i]^2
+func (t *Tensor) Square() *Tensor {
+	if t.shape == nil {
+		return t
+	}
+
+	strides := t.shape.Strides()
+	fp32.ElemSquare(t.data, t.data, []int(t.shape), strides, strides)
+	return t
+}
+
+// Sqrt computes element-wise square root in-place: t[i] = sqrt(t[i])
+func (t *Tensor) Sqrt() *Tensor {
+	if t.shape == nil {
+		return t
+	}
+
+	strides := t.shape.Strides()
+	fp32.ElemSqrt(t.data, t.data, []int(t.shape), strides, strides)
+	return t
+}
+
+// Exp computes element-wise exponential in-place: t[i] = exp(t[i])
+func (t *Tensor) Exp() *Tensor {
+	if t.shape == nil {
+		return t
+	}
+
+	strides := t.shape.Strides()
+	fp32.ElemExp(t.data, t.data, []int(t.shape), strides, strides)
+	return t
+}
+
+// Log computes element-wise natural logarithm in-place: t[i] = log(t[i])
+func (t *Tensor) Log() *Tensor {
+	if t.shape == nil {
+		return t
+	}
+
+	strides := t.shape.Strides()
+	fp32.ElemLog(t.data, t.data, []int(t.shape), strides, strides)
+	return t
+}
+
+// Pow computes element-wise power in-place: t[i] = t[i]^power
+func (t *Tensor) Pow(power float32) *Tensor {
+	if t.shape == nil {
+		return t
+	}
+
+	strides := t.shape.Strides()
+	fp32.ElemPow(t.data, t.data, power, []int(t.shape), strides, strides)
+	return t
+}
+
+// Equal creates a tensor with 1.0 where t == other, 0.0 otherwise.
+// t and other must have compatible shapes.
+func (t Tensor) Equal(other Tensor) *Tensor {
+	if t.shape == nil || other.shape == nil {
+		return nil
+	}
+
+	if !t.sameShape(other) {
+		panic("tensor.Equal: shape mismatch")
+	}
+
+	result := New(t.dtype, t.shape)
+	resultPtr := &result
+	shape := t.Shape().ToSlice()
+	strides := fp32.ComputeStrides(shape)
+
+	fp32.ElemEqual(
+		resultPtr.data, t.data, other.data,
+		shape, strides, strides, strides,
+	)
+	return resultPtr
+}
+
+// Greater creates a tensor with 1.0 where t > other, 0.0 otherwise.
+// t and other must have compatible shapes.
+// Note: This is an alias for GreaterThan to match TensorFlow naming.
+func (t Tensor) Greater(other Tensor) *Tensor {
+	return t.GreaterThan(other)
+}
+
+// Less creates a tensor with 1.0 where t < other, 0.0 otherwise.
+// t and other must have compatible shapes.
+func (t Tensor) Less(other Tensor) *Tensor {
+	if t.shape == nil || other.shape == nil {
+		return nil
+	}
+
+	if !t.sameShape(other) {
+		panic("tensor.Less: shape mismatch")
+	}
+
+	result := New(t.dtype, t.shape)
+	resultPtr := &result
+	shape := t.Shape().ToSlice()
+	strides := fp32.ComputeStrides(shape)
+
+	fp32.ElemLess(
+		resultPtr.data, t.data, other.data,
+		shape, strides, strides, strides,
+	)
+	return resultPtr
+}
+
+// Abs computes element-wise absolute value in-place: t[i] = abs(t[i])
+func (t *Tensor) Abs() *Tensor {
+	if t.shape == nil {
+		return t
+	}
+
+	strides := t.shape.Strides()
+	fp32.ElemAbs(t.data, t.data, []int(t.shape), strides, strides)
+	return t
+}
+
+// Sign computes element-wise sign in-place: t[i] = sign(t[i]) (-1, 0, or 1)
+func (t *Tensor) Sign() *Tensor {
+	if t.shape == nil {
+		return t
+	}
+
+	strides := t.shape.Strides()
+	fp32.ElemSign(t.data, t.data, []int(t.shape), strides, strides)
+	return t
+}
+
+// Cos computes element-wise cosine in-place: t[i] = cos(t[i])
+func (t *Tensor) Cos() *Tensor {
+	if t.shape == nil {
+		return t
+	}
+
+	strides := t.shape.Strides()
+	fp32.ElemCos(t.data, t.data, []int(t.shape), strides, strides)
+	return t
+}
+
+// Sin computes element-wise sine in-place: t[i] = sin(t[i])
+func (t *Tensor) Sin() *Tensor {
+	if t.shape == nil {
+		return t
+	}
+
+	strides := t.shape.Strides()
+	fp32.ElemSin(t.data, t.data, []int(t.shape), strides, strides)
+	return t
+}
+
+// Negative computes element-wise negation in-place: t[i] = -t[i]
+func (t *Tensor) Negative() *Tensor {
+	if t.shape == nil {
+		return t
+	}
+
+	strides := t.shape.Strides()
+	fp32.ElemNegative(t.data, t.data, []int(t.shape), strides, strides)
+	return t
+}

@@ -233,6 +233,16 @@ All in-place operations modify the tensor and return self for method chaining.
 | `Mul(other Tensor) *Tensor` | Multiply element-wise | `fp32.ElemMul` | ✅ |
 | `Div(other Tensor) *Tensor` | Divide element-wise | `fp32.ElemDiv` | ✅ |
 | `Scale(scalar float32) *Tensor` | Multiply by scalar | `fp32.Scal` | ✅ |
+| `Square() *Tensor` | Element-wise square | `fp32.ElemSquare` | ✅ |
+| `Sqrt() *Tensor` | Element-wise square root | `fp32.ElemSqrt` | ✅ |
+| `Exp() *Tensor` | Element-wise exponential | `fp32.ElemExp` | ✅ |
+| `Log() *Tensor` | Element-wise natural logarithm | `fp32.ElemLog` | ✅ |
+| `Pow(power float32) *Tensor` | Element-wise power | `fp32.ElemPow` | ✅ |
+| `Abs() *Tensor` | Element-wise absolute value | `fp32.ElemAbs` | ✅ |
+| `Sign() *Tensor` | Element-wise sign (-1, 0, or 1) | `fp32.ElemSign` | ✅ |
+| `Cos() *Tensor` | Element-wise cosine | `fp32.ElemCos` | ✅ |
+| `Sin() *Tensor` | Element-wise sine | `fp32.ElemSin` | ✅ |
+| `Negative() *Tensor` | Element-wise negation | `fp32.ElemNegative` | ✅ |
 
 **Function Signatures:**
 
@@ -251,6 +261,36 @@ func (t *Tensor) Div(other Tensor) *Tensor
 
 // Scale: t = scalar * t (in-place)
 func (t *Tensor) Scale(scalar float32) *Tensor
+
+// Square: t[i] = t[i]^2 (in-place)
+func (t *Tensor) Square() *Tensor
+
+// Sqrt: t[i] = sqrt(t[i]) (in-place)
+func (t *Tensor) Sqrt() *Tensor
+
+// Exp: t[i] = exp(t[i]) (in-place)
+func (t *Tensor) Exp() *Tensor
+
+// Log: t[i] = log(t[i]) (in-place)
+func (t *Tensor) Log() *Tensor
+
+// Pow: t[i] = t[i]^power (in-place)
+func (t *Tensor) Pow(power float32) *Tensor
+
+// Abs: t[i] = abs(t[i]) (in-place)
+func (t *Tensor) Abs() *Tensor
+
+// Sign: t[i] = sign(t[i]) (in-place, returns -1, 0, or 1)
+func (t *Tensor) Sign() *Tensor
+
+// Cos: t[i] = cos(t[i]) (in-place)
+func (t *Tensor) Cos() *Tensor
+
+// Sin: t[i] = sin(t[i]) (in-place)
+func (t *Tensor) Sin() *Tensor
+
+// Negative: t[i] = -t[i] (in-place)
+func (t *Tensor) Negative() *Tensor
 ```
 
 **Parameters:**
@@ -258,6 +298,36 @@ func (t *Tensor) Scale(scalar float32) *Tensor
 - `scalar`: Scalar multiplier
 
 **Note**: Tensor arguments are passed by value (`Tensor`), not by pointer. This allows efficient zero-copy operations while maintaining clear ownership semantics.
+
+#### Comparison Operations
+
+Comparison operations return new tensors with 1.0 where the condition is true, 0.0 otherwise (matching TensorFlow behavior).
+
+| Function | Description | Primitive Used | Status |
+|----------|-------------|----------------|--------|
+| `Equal(other Tensor) *Tensor` | Element-wise equality (1.0 if equal, 0.0 otherwise) | `fp32.ElemEqual` | ✅ |
+| `Greater(other Tensor) *Tensor` | Element-wise greater than (1.0 if t > other, 0.0 otherwise) | `fp32.ElemGreaterThan` | ✅ |
+| `GreaterThan(other Tensor) *Tensor` | Alias for Greater (matches TensorFlow naming) | `fp32.ElemGreaterThan` | ✅ |
+| `Less(other Tensor) *Tensor` | Element-wise less than (1.0 if t < other, 0.0 otherwise) | `fp32.ElemLess` | ✅ |
+
+**Function Signatures:**
+
+```go
+// Equal: Returns tensor with 1.0 where t == other, 0.0 otherwise
+func (t Tensor) Equal(other Tensor) *Tensor
+
+// Greater: Returns tensor with 1.0 where t > other, 0.0 otherwise
+// Note: This is an alias for GreaterThan to match TensorFlow naming
+func (t Tensor) Greater(other Tensor) *Tensor
+
+// GreaterThan: Returns tensor with 1.0 where t > other, 0.0 otherwise
+func (t Tensor) GreaterThan(other Tensor) *Tensor
+
+// Less: Returns tensor with 1.0 where t < other, 0.0 otherwise
+func (t Tensor) Less(other Tensor) *Tensor
+```
+
+**Note**: Comparison operations create new tensors (non-mutating) to match TensorFlow's behavior. They return boolean-like tensors where 1.0 represents true and 0.0 represents false.
 
 ### Operations Creating New Tensors
 
@@ -806,12 +876,14 @@ output := input.GlobalAvgPool2D()
 
 - **Core Operations**: Shape, Size, Clone, At, SetAt, Reshape
 - **Iteration**: Elements() (Go 1.22+ range-over-function), Shape.Iterator()
-- **Element-wise Operations**: Add, Sub, Mul, Div, Scale (in-place and new tensor)
+- **Element-wise Operations**: Add, Sub, Mul, Div, Scale, Square, Sqrt, Exp, Log, Pow, Abs, Sign, Cos, Sin, Negative (in-place)
+- **Comparison Operations**: Equal, Greater, GreaterThan, Less (return boolean-like tensors)
 - **Reduction Operations**: Sum, Mean, Max, Min, ArgMax
 - **Broadcasting**: BroadcastTo (basic validation)
 - **Linear Algebra**: MatMul (2D and batched), Transpose (2D), Dot, Norm, Normalize
 - **Convolution**: Conv2D, Conv2DTransposed, Conv1D, Conv3D, DepthwiseConv2D, GroupConv2D, DilatedConv2D
 - **Pooling**: MaxPool2D, AvgPool2D, GlobalAvgPool2D, AdaptiveAvgPool2D
+- **Activation Functions**: ReLU, Sigmoid, Tanh, Softmax (see activations.go)
 - **Unfolding/Folding**: Im2Col, Col2Im
 
 ### 🔮 Future Work
@@ -866,8 +938,21 @@ All tensor operations delegate to `math/primitive/fp32` when possible:
 | `ZerosLike` | `tensor.New()` | Create zero tensor with same shape |
 | `OnesLike` | Direct fill | Create ones tensor with same shape |
 | `FullLike` | Direct fill | Create tensor filled with value |
-| `GreaterThan` | `fp32.ElemGreaterThan` | Element-wise greater than comparison |
+| `GreaterThan`, `Greater` | `fp32.ElemGreaterThan` | Element-wise greater than comparison |
+| `Less` | `fp32.ElemLess` | Element-wise less than comparison |
+| `Equal` | `fp32.ElemEqual` | Element-wise equality comparison |
 | `Where` | `fp32.ElemWhere` | Conditional element selection |
+| `Square` | `fp32.ElemSquare` | Element-wise square |
+| `Sqrt` | `fp32.ElemSqrt` | Element-wise square root |
+| `Exp` | `fp32.ElemExp` | Element-wise exponential |
+| `Log` | `fp32.ElemLog` | Element-wise natural logarithm |
+| `Pow` | `fp32.ElemPow` | Element-wise power |
+| `Abs` | `fp32.ElemAbs` | Element-wise absolute value |
+| `Sign` | `fp32.ElemSign` | Element-wise sign |
+| `Cos` | `fp32.ElemCos` | Element-wise cosine |
+| `Sin` | `fp32.ElemSin` | Element-wise sine |
+| `Negative` | `fp32.ElemNegative` | Element-wise negation |
+| `Tanh` | `fp32.Tanh` | Hyperbolic tangent (see activations.go) |
 
 ## Deprecated Gradient Functions
 
