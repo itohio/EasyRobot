@@ -114,6 +114,7 @@ type Shape []int // Represents tensor dimensions
 - `Strides() []int`: Computes row-major strides
 - `IsContiguous(strides []int) bool`: Checks if strides represent contiguous layout
 - `ValidateAxes(axes []int) error`: Validates dimension indices
+- `Iterator(fixedAxisValuePairs ...int) func(func([]int) bool)`: Creates iterator over shape indices (Go 1.22+ range-over-function)
 
 ### Tensor Creation
 
@@ -142,12 +143,6 @@ func (t Tensor) Rank() int
 // Size returns the total number of elements in the tensor
 func (t Tensor) Size() int
 
-// Data returns the underlying data slice (zero-copy)
-func (t Tensor) Data() []float32
-
-// Flat returns the underlying data slice (zero-copy)
-func (t Tensor) Flat() []float32
-
 // Clone creates a deep copy of the tensor
 func (t Tensor) Clone() *Tensor
 
@@ -157,8 +152,46 @@ func (t Tensor) At(indices ...int) float32
 // SetAt sets the element at the given indices
 func (t *Tensor) SetAt(indices []int, value float32)
 
+// Elements creates an iterator over tensor elements (Go 1.22+ range-over-function)
+// Returns Element objects with Get() and Set() methods
+func (t *Tensor) Elements(fixedAxisValuePairs ...int) func(func(Element) bool)
+
 // Reshape returns a new tensor with the same data but different shape (zero-copy when possible)
 func (t Tensor) Reshape(newShape []int) *Tensor
+
+// Data returns the underlying data slice (zero-copy)
+// Deprecated: Use Elements() for element access instead
+func (t Tensor) Data() []float32
+
+// Flat returns the underlying data slice (zero-copy)
+// Deprecated: Use Elements() for element access instead
+func (t Tensor) Flat() []float32
+```
+
+### Element Type
+
+```go
+// Element represents a single tensor element with Get and Set methods
+type Element struct {
+    tensor *Tensor
+    index  int
+}
+
+// Get returns the float32 value at this element's position
+func (e Element) Get() float32
+
+// Set sets the float32 value at this element's position
+func (e Element) Set(value float32)
+```
+
+### Shape Iterator
+
+```go
+// Iterator creates an iterator that fixes specified dimensions and iterates over the remaining ones
+// Returns a function that can be used in Go 1.22+ range loops
+// fixedAxisValuePairs are pairs of axis index and fixed value: axis1, value1, axis2, value2, ...
+// The iterator yields complete indices for all dimensions that can be used with At or SetAt
+func (s Shape) Iterator(fixedAxisValuePairs ...int) func(func([]int) bool)
 ```
 
 **Element Access:**
@@ -166,8 +199,17 @@ func (t Tensor) Reshape(newShape []int) *Tensor
 - `SetAt(indices []int, value float32)`: Sets the element at the given indices
 - Both functions validate indices and compute linear index using strides
 
-**Data Access:**
-- `Data() []float32` / `Flat() []float32`: Returns the underlying data slice directly (zero-copy access)
+**Element Iteration:**
+- `Elements(fixedAxisValuePairs ...int)`: Creates an iterator over tensor elements (Go 1.22+ range-over-function)
+  - Returns `Element` objects with `Get() float32` and `Set(value float32)` methods
+  - Supports fixing dimensions: `Elements(0, 1, 2, 3)` fixes axis 0 at 1, axis 2 at 3
+  - Iterates in row-major order (last dimension changes fastest)
+  - Recommended for neural network operations over direct data access
+
+**Data Access (Deprecated):**
+- `Data() []float32`: ⚠️ **Deprecated** - Use `Elements()` instead
+- `Flat() []float32`: ⚠️ **Deprecated** - Use `Elements()` instead
+- Direct access to underlying data is discouraged for neural network operations as it bypasses tensor abstractions
 
 **Reshaping:**
 - `Reshape(newShape []int) *Tensor`: Creates a new tensor view with different shape but same data
@@ -667,6 +709,34 @@ other := tensor.FromFloat32(tensor.NewShape(2, 3), []float32{1, 1, 1, 1, 1, 1})
 t.Add(other) // other is passed by value to Add()
 ```
 
+### Element Iteration
+
+```go
+// Iterate over all elements
+t := tensor.FromFloat32(tensor.NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
+for elem := range t.Elements() {
+    value := elem.Get()
+    elem.Set(value * 2)
+}
+
+// Fix dimension 0 at index 1, iterate over remaining dimensions
+for elem := range t.Elements(0, 1) {
+    elem.Set(0.0)
+}
+
+// Fix multiple dimensions (axis 0 at 1, axis 2 at 3)
+for elem := range t.Elements(0, 1, 2, 3) {
+    // Modify elements
+}
+
+// Iterate over shape indices (useful for At/SetAt)
+shape := tensor.NewShape(2, 3, 4)
+for indices := range shape.Iterator(0, 1) {
+    value := t.At(indices...)
+    t.SetAt(indices, value * 2)
+}
+```
+
 ### Element-Wise Operations
 
 ```go
@@ -734,7 +804,8 @@ output := input.GlobalAvgPool2D()
 
 ### ✅ Implemented
 
-- **Core Operations**: Shape, Size, Clone, Flat, At, SetAt, Reshape
+- **Core Operations**: Shape, Size, Clone, At, SetAt, Reshape
+- **Iteration**: Elements() (Go 1.22+ range-over-function), Shape.Iterator()
 - **Element-wise Operations**: Add, Sub, Mul, Div, Scale (in-place and new tensor)
 - **Reduction Operations**: Sum, Mean, Max, Min, ArgMax
 - **Broadcasting**: BroadcastTo (basic validation)

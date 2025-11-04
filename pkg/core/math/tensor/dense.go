@@ -98,13 +98,21 @@ func (t Tensor) Size() int {
 }
 
 // Data returns the underlying data slice. Mutating the returned slice mutates the tensor.
+//
+// Deprecated: Use Elements() for element access instead. Direct access to underlying data
+// is discouraged for neural network operations as it bypasses tensor abstractions.
+// Data() will be removed in a future version.
 func (t Tensor) Data() []float32 {
 	return t.data
 }
 
 // Flat returns the underlying data slice (zero-copy).
+//
+// Deprecated: Use Elements() for element access instead. Direct access to underlying data
+// is discouraged for neural network operations as it bypasses tensor abstractions.
+// Flat() will be removed in a future version.
 func (t Tensor) Flat() []float32 {
-	return t.Data()
+	return t.data
 }
 
 // Clone creates a deep copy of the tensor.
@@ -226,4 +234,64 @@ func (t *Tensor) reset(dtype DataType, shape []int, data []float32) {
 	t.dtype = dtype
 	t.shape = s
 	t.data = buf
+}
+
+// Element represents a single tensor element with Get and Set methods.
+type Element struct {
+	tensor *Tensor
+	index  int
+}
+
+// Get returns the float32 value at this element's position.
+func (e Element) Get() float32 {
+	return e.tensor.data[e.index]
+}
+
+// Set sets the float32 value at this element's position.
+func (e Element) Set(value float32) {
+	e.tensor.data[e.index] = value
+}
+
+// Elements creates an iterator that fixes specified dimensions and iterates over the remaining ones.
+// Returns a function that can be used in Go 1.22+ range loops.
+// fixedAxisValuePairs are pairs of axis index and fixed value: axis1, value1, axis2, value2, ...
+// The iterator yields Element objects with Get() and Set() methods for accessing tensor values.
+//
+// Usage:
+//
+//	for elem := range tensor.Elements() {
+//	    value := elem.Get()
+//	    elem.Set(value * 2)
+//	}
+//
+//	for elem := range tensor.Elements(0, 1) {
+//	    // Fixes dimension 0 at index 1, iterates over remaining dimensions
+//	    elem.Set(0.0)
+//	}
+func (t *Tensor) Elements(fixedAxisValuePairs ...int) func(func(Element) bool) {
+	if t.shape == nil || len(t.data) == 0 {
+		return func(yield func(Element) bool) {
+			// Empty tensor - yield once with invalid element
+			yield(Element{tensor: t, index: 0})
+		}
+	}
+
+	// Use shape iterator to get index combinations
+	shapeIter := t.shape.Iterator(fixedAxisValuePairs...)
+	strides := t.shape.Strides()
+
+	return func(yield func(Element) bool) {
+		for indices := range shapeIter {
+			// Compute linear index from multi-dimensional indices
+			linearIdx := t.elementIndex(indices, strides)
+			if linearIdx >= len(t.data) {
+				continue // Skip invalid indices
+			}
+
+			elem := Element{tensor: t, index: linearIdx}
+			if !yield(elem) {
+				return
+			}
+		}
+	}
 }

@@ -337,3 +337,158 @@ func TestReshape(t *testing.T) {
 		})
 	}
 }
+
+func TestTensorIterator(t *testing.T) {
+	t.Run("iterate all elements", func(t *testing.T) {
+		tensor := FromFloat32(NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
+
+		expected := []float32{1, 2, 3, 4, 5, 6}
+		var got []float32
+
+		for elem := range tensor.Elements() {
+			got = append(got, elem.Get())
+		}
+
+		assert.Equal(t, expected, got)
+	})
+
+	t.Run("set all elements", func(t *testing.T) {
+		tensor := FromFloat32(NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
+
+		value := float32(10.0)
+		for elem := range tensor.Elements() {
+			elem.Set(value)
+			value++
+		}
+
+		// Verify all values were set
+		value = float32(10.0)
+		data := tensor.Data()
+		for i := range data {
+			assert.Equal(t, value, data[i])
+			value++
+		}
+	})
+
+	t.Run("get and set operations", func(t *testing.T) {
+		tensor := FromFloat32(NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
+
+		// Double all values
+		for elem := range tensor.Elements() {
+			val := elem.Get()
+			elem.Set(val * 2)
+		}
+
+		expected := []float32{2, 4, 6, 8, 10, 12}
+		data := tensor.Data()
+		for i := range expected {
+			assert.Equal(t, expected[i], data[i])
+		}
+	})
+
+	t.Run("fix first dimension", func(t *testing.T) {
+		tensor := FromFloat32(NewShape(2, 3, 4), make([]float32, 2*3*4))
+
+		// Initialize with index values
+		idx := 0
+		for elem := range tensor.Elements() {
+			elem.Set(float32(idx))
+			idx++
+		}
+
+		// Fix dimension 0 at index 1, iterate over remaining
+		count := 0
+		for elem := range tensor.Elements(0, 1) {
+			// Should only iterate over dimensions 1 and 2 (12 elements)
+			_ = elem.Get()
+			count++
+		}
+
+		assert.Equal(t, 3*4, count) // 3 * 4 = 12 combinations
+	})
+
+	t.Run("fix multiple dimensions", func(t *testing.T) {
+		tensor := FromFloat32(NewShape(2, 3, 4, 5), make([]float32, 2*3*4*5))
+
+		// Fix dimensions 0 and 2, iterate over 1 and 3
+		count := 0
+		for elem := range tensor.Elements(0, 1, 2, 3) {
+			// Should iterate over dimensions 1 and 3 (15 elements)
+			elem.Set(float32(count))
+			count++
+		}
+
+		assert.Equal(t, 3*5, count) // 3 * 5 = 15 combinations
+	})
+
+	t.Run("fix all dimensions", func(t *testing.T) {
+		tensor := FromFloat32(NewShape(2, 3, 4), []float32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24})
+
+		// Fix all dimensions - should iterate once
+		count := 0
+		var value float32
+		for elem := range tensor.Elements(0, 1, 1, 2, 2, 3) {
+			value = elem.Get()
+			count++
+		}
+
+		assert.Equal(t, 1, count)
+		// Value at [1, 2, 3] should be at index: 1*12 + 2*4 + 3 = 12 + 8 + 3 = 23
+		assert.Equal(t, float32(24), value) // 0-indexed, so 24th element
+	})
+
+	t.Run("row-major order", func(t *testing.T) {
+		tensor := FromFloat32(NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
+
+		var got []float32
+		for elem := range tensor.Elements() {
+			got = append(got, elem.Get())
+		}
+
+		// Row-major: last dimension changes fastest
+		expected := []float32{1, 2, 3, 4, 5, 6}
+		assert.Equal(t, expected, got)
+	})
+
+	t.Run("empty tensor", func(t *testing.T) {
+		// Empty shape has size 1 (scalar)
+		tensor := FromFloat32(NewShape(), []float32{42})
+
+		count := 0
+		var value float32
+		for elem := range tensor.Elements() {
+			value = elem.Get()
+			count++
+		}
+
+		assert.Equal(t, 1, count)
+		assert.Equal(t, float32(42), value)
+	})
+
+	t.Run("modify during iteration", func(t *testing.T) {
+		tensor := FromFloat32(NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
+
+		// Modify elements as we iterate
+		for elem := range tensor.Elements() {
+			val := elem.Get()
+			elem.Set(val + 10)
+		}
+
+		expected := []float32{11, 12, 13, 14, 15, 16}
+		data := tensor.Data()
+		for i := range expected {
+			assert.Equal(t, expected[i], data[i])
+		}
+	})
+
+	t.Run("single dimension", func(t *testing.T) {
+		tensor := FromFloat32(NewShape(3), []float32{10, 20, 30})
+
+		var got []float32
+		for elem := range tensor.Elements() {
+			got = append(got, elem.Get())
+		}
+
+		assert.Equal(t, []float32{10, 20, 30}, got)
+	})
+}

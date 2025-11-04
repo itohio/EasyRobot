@@ -52,11 +52,10 @@ func (s *SGD) Update(param *layers.Parameter) error {
 	}
 
 	// SGD update: data = data - lr * grad
-	data := param.Data.Data()
-	grad := param.Grad.Data()
-	for i := range data {
-		data[i] -= s.lr * grad[i]
-	}
+	// Use tensor operations: scale gradient by learning rate, then subtract from data
+	scaledGrad := param.Grad.Clone()
+	scaledGrad.Scale(s.lr)
+	(&param.Data).Sub(*scaledGrad)
 
 	return nil
 }
@@ -172,28 +171,49 @@ func (a *Adam) Update(param *layers.Parameter) error {
 	biasCorrection1 := 1 - beta1Power
 	biasCorrection2 := 1 - beta2Power
 
-	// Update first and second moment estimates and apply parameter update
-	grad := param.Grad.Data()
-	mData := state.m.Data()
-	vData := state.v.Data()
-	for i := range data {
-		g := grad[i]
+	// Update first moment estimate: m = beta1 * m + (1-beta1) * g
+	(&state.m).Scale(a.beta1)
+	scaledGrad1 := param.Grad.Clone()
+	scaledGrad1.Scale(1 - a.beta1)
+	(&state.m).Add(*scaledGrad1)
 
-		// Update biased first moment estimate
-		mData[i] = a.beta1*mData[i] + (1-a.beta1)*g
+	// Update second moment estimate: v = beta2 * v + (1-beta2) * g^2
+	gradSquared := param.Grad.Clone()
+	gradSquared.Mul(param.Grad)
+	(&state.v).Scale(a.beta2)
+	scaledGrad2 := gradSquared.Clone()
+	scaledGrad2.Scale(1 - a.beta2)
+	(&state.v).Add(*scaledGrad2)
 
-		// Update biased second moment estimate
-		vData[i] = a.beta2*vData[i] + (1-a.beta2)*g*g
+	// Compute bias-corrected estimates: mHat = m / (1 - beta1^t), vHat = v / (1 - beta2^t)
+	mHat := state.m.Clone()
+	mHat.Scale(1.0 / biasCorrection1)
+	vHat := state.v.Clone()
+	vHat.Scale(1.0 / biasCorrection2)
 
-		// Compute bias-corrected estimates
-		mHat := mData[i] / biasCorrection1
-		vHat := vData[i] / biasCorrection2
+	// Compute sqrt(vHat) + epsilon
+	sqrtVHat := sqrtTensor(*vHat)
+	epsilonTensor := tensor.FullLike(*sqrtVHat, a.epsilon)
+	sqrtVHat.Add(*epsilonTensor)
 
-		// Update parameter
-		data[i] -= a.lr * mHat / (float32(math.Sqrt(float64(vHat))) + a.epsilon)
-	}
+	// Compute update: param = param - lr * mHat / (sqrt(vHat) + epsilon)
+	update := mHat.Clone()
+	update.Div(*sqrtVHat)
+	update.Scale(a.lr)
+	(&param.Data).Sub(*update)
 
 	return nil
+}
+
+// sqrtTensor computes element-wise square root of a tensor.
+// Since there's no tensor sqrt operation, this helper computes sqrt element-wise.
+func sqrtTensor(t tensor.Tensor) *tensor.Tensor {
+	result := t.Clone()
+	data := result.Data()
+	for i := range data {
+		data[i] = float32(math.Sqrt(float64(data[i])))
+	}
+	return result
 }
 
 // shapesEqual checks if two shapes are equal.
