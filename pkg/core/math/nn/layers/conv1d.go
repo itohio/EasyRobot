@@ -52,7 +52,7 @@ func NewConv1D(
 	}
 
 	// Create kernel parameter: [outChannels, inChannels, kernelLen]
-	kernelData := *tensor.New(tensor.DTFP32, tensor.NewShape(outChannels, inChannels, kernelLen))
+	kernelData := tensor.New(tensor.DTFP32, tensor.NewShape(outChannels, inChannels, kernelLen))
 	conv.Base.SetParam(ParamKernels, Parameter{
 		Data:         kernelData,
 		RequiresGrad: conv.Base.CanLearn(),
@@ -60,7 +60,7 @@ func NewConv1D(
 
 	// Create bias parameter if needed: [outChannels]
 	if conv.hasBias {
-		biasData := *tensor.New(tensor.DTFP32, tensor.NewShape(outChannels))
+		biasData := tensor.New(tensor.DTFP32, tensor.NewShape(outChannels))
 		conv.Base.SetParam(ParamBiases, Parameter{
 			Data:         biasData,
 			RequiresGrad: conv.Base.CanLearn(),
@@ -140,7 +140,11 @@ func (c *Conv1D) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 		}
 	}
 
-	input.Conv1DTo(&kernelParam.Data, biasParam, &output, c.stride, c.pad)
+	var biasTensor tensor.Tensor
+	if biasParam != nil {
+		biasTensor = *biasParam
+	}
+	input.Conv1DTo(kernelParam.Data, biasTensor, &output, c.stride, c.pad)
 
 	// Store output
 	c.Base.StoreOutput(output)
@@ -178,7 +182,7 @@ func (c *Conv1D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		biasParam, ok := c.Base.Parameter(ParamBiases)
 		if ok && biasParam.RequiresGrad {
 			if biasParam.Grad.Shape().Rank() == 0 {
-				biasParam.Grad = *tensor.New(tensor.DTFP32, tensor.NewShape(c.outChannels))
+				biasParam.Grad = tensor.New(tensor.DTFP32, tensor.NewShape(c.outChannels))
 			}
 
 			// Sum over batch and length dimensions for each output channel
@@ -192,7 +196,7 @@ func (c *Conv1D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 	// Compute kernel gradient using primitive composition
 	if c.Base.CanLearn() && kernelParam.RequiresGrad {
 		if kernelParam.Grad.Shape().Rank() == 0 {
-			kernelParam.Grad = *tensor.New(tensor.DTFP32, kernelParam.Data.Shape())
+			kernelParam.Grad = tensor.New(tensor.DTFP32, kernelParam.Data.Shape())
 		}
 
 		// Conv1D kernel gradient computation using primitives
@@ -257,7 +261,8 @@ func (c *Conv1D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 	// Compute input gradient using transposed convolution
 	// The forward kernel [outChannels, inChannels, kernelLen] is used as-is for transposed conv
 	// Conv1DTransposed internally handles the reshaping
-	gradInput := gradOutput.Conv1DTransposed(&kernelParam.Data, nil, c.stride, c.pad)
+	var emptyBias tensor.Tensor
+	gradInput := gradOutput.Conv1DTransposed(kernelParam.Data, emptyBias, c.stride, c.pad)
 
 	c.Base.StoreGrad(*gradInput)
 	return *gradInput, nil

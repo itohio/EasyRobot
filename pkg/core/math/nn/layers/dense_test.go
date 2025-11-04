@@ -175,11 +175,11 @@ func TestDense_Forward(t *testing.T) {
 			require.NoError(t, err, "Should create Dense layer")
 
 			// Set weights and bias
-			weight := *tensor.FromFloat32(tensor.NewShape(4, 2), tt.weightData)
+			weight := tensor.FromFloat32(tensor.NewShape(4, 2), tt.weightData)
 			err = dense.SetWeight(weight)
 			require.NoError(t, err, "SetWeight should succeed")
 
-			bias := *tensor.FromFloat32(tensor.NewShape(2), tt.biasData)
+			bias := tensor.FromFloat32(tensor.NewShape(2), tt.biasData)
 			err = dense.SetBias(bias)
 			require.NoError(t, err, "SetBias should succeed")
 
@@ -188,7 +188,7 @@ func TestDense_Forward(t *testing.T) {
 			require.NoError(t, err, "Init should succeed")
 
 			// Forward pass
-			input := *tensor.FromFloat32(tensor.NewShape(tt.inputShape...), tt.inputData)
+			input := tensor.FromFloat32(tensor.NewShape(tt.inputShape...), tt.inputData)
 
 			output, err := dense.Forward(input)
 			require.NoError(t, err, "Forward should succeed")
@@ -204,7 +204,7 @@ func TestDense_Forward(t *testing.T) {
 
 	// Test error cases
 	var nilDense *Dense
-	input := *tensor.FromFloat32(tensor.NewShape(4), []float32{1.0, 2.0, 3.0, 4.0})
+	input := tensor.FromFloat32(tensor.NewShape(4), []float32{1.0, 2.0, 3.0, 4.0})
 	_, err := nilDense.Forward(input)
 	assert.Error(t, err, "Should return error for nil receiver")
 
@@ -247,7 +247,7 @@ func TestDense_Backward(t *testing.T) {
 			for _, dim := range tt.inputShape {
 				inputSize *= dim
 			}
-			input := *tensor.FromFloat32(tensor.NewShape(tt.inputShape...), make([]float32, inputSize))
+			input := tensor.FromFloat32(tensor.NewShape(tt.inputShape...), make([]float32, inputSize))
 			inputData := input.Data()
 			for i := range inputData {
 				inputData[i] = float32(i) * 0.1
@@ -261,7 +261,7 @@ func TestDense_Backward(t *testing.T) {
 			for _, dim := range outputShape {
 				outputSize *= dim
 			}
-			gradOutput := *tensor.FromFloat32(tensor.NewShape(outputShape...), make([]float32, outputSize))
+			gradOutput := tensor.FromFloat32(tensor.NewShape(outputShape...), make([]float32, outputSize))
 			gradOutputData := gradOutput.Data()
 			for i := range gradOutputData {
 				gradOutputData[i] = float32(i) * 0.01
@@ -276,10 +276,10 @@ func TestDense_Backward(t *testing.T) {
 			require.NoError(t, err, "Should create Dense layer")
 
 			// Set weights and bias
-			weight := *tensor.FromFloat32(tensor.NewShape(4, 2), make([]float32, 8))
+			weight := tensor.FromFloat32(tensor.NewShape(4, 2), make([]float32, 8))
 			dense2.SetWeight(weight)
 
-			bias := *tensor.FromFloat32(tensor.NewShape(2), make([]float32, 2))
+			bias := tensor.FromFloat32(tensor.NewShape(2), make([]float32, 2))
 			dense2.SetBias(bias)
 
 			err = dense2.Init(tt.inputShape)
@@ -305,13 +305,13 @@ func TestDense_Backward(t *testing.T) {
 
 	// Test error cases
 	var nilDense *Dense
-	gradOutput := *tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 1.0})
+	gradOutput := tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 1.0})
 	_, err := nilDense.Backward(gradOutput)
 	assert.Error(t, err, "Should return error for nil receiver")
 
 	dense, _ := NewDense(4, 2)
 	dense.Init([]int{4})
-	dense.Forward(*tensor.FromFloat32(tensor.NewShape(4), make([]float32, 4)))
+	dense.Forward(tensor.FromFloat32(tensor.NewShape(4), make([]float32, 4)))
 
 	emptyGrad := tensor.Tensor{}
 	_, err = dense.Backward(emptyGrad)
@@ -414,7 +414,7 @@ func TestDense_SetWeight(t *testing.T) {
 	dense, err := NewDense(4, 2)
 	require.NoError(t, err, "Should create Dense layer")
 
-	newWeight := *tensor.FromFloat32(tensor.NewShape(4, 2), []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0})
+	newWeight := tensor.FromFloat32(tensor.NewShape(4, 2), []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0})
 
 	err = dense.SetWeight(newWeight)
 	require.NoError(t, err, "SetWeight should succeed")
@@ -423,7 +423,7 @@ func TestDense_SetWeight(t *testing.T) {
 	assert.Equal(t, newWeight.Data(), weight.Data(), "Weight data should match")
 
 	// Test error cases
-	err = dense.SetWeight(*tensor.FromFloat32(tensor.NewShape(4, 3), make([]float32, 12)))
+	err = dense.SetWeight(tensor.FromFloat32(tensor.NewShape(4, 3), make([]float32, 12)))
 	assert.Error(t, err, "Should return error for wrong shape")
 
 	err = dense.SetWeight(tensor.Tensor{})
@@ -438,7 +438,7 @@ func TestDense_SetBias(t *testing.T) {
 	dense, err := NewDense(4, 2)
 	require.NoError(t, err, "Should create Dense layer")
 
-	newBias := *tensor.FromFloat32(tensor.NewShape(2), []float32{0.5, -0.5})
+	newBias := tensor.FromFloat32(tensor.NewShape(2), []float32{0.5, -0.5})
 
 	err = dense.SetBias(newBias)
 	require.NoError(t, err, "SetBias should succeed")
@@ -447,7 +447,7 @@ func TestDense_SetBias(t *testing.T) {
 	assert.Equal(t, newBias.Data, bias.Data, "Bias data should match")
 
 	// Test error cases
-	err = dense.SetBias(*tensor.FromFloat32(tensor.NewShape(3), []float32{0, 0, 0}))
+	err = dense.SetBias(tensor.FromFloat32(tensor.NewShape(3), []float32{0, 0, 0}))
 	assert.Error(t, err, "Should return error for wrong shape")
 
 	err = dense.SetBias(tensor.Tensor{})
@@ -464,18 +464,18 @@ func TestDense_BackwardGradientComputation(t *testing.T) {
 	require.NoError(t, err, "Should create Dense layer")
 
 	// Set simple weights: [[1.0], [1.0]]
-	weight := *tensor.FromFloat32(tensor.NewShape(2, 1), []float32{1.0, 1.0})
+	weight := tensor.FromFloat32(tensor.NewShape(2, 1), []float32{1.0, 1.0})
 	dense.SetWeight(weight)
 
 	// Set bias: [0.0]
-	bias := *tensor.FromFloat32(tensor.NewShape(1), []float32{0.0})
+	bias := tensor.FromFloat32(tensor.NewShape(1), []float32{0.0})
 	dense.SetBias(bias)
 
 	// Initialize and forward
 	err = dense.Init([]int{2})
 	require.NoError(t, err, "Init should succeed")
 
-	input := *tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0})
+	input := tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0})
 	output, err := dense.Forward(input)
 	require.NoError(t, err, "Forward should succeed")
 
@@ -483,7 +483,7 @@ func TestDense_BackwardGradientComputation(t *testing.T) {
 	assert.InDelta(t, 3.0, output.Data()[0], 1e-6, "Output should be 3.0")
 
 	// Backward pass
-	gradOutput := *tensor.FromFloat32(tensor.NewShape(1), []float32{1.0})
+	gradOutput := tensor.FromFloat32(tensor.NewShape(1), []float32{1.0})
 	gradInput, err := dense.Backward(gradOutput)
 	require.NoError(t, err, "Backward should succeed")
 
@@ -521,9 +521,9 @@ func TestDense_ComputeOutput(t *testing.T) {
 			inFeatures:     3,
 			outFeatures:    3,
 			inputShape:     []int{3},
-			input:          *tensor.FromFloat32(tensor.NewShape(3), []float32{1.0, 2.0, 3.0}),
-			weight:         *tensor.FromFloat32(tensor.NewShape(3, 3), []float32{1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0}),
-			bias:           *tensor.FromFloat32(tensor.NewShape(3), []float32{0.0, 0.0, 0.0}),
+			input:          tensor.FromFloat32(tensor.NewShape(3), []float32{1.0, 2.0, 3.0}),
+			weight:         tensor.FromFloat32(tensor.NewShape(3, 3), []float32{1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0}),
+			bias:           tensor.FromFloat32(tensor.NewShape(3), []float32{0.0, 0.0, 0.0}),
 			expectedShape:  []int{3},
 			expectedOutput: []float32{1.0, 2.0, 3.0},
 		},
@@ -532,9 +532,9 @@ func TestDense_ComputeOutput(t *testing.T) {
 			inFeatures:     3,
 			outFeatures:    3,
 			inputShape:     []int{3},
-			input:          *tensor.FromFloat32(tensor.NewShape(3), []float32{1.0, 2.0, 3.0}),
-			weight:         *tensor.FromFloat32(tensor.NewShape(3, 3), []float32{1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0}),
-			bias:           *tensor.FromFloat32(tensor.NewShape(3), []float32{0.0, 0.0, 0.0}),
+			input:          tensor.FromFloat32(tensor.NewShape(3), []float32{1.0, 2.0, 3.0}),
+			weight:         tensor.FromFloat32(tensor.NewShape(3, 3), []float32{1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0}),
+			bias:           tensor.FromFloat32(tensor.NewShape(3), []float32{0.0, 0.0, 0.0}),
 			expectedShape:  []int{3},
 			expectedOutput: []float32{4.0, 3.0, 5.0},
 		},
@@ -543,9 +543,9 @@ func TestDense_ComputeOutput(t *testing.T) {
 			inFeatures:     2,
 			outFeatures:    4,
 			inputShape:     []int{2, 2},
-			input:          *tensor.FromFloat32(tensor.NewShape(2, 2), []float32{1.0, 2.0, 3.0, 4.0}),
-			weight:         *tensor.FromFloat32(tensor.NewShape(2, 4), []float32{1.0, 1.0, 1.0, 1.0, 1.0, -1.0, 1.0, -1.0}),
-			bias:           *tensor.FromFloat32(tensor.NewShape(4), []float32{0.0, 0.0, 0.0, 0.0}),
+			input:          tensor.FromFloat32(tensor.NewShape(2, 2), []float32{1.0, 2.0, 3.0, 4.0}),
+			weight:         tensor.FromFloat32(tensor.NewShape(2, 4), []float32{1.0, 1.0, 1.0, 1.0, 1.0, -1.0, 1.0, -1.0}),
+			bias:           tensor.FromFloat32(tensor.NewShape(4), []float32{0.0, 0.0, 0.0, 0.0}),
 			expectedShape:  []int{2, 4},
 			expectedOutput: []float32{3.0, -1.0, 3.0, -1.0, 7.0, -1.0, 7.0, -1.0},
 		},
@@ -599,10 +599,10 @@ func TestDense_BackwardAccuracy(t *testing.T) {
 			outFeatures:        1,
 			hasBias:            true,
 			inputShape:         []int{2},
-			input:              *tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
-			weight:             *tensor.FromFloat32(tensor.NewShape(2, 1), []float32{1.0, 1.0}),
-			bias:               *tensor.FromFloat32(tensor.NewShape(1), []float32{0.0}),
-			gradOutput:         *tensor.FromFloat32(tensor.NewShape(1), []float32{1.0}),
+			input:              tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
+			weight:             tensor.FromFloat32(tensor.NewShape(2, 1), []float32{1.0, 1.0}),
+			bias:               tensor.FromFloat32(tensor.NewShape(1), []float32{0.0}),
+			gradOutput:         tensor.FromFloat32(tensor.NewShape(1), []float32{1.0}),
 			expectedWeightGrad: []float32{1.0, 2.0}, // input^T @ gradOutput = [1, 2]^T @ [1] = [1, 2]
 			expectedBiasGrad:   []float32{1.0},      // gradOutput = [1]
 			expectedInputGrad:  []float32{1.0, 1.0}, // gradOutput @ weight^T = [1] @ [[1],[1]]^T = [1, 1]
@@ -613,10 +613,10 @@ func TestDense_BackwardAccuracy(t *testing.T) {
 			outFeatures:        2,
 			hasBias:            true,
 			inputShape:         []int{3},
-			input:              *tensor.FromFloat32(tensor.NewShape(3), []float32{1.0, 2.0, 3.0}),
-			weight:             *tensor.FromFloat32(tensor.NewShape(3, 2), []float32{1.0, 0.0, 0.0, 1.0, 1.0, 1.0}),
-			bias:               *tensor.FromFloat32(tensor.NewShape(2), []float32{0.0, 0.0}),
-			gradOutput:         *tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
+			input:              tensor.FromFloat32(tensor.NewShape(3), []float32{1.0, 2.0, 3.0}),
+			weight:             tensor.FromFloat32(tensor.NewShape(3, 2), []float32{1.0, 0.0, 0.0, 1.0, 1.0, 1.0}),
+			bias:               tensor.FromFloat32(tensor.NewShape(2), []float32{0.0, 0.0}),
+			gradOutput:         tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
 			expectedWeightGrad: []float32{1.0, 2.0, 2.0, 4.0, 3.0, 6.0}, // [1,2,3]^T @ [1,2] = [[1,2],[2,4],[3,6]]
 			expectedBiasGrad:   []float32{1.0, 2.0},
 			expectedInputGrad:  []float32{1.0, 2.0, 3.0}, // gradInput[i] = sum_j(gradOutput[j] * weight[i,j])
@@ -627,10 +627,10 @@ func TestDense_BackwardAccuracy(t *testing.T) {
 			outFeatures:        1,
 			hasBias:            true,
 			inputShape:         []int{2, 2},
-			input:              *tensor.FromFloat32(tensor.NewShape(2, 2), []float32{1.0, 2.0, 3.0, 4.0}),
-			weight:             *tensor.FromFloat32(tensor.NewShape(2, 1), []float32{1.0, 1.0}),
-			bias:               *tensor.FromFloat32(tensor.NewShape(1), []float32{0.0}),
-			gradOutput:         *tensor.FromFloat32(tensor.NewShape(2, 1), []float32{1.0, 2.0}),
+			input:              tensor.FromFloat32(tensor.NewShape(2, 2), []float32{1.0, 2.0, 3.0, 4.0}),
+			weight:             tensor.FromFloat32(tensor.NewShape(2, 1), []float32{1.0, 1.0}),
+			bias:               tensor.FromFloat32(tensor.NewShape(1), []float32{0.0}),
+			gradOutput:         tensor.FromFloat32(tensor.NewShape(2, 1), []float32{1.0, 2.0}),
 			expectedWeightGrad: []float32{7.0, 10.0},          // sum over batch: [1,2]^T @ [1] + [3,4]^T @ [2] = [1,2] + [6,8] = [7,10]
 			expectedBiasGrad:   []float32{3.0},                // sum([1, 2]) = 3
 			expectedInputGrad:  []float32{1.0, 1.0, 2.0, 2.0}, // [1] @ [1,1]^T = [1,1], [2] @ [1,1]^T = [2,2]
@@ -641,10 +641,10 @@ func TestDense_BackwardAccuracy(t *testing.T) {
 			outFeatures: 2,
 			hasBias:     true,
 			inputShape:  []int{2, 2},
-			input:       *tensor.FromFloat32(tensor.NewShape(2, 2), []float32{1.0, 2.0, 3.0, 4.0}),
-			weight:      *tensor.FromFloat32(tensor.NewShape(2, 2), []float32{1.0, 0.0, 0.0, 1.0}),
-			bias:        *tensor.FromFloat32(tensor.NewShape(2), []float32{0.0, 0.0}),
-			gradOutput:  *tensor.FromFloat32(tensor.NewShape(2, 2), []float32{1.0, 2.0, 3.0, 4.0}),
+			input:       tensor.FromFloat32(tensor.NewShape(2, 2), []float32{1.0, 2.0, 3.0, 4.0}),
+			weight:      tensor.FromFloat32(tensor.NewShape(2, 2), []float32{1.0, 0.0, 0.0, 1.0}),
+			bias:        tensor.FromFloat32(tensor.NewShape(2), []float32{0.0, 0.0}),
+			gradOutput:  tensor.FromFloat32(tensor.NewShape(2, 2), []float32{1.0, 2.0, 3.0, 4.0}),
 			expectedWeightGrad: []float32{
 				10.0, 14.0, // weight grad[i,j] = sum_batch(input[b,i] * gradOutput[b,j])
 				14.0, 20.0, // i=0,j=0: 1*1 + 3*3 = 10; i=0,j=1: 1*2 + 3*4 = 14; etc.

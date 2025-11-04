@@ -264,7 +264,7 @@ func (b *Base) AllocOutput(shape []int, size int) {
 	if b == nil {
 		return
 	}
-	b.output = *tensor.FromFloat32(tensor.NewShape(shape...), make([]float32, size))
+	b.output = tensor.FromFloat32(tensor.NewShape(shape...), make([]float32, size))
 }
 
 // AllocGrad allocates the gradient tensor with the given shape and size.
@@ -272,7 +272,7 @@ func (b *Base) AllocGrad(shape []int, size int) {
 	if b == nil {
 		return
 	}
-	b.grad = *tensor.FromFloat32(tensor.NewShape(shape...), make([]float32, size))
+	b.grad = tensor.FromFloat32(tensor.NewShape(shape...), make([]float32, size))
 }
 
 // Helper method for layers to store input during Forward.

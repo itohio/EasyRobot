@@ -64,7 +64,7 @@ func NewConv2D(
 	}
 
 	// Create kernel parameter: [outChannels, inChannels, kernelH, kernelW]
-	kernelData := *tensor.New(tensor.DTFP32, tensor.NewShape(outChannels, inChannels, kernelH, kernelW))
+	kernelData := tensor.New(tensor.DTFP32, tensor.NewShape(outChannels, inChannels, kernelH, kernelW))
 	conv.Base.SetParam(ParamKernels, Parameter{
 		Data:         kernelData,
 		RequiresGrad: conv.Base.CanLearn(),
@@ -72,7 +72,7 @@ func NewConv2D(
 
 	// Create bias parameter if needed: [outChannels]
 	if conv.hasBias {
-		biasData := *tensor.New(tensor.DTFP32, tensor.NewShape(outChannels))
+		biasData := tensor.New(tensor.DTFP32, tensor.NewShape(outChannels))
 		conv.Base.SetParam(ParamBiases, Parameter{
 			Data:         biasData,
 			RequiresGrad: conv.Base.CanLearn(),
@@ -158,7 +158,11 @@ func (c *Conv2D) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 		}
 	}
 
-	input.Conv2DTo(&kernelParam.Data, biasParam, &output, []int{c.strideH, c.strideW}, []int{c.padH, c.padW})
+	var biasTensor tensor.Tensor
+	if biasParam != nil {
+		biasTensor = *biasParam
+	}
+	input.Conv2DTo(kernelParam.Data, biasTensor, &output, []int{c.strideH, c.strideW}, []int{c.padH, c.padW})
 
 	// Store output
 	c.Base.StoreOutput(output)
@@ -191,14 +195,15 @@ func (c *Conv2D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 	// Compute input gradient using transposed convolution
 	// Input gradient = Conv2DTransposed(gradOutput, kernel, stride, padding)
 	// Note: For backprop, we need to use the kernel as-is for transposed conv
-	inputGrad := gradOutput.Conv2DTransposed(&kernelParam.Data, nil, []int{c.strideH, c.strideW}, []int{c.padH, c.padW})
+	var emptyBias tensor.Tensor
+	inputGrad := gradOutput.Conv2DTransposed(kernelParam.Data, emptyBias, []int{c.strideH, c.strideW}, []int{c.padH, c.padW})
 
 	// Compute bias gradient: sum gradOutput over spatial dimensions and batch
 	if c.hasBias && c.Base.CanLearn() {
 		biasParam, ok := c.Base.Parameter(ParamBiases)
 		if ok && biasParam.RequiresGrad {
 			if biasParam.Grad.Shape().Rank() == 0 {
-				biasParam.Grad = *tensor.New(tensor.DTFP32, tensor.NewShape(c.outChannels))
+				biasParam.Grad = tensor.New(tensor.DTFP32, tensor.NewShape(c.outChannels))
 			}
 
 			// Sum over batch, height, and width dimensions for each output channel
@@ -212,7 +217,7 @@ func (c *Conv2D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 	// Compute kernel gradient using primitive composition
 	if c.Base.CanLearn() && kernelParam.RequiresGrad {
 		if kernelParam.Grad.Shape().Rank() == 0 {
-			kernelParam.Grad = *tensor.New(tensor.DTFP32, kernelParam.Data.Shape())
+			kernelParam.Grad = tensor.New(tensor.DTFP32, kernelParam.Data.Shape())
 		}
 
 		// Kernel gradient computation using primitives:
@@ -229,7 +234,7 @@ func (c *Conv2D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		// gradOutputCols shape: [batch*outHeight*outWidth, outChannels]
 		// We want: [outChannels, inChannels*kernelH*kernelW] = gradOutputCols^T @ inputCols
 
-		kernelGradMatrix := gradOutputCols.Transpose().MatMul(inputCols)
+		kernelGradMatrix := gradOutputCols.Transpose().MatMul(*inputCols)
 
 		// Reshape result to kernel shape: [outChannels, inChannels, kernelH, kernelW]
 		kernelGradReshaped := kernelGradMatrix.Reshape([]int{c.outChannels, c.inChannels, c.kernelH, c.kernelW})

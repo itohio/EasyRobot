@@ -132,7 +132,7 @@ func TestBase_SetCanLearn(t *testing.T) {
 
 func TestBase_Input(t *testing.T) {
 	base := NewBase("")
-	input := *tensor.FromFloat32(tensor.NewShape(2, 3), []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0})
+	input := tensor.FromFloat32(tensor.NewShape(2, 3), []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0})
 
 	base.StoreInput(input)
 	retrieved := base.Input()
@@ -147,7 +147,7 @@ func TestBase_Input(t *testing.T) {
 
 func TestBase_Output(t *testing.T) {
 	base := NewBase("")
-	output := *tensor.FromFloat32(tensor.NewShape(2, 3), []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0})
+	output := tensor.FromFloat32(tensor.NewShape(2, 3), []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0})
 
 	base.StoreOutput(output)
 	retrieved := base.Output()
@@ -162,7 +162,7 @@ func TestBase_Output(t *testing.T) {
 
 func TestBase_Grad(t *testing.T) {
 	base := NewBase("")
-	grad := *tensor.FromFloat32(tensor.NewShape(2, 3), []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6})
+	grad := tensor.FromFloat32(tensor.NewShape(2, 3), []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6})
 
 	base.StoreGrad(grad)
 	retrieved := base.Grad()
@@ -267,7 +267,7 @@ func TestBase_SetParam(t *testing.T) {
 			base := NewBase("")
 			for i := 0; i < tt.numParams; i++ {
 				base.SetParam(ParamIndex(i), Parameter{
-					Data:         *tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
+					Data:         tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
 					RequiresGrad: true,
 				})
 			}
@@ -284,11 +284,11 @@ func TestBase_SetParam(t *testing.T) {
 func TestBase_Parameter(t *testing.T) {
 	base := NewBase("")
 	base.SetParam(ParamWeights, Parameter{
-		Data:         *tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
+		Data:         tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
 		RequiresGrad: true,
 	})
 	base.SetParam(ParamBiases, Parameter{
-		Data:         *tensor.FromFloat32(tensor.NewShape(2), []float32{3.0, 4.0}),
+		Data:         tensor.FromFloat32(tensor.NewShape(2), []float32{3.0, 4.0}),
 		RequiresGrad: true,
 	})
 
@@ -320,11 +320,11 @@ func TestBase_Parameters(t *testing.T) {
 
 	// Test with params
 	base.SetParam(ParamWeights, Parameter{
-		Data:         *tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
+		Data:         tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
 		RequiresGrad: true,
 	})
 	base.SetParam(ParamBiases, Parameter{
-		Data:         *tensor.FromFloat32(tensor.NewShape(2), []float32{3.0, 4.0}),
+		Data:         tensor.FromFloat32(tensor.NewShape(2), []float32{3.0, 4.0}),
 		RequiresGrad: false,
 	})
 	params = base.Parameters()
@@ -343,11 +343,11 @@ func TestBase_SetParameters(t *testing.T) {
 
 	newParams := map[ParamIndex]Parameter{
 		ParamWeights: {
-			Data:         *tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
+			Data:         tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
 			RequiresGrad: true,
 		},
 		ParamBiases: {
-			Data:         *tensor.FromFloat32(tensor.NewShape(3), []float32{3.0, 4.0, 5.0}),
+			Data:         tensor.FromFloat32(tensor.NewShape(3), []float32{3.0, 4.0, 5.0}),
 			RequiresGrad: false,
 		},
 	}
@@ -375,14 +375,14 @@ func TestBase_SetParameters(t *testing.T) {
 func TestBase_ZeroGrad(t *testing.T) {
 	base := NewBase("")
 	base.SetParam(ParamWeights, Parameter{
-		Data:         *tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
+		Data:         tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
 		RequiresGrad: true,
-		Grad:         *tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
+		Grad:         tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
 	})
 	base.SetParam(ParamBiases, Parameter{
-		Data:         *tensor.FromFloat32(tensor.NewShape(3), []float32{3.0, 4.0, 5.0}),
+		Data:         tensor.FromFloat32(tensor.NewShape(3), []float32{3.0, 4.0, 5.0}),
 		RequiresGrad: true,
-		Grad:         *tensor.FromFloat32(tensor.NewShape(3), []float32{3.0, 4.0, 5.0}),
+		Grad:         tensor.FromFloat32(tensor.NewShape(3), []float32{3.0, 4.0, 5.0}),
 	})
 
 	// Zero gradients
@@ -405,7 +405,7 @@ func TestBase_ZeroGrad(t *testing.T) {
 
 func TestBase_StoreInput(t *testing.T) {
 	base := NewBase("")
-	input := *tensor.FromFloat32(tensor.NewShape(2, 3), []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0})
+	input := tensor.FromFloat32(tensor.NewShape(2, 3), []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0})
 
 	base.StoreInput(input)
 	retrieved := base.Input()
@@ -415,7 +415,7 @@ func TestBase_StoreInput(t *testing.T) {
 
 func TestBase_StoreOutput(t *testing.T) {
 	base := NewBase("")
-	output := *tensor.FromFloat32(tensor.NewShape(2, 3), []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0})
+	output := tensor.FromFloat32(tensor.NewShape(2, 3), []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0})
 
 	base.StoreOutput(output)
 	retrieved := base.Output()
@@ -425,7 +425,7 @@ func TestBase_StoreOutput(t *testing.T) {
 
 func TestBase_StoreGrad(t *testing.T) {
 	base := NewBase("")
-	grad := *tensor.FromFloat32(tensor.NewShape(2, 3), []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6})
+	grad := tensor.FromFloat32(tensor.NewShape(2, 3), []float32{0.1, 0.2, 0.3, 0.4, 0.5, 0.6})
 
 	base.StoreGrad(grad)
 	retrieved := base.Grad()

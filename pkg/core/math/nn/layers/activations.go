@@ -48,9 +48,8 @@ func (r *ReLU) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("ReLU.Forward: output not allocated, must call Init first")
 	}
 
-	// Copy input to output, then apply ReLU
-	copy(output.Data(), input.Data())
-	output.ReLU()
+	// Apply ReLU directly to output
+	input.ReLU(&output)
 
 	r.Base.StoreOutput(output)
 	return output, nil
@@ -69,11 +68,11 @@ func (r *ReLU) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 
 	// ReLU gradient using primitives: gradInput = gradOutput * (input > 0 ? 1 : 0)
 	// Create mask: 1.0 where input > 0, 0.0 otherwise
-	zeros := tensor.New(tensor.DTFP32, input.Shape())
-	mask := (&input).GreaterThan(zeros)
+	zeros := tensor.ZerosLike(input)
+	mask := input.GreaterThan(*zeros)
 
 	// Element-wise multiply: gradOutput * mask
-	gradInput := (&gradOutput).Clone().Mul(mask)
+	gradInput := (&gradOutput).Clone().Mul(*mask)
 
 	r.Base.StoreGrad(*gradInput)
 	return *gradInput, nil
@@ -127,9 +126,8 @@ func (s *Sigmoid) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("Sigmoid.Forward: output not allocated, must call Init first")
 	}
 
-	// Copy input to output, then apply sigmoid
-	copy(output.Data(), input.Data())
-	output.Sigmoid()
+	// Apply sigmoid directly to output
+	input.Sigmoid(&output)
 
 	s.Base.StoreOutput(output)
 	return output, nil
@@ -147,10 +145,10 @@ func (s *Sigmoid) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 	}
 
 	// Sigmoid gradient using primitives: gradInput = gradOutput * output * (1 - output)
-	ones := tensor.OnesLike(&output)
-	term1 := ones.Clone().Sub(&output)            // (1 - output) - clone ones first to avoid modifying it
-	term2 := (&output).Clone().Mul(term1)         // output * (1 - output) - clone output to avoid modifying stored tensor
-	gradInput := (&gradOutput).Clone().Mul(term2) // gradOutput * output * (1 - output) - clone gradOutput
+	ones := tensor.OnesLike(output)
+	term1 := ones.Clone().Sub(output)              // (1 - output) - clone ones first to avoid modifying it
+	term2 := (&output).Clone().Mul(*term1)         // output * (1 - output) - clone output to avoid modifying stored tensor
+	gradInput := (&gradOutput).Clone().Mul(*term2) // gradOutput * output * (1 - output) - clone gradOutput
 
 	s.Base.StoreGrad(*gradInput)
 	return *gradInput, nil
@@ -204,9 +202,8 @@ func (t *Tanh) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("Tanh.Forward: output not allocated, must call Init first")
 	}
 
-	// Copy input to output, then apply tanh
-	copy(output.Data(), input.Data())
-	output.Tanh()
+	// Apply tanh directly to output
+	input.Tanh(&output)
 
 	t.Base.StoreOutput(output)
 	return output, nil
@@ -224,10 +221,10 @@ func (t *Tanh) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 	}
 
 	// Tanh gradient using primitives: gradInput = gradOutput * (1 - output^2)
-	squared := (&output).Clone().Mul(&output) // output^2
-	ones := tensor.OnesLike(&output)
-	term := ones.Clone().Sub(squared)            // (1 - output^2)
-	gradInput := (&gradOutput).Clone().Mul(term) // gradOutput * (1 - output^2)
+	squared := (&output).Clone().Mul(output) // output^2
+	ones := tensor.OnesLike(output)
+	term := ones.Clone().Sub(*squared)            // (1 - output^2)
+	gradInput := (&gradOutput).Clone().Mul(*term) // gradOutput * (1 - output^2)
 
 	t.Base.StoreGrad(*gradInput)
 	return *gradInput, nil
@@ -283,9 +280,8 @@ func (s *Softmax) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("Softmax.Forward: output not allocated, must call Init first")
 	}
 
-	// Copy input to output, then apply softmax
-	copy(output.Data(), input.Data())
-	output.Softmax(s.dim)
+	// Apply softmax directly to output
+	input.Softmax(s.dim, &output)
 
 	s.Base.StoreOutput(output)
 	return output, nil
@@ -304,7 +300,7 @@ func (s *Softmax) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 
 	// Softmax gradient using primitives: gradInput = output * (gradOutput - sum(gradOutput * output))
 	// Step 1: Compute element-wise product: gradOutput * output
-	prod := (&gradOutput).Clone().Mul(&output)
+	prod := (&gradOutput).Clone().Mul(output)
 
 	// Step 2: Sum along the softmax dimension
 	sumTerm := prod.Sum(s.dim)
@@ -316,10 +312,10 @@ func (s *Softmax) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 	}
 
 	// Step 4: Compute: gradOutput - sumTerm
-	diff := (&gradOutput).Clone().Sub(sumBroadcast)
+	diff := (&gradOutput).Clone().Sub(*sumBroadcast)
 
 	// Step 5: Compute final gradient: output * (gradOutput - sumTerm)
-	gradInput := (&output).Clone().Mul(diff)
+	gradInput := (&output).Clone().Mul(*diff)
 
 	s.Base.StoreGrad(*gradInput)
 	return *gradInput, nil
@@ -426,15 +422,15 @@ func (d *Dropout) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 	if d.isTraining && d.p > 0 {
 		// Allocate or reuse mask tensor
 		if d.mask.Shape().Rank() == 0 || d.mask.Size() != inputSize {
-			d.mask = *tensor.New(tensor.DTFP32, input.Shape())
+			d.mask = tensor.New(tensor.DTFP32, input.Shape())
 		}
 
 		// Generate mask using tensor method
-		d.mask.DropoutMask(d.p, scale, d.rng)
+		(&d.mask).DropoutMask(d.p, scale, d.rng)
 
 		// Copy input to output and apply dropout using tensor method
 		copy(output.Data(), input.Data())
-		output.DropoutForward(&d.mask)
+		(&output).DropoutForward(d.mask)
 	} else {
 		// Inference mode: pass through unchanged
 		copy(output.Data(), input.Data())
@@ -459,8 +455,8 @@ func (d *Dropout) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 
 	var gradInput *tensor.Tensor
 	if d.isTraining && d.p > 0 && d.mask.Shape().Rank() > 0 {
-		// Training mode: use tensor method with mask
-		gradInput = input.DropoutBackward(&gradOutput, &d.mask, nil)
+		// Training mode: gradInput = gradOutput * mask
+		gradInput = (&gradOutput).Clone().Mul(d.mask)
 	} else {
 		// Inference mode or no dropout: pass gradient through unchanged
 		gradInput = (&gradOutput).Clone()

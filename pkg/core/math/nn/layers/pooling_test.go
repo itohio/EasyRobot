@@ -13,7 +13,7 @@ func TestMaxPool2D(t *testing.T) {
 	pool, err := NewMaxPool2D(2, 2, 2, 2, 0, 0)
 	require.NoError(t, err, "Should create MaxPool2D layer")
 
-	inputTensor := *tensor.FromFloat32(tensor.NewShape(1, 1, 4, 4), []float32{
+	inputTensor := tensor.FromFloat32(tensor.NewShape(1, 1, 4, 4), []float32{
 		1.0, 2.0, 3.0, 4.0,
 		5.0, 6.0, 7.0, 8.0,
 		9.0, 10.0, 11.0, 12.0,
@@ -36,7 +36,7 @@ func TestAvgPool2D(t *testing.T) {
 	pool, err := NewAvgPool2D(2, 2, 2, 2, 0, 0)
 	require.NoError(t, err, "Should create AvgPool2D layer")
 
-	inputTensor := *tensor.FromFloat32(tensor.NewShape(1, 1, 4, 4), []float32{
+	inputTensor := tensor.FromFloat32(tensor.NewShape(1, 1, 4, 4), []float32{
 		1.0, 2.0, 3.0, 4.0,
 		5.0, 6.0, 7.0, 8.0,
 		9.0, 10.0, 11.0, 12.0,
@@ -61,7 +61,7 @@ func TestAvgPool2D(t *testing.T) {
 func TestGlobalAvgPool2D(t *testing.T) {
 	pool := NewGlobalAvgPool2D()
 
-	inputTensor := *tensor.FromFloat32(tensor.NewShape(1, 2, 3, 3), []float32{
+	inputTensor := tensor.FromFloat32(tensor.NewShape(1, 2, 3, 3), []float32{
 		// Channel 1: 3x3
 		1.0, 2.0, 3.0,
 		4.0, 5.0, 6.0,

@@ -25,7 +25,7 @@ func TestDenseParameterAccess(t *testing.T) {
 	assert.Equal(t, []int{2}, bias.Shape().ToSlice(), "Bias shape should be [2]")
 
 	// Test setting new weight
-	newWeight := *tensor.FromFloat32(tensor.NewShape(4, 2), []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0})
+	newWeight := tensor.FromFloat32(tensor.NewShape(4, 2), []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0})
 	err = dense.SetWeight(newWeight)
 	require.NoError(t, err, "Should set weight successfully")
 
@@ -34,7 +34,7 @@ func TestDenseParameterAccess(t *testing.T) {
 	assert.Equal(t, newWeight.Data(), weight.Data(), "Weight data should match")
 
 	// Test setting new bias
-	newBias := *tensor.FromFloat32(tensor.NewShape(2), []float32{0.5, -0.5})
+	newBias := tensor.FromFloat32(tensor.NewShape(2), []float32{0.5, -0.5})
 	err = dense.SetBias(newBias)
 	require.NoError(t, err, "Should set bias successfully")
 
@@ -43,10 +43,10 @@ func TestDenseParameterAccess(t *testing.T) {
 	assert.Equal(t, newBias.Data(), bias.Data(), "Bias data should match")
 
 	// Test validation errors
-	err = dense.SetWeight(*tensor.FromFloat32(tensor.NewShape(4, 3), make([]float32, 12)))
+	err = dense.SetWeight(tensor.FromFloat32(tensor.NewShape(4, 3), make([]float32, 12)))
 	assert.Error(t, err, "Should return error for wrong weight shape")
 
-	err = dense.SetBias(*tensor.FromFloat32(tensor.NewShape(3), []float32{0, 0, 0}))
+	err = dense.SetBias(tensor.FromFloat32(tensor.NewShape(3), []float32{0, 0, 0}))
 	assert.Error(t, err, "Should return error for wrong bias shape")
 }
 
@@ -66,12 +66,12 @@ func TestConv2DParameterAccess(t *testing.T) {
 	assert.Equal(t, []int{16}, bias.Shape().ToSlice(), "Bias shape should be [16]")
 
 	// Test setting new weight
-	newWeight := *tensor.FromFloat32(tensor.NewShape(16, 3, 3, 3), make([]float32, 16*3*3*3))
+	newWeight := tensor.FromFloat32(tensor.NewShape(16, 3, 3, 3), make([]float32, 16*3*3*3))
 	err = conv2d.SetWeight(newWeight)
 	require.NoError(t, err, "Should set weight successfully")
 
 	// Test validation errors
-	err = conv2d.SetWeight(*tensor.FromFloat32(tensor.NewShape(16, 4, 3, 3), make([]float32, 576)))
+	err = conv2d.SetWeight(tensor.FromFloat32(tensor.NewShape(16, 4, 3, 3), make([]float32, 576)))
 	assert.Error(t, err, "Should return error for wrong weight shape")
 }
 
@@ -91,12 +91,12 @@ func TestConv1DParameterAccess(t *testing.T) {
 	assert.Equal(t, []int{16}, bias.Shape().ToSlice(), "Bias shape should be [16]")
 
 	// Test setting new weight
-	newWeight := *tensor.FromFloat32(tensor.NewShape(16, 3, 3), make([]float32, 16*3*3))
+	newWeight := tensor.FromFloat32(tensor.NewShape(16, 3, 3), make([]float32, 16*3*3))
 	err = conv1d.SetWeight(newWeight)
 	require.NoError(t, err, "Should set weight successfully")
 
 	// Test validation errors
-	err = conv1d.SetWeight(*tensor.FromFloat32(tensor.NewShape(16, 4, 3), make([]float32, 192)))
+	err = conv1d.SetWeight(tensor.FromFloat32(tensor.NewShape(16, 4, 3), make([]float32, 192)))
 	assert.Error(t, err, "Should return error for wrong weight shape")
 }
 
@@ -111,7 +111,7 @@ func TestParameterAccessWithBias(t *testing.T) {
 	assert.Equal(t, []int{2}, bias.Shape().ToSlice(), "Bias shape should match")
 
 	// Test setting bias should succeed
-	newBias := *tensor.FromFloat32(tensor.NewShape(2), []float32{0.5, -0.5})
+	newBias := tensor.FromFloat32(tensor.NewShape(2), []float32{0.5, -0.5})
 	err = dense.SetBias(newBias)
 	require.NoError(t, err, "Should succeed setting bias")
 

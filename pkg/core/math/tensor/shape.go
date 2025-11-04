@@ -102,3 +102,113 @@ func (s Shape) ToSlice() []int {
 	copy(out, s)
 	return out
 }
+
+// Iterator creates an iterator that fixes specified dimensions and iterates over the remaining ones.
+// Returns a function that can be used in Go 1.22+ range loops.
+// fixedAxisValuePairs are pairs of axis index and fixed value: axis1, value1, axis2, value2, ...
+// The iterator yields complete indices for all dimensions that can be used with At or SetAt.
+// Example: For shape [2, 3, 4] with Iterator(0, 1), the iterator will iterate over dimensions 1 and 2.
+//
+// Usage:
+//
+//	for indices := range shape.Iterator(0, 1) {
+//	    value := tensor.At(indices...)
+//	    tensor.SetAt(indices, value)
+//	}
+//
+//	for indices := range shape.Iterator(0, 1, 2, 3) {
+//	    // Fixes dimension 0 at 1, dimension 2 at 3
+//	}
+func (s Shape) Iterator(fixedAxisValuePairs ...int) func(func([]int) bool) {
+	if len(s) == 0 {
+		return func(yield func([]int) bool) {
+			// Empty shape - yield empty indices once
+			yield([]int{})
+		}
+	}
+
+	// Validate that we have an even number of arguments (pairs)
+	if len(fixedAxisValuePairs)%2 != 0 {
+		panic(fmt.Sprintf("tensor: Iterator requires even number of arguments (axis-value pairs), got %d", len(fixedAxisValuePairs)))
+	}
+
+	// Build fixed dimensions map from pairs
+	fixedDims := make(map[int]int, len(fixedAxisValuePairs)/2)
+	for i := 0; i < len(fixedAxisValuePairs); i += 2 {
+		axis := fixedAxisValuePairs[i]
+		value := fixedAxisValuePairs[i+1]
+
+		if axis < 0 || axis >= len(s) {
+			panic(fmt.Sprintf("tensor: fixed axis %d out of range for rank %d", axis, len(s)))
+		}
+		if _, exists := fixedDims[axis]; exists {
+			panic(fmt.Sprintf("tensor: duplicate axis %d in Iterator arguments", axis))
+		}
+		if value < 0 || value >= s[axis] {
+			panic(fmt.Sprintf("tensor: fixed value %d out of range for axis %d (size %d)", value, axis, s[axis]))
+		}
+		fixedDims[axis] = value
+	}
+
+	// Build list of remaining dimensions (not fixed)
+	remaining := make([]int, 0, len(s))
+	for i := range s {
+		if _, isFixed := fixedDims[i]; !isFixed {
+			remaining = append(remaining, i)
+		}
+	}
+
+	// Build full indices array (reused for each iteration)
+	fullIndices := make([]int, len(s))
+
+	// Set fixed dimensions
+	for dim, val := range fixedDims {
+		fullIndices[dim] = val
+	}
+
+	return func(yield func([]int) bool) {
+		if len(remaining) == 0 {
+			// All dimensions fixed - yield once
+			indicesCopy := make([]int, len(fullIndices))
+			copy(indicesCopy, fullIndices)
+			yield(indicesCopy)
+			return
+		}
+
+		// Initialize indices for remaining dimensions to all zeros
+		indices := make([]int, len(remaining))
+
+		// Iterate over all combinations
+		for {
+			// Set remaining dimensions in full indices
+			for i, dim := range remaining {
+				fullIndices[dim] = indices[i]
+			}
+
+			// Yield the current full indices
+			// Create a copy to avoid issues if the caller modifies the slice
+			indicesCopy := make([]int, len(fullIndices))
+			copy(indicesCopy, fullIndices)
+			if !yield(indicesCopy) {
+				return
+			}
+
+			// Advance indices in row-major order (last dimension changes fastest)
+			advanced := false
+			for i := len(indices) - 1; i >= 0; i-- {
+				dim := remaining[i]
+				indices[i]++
+				if indices[i] < s[dim] {
+					advanced = true
+					break
+				}
+				indices[i] = 0
+			}
+
+			if !advanced {
+				// All combinations exhausted
+				break
+			}
+		}
+	}
+}

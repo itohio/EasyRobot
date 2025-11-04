@@ -19,14 +19,14 @@ func TestFlatten(t *testing.T) {
 	}{
 		{
 			name:         "2d_to_1d",
-			input:        *tensor.FromFloat32(tensor.NewShape(2, 3), []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0}),
+			input:        tensor.FromFloat32(tensor.NewShape(2, 3), []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0}),
 			startDim:     0,
 			endDim:       2,
 			expectedSize: 6,
 		},
 		{
 			name:         "4d_to_2d",
-			input:        *tensor.FromFloat32(tensor.NewShape(1, 2, 2, 2), []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0}),
+			input:        tensor.FromFloat32(tensor.NewShape(1, 2, 2, 2), []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0}),
 			startDim:     1,
 			endDim:       4,
 			expectedSize: 8,
@@ -51,7 +51,7 @@ func TestFlatten(t *testing.T) {
 func TestReshape(t *testing.T) {
 	reshape := NewReshape([]int{2, 4})
 
-	inputTensor := *tensor.FromFloat32(tensor.NewShape(1, 8), []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0})
+	inputTensor := tensor.FromFloat32(tensor.NewShape(1, 8), []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0})
 
 	err := reshape.Init([]int{1, 8})
 	require.NoError(t, err, "Init should succeed")
@@ -71,7 +71,7 @@ func TestReshape(t *testing.T) {
 func TestUnsqueeze(t *testing.T) {
 	t.Run("add_dim_at_beginning", func(t *testing.T) {
 		unsqueeze := NewUnsqueeze(0)
-		input := *tensor.FromFloat32(tensor.NewShape(3, 4), []float32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12})
+		input := tensor.FromFloat32(tensor.NewShape(3, 4), []float32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12})
 
 		err := unsqueeze.Init([]int{3, 4})
 		require.NoError(t, err)
@@ -97,7 +97,7 @@ func TestUnsqueeze(t *testing.T) {
 func TestSqueeze(t *testing.T) {
 	t.Run("squeeze_all", func(t *testing.T) {
 		squeeze := NewSqueeze()
-		input := *tensor.FromFloat32(tensor.NewShape(1, 3, 1, 4), []float32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12})
+		input := tensor.FromFloat32(tensor.NewShape(1, 3, 1, 4), []float32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12})
 
 		err := squeeze.Init([]int{1, 3, 1, 4})
 		require.NoError(t, err)
@@ -122,7 +122,7 @@ func TestSqueeze(t *testing.T) {
 // TestTranspose tests the Transpose layer
 func TestTranspose(t *testing.T) {
 	transpose := NewTranspose()
-	input := *tensor.FromFloat32(tensor.NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
+	input := tensor.FromFloat32(tensor.NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
 
 	err := transpose.Init([]int{2, 3})
 	require.NoError(t, err)
@@ -133,7 +133,7 @@ func TestTranspose(t *testing.T) {
 	assert.Equal(t, []float32{1, 4, 2, 5, 3, 6}, output.Data())
 
 	// Test backward
-	gradOutput := *tensor.FromFloat32(tensor.NewShape(3, 2), []float32{1, 1, 1, 1, 1, 1})
+	gradOutput := tensor.FromFloat32(tensor.NewShape(3, 2), []float32{1, 1, 1, 1, 1, 1})
 	gradInput, err := transpose.Backward(gradOutput)
 	require.NoError(t, err)
 	assert.Equal(t, []int{2, 3}, gradInput.Shape().ToSlice())

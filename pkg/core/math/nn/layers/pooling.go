@@ -163,7 +163,7 @@ func (m *MaxPool2D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 	outWidth := outputShape[3]
 
 	// Initialize gradient input with zeros
-	gradInput := *tensor.New(tensor.DTFP32, tensor.NewShape(batchSize, channels, inHeight, inWidth))
+	gradInput := tensor.New(tensor.DTFP32, tensor.NewShape(batchSize, channels, inHeight, inWidth))
 	inputData := input.Data()
 	outputData := output.Data()
 	gradOutputData := gradOutput.Data()
@@ -406,7 +406,7 @@ func (a *AvgPool2D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 	}
 
 	// For inference-only, we don't compute gradients
-	gradInput := *tensor.New(tensor.DTFP32, gradOutput.Shape())
+	gradInput := tensor.New(tensor.DTFP32, gradOutput.Shape())
 
 	a.Base.StoreGrad(gradInput)
 	return gradInput, nil
@@ -527,7 +527,7 @@ func (g *GlobalAvgPool2D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, err
 	}
 
 	// For inference-only, we don't compute gradients
-	gradInput := *tensor.New(tensor.DTFP32, gradOutput.Shape())
+	gradInput := tensor.New(tensor.DTFP32, gradOutput.Shape())
 
 	g.Base.StoreGrad(gradInput)
 	return gradInput, nil

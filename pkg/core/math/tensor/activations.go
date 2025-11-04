@@ -6,42 +6,76 @@ import (
 	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
 )
 
-// ReLU applies the Rectified Linear Unit activation function in-place: t[i] = max(0, t[i])
-func (t *Tensor) ReLU() *Tensor {
+// ReLU applies the Rectified Linear Unit activation function: dst[i] = max(0, t[i])
+// If dst is nil, applies in-place on t. Otherwise writes to dst.
+func (t *Tensor) ReLU(dst *Tensor) *Tensor {
 	if t.shape == nil {
 		return nil
 	}
 
 	size := t.Size()
-	fp32.ReLU(t.data, t.data, size)
-	return t
+	if dst == nil {
+		// Apply in-place
+		fp32.ReLU(t.data, t.data, size)
+		return t
+	}
+
+	if !dst.sameShape(*t) {
+		panic("tensor.ReLU: destination shape mismatch")
+	}
+
+	fp32.ReLU(dst.data, t.data, size)
+	return dst
 }
 
-// Sigmoid applies the sigmoid activation function in-place: t[i] = 1 / (1 + exp(-t[i]))
-func (t *Tensor) Sigmoid() *Tensor {
+// Sigmoid applies the sigmoid activation function: dst[i] = 1 / (1 + exp(-t[i]))
+// If dst is nil, applies in-place on t. Otherwise writes to dst.
+func (t *Tensor) Sigmoid(dst *Tensor) *Tensor {
 	if t.shape == nil {
 		return nil
 	}
 
 	size := t.Size()
-	fp32.Sigmoid(t.data, t.data, size)
-	return t
+	if dst == nil {
+		// Apply in-place
+		fp32.Sigmoid(t.data, t.data, size)
+		return t
+	}
+
+	if !dst.sameShape(*t) {
+		panic("tensor.Sigmoid: destination shape mismatch")
+	}
+
+	fp32.Sigmoid(dst.data, t.data, size)
+	return dst
 }
 
-// Tanh applies the hyperbolic tangent activation function in-place: t[i] = tanh(t[i])
-func (t *Tensor) Tanh() *Tensor {
+// Tanh applies the hyperbolic tangent activation function: dst[i] = tanh(t[i])
+// If dst is nil, applies in-place on t. Otherwise writes to dst.
+func (t *Tensor) Tanh(dst *Tensor) *Tensor {
 	if t.shape == nil {
 		return nil
 	}
 
 	size := t.Size()
-	fp32.Tanh(t.data, t.data, size)
-	return t
+	if dst == nil {
+		// Apply in-place
+		fp32.Tanh(t.data, t.data, size)
+		return t
+	}
+
+	if !dst.sameShape(*t) {
+		panic("tensor.Tanh: destination shape mismatch")
+	}
+
+	fp32.Tanh(dst.data, t.data, size)
+	return dst
 }
 
 // Softmax applies softmax along the specified dimension.
 // Currently supports 1D tensors and 2D tensors with dim=0 (rows) or dim=1 (columns).
-func (t *Tensor) Softmax(dim int) *Tensor {
+// If dst is nil, applies in-place on t. Otherwise writes to dst.
+func (t *Tensor) Softmax(dim int, dst *Tensor) *Tensor {
 	if t.shape == nil {
 		return nil
 	}
@@ -50,13 +84,40 @@ func (t *Tensor) Softmax(dim int) *Tensor {
 		panic("tensor.Softmax: dimension out of range")
 	}
 
+	if dst == nil {
+		// Apply in-place
+		if t.shape.Rank() == 1 {
+			fp32.Softmax1D(t.data, t.Size())
+		} else if t.shape.Rank() == 2 {
+			if dim == 0 {
+				fp32.Softmax2DRows(t.data, t.shape[0], t.shape[1])
+			} else if dim == 1 {
+				fp32.Softmax2DCols(t.data, t.shape[0], t.shape[1])
+			} else {
+				panic("tensor.Softmax: invalid dimension for 2D tensor")
+			}
+		} else {
+			panic("tensor.Softmax: only 1D and 2D tensors supported")
+		}
+		return t
+	}
+
+	if !dst.sameShape(*t) {
+		panic("tensor.Softmax: destination shape mismatch")
+	}
+
+	// Copy source to destination if different
+	if dst != t {
+		t.copyTo(dst)
+	}
+
 	if t.shape.Rank() == 1 {
-		fp32.Softmax1D(t.data, t.Size())
+		fp32.Softmax1D(dst.data, dst.Size())
 	} else if t.shape.Rank() == 2 {
 		if dim == 0 {
-			fp32.Softmax2DRows(t.data, t.shape[0], t.shape[1])
+			fp32.Softmax2DRows(dst.data, dst.shape[0], dst.shape[1])
 		} else if dim == 1 {
-			fp32.Softmax2DCols(t.data, t.shape[0], t.shape[1])
+			fp32.Softmax2DCols(dst.data, dst.shape[0], dst.shape[1])
 		} else {
 			panic("tensor.Softmax: invalid dimension for 2D tensor")
 		}
@@ -64,7 +125,7 @@ func (t *Tensor) Softmax(dim int) *Tensor {
 		panic("tensor.Softmax: only 1D and 2D tensors supported")
 	}
 
-	return t
+	return dst
 }
 
 // DropoutForward applies dropout during training.
