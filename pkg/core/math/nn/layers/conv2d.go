@@ -209,14 +209,32 @@ func (c *Conv2D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		}
 	}
 
-	// Compute kernel gradient efficiently using Tensor API
+	// Compute kernel gradient using primitive composition
 	if c.Base.CanLearn() && kernelParam.RequiresGrad {
 		if kernelParam.Grad.Shape().Rank() == 0 {
 			kernelParam.Grad = *tensor.New(tensor.DTFP32, kernelParam.Data.Shape())
 		}
-		// Compute kernel gradients using efficient Conv2DKernelGrad
-		kernelGrad := input.Conv2DKernelGrad(&gradOutput, &kernelParam.Data, []int{c.strideH, c.strideW}, []int{c.padH, c.padW})
-		copy(kernelParam.Grad.Data(), kernelGrad.Data())
+
+		// Kernel gradient computation using primitives:
+		// kernelGrad = (gradOutput ⊛ input) where ⊛ is correlation
+		// This is equivalent to: kernelGrad = Im2Col(gradOutput)^T @ Im2Col(input)
+
+		// Convert input and gradOutput to column format
+		inputCols := input.Im2Col([]int{c.kernelH, c.kernelW}, []int{c.strideH, c.strideW}, []int{c.padH, c.padW})
+		gradOutputCols := gradOutput.Im2Col([]int{c.kernelH, c.kernelW}, []int{c.strideH, c.strideW}, []int{c.padH, c.padW})
+
+		// Compute: kernelGrad = gradOutputCols^T @ inputCols
+		// Reshape to proper matrix dimensions for MatMul
+		// inputCols shape: [batch*outHeight*outWidth, inChannels*kernelH*kernelW]
+		// gradOutputCols shape: [batch*outHeight*outWidth, outChannels]
+		// We want: [outChannels, inChannels*kernelH*kernelW] = gradOutputCols^T @ inputCols
+
+		kernelGradMatrix := gradOutputCols.Transpose().MatMul(inputCols)
+
+		// Reshape result to kernel shape: [outChannels, inChannels, kernelH, kernelW]
+		kernelGradReshaped := kernelGradMatrix.Reshape([]int{c.outChannels, c.inChannels, c.kernelH, c.kernelW})
+
+		copy(kernelParam.Grad.Data(), kernelGradReshaped.Data())
 		c.Base.SetParam(ParamKernels, kernelParam)
 	}
 

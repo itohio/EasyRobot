@@ -67,22 +67,13 @@ func (r *ReLU) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("ReLU.Backward: input not stored, must call Forward first")
 	}
 
-	// Alternative: ReLU gradient using primitives (equivalent to input.ReLUGrad)
-	// mask = (input > 0)  // 1.0 where input > 0, 0.0 otherwise
-	// gradInput = gradOutput * mask
+	// ReLU gradient using primitives: gradInput = gradOutput * (input > 0 ? 1 : 0)
+	// Create mask: 1.0 where input > 0, 0.0 otherwise
+	zeros := tensor.New(tensor.DTFP32, input.Shape())
+	mask := (&input).GreaterThan(zeros)
 
-	// Alternative 1: Using tensor primitives
-	// zeroTensor := tensor.New(tensor.DTFP32, input.Shape())
-	// mask := input.GreaterThan(zeroTensor)
-	// gradInput := gradOutput.Mul(mask)
-
-	// Alternative 2: Using element-wise primitives directly
-	// gradInput[i] = gradOutput[i] * (input[i] > 0 ? 1.0 : 0.0)
-	// This is equivalent to: gradInput.Where(input.GreaterThan(zeroTensor), gradOutput, zeroTensor)
-
-	// For now, use the existing tensor.ReLUGrad for simplicity
-	// In a full primitive-based implementation, we'd compose from ElemWhere + ElemGreaterThan
-	gradInput := input.ReLUGrad(&gradOutput, nil)
+	// Element-wise multiply: gradOutput * mask
+	gradInput := (&gradOutput).Clone().Mul(mask)
 
 	r.Base.StoreGrad(*gradInput)
 	return *gradInput, nil
@@ -155,8 +146,11 @@ func (s *Sigmoid) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("Sigmoid.Backward: output not stored, must call Forward first")
 	}
 
-	// Compute sigmoid gradient using tensor method
-	gradInput := output.SigmoidGrad(&gradOutput, nil)
+	// Sigmoid gradient using primitives: gradInput = gradOutput * output * (1 - output)
+	ones := tensor.OnesLike(&output)
+	term1 := ones.Clone().Sub(&output)            // (1 - output) - clone ones first to avoid modifying it
+	term2 := (&output).Clone().Mul(term1)         // output * (1 - output) - clone output to avoid modifying stored tensor
+	gradInput := (&gradOutput).Clone().Mul(term2) // gradOutput * output * (1 - output) - clone gradOutput
 
 	s.Base.StoreGrad(*gradInput)
 	return *gradInput, nil
@@ -229,8 +223,11 @@ func (t *Tanh) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("Tanh.Backward: output not stored, must call Forward first")
 	}
 
-	// Compute tanh gradient using tensor method
-	gradInput := output.TanhGrad(&gradOutput, nil)
+	// Tanh gradient using primitives: gradInput = gradOutput * (1 - output^2)
+	squared := (&output).Clone().Mul(&output) // output^2
+	ones := tensor.OnesLike(&output)
+	term := ones.Clone().Sub(squared)            // (1 - output^2)
+	gradInput := (&gradOutput).Clone().Mul(term) // gradOutput * (1 - output^2)
 
 	t.Base.StoreGrad(*gradInput)
 	return *gradInput, nil
@@ -305,8 +302,24 @@ func (s *Softmax) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("Softmax.Backward: output not stored, must call Forward first")
 	}
 
-	// Compute softmax gradient using tensor method
-	gradInput := output.SoftmaxGrad(&gradOutput, s.dim, nil)
+	// Softmax gradient using primitives: gradInput = output * (gradOutput - sum(gradOutput * output))
+	// Step 1: Compute element-wise product: gradOutput * output
+	prod := (&gradOutput).Clone().Mul(&output)
+
+	// Step 2: Sum along the softmax dimension
+	sumTerm := prod.Sum(s.dim)
+
+	// Step 3: Broadcast sum back to original shape
+	sumBroadcast, err := sumTerm.BroadcastTo(output.Shape())
+	if err != nil {
+		return tensor.Tensor{}, fmt.Errorf("Softmax.Backward: broadcast failed: %w", err)
+	}
+
+	// Step 4: Compute: gradOutput - sumTerm
+	diff := (&gradOutput).Clone().Sub(sumBroadcast)
+
+	// Step 5: Compute final gradient: output * (gradOutput - sumTerm)
+	gradInput := (&output).Clone().Mul(diff)
 
 	s.Base.StoreGrad(*gradInput)
 	return *gradInput, nil

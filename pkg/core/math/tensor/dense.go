@@ -11,15 +11,40 @@ type Tensor struct {
 
 // New creates a new tensor with the provided data type and shape.
 // The underlying buffer is zero-initialized.
-func New(dtype DataType, shape Shape) *Tensor {
+func New(dtype DataType, shape Shape) Tensor {
 	size := shape.Size()
 	buf := make([]float32, size)
-	return &Tensor{dtype: dtype, shape: shape, data: buf}
+	return Tensor{dtype: dtype, shape: shape, data: buf}
+}
+
+// NewAs creates a new tensor with the same data type and shape as the given tensor.
+func NewAs(t Tensor) Tensor {
+	// Make new tensor using given tensor data (clone)
+	clone := Tensor{
+		dtype: t.dtype,
+		shape: NewShape(t.shape...), // Clone shape
+		data:  nil,
+	}
+	if t.data != nil {
+		clone.data = make([]float32, len(t.data))
+		copy(clone.data, t.data)
+	}
+	return clone
+}
+
+// Empty creates an empty tensor of given data type.
+func Empty(dt DataType) Tensor {
+	return Tensor{dtype: dt}
+}
+
+// Empty creates an empty tensor of given data type.
+func EmptyAs(t Tensor) Tensor {
+	return Tensor{dtype: t.DataType()}
 }
 
 // FromFloat32 constructs an FP32 tensor from an existing backing slice.
 // If data is nil, a new buffer is allocated. The slice is used directly (no copy).
-func FromFloat32(shape Shape, data []float32) *Tensor {
+func FromFloat32(shape Shape, data []float32) Tensor {
 	size := shape.Size()
 	var buf []float32
 	if data == nil {
@@ -30,38 +55,39 @@ func FromFloat32(shape Shape, data []float32) *Tensor {
 		}
 		buf = data
 	}
-	return &Tensor{dtype: DTFP32, shape: shape, data: buf}
+	return Tensor{dtype: DTFP32, shape: shape, data: buf}
+}
+
+func (t Tensor) Empty() bool {
+	return t.shape == nil && t.data == nil
 }
 
 // DataType returns the tensor's data type.
-func (t *Tensor) DataType() DataType {
-	if t == nil {
+func (t Tensor) DataType() DataType {
+	if t.shape == nil && t.data == nil {
 		return DTFP32
 	}
 	return t.dtype
 }
 
 // Shape returns a copy of the tensor's shape.
-func (t *Tensor) Shape() Shape {
-	if t == nil || t.shape == nil {
+func (t Tensor) Shape() Shape {
+	if t.shape == nil {
 		return nil
 	}
 	return NewShape(t.shape...)
 }
 
 // Rank returns the number of dimensions.
-func (t *Tensor) Rank() int {
-	if t == nil {
+func (t Tensor) Rank() int {
+	if t.shape == nil {
 		return 0
 	}
 	return t.shape.Rank()
 }
 
 // Size returns the total number of elements in the tensor.
-func (t *Tensor) Size() int {
-	if t == nil {
-		return 0
-	}
+func (t Tensor) Size() int {
 	if t.shape == nil {
 		if len(t.data) == 0 {
 			return 0
@@ -72,21 +98,18 @@ func (t *Tensor) Size() int {
 }
 
 // Data returns the underlying data slice. Mutating the returned slice mutates the tensor.
-func (t *Tensor) Data() []float32 {
-	if t == nil {
-		return nil
-	}
+func (t Tensor) Data() []float32 {
 	return t.data
 }
 
 // Flat returns the underlying data slice (zero-copy).
-func (t *Tensor) Flat() []float32 {
+func (t Tensor) Flat() []float32 {
 	return t.Data()
 }
 
 // Clone creates a deep copy of the tensor.
-func (t *Tensor) Clone() *Tensor {
-	if t == nil {
+func (t Tensor) Clone() *Tensor {
+	if t.shape == nil && t.data == nil {
 		return nil
 	}
 	clonedShape := t.Shape()
@@ -96,8 +119,8 @@ func (t *Tensor) Clone() *Tensor {
 }
 
 // isContiguous checks if the tensor data is contiguous (no gaps).
-func (t *Tensor) isContiguous() bool {
-	if t == nil {
+func (t Tensor) isContiguous() bool {
+	if t.shape == nil {
 		return true
 	}
 	if t.shape.Rank() == 0 {
@@ -109,7 +132,7 @@ func (t *Tensor) isContiguous() bool {
 }
 
 // elementIndex computes the linear index for given indices using strides.
-func (t *Tensor) elementIndex(indices []int, strides []int) int {
+func (t Tensor) elementIndex(indices []int, strides []int) int {
 	idx := 0
 	for i := range indices {
 		idx += indices[i] * strides[i]
@@ -119,8 +142,8 @@ func (t *Tensor) elementIndex(indices []int, strides []int) int {
 
 // At returns the element at the given indices.
 // Indices must match the tensor's dimensions.
-func (t *Tensor) At(indices ...int) float32 {
-	if t == nil || (t.shape.Rank() == 0 && len(indices) == 0) {
+func (t Tensor) At(indices ...int) float32 {
+	if t.shape == nil || (t.shape.Rank() == 0 && len(indices) == 0) {
 		if len(t.data) == 0 {
 			panic("tensor.At: empty tensor")
 		}
@@ -148,9 +171,9 @@ func (t *Tensor) At(indices ...int) float32 {
 // SetAt sets the element at the given indices.
 // Indices must match the tensor's dimensions.
 func (t *Tensor) SetAt(indices []int, value float32) {
-	if t == nil || (t.shape.Rank() == 0 && len(indices) == 0) {
-		if t == nil || len(t.data) == 0 {
-			panic("tensor.SetAt: cannot set element of nil or empty tensor")
+	if t.shape == nil || (t.shape.Rank() == 0 && len(indices) == 0) {
+		if len(t.data) == 0 {
+			panic("tensor.SetAt: cannot set element of empty tensor")
 		}
 		t.data[0] = value
 		return
@@ -176,8 +199,8 @@ func (t *Tensor) SetAt(indices []int, value float32) {
 
 // Reshape returns a new tensor with the same data but different shape (zero-copy when possible).
 // The total number of elements must remain the same.
-func (t *Tensor) Reshape(newShape []int) *Tensor {
-	if t == nil {
+func (t Tensor) Reshape(newShape []int) *Tensor {
+	if t.shape == nil && t.data == nil {
 		return nil
 	}
 	s := NewShape(newShape...)
@@ -189,9 +212,6 @@ func (t *Tensor) Reshape(newShape []int) *Tensor {
 
 // reset replaces the tensor contents with the provided dtype, shape, and optional backing slice (no copy).
 func (t *Tensor) reset(dtype DataType, shape []int, data []float32) {
-	if t == nil {
-		return
-	}
 	s := NewShape(shape...)
 	size := s.Size()
 	var buf []float32

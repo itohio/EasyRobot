@@ -51,8 +51,12 @@ func TestReLU(t *testing.T) {
 			require.NoError(t, err, "Forward should succeed")
 			assert.Equal(t, tt.output, output.Data(), "Output should match expected")
 
-			// Test Backward
-			gradOutput := *tensor.FromFloat32(tensor.NewShape(len(tt.input)), []float32{1.0, 1.0, 1.0, 1.0, 1.0, 1.0})
+			// Test Backward - create gradOutput with ones matching input size
+			gradOutputData := make([]float32, len(tt.input))
+			for i := range gradOutputData {
+				gradOutputData[i] = 1.0
+			}
+			gradOutput := *tensor.FromFloat32(tensor.NewShape(len(tt.input)), gradOutputData)
 			gradInput, err := relu.Backward(gradOutput)
 			require.NoError(t, err, "Backward should succeed")
 			assert.Equal(t, tt.gradInput, gradInput.Data(), "GradInput should match expected")

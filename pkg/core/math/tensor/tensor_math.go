@@ -10,8 +10,8 @@ import (
 // Add adds another tensor element-wise in-place.
 // Uses fp32 primitive.Axpy for efficient computation.
 // Returns the tensor itself for method chaining.
-func (t *Tensor) Add(other *Tensor) *Tensor {
-	if t == nil || other == nil {
+func (t *Tensor) Add(other Tensor) *Tensor {
+	if t.shape == nil || other.shape == nil {
 		return t
 	}
 
@@ -33,8 +33,8 @@ func (t *Tensor) Add(other *Tensor) *Tensor {
 
 // Sub subtracts another tensor element-wise in-place.
 // Uses fp32 primitive.Axpy with alpha=-1.
-func (t *Tensor) Sub(other *Tensor) *Tensor {
-	if t == nil || other == nil {
+func (t *Tensor) Sub(other Tensor) *Tensor {
+	if t.shape == nil || other.shape == nil {
 		return t
 	}
 
@@ -55,8 +55,8 @@ func (t *Tensor) Sub(other *Tensor) *Tensor {
 }
 
 // Mul multiplies another tensor element-wise in-place.
-func (t *Tensor) Mul(other *Tensor) *Tensor {
-	if t == nil || other == nil {
+func (t *Tensor) Mul(other Tensor) *Tensor {
+	if t.shape == nil || other.shape == nil {
 		return t
 	}
 
@@ -71,8 +71,8 @@ func (t *Tensor) Mul(other *Tensor) *Tensor {
 }
 
 // Div divides by another tensor element-wise in-place.
-func (t *Tensor) Div(other *Tensor) *Tensor {
-	if t == nil || other == nil {
+func (t *Tensor) Div(other Tensor) *Tensor {
+	if t.shape == nil || other.shape == nil {
 		return t
 	}
 
@@ -89,7 +89,7 @@ func (t *Tensor) Div(other *Tensor) *Tensor {
 // Scale multiplies the tensor by a scalar in-place.
 // Uses fp32 primitive.Scal for efficient computation.
 func (t *Tensor) Scale(scalar float32) *Tensor {
-	if t == nil {
+	if t.shape == nil {
 		return t
 	}
 
@@ -106,8 +106,8 @@ func (t *Tensor) Scale(scalar float32) *Tensor {
 
 // AddTo adds two tensors and stores result in dst (or creates new tensor if dst is nil).
 // Returns the destination tensor.
-func (t *Tensor) AddTo(other *Tensor, dst *Tensor) *Tensor {
-	if t == nil || other == nil {
+func (t *Tensor) AddTo(other Tensor, dst *Tensor) *Tensor {
+	if t.shape == nil || other.shape == nil {
 		return nil
 	}
 
@@ -121,7 +121,7 @@ func (t *Tensor) AddTo(other *Tensor, dst *Tensor) *Tensor {
 		return dst
 	}
 
-	if !dst.sameShape(t) {
+	if !dst.sameShape(*t) {
 		panic(fmt.Sprintf("tensor.AddTo: destination shape mismatch: %v vs %v", dst.shape, t.shape))
 	}
 
@@ -132,8 +132,8 @@ func (t *Tensor) AddTo(other *Tensor, dst *Tensor) *Tensor {
 }
 
 // MulTo multiplies two tensors element-wise and stores result in dst (or creates new tensor if dst is nil).
-func (t *Tensor) MulTo(other *Tensor, dst *Tensor) *Tensor {
-	if t == nil || other == nil {
+func (t *Tensor) MulTo(other Tensor, dst *Tensor) *Tensor {
+	if t.shape == nil || other.shape == nil {
 		return nil
 	}
 
@@ -147,7 +147,7 @@ func (t *Tensor) MulTo(other *Tensor, dst *Tensor) *Tensor {
 		return dst
 	}
 
-	if !dst.sameShape(t) {
+	if !dst.sameShape(*t) {
 		panic(fmt.Sprintf("tensor.MulTo: destination shape mismatch: %v vs %v", dst.shape, t.shape))
 	}
 
@@ -159,8 +159,8 @@ func (t *Tensor) MulTo(other *Tensor, dst *Tensor) *Tensor {
 
 // BroadcastTo broadcasts the tensor to a new shape.
 // Currently creates a view-like operation (future: implement efficient broadcasting).
-func (t *Tensor) BroadcastTo(shape []int) (*Tensor, error) {
-	if t == nil {
+func (t Tensor) BroadcastTo(shape []int) (*Tensor, error) {
+	if t.shape == nil {
 		return nil, errors.New("tensor.BroadcastTo: nil tensor")
 	}
 
@@ -177,24 +177,25 @@ func (t *Tensor) BroadcastTo(shape []int) (*Tensor, error) {
 	}
 
 	result := New(t.dtype, NewShape(shape...))
+	resultPtr := &result
 	if err := fp32.ExpandTo(
-		result.data,
+		resultPtr.data,
 		t.data,
-		result.shape.ToSlice(),
+		resultPtr.shape.ToSlice(),
 		t.shape.ToSlice(),
-		result.shape.Strides(),
+		resultPtr.shape.Strides(),
 		t.shape.Strides(),
 	); err != nil {
 		return nil, fmt.Errorf("tensor.BroadcastTo: %w", err)
 	}
 
-	return result, nil
+	return resultPtr, nil
 }
 
 // Sum computes sum along specified dimensions.
 // If no dimensions specified, sums all elements.
-func (t *Tensor) Sum(dims ...int) *Tensor {
-	if t == nil {
+func (t Tensor) Sum(dims ...int) *Tensor {
+	if t.shape == nil {
 		return nil
 	}
 
@@ -203,7 +204,8 @@ func (t *Tensor) Sum(dims ...int) *Tensor {
 		if t.isContiguous() {
 			size := t.Size()
 			sum := fp32.Asum(t.data, 1, size)
-			return FromFloat32(NewShape(1), []float32{sum})
+			result := FromFloat32(NewShape(1), []float32{sum})
+			return &result
 		}
 		return t.reduceTensor(nil, true, fp32.ReduceSum)
 	}
@@ -212,8 +214,8 @@ func (t *Tensor) Sum(dims ...int) *Tensor {
 }
 
 // Mean computes mean along specified dimensions.
-func (t *Tensor) Mean(dims ...int) *Tensor {
-	if t == nil {
+func (t Tensor) Mean(dims ...int) *Tensor {
+	if t.shape == nil {
 		return nil
 	}
 
@@ -221,8 +223,8 @@ func (t *Tensor) Mean(dims ...int) *Tensor {
 }
 
 // Max computes maximum along specified dimensions.
-func (t *Tensor) Max(dims ...int) *Tensor {
-	if t == nil {
+func (t Tensor) Max(dims ...int) *Tensor {
+	if t.shape == nil {
 		return nil
 	}
 
@@ -230,8 +232,8 @@ func (t *Tensor) Max(dims ...int) *Tensor {
 }
 
 // Min computes minimum along specified dimensions.
-func (t *Tensor) Min(dims ...int) *Tensor {
-	if t == nil {
+func (t Tensor) Min(dims ...int) *Tensor {
+	if t.shape == nil {
 		return nil
 	}
 
@@ -240,8 +242,8 @@ func (t *Tensor) Min(dims ...int) *Tensor {
 
 // ArgMax returns indices of maximum elements along specified dimension.
 // Uses fp32 primitive.Iamax for vector case.
-func (t *Tensor) ArgMax(dim int) *Tensor {
-	if t == nil {
+func (t Tensor) ArgMax(dim int) *Tensor {
+	if t.shape == nil {
 		return nil
 	}
 
@@ -251,27 +253,29 @@ func (t *Tensor) ArgMax(dim int) *Tensor {
 
 	if t.shape.Rank() == 1 && t.isContiguous() {
 		idx := fp32.Iamax(t.data, 1, t.Size())
-		return FromFloat32(NewShape(1), []float32{float32(idx)})
+		result := FromFloat32(NewShape(1), []float32{float32(idx)})
+		return &result
 	}
 
 	resultShape, axis := t.prepareArgmax(dim)
 	result := New(t.dtype, NewShape(resultShape...))
+	resultPtr := &result
 	fp32.Argmax(
-		result.data,
-		result.shape.ToSlice(),
-		result.shape.Strides(),
+		resultPtr.data,
+		resultPtr.shape.ToSlice(),
+		resultPtr.shape.Strides(),
 		t.data,
 		t.shape.ToSlice(),
 		t.shape.Strides(),
 		axis,
 	)
-	return result
+	return resultPtr
 }
 
 // Helper functions
 
-func (t *Tensor) sameShape(other *Tensor) bool {
-	if t == nil || other == nil {
+func (t Tensor) sameShape(other Tensor) bool {
+	if t.shape == nil || other.shape == nil {
 		return false
 	}
 	if t.shape.Rank() != other.shape.Rank() {
@@ -285,7 +289,10 @@ func (t *Tensor) sameShape(other *Tensor) bool {
 	return true
 }
 
-func (t *Tensor) sameShapeInt(shape []int) bool {
+func (t Tensor) sameShapeInt(shape []int) bool {
+	if t.shape == nil {
+		return false
+	}
 	if t.shape.Rank() != len(shape) {
 		return false
 	}
@@ -299,8 +306,8 @@ func (t *Tensor) sameShapeInt(shape []int) bool {
 
 type reduceFunc func(dst []float32, dstShape []int, dstStrides []int, src []float32, srcShape []int, srcStrides []int, axes []int)
 
-func (t *Tensor) reduceTensor(dims []int, scalarWhenEmpty bool, reducer reduceFunc) *Tensor {
-	if t == nil {
+func (t Tensor) reduceTensor(dims []int, scalarWhenEmpty bool, reducer reduceFunc) *Tensor {
+	if t.shape == nil {
 		return nil
 	}
 
@@ -321,22 +328,23 @@ func (t *Tensor) reduceTensor(dims []int, scalarWhenEmpty bool, reducer reduceFu
 	}
 
 	res := New(t.dtype, NewShape(resultShape...))
+	resPtr := &res
 
 	reducer(
-		res.data,
-		res.shape.ToSlice(),
-		res.shape.Strides(),
+		resPtr.data,
+		resPtr.shape.ToSlice(),
+		resPtr.shape.Strides(),
 		t.data,
 		t.shape.ToSlice(),
 		t.shape.Strides(),
 		axes,
 	)
 
-	return res
+	return resPtr
 }
 
-func (t *Tensor) normalizeAxes(dims []int) []int {
-	if t.shape.Rank() == 0 {
+func (t Tensor) normalizeAxes(dims []int) []int {
+	if t.shape == nil || t.shape.Rank() == 0 {
 		panic("tensor: reduction on empty tensor")
 	}
 
@@ -355,8 +363,8 @@ func (t *Tensor) normalizeAxes(dims []int) []int {
 	return axes
 }
 
-func (t *Tensor) prepareArgmax(dim int) ([]int, int) {
-	if t.shape.Rank() == 0 {
+func (t Tensor) prepareArgmax(dim int) ([]int, int) {
+	if t.shape == nil || t.shape.Rank() == 0 {
 		panic("tensor.ArgMax: empty tensor")
 	}
 	if dim < 0 || dim >= t.shape.Rank() {
@@ -376,8 +384,12 @@ func (t *Tensor) prepareArgmax(dim int) ([]int, int) {
 	return shape, dim
 }
 
-func (t *Tensor) copyTo(dst *Tensor) {
+func (t Tensor) copyTo(dst *Tensor) {
 	if dst == nil {
+		return
+	}
+
+	if t.shape == nil {
 		return
 	}
 
@@ -402,8 +414,8 @@ func (t *Tensor) copyTo(dst *Tensor) {
 
 // Where creates a new tensor by selecting elements from a where condition is true, otherwise from b.
 // condition, a, b must have compatible shapes.
-func (t *Tensor) Where(condition, a, b *Tensor) *Tensor {
-	if t == nil || condition == nil || a == nil || b == nil {
+func (t Tensor) Where(condition, a, b Tensor) *Tensor {
+	if t.shape == nil || condition.shape == nil || a.shape == nil || b.shape == nil {
 		return nil
 	}
 
@@ -412,6 +424,9 @@ func (t *Tensor) Where(condition, a, b *Tensor) *Tensor {
 	}
 
 	result := t.Clone()
+	if result == nil {
+		return nil
+	}
 	shape := t.Shape().ToSlice()
 	strides := fp32.ComputeStrides(shape)
 
@@ -424,8 +439,8 @@ func (t *Tensor) Where(condition, a, b *Tensor) *Tensor {
 
 // GreaterThan creates a tensor with 1.0 where t > other, 0.0 otherwise.
 // t and other must have compatible shapes.
-func (t *Tensor) GreaterThan(other *Tensor) *Tensor {
-	if t == nil || other == nil {
+func (t Tensor) GreaterThan(other Tensor) *Tensor {
+	if t.shape == nil || other.shape == nil {
 		return nil
 	}
 
@@ -434,12 +449,50 @@ func (t *Tensor) GreaterThan(other *Tensor) *Tensor {
 	}
 
 	result := New(t.dtype, t.shape)
+	resultPtr := &result
 	shape := t.Shape().ToSlice()
 	strides := fp32.ComputeStrides(shape)
 
 	fp32.ElemGreaterThan(
-		result.data, t.data, other.data,
+		resultPtr.data, t.data, other.data,
 		shape, strides, strides, strides,
 	)
-	return result
+	return resultPtr
+}
+
+// ZerosLike creates a new tensor with the same shape as t, filled with zeros.
+func ZerosLike(t Tensor) *Tensor {
+	if t.shape == nil {
+		return nil
+	}
+	result := New(t.dtype, t.shape)
+	return &result
+}
+
+// OnesLike creates a new tensor with the same shape as t, filled with ones.
+func OnesLike(t Tensor) *Tensor {
+	if t.shape == nil {
+		return nil
+	}
+	result := New(t.dtype, t.shape)
+	resultPtr := &result
+	// Fill with ones by scaling a zero tensor by 0 and then adding 1
+	// Actually, let's use the data directly for efficiency
+	for i := range resultPtr.data {
+		resultPtr.data[i] = 1.0
+	}
+	return resultPtr
+}
+
+// FullLike creates a new tensor with the same shape as t, filled with the given value.
+func FullLike(t Tensor, value float32) *Tensor {
+	if t.shape == nil {
+		return nil
+	}
+	result := New(t.dtype, t.shape)
+	resultPtr := &result
+	for i := range resultPtr.data {
+		resultPtr.data[i] = value
+	}
+	return resultPtr
 }

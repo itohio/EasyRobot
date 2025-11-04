@@ -10,8 +10,8 @@ import (
 func TestAdd(t *testing.T) {
 	tests := []struct {
 		name     string
-		t1       *Tensor
-		t2       *Tensor
+		t1       Tensor
+		t2       Tensor
 		expected []float32
 	}{
 		{
@@ -39,7 +39,7 @@ func TestAdd(t *testing.T) {
 			originalT2 := tt.t2.Clone()
 			result := tt.t1.Add(tt.t2)
 
-			if result != tt.t1 {
+			if result != &tt.t1 {
 				t.Errorf("Add should return self for chaining")
 			}
 
@@ -66,8 +66,8 @@ func TestAdd(t *testing.T) {
 func TestSub(t *testing.T) {
 	tests := []struct {
 		name     string
-		t1       *Tensor
-		t2       *Tensor
+		t1       Tensor
+		t2       Tensor
 		expected []float32
 	}{
 		{
@@ -88,7 +88,7 @@ func TestSub(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.t1.Sub(tt.t2)
 
-			if result != tt.t1 {
+			if result != &tt.t1 {
 				t.Errorf("Sub should return self for chaining")
 			}
 
@@ -103,8 +103,8 @@ func TestSub(t *testing.T) {
 func TestMul(t *testing.T) {
 	tests := []struct {
 		name     string
-		t1       *Tensor
-		t2       *Tensor
+		t1       Tensor
+		t2       Tensor
 		expected []float32
 	}{
 		{
@@ -125,7 +125,7 @@ func TestMul(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.t1.Mul(tt.t2)
 
-			if result != tt.t1 {
+			if result != &tt.t1 {
 				t.Errorf("Mul should return self for chaining")
 			}
 
@@ -140,8 +140,8 @@ func TestMul(t *testing.T) {
 func TestDiv(t *testing.T) {
 	tests := []struct {
 		name     string
-		t1       *Tensor
-		t2       *Tensor
+		t1       Tensor
+		t2       Tensor
 		expected []float32
 	}{
 		{
@@ -156,7 +156,7 @@ func TestDiv(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.t1.Div(tt.t2)
 
-			if result != tt.t1 {
+			if result != &tt.t1 {
 				t.Errorf("Div should return self for chaining")
 			}
 
@@ -171,7 +171,7 @@ func TestDiv(t *testing.T) {
 func TestScale(t *testing.T) {
 	tests := []struct {
 		name     string
-		t        *Tensor
+		t        Tensor
 		scalar   float32
 		expected []float32
 	}{
@@ -199,7 +199,7 @@ func TestScale(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.t.Scale(tt.scalar)
 
-			if result != tt.t {
+			if result != &tt.t {
 				t.Errorf("Scale should return self for chaining")
 			}
 
@@ -218,7 +218,7 @@ func TestAddTo(t *testing.T) {
 
 		result := t1.AddTo(t2, nil)
 
-		if result == t1 || result == t2 {
+		if result == &t1 || result == &t2 {
 			t.Errorf("AddTo should create new tensor when dst is nil")
 		}
 
@@ -241,9 +241,9 @@ func TestAddTo(t *testing.T) {
 		t2 := FromFloat32(NewShape(2, 2), []float32{5, 6, 7, 8})
 		dst := New(DTFP32, NewShape(2, 2))
 
-		result := t1.AddTo(t2, dst)
+		result := t1.AddTo(t2, &dst)
 
-		if result != dst {
+		if result != &dst {
 			t.Errorf("AddTo should use dst when provided")
 		}
 
@@ -258,7 +258,7 @@ func TestAddTo(t *testing.T) {
 func TestSum(t *testing.T) {
 	tests := []struct {
 		name     string
-		t        *Tensor
+		t        Tensor
 		dims     []int
 		expected []float32
 		expShape []int
@@ -340,7 +340,7 @@ func TestMean(t *testing.T) {
 func TestMax(t *testing.T) {
 	tests := []struct {
 		name     string
-		t        *Tensor
+		t        Tensor
 		dims     []int
 		expected []float32
 	}{
@@ -375,7 +375,7 @@ func TestMax(t *testing.T) {
 func TestMin(t *testing.T) {
 	tests := []struct {
 		name     string
-		t        *Tensor
+		t        Tensor
 		dims     []int
 		expected []float32
 	}{

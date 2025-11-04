@@ -9,7 +9,7 @@ import (
 func TestFlat(t *testing.T) {
 	tests := []struct {
 		name     string
-		tensor   *Tensor
+		tensor   Tensor
 		expected []float32
 	}{
 		{
@@ -29,7 +29,7 @@ func TestFlat(t *testing.T) {
 		},
 		{
 			name:     "nil tensor",
-			tensor:   nil,
+			tensor:   Tensor{},
 			expected: nil,
 		},
 	}
@@ -38,7 +38,7 @@ func TestFlat(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.tensor.Flat()
 
-			if tt.tensor == nil {
+			if tt.tensor.Empty() {
 				if result != nil {
 					t.Errorf("Flat() of nil tensor should return nil, got %v", result)
 				}
@@ -221,7 +221,7 @@ func TestSetAt(t *testing.T) {
 func TestReshape(t *testing.T) {
 	tests := []struct {
 		name        string
-		tensor      *Tensor
+		tensor      Tensor
 		newShape    []int
 		expected    []float32
 		shouldPanic bool
@@ -336,8 +336,4 @@ func TestReshape(t *testing.T) {
 			}
 		})
 	}
-
-	// Test nil tensor
-	result := (*Tensor)(nil).Reshape([]int{1})
-	assert.Nil(t, result, "Reshape() of nil tensor should return nil")
 }

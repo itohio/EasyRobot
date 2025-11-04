@@ -11,8 +11,9 @@ import (
 // vector: [M] tensor (input vector)
 // result: [N] tensor (output vector)
 // Uses fp32 primitive.Gemv_T internally.
-func (t *Tensor) MatVecMulTransposed(matrix *Tensor, vector *Tensor, alpha, beta float32) *Tensor {
-	if t == nil || matrix == nil || vector == nil {
+// NOTE: Does not guarantee returning a
+func (t *Tensor) MatVecMulTransposed(matrix Tensor, vector Tensor, alpha, beta float32) *Tensor {
+	if t.shape == nil || matrix.shape == nil || vector.shape == nil {
 		return nil
 	}
 
@@ -33,29 +34,30 @@ func (t *Tensor) MatVecMulTransposed(matrix *Tensor, vector *Tensor, alpha, beta
 	M, N := matrixShape[0], matrixShape[1]
 
 	// Ensure result tensor has correct shape
-	var result *Tensor
+	var result Tensor
 	tShape := t.Shape()
 	if len(tShape) == 1 && tShape[0] == N {
 		// Reuse provided tensor if shape matches
-		result = t
+		result = *t
 	} else {
 		// Create new result tensor
 		result = New(t.dtype, NewShape(N))
 	}
+	resultPtr := &result
 
 	// Leading dimension of matrix (row-major: number of columns)
 	ldA := N
 
 	// Use primitive.Gemv_T
 	fp32.Gemv_T(
-		result.data, // y (output)
-		matrix.data, // A (matrix)
-		vector.data, // x (vector)
-		ldA, M, N,   // leading dimension, rows, cols
+		resultPtr.data, // y (output)
+		matrix.data,    // A (matrix)
+		vector.data,    // x (vector)
+		ldA, M, N,      // leading dimension, rows, cols
 		alpha, beta, // scaling factors
 	)
 
-	return result
+	return resultPtr
 }
 
 // MatMulTransposed performs matrix multiplication with optional transposition.
@@ -64,8 +66,8 @@ func (t *Tensor) MatVecMulTransposed(matrix *Tensor, vector *Tensor, alpha, beta
 // If both are false: uses Gemm_NN (A @ B)
 // If both are true: uses Gemm_TT (A^T @ B^T)
 // Returns result tensor (creates new one if dst is nil, otherwise uses dst).
-func (t *Tensor) MatMulTransposed(other *Tensor, transposeA, transposeB bool, dst *Tensor) *Tensor {
-	if t == nil || other == nil {
+func (t Tensor) MatMulTransposed(other Tensor, transposeA, transposeB bool, dst *Tensor) *Tensor {
+	if t.shape == nil || other.shape == nil {
 		return nil
 	}
 
@@ -119,7 +121,8 @@ func (t *Tensor) MatMulTransposed(other *Tensor, transposeA, transposeB bool, ds
 		}
 		result = dst
 	} else {
-		result = New(t.dtype, NewShape(resultShape...))
+		resultVal := New(t.dtype, NewShape(resultShape...))
+		result = &resultVal
 	}
 
 	// Handle 2D case
@@ -229,12 +232,13 @@ func (t *Tensor) MatMulTransposed(other *Tensor, transposeA, transposeB bool, ds
 // AddScaled adds a scaled tensor to this tensor in-place: t = t + alpha * other
 // Uses fp32 primitive.Axpy internally.
 // Returns the tensor itself for method chaining.
-func (t *Tensor) AddScaled(other *Tensor, alpha float32) *Tensor {
-	if t == nil || other == nil {
+func (t *Tensor) AddScaled(other Tensor, alpha float32) *Tensor {
+	if t.shape == nil || other.shape == nil {
 		return t
 	}
 
-	if !t.sameShape(other) {
+	tVal := *t
+	if !tVal.sameShape(other) {
 		panic(fmt.Sprintf("tensor.AddScaled: shape mismatch: %v vs %v", t.Shape(), other.Shape()))
 	}
 

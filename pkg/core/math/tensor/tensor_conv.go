@@ -12,8 +12,8 @@ import (
 // Bias shape: [outChannels] (optional, can be nil)
 // Output shape: [batch, outChannels, outHeight, outWidth]
 // Uses fp32 primitive.Conv2D for optimized computation
-func (t *Tensor) Conv2D(kernel, bias *Tensor, stride, padding []int) *Tensor {
-	if t == nil || kernel == nil {
+func (t Tensor) Conv2D(kernel, bias Tensor, stride, padding []int) *Tensor {
+	if t.shape == nil || kernel.shape == nil {
 		return nil
 	}
 
@@ -62,7 +62,7 @@ func (t *Tensor) Conv2D(kernel, bias *Tensor, stride, padding []int) *Tensor {
 
 	// Validate bias if provided
 	var biasData []float32
-	if bias != nil {
+	if bias.shape != nil {
 		biasShape := bias.Shape()
 		if len(biasShape) == 1 && biasShape[0] == outChannels {
 			biasData = bias.Data()
@@ -80,10 +80,11 @@ func (t *Tensor) Conv2D(kernel, bias *Tensor, stride, padding []int) *Tensor {
 
 	// Create output tensor
 	result := New(t.dtype, NewShape(batchSize, outChannels, outHeight, outWidth))
+	resultPtr := &result
 
 	// Call fp32.Conv2D
 	fp32.Conv2D(
-		result.data,
+		resultPtr.data,
 		t.data,
 		kernel.data,
 		batchSize,
@@ -102,12 +103,12 @@ func (t *Tensor) Conv2D(kernel, bias *Tensor, stride, padding []int) *Tensor {
 		biasData,
 	)
 
-	return result
+	return resultPtr
 }
 
 // Conv2DTo performs 2D convolution and stores result in dst (or creates new tensor if dst is nil)
-func (t *Tensor) Conv2DTo(kernel, bias, dst *Tensor, stride, padding []int) *Tensor {
-	if t == nil || kernel == nil {
+func (t Tensor) Conv2DTo(kernel, bias Tensor, dst *Tensor, stride, padding []int) *Tensor {
+	if t.shape == nil || kernel.shape == nil {
 		return nil
 	}
 
@@ -120,11 +121,12 @@ func (t *Tensor) Conv2DTo(kernel, bias, dst *Tensor, stride, padding []int) *Ten
 		return result
 	}
 
-	if !result.sameShape(dst) {
+	resultVal := *result
+	if !resultVal.sameShape(*dst) {
 		panic(fmt.Sprintf("tensor.Conv2DTo: destination shape mismatch: %v vs %v", dst.Shape(), result.Shape()))
 	}
 
-	result.copyTo(dst)
+	resultVal.copyTo(dst)
 	return dst
 }
 
@@ -134,8 +136,8 @@ func (t *Tensor) Conv2DTo(kernel, bias, dst *Tensor, stride, padding []int) *Ten
 // Bias shape: [outChannels] (optional, can be nil)
 // Output shape: [batch, outChannels, outHeight, outWidth]
 // Uses fp32 primitive.Conv2DTransposed for optimized computation
-func (t *Tensor) Conv2DTransposed(kernel, bias *Tensor, stride, padding []int) *Tensor {
-	if t == nil || kernel == nil {
+func (t Tensor) Conv2DTransposed(kernel, bias Tensor, stride, padding []int) *Tensor {
+	if t.shape == nil || kernel.shape == nil {
 		return nil
 	}
 
@@ -186,7 +188,7 @@ func (t *Tensor) Conv2DTransposed(kernel, bias *Tensor, stride, padding []int) *
 
 	// Validate bias if provided
 	var biasData []float32
-	if bias != nil {
+	if bias.shape != nil {
 		biasShape := bias.Shape()
 		if len(biasShape) == 1 && biasShape[0] == outChannels {
 			biasData = bias.Data()
@@ -197,10 +199,11 @@ func (t *Tensor) Conv2DTransposed(kernel, bias *Tensor, stride, padding []int) *
 
 	// Create output tensor
 	result := New(t.dtype, NewShape(batchSize, outChannels, outHeight, outWidth))
+	resultPtr := &result
 
 	// Call fp32.Conv2DTransposed
 	fp32.Conv2DTransposed(
-		result.data,
+		resultPtr.data,
 		t.data,
 		kernel.data,
 		batchSize,
@@ -219,7 +222,7 @@ func (t *Tensor) Conv2DTransposed(kernel, bias *Tensor, stride, padding []int) *
 		biasData,
 	)
 
-	return result
+	return resultPtr
 }
 
 // Conv1D performs 1D convolution (simplified 2D convolution with width=1)
@@ -227,8 +230,8 @@ func (t *Tensor) Conv2DTransposed(kernel, bias *Tensor, stride, padding []int) *
 // Kernel shape: [outChannels, inChannels, kernelLen]
 // Bias shape: [outChannels] (optional)
 // Output shape: [batch, outChannels, outLen] or [outChannels, outLen]
-func (t *Tensor) Conv1D(kernel, bias *Tensor, stride, padding int) *Tensor {
-	if t == nil || kernel == nil {
+func (t Tensor) Conv1D(kernel, bias Tensor, stride, padding int) *Tensor {
+	if t.shape == nil || kernel.shape == nil {
 		return nil
 	}
 
@@ -282,7 +285,7 @@ func (t *Tensor) Conv1D(kernel, bias *Tensor, stride, padding int) *Tensor {
 	kernel4D := kernel.Clone().Reshape([]int{outChannels, inChannels, kernelLen, 1})
 
 	// Use Conv2D with width=1
-	result4D := input4D.Conv2D(kernel4D, bias, []int{stride, 1}, []int{padding, 0})
+	result4D := input4D.Conv2D(*kernel4D, bias, []int{stride, 1}, []int{padding, 0})
 
 	// Reshape back to 3D: [batch, outChannels, outLen, 1] -> [batch, outChannels, outLen]
 	result := result4D.Reshape([]int{batchSize, outChannels, outLen})
@@ -296,8 +299,8 @@ func (t *Tensor) Conv1D(kernel, bias *Tensor, stride, padding int) *Tensor {
 }
 
 // Conv1DTo performs 1D convolution and stores result in dst (or creates new tensor if dst is nil).
-func (t *Tensor) Conv1DTo(kernel, bias *Tensor, dst *Tensor, stride, padding int) *Tensor {
-	if t == nil || kernel == nil {
+func (t Tensor) Conv1DTo(kernel, bias Tensor, dst *Tensor, stride, padding int) *Tensor {
+	if t.shape == nil || kernel.shape == nil {
 		return nil
 	}
 
@@ -349,7 +352,7 @@ func (t *Tensor) Conv1DTo(kernel, bias *Tensor, dst *Tensor, stride, padding int
 	// Allocate destination if needed
 	expectedShape := NewShape(outputShape...)
 	if dst == nil {
-		dst = New(DTFP32, expectedShape)
+		*dst = New(DTFP32, expectedShape)
 	} else {
 		if len(dst.Shape()) != len(expectedShape) {
 			panic(fmt.Sprintf("tensor.Conv1DTo: destination shape %v doesn't match expected shape %v", dst.Shape(), expectedShape))
@@ -361,23 +364,23 @@ func (t *Tensor) Conv1DTo(kernel, bias *Tensor, dst *Tensor, stride, padding int
 		}
 	}
 
-	// Create 4D views of input and kernel tensors (share data)
-	input4D := &Tensor{dtype: t.dtype, shape: NewShape(batchSize, inChannels, length, 1), data: t.data}
-	kernel4D := &Tensor{dtype: kernel.dtype, shape: NewShape(outChannels, inChannels, kernelLen, 1), data: kernel.data}
+	// Create 4D views of input and kernel tensors (share data) using FromFloat32
+	input4D := FromFloat32(NewShape(batchSize, inChannels, length, 1), t.data)
+	kernel4D := FromFloat32(NewShape(outChannels, inChannels, kernelLen, 1), kernel.data)
 
 	// Create 4D view of output tensor (shares data with dst)
-	output4D := &Tensor{dtype: dst.dtype, shape: NewShape(batchSize, outChannels, outLen, 1), data: dst.data}
+	output4D := FromFloat32(NewShape(batchSize, outChannels, outLen, 1), dst.data)
 
 	// Use Conv2DTo with width=1
-	input4D.Conv2DTo(kernel4D, bias, output4D, []int{stride, 1}, []int{padding, 0})
+	input4D.Conv2DTo(kernel4D, bias, &output4D, []int{stride, 1}, []int{padding, 0})
 
 	return dst
 }
 
 // Conv2DKernelGrad computes kernel gradients for 2D convolution
 // Returns the kernel gradient tensor with the same shape as the kernel
-func (t *Tensor) Conv2DKernelGrad(outputGrad *Tensor, kernel *Tensor, stride, padding []int) *Tensor {
-	if t == nil || outputGrad == nil || kernel == nil {
+func (t Tensor) Conv2DKernelGrad(outputGrad Tensor, kernel Tensor, stride, padding []int) *Tensor {
+	if t.shape == nil || outputGrad.shape == nil || kernel.shape == nil {
 		return nil
 	}
 
@@ -456,13 +459,13 @@ func (t *Tensor) Conv2DKernelGrad(outputGrad *Tensor, kernel *Tensor, stride, pa
 		padW,
 	)
 
-	return kernelGrad
+	return &kernelGrad
 }
 
 // Conv1DKernelGrad computes kernel gradients for 1D convolution
 // Returns the kernel gradient tensor with the same shape as the kernel
-func (t *Tensor) Conv1DKernelGrad(outputGrad *Tensor, kernel *Tensor, stride, padding int) *Tensor {
-	if t == nil || outputGrad == nil || kernel == nil {
+func (t Tensor) Conv1DKernelGrad(outputGrad Tensor, kernel Tensor, stride, padding int) *Tensor {
+	if t.shape == nil || outputGrad.shape == nil || kernel.shape == nil {
 		return nil
 	}
 
@@ -540,7 +543,7 @@ func (t *Tensor) Conv1DKernelGrad(outputGrad *Tensor, kernel *Tensor, stride, pa
 		padding,
 	)
 
-	return kernelGrad
+	return &kernelGrad
 }
 
 // Conv1DTransposed performs transposed 1D convolution (deconvolution)
@@ -548,8 +551,8 @@ func (t *Tensor) Conv1DKernelGrad(outputGrad *Tensor, kernel *Tensor, stride, pa
 // Kernel shape: [outChannels, inChannels, kernelLen] (forward kernel format)
 // Output shape: [batch, inChannels, outLength] (note: outputs inChannels, not outChannels)
 // This accepts the forward kernel format and internally transposes it
-func (t *Tensor) Conv1DTransposed(kernel *Tensor, bias *Tensor, stride, padding int) *Tensor {
-	if t == nil || kernel == nil {
+func (t Tensor) Conv1DTransposed(kernel Tensor, bias Tensor, stride, padding int) *Tensor {
+	if t.shape == nil || kernel.shape == nil {
 		return nil
 	}
 
@@ -598,7 +601,7 @@ func (t *Tensor) Conv1DTransposed(kernel *Tensor, bias *Tensor, stride, padding 
 	// Input: [batch, inChannels, length] -> [batch, inChannels, length, 1]
 	// Kernel: [inChannels, outChannels, kernelLen] -> [inChannels, outChannels, kernelLen, 1]
 	input4D := t.Clone().Reshape([]int{batchSize, inChannels, inLength, 1})
-	kernel4D := kernel.Clone().Reshape([]int{inChannels, inChannelsKernel, kernelLen, 1})
+	kernel4D := *kernel.Clone().Reshape([]int{inChannels, inChannelsKernel, kernelLen, 1})
 
 	// Use Conv2DTransposed with width=1
 	result4D := input4D.Conv2DTransposed(kernel4D, bias, []int{stride, 1}, []int{padding, 0})
@@ -617,8 +620,8 @@ func (t *Tensor) Conv1DTransposed(kernel *Tensor, bias *Tensor, stride, padding 
 // MaxPool2D performs max pooling operation
 // Input shape: [batch, channels, height, width]
 // Output shape: [batch, channels, outHeight, outWidth]
-func (t *Tensor) MaxPool2D(kernelSize, stride, padding []int) *Tensor {
-	if t == nil {
+func (t Tensor) MaxPool2D(kernelSize, stride, padding []int) *Tensor {
+	if t.shape == nil {
 		return nil
 	}
 
@@ -654,23 +657,24 @@ func (t *Tensor) MaxPool2D(kernelSize, stride, padding []int) *Tensor {
 	outWidth := (inWidth+2*padW-kernelW)/strideW + 1
 
 	result := New(t.dtype, NewShape(batchSize, channels, outHeight, outWidth))
+	resultPtr := &result
 
 	// Perform max pooling using fp32
 	fp32.MaxPool2D(
-		result.Data(),
+		resultPtr.Data(),
 		t.Data(),
 		batchSize, channels, inHeight, inWidth,
 		kernelH, kernelW, strideH, strideW, padH, padW,
 	)
 
-	return result
+	return resultPtr
 }
 
 // AvgPool2D performs average pooling operation
 // Input shape: [batch, channels, height, width]
 // Output shape: [batch, channels, outHeight, outWidth]
-func (t *Tensor) AvgPool2D(kernelSize, stride, padding []int) *Tensor {
-	if t == nil {
+func (t Tensor) AvgPool2D(kernelSize, stride, padding []int) *Tensor {
+	if t.shape == nil {
 		return nil
 	}
 
@@ -695,23 +699,24 @@ func (t *Tensor) AvgPool2D(kernelSize, stride, padding []int) *Tensor {
 	outWidth := (inWidth+2*padW-kernelW)/strideW + 1
 
 	result := New(t.dtype, NewShape(batchSize, channels, outHeight, outWidth))
+	resultPtr := &result
 
 	// Perform average pooling using fp32
 	fp32.AvgPool2D(
-		result.Data(),
+		resultPtr.Data(),
 		t.Data(),
 		batchSize, channels, inHeight, inWidth,
 		kernelH, kernelW, strideH, strideW, padH, padW,
 	)
 
-	return result
+	return resultPtr
 }
 
 // GlobalAvgPool2D performs global average pooling
 // Input shape: [batch, channels, height, width]
 // Output shape: [batch, channels]
-func (t *Tensor) GlobalAvgPool2D() *Tensor {
-	if t == nil {
+func (t Tensor) GlobalAvgPool2D() *Tensor {
+	if t.shape == nil {
 		return nil
 	}
 
@@ -726,15 +731,16 @@ func (t *Tensor) GlobalAvgPool2D() *Tensor {
 	width := tShape[3]
 
 	result := New(t.dtype, NewShape(batchSize, channels))
+	resultPtr := &result
 
 	// Perform global average pooling using fp32
 	fp32.GlobalAvgPool2D(
-		result.Data(),
+		resultPtr.Data(),
 		t.Data(),
 		batchSize, channels, height, width,
 	)
 
-	return result
+	return resultPtr
 }
 
 // DepthwiseConv2D performs depthwise separable 2D convolution
@@ -743,8 +749,8 @@ func (t *Tensor) GlobalAvgPool2D() *Tensor {
 // Bias shape: [inChannels] (optional, can be nil)
 // Output shape: [batch, inChannels, outHeight, outWidth]
 // Each input channel is convolved with its own kernel (depth multiplier = 1)
-func (t *Tensor) DepthwiseConv2D(kernel, bias *Tensor, stride, padding []int) *Tensor {
-	if t == nil || kernel == nil {
+func (t Tensor) DepthwiseConv2D(kernel, bias Tensor, stride, padding []int) *Tensor {
+	if t.shape == nil || kernel.shape == nil {
 		return nil
 	}
 
@@ -794,7 +800,7 @@ func (t *Tensor) DepthwiseConv2D(kernel, bias *Tensor, stride, padding []int) *T
 	outWidth := (inWidth+2*padW-kernelW)/strideW + 1
 
 	var biasData []float32
-	if bias != nil {
+	if bias.shape != nil {
 		biasShape := bias.Shape()
 		if len(biasShape) == 1 && biasShape[0] == inChannels {
 			biasData = bias.Data()
@@ -804,6 +810,7 @@ func (t *Tensor) DepthwiseConv2D(kernel, bias *Tensor, stride, padding []int) *T
 	}
 
 	result := New(t.dtype, NewShape(batchSize, inChannels, outHeight, outWidth))
+	resultPtr := &result
 
 	// Convert kernel to 3D format [channels, kernelH, kernelW] for fp32 function
 	kernelData := kernel.Data()
@@ -820,7 +827,7 @@ func (t *Tensor) DepthwiseConv2D(kernel, bias *Tensor, stride, padding []int) *T
 
 	// Perform depthwise convolution using fp32
 	fp32.DepthwiseConv2D(
-		result.Data(),
+		resultPtr.Data(),
 		t.Data(),
 		kernelData,
 		biasData,
@@ -828,7 +835,7 @@ func (t *Tensor) DepthwiseConv2D(kernel, bias *Tensor, stride, padding []int) *T
 		kernelH, kernelW, strideH, strideW, padH, padW,
 	)
 
-	return result
+	return resultPtr
 }
 
 // GroupConv2D performs grouped 2D convolution
@@ -837,8 +844,8 @@ func (t *Tensor) DepthwiseConv2D(kernel, bias *Tensor, stride, padding []int) *T
 // Bias shape: [outChannels] (optional, can be nil)
 // groups: number of groups (inChannels must be divisible by groups)
 // Output shape: [batch, outChannels, outHeight, outWidth]
-func (t *Tensor) GroupConv2D(kernel, bias *Tensor, stride, padding []int, groups int) *Tensor {
-	if t == nil || kernel == nil {
+func (t Tensor) GroupConv2D(kernel, bias Tensor, stride, padding []int, groups int) *Tensor {
+	if t.shape == nil || kernel.shape == nil {
 		return nil
 	}
 
@@ -892,7 +899,7 @@ func (t *Tensor) GroupConv2D(kernel, bias *Tensor, stride, padding []int, groups
 	outWidth := (inWidth+2*padW-kernelW)/strideW + 1
 
 	var biasData []float32
-	if bias != nil {
+	if bias.shape != nil {
 		biasShape := bias.Shape()
 		if len(biasShape) == 1 && biasShape[0] == outChannels {
 			biasData = bias.Data()
@@ -902,10 +909,11 @@ func (t *Tensor) GroupConv2D(kernel, bias *Tensor, stride, padding []int, groups
 	}
 
 	result := New(t.dtype, NewShape(batchSize, outChannels, outHeight, outWidth))
+	resultPtr := &result
 
 	// Perform grouped convolution using fp32
 	fp32.GroupConv2D(
-		result.Data(),
+		resultPtr.Data(),
 		t.Data(),
 		kernel.Data(),
 		biasData,
@@ -913,7 +921,7 @@ func (t *Tensor) GroupConv2D(kernel, bias *Tensor, stride, padding []int, groups
 		kernelH, kernelW, strideH, strideW, padH, padW, groups,
 	)
 
-	return result
+	return resultPtr
 }
 
 // DilatedConv2D performs dilated (atrous) 2D convolution
@@ -922,8 +930,8 @@ func (t *Tensor) GroupConv2D(kernel, bias *Tensor, stride, padding []int, groups
 // Bias shape: [outChannels] (optional, can be nil)
 // dilation: [dilationH, dilationW] - dilation rates
 // Output shape: [batch, outChannels, outHeight, outWidth]
-func (t *Tensor) DilatedConv2D(kernel, bias *Tensor, stride, padding, dilation []int) *Tensor {
-	if t == nil || kernel == nil {
+func (t Tensor) DilatedConv2D(kernel, bias Tensor, stride, padding, dilation []int) *Tensor {
+	if t.shape == nil || kernel.shape == nil {
 		return nil
 	}
 
@@ -976,7 +984,7 @@ func (t *Tensor) DilatedConv2D(kernel, bias *Tensor, stride, padding, dilation [
 	outWidth := (inWidth+2*padW-effKernelW)/strideW + 1
 
 	var biasData []float32
-	if bias != nil {
+	if bias.shape != nil {
 		biasShape := bias.Shape()
 		if len(biasShape) == 1 && biasShape[0] == outChannels {
 			biasData = bias.Data()
@@ -986,10 +994,11 @@ func (t *Tensor) DilatedConv2D(kernel, bias *Tensor, stride, padding, dilation [
 	}
 
 	result := New(t.dtype, NewShape(batchSize, outChannels, outHeight, outWidth))
+	resultPtr := &result
 
 	// Perform dilated convolution using fp32
 	fp32.DilatedConv2D(
-		result.Data(),
+		resultPtr.Data(),
 		t.Data(),
 		kernel.Data(),
 		biasData,
@@ -997,7 +1006,7 @@ func (t *Tensor) DilatedConv2D(kernel, bias *Tensor, stride, padding, dilation [
 		kernelH, kernelW, strideH, strideW, padH, padW, dilationH, dilationW,
 	)
 
-	return result
+	return resultPtr
 }
 
 // Conv3D performs 3D convolution
@@ -1007,8 +1016,8 @@ func (t *Tensor) DilatedConv2D(kernel, bias *Tensor, stride, padding, dilation [
 // Stride: [strideD, strideH, strideW]
 // Padding: [padD, padH, padW]
 // Output shape: [batch, outChannels, outDepth, outHeight, outWidth]
-func (t *Tensor) Conv3D(kernel, bias *Tensor, stride, padding []int) *Tensor {
-	if t == nil || kernel == nil {
+func (t Tensor) Conv3D(kernel, bias Tensor, stride, padding []int) *Tensor {
+	if t.shape == nil || kernel.shape == nil {
 		return nil
 	}
 
@@ -1057,7 +1066,7 @@ func (t *Tensor) Conv3D(kernel, bias *Tensor, stride, padding []int) *Tensor {
 	outWidth := (width+2*padW-kernelW)/strideW + 1
 
 	var biasData []float32
-	if bias != nil {
+	if bias.shape != nil {
 		biasShape := bias.Shape()
 		if len(biasShape) == 1 && biasShape[0] == outChannels {
 			biasData = bias.Data()
@@ -1067,10 +1076,11 @@ func (t *Tensor) Conv3D(kernel, bias *Tensor, stride, padding []int) *Tensor {
 	}
 
 	result := New(t.dtype, NewShape(batchSize, outChannels, outDepth, outHeight, outWidth))
+	resultPtr := &result
 
 	// Perform 3D convolution using fp32
 	fp32.Conv3D(
-		result.Data(),
+		resultPtr.Data(),
 		t.Data(),
 		kernel.Data(),
 		biasData,
@@ -1078,15 +1088,15 @@ func (t *Tensor) Conv3D(kernel, bias *Tensor, stride, padding []int) *Tensor {
 		kernelD, kernelH, kernelW, strideD, strideH, strideW, padD, padH, padW,
 	)
 
-	return result
+	return resultPtr
 }
 
 // AdaptiveAvgPool2D performs adaptive average pooling to a fixed output size
 // Input shape: [batch, channels, height, width]
 // outputSize: [outHeight, outWidth] - target output spatial dimensions
 // Output shape: [batch, channels, outHeight, outWidth]
-func (t *Tensor) AdaptiveAvgPool2D(outputSize []int) *Tensor {
-	if t == nil {
+func (t Tensor) AdaptiveAvgPool2D(outputSize []int) *Tensor {
+	if t.shape == nil {
 		return nil
 	}
 
@@ -1112,23 +1122,24 @@ func (t *Tensor) AdaptiveAvgPool2D(outputSize []int) *Tensor {
 	}
 
 	result := New(t.dtype, NewShape(batchSize, channels, outHeight, outWidth))
+	resultPtr := &result
 
 	// Perform adaptive average pooling using fp32
 	fp32.AdaptiveAvgPool2D(
-		result.Data(),
+		resultPtr.Data(),
 		t.Data(),
 		batchSize, channels, height, width, outHeight, outWidth,
 	)
 
-	return result
+	return resultPtr
 }
 
 // Im2Col converts image patches to columns (for convolution)
 // Input shape: [batch, channels, height, width]
 // Output shape: [batch*outHeight*outWidth, channels*kernelH*kernelW]
 // Uses fp32.Im2Col for optimized computation
-func (t *Tensor) Im2Col(kernelSize, stride, padding []int) *Tensor {
-	if t == nil {
+func (t Tensor) Im2Col(kernelSize, stride, padding []int) *Tensor {
+	if t.shape == nil {
 		return nil
 	}
 
@@ -1168,10 +1179,11 @@ func (t *Tensor) Im2Col(kernelSize, stride, padding []int) *Tensor {
 	colWidth := channels * kernelH * kernelW
 
 	result := New(t.dtype, NewShape(colHeight, colWidth))
+	resultPtr := &result
 
 	// Call fp32.Im2Col
 	fp32.Im2Col(
-		result.data,
+		resultPtr.data,
 		t.data,
 		batchSize,
 		channels,
@@ -1185,15 +1197,15 @@ func (t *Tensor) Im2Col(kernelSize, stride, padding []int) *Tensor {
 		strideW,
 	)
 
-	return result
+	return resultPtr
 }
 
 // Col2Im converts columns back to image (inverse of Im2Col)
 // Input shape: [batch*outHeight*outWidth, channels*kernelH*kernelW]
 // Output shape: [batch, channels, height, width]
 // Uses fp32.Col2Im for optimized computation
-func (t *Tensor) Col2Im(outputShape, kernelSize, stride, padding []int) *Tensor {
-	if t == nil {
+func (t Tensor) Col2Im(outputShape, kernelSize, stride, padding []int) *Tensor {
+	if t.shape == nil {
 		return nil
 	}
 
@@ -1238,10 +1250,11 @@ func (t *Tensor) Col2Im(outputShape, kernelSize, stride, padding []int) *Tensor 
 	}
 
 	result := New(t.dtype, NewShape(batchSize, channels, height, width))
+	resultPtr := &result
 
 	// Call fp32.Col2Im
 	fp32.Col2Im(
-		result.data,
+		resultPtr.data,
 		t.data,
 		batchSize,
 		channels,
@@ -1255,5 +1268,5 @@ func (t *Tensor) Col2Im(outputShape, kernelSize, stride, padding []int) *Tensor 
 		strideW,
 	)
 
-	return result
+	return resultPtr
 }

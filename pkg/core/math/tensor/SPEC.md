@@ -785,6 +785,11 @@ All tensor operations delegate to `math/primitive/fp32` when possible:
 | `Im2Col` | `fp32.Im2Col` | Image to column |
 | `Col2Im` | `fp32.Col2Im` | Column to image |
 | `BroadcastTo` | `fp32.ExpandTo` | Broadcasting operations |
+| `ZerosLike` | `tensor.New()` | Create zero tensor with same shape |
+| `OnesLike` | Direct fill | Create ones tensor with same shape |
+| `FullLike` | Direct fill | Create tensor filled with value |
+| `GreaterThan` | `fp32.ElemGreaterThan` | Element-wise greater than comparison |
+| `Where` | `fp32.ElemWhere` | Conditional element selection |
 
 ## Deprecated Gradient Functions
 
@@ -796,12 +801,12 @@ The following tensor-level gradient functions are **DEPRECATED** and will be rem
 
 | Function | Replacement |
 |----------|-------------|
-| `tensor.ReLUGrad(gradOutput, dst)` | Compose from `tensor.Where()` + `tensor.GreaterThan()` in layer implementations |
-| `tensor.SigmoidGrad(gradOutput, dst)` | Compose from element-wise operations in layer implementations |
-| `tensor.TanhGrad(gradOutput, dst)` | Compose from element-wise operations in layer implementations |
-| `tensor.SoftmaxGrad(gradOutput, dim, dst)` | Compose from element-wise and reduction operations in layer implementations |
-| `tensor.Conv2DKernelGrad(outputGrad, kernel, stride, padding)` | Compose from `Im2Col` + `MatMul` operations in layer implementations |
-| `tensor.Conv1DKernelGrad(outputGrad, kernel, stride, padding)` | Compose from matrix operations in layer implementations |
+| `tensor.ReLUGrad(gradOutput, dst)` | `gradOutput.Mul(input.GreaterThan(ZerosLike(input)))` |
+| `tensor.SigmoidGrad(gradOutput, dst)` | `gradOutput.Mul(output).Mul(OnesLike(output).Sub(output))` |
+| `tensor.TanhGrad(gradOutput, dst)` | `gradOutput.Mul(OnesLike(output).Sub(output.Mul(output)))` |
+| `tensor.SoftmaxGrad(gradOutput, dim, dst)` | Complex composition using `Sum()`, `BroadcastTo()`, `Mul()`, `Sub()` |
+| `tensor.Conv2DKernelGrad(outputGrad, kernel, stride, padding)` | `outputGrad.Im2Col(...).MatMul(input.Im2Col(...).T())` |
+| `tensor.Conv1DKernelGrad(outputGrad, kernel, stride, padding)` | Matrix operations on reshaped tensors |
 
 ### Architectural Rationale
 
@@ -820,9 +825,8 @@ Replace direct gradient function calls in layer `Backward()` methods with compos
 // OLD: Direct gradient function call
 gradInput := input.ReLUGrad(&gradOutput, nil)
 
-// NEW: Compose from primitives
-zeroTensor := tensor.ZerosLike(input)
-mask := input.GreaterThan(zeroTensor)
+// NEW: Compose from primitives using utility functions
+mask := input.GreaterThan(ZerosLike(input))
 gradInput := gradOutput.Mul(mask)
 ```
 

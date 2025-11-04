@@ -10,8 +10,8 @@ import (
 func TestMatMul2D(t *testing.T) {
 	tests := []struct {
 		name     string
-		t1       *Tensor
-		t2       *Tensor
+		t1       Tensor
+		t2       Tensor
 		expected []float32
 		expShape []int
 	}{
@@ -119,9 +119,6 @@ func TestMatMulTo(t *testing.T) {
 
 		result := t1.MatMulTo(t2, nil)
 
-		if result == nil {
-			t.Fatal("MatMulTo returned nil")
-		}
 
 		expectedShape := []int{2, 2}
 		resultShape := result.Shape()
@@ -137,7 +134,7 @@ func TestMatMulTo(t *testing.T) {
 		t2 := FromFloat32(NewShape(3, 2), []float32{1, 2, 3, 4, 5, 6})
 		dst := New(DTFP32, NewShape(2, 2))
 
-		result := t1.MatMulTo(t2, dst)
+		result := t1.MatMulTo(t2, &dst)
 
 		assert.Equal(t, dst, result, "MatMulTo should return dst")
 
@@ -150,7 +147,7 @@ func TestMatMulTo(t *testing.T) {
 func TestTranspose2D(t *testing.T) {
 	tests := []struct {
 		name     string
-		t        *Tensor
+		t        Tensor
 		expected []float32
 		expShape []int
 	}{
@@ -210,7 +207,7 @@ func TestTransposeTo(t *testing.T) {
 		t1 := FromFloat32(NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
 		dst := New(DTFP32, NewShape(3, 2))
 
-		result := t1.TransposeTo(dst)
+		result := t1.TransposeTo(&dst)
 
 		assert.Equal(t, dst, result, "TransposeTo should return dst")
 
@@ -245,7 +242,7 @@ func TestDot(t *testing.T) {
 func TestNorm(t *testing.T) {
 	tests := []struct {
 		name     string
-		t        *Tensor
+		t        Tensor
 		ord      int
 		expected float32
 	}{

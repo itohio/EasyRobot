@@ -189,14 +189,68 @@ func (c *Conv1D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		}
 	}
 
-	// Compute kernel gradient efficiently using Tensor API
+	// Compute kernel gradient using primitive composition
 	if c.Base.CanLearn() && kernelParam.RequiresGrad {
 		if kernelParam.Grad.Shape().Rank() == 0 {
 			kernelParam.Grad = *tensor.New(tensor.DTFP32, kernelParam.Data.Shape())
 		}
-		// Compute kernel gradients using efficient Conv1DKernelGrad
-		kernelGrad := input.Conv1DKernelGrad(&gradOutput, &kernelParam.Data, c.stride, c.pad)
-		copy(kernelParam.Grad.Data(), kernelGrad.Data())
+
+		// Conv1D kernel gradient computation using primitives
+		// For 1D conv: output[b,oc,ol] = sum_ic,k: input[b,ic,il+k] * kernel[oc,ic,k]
+		// Kernel gradient: dL/dkernel[oc,ic,k] = sum_b,ol: gradOutput[b,oc,ol] * input[b,ic,il+k]
+
+		// Reshape for matrix operations:
+		// input: [batch, inChannels, inLength] -> [batch*inChannels, inLength]
+		// gradOutput: [batch, outChannels, outLength] -> [batch*outChannels, outLength]
+
+		inputShape := input.Shape()
+		gradOutputShape := gradOutput.Shape()
+		batchSize := inputShape[0]
+		inChannels := inputShape[1]
+		outChannels := gradOutputShape[1]
+		inLength := inputShape[2]
+		outLength := gradOutputShape[2]
+
+		// Flatten batch and channel dimensions for matrix operations
+		inputFlat := input.Reshape([]int{batchSize * inChannels, inLength})
+		gradOutputFlat := gradOutput.Reshape([]int{batchSize * outChannels, outLength})
+
+		// Create toeplitz-like matrices for convolution
+		// For each position, we need to correlate gradOutput with input patches
+		// This is equivalent to: kernelGrad = gradOutput_patches^T @ input_patches
+
+		// Create the kernel gradient by computing correlations
+		// Result shape: [outChannels, inChannels * kernelLen]
+		kernelGradFlat := tensor.New(tensor.DTFP32, tensor.NewShape(outChannels, inChannels*c.kernelLen))
+
+		// For each output channel and kernel position, compute the correlation
+		for oc := 0; oc < outChannels; oc++ {
+			for ic := 0; ic < inChannels; ic++ {
+				for k := 0; k < c.kernelLen; k++ {
+					sum := float32(0.0)
+
+					// Correlate gradOutput[oc] with input[ic] at each valid position
+					for b := 0; b < batchSize; b++ {
+						for ol := 0; ol < outLength; ol++ {
+							// Corresponding input position: ol*stride + k - pad
+							il := ol*c.stride + k - c.pad
+							if il >= 0 && il < inLength {
+								gradIdx := b*outChannels + oc
+								inputIdx := b*inChannels + ic
+								sum += gradOutputFlat.At(gradIdx, ol) * inputFlat.At(inputIdx, il)
+							}
+						}
+					}
+
+					kernelGradIdx := oc*(inChannels*c.kernelLen) + ic*c.kernelLen + k
+					kernelGradFlat.Data()[kernelGradIdx] = sum
+				}
+			}
+		}
+
+		// Reshape to final kernel shape: [outChannels, inChannels, kernelLen]
+		kernelGradReshaped := kernelGradFlat.Reshape([]int{c.outChannels, c.inChannels, c.kernelLen})
+		copy(kernelParam.Grad.Data(), kernelGradReshaped.Data())
 		c.Base.SetParam(ParamKernels, kernelParam)
 	}
 

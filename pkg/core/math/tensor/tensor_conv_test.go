@@ -51,7 +51,7 @@ func TestConv2D(t *testing.T) {
 			1, 1,
 		})
 
-		result := input.Conv2D(kernel, nil, []int{1, 1}, []int{1, 1})
+		result := input.Conv2D(kernel, Empty(kernel.DataType()), []int{1, 1}, []int{1, 1})
 
 		// With padding=1, outHeight = (3+2*1-2)/1+1 = 4
 		expectedShape := []int{1, 1, 4, 4}
@@ -76,7 +76,7 @@ func TestConv2D(t *testing.T) {
 			1, 1, 1, 1, // channel 1, filter 0
 		})
 
-		result := input.Conv2D(kernel, nil, []int{1, 1}, []int{0, 0})
+		result := input.Conv2D(kernel, Empty(kernel.DataType()), []int{1, 1}, []int{0, 0})
 
 		// outHeight = (3+0-2)/1+1 = 2, outWidth = 2
 		expectedShape := []int{1, 1, 2, 2}
@@ -102,7 +102,7 @@ func TestConv2DTransposed(t *testing.T) {
 			1, 1,
 		})
 
-		result := input.Conv2DTransposed(kernel, nil, []int{1, 1}, []int{0, 0})
+		result := input.Conv2DTransposed(kernel, Empty(kernel.DataType()), []int{1, 1}, []int{0, 0})
 
 		// outHeight = (2-1)*1 - 2*0 + 2 = 3
 		expectedShape := []int{1, 1, 3, 3}
@@ -128,7 +128,7 @@ func TestConv1D(t *testing.T) {
 			1, 1, 1, // channel 1, filter 0
 		})
 
-		result := input.Conv1D(kernel, nil, 1, 0)
+		result := input.Conv1D(kernel, Empty(kernel.DataType()), 1, 0)
 
 		// outLen = (5+0-3)/1+1 = 3
 		expectedShape := []int{1, 3} // [outChannels, outLen]
@@ -149,7 +149,7 @@ func TestConv1D(t *testing.T) {
 
 		kernel := FromFloat32(NewShape(1, 2, 3), []float32{1, 1, 1, 1, 1, 1})
 
-		result := input.Conv1D(kernel, nil, 1, 0)
+		result := input.Conv1D(kernel, Empty(kernel.DataType()), 1, 0)
 
 		expectedShape := []int{2, 1, 3} // [batch, outChannels, outLen]
 		resultShape := result.Shape()
@@ -360,7 +360,7 @@ func TestDepthwiseConv2D(t *testing.T) {
 			2, 2,
 		})
 
-		result := input.DepthwiseConv2D(kernel, nil, []int{1, 1}, []int{0, 0})
+		result := input.DepthwiseConv2D(kernel, Empty(kernel.DataType()), []int{1, 1}, []int{0, 0})
 		expectedShape := []int{1, 2, 1, 1}
 		resultShape := result.Shape()
 		assert.Equal(t, len(expectedShape), len(resultShape), "Shape length mismatch")
@@ -387,7 +387,7 @@ func TestGroupConv2D(t *testing.T) {
 			kernelData[i] = float32(i + 1)
 		}
 
-		result := input.GroupConv2D(kernel, nil, []int{1, 1}, []int{0, 0}, 2)
+		result := input.GroupConv2D(kernel, Empty(kernel.DataType()), []int{1, 1}, []int{0, 0}, 2)
 
 		// Output: [1, 4, 2, 2] - same spatial size
 		expectedShape := []int{1, 4, 2, 2}
@@ -412,7 +412,7 @@ func TestDilatedConv2D(t *testing.T) {
 		kernel := FromFloat32(NewShape(1, 1, 3, 3), []float32{1, 0, 0, 0, 1, 0, 0, 0, 1})
 
 		// Dilation: [2, 2] - effective kernel size becomes (3-1)*2+1 = 5
-		result := input.DilatedConv2D(kernel, nil, []int{1, 1}, []int{0, 0}, []int{2, 2})
+		result := input.DilatedConv2D(kernel, Empty(kernel.DataType()), []int{1, 1}, []int{0, 0}, []int{2, 2})
 
 		// With dilation=2 and kernel=3x3, effective kernel is 5x5
 		// Input 5x5 with effective kernel 5x5 and stride 1, padding 0 gives 1x1 output
