@@ -30,17 +30,17 @@ func TestTrainStep_NilInputs(t *testing.T) {
 	target := tensor.FromFloat32(tensor.NewShape(1), []float32{1})
 
 	// Test nil model
-	_, err = learn.TrainStep(nil, optimizer, lossFn, *input, *target)
+	_, err = learn.TrainStep(nil, optimizer, lossFn, input, target)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "nil model")
 
 	// Test nil optimizer
-	_, err = learn.TrainStep(model, nil, lossFn, *input, *target)
+	_, err = learn.TrainStep(model, nil, lossFn, input, target)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "nil optimizer")
 
 	// Test nil loss function
-	_, err = learn.TrainStep(model, optimizer, nil, *input, *target)
+	_, err = learn.TrainStep(model, optimizer, nil, input, target)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "nil loss function")
 }
@@ -64,12 +64,12 @@ func TestTrainStep_EmptyTensors(t *testing.T) {
 	validTarget := tensor.FromFloat32(tensor.NewShape(1), []float32{1})
 
 	// Test empty input
-	_, err = learn.TrainStep(model, optimizer, lossFn, *emptyTensor, *validTarget)
+	_, err = learn.TrainStep(model, optimizer, lossFn, emptyTensor, validTarget)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "empty input")
 
 	// Test empty target
-	_, err = learn.TrainStep(model, optimizer, lossFn, *validInput, *emptyTensor)
+	_, err = learn.TrainStep(model, optimizer, lossFn, validInput, emptyTensor)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "empty target")
 }
@@ -113,13 +113,13 @@ func TestTrainStep_SimpleTraining(t *testing.T) {
 	target := tensor.FromFloat32(tensor.NewShape(1), []float32{3})
 
 	// Before training, get initial loss
-	output, err := model.Forward(*input)
+	output, err := model.Forward(input)
 	require.NoError(t, err)
-	initialLoss, err := lossFn.Compute(output, *target)
+	initialLoss, err := lossFn.Compute(output, target)
 	require.NoError(t, err)
 
 	// Perform one training step
-	finalLoss, err := learn.TrainStep(model, optimizer, lossFn, *input, *target)
+	finalLoss, err := learn.TrainStep(model, optimizer, lossFn, input, target)
 	require.NoError(t, err)
 
 	// Loss should be the same as computed initially
@@ -128,9 +128,9 @@ func TestTrainStep_SimpleTraining(t *testing.T) {
 	// After one training step, the model should have updated its parameters
 	// Since it's a simple case with perfect initialization, loss should decrease
 	// Let's do another forward pass to check if the output improved
-	outputAfter, err := model.Forward(*input)
+	outputAfter, err := model.Forward(input)
 	require.NoError(t, err)
-	lossAfter, err := lossFn.Compute(outputAfter, *target)
+	lossAfter, err := lossFn.Compute(outputAfter, target)
 	require.NoError(t, err)
 
 	// Loss should have decreased (or at least not increased significantly)
@@ -167,8 +167,8 @@ func TestTrainStep_MultipleSteps(t *testing.T) {
 
 	// Training data: y = 2x + 1
 	trainData := []struct {
-		input  *tensor.Tensor
-		target *tensor.Tensor
+		input  tensor.Tensor
+		target tensor.Tensor
 	}{
 		{tensor.FromFloat32(tensor.NewShape(1), []float32{0}), tensor.FromFloat32(tensor.NewShape(1), []float32{1})}, // 2*0 + 1 = 1
 		{tensor.FromFloat32(tensor.NewShape(1), []float32{1}), tensor.FromFloat32(tensor.NewShape(1), []float32{3})}, // 2*1 + 1 = 3
@@ -178,9 +178,9 @@ func TestTrainStep_MultipleSteps(t *testing.T) {
 	// Train for several steps
 	initialLoss := float32(0)
 	for _, data := range trainData {
-		output, err := model.Forward(*data.input)
+		output, err := model.Forward(data.input)
 		require.NoError(t, err)
-		loss, err := lossFn.Compute(output, *data.target)
+		loss, err := lossFn.Compute(output, data.target)
 		require.NoError(t, err)
 		initialLoss += loss
 	}
@@ -189,7 +189,7 @@ func TestTrainStep_MultipleSteps(t *testing.T) {
 	// Train for 100 steps
 	for step := 0; step < 100; step++ {
 		for _, data := range trainData {
-			_, err := learn.TrainStep(model, optimizer, lossFn, *data.input, *data.target)
+			_, err := learn.TrainStep(model, optimizer, lossFn, data.input, data.target)
 			require.NoError(t, err)
 		}
 	}
@@ -197,9 +197,9 @@ func TestTrainStep_MultipleSteps(t *testing.T) {
 	// Check final loss
 	finalLoss := float32(0)
 	for _, data := range trainData {
-		output, err := model.Forward(*data.input)
+		output, err := model.Forward(data.input)
 		require.NoError(t, err)
-		loss, err := lossFn.Compute(output, *data.target)
+		loss, err := lossFn.Compute(output, data.target)
 		require.NoError(t, err)
 		finalLoss += loss
 	}

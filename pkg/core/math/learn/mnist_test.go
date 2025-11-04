@@ -139,10 +139,10 @@ func TestMNIST(t *testing.T) {
 			// sample.Image is [1, 28, 28], we need [1, 1, 28, 28]
 			imageData := make([]float32, 1*1*28*28)
 			copy(imageData, sample.Image.Data())
-			input := *tensor.FromFloat32(tensor.NewShape(1, 1, 28, 28), imageData)
+			input := tensor.FromFloat32(tensor.NewShape(1, 1, 28, 28), imageData)
 
 			// Create one-hot target
-			target := *oneHot(sample.Label, 10)
+			target := oneHot(sample.Label, 10)
 
 			// Training step
 			loss, err := learn.TrainStep(model, optimizer, lossFn, input, target)
@@ -187,10 +187,10 @@ func TestMNIST(t *testing.T) {
 		// Reshape image to [1, 1, 28, 28]
 		imageData := make([]float32, 1*1*28*28)
 		copy(imageData, sample.Image.Data())
-		input := *tensor.FromFloat32(tensor.NewShape(1, 1, 28, 28), imageData)
+		input := tensor.FromFloat32(tensor.NewShape(1, 1, 28, 28), imageData)
 
 		// Create one-hot target
-		target := *oneHot(sample.Label, 10)
+		target := oneHot(sample.Label, 10)
 
 		// Forward pass
 		output, err := model.Forward(input)

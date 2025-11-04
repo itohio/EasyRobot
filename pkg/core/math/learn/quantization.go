@@ -171,8 +171,9 @@ func (c *Calibrator) AddSample(value float32) {
 }
 
 // AddTensor adds all values from a tensor to calibration statistics.
-func (c *Calibrator) AddTensor(t *tensor.Tensor) {
-	for _, val := range t.Data() {
+func (c *Calibrator) AddTensor(t tensor.Tensor) {
+	for idx := range t.Shape().Iterator() {
+		val := t.At(idx...)
 		c.AddSample(val)
 	}
 }
@@ -322,9 +323,9 @@ func (c *Calibrator) computePercentileRange() (float32, float32) {
 
 // QuantizeTensor quantizes a float32 tensor to int8/uint8 using the given parameters.
 // Returns the quantized tensor (stored as uint8 values) and the quantization parameters.
-func QuantizeTensor(t *tensor.Tensor, params *QuantizationParams, scheme QuantizationScheme, bits int) (*tensor.Tensor, *QuantizationParams, error) {
+func QuantizeTensor(t tensor.Tensor, params *QuantizationParams, scheme QuantizationScheme, bits int) (tensor.Tensor, *QuantizationParams, error) {
 	if len(t.Shape()) == 0 {
-		return nil, nil, fmt.Errorf("quantization: empty tensor")
+		return tensor.EmptyAs(t), nil, fmt.Errorf("quantization: empty tensor")
 	}
 
 	// Compute quantized range
@@ -361,9 +362,9 @@ func QuantizeTensor(t *tensor.Tensor, params *QuantizationParams, scheme Quantiz
 }
 
 // DequantizeTensor converts a quantized tensor back to float32.
-func DequantizeTensor(quantized *tensor.Tensor, params *QuantizationParams) (*tensor.Tensor, error) {
+func DequantizeTensor(quantized tensor.Tensor, params *QuantizationParams) (tensor.Tensor, error) {
 	if len(quantized.Shape()) == 0 {
-		return nil, fmt.Errorf("quantization: empty quantized tensor")
+		return tensor.EmptyAs(quantized), fmt.Errorf("quantization: empty quantized tensor")
 	}
 
 	// Allocate dequantized tensor
@@ -401,7 +402,7 @@ func QuantizeModel(model *nn.Model, opts ...QuantizationOption) (map[string]*Qua
 		calibrator := NewCalibrator(config.calibMethod, config.scheme, config.bits)
 
 		// Collect statistics from parameter tensor
-		calibrator.AddTensor(&param.Data)
+		calibrator.AddTensor(param.Data)
 
 		// Compute quantization parameters
 		qp, err := calibrator.ComputeParams()

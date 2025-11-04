@@ -156,8 +156,8 @@ func (a *Adam) Update(param *layers.Parameter) error {
 		// Initialize state with zero tensors
 		shape := param.Data.Shape()
 		state = &adamState{
-			m:    *tensor.New(tensor.DTFP32, shape),
-			v:    *tensor.New(tensor.DTFP32, shape),
+			m:    tensor.New(tensor.DTFP32, shape),
+			v:    tensor.New(tensor.DTFP32, shape),
 			step: 0,
 		}
 		a.state[key] = state

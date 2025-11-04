@@ -14,7 +14,7 @@ import (
 // Sample represents a single MNIST sample.
 type Sample struct {
 	Label int
-	Image *tensor.Tensor // Shape: [1, 28, 28] for single channel, 28x28 image
+	Image tensor.Tensor // Shape: [1, 28, 28] for single channel, 28x28 image
 }
 
 // Load loads MNIST dataset from CSV file.

@@ -21,16 +21,16 @@ func TestXOR(t *testing.T) {
 
 	// Create training data
 	inputs := []tensor.Tensor{
-		*tensor.FromFloat32(tensor.NewShape(2), []float32{0, 0}),
-		*tensor.FromFloat32(tensor.NewShape(2), []float32{0, 1}),
-		*tensor.FromFloat32(tensor.NewShape(2), []float32{1, 0}),
-		*tensor.FromFloat32(tensor.NewShape(2), []float32{1, 1}),
+		tensor.FromFloat32(tensor.NewShape(2), []float32{0, 0}),
+		tensor.FromFloat32(tensor.NewShape(2), []float32{0, 1}),
+		tensor.FromFloat32(tensor.NewShape(2), []float32{1, 0}),
+		tensor.FromFloat32(tensor.NewShape(2), []float32{1, 1}),
 	}
 	targets := []tensor.Tensor{
-		*tensor.FromFloat32(tensor.NewShape(1), []float32{0}),
-		*tensor.FromFloat32(tensor.NewShape(1), []float32{1}),
-		*tensor.FromFloat32(tensor.NewShape(1), []float32{1}),
-		*tensor.FromFloat32(tensor.NewShape(1), []float32{0}),
+		tensor.FromFloat32(tensor.NewShape(1), []float32{0}),
+		tensor.FromFloat32(tensor.NewShape(1), []float32{1}),
+		tensor.FromFloat32(tensor.NewShape(1), []float32{1}),
+		tensor.FromFloat32(tensor.NewShape(1), []float32{0}),
 	}
 
 	// Build model: 2 inputs -> 2 hidden (ReLU) -> 1 output (Sigmoid)
