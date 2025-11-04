@@ -119,7 +119,6 @@ func TestMatMulTo(t *testing.T) {
 
 		result := t1.MatMulTo(t2, nil)
 
-
 		expectedShape := []int{2, 2}
 		resultShape := result.Shape()
 		for i := range expectedShape {
@@ -136,7 +135,7 @@ func TestMatMulTo(t *testing.T) {
 
 		result := t1.MatMulTo(t2, &dst)
 
-		assert.Equal(t, dst, result, "MatMulTo should return dst")
+		assert.Equal(t, &dst, result, "MatMulTo should return dst")
 
 		// Check that dst was filled
 		dstData := dst.Data()
@@ -209,7 +208,7 @@ func TestTransposeTo(t *testing.T) {
 
 		result := t1.TransposeTo(&dst)
 
-		assert.Equal(t, dst, result, "TransposeTo should return dst")
+		assert.Equal(t, &dst, result, "TransposeTo should return dst")
 
 		// Check that dst was filled
 		dstData := dst.Data()
