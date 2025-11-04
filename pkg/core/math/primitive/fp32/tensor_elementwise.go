@@ -250,6 +250,13 @@ func ElemSin(dst, src []float32, shape []int, stridesDst, stridesSrc []int) {
 	})
 }
 
+// ElemTanh writes element-wise hyperbolic tangent of src into dst: dst[i] = tanh(src[i])
+func ElemTanh(dst, src []float32, shape []int, stridesDst, stridesSrc []int) {
+	applyElemUnary(dst, src, shape, stridesDst, stridesSrc, func(v float32) float32 {
+		return math32.Tanh(v)
+	})
+}
+
 // ElemNegative writes element-wise negation of src into dst: dst[i] = -src[i]
 func ElemNegative(dst, src []float32, shape []int, stridesDst, stridesSrc []int) {
 	applyElemUnary(dst, src, shape, stridesDst, stridesSrc, func(v float32) float32 {
