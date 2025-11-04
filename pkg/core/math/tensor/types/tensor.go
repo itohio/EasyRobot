@@ -9,6 +9,7 @@ type Element interface {
 // Tensor defines the complete interface for tensor operations.
 // This interface is the authoritative source of truth for all Tensor capabilities.
 // All concrete implementations must satisfy this interface.
+// Concrete implementations must be using Value receivers instead of pointers.
 type Tensor interface {
 	// Core Properties and Access
 

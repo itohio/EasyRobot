@@ -40,11 +40,19 @@ func TestAdd(t *testing.T) {
 			originalT2 := tt.t2.Clone()
 			result := tt.t1.Add(tt.t2)
 
-			if result != &tt.t1 {
-				t.Errorf("Add should return self for chaining")
+			// Verify result is the same tensor (same data and shape) for chaining
+			if result == nil {
+				t.Errorf("Add should return non-nil result for chaining")
 			}
-
+			if !result.Shape().Equal(tt.t1.Shape()) {
+				t.Errorf("Add should return tensor with same shape for chaining")
+			}
+			// Check that result shares the same underlying data (modify result and verify original changes)
+			resultData := result.Data().([]float32)
 			t1Data := tt.t1.Data().([]float32)
+			if len(resultData) > 0 && &resultData[0] != &t1Data[0] {
+				t.Errorf("Add should return tensor sharing same data for chaining")
+			}
 			for i := range tt.expected {
 				assert.InDelta(t, float64(tt.expected[i]), float64(t1Data[i]), 1e-6)
 
@@ -89,11 +97,19 @@ func TestSub(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.t1.Sub(tt.t2)
 
-			if result != &tt.t1 {
-				t.Errorf("Sub should return self for chaining")
+			// Verify result is the same tensor (same data and shape) for chaining
+			if result == nil {
+				t.Errorf("Sub should return non-nil result for chaining")
 			}
-
+			if !result.Shape().Equal(tt.t1.Shape()) {
+				t.Errorf("Sub should return tensor with same shape for chaining")
+			}
+			// Check that result shares the same underlying data (modify result and verify original changes)
+			resultData := result.Data().([]float32)
 			t1Data := tt.t1.Data().([]float32)
+			if len(resultData) > 0 && &resultData[0] != &t1Data[0] {
+				t.Errorf("Sub should return tensor sharing same data for chaining")
+			}
 			for i := range tt.expected {
 				assert.InDeltaf(t, float64(tt.expected[i]), float64(t1Data[i]), 1e-6, "Data[%d] = %f, expected %f", i, t1Data[i], tt.expected[i])
 			}
@@ -126,11 +142,19 @@ func TestMul(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.t1.Mul(tt.t2)
 
-			if result != &tt.t1 {
-				t.Errorf("Mul should return self for chaining")
+			// Verify result is the same tensor (same data and shape) for chaining
+			if result == nil {
+				t.Errorf("Mul should return non-nil result for chaining")
 			}
-
+			if !result.Shape().Equal(tt.t1.Shape()) {
+				t.Errorf("Mul should return tensor with same shape for chaining")
+			}
+			// Check that result shares the same underlying data (modify result and verify original changes)
+			resultData := result.Data().([]float32)
 			t1Data := tt.t1.Data().([]float32)
+			if len(resultData) > 0 && &resultData[0] != &t1Data[0] {
+				t.Errorf("Mul should return tensor sharing same data for chaining")
+			}
 			for i := range tt.expected {
 				assert.InDeltaf(t, float64(tt.expected[i]), float64(t1Data[i]), 1e-6, "Data[%d] = %f, expected %f", i, t1Data[i], tt.expected[i])
 			}
@@ -157,8 +181,18 @@ func TestDiv(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.t1.Div(tt.t2)
 
-			if result != &tt.t1 {
-				t.Errorf("Div should return self for chaining")
+			// Verify result is the same tensor (same data and shape) for chaining
+			if result == nil {
+				t.Errorf("Div should return non-nil result for chaining")
+			}
+			if !result.Shape().Equal(tt.t1.Shape()) {
+				t.Errorf("Div should return tensor with same shape for chaining")
+			}
+			// Check that result shares the same underlying data (modify result and verify original changes)
+			resultData := result.Data().([]float32)
+			t1Data := tt.t1.Data().([]float32)
+			if len(resultData) > 0 && &resultData[0] != &t1Data[0] {
+				t.Errorf("Div should return tensor sharing same data for chaining")
 			}
 
 			for i := range tt.expected {
@@ -200,8 +234,18 @@ func TestScale(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.t.Scale(tt.scalar)
 
-			if result != &tt.t {
-				t.Errorf("Scale should return self for chaining")
+			// Verify result is the same tensor (same data and shape) for chaining
+			if result == nil {
+				t.Errorf("Scale should return non-nil result for chaining")
+			}
+			if !result.Shape().Equal(tt.t.Shape()) {
+				t.Errorf("Scale should return tensor with same shape for chaining")
+			}
+			// Check that result shares the same underlying data (modify result and verify original changes)
+			resultData := result.Data().([]float32)
+			tData := tt.t.Data().([]float32)
+			if len(resultData) > 0 && &resultData[0] != &tData[0] {
+				t.Errorf("Scale should return tensor sharing same data for chaining")
 			}
 
 			for i := range tt.expected {

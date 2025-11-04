@@ -64,6 +64,12 @@ func (t Tensor) DataType() types.DataType {
 }
 
 func (t Tensor) Data() any {
+	if t.data == nil {
+		// Return typed nil slice to allow safe type assertion
+		// Default to float32 for empty tensors (most common case)
+		// This allows Data().([]float32) to work without panicking
+		return []float32(nil)
+	}
 	return t.data
 }
 

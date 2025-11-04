@@ -48,8 +48,8 @@ func (t Tensor) MatMulTo(other types.Tensor, dst types.Tensor) types.Tensor {
 		return result
 	}
 
-	if !t.Shape().Equal(result.Shape()) || !t.Shape().Equal(dst.Shape()) {
-		panic(fmt.Sprintf("tensor.MatMulTo: destination shape mismatch: %v vs %v v.s. %v", dst.Shape(), result.Shape(), dst.Shape()))
+	if !result.Shape().Equal(dst.Shape()) {
+		panic(fmt.Sprintf("tensor.MatMulTo: destination shape mismatch: expected %v, got %v", result.Shape(), dst.Shape()))
 	}
 
 	// Copy result to dst
@@ -317,8 +317,8 @@ func (t Tensor) TransposeTo(dst types.Tensor, dims ...int) types.Tensor {
 		return result
 	}
 
-	if !t.Shape().Equal(result.Shape()) || !t.Shape().Equal(dst.Shape()) {
-		panic(fmt.Sprintf("tensor.TransposeTo: destination shape mismatch: %v vs %v", dst.Shape(), result.Shape()))
+	if !result.Shape().Equal(dst.Shape()) {
+		panic(fmt.Sprintf("tensor.TransposeTo: destination shape mismatch: expected %v, got %v", result.Shape(), dst.Shape()))
 	}
 
 	// Copy result to dst
