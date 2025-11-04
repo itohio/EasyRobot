@@ -167,14 +167,14 @@ func TestNewConv2D(t *testing.T) {
 				require.NotNil(t, conv, "Conv2D should not be nil")
 
 				weight := conv.Weight()
-				assert.Equal(t, []int{tt.outChannels, tt.inChannels, tt.kernelH, tt.kernelW}, weight.Dim, "Weight shape should match")
+				assert.Equal(t, []int{tt.outChannels, tt.inChannels, tt.kernelH, tt.kernelW}, []int(weight.Shape()), "Weight shape should match")
 
 				if tt.expectBias {
 					bias := conv.Bias()
-					assert.Equal(t, []int{tt.outChannels}, bias.Dim, "Bias shape should match")
+					assert.Equal(t, []int{tt.outChannels}, []int(bias.Shape()), "Bias shape should match")
 				} else {
 					bias := conv.Bias()
-					assert.Len(t, bias.Dim, 0, "Bias should be empty when disabled")
+					assert.Len(t, bias.Shape(), 0, "Bias should be empty when disabled")
 				}
 
 				if tt.name == "with_name" {
@@ -243,7 +243,7 @@ func TestConv2D_Init(t *testing.T) {
 			} else {
 				require.NoError(t, err, "Init should succeed")
 				output := conv.Output()
-				assert.NotEmpty(t, output.Dim, "Output should be allocated")
+				assert.NotEmpty(t, output.Shape(), "Output should be allocated")
 			}
 		})
 	}
@@ -262,23 +262,21 @@ func TestConv2D_Forward(t *testing.T) {
 	err = conv.Init(inputShape)
 	require.NoError(t, err, "Init should succeed")
 
-	input := tensor.Tensor{
-		Dim:  inputShape,
-		Data: make([]float32, 1*3*32*32),
-	}
-	for i := range input.Data {
-		input.Data[i] = float32(i) * 0.01
+	input := *tensor.FromFloat32(tensor.NewShape(inputShape...), make([]float32, 1*3*32*32))
+	inputData := input.Data()
+	for i := range inputData {
+		inputData[i] = float32(i) * 0.01
 	}
 
 	output, err := conv.Forward(input)
 	require.NoError(t, err, "Forward should succeed")
-	assert.NotEmpty(t, output.Dim, "Output should have dimensions")
-	assert.NotEmpty(t, output.Data, "Output should have data")
+	assert.NotEmpty(t, output.Shape(), "Output should have dimensions")
+	assert.NotEmpty(t, output.Data(), "Output should have data")
 
 	// Verify output shape
 	expectedShape, err := conv.OutputShape(inputShape)
 	require.NoError(t, err, "OutputShape should succeed")
-	assert.Equal(t, expectedShape, output.Dim, "Output shape should match")
+	assert.Equal(t, expectedShape, []int(output.Shape()), "Output shape should match")
 
 	// Test error cases
 	var nilConv *Conv2D
@@ -303,10 +301,7 @@ func TestConv2D_Backward(t *testing.T) {
 	err = conv.Init(inputShape)
 	require.NoError(t, err, "Init should succeed")
 
-	input := tensor.Tensor{
-		Dim:  inputShape,
-		Data: make([]float32, 1*3*32*32),
-	}
+	input := *tensor.FromFloat32(tensor.NewShape(inputShape...), make([]float32, 1*3*32*32))
 	_, err = conv.Forward(input)
 	require.NoError(t, err, "Forward should succeed")
 
@@ -315,16 +310,13 @@ func TestConv2D_Backward(t *testing.T) {
 	for _, dim := range outputShape {
 		outputSize *= dim
 	}
-	gradOutput := tensor.Tensor{
-		Dim:  outputShape,
-		Data: make([]float32, outputSize),
-	}
+	gradOutput := *tensor.FromFloat32(tensor.NewShape(outputShape...), make([]float32, outputSize))
 
 	// Test with CanLearn = false (inference-only)
 	gradInput, err := conv.Backward(gradOutput)
 	require.NoError(t, err, "Backward should succeed for inference-only")
-	assert.NotEmpty(t, gradInput.Dim, "GradInput should have dimensions")
-	assert.Equal(t, inputShape, gradInput.Dim, "GradInput shape should match input shape")
+	assert.NotEmpty(t, gradInput.Shape(), "GradInput should have dimensions")
+	assert.Equal(t, inputShape, []int(gradInput.Shape()), "GradInput shape should match input shape")
 
 	// Test with CanLearn = true (backward is now implemented)
 	conv2, _ := NewConv2D(3, 16, 3, 3, 1, 1, 1, 1, WithCanLearn(true))
@@ -332,8 +324,8 @@ func TestConv2D_Backward(t *testing.T) {
 	conv2.Forward(input)
 	gradInput2, err := conv2.Backward(gradOutput)
 	require.NoError(t, err, "Backward should succeed when CanLearn is true")
-	assert.NotEmpty(t, gradInput2.Dim, "GradInput should have dimensions")
-	assert.Equal(t, inputShape, gradInput2.Dim, "GradInput shape should match input shape")
+	assert.NotEmpty(t, gradInput2.Shape(), "GradInput should have dimensions")
+	assert.Equal(t, inputShape, gradInput2.Shape().ToSlice(), "GradInput shape should match input shape")
 
 	// Test error cases
 	var nilConv *Conv2D
@@ -408,13 +400,13 @@ func TestConv2D_Weight(t *testing.T) {
 	require.NoError(t, err, "Should create Conv2D layer")
 
 	weight := conv.Weight()
-	assert.Equal(t, []int{16, 3, 3, 3}, weight.Dim, "Weight shape should match")
-	assert.Len(t, weight.Data, 16*3*3*3, "Weight data size should match")
+	assert.Equal(t, []int{16, 3, 3, 3}, []int(weight.Shape()), "Weight shape should match")
+	assert.Len(t, weight.Data(), 16*3*3*3, "Weight data size should match")
 
 	// Test nil receiver
 	var nilConv *Conv2D
 	weight = nilConv.Weight()
-	assert.Len(t, weight.Dim, 0, "Should return empty tensor for nil receiver")
+	assert.Len(t, weight.Shape(), 0, "Should return empty tensor for nil receiver")
 }
 
 func TestConv2D_Bias(t *testing.T) {
@@ -423,42 +415,40 @@ func TestConv2D_Bias(t *testing.T) {
 	require.NoError(t, err, "Should create Conv2D layer")
 
 	bias := conv.Bias()
-	assert.Equal(t, []int{16}, bias.Dim, "Bias shape should match")
-	assert.Len(t, bias.Data, 16, "Bias data size should match")
+	assert.Equal(t, []int{16}, []int(bias.Shape()), "Bias shape should match")
+	assert.Len(t, bias.Data(), 16, "Bias data size should match")
 
 	// Test without bias
 	conv2, err := NewConv2D(3, 16, 3, 3, 1, 1, 1, 1, WithBias(false))
 	require.NoError(t, err, "Should create Conv2D layer")
 
 	bias = conv2.Bias()
-	assert.Len(t, bias.Dim, 0, "Bias should be empty when disabled")
+	assert.Len(t, bias.Shape(), 0, "Bias should be empty when disabled")
 
 	// Test nil receiver
 	var nilConv *Conv2D
 	bias = nilConv.Bias()
-	assert.Len(t, bias.Dim, 0, "Should return empty tensor for nil receiver")
+	assert.Len(t, bias.Shape(), 0, "Should return empty tensor for nil receiver")
 }
 
 func TestConv2D_SetWeight(t *testing.T) {
 	conv, err := NewConv2D(3, 16, 3, 3, 1, 1, 1, 1)
 	require.NoError(t, err, "Should create Conv2D layer")
 
-	newWeight := tensor.Tensor{
-		Dim: []int{16, 3, 3, 3},
-		Data: make([]float32, 16*3*3*3),
-	}
-	for i := range newWeight.Data {
-		newWeight.Data[i] = float32(i) * 0.001
+	newWeight := *tensor.FromFloat32(tensor.NewShape(16, 3, 3, 3), make([]float32, 16*3*3*3))
+	newWeightData := newWeight.Data()
+	for i := range newWeightData {
+		newWeightData[i] = float32(i) * 0.001
 	}
 
 	err = conv.SetWeight(newWeight)
 	require.NoError(t, err, "SetWeight should succeed")
 
 	weight := conv.Weight()
-	assert.Equal(t, newWeight.Data, weight.Data, "Weight data should match")
+	assert.Equal(t, newWeight.Data(), weight.Data(), "Weight data should match")
 
 	// Test error cases
-	err = conv.SetWeight(tensor.Tensor{Dim: []int{16, 4, 3, 3}, Data: make([]float32, 576)})
+	err = conv.SetWeight(*tensor.FromFloat32(tensor.NewShape(16, 4, 3, 3), make([]float32, 576)))
 	assert.Error(t, err, "Should return error for wrong shape")
 
 	err = conv.SetWeight(tensor.Tensor{})
@@ -473,22 +463,20 @@ func TestConv2D_SetBias(t *testing.T) {
 	conv, err := NewConv2D(3, 16, 3, 3, 1, 1, 1, 1, WithBias(true))
 	require.NoError(t, err, "Should create Conv2D layer")
 
-	newBias := tensor.Tensor{
-		Dim: []int{16},
-		Data: make([]float32, 16),
-	}
-	for i := range newBias.Data {
-		newBias.Data[i] = float32(i) * 0.01
+	newBias := *tensor.FromFloat32(tensor.NewShape(16), make([]float32, 16))
+	newBiasData := newBias.Data()
+	for i := range newBiasData {
+		newBiasData[i] = float32(i) * 0.01
 	}
 
 	err = conv.SetBias(newBias)
 	require.NoError(t, err, "SetBias should succeed")
 
 	bias := conv.Bias()
-	assert.Equal(t, newBias.Data, bias.Data, "Bias data should match")
+	assert.Equal(t, newBias.Data(), bias.Data(), "Bias data should match")
 
 	// Test error cases
-	err = conv.SetBias(tensor.Tensor{Dim: []int{17}, Data: make([]float32, 17)})
+	err = conv.SetBias(*tensor.FromFloat32(tensor.NewShape(17), make([]float32, 17)))
 	assert.Error(t, err, "Should return error for wrong shape")
 
 	err = conv.SetBias(tensor.Tensor{})
@@ -536,24 +524,24 @@ func TestConv2D_ComputeOutput(t *testing.T) {
 			padH:        0,
 			padW:        0,
 			inputShape:  []int{1, 1, 5, 5},
-			input: tensor.Tensor{
-				Dim: []int{1, 1, 5, 5},
-				Data: []float32{
+			input: *tensor.FromFloat32(
+				tensor.NewShape(1, 1, 5, 5),
+				[]float32{
 					1.0, 2.0, 3.0, 4.0, 5.0,
 					6.0, 7.0, 8.0, 9.0, 10.0,
 					11.0, 12.0, 13.0, 14.0, 15.0,
 					16.0, 17.0, 18.0, 19.0, 20.0,
 					21.0, 22.0, 23.0, 24.0, 25.0,
 				},
-			},
-			weight: tensor.Tensor{
-				Dim: []int{1, 1, 2, 2},
-				Data: []float32{1.0, 1.0, 1.0, 1.0},
-			},
-			bias: tensor.Tensor{
-				Dim: []int{1},
-				Data: []float32{0.0},
-			},
+			),
+			weight: *tensor.FromFloat32(
+				tensor.NewShape(1, 1, 2, 2),
+				[]float32{1.0, 1.0, 1.0, 1.0},
+			),
+			bias: *tensor.FromFloat32(
+				tensor.NewShape(1),
+				[]float32{0.0},
+			),
 			expectedShape: []int{1, 1, 4, 4},
 			expectedOutput: []float32{
 				16.0, 20.0, 24.0, 28.0,
@@ -573,9 +561,9 @@ func TestConv2D_ComputeOutput(t *testing.T) {
 			padH:        0,
 			padW:        0,
 			inputShape:  []int{1, 1, 6, 6},
-			input: tensor.Tensor{
-				Dim: []int{1, 1, 6, 6},
-				Data: []float32{
+			input: *tensor.FromFloat32(
+				tensor.NewShape(1, 1, 6, 6),
+				[]float32{
 					1.0, 2.0, 3.0, 4.0, 5.0, 6.0,
 					7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
 					13.0, 14.0, 15.0, 16.0, 17.0, 18.0,
@@ -583,15 +571,15 @@ func TestConv2D_ComputeOutput(t *testing.T) {
 					25.0, 26.0, 27.0, 28.0, 29.0, 30.0,
 					31.0, 32.0, 33.0, 34.0, 35.0, 36.0,
 				},
-			},
-			weight: tensor.Tensor{
-				Dim: []int{1, 1, 2, 2},
-				Data: []float32{1.0, 1.0, 1.0, 1.0},
-			},
-			bias: tensor.Tensor{
-				Dim: []int{1},
-				Data: []float32{0.0},
-			},
+			),
+			weight: *tensor.FromFloat32(
+				tensor.NewShape(1, 1, 2, 2),
+				[]float32{1.0, 1.0, 1.0, 1.0},
+			),
+			bias: *tensor.FromFloat32(
+				tensor.NewShape(1),
+				[]float32{0.0},
+			),
 			expectedShape: []int{1, 1, 3, 3},
 			expectedOutput: []float32{
 				18.0, 26.0, 34.0,
@@ -618,10 +606,10 @@ func TestConv2D_ComputeOutput(t *testing.T) {
 			output, err := conv.Forward(tt.input)
 			require.NoError(t, err, "Forward should succeed")
 
-			assert.Equal(t, tt.expectedShape, output.Dim, "Output shape should match")
-			require.Len(t, output.Data, len(tt.expectedOutput), "Output data length should match")
+			assert.Equal(t, tt.expectedShape, []int(output.Shape()), "Output shape should match")
+			require.Len(t, output.Data(), len(tt.expectedOutput), "Output data length should match")
 			for i := range tt.expectedOutput {
-				assert.InDelta(t, tt.expectedOutput[i], output.Data[i], 1e-5, "Output[%d] should match expected", i)
+				assert.InDelta(t, tt.expectedOutput[i], output.Data()[i], 1e-5, "Output[%d] should match expected", i)
 			}
 		})
 	}
@@ -661,27 +649,34 @@ func TestConv2D_BackwardAccuracy(t *testing.T) {
 			padW:        0,
 			hasBias:     true,
 			inputShape:  []int{1, 1, 3, 3},
-			input: tensor.Tensor{
-				Dim: []int{1, 1, 3, 3},
-				// Input layout: [batch=1, channels=1, height=3, width=3]
-				// Row 0: 1.0, 2.0, 3.0
-				// Row 1: 4.0, 5.0, 6.0
-				// Row 2: 7.0, 8.0, 9.0
-				Data: []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0},
-			},
-			weight: tensor.Tensor{
-				Dim: []int{1, 1, 2, 2},
-				Data: []float32{1.0, 1.0, 1.0, 1.0}, // All weights are 1.0
-			},
-			bias: tensor.Tensor{
-				Dim: []int{1},
-				Data: []float32{0.0},
-			},
-			gradOutput: tensor.Tensor{
-				Dim: []int{1, 1, 2, 2},
-				// Output is 2x2, all values are 1.0
-				Data: []float32{1.0, 1.0, 1.0, 1.0},
-			},
+			input: *tensor.FromFloat32(
+				tensor.Shape([]int{1, 1, 3, 3}),
+				[]float32{
+					// Input layout: [batch=1, channels=1, height=3, width=3]
+					// Row 0: 1.0, 2.0, 3.0
+					// Row 1: 4.0, 5.0, 6.0
+					// Row 2: 7.0, 8.0, 9.0
+					1.0, 2.0, 3.0,
+					4.0, 5.0, 6.0,
+					7.0, 8.0, 9.0,
+				},
+			),
+			weight: *tensor.FromFloat32(
+				tensor.Shape([]int{1, 1, 2, 2}),
+				[]float32{1.0, 1.0, 1.0, 1.0}, // All weights are 1.0
+			),
+			bias: *tensor.FromFloat32(
+				tensor.Shape([]int{1}),
+				[]float32{0.0},
+			),
+			gradOutput: *tensor.FromFloat32(
+				tensor.Shape([]int{1, 1, 2, 2}),
+				[]float32{
+					// Output is 2x2, all values are 1.0
+					1.0, 1.0,
+					1.0, 1.0,
+				},
+			),
 			// Weight grad: correlation of input with gradOutput
 			// weight[0][0][kh][kw] = sum over batch and output positions of input[inH][inW] * gradOutput[outH][outW]
 			// where inH = outH*strideH + kh - padH, inW = outW*strideW + kw - padW
@@ -744,22 +739,22 @@ func TestConv2D_BackwardAccuracy(t *testing.T) {
 			padW:        0,
 			hasBias:     false,
 			inputShape:  []int{1, 1, 3, 3},
-			input: tensor.Tensor{
-				Dim: []int{1, 1, 3, 3},
-				Data: []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0},
-			},
-			weight: tensor.Tensor{
-				Dim: []int{1, 1, 2, 2},
-				Data: []float32{1.0, 1.0, 1.0, 1.0},
-			},
-			bias: tensor.Tensor{
-				Dim: []int{1},
-				Data: []float32{0.0},
-			},
-			gradOutput: tensor.Tensor{
-				Dim: []int{1, 1, 2, 2},
-				Data: []float32{1.0, 1.0, 1.0, 1.0},
-			},
+			input: *tensor.FromFloat32(
+				tensor.Shape{1, 1, 3, 3},
+				[]float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0},
+			),
+			weight: *tensor.FromFloat32(
+				tensor.Shape{1, 1, 2, 2},
+				[]float32{1.0, 1.0, 1.0, 1.0},
+			),
+			bias: *tensor.FromFloat32(
+				tensor.Shape{1},
+				[]float32{0.0},
+			),
+			gradOutput: *tensor.FromFloat32(
+				tensor.Shape{1, 1, 2, 2},
+				[]float32{1.0, 1.0, 1.0, 1.0},
+			),
 			expectedWeightGrad: []float32{12.0, 16.0, 24.0, 28.0},
 			expectedBiasGrad:   nil, // No bias
 			expectedInputGrad:  []float32{1.0, 2.0, 1.0, 2.0, 4.0, 2.0, 1.0, 2.0, 1.0},
@@ -802,10 +797,10 @@ func TestConv2D_BackwardAccuracy(t *testing.T) {
 			if tt.expectedWeightGrad != nil {
 				weightParam, ok := conv.Base.Parameter(ParamKernels)
 				require.True(t, ok, "Weight parameter should exist")
-				require.NotEmpty(t, weightParam.Grad.Dim, "Weight grad should be allocated")
-				require.Len(t, weightParam.Grad.Data, len(tt.expectedWeightGrad), "Weight grad length should match")
+				require.NotEmpty(t, weightParam.Grad.Shape(), "Weight grad should be allocated")
+				require.Len(t, weightParam.Grad.Data(), len(tt.expectedWeightGrad), "Weight grad length should match")
 				for i := range tt.expectedWeightGrad {
-					assert.InDelta(t, tt.expectedWeightGrad[i], weightParam.Grad.Data[i], 1e-5,
+					assert.InDelta(t, tt.expectedWeightGrad[i], weightParam.Grad.Data()[i], 1e-5,
 						"Weight grad[%d] should match expected", i)
 				}
 			}
@@ -814,19 +809,19 @@ func TestConv2D_BackwardAccuracy(t *testing.T) {
 			if tt.hasBias && tt.expectedBiasGrad != nil {
 				biasParam, ok := conv.Base.Parameter(ParamBiases)
 				require.True(t, ok, "Bias parameter should exist")
-				require.NotEmpty(t, biasParam.Grad.Dim, "Bias grad should be allocated")
-				require.Len(t, biasParam.Grad.Data, len(tt.expectedBiasGrad), "Bias grad length should match")
+				require.NotEmpty(t, biasParam.Grad.Shape(), "Bias grad should be allocated")
+				require.Len(t, biasParam.Grad.Data(), len(tt.expectedBiasGrad), "Bias grad length should match")
 				for i := range tt.expectedBiasGrad {
-					assert.InDelta(t, tt.expectedBiasGrad[i], biasParam.Grad.Data[i], 1e-5,
+					assert.InDelta(t, tt.expectedBiasGrad[i], biasParam.Grad.Data()[i], 1e-5,
 						"Bias grad[%d] should match expected", i)
 				}
 			}
 
 			// Verify input gradient
 			if tt.expectedInputGrad != nil {
-				require.Len(t, gradInput.Data, len(tt.expectedInputGrad), "GradInput length should match")
+				require.Len(t, gradInput.Data(), len(tt.expectedInputGrad), "GradInput length should match")
 				for i := range tt.expectedInputGrad {
-					assert.InDelta(t, tt.expectedInputGrad[i], gradInput.Data[i], 1e-5,
+					assert.InDelta(t, tt.expectedInputGrad[i], gradInput.Data()[i], 1e-5,
 						"GradInput[%d] should match expected", i)
 				}
 			}

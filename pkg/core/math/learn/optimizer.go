@@ -38,22 +38,24 @@ func (s *SGD) Update(param *layers.Parameter) error {
 		return nil // No gradient tracking
 	}
 
-	if len(param.Grad.Dim) == 0 {
+	if len(param.Grad.Shape()) == 0 {
 		return nil // No gradient computed
 	}
 
-	if len(param.Data.Dim) == 0 {
+	if len(param.Data.Shape()) == 0 {
 		return fmt.Errorf("SGD.Update: empty parameter data")
 	}
 
 	// Validate shapes match
-	if !shapesEqual(param.Data.Dim, param.Grad.Dim) {
-		return fmt.Errorf("SGD.Update: parameter and gradient shapes mismatch: %v vs %v", param.Data.Dim, param.Grad.Dim)
+	if !shapesEqual(param.Data.Shape(), param.Grad.Shape()) {
+		return fmt.Errorf("SGD.Update: parameter and gradient shapes mismatch: %v vs %v", param.Data.Shape(), param.Grad.Shape())
 	}
 
 	// SGD update: data = data - lr * grad
-	for i := range param.Data.Data {
-		param.Data.Data[i] -= s.lr * param.Grad.Data[i]
+	data := param.Data.Data()
+	grad := param.Grad.Data()
+	for i := range data {
+		data[i] -= s.lr * grad[i]
 	}
 
 	return nil
@@ -124,17 +126,17 @@ func (a *Adam) Update(param *layers.Parameter) error {
 		return nil // No gradient tracking
 	}
 
-	if len(param.Grad.Dim) == 0 {
+	if len(param.Grad.Shape()) == 0 {
 		return nil // No gradient computed
 	}
 
-	if len(param.Data.Dim) == 0 {
+	if len(param.Data.Shape()) == 0 {
 		return fmt.Errorf("Adam.Update: empty parameter data")
 	}
 
 	// Validate shapes match
-	if !shapesEqual(param.Data.Dim, param.Grad.Dim) {
-		return fmt.Errorf("Adam.Update: parameter and gradient shapes mismatch: %v vs %v", param.Data.Dim, param.Grad.Dim)
+	if !shapesEqual(param.Data.Shape(), param.Grad.Shape()) {
+		return fmt.Errorf("Adam.Update: parameter and gradient shapes mismatch: %v vs %v", param.Data.Shape(), param.Grad.Shape())
 	}
 
 	a.mu.Lock()
@@ -142,28 +144,22 @@ func (a *Adam) Update(param *layers.Parameter) error {
 
 	// Use the data pointer as a stable key for this parameter
 	// Even when Parameter struct is copied, the underlying slice points to the same array
-	if len(param.Data.Data) == 0 {
+	data := param.Data.Data()
+	if len(data) == 0 {
 		return fmt.Errorf("Adam.Update: parameter data slice is empty")
 	}
-	key := uintptr(unsafe.Pointer(&param.Data.Data[0]))
+	key := uintptr(unsafe.Pointer(&data[0]))
 
 	// Get or create state for this parameter
 	state, exists := a.state[key]
 	if !exists {
 		// Initialize state with zero tensors
+		shape := param.Data.Shape()
 		state = &adamState{
-			m: tensor.Tensor{
-				Dim:  make([]int, len(param.Data.Dim)),
-				Data: make([]float32, param.Data.Size()),
-			},
-			v: tensor.Tensor{
-				Dim:  make([]int, len(param.Data.Dim)),
-				Data: make([]float32, param.Data.Size()),
-			},
+			m:    *tensor.New(tensor.DTFP32, shape),
+			v:    *tensor.New(tensor.DTFP32, shape),
 			step: 0,
 		}
-		copy(state.m.Dim, param.Data.Dim)
-		copy(state.v.Dim, param.Data.Dim)
 		a.state[key] = state
 	}
 
@@ -177,21 +173,24 @@ func (a *Adam) Update(param *layers.Parameter) error {
 	biasCorrection2 := 1 - beta2Power
 
 	// Update first and second moment estimates and apply parameter update
-	for i := range param.Data.Data {
-		g := param.Grad.Data[i]
+	grad := param.Grad.Data()
+	mData := state.m.Data()
+	vData := state.v.Data()
+	for i := range data {
+		g := grad[i]
 
 		// Update biased first moment estimate
-		state.m.Data[i] = a.beta1*state.m.Data[i] + (1-a.beta1)*g
+		mData[i] = a.beta1*mData[i] + (1-a.beta1)*g
 
 		// Update biased second moment estimate
-		state.v.Data[i] = a.beta2*state.v.Data[i] + (1-a.beta2)*g*g
+		vData[i] = a.beta2*vData[i] + (1-a.beta2)*g*g
 
 		// Compute bias-corrected estimates
-		mHat := state.m.Data[i] / biasCorrection1
-		vHat := state.v.Data[i] / biasCorrection2
+		mHat := mData[i] / biasCorrection1
+		vHat := vData[i] / biasCorrection2
 
 		// Update parameter
-		param.Data.Data[i] -= a.lr * mHat / (float32(math.Sqrt(float64(vHat))) + a.epsilon)
+		data[i] -= a.lr * mHat / (float32(math.Sqrt(float64(vHat))) + a.epsilon)
 	}
 
 	return nil

@@ -19,10 +19,10 @@ func TrainStep(model *nn.Model, optimizer nn.Optimizer, lossFn nn.LossFunction, 
 	if lossFn == nil {
 		return 0, fmt.Errorf("TrainStep: nil loss function")
 	}
-	if len(input.Dim) == 0 {
+	if input.Size() == 0 {
 		return 0, fmt.Errorf("TrainStep: empty input")
 	}
-	if len(target.Dim) == 0 {
+	if target.Size() == 0 {
 		return 0, fmt.Errorf("TrainStep: empty target")
 	}
 

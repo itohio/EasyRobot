@@ -21,16 +21,16 @@ func TestXOR(t *testing.T) {
 
 	// Create training data
 	inputs := []tensor.Tensor{
-		{Dim: []int{2}, Data: []float32{0, 0}},
-		{Dim: []int{2}, Data: []float32{0, 1}},
-		{Dim: []int{2}, Data: []float32{1, 0}},
-		{Dim: []int{2}, Data: []float32{1, 1}},
+		*tensor.FromFloat32(tensor.NewShape(2), []float32{0, 0}),
+		*tensor.FromFloat32(tensor.NewShape(2), []float32{0, 1}),
+		*tensor.FromFloat32(tensor.NewShape(2), []float32{1, 0}),
+		*tensor.FromFloat32(tensor.NewShape(2), []float32{1, 1}),
 	}
 	targets := []tensor.Tensor{
-		{Dim: []int{1}, Data: []float32{0}},
-		{Dim: []int{1}, Data: []float32{1}},
-		{Dim: []int{1}, Data: []float32{1}},
-		{Dim: []int{1}, Data: []float32{0}},
+		*tensor.FromFloat32(tensor.NewShape(1), []float32{0}),
+		*tensor.FromFloat32(tensor.NewShape(1), []float32{1}),
+		*tensor.FromFloat32(tensor.NewShape(1), []float32{1}),
+		*tensor.FromFloat32(tensor.NewShape(1), []float32{0}),
 	}
 
 	// Build model: 2 inputs -> 2 hidden (ReLU) -> 1 output (Sigmoid)
@@ -68,9 +68,10 @@ func TestXOR(t *testing.T) {
 	rng := rand.New(rand.NewSource(123))
 	params := model.Parameters()
 	for _, param := range params {
-		for i := range param.Data.Data {
+		data := param.Data.Data()
+		for i := range data {
 			// Generate positive small random values
-			param.Data.Data[i] = rng.Float32() * 0.1
+			data[i] = rng.Float32() * 0.1
 		}
 	}
 
@@ -114,12 +115,12 @@ func TestXOR(t *testing.T) {
 			t.Fatalf("Forward failed for input %d: %v", i, err)
 		}
 
-		expected := targets[i].Data[0]
-		predicted := output.Data[0]
+		expected := targets[i].At(0)
+		predicted := output.At(0)
 		error := abs(predicted - expected)
 
 		t.Logf("Input: [%.0f, %.0f] -> Predicted: %.4f, Expected: %.0f, Error: %.4f",
-			input.Data[0], input.Data[1], predicted, expected, error)
+			input.At(0), input.At(1), predicted, expected, error)
 
 		// Consider correct if error < 0.2 (XOR is binary, but we use sigmoid so values are in [0,1])
 		if error > 0.2 {

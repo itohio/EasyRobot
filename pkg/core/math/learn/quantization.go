@@ -172,7 +172,7 @@ func (c *Calibrator) AddSample(value float32) {
 
 // AddTensor adds all values from a tensor to calibration statistics.
 func (c *Calibrator) AddTensor(t *tensor.Tensor) {
-	for _, val := range t.Data {
+	for _, val := range t.Data() {
 		c.AddSample(val)
 	}
 }
@@ -323,7 +323,7 @@ func (c *Calibrator) computePercentileRange() (float32, float32) {
 // QuantizeTensor quantizes a float32 tensor to int8/uint8 using the given parameters.
 // Returns the quantized tensor (stored as uint8 values) and the quantization parameters.
 func QuantizeTensor(t *tensor.Tensor, params *QuantizationParams, scheme QuantizationScheme, bits int) (*tensor.Tensor, *QuantizationParams, error) {
-	if len(t.Dim) == 0 {
+	if len(t.Shape()) == 0 {
 		return nil, nil, fmt.Errorf("quantization: empty tensor")
 	}
 
@@ -336,14 +336,12 @@ func QuantizeTensor(t *tensor.Tensor, params *QuantizationParams, scheme Quantiz
 	}
 
 	// Allocate quantized tensor
-	quantized := tensor.Tensor{
-		Dim:  make([]int, len(t.Dim)),
-		Data: make([]float32, len(t.Data)),
-	}
-	copy(quantized.Dim, t.Dim)
+	quantized := tensor.New(tensor.DTFP32, t.Shape())
 
 	// Quantize each value
-	for i, val := range t.Data {
+	tData := t.Data()
+	qData := quantized.Data()
+	for i, val := range tData {
 		q := int32(math.Round(float64(val/params.Scale))) + params.ZeroPoint
 
 		// Clamp to quantized range
@@ -356,32 +354,30 @@ func QuantizeTensor(t *tensor.Tensor, params *QuantizationParams, scheme Quantiz
 
 		// Store as float32 (representing uint8/int8 value)
 		// This is a temporary representation; actual uint8 storage would be different
-		quantized.Data[i] = float32(q)
+		qData[i] = float32(q)
 	}
 
-	return &quantized, params, nil
+	return quantized, params, nil
 }
 
 // DequantizeTensor converts a quantized tensor back to float32.
 func DequantizeTensor(quantized *tensor.Tensor, params *QuantizationParams) (*tensor.Tensor, error) {
-	if len(quantized.Dim) == 0 {
+	if len(quantized.Shape()) == 0 {
 		return nil, fmt.Errorf("quantization: empty quantized tensor")
 	}
 
 	// Allocate dequantized tensor
-	dequantized := tensor.Tensor{
-		Dim:  make([]int, len(quantized.Dim)),
-		Data: make([]float32, len(quantized.Data)),
-	}
-	copy(dequantized.Dim, quantized.Dim)
+	dequantized := tensor.New(tensor.DTFP32, quantized.Shape())
 
 	// Dequantize each value: real = scale * (quantized - zeroPoint)
-	for i, qVal := range quantized.Data {
+	qData := quantized.Data()
+	dqData := dequantized.Data()
+	for i, qVal := range qData {
 		q := int32(qVal) // Cast back to int32
-		dequantized.Data[i] = params.Scale * float32(q-params.ZeroPoint)
+		dqData[i] = params.Scale * float32(q-params.ZeroPoint)
 	}
 
-	return &dequantized, nil
+	return dequantized, nil
 }
 
 // QuantizeModel quantizes all learnable parameters in a model.

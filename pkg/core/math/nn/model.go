@@ -136,11 +136,11 @@ func (m *Model) Backward(gradOutput tensor.Tensor) error {
 		return fmt.Errorf("model.Backward: nil model")
 	}
 
-	if len(gradOutput.Dim) == 0 {
+	if gradOutput.Shape().Rank() == 0 {
 		return fmt.Errorf("model.Backward: empty gradOutput")
 	}
 
-	if len(m.Output.Dim) == 0 {
+	if m.Output.Shape().Rank() == 0 {
 		return fmt.Errorf("model.Backward: model.Output is empty, must call Forward first")
 	}
 

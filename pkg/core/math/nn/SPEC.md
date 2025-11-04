@@ -87,10 +87,16 @@ All layers are in `pkg/core/math/nn/layers/` subdirectory. See `layers/SPEC.md` 
 - **GlobalAvgPool2D**: Global average pooling
 - **Flatten**: Flattens tensor
 - **Reshape**: Reshapes tensor
+- **Unsqueeze**: Adds dimensions
+- **Squeeze**: Removes size-1 dimensions
+- **Transpose**: Transposes 2D tensors
+- **Pad**: Pads tensor with constant/reflect values
+- **Concatenate**: Concatenates tensors along dimension
 - **ReLU**: ReLU activation
 - **Sigmoid**: Sigmoid activation
 - **Tanh**: Tanh activation
 - **Softmax**: Softmax activation
+- **Dropout**: Dropout regularization
 
 All layers embed `Base` which provides parameter management, gradient tracking, and common functionality.
 
@@ -162,11 +168,16 @@ func NewSGD(lr float32) *SGD
 ```go
 type Model struct {
     layers     []Layer
+    layerNames map[string]int // Map from layer name to index
     inputShape []int
-    Input      *tensor.Tensor // Input tensor (set by user)
-    Output     *tensor.Tensor // Output tensor (set after Forward)
+    Input      tensor.Tensor // Input tensor (set during Forward)
+    Output     tensor.Tensor // Output tensor (set after Forward)
 }
 
+func (m *Model) Init() error
+func (m *Model) GetLayer(index int) Layer
+func (m *Model) GetLayerByName(name string) Layer
+func (m *Model) LayerCount() int
 func (m *Model) Forward(input tensor.Tensor) (tensor.Tensor, error)
 func (m *Model) Backward(gradOutput tensor.Tensor) error
 func (m *Model) Parameters() map[string]layers.Parameter
@@ -175,13 +186,14 @@ func (m *Model) Update(optimizer Optimizer) error
 ```
 
 **Features**:
+- **Init()**: Must be called after building to initialize all layers with correct shapes
+- **Layer access**: Get layers by index or name (for introspection/debugging)
 - Forward pass through all layers, stores result in `m.Output`
-- Users can set `m.Input` before forward or it's set automatically
 - Backward pass through all layers in reverse order
-- Layers manage their own input/output state - Model doesn't store per-layer values
+- Layers manage their own input/output state internally
 - Parameter management (get all parameters, zero gradients, update)
-- Shape validation
-- Optimizer is from `math/learn` package (not `math/nn`)
+- Shape validation during Init and Forward
+- Optimizer implements `nn.Optimizer` interface (typically from `math/learn` package)
 
 **File**: `model.go`
 
@@ -196,29 +208,35 @@ type ModelBuilder struct {
 
 func NewModelBuilder(inputShape []int) *ModelBuilder
 func (b *ModelBuilder) AddLayer(layer Layer) *ModelBuilder
-func (b *ModelBuilder) AddDense(inFeatures, outFeatures int, opts ...DenseOption) *ModelBuilder
-func (b *ModelBuilder) AddActivation(activation Activation) *ModelBuilder
 func (b *ModelBuilder) Build() (*Model, error)
 ```
 
 **Features**:
-- Sequential layer construction
-- Automatic shape inference for Dense layers
+- Sequential layer construction by adding Layer instances
 - Shape validation during build
-- Support for options pattern
+- Automatic layer naming and duplicate name detection
+- Creates layer name-to-index mapping for introspection
 
 **File**: `builder.go`
 
 ### Training
 
+Training functionality is in the `math/learn` package to separate concerns.
+
 #### TrainStep
 Performs a complete training step: forward pass, loss computation, backward pass, and weight update.
 
 ```go
-func TrainStep(model *Model, optimizer Optimizer, lossFn LossFunction, input, target tensor.Tensor) (float32, error)
+// In math/learn package
+func TrainStep(model *nn.Model, optimizer nn.Optimizer, lossFn nn.LossFunction, input, target tensor.Tensor) (float32, error)
 ```
 
-**Note**: This function is now in `math/learn` package. `optimizer` must implement `nn.Optimizer` interface (e.g., `learn.NewSGD(0.01)`).
+**Features**:
+- Forward pass through model
+- Loss computation using provided loss function
+- Backward pass through model
+- Parameter updates using provided optimizer
+- Returns loss value for monitoring
 
 **File**: `math/learn/training.go`
 
@@ -250,26 +268,35 @@ These are wrapped by the new layer-based implementations.
 ### Building a Model
 
 ```go
+// Create layers
+dense1 := layers.NewDense(784, 256, layers.WithCanLearn(true))
+relu1 := layers.NewReLU("relu1")
+dense2 := layers.NewDense(256, 128, layers.WithCanLearn(true))
+relu2 := layers.NewReLU("relu2")
+dense3 := layers.NewDense(128, 10, layers.WithCanLearn(true))
+softmax := layers.NewSoftmax("softmax", 0)
+
+// Build model
 model, err := nn.NewModelBuilder([]int{784}).
-    AddDense(784, 256, nn.WithActivation(nn.NewReLU()), nn.WithCanLearn(true)).
-    AddDense(256, 128, nn.WithActivation(nn.NewReLU()), nn.WithCanLearn(true)).
-    AddDense(128, 10, nn.WithActivation(nn.NewSoftmax(0))).
+    AddLayer(dense1).
+    AddLayer(relu1).
+    AddLayer(dense2).
+    AddLayer(relu2).
+    AddLayer(dense3).
+    AddLayer(softmax).
     Build()
+
+// Initialize all layers
+err = model.Init()
 ```
 
 ### Forward Pass (Inference)
 
 ```go
-ctx := context.Background()
+// Forward pass
+output, err := model.Forward(input)
 
-// Option 1: Set input before forward
-model.Input = input
-output, err := model.Forward(ctx, input)
-
-// Option 2: Let Forward set Input
-output, err := model.Forward(ctx, input)
-
-// After forward, output is available
+// Output is also stored in model.Output
 result := model.Output
 ```
 
@@ -281,7 +308,8 @@ import "github.com/itohio/EasyRobot/pkg/core/math/learn"
 lossFn := nn.NewCategoricalCrossEntropy(true)
 optimizer := learn.NewSGD(0.01)
 
-loss, err := learn.TrainStep(model, optimizer, lossFn, input, target)
+// Single training step
+loss, err := learn.TrainStep(model, optimizer, lossFn, batchInput, batchTarget)
 ```
 
 ## File Structure
@@ -291,25 +319,38 @@ pkg/core/math/nn/
 ├── builder.go              # ModelBuilder for constructing models
 ├── layer.go                # Layer interface
 ├── loss.go                 # LossFunction interface
-├── losses.go               # MSE, CrossEntropy, CategoricalCrossEntropy
+├── losses.go               # Loss function implementations
 ├── model.go                # Model type and operations
 ├── nn.go                   # Legacy functions (Linear, activations, losses)
+├── nn_test.go              # Package tests
 ├── validation.go           # Shape validation utilities
 ├── layers/                 # Layer implementations
+│   ├── activations.go      # Activation layers (ReLU, Sigmoid, Tanh, Softmax, Dropout)
 │   ├── base.go             # Base layer (parameter management)
-│   ├── dense.go            # Dense/Linear layer
-│   ├── activations.go      # ReLU, Sigmoid, Tanh, Softmax
 │   ├── conv1d.go           # Conv1D layer
 │   ├── conv2d.go           # Conv2D layer
-│   ├── pooling.go          # MaxPool2D, AvgPool2D, GlobalAvgPool2D
-│   ├── reshape.go          # Reshape, Flatten layers
-│   ├── parameter.go        # Parameter type
+│   ├── dense.go            # Dense/Linear layer
+│   ├── parameter.go        # Parameter type and initialization
+│   ├── pooling.go          # Pooling layers (MaxPool2D, AvgPool2D, GlobalAvgPool2D)
+│   ├── utility.go          # Utility layers (Flatten, Reshape, Unsqueeze, Squeeze, Transpose, Pad, Concatenate)
+│   ├── activations_test.go # Tests for activation layers
+│   ├── base_test.go        # Tests for base layer
+│   ├── conv1d_test.go      # Tests for Conv1D layer
+│   ├── conv2d_test.go      # Tests for Conv2D layer
+│   ├── dense_test.go       # Tests for Dense layer
+│   ├── parameter_test.go   # Tests for parameter type
+│   ├── pooling_test.go     # Tests for pooling layers
+│   ├── utility_test.go     # Tests for utility layers
 │   └── SPEC.md             # Layers package documentation
+├── models/                 # (Empty directory for future use)
 └── SPEC.md                 # This file
 
 pkg/core/math/learn/
-├── optimizer.go            # Optimizer interface and SGD implementation
-├── training.go             # TrainStep function
+├── optimizer.go            # Optimizer implementations
+├── training.go             # Training utilities
+├── quantization.go         # Quantization utilities
+├── mnist_test.go           # MNIST training tests
+├── mnist_large_test.go     # Large MNIST training tests
 ├── xor_test.go             # XOR training test
 └── LEARN_SPEC.md           # Learn package documentation
 ```
@@ -346,11 +387,13 @@ return nil, fmt.Errorf("Dense.Forward: input shape %v incompatible with inFeatur
 ## Current Limitations
 
 1. **CanLearn Default**: Layers default to `CanLearn=false` (inference-only). Must explicitly enable with `WithCanLearn(true)` for training.
-2. **Weight Initialization**: Dense layer creates zero-initialized weights - no initialization strategies yet
-3. **Multiple Inputs**: Model only supports single input - no multi-input support yet
+2. **Weight Initialization**: Layers create zero-initialized weights - Xavier initialization available but not used by default
+3. **Multiple Inputs**: Model only supports single input - Concatenate layer supports multiple inputs but Model does not
 4. **Composite Layers**: No Sequential or Composite layer containers yet
 5. **TensorFlow Lite**: No TFLite integration yet
-6. **Utility Layers**: No Reshape, Concatenate, ElementwiseAdd, ElementwiseMul, Pad, Transpose layers yet
+6. **Advanced Layers**: Missing BatchNorm, LayerNorm, GroupNorm, Conv2DTransposed, DepthwiseConv2D, Adaptive pooling layers
+7. **Multi-Input Models**: Model interface only supports single input tensor
+8. **Context Cancellation**: No context.Context support for cancellation/timeouts
 
 ## Future Enhancements
 

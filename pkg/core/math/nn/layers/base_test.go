@@ -295,11 +295,11 @@ func TestBase_Parameter(t *testing.T) {
 	// Test valid index
 	param, ok := base.Parameter(ParamWeights)
 	assert.True(t, ok, "Parameter should exist")
-	assert.True(t, len(param.Data.Shape().ToSlice()) > 0, "Parameter should have shape")
+	assert.True(t, len((&param.Data).Shape().ToSlice()) > 0, "Parameter should have shape")
 
 	param, ok = base.Parameter(ParamBiases)
 	assert.True(t, ok, "Parameter should exist")
-	assert.True(t, len(param.Data.Shape().ToSlice()) > 0, "Parameter should have shape")
+	assert.True(t, len((&param.Data).Shape().ToSlice()) > 0, "Parameter should have shape")
 
 	// Test invalid index
 	_, ok = base.Parameter(ParamCustom)
@@ -358,8 +358,13 @@ func TestBase_SetParameters(t *testing.T) {
 	// Verify parameters were set
 	params := base.Parameters()
 	require.Len(t, params, 2, "Parameters should have length 2")
-	assert.Equal(t, newParams[ParamWeights].Data.Shape().ToSlice(), params[ParamWeights].Data.Shape().ToSlice(), "Weights parameter shape should match")
-	assert.Equal(t, newParams[ParamBiases].Data.Shape().ToSlice(), params[ParamBiases].Data.Shape().ToSlice(), "Biases parameter shape should match")
+	weights := params[ParamWeights]
+	newWeights := newParams[ParamWeights]
+	assert.Equal(t, (&newWeights.Data).Shape().ToSlice(), (&weights.Data).Shape().ToSlice(), "Weights parameter shape should match")
+
+	biases := params[ParamBiases]
+	newBiases := newParams[ParamBiases]
+	assert.Equal(t, (&newBiases.Data).Shape().ToSlice(), (&biases.Data).Shape().ToSlice(), "Biases parameter shape should match")
 
 	// Test nil receiver
 	var nilBase *Base

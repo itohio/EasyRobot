@@ -55,21 +55,18 @@ func TestQuantizationAsymmetric(t *testing.T) {
 
 func TestQuantizeDequantize(t *testing.T) {
 	// Create a simple tensor
-	input := tensor.Tensor{
-		Dim:  []int{4},
-		Data: []float32{-10.0, -5.0, 0.0, 10.0},
-	}
+	input := tensor.FromFloat32(tensor.NewShape(4), []float32{-10.0, -5.0, 0.0, 10.0})
 
 	// Compute quantization parameters
 	calibrator := learn.NewCalibrator(learn.CalibMinMax, learn.QuantSymmetric, 8)
-	calibrator.AddTensor(&input)
+	calibrator.AddTensor(input)
 	params, err := calibrator.ComputeParams()
 	if err != nil {
 		t.Fatalf("ComputeParams failed: %v", err)
 	}
 
 	// Quantize
-	quantized, qp, err := learn.QuantizeTensor(&input, params, learn.QuantSymmetric, 8)
+	quantized, qp, err := learn.QuantizeTensor(input, params, learn.QuantSymmetric, 8)
 	if err != nil {
 		t.Fatalf("QuantizeTensor failed: %v", err)
 	}
@@ -85,8 +82,10 @@ func TestQuantizeDequantize(t *testing.T) {
 	}
 
 	// Check reconstruction error (should be small)
-	for i, val := range input.Data {
-		reconstructed := dequantized.Data[i]
+	inputData := input.Data()
+	dqData := dequantized.Data()
+	for i, val := range inputData {
+		reconstructed := dqData[i]
 		error := math.Abs(float64(val - reconstructed))
 		// Error should be less than one quantization step
 		maxError := params.Scale / 2.0

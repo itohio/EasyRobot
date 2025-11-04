@@ -18,19 +18,58 @@ The Base layer provides common functionality that all layers share:
 
 ```go
 type Base struct {
-    name     string
-    canLearn bool
-    input    tensor.Tensor  // Stored during Forward
-    output   tensor.Tensor  // Pre-allocated during Init
-    grad     tensor.Tensor  // Gradients stored during Backward
+	name     string      // Layer name
+	nameSet  bool        // Whether name was explicitly set
+	prefix   string      // Layer type prefix for auto-naming
+	canLearn bool        // Whether layer computes gradients
+	biasHint *bool       // Optional bias hint for layers that support it
+	input    tensor.Tensor         // Input tensor from last Forward
+	output   tensor.Tensor         // Output tensor pre-allocated during Init
+	grad     tensor.Tensor         // Gradient tensor from last Backward
+	params   map[ParamIndex]Parameter // Parameter map for trainable parameters
+	layerIdx int64                  // Unique layer index for auto-naming
 }
 ```
 
 **Responsibilities:**
-- Manages layer state (input/output/gradients)
-- Provides helper methods for storing tensors
+- Manages layer state (input/output/gradients/parameters)
+- Provides parameter management with typed parameter indices
 - Controls gradient computation via CanLearn flag
-- Allocates output/gradient tensors
+- Allocates output/gradient tensors during Init
+- Handles layer naming (explicit or auto-generated)
+- Provides helper methods for storing tensors
+
+**Parameter Management:**
+The Base layer manages trainable parameters using a typed system:
+
+```go
+// Standard parameter indices
+const (
+	ParamWeights ParamIndex = 1
+	ParamBiases  ParamIndex = 2
+	ParamKernels ParamIndex = 3
+	ParamCustom  ParamIndex = 100
+)
+
+// Parameter struct holds parameter data and gradients
+type Parameter struct {
+	Data         tensor.Tensor // Parameter values
+	Grad         tensor.Tensor // Gradients (lazy allocation)
+	RequiresGrad bool          // Whether to compute gradients
+}
+```
+
+**Base Options:**
+```go
+// Base option functions
+WithName(name string)           // Set explicit layer name
+WithCanLearn(canLearn bool)     // Enable/disable gradient computation
+WithBias(hasBias bool)          // Hint for bias support
+WithWeights(weight tensor.Tensor)  // Set weight parameter
+WithBiases(bias tensor.Tensor)     // Set bias parameter
+WithKernels(kernel tensor.Tensor)  // Set kernel parameter
+WithParameter(idx ParamIndex, param Parameter) // Set custom parameter
+```
 
 **File**: `base.go`
 
@@ -51,14 +90,15 @@ Fully connected (linear) layer: `output = input @ weight + bias`
 
 **Constructor:**
 ```go
-func NewDense(inFeatures, outFeatures int, opts ...DenseOption) (*Dense, error)
+func NewDense(inFeatures, outFeatures int, opts ...Option) (*Dense, error)
 ```
 
 **Options:**
-- Base options (via `Option` type): `WithName(name string)`, `WithCanLearn(canLearn bool)`
-- Dense-specific options (via `DenseOption` type): `WithDenseBias(useBias bool)`
+- `WithName(name string)`: Set layer name
+- `WithCanLearn(canLearn bool)`: Enable/disable gradient computation (default: false)
+- `WithBias(hasBias bool)`: Hint for bias support (default: true, always creates bias)
 
-**Note**: The constructor accepts both `Option` and `DenseOption` types through `...interface{}`. Type safety is enforced at runtime.
+**Note**: Dense layer always creates both weight and bias parameters. Bias is always enabled.
 
 **Example:**
 ```go
@@ -70,9 +110,13 @@ layer, err := layers.NewDense(
 
 **Parameter Access:**
 ```go
-// Get parameters
+// Get parameters via layer methods
 weight := layer.Weight()
 bias := layer.Bias()
+
+// Or via Base parameter map
+weightParam, _ := layer.Parameters()[ParamWeights]
+biasParam, _ := layer.Parameters()[ParamBiases]
 
 // Set parameters (with validation)
 err := layer.SetWeight(newWeight)
@@ -141,13 +185,17 @@ func NewConv2D(
 ) (*Conv2D, error)
 ```
 
-**Note**: Backward pass not yet implemented.
+**Note**: Fully implemented including backward pass.
 
 **Parameter Access:**
 ```go
-// Get parameters
+// Get parameters via layer methods
 weight := layer.Weight()
 bias := layer.Bias()
+
+// Or via Base parameter map
+weightParam, _ := layer.Parameters()[ParamWeights]
+biasParam, _ := layer.Parameters()[ParamBiases]
 
 // Set parameters (with validation)
 err := layer.SetWeight(newWeight)
@@ -175,13 +223,17 @@ func NewConv1D(
 ) (*Conv1D, error)
 ```
 
-**Note**: Backward pass not yet implemented.
+**Note**: Fully implemented including backward pass.
 
 **Parameter Access:**
 ```go
-// Get parameters
+// Get parameters via layer methods
 weight := layer.Weight()
 bias := layer.Bias()
+
+// Or via Base parameter map
+weightParam, _ := layer.Parameters()[ParamWeights]
+biasParam, _ := layer.Parameters()[ParamBiases]
 
 // Set parameters (with validation)
 err := layer.SetWeight(newWeight)
@@ -201,7 +253,7 @@ err := layer.SetBias(newBias)
 func NewMaxPool2D(kernelH, kernelW, strideH, strideW, padH, padW int) (*MaxPool2D, error)
 ```
 
-**Note**: Backward pass not yet implemented.
+**Note**: Fully implemented including backward pass.
 
 #### AvgPool2D
 - **Forward**: Average pooling over spatial dimensions
@@ -214,7 +266,7 @@ func NewMaxPool2D(kernelH, kernelW, strideH, strideW, padH, padW int) (*MaxPool2
 func NewAvgPool2D(kernelH, kernelW, strideH, strideW, padH, padW int) (*AvgPool2D, error)
 ```
 
-**Note**: Backward pass not yet implemented.
+**Note**: Fully implemented including backward pass.
 
 #### GlobalAvgPool2D
 - **Forward**: Global average pooling (reduces to channels only)
@@ -226,7 +278,7 @@ func NewAvgPool2D(kernelH, kernelW, strideH, strideW, padH, padW int) (*AvgPool2
 func NewGlobalAvgPool2D() *GlobalAvgPool2D
 ```
 
-**Note**: Backward pass not yet implemented.
+**Note**: Fully implemented including backward pass.
 
 ### Utility Layers
 
@@ -517,6 +569,7 @@ Layers with trainable parameters expose them via the `Parameters()` method:
 - Layers embedding Base inherit this method via embedding
 - Parameters are stored as values in the map for efficiency and clarity
 - To update parameters, use `SetParam()` method on the layer
+- Standard parameter indices: `ParamWeights`, `ParamBiases`, `ParamKernels`, `ParamCustom`
 
 ## Usage Examples
 
@@ -621,12 +674,12 @@ Layers are built on top of optimized tensor operations:
    
    **Status**: ✅ Improved - Error message now includes the invalid type. The pattern works but loses compile-time type safety. This is acceptable for now as it allows both Option and DenseOption types.
 
-3. **AvgPool2D Prefix Bug**: `AvgPool2D` incorrectly uses "maxpool2d" prefix instead of "avgpool2d":
-   ```go:221:pooling.go
-   Base:    NewBase("maxpool2d"),
+3. **Dense Options Pattern**: `NewDense()` previously used `...interface{}` for options, with runtime type checking:
+   ```go
+   func NewDense(inFeatures, outFeatures int, opts ...interface{}) (*Dense, error)
    ```
    
-   **Fix Required**: Change to `NewBase("avgpool2d")`
+   **Status**: ✅ Fixed - Now uses proper `...Option` pattern with compile-time type safety.
 
 ### Design Issues
 
@@ -639,18 +692,14 @@ Layers are built on top of optimized tensor operations:
    - `Model.Update()` works with parameter values and writes back via `SetParam()` method
    - This design avoids the complexity of pointer management while maintaining functionality
 
-5. **GlobalAvgPool2D Prefix**: Uses "avgpool2d" prefix instead of "globalavgpool2d":
-   ```go:367:pooling.go
-   Base: NewBase("avgpool2d"),
-   ```
-   
-   **Recommendation**: Change to `NewBase("globalavgpool2d")` for consistency.
 
 ### Documentation Issues
 
-6. **SPEC.md Outdated**: SPEC.md incorrectly states that Forward/Backward take `context.Context`, but the actual Layer interface does not.
-
-7. **Missing Parameter Access Documentation**: SPEC.md shows `Parameters()` returning a slice, but Base returns a map.
+6. **SPEC.md Updated**: ✅ Fixed - SPEC.md has been updated to reflect current implementation including:
+   - Base layer parameter management system
+   - Dense layer using Base options instead of DenseOption
+   - All layer backward passes are implemented (not just forward)
+   - Correct parameter access patterns
 
 ## Future Enhancements
 

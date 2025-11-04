@@ -68,14 +68,14 @@ func TestNewDense(t *testing.T) {
 				require.NotNil(t, dense, "Dense should not be nil")
 
 				weight := dense.Weight()
-				assert.Equal(t, []int{tt.inFeatures, tt.outFeatures}, weight.Dim, "Weight shape should match")
+				assert.Equal(t, []int{tt.inFeatures, tt.outFeatures}, weight.Shape().ToSlice(), "Weight shape should match")
 
 				if tt.expectBias {
 					bias := dense.Bias()
-					assert.Equal(t, []int{tt.outFeatures}, bias.Dim, "Bias shape should match")
+					assert.Equal(t, []int{tt.outFeatures}, bias.Shape().ToSlice(), "Bias shape should match")
 				} else {
 					bias := dense.Bias()
-					assert.Len(t, bias.Dim, 0, "Bias should be empty when disabled")
+					assert.Len(t, bias.Shape().ToSlice(), 0, "Bias should be empty when disabled")
 				}
 
 				if tt.name == "with_name" {
@@ -134,7 +134,7 @@ func TestDense_Init(t *testing.T) {
 			} else {
 				require.NoError(t, err, "Init should succeed")
 				output := dense.Output()
-				assert.NotEmpty(t, output.Dim, "Output should be allocated")
+				assert.NotEmpty(t, output.Shape().ToSlice(), "Output should be allocated")
 			}
 		})
 	}
@@ -175,17 +175,11 @@ func TestDense_Forward(t *testing.T) {
 			require.NoError(t, err, "Should create Dense layer")
 
 			// Set weights and bias
-			weight := tensor.Tensor{
-				Dim: []int{4, 2},
-				Data: tt.weightData,
-			}
+			weight := *tensor.FromFloat32(tensor.NewShape(4, 2), tt.weightData)
 			err = dense.SetWeight(weight)
 			require.NoError(t, err, "SetWeight should succeed")
 
-			bias := tensor.Tensor{
-				Dim: []int{2},
-				Data: tt.biasData,
-			}
+			bias := *tensor.FromFloat32(tensor.NewShape(2), tt.biasData)
 			err = dense.SetBias(bias)
 			require.NoError(t, err, "SetBias should succeed")
 
@@ -194,29 +188,23 @@ func TestDense_Forward(t *testing.T) {
 			require.NoError(t, err, "Init should succeed")
 
 			// Forward pass
-			input := tensor.Tensor{
-				Dim:  tt.inputShape,
-				Data: tt.inputData,
-			}
+			input := *tensor.FromFloat32(tensor.NewShape(tt.inputShape...), tt.inputData)
 
 			output, err := dense.Forward(input)
 			require.NoError(t, err, "Forward should succeed")
-			assert.NotEmpty(t, output.Dim, "Output should have dimensions")
-			assert.NotEmpty(t, output.Data, "Output should have data")
+			assert.NotEmpty(t, output.Shape().ToSlice(), "Output should have dimensions")
+			assert.NotEmpty(t, output.Data(), "Output should have data")
 
 			// Verify output shape
 			expectedShape, err := dense.OutputShape(tt.inputShape)
 			require.NoError(t, err, "OutputShape should succeed")
-			assert.Equal(t, expectedShape, output.Dim, "Output shape should match")
+			assert.Equal(t, expectedShape, output.Shape().ToSlice(), "Output shape should match")
 		})
 	}
 
 	// Test error cases
 	var nilDense *Dense
-	input := tensor.Tensor{
-		Dim: []int{4},
-		Data: []float32{1.0, 2.0, 3.0, 4.0},
-	}
+	input := *tensor.FromFloat32(tensor.NewShape(4), []float32{1.0, 2.0, 3.0, 4.0})
 	_, err := nilDense.Forward(input)
 	assert.Error(t, err, "Should return error for nil receiver")
 
@@ -259,12 +247,10 @@ func TestDense_Backward(t *testing.T) {
 			for _, dim := range tt.inputShape {
 				inputSize *= dim
 			}
-			input := tensor.Tensor{
-				Dim:  tt.inputShape,
-				Data: make([]float32, inputSize),
-			}
-			for i := range input.Data {
-				input.Data[i] = float32(i) * 0.1
+			input := *tensor.FromFloat32(tensor.NewShape(tt.inputShape...), make([]float32, inputSize))
+			inputData := input.Data()
+			for i := range inputData {
+				inputData[i] = float32(i) * 0.1
 			}
 
 			_, err = dense.Forward(input)
@@ -275,33 +261,25 @@ func TestDense_Backward(t *testing.T) {
 			for _, dim := range outputShape {
 				outputSize *= dim
 			}
-			gradOutput := tensor.Tensor{
-				Dim:  outputShape,
-				Data: make([]float32, outputSize),
-			}
-			for i := range gradOutput.Data {
-				gradOutput.Data[i] = float32(i) * 0.01
+			gradOutput := *tensor.FromFloat32(tensor.NewShape(outputShape...), make([]float32, outputSize))
+			gradOutputData := gradOutput.Data()
+			for i := range gradOutputData {
+				gradOutputData[i] = float32(i) * 0.01
 			}
 
 			gradInput, err := dense.Backward(gradOutput)
 			require.NoError(t, err, "Backward should succeed")
-			assert.NotEmpty(t, gradInput.Dim, "GradInput should have dimensions")
+			assert.NotEmpty(t, gradInput.Shape().ToSlice(), "GradInput should have dimensions")
 
 			// Test with CanLearn = true (training mode)
 			dense2, err := NewDense(4, 2, WithCanLearn(true))
 			require.NoError(t, err, "Should create Dense layer")
 
 			// Set weights and bias
-			weight := tensor.Tensor{
-				Dim: []int{4, 2},
-				Data: make([]float32, 8),
-			}
+			weight := *tensor.FromFloat32(tensor.NewShape(4, 2), make([]float32, 8))
 			dense2.SetWeight(weight)
 
-			bias := tensor.Tensor{
-				Dim: []int{2},
-				Data: make([]float32, 2),
-			}
+			bias := *tensor.FromFloat32(tensor.NewShape(2), make([]float32, 2))
 			dense2.SetBias(bias)
 
 			err = dense2.Init(tt.inputShape)
@@ -312,31 +290,28 @@ func TestDense_Backward(t *testing.T) {
 
 			gradInput2, err := dense2.Backward(gradOutput)
 			require.NoError(t, err, "Backward should succeed")
-			assert.NotEmpty(t, gradInput2.Dim, "GradInput should have dimensions")
+			assert.NotEmpty(t, gradInput2.Shape().ToSlice(), "GradInput should have dimensions")
 
 			// Verify gradients were computed
 			weightParam, _ := dense2.Base.Parameter(ParamWeights)
-			assert.NotEmpty(t, weightParam.Grad.Dim, "Weight grad should be allocated")
+			assert.NotEmpty(t, weightParam.Grad.Shape().ToSlice(), "Weight grad should be allocated")
 
 			if tt.name == "1d_input" || tt.name == "2d_input" {
 				biasParam, _ := dense2.Base.Parameter(ParamBiases)
-				assert.NotEmpty(t, biasParam.Grad.Dim, "Bias grad should be allocated")
+				assert.NotEmpty(t, biasParam.Grad.Shape().ToSlice(), "Bias grad should be allocated")
 			}
 		})
 	}
 
 	// Test error cases
 	var nilDense *Dense
-	gradOutput := tensor.Tensor{
-		Dim: []int{2},
-		Data: []float32{1.0, 1.0},
-	}
+	gradOutput := *tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 1.0})
 	_, err := nilDense.Backward(gradOutput)
 	assert.Error(t, err, "Should return error for nil receiver")
 
 	dense, _ := NewDense(4, 2)
 	dense.Init([]int{4})
-	dense.Forward(tensor.Tensor{Dim: []int{4}, Data: make([]float32, 4)})
+	dense.Forward(*tensor.FromFloat32(tensor.NewShape(4), make([]float32, 4)))
 
 	emptyGrad := tensor.Tensor{}
 	_, err = dense.Backward(emptyGrad)
@@ -411,13 +386,13 @@ func TestDense_Weight(t *testing.T) {
 	require.NoError(t, err, "Should create Dense layer")
 
 	weight := dense.Weight()
-	assert.Equal(t, []int{4, 2}, weight.Dim, "Weight shape should match")
-	assert.Len(t, weight.Data, 8, "Weight data size should match")
+	assert.Equal(t, []int{4, 2}, weight.Shape().ToSlice(), "Weight shape should match")
+	assert.Len(t, weight.Data(), 8, "Weight data size should match")
 
 	// Test nil receiver
 	var nilDense *Dense
 	weight = nilDense.Weight()
-	assert.Len(t, weight.Dim, 0, "Should return empty tensor for nil receiver")
+	assert.Len(t, weight.Shape().ToSlice(), 0, "Should return empty tensor for nil receiver")
 }
 
 func TestDense_Bias(t *testing.T) {
@@ -426,32 +401,29 @@ func TestDense_Bias(t *testing.T) {
 	require.NoError(t, err, "Should create Dense layer")
 
 	bias := dense.Bias()
-	assert.Equal(t, []int{2}, bias.Dim, "Bias shape should match")
-	assert.Len(t, bias.Data, 2, "Bias data size should match")
+	assert.Equal(t, []int{2}, bias.Shape().ToSlice(), "Bias shape should match")
+	assert.Len(t, bias.Data(), 2, "Bias data size should match")
 
 	// Test nil receiver
 	var nilDense *Dense
 	bias = nilDense.Bias()
-	assert.Len(t, bias.Dim, 0, "Should return empty tensor for nil receiver")
+	assert.Len(t, bias.Shape().ToSlice(), 0, "Should return empty tensor for nil receiver")
 }
 
 func TestDense_SetWeight(t *testing.T) {
 	dense, err := NewDense(4, 2)
 	require.NoError(t, err, "Should create Dense layer")
 
-	newWeight := tensor.Tensor{
-		Dim: []int{4, 2},
-		Data: []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0},
-	}
+	newWeight := *tensor.FromFloat32(tensor.NewShape(4, 2), []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0})
 
 	err = dense.SetWeight(newWeight)
 	require.NoError(t, err, "SetWeight should succeed")
 
 	weight := dense.Weight()
-	assert.Equal(t, newWeight.Data, weight.Data, "Weight data should match")
+	assert.Equal(t, newWeight.Data(), weight.Data(), "Weight data should match")
 
 	// Test error cases
-	err = dense.SetWeight(tensor.Tensor{Dim: []int{4, 3}, Data: make([]float32, 12)})
+	err = dense.SetWeight(*tensor.FromFloat32(tensor.NewShape(4, 3), make([]float32, 12)))
 	assert.Error(t, err, "Should return error for wrong shape")
 
 	err = dense.SetWeight(tensor.Tensor{})
@@ -466,10 +438,7 @@ func TestDense_SetBias(t *testing.T) {
 	dense, err := NewDense(4, 2)
 	require.NoError(t, err, "Should create Dense layer")
 
-	newBias := tensor.Tensor{
-		Dim: []int{2},
-		Data: []float32{0.5, -0.5},
-	}
+	newBias := *tensor.FromFloat32(tensor.NewShape(2), []float32{0.5, -0.5})
 
 	err = dense.SetBias(newBias)
 	require.NoError(t, err, "SetBias should succeed")
@@ -495,55 +464,43 @@ func TestDense_BackwardGradientComputation(t *testing.T) {
 	require.NoError(t, err, "Should create Dense layer")
 
 	// Set simple weights: [[1.0], [1.0]]
-	weight := tensor.Tensor{
-		Dim: []int{2, 1},
-		Data: []float32{1.0, 1.0},
-	}
+	weight := *tensor.FromFloat32(tensor.NewShape(2, 1), []float32{1.0, 1.0})
 	dense.SetWeight(weight)
 
 	// Set bias: [0.0]
-	bias := tensor.Tensor{
-		Dim: []int{1},
-		Data: []float32{0.0},
-	}
+	bias := *tensor.FromFloat32(tensor.NewShape(1), []float32{0.0})
 	dense.SetBias(bias)
 
 	// Initialize and forward
 	err = dense.Init([]int{2})
 	require.NoError(t, err, "Init should succeed")
 
-	input := tensor.Tensor{
-		Dim: []int{2},
-		Data: []float32{1.0, 2.0},
-	}
+	input := *tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0})
 	output, err := dense.Forward(input)
 	require.NoError(t, err, "Forward should succeed")
 
 	// Expected output: 1.0*1.0 + 2.0*1.0 + 0.0 = 3.0
-	assert.InDelta(t, 3.0, output.Data[0], 1e-6, "Output should be 3.0")
+	assert.InDelta(t, 3.0, output.Data()[0], 1e-6, "Output should be 3.0")
 
 	// Backward pass
-	gradOutput := tensor.Tensor{
-		Dim: []int{1},
-		Data: []float32{1.0},
-	}
+	gradOutput := *tensor.FromFloat32(tensor.NewShape(1), []float32{1.0})
 	gradInput, err := dense.Backward(gradOutput)
 	require.NoError(t, err, "Backward should succeed")
 
 	// Expected gradInput: [1.0, 1.0] (weight transpose @ gradOutput)
-	assert.InDelta(t, 1.0, gradInput.Data[0], 1e-6, "GradInput[0] should be 1.0")
-	assert.InDelta(t, 1.0, gradInput.Data[1], 1e-6, "GradInput[1] should be 1.0")
+	assert.InDelta(t, 1.0, gradInput.Data()[0], 1e-6, "GradInput[0] should be 1.0")
+	assert.InDelta(t, 1.0, gradInput.Data()[1], 1e-6, "GradInput[1] should be 1.0")
 
 	// Check weight gradient: should be [1.0, 2.0] (input @ gradOutput)
 	weightParam, _ := dense.Base.Parameter(ParamWeights)
-	assert.NotEmpty(t, weightParam.Grad.Dim, "Weight grad should be allocated")
-	assert.InDelta(t, 1.0, weightParam.Grad.Data[0], 1e-6, "Weight grad[0] should be 1.0")
-	assert.InDelta(t, 2.0, weightParam.Grad.Data[1], 1e-6, "Weight grad[1] should be 2.0")
+	assert.NotEmpty(t, weightParam.Grad.Shape().ToSlice(), "Weight grad should be allocated")
+	assert.InDelta(t, 1.0, weightParam.Grad.Data()[0], 1e-6, "Weight grad[0] should be 1.0")
+	assert.InDelta(t, 2.0, weightParam.Grad.Data()[1], 1e-6, "Weight grad[1] should be 2.0")
 
 	// Check bias gradient: should be [1.0]
 	biasParam, _ := dense.Base.Parameter(ParamBiases)
-	assert.NotEmpty(t, biasParam.Grad.Dim, "Bias grad should be allocated")
-	assert.InDelta(t, 1.0, biasParam.Grad.Data[0], 1e-6, "Bias grad[0] should be 1.0")
+	assert.NotEmpty(t, biasParam.Grad.Shape().ToSlice(), "Bias grad should be allocated")
+	assert.InDelta(t, 1.0, biasParam.Grad.Data()[0], 1e-6, "Bias grad[0] should be 1.0")
 }
 
 // TestDense_ComputeOutput tests that dense layers compute outputs correctly
@@ -560,62 +517,35 @@ func TestDense_ComputeOutput(t *testing.T) {
 		expectedOutput []float32
 	}{
 		{
-			name:        "1d_3x3_identity",
-			inFeatures:  3,
-			outFeatures: 3,
-			inputShape:  []int{3},
-			input: tensor.Tensor{
-				Dim: []int{3},
-				Data: []float32{1.0, 2.0, 3.0},
-			},
-			weight: tensor.Tensor{
-				Dim: []int{3, 3},
-				Data: []float32{1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0},
-			},
-			bias: tensor.Tensor{
-				Dim: []int{3},
-				Data: []float32{0.0, 0.0, 0.0},
-			},
+			name:           "1d_3x3_identity",
+			inFeatures:     3,
+			outFeatures:    3,
+			inputShape:     []int{3},
+			input:          *tensor.FromFloat32(tensor.NewShape(3), []float32{1.0, 2.0, 3.0}),
+			weight:         *tensor.FromFloat32(tensor.NewShape(3, 3), []float32{1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0}),
+			bias:           *tensor.FromFloat32(tensor.NewShape(3), []float32{0.0, 0.0, 0.0}),
 			expectedShape:  []int{3},
 			expectedOutput: []float32{1.0, 2.0, 3.0},
 		},
 		{
-			name:        "1d_3x3_custom",
-			inFeatures:  3,
-			outFeatures: 3,
-			inputShape:  []int{3},
-			input: tensor.Tensor{
-				Dim: []int{3},
-				Data: []float32{1.0, 2.0, 3.0},
-			},
-			weight: tensor.Tensor{
-				Dim: []int{3, 3},
-				Data: []float32{1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0},
-			},
-			bias: tensor.Tensor{
-				Dim: []int{3},
-				Data: []float32{0.0, 0.0, 0.0},
-			},
+			name:           "1d_3x3_custom",
+			inFeatures:     3,
+			outFeatures:    3,
+			inputShape:     []int{3},
+			input:          *tensor.FromFloat32(tensor.NewShape(3), []float32{1.0, 2.0, 3.0}),
+			weight:         *tensor.FromFloat32(tensor.NewShape(3, 3), []float32{1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 1.0}),
+			bias:           *tensor.FromFloat32(tensor.NewShape(3), []float32{0.0, 0.0, 0.0}),
 			expectedShape:  []int{3},
 			expectedOutput: []float32{4.0, 3.0, 5.0},
 		},
 		{
-			name:        "2d_2x2_4_outputs",
-			inFeatures:  2,
-			outFeatures: 4,
-			inputShape:  []int{2, 2},
-			input: tensor.Tensor{
-				Dim: []int{2, 2},
-				Data: []float32{1.0, 2.0, 3.0, 4.0},
-			},
-			weight: tensor.Tensor{
-				Dim: []int{2, 4},
-				Data: []float32{1.0, 1.0, 1.0, 1.0, 1.0, -1.0, 1.0, -1.0},
-			},
-			bias: tensor.Tensor{
-				Dim: []int{4},
-				Data: []float32{0.0, 0.0, 0.0, 0.0},
-			},
+			name:           "2d_2x2_4_outputs",
+			inFeatures:     2,
+			outFeatures:    4,
+			inputShape:     []int{2, 2},
+			input:          *tensor.FromFloat32(tensor.NewShape(2, 2), []float32{1.0, 2.0, 3.0, 4.0}),
+			weight:         *tensor.FromFloat32(tensor.NewShape(2, 4), []float32{1.0, 1.0, 1.0, 1.0, 1.0, -1.0, 1.0, -1.0}),
+			bias:           *tensor.FromFloat32(tensor.NewShape(4), []float32{0.0, 0.0, 0.0, 0.0}),
 			expectedShape:  []int{2, 4},
 			expectedOutput: []float32{3.0, -1.0, 3.0, -1.0, 7.0, -1.0, 7.0, -1.0},
 		},
@@ -638,10 +568,10 @@ func TestDense_ComputeOutput(t *testing.T) {
 			output, err := dense.Forward(tt.input)
 			require.NoError(t, err, "Forward should succeed")
 
-			assert.Equal(t, tt.expectedShape, output.Dim, "Output shape should match")
-			require.Len(t, output.Data, len(tt.expectedOutput), "Output data length should match")
+			assert.Equal(t, tt.expectedShape, output.Shape().ToSlice(), "Output shape should match")
+			require.Len(t, output.Data(), len(tt.expectedOutput), "Output data length should match")
 			for i := range tt.expectedOutput {
-				assert.InDelta(t, tt.expectedOutput[i], output.Data[i], 1e-6, "Output[%d] should match expected", i)
+				assert.InDelta(t, tt.expectedOutput[i], output.Data()[i], 1e-6, "Output[%d] should match expected", i)
 			}
 		})
 	}
@@ -664,79 +594,43 @@ func TestDense_BackwardAccuracy(t *testing.T) {
 		expectedInputGrad  []float32
 	}{
 		{
-			name:        "1d_single_sample",
-			inFeatures:  2,
-			outFeatures: 1,
-			hasBias:     true,
-			inputShape:  []int{2},
-			input: tensor.Tensor{
-				Dim: []int{2},
-				Data: []float32{1.0, 2.0},
-			},
-			weight: tensor.Tensor{
-				Dim: []int{2, 1},
-				Data: []float32{1.0, 1.0},
-			},
-			bias: tensor.Tensor{
-				Dim: []int{1},
-				Data: []float32{0.0},
-			},
-			gradOutput: tensor.Tensor{
-				Dim: []int{1},
-				Data: []float32{1.0},
-			},
+			name:               "1d_single_sample",
+			inFeatures:         2,
+			outFeatures:        1,
+			hasBias:            true,
+			inputShape:         []int{2},
+			input:              *tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
+			weight:             *tensor.FromFloat32(tensor.NewShape(2, 1), []float32{1.0, 1.0}),
+			bias:               *tensor.FromFloat32(tensor.NewShape(1), []float32{0.0}),
+			gradOutput:         *tensor.FromFloat32(tensor.NewShape(1), []float32{1.0}),
 			expectedWeightGrad: []float32{1.0, 2.0}, // input^T @ gradOutput = [1, 2]^T @ [1] = [1, 2]
 			expectedBiasGrad:   []float32{1.0},      // gradOutput = [1]
 			expectedInputGrad:  []float32{1.0, 1.0}, // gradOutput @ weight^T = [1] @ [[1],[1]]^T = [1, 1]
 		},
 		{
-			name:        "1d_multi_output",
-			inFeatures:  3,
-			outFeatures: 2,
-			hasBias:     true,
-			inputShape:  []int{3},
-			input: tensor.Tensor{
-				Dim: []int{3},
-				Data: []float32{1.0, 2.0, 3.0},
-			},
-			weight: tensor.Tensor{
-				Dim: []int{3, 2},
-				Data: []float32{1.0, 0.0, 0.0, 1.0, 1.0, 1.0},
-			},
-			bias: tensor.Tensor{
-				Dim: []int{2},
-				Data: []float32{0.0, 0.0},
-			},
-			gradOutput: tensor.Tensor{
-				Dim: []int{2},
-				Data: []float32{1.0, 2.0},
-			},
+			name:               "1d_multi_output",
+			inFeatures:         3,
+			outFeatures:        2,
+			hasBias:            true,
+			inputShape:         []int{3},
+			input:              *tensor.FromFloat32(tensor.NewShape(3), []float32{1.0, 2.0, 3.0}),
+			weight:             *tensor.FromFloat32(tensor.NewShape(3, 2), []float32{1.0, 0.0, 0.0, 1.0, 1.0, 1.0}),
+			bias:               *tensor.FromFloat32(tensor.NewShape(2), []float32{0.0, 0.0}),
+			gradOutput:         *tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
 			expectedWeightGrad: []float32{1.0, 2.0, 2.0, 4.0, 3.0, 6.0}, // [1,2,3]^T @ [1,2] = [[1,2],[2,4],[3,6]]
 			expectedBiasGrad:   []float32{1.0, 2.0},
 			expectedInputGrad:  []float32{1.0, 2.0, 3.0}, // gradInput[i] = sum_j(gradOutput[j] * weight[i,j])
 		},
 		{
-			name:        "2d_batch",
-			inFeatures:  2,
-			outFeatures: 1,
-			hasBias:     true,
-			inputShape:  []int{2, 2},
-			input: tensor.Tensor{
-				Dim: []int{2, 2},
-				Data: []float32{1.0, 2.0, 3.0, 4.0},
-			},
-			weight: tensor.Tensor{
-				Dim: []int{2, 1},
-				Data: []float32{1.0, 1.0},
-			},
-			bias: tensor.Tensor{
-				Dim: []int{1},
-				Data: []float32{0.0},
-			},
-			gradOutput: tensor.Tensor{
-				Dim: []int{2, 1},
-				Data: []float32{1.0, 2.0},
-			},
+			name:               "2d_batch",
+			inFeatures:         2,
+			outFeatures:        1,
+			hasBias:            true,
+			inputShape:         []int{2, 2},
+			input:              *tensor.FromFloat32(tensor.NewShape(2, 2), []float32{1.0, 2.0, 3.0, 4.0}),
+			weight:             *tensor.FromFloat32(tensor.NewShape(2, 1), []float32{1.0, 1.0}),
+			bias:               *tensor.FromFloat32(tensor.NewShape(1), []float32{0.0}),
+			gradOutput:         *tensor.FromFloat32(tensor.NewShape(2, 1), []float32{1.0, 2.0}),
 			expectedWeightGrad: []float32{7.0, 10.0},          // sum over batch: [1,2]^T @ [1] + [3,4]^T @ [2] = [1,2] + [6,8] = [7,10]
 			expectedBiasGrad:   []float32{3.0},                // sum([1, 2]) = 3
 			expectedInputGrad:  []float32{1.0, 1.0, 2.0, 2.0}, // [1] @ [1,1]^T = [1,1], [2] @ [1,1]^T = [2,2]
@@ -747,22 +641,10 @@ func TestDense_BackwardAccuracy(t *testing.T) {
 			outFeatures: 2,
 			hasBias:     true,
 			inputShape:  []int{2, 2},
-			input: tensor.Tensor{
-				Dim: []int{2, 2},
-				Data: []float32{1.0, 2.0, 3.0, 4.0},
-			},
-			weight: tensor.Tensor{
-				Dim: []int{2, 2},
-				Data: []float32{1.0, 0.0, 0.0, 1.0},
-			},
-			bias: tensor.Tensor{
-				Dim: []int{2},
-				Data: []float32{0.0, 0.0},
-			},
-			gradOutput: tensor.Tensor{
-				Dim: []int{2, 2},
-				Data: []float32{1.0, 2.0, 3.0, 4.0},
-			},
+			input:       *tensor.FromFloat32(tensor.NewShape(2, 2), []float32{1.0, 2.0, 3.0, 4.0}),
+			weight:      *tensor.FromFloat32(tensor.NewShape(2, 2), []float32{1.0, 0.0, 0.0, 1.0}),
+			bias:        *tensor.FromFloat32(tensor.NewShape(2), []float32{0.0, 0.0}),
+			gradOutput:  *tensor.FromFloat32(tensor.NewShape(2, 2), []float32{1.0, 2.0, 3.0, 4.0}),
 			expectedWeightGrad: []float32{
 				10.0, 14.0, // weight grad[i,j] = sum_batch(input[b,i] * gradOutput[b,j])
 				14.0, 20.0, // i=0,j=0: 1*1 + 3*3 = 10; i=0,j=1: 1*2 + 3*4 = 14; etc.
@@ -802,10 +684,10 @@ func TestDense_BackwardAccuracy(t *testing.T) {
 			// Verify weight gradient
 			weightParam, _ := dense.Base.Parameter(ParamWeights)
 			require.NotNil(t, weightParam, "Weight parameter should exist")
-			require.NotEmpty(t, weightParam.Grad.Dim, "Weight grad should be allocated")
-			require.Len(t, weightParam.Grad.Data, len(tt.expectedWeightGrad), "Weight grad length should match")
+			require.NotEmpty(t, weightParam.Grad.Shape().ToSlice(), "Weight grad should be allocated")
+			require.Len(t, weightParam.Grad.Data(), len(tt.expectedWeightGrad), "Weight grad length should match")
 			for i := range tt.expectedWeightGrad {
-				assert.InDelta(t, tt.expectedWeightGrad[i], weightParam.Grad.Data[i], 1e-6,
+				assert.InDelta(t, tt.expectedWeightGrad[i], weightParam.Grad.Data()[i], 1e-6,
 					"Weight grad[%d] should match expected", i)
 			}
 
@@ -813,18 +695,18 @@ func TestDense_BackwardAccuracy(t *testing.T) {
 			biasParam, _ := dense.Base.Parameter(ParamBiases)
 			require.NotNil(t, biasParam, "Bias parameter should exist")
 			if tt.expectedBiasGrad != nil {
-				require.NotEmpty(t, biasParam.Grad.Dim, "Bias grad should be allocated")
-				require.Len(t, biasParam.Grad.Data, len(tt.expectedBiasGrad), "Bias grad length should match")
+				require.NotEmpty(t, biasParam.Grad.Shape().ToSlice(), "Bias grad should be allocated")
+				require.Len(t, biasParam.Grad.Data(), len(tt.expectedBiasGrad), "Bias grad length should match")
 				for i := range tt.expectedBiasGrad {
-					assert.InDelta(t, tt.expectedBiasGrad[i], biasParam.Grad.Data[i], 1e-6,
+					assert.InDelta(t, tt.expectedBiasGrad[i], biasParam.Grad.Data()[i], 1e-6,
 						"Bias grad[%d] should match expected", i)
 				}
 			}
 
 			// Verify input gradient
-			require.Len(t, gradInput.Data, len(tt.expectedInputGrad), "GradInput length should match")
+			require.Len(t, gradInput.Data(), len(tt.expectedInputGrad), "GradInput length should match")
 			for i := range tt.expectedInputGrad {
-				assert.InDelta(t, tt.expectedInputGrad[i], gradInput.Data[i], 1e-6,
+				assert.InDelta(t, tt.expectedInputGrad[i], gradInput.Data()[i], 1e-6,
 					"GradInput[%d] should match expected", i)
 			}
 		})

@@ -127,9 +127,7 @@ func (c *Conv1D) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("Conv1D.Forward: output not allocated, must call Init first")
 	}
 
-	// Compute convolution using tensor.Conv1D
-	// Note: tensor.Conv1D expects weight shape [outChannels, inChannels, kernelLen]
-	// which matches our parameter shape
+	// Compute convolution using tensor.Conv1DTo with pre-allocated output
 	kernelParam, ok := c.Base.Parameter(ParamKernels)
 	if !ok {
 		return tensor.Tensor{}, fmt.Errorf("Conv1D.Forward: kernel parameter not initialized")
@@ -142,14 +140,7 @@ func (c *Conv1D) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 		}
 	}
 
-	result := input.Conv1D(&kernelParam.Data, biasParam, c.stride, c.pad)
-
-	// Copy result to pre-allocated output
-	if len(result.Data()) != len(output.Data()) {
-		return tensor.Tensor{}, fmt.Errorf("Conv1D.Forward: result size %d doesn't match output size %d",
-			len(result.Data()), len(output.Data()))
-	}
-	copy(output.Data(), result.Data())
+	input.Conv1DTo(&kernelParam.Data, biasParam, &output, c.stride, c.pad)
 
 	// Store output
 	c.Base.StoreOutput(output)
@@ -176,55 +167,10 @@ func (c *Conv1D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		return tensor.Tensor{}, fmt.Errorf("Conv1D.Backward: output not stored, must call Forward first")
 	}
 
-	// Get shapes
-	inputShape := input.Shape()
-	gradOutputShape := gradOutput.Shape()
-	batchSize := inputShape[0]
-	inLength := inputShape[2]
-	outLength := gradOutputShape[2]
-
 	// Get kernel parameter
 	kernelParam, ok := c.Base.Parameter(ParamKernels)
 	if !ok {
 		return tensor.Tensor{}, fmt.Errorf("Conv1D.Backward: kernel parameter not initialized")
-	}
-
-	// Compute kernel gradient: sum over batch of (correlation of input with gradOutput)
-	if c.Base.CanLearn() && kernelParam.RequiresGrad {
-		if kernelParam.Grad.Shape().Rank() == 0 {
-			kernelParam.Grad = *tensor.New(tensor.DTFP32, tensor.NewShape(c.outChannels, c.inChannels, c.kernelLen))
-		}
-
-		// For each output channel, input channel, and kernel position
-		for oc := 0; oc < c.outChannels; oc++ {
-			for ic := 0; ic < c.inChannels; ic++ {
-				for k := 0; k < c.kernelLen; k++ {
-					weightGradIdx := oc*c.inChannels*c.kernelLen + ic*c.kernelLen + k
-
-					// Accumulate gradient over batch and output positions
-					var gradSum float32
-					for b := 0; b < batchSize; b++ {
-						inputChanOffset := b*c.inChannels*inLength + ic*inLength
-						gradChanOffset := b*c.outChannels*outLength + oc*outLength
-
-						for outPos := 0; outPos < outLength; outPos++ {
-							// Calculate corresponding input position
-							inPos := outPos*c.stride + k - c.pad
-
-							if inPos >= 0 && inPos < inLength {
-								inputIdx := inputChanOffset + inPos
-								gradIdx := gradChanOffset + outPos
-								if inputIdx < len(input.Data()) && gradIdx < len(gradOutput.Data()) {
-									gradSum += input.Data()[inputIdx] * gradOutput.Data()[gradIdx]
-								}
-							}
-						}
-					}
-					kernelParam.Grad.Data()[weightGradIdx] += gradSum
-				}
-			}
-		}
-		c.Base.SetParam(ParamKernels, kernelParam)
 	}
 
 	// Compute bias gradient: sum gradOutput over spatial dimensions and batch
@@ -235,63 +181,32 @@ func (c *Conv1D) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 				biasParam.Grad = *tensor.New(tensor.DTFP32, tensor.NewShape(c.outChannels))
 			}
 
-			for oc := 0; oc < c.outChannels; oc++ {
-				var gradSum float32
-				for b := 0; b < batchSize; b++ {
-					gradChanOffset := b*c.outChannels*outLength + oc*outLength
-					for outPos := 0; outPos < outLength; outPos++ {
-						gradIdx := gradChanOffset + outPos
-						if gradIdx < len(gradOutput.Data()) {
-							gradSum += gradOutput.Data()[gradIdx]
-						}
-					}
-				}
-				biasParam.Grad.Data()[oc] += gradSum
-			}
+			// Sum over batch and length dimensions for each output channel
+			// gradOutput shape: [batch, outChannels, outLength]
+			summed := gradOutput.Sum(0, 2) // Sum over batch, length -> [outChannels]
+			copy(biasParam.Grad.Data(), summed.Data())
 			c.Base.SetParam(ParamBiases, biasParam)
 		}
 	}
 
-	// Compute input gradient: transposed convolution of gradOutput with flipped weights
-	gradInput := *tensor.New(tensor.DTFP32, tensor.NewShape(batchSize, c.inChannels, inLength))
-
-	// For each input channel, accumulate gradients from all output channels
-	for ic := 0; ic < c.inChannels; ic++ {
-		for oc := 0; oc < c.outChannels; oc++ {
-			// Get weight kernel: [outChannels, inChannels, kernelLen]
-			weightOffset := oc*c.inChannels*c.kernelLen + ic*c.kernelLen
-
-			for b := 0; b < batchSize; b++ {
-				inputChanOffset := b*c.inChannels*inLength + ic*inLength
-				gradChanOffset := b*c.outChannels*outLength + oc*outLength
-
-				for outPos := 0; outPos < outLength; outPos++ {
-					gradIdx := gradChanOffset + outPos
-					if gradIdx >= len(gradOutput.Data()) {
-						continue // Skip if out of bounds (shouldn't happen with correct shapes)
-					}
-					gradVal := gradOutput.Data()[gradIdx]
-
-					// For each kernel position, apply to input gradient
-					for k := 0; k < c.kernelLen; k++ {
-						// Calculate input position (reverse of forward)
-						inPos := outPos*c.stride + k - c.pad
-
-						if inPos >= 0 && inPos < inLength {
-							// Weight is flipped: weight[kernelLen-1-k]
-							flippedK := c.kernelLen - 1 - k
-							weightIdx := weightOffset + flippedK
-							inputIdx := inputChanOffset + inPos
-							gradInput.Data()[inputIdx] += gradVal * kernelParam.Data.Data()[weightIdx]
-						}
-					}
-				}
-			}
+	// Compute kernel gradient efficiently using Tensor API
+	if c.Base.CanLearn() && kernelParam.RequiresGrad {
+		if kernelParam.Grad.Shape().Rank() == 0 {
+			kernelParam.Grad = *tensor.New(tensor.DTFP32, kernelParam.Data.Shape())
 		}
+		// Compute kernel gradients using efficient Conv1DKernelGrad
+		kernelGrad := input.Conv1DKernelGrad(&gradOutput, &kernelParam.Data, c.stride, c.pad)
+		copy(kernelParam.Grad.Data(), kernelGrad.Data())
+		c.Base.SetParam(ParamKernels, kernelParam)
 	}
 
-	c.Base.StoreGrad(gradInput)
-	return gradInput, nil
+	// Compute input gradient using transposed convolution
+	// The forward kernel [outChannels, inChannels, kernelLen] is used as-is for transposed conv
+	// Conv1DTransposed internally handles the reshaping
+	gradInput := gradOutput.Conv1DTransposed(&kernelParam.Data, nil, c.stride, c.pad)
+
+	c.Base.StoreGrad(*gradInput)
+	return *gradInput, nil
 }
 
 // OutputShape returns the output shape for given input shape.

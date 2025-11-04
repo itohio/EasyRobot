@@ -14,7 +14,7 @@ import (
 // Sample represents a single MNIST sample.
 type Sample struct {
 	Label int
-	Image tensor.Tensor // Shape: [1, 28, 28] for single channel, 28x28 image
+	Image *tensor.Tensor // Shape: [1, 28, 28] for single channel, 28x28 image
 }
 
 // Load loads MNIST dataset from CSV file.
@@ -75,10 +75,7 @@ func Load(filename string, maxSamples int) ([]Sample, error) {
 
 		// Reshape to [1, 28, 28] (single channel, 28x28 image)
 		// For Conv2D, we need [1, 1, 28, 28] format, but we'll add batch dimension later
-		image := tensor.Tensor{
-			Dim:  []int{1, 28, 28},
-			Data: pixels,
-		}
+		image := tensor.FromFloat32(tensor.NewShape(1, 28, 28), pixels)
 
 		samples = append(samples, Sample{
 			Label: label,

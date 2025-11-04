@@ -13,6 +13,14 @@ import (
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
 )
 
+// oneHot creates a one-hot encoded tensor for a label.
+// Returns shape [1, numClasses] to match model output.
+func oneHot(label int, numClasses int) *tensor.Tensor {
+	data := make([]float32, numClasses)
+	data[label] = 1.0
+	return tensor.FromFloat32(tensor.NewShape(1, numClasses), data)
+}
+
 // TestMNISTLarge trains a larger CNN on MNIST dataset.
 // Uses convolutional blocks with pooling layers.
 // Optimized for speed: reduced model size, fewer samples, fewer epochs.
@@ -124,34 +132,35 @@ func TestMNISTLarge(t *testing.T) {
 	for _, param := range params {
 		// Parameters() returns copies, but tensor.Data slices are shared references
 		// So modifying param.Data.Data will modify the actual layer parameters
-		if len(param.Data.Dim) >= 2 {
+		paramShape := param.Data.Shape()
+		if paramShape.Rank() >= 2 {
 			// Estimate fan-in
 			fanIn := 1
-			if len(param.Data.Dim) >= 2 {
-				fanIn = param.Data.Dim[len(param.Data.Dim)-1]
+			if paramShape.Rank() >= 2 {
+				fanIn = paramShape[paramShape.Rank()-1]
 				// For conv layers (4D), account for kernel size
-				if len(param.Data.Dim) == 4 {
+				if paramShape.Rank() == 4 {
 					// Conv kernel: [outChannels, inChannels, kernelH, kernelW]
-					kernelH := param.Data.Dim[2]
-					kernelW := param.Data.Dim[3]
-					fanIn = param.Data.Dim[1] * kernelH * kernelW
-				} else if len(param.Data.Dim) == 2 {
+					kernelH := paramShape[2]
+					kernelW := paramShape[3]
+					fanIn = paramShape[1] * kernelH * kernelW
+				} else if paramShape.Rank() == 2 {
 					// Dense layer: [outFeatures, inFeatures]
-					fanIn = param.Data.Dim[1]
+					fanIn = paramShape[1]
 				}
 			}
 			// He initialization for ReLU: uniform with limit = sqrt(6 / fan_in)
 			// This gives variance ≈ 2/fan_in (He initialization)
 			if fanIn > 0 {
 				limit := float32(math.Sqrt(6.0 / float64(fanIn)))
-				for i := range param.Data.Data {
-					param.Data.Data[i] = (rng.Float32()*2 - 1) * limit
+				for i := range param.Data.Data() {
+					param.Data.Data()[i] = (rng.Float32()*2 - 1) * limit
 				}
 			}
 		} else {
 			// For biases (1D), initialize to zero (common practice)
-			for i := range param.Data.Data {
-				param.Data.Data[i] = 0
+			for i := range param.Data.Data() {
+				param.Data.Data()[i] = 0
 			}
 		}
 	}
@@ -178,14 +187,11 @@ func TestMNISTLarge(t *testing.T) {
 		for i, sample := range trainSamples {
 			// Reshape image to [1, 1, 28, 28] format for Conv2D
 			imageData := make([]float32, 1*1*28*28)
-			copy(imageData, sample.Image.Data)
-			input := tensor.Tensor{
-				Dim:  []int{1, 1, 28, 28},
-				Data: imageData,
-			}
+			copy(imageData, sample.Image.Data())
+			input := *tensor.FromFloat32(tensor.NewShape(1, 1, 28, 28), imageData)
 
 			// Create one-hot target
-			target := oneHot(sample.Label, 10)
+			target := *oneHot(sample.Label, 10)
 
 			// Training step
 			loss, err := learn.TrainStep(model, optimizer, lossFn, input, target)
@@ -205,10 +211,10 @@ func TestMNISTLarge(t *testing.T) {
 
 			// Find predicted class (argmax)
 			predicted := 0
-			maxProb := output.Data[0]
+			maxProb := output.Data()[0]
 			for j := 1; j < 10; j++ {
-				if output.Data[j] > maxProb {
-					maxProb = output.Data[j]
+				if output.Data()[j] > maxProb {
+					maxProb = output.Data()[j]
 					predicted = j
 				}
 			}
@@ -244,14 +250,11 @@ func TestMNISTLarge(t *testing.T) {
 	for i, sample := range testSamples {
 		// Reshape image to [1, 1, 28, 28]
 		imageData := make([]float32, 1*1*28*28)
-		copy(imageData, sample.Image.Data)
-		input := tensor.Tensor{
-			Dim:  []int{1, 1, 28, 28},
-			Data: imageData,
-		}
+		copy(imageData, sample.Image.Data())
+		input := *tensor.FromFloat32(tensor.NewShape(1, 1, 28, 28), imageData)
 
 		// Create one-hot target
-		target := oneHot(sample.Label, 10)
+		target := *oneHot(sample.Label, 10)
 
 		// Forward pass
 		output, err := model.Forward(input)
@@ -268,10 +271,10 @@ func TestMNISTLarge(t *testing.T) {
 
 		// Find predicted class
 		predicted := 0
-		maxProb := output.Data[0]
+		maxProb := output.Data()[0]
 		for j := 1; j < 10; j++ {
-			if output.Data[j] > maxProb {
-				maxProb = output.Data[j]
+			if output.Data()[j] > maxProb {
+				maxProb = output.Data()[j]
 				predicted = j
 			}
 		}

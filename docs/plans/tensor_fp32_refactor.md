@@ -42,18 +42,17 @@ This inventory will guide which primitives we can reuse versus new APIs we must 
    - ✅ Provide elementwise/broadcast/reduction primitives as previously outlined.
    - ✅ `tensor` must use kernels from `fp32` - all tensor operations now delegate to fp32 functions.
 
-3. **API refinements** *(in progress)*
-   - Update `tensor.New` and `FromFloat32` to accept `Shape` type instead of `[]int`.
-   - Update `Shape()` method to return `Shape` type instead of `[]int`.
-   - Internally use `Shape` methods instead of direct operations like `len(shape)`.
+3. **API refinements** *(completed)*
+   - ✅ Update `tensor.New` and `FromFloat32` to accept `Shape` type instead of `[]int`.
+   - ✅ Update `Shape()` method to return `Shape` type instead of `[]int`.
+   - ✅ Internally use `Shape` methods instead of direct operations like `len(shape)`.
 
-4. **Refactor tensor consumers** *(completed)*
-   - ✅ Sweep other packages (NN layers, tests, specs, etc.) to construct tensors via `New`/`FromFloat32` and access data through accessors.
-     - pkg/core/math/learn/datasets/mnist/loader.go
-     - pkg/core/math/nn/layers
-     - pkg/core/math/nn
-     - pkg/core/math/learn
-   - ✅ No external consumers found using old API - only internal tensor code needs updating.
+4. **Refactor tensor consumers** *(in progress)*
+   - ✅ pkg/core/math/learn/datasets/mnist/loader.go - updated to use new tensor API
+   - ⏳ pkg/core/math/nn/layers - Base layer methods updated, activation layers partially updated
+   - ⏳ pkg/core/math/nn - model.go partially updated
+   - ⏳ pkg/core/math/learn - test files updated to use new tensor API
+   - ⏳ Remaining layer implementations need updating to use Shape().Rank() and Data() methods
 
 5. **Implement parallel fp32 kernels** *(todo)*
    - Add optional parallel execution paths (e.g. chunked workers) for heavy fp32 kernels where it improves performance.

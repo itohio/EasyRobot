@@ -16,40 +16,34 @@ func TestDenseParameterAccess(t *testing.T) {
 
 	// Test getting initial weights
 	weight := dense.Weight()
-	assert.Len(t, weight.Dim, 2, "Weight should be 2D")
-	assert.Equal(t, []int{4, 2}, weight.Dim, "Weight shape should be [4, 2]")
+	assert.Len(t, weight.Shape().ToSlice(), 2, "Weight should be 2D")
+	assert.Equal(t, []int{4, 2}, weight.Shape().ToSlice(), "Weight shape should be [4, 2]")
 
 	// Test getting initial bias
 	bias := dense.Bias()
-	assert.Len(t, bias.Dim, 1, "Bias should be 1D")
-	assert.Equal(t, []int{2}, bias.Dim, "Bias shape should be [2]")
+	assert.Len(t, bias.Shape().ToSlice(), 1, "Bias should be 1D")
+	assert.Equal(t, []int{2}, bias.Shape().ToSlice(), "Bias shape should be [2]")
 
 	// Test setting new weight
-	newWeight := tensor.Tensor{
-		Dim: []int{4, 2},
-		Data: []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0},
-	}
+	newWeight := *tensor.FromFloat32(tensor.NewShape(4, 2), []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0})
 	err = dense.SetWeight(newWeight)
 	require.NoError(t, err, "Should set weight successfully")
 
 	// Verify weight was set
 	weight = dense.Weight()
-	assert.Equal(t, newWeight.Data, weight.Data, "Weight data should match")
+	assert.Equal(t, newWeight.Data(), weight.Data(), "Weight data should match")
 
 	// Test setting new bias
-	newBias := tensor.Tensor{
-		Dim: []int{2},
-		Data: []float32{0.5, -0.5},
-	}
+	newBias := *tensor.FromFloat32(tensor.NewShape(2), []float32{0.5, -0.5})
 	err = dense.SetBias(newBias)
 	require.NoError(t, err, "Should set bias successfully")
 
 	// Verify bias was set
 	bias = dense.Bias()
-	assert.Equal(t, newBias.Data, bias.Data, "Bias data should match")
+	assert.Equal(t, newBias.Data(), bias.Data(), "Bias data should match")
 
 	// Test validation errors
-	err = dense.SetWeight(tensor.Tensor{Dim: []int{4, 3}, Data: make([]float32, 12)})
+	err = dense.SetWeight(*tensor.FromFloat32(tensor.NewShape(4, 3), make([]float32, 12)))
 	assert.Error(t, err, "Should return error for wrong weight shape")
 
 	err = dense.SetBias(*tensor.FromFloat32(tensor.NewShape(3), []float32{0, 0, 0}))
@@ -63,24 +57,21 @@ func TestConv2DParameterAccess(t *testing.T) {
 
 	// Test getting initial weights
 	weight := conv2d.Weight()
-	assert.Len(t, weight.Dim, 4, "Weight should be 4D")
-	assert.Equal(t, []int{16, 3, 3, 3}, weight.Dim, "Weight shape should match")
+	assert.Len(t, weight.Shape().ToSlice(), 4, "Weight should be 4D")
+	assert.Equal(t, []int{16, 3, 3, 3}, weight.Shape().ToSlice(), "Weight shape should match")
 
 	// Test getting initial bias
 	bias := conv2d.Bias()
-	assert.Len(t, bias.Dim, 1, "Bias should be 1D")
-	assert.Equal(t, []int{16}, bias.Dim, "Bias shape should be [16]")
+	assert.Len(t, bias.Shape().ToSlice(), 1, "Bias should be 1D")
+	assert.Equal(t, []int{16}, bias.Shape().ToSlice(), "Bias shape should be [16]")
 
 	// Test setting new weight
-	newWeight := tensor.Tensor{
-		Dim: []int{16, 3, 3, 3},
-		Data: make([]float32, 16*3*3*3),
-	}
+	newWeight := *tensor.FromFloat32(tensor.NewShape(16, 3, 3, 3), make([]float32, 16*3*3*3))
 	err = conv2d.SetWeight(newWeight)
 	require.NoError(t, err, "Should set weight successfully")
 
 	// Test validation errors
-	err = conv2d.SetWeight(tensor.Tensor{Dim: []int{16, 4, 3, 3}, Data: make([]float32, 576)})
+	err = conv2d.SetWeight(*tensor.FromFloat32(tensor.NewShape(16, 4, 3, 3), make([]float32, 576)))
 	assert.Error(t, err, "Should return error for wrong weight shape")
 }
 
@@ -91,24 +82,21 @@ func TestConv1DParameterAccess(t *testing.T) {
 
 	// Test getting initial weights
 	weight := conv1d.Weight()
-	assert.Len(t, weight.Dim, 3, "Weight should be 3D")
-	assert.Equal(t, []int{16, 3, 3}, weight.Dim, "Weight shape should match")
+	assert.Len(t, weight.Shape().ToSlice(), 3, "Weight should be 3D")
+	assert.Equal(t, []int{16, 3, 3}, weight.Shape().ToSlice(), "Weight shape should match")
 
 	// Test getting initial bias
 	bias := conv1d.Bias()
-	assert.Len(t, bias.Dim, 1, "Bias should be 1D")
-	assert.Equal(t, []int{16}, bias.Dim, "Bias shape should be [16]")
+	assert.Len(t, bias.Shape().ToSlice(), 1, "Bias should be 1D")
+	assert.Equal(t, []int{16}, bias.Shape().ToSlice(), "Bias shape should be [16]")
 
 	// Test setting new weight
-	newWeight := tensor.Tensor{
-		Dim: []int{16, 3, 3},
-		Data: make([]float32, 16*3*3),
-	}
+	newWeight := *tensor.FromFloat32(tensor.NewShape(16, 3, 3), make([]float32, 16*3*3))
 	err = conv1d.SetWeight(newWeight)
 	require.NoError(t, err, "Should set weight successfully")
 
 	// Test validation errors
-	err = conv1d.SetWeight(tensor.Tensor{Dim: []int{16, 4, 3}, Data: make([]float32, 192)})
+	err = conv1d.SetWeight(*tensor.FromFloat32(tensor.NewShape(16, 4, 3), make([]float32, 192)))
 	assert.Error(t, err, "Should return error for wrong weight shape")
 }
 
@@ -119,18 +107,15 @@ func TestParameterAccessWithBias(t *testing.T) {
 
 	// Test getting bias should return non-empty tensor
 	bias := dense.Bias()
-	assert.Len(t, bias.Dim, 1, "Bias should have dimensions")
-	assert.Equal(t, []int{2}, bias.Dim, "Bias shape should match")
+	assert.Len(t, bias.Shape().ToSlice(), 1, "Bias should have dimensions")
+	assert.Equal(t, []int{2}, bias.Shape().ToSlice(), "Bias shape should match")
 
 	// Test setting bias should succeed
-	newBias := tensor.Tensor{
-		Dim: []int{2},
-		Data: []float32{0.5, -0.5},
-	}
+	newBias := *tensor.FromFloat32(tensor.NewShape(2), []float32{0.5, -0.5})
 	err = dense.SetBias(newBias)
 	require.NoError(t, err, "Should succeed setting bias")
 
 	// Verify bias was set
 	bias = dense.Bias()
-	assert.Equal(t, newBias.Data, bias.Data, "Bias data should match")
+	assert.Equal(t, newBias.Data(), bias.Data(), "Bias data should match")
 }

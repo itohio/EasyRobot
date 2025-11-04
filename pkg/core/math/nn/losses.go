@@ -16,7 +16,7 @@ func NewMSE() *MSELoss {
 
 // Compute computes MSE: loss = mean((pred - target)^2).
 func (m *MSELoss) Compute(pred, target tensor.Tensor) (float32, error) {
-	if len(pred.Dim) == 0 || len(target.Dim) == 0 {
+	if pred.Shape().Rank() == 0 || target.Shape().Rank() == 0 {
 		return 0, fmt.Errorf("MSE.Compute: empty input")
 	}
 
@@ -25,7 +25,7 @@ func (m *MSELoss) Compute(pred, target tensor.Tensor) (float32, error) {
 
 // Gradient computes gradient w.r.t. predictions: gradPred = 2 * (pred - target) / size.
 func (m *MSELoss) Gradient(pred, target tensor.Tensor) (tensor.Tensor, error) {
-	if len(pred.Dim) == 0 || len(target.Dim) == 0 {
+	if pred.Shape().Rank() == 0 || target.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("MSE.Gradient: empty input")
 	}
 
@@ -43,12 +43,12 @@ func (m *MSELoss) Gradient(pred, target tensor.Tensor) (tensor.Tensor, error) {
 	}
 
 	// gradPred = 2 * (pred - target) / size
-	size := pred.Size()
-	gradPtr := (&pred).Clone()
-	gradPtr = gradPtr.Sub(&target)
-	gradPtr = gradPtr.Scale(2.0 / float32(size))
+	size := pred.Shape().Size()
+	grad := pred.Clone()
+	grad = grad.Sub(&target)
+	grad = grad.Scale(2.0 / float32(size))
 
-	return *gradPtr, nil
+	return *grad, nil
 }
 
 // CrossEntropyLoss implements cross-entropy loss function.
@@ -60,45 +60,49 @@ func NewCrossEntropy() *CrossEntropyLoss {
 }
 
 // Compute computes cross-entropy: loss = -sum(target * log(pred + epsilon)).
-func (c *CrossEntropyLoss) Compute(pred, target tensor.Tensor) (float32, error) {
-	if len(pred.Dim) == 0 || len(target.Dim) == 0 {
+func (c *CrossEntropyLoss) Compute(pred, target *tensor.Tensor) (float32, error) {
+	if pred.Shape().Rank() == 0 || target.Shape().Rank() == 0 {
 		return 0, fmt.Errorf("CrossEntropy.Compute: empty input")
 	}
 
-	return CrossEntropy(&pred, &target), nil
+	return CrossEntropy(pred, target), nil
 }
 
 // Gradient computes gradient w.r.t. predictions: gradPred = -target / (pred + epsilon).
-func (c *CrossEntropyLoss) Gradient(pred, target tensor.Tensor) (tensor.Tensor, error) {
-	if len(pred.Dim) == 0 || len(target.Dim) == 0 {
-		return tensor.Tensor{}, fmt.Errorf("CrossEntropy.Gradient: empty input")
+func (c *CrossEntropyLoss) Gradient(pred, target *tensor.Tensor) (*tensor.Tensor, error) {
+	if pred.Shape().Rank() == 0 || target.Shape().Rank() == 0 {
+		return nil, fmt.Errorf("CrossEntropy.Gradient: empty input")
 	}
 
 	predShape := pred.Shape()
 	targetShape := target.Shape()
 
 	if len(predShape) != len(targetShape) {
-		return tensor.Tensor{}, fmt.Errorf("CrossEntropy.Gradient: shape mismatch: pred %v, target %v", predShape, targetShape)
+		return nil, fmt.Errorf("CrossEntropy.Gradient: shape mismatch: pred %v, target %v", predShape, targetShape)
 	}
 
 	for i := range predShape {
 		if predShape[i] != targetShape[i] {
-			return tensor.Tensor{}, fmt.Errorf("CrossEntropy.Gradient: shape mismatch: pred %v, target %v", predShape, targetShape)
+			return nil, fmt.Errorf("CrossEntropy.Gradient: shape mismatch: pred %v, target %v", predShape, targetShape)
 		}
 	}
 
 	// gradPred = -target / (pred + epsilon)
 	const epsilon = 1e-10
-	gradPtr := (&pred).Clone()
-	for i := range gradPtr.Data {
-		if pred.Data[i] > 0 {
-			gradPtr.Data[i] = -target.Data[i] / (pred.Data[i] + epsilon)
+	grad := pred.Clone()
+	predData := pred.Data()
+	targetData := target.Data()
+	gradData := grad.Data()
+
+	for i := range gradData {
+		if predData[i] > 0 {
+			gradData[i] = -targetData[i] / (predData[i] + epsilon)
 		} else {
-			gradPtr.Data[i] = 0
+			gradData[i] = 0
 		}
 	}
 
-	return *gradPtr, nil
+	return grad, nil
 }
 
 // CategoricalCrossEntropy implements categorical cross-entropy loss with optional softmax.
@@ -115,7 +119,7 @@ func NewCategoricalCrossEntropy(fromLogits bool) *CategoricalCrossEntropy {
 // If fromLogits is true, applies softmax then cross-entropy.
 // Otherwise, assumes pred is already probabilities.
 func (c *CategoricalCrossEntropy) Compute(pred, target tensor.Tensor) (float32, error) {
-	if len(pred.Dim) == 0 || len(target.Dim) == 0 {
+	if pred.Shape().Rank() == 0 || target.Shape().Rank() == 0 {
 		return 0, fmt.Errorf("CategoricalCrossEntropy.Compute: empty input")
 	}
 
@@ -126,7 +130,7 @@ func (c *CategoricalCrossEntropy) Compute(pred, target tensor.Tensor) (float32, 
 			return 0, fmt.Errorf("CategoricalCrossEntropy.Compute: invalid pred shape")
 		}
 		dim := len(predShape) - 1 // Apply softmax along last dimension
-		predProb := Softmax(&pred, dim)
+		predProb := pred.Softmax(dim)
 		return CrossEntropy(predProb, &target), nil
 	}
 
@@ -137,7 +141,7 @@ func (c *CategoricalCrossEntropy) Compute(pred, target tensor.Tensor) (float32, 
 // If fromLogits is true and softmax was applied, returns: gradPred = pred - target.
 // Otherwise, returns: gradPred = -target / (pred + epsilon).
 func (c *CategoricalCrossEntropy) Gradient(pred, target tensor.Tensor) (tensor.Tensor, error) {
-	if len(pred.Dim) == 0 || len(target.Dim) == 0 {
+	if pred.Shape().Rank() == 0 || target.Shape().Rank() == 0 {
 		return tensor.Tensor{}, fmt.Errorf("CategoricalCrossEntropy.Gradient: empty input")
 	}
 
@@ -157,24 +161,28 @@ func (c *CategoricalCrossEntropy) Gradient(pred, target tensor.Tensor) (tensor.T
 	if c.fromLogits {
 		// Apply softmax first
 		dim := len(predShape) - 1
-		predProb := Softmax(&pred, dim)
+		predProb := pred.Softmax(dim)
 
 		// Gradient after softmax: pred - target
-		gradPtr := predProb.Clone()
-		gradPtr = gradPtr.Sub(&target)
-		return *gradPtr, nil
+		grad := predProb.Clone()
+		grad = grad.Sub(&target)
+		return *grad, nil
 	}
 
 	// Standard cross-entropy gradient
 	const epsilon = 1e-10
-	gradPtr := (&pred).Clone()
-	for i := range gradPtr.Data {
-		if pred.Data[i] > 0 {
-			gradPtr.Data[i] = -target.Data[i] / (pred.Data[i] + epsilon)
+	grad := pred.Clone()
+	predData := pred.Data()
+	targetData := target.Data()
+	gradData := grad.Data()
+
+	for i := range gradData {
+		if predData[i] > 0 {
+			gradData[i] = -targetData[i] / (predData[i] + epsilon)
 		} else {
-			gradPtr.Data[i] = 0
+			gradData[i] = 0
 		}
 	}
 
-	return *gradPtr, nil
+	return *grad, nil
 }

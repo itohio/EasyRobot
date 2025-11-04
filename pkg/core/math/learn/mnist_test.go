@@ -12,17 +12,6 @@ import (
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
 )
 
-// oneHot creates a one-hot encoded tensor for a label.
-// Returns shape [1, numClasses] to match model output.
-func oneHot(label int, numClasses int) tensor.Tensor {
-	oneHot := tensor.Tensor{
-		Dim:  []int{1, numClasses},
-		Data: make([]float32, numClasses),
-	}
-	oneHot.Data[label] = 1.0
-	return oneHot
-}
-
 // TestMNIST trains a CNN on MNIST dataset for digit classification.
 func TestMNIST(t *testing.T) {
 	// Limit samples for speed (focus on digits 0-9 as requested)
@@ -108,27 +97,28 @@ func TestMNIST(t *testing.T) {
 	rng := rand.New(rand.NewSource(42))
 	params := model.Parameters()
 	for _, param := range params {
-		if len(param.Data.Dim) >= 2 {
+		paramShape := param.Data.Shape()
+		if paramShape.Rank() >= 2 {
 			// Estimate fan-in and fan-out
 			fanIn := 1
 			fanOut := 1
-			if len(param.Data.Dim) >= 2 {
-				fanIn = param.Data.Dim[len(param.Data.Dim)-1]
-				fanOut = param.Data.Dim[0]
+			if paramShape.Rank() >= 2 {
+				fanIn = paramShape[paramShape.Rank()-1]
+				fanOut = paramShape[0]
 				// For higher dimensions, multiply intermediate dims
-				for i := 1; i < len(param.Data.Dim)-1; i++ {
-					fanOut *= param.Data.Dim[i]
+				for i := 1; i < paramShape.Rank()-1; i++ {
+					fanOut *= paramShape[i]
 				}
 			}
 			// Xavier uniform initialization
 			limit := float32(1.0 / float64(fanIn+fanOut))
-			for i := range param.Data.Data {
-				param.Data.Data[i] = (rng.Float32()*2 - 1) * limit
+			for i := range param.Data.Data() {
+				param.Data.Data()[i] = (rng.Float32()*2 - 1) * limit
 			}
 		} else {
 			// For biases or 1D tensors, use small random values
-			for i := range param.Data.Data {
-				param.Data.Data[i] = (rng.Float32()*2 - 1) * 0.1
+			for i := range param.Data.Data() {
+				param.Data.Data()[i] = (rng.Float32()*2 - 1) * 0.1
 			}
 		}
 	}
@@ -148,14 +138,11 @@ func TestMNIST(t *testing.T) {
 			// Reshape image to [1, 1, 28, 28] format for Conv2D
 			// sample.Image is [1, 28, 28], we need [1, 1, 28, 28]
 			imageData := make([]float32, 1*1*28*28)
-			copy(imageData, sample.Image.Data)
-			input := tensor.Tensor{
-				Dim:  []int{1, 1, 28, 28},
-				Data: imageData,
-			}
+			copy(imageData, sample.Image.Data())
+			input := *tensor.FromFloat32(tensor.NewShape(1, 1, 28, 28), imageData)
 
 			// Create one-hot target
-			target := oneHot(sample.Label, 10)
+			target := *oneHot(sample.Label, 10)
 
 			// Training step
 			loss, err := learn.TrainStep(model, optimizer, lossFn, input, target)
@@ -173,10 +160,10 @@ func TestMNIST(t *testing.T) {
 
 			// Find predicted class (argmax)
 			predicted := 0
-			maxProb := output.Data[0]
+			maxProb := output.Data()[0]
 			for j := 1; j < 10; j++ {
-				if output.Data[j] > maxProb {
-					maxProb = output.Data[j]
+				if output.Data()[j] > maxProb {
+					maxProb = output.Data()[j]
 					predicted = j
 				}
 			}
@@ -199,14 +186,11 @@ func TestMNIST(t *testing.T) {
 	for i, sample := range testSamples {
 		// Reshape image to [1, 1, 28, 28]
 		imageData := make([]float32, 1*1*28*28)
-		copy(imageData, sample.Image.Data)
-		input := tensor.Tensor{
-			Dim:  []int{1, 1, 28, 28},
-			Data: imageData,
-		}
+		copy(imageData, sample.Image.Data())
+		input := *tensor.FromFloat32(tensor.NewShape(1, 1, 28, 28), imageData)
 
 		// Create one-hot target
-		target := oneHot(sample.Label, 10)
+		target := *oneHot(sample.Label, 10)
 
 		// Forward pass
 		output, err := model.Forward(input)
@@ -223,10 +207,10 @@ func TestMNIST(t *testing.T) {
 
 		// Find predicted class
 		predicted := 0
-		maxProb := output.Data[0]
+		maxProb := output.Data()[0]
 		for j := 1; j < 10; j++ {
-			if output.Data[j] > maxProb {
-				maxProb = output.Data[j]
+			if output.Data()[j] > maxProb {
+				maxProb = output.Data()[j]
 				predicted = j
 			}
 		}

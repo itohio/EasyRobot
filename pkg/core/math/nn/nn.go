@@ -46,19 +46,16 @@ func Linear(t *tensor.Tensor, weight, bias *tensor.Tensor) *tensor.Tensor {
 
 // linearSingleSample handles single sample case: [inFeatures] → [outFeatures]
 func linearSingleSample(t, weight, bias *tensor.Tensor, inFeatures, outFeatures int) *tensor.Tensor {
-	result := &tensor.Tensor{
-		Dim:  []int{outFeatures},
-		Data: make([]float32, outFeatures),
-	}
+	result := tensor.New(tensor.DTFP32, tensor.NewShape(outFeatures))
 
 	ldA := outFeatures
 	M := inFeatures
 	N := outFeatures
 
 	fp32.Gemv_T(
-		result.Data,
-		weight.Data,
-		t.Data,
+		result.Data(),
+		weight.Data(),
+		t.Data(),
 		ldA, M, N,
 		1.0, 0.0,
 	)
@@ -66,7 +63,7 @@ func linearSingleSample(t, weight, bias *tensor.Tensor, inFeatures, outFeatures 
 	if bias != nil {
 		biasShape := bias.Shape()
 		if len(biasShape) == 1 && biasShape[0] == outFeatures {
-			fp32.Axpy(result.Data, bias.Data, 1, 1, outFeatures, 1.0)
+			fp32.Axpy(result.Data(), bias.Data(), 1, 1, outFeatures, 1.0)
 		}
 	}
 
@@ -75,15 +72,12 @@ func linearSingleSample(t, weight, bias *tensor.Tensor, inFeatures, outFeatures 
 
 // linearBatch handles batch case: [batch, inFeatures] → [batch, outFeatures]
 func linearBatch(t, weight, bias *tensor.Tensor, batchSize, inFeatures, outFeatures int) *tensor.Tensor {
-	result := &tensor.Tensor{
-		Dim:  []int{batchSize, outFeatures},
-		Data: make([]float32, batchSize*outFeatures),
-	}
+	result := tensor.New(tensor.DTFP32, tensor.NewShape(batchSize, outFeatures))
 
 	fp32.Gemm_NN(
-		result.Data,
-		t.Data,
-		weight.Data,
+		result.Data(),
+		t.Data(),
+		weight.Data(),
 		outFeatures,
 		inFeatures,
 		outFeatures,
@@ -98,7 +92,7 @@ func linearBatch(t, weight, bias *tensor.Tensor, batchSize, inFeatures, outFeatu
 		if len(biasShape) == 1 && biasShape[0] == outFeatures {
 			for b := 0; b < batchSize; b++ {
 				offset := b * outFeatures
-				fp32.Axpy(result.Data[offset:], bias.Data, 1, 1, outFeatures, 1.0)
+				fp32.Axpy(result.Data()[offset:], bias.Data(), 1, 1, outFeatures, 1.0)
 			}
 		}
 	}
@@ -112,13 +106,7 @@ func Relu(t *tensor.Tensor) *tensor.Tensor {
 		return t
 	}
 
-	for i := range t.Data {
-		if t.Data[i] < 0 {
-			t.Data[i] = 0
-		}
-	}
-
-	return t
+	return t.ReLU()
 }
 
 // Sigmoid applies sigmoid activation: output = 1 / (1 + exp(-input))
@@ -128,19 +116,7 @@ func Sigmoid(t *tensor.Tensor) *tensor.Tensor {
 	}
 
 	result := t.Clone()
-
-	for i := range result.Data {
-		x := result.Data[i]
-		if x > 10 {
-			result.Data[i] = 1.0
-		} else if x < -10 {
-			result.Data[i] = 0.0
-		} else {
-			result.Data[i] = 1.0 / (1.0 + math32.Exp(-x))
-		}
-	}
-
-	return result
+	return result.Sigmoid()
 }
 
 // Tanh applies hyperbolic tangent activation: output = tanh(input)
@@ -150,12 +126,7 @@ func Tanh(t *tensor.Tensor) *tensor.Tensor {
 	}
 
 	result := t.Clone()
-
-	for i := range result.Data {
-		result.Data[i] = math32.Tanh(result.Data[i])
-	}
-
-	return result
+	return result.Tanh()
 }
 
 // Softmax applies softmax along specified dimension
@@ -164,17 +135,18 @@ func Softmax(t *tensor.Tensor, dim int) *tensor.Tensor {
 		return nil
 	}
 
-	if dim < 0 || dim >= len(t.Dim) {
-		panic(fmt.Sprintf("nn.Softmax: dimension %d out of range for shape %v", dim, t.Dim))
+	tShape := t.Shape()
+	if dim < 0 || dim >= len(tShape) {
+		panic(fmt.Sprintf("nn.Softmax: dimension %d out of range for shape %v", dim, tShape))
 	}
 
 	result := t.Clone()
 
-	if len(t.Dim) == 1 {
+	if len(tShape) == 1 {
 		return softmax1D(result)
 	}
 
-	if len(t.Dim) == 2 {
+	if len(tShape) == 2 {
 		if dim == 0 {
 			return softmax2DRows(result)
 		} else if dim == 1 {
@@ -182,26 +154,27 @@ func Softmax(t *tensor.Tensor, dim int) *tensor.Tensor {
 		}
 	}
 
-	panic(fmt.Sprintf("nn.Softmax: unsupported tensor dimensions %d", len(t.Dim)))
+	panic(fmt.Sprintf("nn.Softmax: unsupported tensor dimensions %d", len(tShape)))
 }
 
 func softmax1D(t *tensor.Tensor) *tensor.Tensor {
-	maxVal := t.Data[0]
-	for i := 1; i < len(t.Data); i++ {
-		if t.Data[i] > maxVal {
-			maxVal = t.Data[i]
+	data := t.Data()
+	maxVal := data[0]
+	for i := 1; i < len(data); i++ {
+		if data[i] > maxVal {
+			maxVal = data[i]
 		}
 	}
 
 	var sum float32
-	for i := range t.Data {
-		t.Data[i] = math32.Exp(t.Data[i] - maxVal)
-		sum += t.Data[i]
+	for i := range data {
+		data[i] = math32.Exp(data[i] - maxVal)
+		sum += data[i]
 	}
 
 	if sum > 0 {
-		for i := range t.Data {
-			t.Data[i] /= sum
+		for i := range data {
+			data[i] /= sum
 		}
 	}
 
@@ -209,12 +182,14 @@ func softmax1D(t *tensor.Tensor) *tensor.Tensor {
 }
 
 func softmax2DRows(t *tensor.Tensor) *tensor.Tensor {
-	M, N := t.Dim[0], t.Dim[1]
+	tShape := t.Shape()
+	M, N := tShape[0], tShape[1]
+	data := t.Data()
 
 	for j := 0; j < N; j++ {
-		maxVal := t.Data[j]
+		maxVal := data[j]
 		for i := 1; i < M; i++ {
-			val := t.Data[i*N+j]
+			val := data[i*N+j]
 			if val > maxVal {
 				maxVal = val
 			}
@@ -222,14 +197,14 @@ func softmax2DRows(t *tensor.Tensor) *tensor.Tensor {
 
 		var sum float32
 		for i := 0; i < M; i++ {
-			val := t.Data[i*N+j] - maxVal
-			t.Data[i*N+j] = math32.Exp(val)
-			sum += t.Data[i*N+j]
+			val := data[i*N+j] - maxVal
+			data[i*N+j] = math32.Exp(val)
+			sum += data[i*N+j]
 		}
 
 		if sum > 0 {
 			for i := 0; i < M; i++ {
-				t.Data[i*N+j] /= sum
+				data[i*N+j] /= sum
 			}
 		}
 	}
@@ -238,13 +213,15 @@ func softmax2DRows(t *tensor.Tensor) *tensor.Tensor {
 }
 
 func softmax2DCols(t *tensor.Tensor) *tensor.Tensor {
-	M, N := t.Dim[0], t.Dim[1]
+	tShape := t.Shape()
+	M, N := tShape[0], tShape[1]
+	data := t.Data()
 
 	for i := 0; i < M; i++ {
 		rowStart := i * N
-		maxVal := t.Data[rowStart]
+		maxVal := data[rowStart]
 		for j := 1; j < N; j++ {
-			val := t.Data[rowStart+j]
+			val := data[rowStart+j]
 			if val > maxVal {
 				maxVal = val
 			}
@@ -252,14 +229,14 @@ func softmax2DCols(t *tensor.Tensor) *tensor.Tensor {
 
 		var sum float32
 		for j := 0; j < N; j++ {
-			val := t.Data[rowStart+j] - maxVal
-			t.Data[rowStart+j] = math32.Exp(val)
-			sum += t.Data[rowStart+j]
+			val := data[rowStart+j] - maxVal
+			data[rowStart+j] = math32.Exp(val)
+			sum += data[rowStart+j]
 		}
 
 		if sum > 0 {
 			for j := 0; j < N; j++ {
-				t.Data[rowStart+j] /= sum
+				data[rowStart+j] /= sum
 			}
 		}
 	}
@@ -274,13 +251,13 @@ func MSE(pred, target *tensor.Tensor) float32 {
 	}
 
 	squaredDiff := pred.Clone()
-	squaredDiff.Sub(target)
-	squaredDiff.Mul(squaredDiff)
+	squaredDiff = squaredDiff.Sub(target)
+	squaredDiff = squaredDiff.Mul(squaredDiff)
 
-	size := pred.Size()
+	size := pred.Shape().Size()
 	sum := squaredDiff.Sum()
 	if size > 0 {
-		return sum.Data[0] / float32(size)
+		return sum.Data()[0] / float32(size)
 	}
 
 	return 0
@@ -293,9 +270,11 @@ func CrossEntropy(pred, target *tensor.Tensor) float32 {
 	}
 
 	var loss float32
-	for i := range pred.Data {
-		if target.Data[i] != 0 && pred.Data[i] > 0 {
-			loss -= target.Data[i] * math32.Log(pred.Data[i]+1e-10)
+	predData := pred.Data()
+	targetData := target.Data()
+	for i := range predData {
+		if targetData[i] != 0 && predData[i] > 0 {
+			loss -= targetData[i] * math32.Log(predData[i]+1e-10)
 		}
 	}
 
