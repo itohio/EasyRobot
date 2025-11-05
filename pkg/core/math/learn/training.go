@@ -9,7 +9,7 @@ import (
 
 // TrainStep performs a single training step: forward pass, loss computation, backward pass, and weight update.
 // Optimizer must implement the nn.Optimizer interface.
-func TrainStep(model *nn.Model, optimizer nn.Optimizer, lossFn nn.LossFunction, input, target tensor.Tensor) (float32, error) {
+func TrainStep(model *nn.Model, optimizer nn.Optimizer, lossFn nn.LossFunction, input, target tensor.Tensor) (float64, error) {
 	if model == nil {
 		return 0, fmt.Errorf("TrainStep: nil model")
 	}
@@ -57,5 +57,5 @@ func TrainStep(model *nn.Model, optimizer nn.Optimizer, lossFn nn.LossFunction, 
 		return 0, fmt.Errorf("TrainStep: weight update failed: %w", err)
 	}
 
-	return loss, nil
+	return float64(loss), nil
 }

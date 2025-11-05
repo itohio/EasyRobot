@@ -153,14 +153,15 @@ func TestMNISTLarge(t *testing.T) {
 			// This gives variance ≈ 2/fan_in (He initialization)
 			if fanIn > 0 {
 				limit := float32(math.Sqrt(6.0 / float64(fanIn)))
-				for i := range param.Data.Data() {
-					param.Data.Data()[i] = (rng.Float32()*2 - 1) * limit
+				for indices := range param.Data.Shape().Iterator() {
+					val := float64((rng.Float32()*2 - 1) * limit)
+					param.Data.SetAt(val, indices...)
 				}
 			}
 		} else {
 			// For biases (1D), initialize to zero (common practice)
-			for i := range param.Data.Data() {
-				param.Data.Data()[i] = 0
+			for indices := range param.Data.Shape().Iterator() {
+				param.Data.SetAt(0.0, indices...)
 			}
 		}
 	}
@@ -176,9 +177,9 @@ func TestMNISTLarge(t *testing.T) {
 	dropout1.SetTrainingMode(true)
 	t.Log("\n=== Training ===")
 	for epoch := 0; epoch < epochs; epoch++ {
-		totalLoss := float32(0)
+		totalLoss := float64(0)
 		correct := 0
-		runningLoss := float32(0)
+		runningLoss := float64(0)
 		runningCount := 0
 
 		// Log progress every N samples (increased for speed)
@@ -186,9 +187,15 @@ func TestMNISTLarge(t *testing.T) {
 
 		for i, sample := range trainSamples {
 			// Reshape image to [1, 1, 28, 28] format for Conv2D
-			imageData := make([]float32, 1*1*28*28)
-			copy(imageData, sample.Image.Data())
-			input := tensor.FromFloat32(tensor.NewShape(1, 1, 28, 28), imageData)
+			// sample.Image is [1, 28, 28], we need [1, 1, 28, 28]
+			input := tensor.New(tensor.DTFP32, tensor.NewShape(1, 1, 28, 28))
+			// Copy from sample.Image to input tensor
+			for indices := range sample.Image.Shape().Iterator() {
+				val := sample.Image.At(indices...)
+				// Map from [1, 28, 28] to [1, 1, 28, 28]
+				inputIndices := []int{0, 0, indices[1], indices[2]}
+				input.SetAt(val, inputIndices...)
+			}
 
 			// Create one-hot target
 			target := oneHot(sample.Label, 10)
@@ -211,10 +218,11 @@ func TestMNISTLarge(t *testing.T) {
 
 			// Find predicted class (argmax)
 			predicted := 0
-			maxProb := output.Data()[0]
+			maxProb := output.At(0)
 			for j := 1; j < 10; j++ {
-				if output.Data()[j] > maxProb {
-					maxProb = output.Data()[j]
+				prob := output.At(j)
+				if prob > maxProb {
+					maxProb = prob
 					predicted = j
 				}
 			}
@@ -225,8 +233,8 @@ func TestMNISTLarge(t *testing.T) {
 
 			// Log progress in real-time every N samples
 			if (i+1)%logInterval == 0 || i == 0 {
-				avgRunningLoss := runningLoss / float32(runningCount)
-				currentAccuracy := float32(correct) / float32(i+1)
+				avgRunningLoss := runningLoss / float64(runningCount)
+				currentAccuracy := float64(correct) / float64(i+1)
 				t.Logf("[Epoch %d, Sample %d/%d] Current Loss: %.4f | Avg Loss (last %d): %.4f | Accuracy: %.2f%%",
 					epoch+1, i+1, len(trainSamples), loss, logInterval, avgRunningLoss, currentAccuracy*100)
 				// Reset running averages for next interval
@@ -235,8 +243,8 @@ func TestMNISTLarge(t *testing.T) {
 			}
 		}
 
-		avgLoss := totalLoss / float32(len(trainSamples))
-		accuracy := float32(correct) / float32(len(trainSamples))
+		avgLoss := totalLoss / float64(len(trainSamples))
+		accuracy := float64(correct) / float64(len(trainSamples))
 		t.Logf("Epoch %d COMPLETE: Loss=%.4f, Accuracy=%.2f%% (%d/%d)", epoch+1, avgLoss, accuracy*100, correct, len(trainSamples))
 	}
 
@@ -245,13 +253,18 @@ func TestMNISTLarge(t *testing.T) {
 	dropout1.SetTrainingMode(false)
 	t.Log("\n=== Validation ===")
 	testCorrect := 0
-	totalTestLoss := float32(0)
+	totalTestLoss := float64(0)
 
 	for i, sample := range testSamples {
 		// Reshape image to [1, 1, 28, 28]
-		imageData := make([]float32, 1*1*28*28)
-		copy(imageData, sample.Image.Data())
-		input := tensor.FromFloat32(tensor.NewShape(1, 1, 28, 28), imageData)
+		input := tensor.New(tensor.DTFP32, tensor.NewShape(1, 1, 28, 28))
+		// Copy from sample.Image to input tensor
+		for indices := range sample.Image.Shape().Iterator() {
+			val := sample.Image.At(indices...)
+			// Map from [1, 28, 28] to [1, 1, 28, 28]
+			inputIndices := []int{0, 0, indices[1], indices[2]}
+			input.SetAt(val, inputIndices...)
+		}
 
 		// Create one-hot target
 		target := oneHot(sample.Label, 10)
@@ -267,14 +280,15 @@ func TestMNISTLarge(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Loss computation failed: %v", err)
 		}
-		totalTestLoss += loss
+		totalTestLoss += float64(loss)
 
 		// Find predicted class
 		predicted := 0
-		maxProb := output.Data()[0]
+		maxProb := output.At(0)
 		for j := 1; j < 10; j++ {
-			if output.Data()[j] > maxProb {
-				maxProb = output.Data()[j]
+			prob := output.At(j)
+			if prob > maxProb {
+				maxProb = prob
 				predicted = j
 			}
 		}
@@ -284,8 +298,8 @@ func TestMNISTLarge(t *testing.T) {
 		}
 	}
 
-	testAccuracy := float32(testCorrect) / float32(len(testSamples))
-	avgTestLoss := totalTestLoss / float32(len(testSamples))
+	testAccuracy := float64(testCorrect) / float64(len(testSamples))
+	avgTestLoss := totalTestLoss / float64(len(testSamples))
 	t.Logf("Test Accuracy: %.2f%% (%d/%d)", testAccuracy*100, testCorrect, len(testSamples))
 	t.Logf("Test Loss: %.4f", avgTestLoss)
 

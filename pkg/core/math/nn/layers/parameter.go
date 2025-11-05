@@ -21,9 +21,10 @@ func (p *Parameter) ZeroGrad() {
 		return
 	}
 
-	if p.Grad.Shape().Rank() == 0 {
+	if p.Grad == nil || p.Grad.Shape() == nil || p.Grad.Shape().Rank() == 0 {
 		// Lazy allocation: create gradient tensor with same shape as data
-		p.Grad = tensor.New(tensor.DTFP32, p.Data.Shape())
+		// Use data's data type instead of hardcoding DTFP32
+		p.Grad = tensor.New(p.Data.DataType(), p.Data.Shape())
 	}
 
 	// Zero all gradient values
@@ -39,9 +40,9 @@ func InitXavier(param *Parameter, fanIn, fanOut int, rng RNG) {
 	}
 
 	limit := float32(math.Sqrt(6.0 / float64(fanIn+fanOut)))
-	for idx := range param.Data.Shape().Iterator() {
-		// Convert float32 to float64 for SetAt interface
-		param.Data.SetAt(float64((rng.Float32()*2-1)*limit), idx...)
+	for elem := range param.Data.Elements() {
+		// Convert float32 to float64 for Set interface
+		elem.Set(float64((rng.Float32()*2 - 1) * limit))
 	}
 }
 
@@ -59,8 +60,8 @@ func InitXavierNormal(param *Parameter, fanIn, fanOut int, rng RNG) {
 
 	stddev := float32(math.Sqrt(2.0 / float64(fanIn+fanOut)))
 
-	for idx := range param.Data.Shape().Iterator() {
-		// Convert float32 to float64 for SetAt interface
-		param.Data.SetAt(float64(float32(rng.NormFloat64())*stddev), idx...)
+	for elem := range param.Data.Elements() {
+		// Convert float32 to float64 for Set interface
+		elem.Set(float64(float32(rng.NormFloat64()) * stddev))
 	}
 }

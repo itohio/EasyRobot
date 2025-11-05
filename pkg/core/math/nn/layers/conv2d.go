@@ -151,17 +151,12 @@ func (c *Conv2D) Forward(input types.Tensor) (types.Tensor, error) {
 	if !ok {
 		return nil, fmt.Errorf("Conv2D.Forward: kernel parameter not initialized")
 	}
-	var biasParam *types.Tensor
+	var biasTensor types.Tensor
 	if c.hasBias {
 		biasParamVal, ok := c.Base.Parameter(ParamBiases)
 		if ok {
-			biasParam = &biasParamVal.Data
+			biasTensor = biasParamVal.Data
 		}
-	}
-
-	var biasTensor types.Tensor
-	if biasParam != nil {
-		biasTensor = *biasParam
 	}
 	output = input.Conv2DTo(kernelParam.Data, biasTensor, output, []int{c.strideH, c.strideW}, []int{c.padH, c.padW})
 

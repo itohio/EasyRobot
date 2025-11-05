@@ -553,6 +553,18 @@ func OnesLike(t types.Tensor) types.Tensor {
 	return resultPtr
 }
 
+// IsNil checks whether the tensor is nil or empty.
+// Returns true if t is nil, or if t.Shape() is nil, or if t.Empty() is true.
+func IsNil(t types.Tensor) bool {
+	if t == nil {
+		return true
+	}
+	if t.Shape() == nil {
+		return true
+	}
+	return t.Empty()
+}
+
 // FullLike creates a new tensor with the same shape as t, filled with the given value.
 func FullLike(t types.Tensor, value float32) types.Tensor {
 	if t == nil || t.Shape() == nil {

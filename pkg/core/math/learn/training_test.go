@@ -101,12 +101,10 @@ func TestTrainStep_SimpleTraining(t *testing.T) {
 
 	// Dense layer has weight matrix [out_features, in_features] and bias [out_features]
 	// For our case: weight [1, 1], bias [1]
-	weightData := weightParam.Data.Data()
-	biasData := biasParam.Data.Data()
-	require.Greater(t, len(weightData), 0)
-	require.Greater(t, len(biasData), 0)
-	weightData[0] = 2.0 // weight
-	biasData[0] = 1.0   // bias
+	require.Greater(t, weightParam.Data.Size(), 0, "Weight param should have data")
+	require.Greater(t, biasParam.Data.Size(), 0, "Bias param should have data")
+	weightParam.Data.SetAt(2.0, 0, 0) // weight
+	biasParam.Data.SetAt(1.0, 0)      // bias
 
 	// Train on a simple example: x=1, y=3 (since 2*1 + 1 = 3)
 	input := tensor.FromFloat32(tensor.NewShape(1), []float32{1})
@@ -160,10 +158,8 @@ func TestTrainStep_MultipleSteps(t *testing.T) {
 			biasParam = param
 		}
 	}
-	weightData := weightParam.Data.Data()
-	biasData := biasParam.Data.Data()
-	weightData[0] = 0.0 // weight = 0 (should be 2)
-	biasData[0] = 0.0   // bias = 0 (should be 1)
+	weightParam.Data.SetAt(0.0, 0, 0) // weight = 0 (should be 2)
+	biasParam.Data.SetAt(0.0, 0)      // bias = 0 (should be 1)
 
 	// Training data: y = 2x + 1
 	trainData := []struct {

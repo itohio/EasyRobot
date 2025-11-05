@@ -112,13 +112,15 @@ func TestMNIST(t *testing.T) {
 			}
 			// Xavier uniform initialization
 			limit := float32(1.0 / float64(fanIn+fanOut))
-			for i := range param.Data.Data() {
-				param.Data.Data()[i] = (rng.Float32()*2 - 1) * limit
+			for indices := range param.Data.Shape().Iterator() {
+				val := float64((rng.Float32()*2 - 1) * limit)
+				param.Data.SetAt(val, indices...)
 			}
 		} else {
 			// For biases or 1D tensors, use small random values
-			for i := range param.Data.Data() {
-				param.Data.Data()[i] = (rng.Float32()*2 - 1) * 0.1
+			for indices := range param.Data.Shape().Iterator() {
+				val := float64((rng.Float32()*2 - 1) * 0.1)
+				param.Data.SetAt(val, indices...)
 			}
 		}
 	}
@@ -131,15 +133,20 @@ func TestMNIST(t *testing.T) {
 	epochs := 5
 	t.Log("\n=== Training ===")
 	for epoch := 0; epoch < epochs; epoch++ {
-		totalLoss := float32(0)
+		totalLoss := float64(0)
 		correct := 0
 
 		for i, sample := range trainSamples {
 			// Reshape image to [1, 1, 28, 28] format for Conv2D
 			// sample.Image is [1, 28, 28], we need [1, 1, 28, 28]
-			imageData := make([]float32, 1*1*28*28)
-			copy(imageData, sample.Image.Data())
-			input := tensor.FromFloat32(tensor.NewShape(1, 1, 28, 28), imageData)
+			input := tensor.New(tensor.DTFP32, tensor.NewShape(1, 1, 28, 28))
+			// Copy from sample.Image to input tensor
+			for indices := range sample.Image.Shape().Iterator() {
+				val := sample.Image.At(indices...)
+				// Map from [1, 28, 28] to [1, 1, 28, 28]
+				inputIndices := []int{0, 0, indices[1], indices[2]}
+				input.SetAt(val, inputIndices...)
+			}
 
 			// Create one-hot target
 			target := oneHot(sample.Label, 10)
@@ -160,10 +167,11 @@ func TestMNIST(t *testing.T) {
 
 			// Find predicted class (argmax)
 			predicted := 0
-			maxProb := output.Data()[0]
+			maxProb := output.At(0)
 			for j := 1; j < 10; j++ {
-				if output.Data()[j] > maxProb {
-					maxProb = output.Data()[j]
+				prob := output.At(j)
+				if prob > maxProb {
+					maxProb = prob
 					predicted = j
 				}
 			}
@@ -173,21 +181,26 @@ func TestMNIST(t *testing.T) {
 			}
 		}
 
-		avgLoss := totalLoss / float32(len(trainSamples))
-		accuracy := float32(correct) / float32(len(trainSamples))
+		avgLoss := totalLoss / float64(len(trainSamples))
+		accuracy := float64(correct) / float64(len(trainSamples))
 		t.Logf("Epoch %d: Loss=%.4f, Accuracy=%.2f%% (%d/%d)", epoch+1, avgLoss, accuracy*100, correct, len(trainSamples))
 	}
 
 	// Validation on test set
 	t.Log("\n=== Validation ===")
 	testCorrect := 0
-	totalTestLoss := float32(0)
+	totalTestLoss := float64(0)
 
 	for i, sample := range testSamples {
 		// Reshape image to [1, 1, 28, 28]
-		imageData := make([]float32, 1*1*28*28)
-		copy(imageData, sample.Image.Data())
-		input := tensor.FromFloat32(tensor.NewShape(1, 1, 28, 28), imageData)
+		input := tensor.New(tensor.DTFP32, tensor.NewShape(1, 1, 28, 28))
+		// Copy from sample.Image to input tensor
+		for indices := range sample.Image.Shape().Iterator() {
+			val := sample.Image.At(indices...)
+			// Map from [1, 28, 28] to [1, 1, 28, 28]
+			inputIndices := []int{0, 0, indices[1], indices[2]}
+			input.SetAt(val, inputIndices...)
+		}
 
 		// Create one-hot target
 		target := oneHot(sample.Label, 10)
@@ -203,14 +216,15 @@ func TestMNIST(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Loss computation failed: %v", err)
 		}
-		totalTestLoss += loss
+		totalTestLoss += float64(loss)
 
 		// Find predicted class
 		predicted := 0
-		maxProb := output.Data()[0]
+		maxProb := output.At(0)
 		for j := 1; j < 10; j++ {
-			if output.Data()[j] > maxProb {
-				maxProb = output.Data()[j]
+			prob := output.At(j)
+			if prob > maxProb {
+				maxProb = prob
 				predicted = j
 			}
 		}
@@ -220,8 +234,8 @@ func TestMNIST(t *testing.T) {
 		}
 	}
 
-	testAccuracy := float32(testCorrect) / float32(len(testSamples))
-	avgTestLoss := totalTestLoss / float32(len(testSamples))
+	testAccuracy := float64(testCorrect) / float64(len(testSamples))
+	avgTestLoss := totalTestLoss / float64(len(testSamples))
 	t.Logf("Test Accuracy: %.2f%% (%d/%d)", testAccuracy*100, testCorrect, len(testSamples))
 	t.Logf("Test Loss: %.4f", avgTestLoss)
 

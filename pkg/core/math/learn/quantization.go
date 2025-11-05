@@ -31,7 +31,7 @@ const (
 // QuantizationParams holds the scale and zero point for quantized tensors.
 // Formula: real_value = scale * (quantized_value - zeroPoint)
 type QuantizationParams struct {
-	Scale     float32 // Scale factor
+	Scale     float64 // Scale factor
 	ZeroPoint int32   // Zero point in quantized space
 }
 
@@ -56,19 +56,19 @@ const (
 type Calibrator struct {
 	method     CalibrationMethod
 	scheme     QuantizationScheme
-	percentile float32 // For CalibPercentile (e.g., 0.999 for 99.9th percentile)
+	percentile float64 // For CalibPercentile (e.g., 0.999 for 99.9th percentile)
 	bits       int     // Number of bits for quantization (typically 8)
 	quantMin   int32   // Minimum quantized value (e.g., 0 for uint8, -128 for int8)
 	quantMax   int32   // Maximum quantized value (e.g., 255 for uint8, 127 for int8)
 
 	// Statistics collected during calibration
-	minVal  float32
-	maxVal  float32
-	samples []float32 // For percentile/KL divergence
+	minVal  float64
+	maxVal  float64
+	samples []float64 // For percentile/KL divergence
 }
 
 // SetPercentile sets the percentile for percentile-based calibration.
-func (c *Calibrator) SetPercentile(p float32) {
+func (c *Calibrator) SetPercentile(p float64) {
 	if p > 0 && p <= 1.0 {
 		c.percentile = p
 	}
@@ -81,7 +81,7 @@ type quantizationConfig struct {
 	scheme      QuantizationScheme
 	bits        int
 	calibMethod CalibrationMethod
-	percentile  float32
+	percentile  float64
 }
 
 // WithScheme sets the quantization scheme.
@@ -106,7 +106,7 @@ func WithCalibrationMethod(method CalibrationMethod) QuantizationOption {
 }
 
 // WithPercentile sets the percentile for percentile-based calibration.
-func WithPercentile(p float32) QuantizationOption {
+func WithPercentile(p float64) QuantizationOption {
 	return func(c *quantizationConfig) {
 		c.percentile = p
 	}
@@ -135,18 +135,18 @@ func NewCalibrator(method CalibrationMethod, scheme QuantizationScheme, bits int
 
 	// Initialize based on scheme
 	if scheme == QuantSymmetric {
-		c.minVal = math.MaxFloat32
-		c.maxVal = -math.MaxFloat32
+		c.minVal = math.MaxFloat64
+		c.maxVal = -math.MaxFloat64
 	} else {
-		c.minVal = math.MaxFloat32
-		c.maxVal = -math.MaxFloat32
+		c.minVal = math.MaxFloat64
+		c.maxVal = -math.MaxFloat64
 	}
 
 	return c
 }
 
 // AddSample adds a value to the calibration statistics.
-func (c *Calibrator) AddSample(value float32) {
+func (c *Calibrator) AddSample(value float64) {
 	// For min-max, we track min/max
 	if c.method == CalibMinMax {
 		if value < c.minVal {
@@ -172,8 +172,8 @@ func (c *Calibrator) AddSample(value float32) {
 
 // AddTensor adds all values from a tensor to calibration statistics.
 func (c *Calibrator) AddTensor(t tensor.Tensor) {
-	for idx := range t.Shape().Iterator() {
-		val := t.At(idx...)
+	for elem := range t.Elements() {
+		val := elem.Get()
 		c.AddSample(val)
 	}
 }
@@ -188,7 +188,7 @@ func (c *Calibrator) ComputeParams() (*QuantizationParams, error) {
 	}
 
 	// Min-max or percentile calibration
-	var min, max float32
+	var min, max float64
 
 	switch c.method {
 	case CalibMinMax:
@@ -213,23 +213,23 @@ func (c *Calibrator) ComputeParams() (*QuantizationParams, error) {
 		// All values are the same, set scale to 1.0 and zero point to map to that value
 		return &QuantizationParams{
 			Scale:     1.0,
-			ZeroPoint: int32(float32(c.quantMin+c.quantMax) / 2),
+			ZeroPoint: int32(float64(c.quantMin+c.quantMax) / 2),
 		}, nil
 	}
 
-	var scale float32
+	var scale float64
 	var zeroPoint int32
 
 	switch c.scheme {
 	case QuantSymmetric:
 		// Symmetric: range is [-r, r] where r = max(|min|, |max|)
-		r := float32(math.Max(float64(math.Abs(float64(min))), math.Abs(float64(max))))
-		scale = r / float32(c.quantMax)
+		r := math.Max(math.Abs(min), math.Abs(max))
+		scale = r / float64(c.quantMax)
 		zeroPoint = 0 // In signed quantized space, zero point is 0
 
 	case QuantAsymmetric:
 		// Asymmetric: range is [min, max]
-		scale = (max - min) / float32(c.quantMax-c.quantMin)
+		scale = (max - min) / float64(c.quantMax-c.quantMin)
 		zeroPoint = c.quantMin - int32(min/scale)
 
 	default:
@@ -273,12 +273,12 @@ func (c *Calibrator) computeParamsKL() (*QuantizationParams, error) {
 
 	// Then compute params using symmetric quantization (common for weights)
 	// or asymmetric (common for activations)
-	r := float32(math.Max(float64(math.Abs(float64(min))), math.Abs(float64(max))))
-	scale := r / float32(c.quantMax)
+	r := math.Max(math.Abs(min), math.Abs(max))
+	scale := r / float64(c.quantMax)
 	zeroPoint := int32(0)
 
 	if c.scheme == QuantAsymmetric {
-		scale = (max - min) / float32(c.quantMax-c.quantMin)
+		scale = (max - min) / float64(c.quantMax-c.quantMin)
 		zeroPoint = c.quantMin - int32(min/scale)
 	}
 
@@ -289,13 +289,13 @@ func (c *Calibrator) computeParamsKL() (*QuantizationParams, error) {
 }
 
 // computePercentileRange computes the range using percentile method.
-func (c *Calibrator) computePercentileRange() (float32, float32) {
+func (c *Calibrator) computePercentileRange() (float64, float64) {
 	if len(c.samples) == 0 {
 		return c.minVal, c.maxVal
 	}
 
 	// Sort samples (simple insertion sort for small arrays)
-	sorted := make([]float32, len(c.samples))
+	sorted := make([]float64, len(c.samples))
 	copy(sorted, c.samples)
 	for i := 1; i < len(sorted); i++ {
 		key := sorted[i]
@@ -308,7 +308,7 @@ func (c *Calibrator) computePercentileRange() (float32, float32) {
 	}
 
 	// Compute percentile indices
-	lowerIdx := int(float32(len(sorted)) * (1.0 - c.percentile) / 2.0)
+	lowerIdx := int(float64(len(sorted)) * (1.0 - c.percentile) / 2.0)
 	upperIdx := len(sorted) - 1 - lowerIdx
 
 	if lowerIdx < 0 {
@@ -339,11 +339,10 @@ func QuantizeTensor(t tensor.Tensor, params *QuantizationParams, scheme Quantiza
 	// Allocate quantized tensor
 	quantized := tensor.New(tensor.DTFP32, t.Shape())
 
-	// Quantize each value
-	tData := t.Data()
-	qData := quantized.Data()
-	for i, val := range tData {
-		q := int32(math.Round(float64(val/params.Scale))) + params.ZeroPoint
+	// Quantize each value using shape iterator to get indices
+	for indices := range t.Shape().Iterator() {
+		val := t.At(indices...)
+		q := int32(math.Round(val/params.Scale)) + params.ZeroPoint
 
 		// Clamp to quantized range
 		if q < quantMin {
@@ -353,9 +352,7 @@ func QuantizeTensor(t tensor.Tensor, params *QuantizationParams, scheme Quantiza
 			q = quantMax
 		}
 
-		// Store as float32 (representing uint8/int8 value)
-		// This is a temporary representation; actual uint8 storage would be different
-		qData[i] = float32(q)
+		quantized.SetAt(float64(q), indices...)
 	}
 
 	return quantized, params, nil
@@ -371,11 +368,12 @@ func DequantizeTensor(quantized tensor.Tensor, params *QuantizationParams) (tens
 	dequantized := tensor.New(tensor.DTFP32, quantized.Shape())
 
 	// Dequantize each value: real = scale * (quantized - zeroPoint)
-	qData := quantized.Data()
-	dqData := dequantized.Data()
-	for i, qVal := range qData {
+	// Use shape iterator to get indices
+	for indices := range quantized.Shape().Iterator() {
+		qVal := quantized.At(indices...)
 		q := int32(qVal) // Cast back to int32
-		dqData[i] = params.Scale * float32(q-params.ZeroPoint)
+		realVal := params.Scale * float64(q-params.ZeroPoint)
+		dequantized.SetAt(realVal, indices...)
 	}
 
 	return dequantized, nil

@@ -68,10 +68,10 @@ func TestXOR(t *testing.T) {
 	rng := rand.New(rand.NewSource(123))
 	params := model.Parameters()
 	for _, param := range params {
-		data := param.Data.Data()
-		for i := range data {
+		for indices := range param.Data.Shape().Iterator() {
 			// Generate positive small random values
-			data[i] = rng.Float32() * 0.1
+			val := float64(rng.Float32() * 0.1)
+			param.Data.SetAt(val, indices...)
 		}
 	}
 
@@ -82,7 +82,7 @@ func TestXOR(t *testing.T) {
 	// Train for multiple epochs
 	epochs := 2000
 	for epoch := 0; epoch < epochs; epoch++ {
-		totalLoss := float32(0)
+		totalLoss := float64(0)
 
 		// Train on all 4 examples
 		for i := range inputs {
@@ -95,7 +95,7 @@ func TestXOR(t *testing.T) {
 
 		// Every 100 epochs, check progress
 		if (epoch+1)%100 == 0 {
-			avgLoss := totalLoss / float32(len(inputs))
+			avgLoss := totalLoss / float64(len(inputs))
 			t.Logf("Epoch %d: Average loss = %.6f", epoch+1, avgLoss)
 
 			// Check if converged
@@ -117,7 +117,7 @@ func TestXOR(t *testing.T) {
 
 		expected := targets[i].At(0)
 		predicted := output.At(0)
-		error := abs(predicted - expected)
+		error := abs(float32(predicted - expected))
 
 		t.Logf("Input: [%.0f, %.0f] -> Predicted: %.4f, Expected: %.0f, Error: %.4f",
 			input.At(0), input.At(1), predicted, expected, error)

@@ -310,7 +310,19 @@ func TestCloneTensorDataTo(t *testing.T) {
 			name:     "int16 to int8",
 			dst:      DTINT8,
 			data:     []int16{100, 200, 300},
-			expected: []int8{100, -56, 44}, // int8 overflow
+			expected: []int8{100, 127, 127}, // clamped to int8 max
+		},
+		{
+			name:     "int16 to int8 with negative clamping",
+			dst:      DTINT8,
+			data:     []int16{-100, -200, -300},
+			expected: []int8{-100, -128, -128}, // clamped to int8 min
+		},
+		{
+			name:     "int16 to int8 with both clamping",
+			dst:      DTINT8,
+			data:     []int16{-200, -100, 0, 100, 200},
+			expected: []int8{-128, -100, 0, 100, 127}, // clamped to int8 range
 		},
 		{
 			name:     "int8 to int16",
@@ -426,7 +438,21 @@ func TestCopyTensorData(t *testing.T) {
 			name:     "int16 to int8",
 			dstData:  make([]int8, 3),
 			srcData:  []int16{100, 200, 300},
-			expected: []int8{100, -56, 44}, // int8 overflow
+			expected: []int8{100, 127, 127}, // clamped to int8 max
+			wantNil:  false,
+		},
+		{
+			name:     "int16 to int8 with negative clamping",
+			dstData:  make([]int8, 3),
+			srcData:  []int16{-100, -200, -300},
+			expected: []int8{-100, -128, -128}, // clamped to int8 min
+			wantNil:  false,
+		},
+		{
+			name:     "int16 to int8 with both clamping",
+			dstData:  make([]int8, 5),
+			srcData:  []int16{-200, -100, 0, 100, 200},
+			expected: []int8{-128, -100, 0, 100, 127}, // clamped to int8 range
 			wantNil:  false,
 		},
 		{

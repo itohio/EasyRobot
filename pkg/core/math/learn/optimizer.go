@@ -12,11 +12,11 @@ import (
 // SGD implements Stochastic Gradient Descent optimizer.
 // It implements nn.Optimizer interface.
 type SGD struct {
-	lr float32 // Learning rate
+	lr float64 // Learning rate
 }
 
 // NewSGD creates a new SGD optimizer with the given learning rate.
-func NewSGD(lr float32) *SGD {
+func NewSGD(lr float64) *SGD {
 	if lr <= 0 {
 		panic("SGD: learning rate must be positive")
 	}
@@ -53,8 +53,8 @@ func (s *SGD) Update(param *layers.Parameter) error {
 	// SGD update: data = data - lr * grad
 	// Use tensor operations: scale gradient by learning rate, then subtract from data
 	scaledGrad := param.Grad.Clone()
-	scaledGrad.Scale(s.lr)
-	(&param.Data).Sub(*scaledGrad)
+	scaledGrad = scaledGrad.Scale(s.lr)
+	param.Data = param.Data.Sub(scaledGrad)
 
 	return nil
 }
@@ -64,10 +64,10 @@ func (s *SGD) Update(param *layers.Parameter) error {
 // Adam combines advantages of AdaGrad and RMSProp by using both
 // first and second moment estimates of gradients.
 type Adam struct {
-	lr      float32                // Learning rate
-	beta1   float32                // Exponential decay rate for first moment estimates
-	beta2   float32                // Exponential decay rate for second moment estimates
-	epsilon float32                // Small constant for numerical stability
+	lr      float64                // Learning rate
+	beta1   float64                // Exponential decay rate for first moment estimates
+	beta2   float64                // Exponential decay rate for second moment estimates
+	epsilon float64                // Small constant for numerical stability
 	mu      sync.Mutex             // Mutex for thread-safe state access
 	state   map[uintptr]*adamState // Per-parameter state keyed by data pointer
 }
@@ -81,7 +81,7 @@ type adamState struct {
 
 // NewAdam creates a new Adam optimizer with the given hyperparameters.
 // Default values (if not specified): lr=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8
-func NewAdam(lr, beta1, beta2, epsilon float32) *Adam {
+func NewAdam(lr, beta1, beta2, epsilon float64) *Adam {
 	if lr <= 0 {
 		panic("Adam: learning rate must be positive")
 	}
@@ -159,54 +159,49 @@ func (a *Adam) Update(param *layers.Parameter) error {
 	state.step++
 
 	// Compute bias correction coefficients
-	beta1Power := float32(math.Pow(float64(a.beta1), float64(state.step)))
-	beta2Power := float32(math.Pow(float64(a.beta2), float64(state.step)))
+	beta1Power := math.Pow(a.beta1, float64(state.step))
+	beta2Power := math.Pow(a.beta2, float64(state.step))
 	biasCorrection1 := 1 - beta1Power
 	biasCorrection2 := 1 - beta2Power
 
 	// Update first moment estimate: m = beta1 * m + (1-beta1) * g
-	(&state.m).Scale(a.beta1)
+	state.m = state.m.Scale(a.beta1)
 	scaledGrad1 := param.Grad.Clone()
-	scaledGrad1.Scale(1 - a.beta1)
-	(&state.m).Add(*scaledGrad1)
+	scaledGrad1 = scaledGrad1.Scale(1 - a.beta1)
+	state.m = state.m.Add(scaledGrad1)
 
 	// Update second moment estimate: v = beta2 * v + (1-beta2) * g^2
 	gradSquared := param.Grad.Clone()
-	gradSquared.Mul(param.Grad)
-	(&state.v).Scale(a.beta2)
+	gradSquared = gradSquared.Mul(param.Grad)
+	state.v = state.v.Scale(a.beta2)
 	scaledGrad2 := gradSquared.Clone()
-	scaledGrad2.Scale(1 - a.beta2)
-	(&state.v).Add(*scaledGrad2)
+	scaledGrad2 = scaledGrad2.Scale(1 - a.beta2)
+	state.v = state.v.Add(scaledGrad2)
 
 	// Compute bias-corrected estimates: mHat = m / (1 - beta1^t), vHat = v / (1 - beta2^t)
 	mHat := state.m.Clone()
-	mHat.Scale(1.0 / biasCorrection1)
+	mHat = mHat.Scale(1.0 / biasCorrection1)
 	vHat := state.v.Clone()
-	vHat.Scale(1.0 / biasCorrection2)
+	vHat = vHat.Scale(1.0 / biasCorrection2)
 
 	// Compute sqrt(vHat) + epsilon
-	sqrtVHat := sqrtTensor(*vHat)
-	epsilonTensor := tensor.FullLike(*sqrtVHat, a.epsilon)
-	sqrtVHat.Add(*epsilonTensor)
+	sqrtVHat := vHat.Clone()
+	sqrtVHat = sqrtVHat.Sqrt(nil)
+
+	// Create epsilon tensor using Elements() to set all values
+	epsilonTensor := sqrtVHat.Clone()
+	for elem := range epsilonTensor.Elements() {
+		elem.Set(a.epsilon)
+	}
+	sqrtVHat = sqrtVHat.Add(epsilonTensor)
 
 	// Compute update: param = param - lr * mHat / (sqrt(vHat) + epsilon)
 	update := mHat.Clone()
-	update.Div(*sqrtVHat)
-	update.Scale(a.lr)
-	(&param.Data).Sub(*update)
+	update = update.Div(sqrtVHat)
+	update = update.Scale(a.lr)
+	param.Data = param.Data.Sub(update)
 
 	return nil
-}
-
-// sqrtTensor computes element-wise square root of a tensor.
-// Since there's no tensor sqrt operation, this helper computes sqrt element-wise.
-func sqrtTensor(t tensor.Tensor) *tensor.Tensor {
-	result := t.Clone()
-	data := result.Data()
-	for i := range data {
-		data[i] = float32(math.Sqrt(float64(data[i])))
-	}
-	return result
 }
 
 // shapesEqual checks if two shapes are equal.

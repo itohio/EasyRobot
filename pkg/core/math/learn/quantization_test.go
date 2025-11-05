@@ -14,7 +14,7 @@ func TestQuantizationParams(t *testing.T) {
 
 	// Add samples with range [-10, 10]
 	for i := -10; i <= 10; i++ {
-		calibrator.AddSample(float32(i))
+		calibrator.AddSample(float64(i))
 	}
 
 	params, err := calibrator.ComputeParams()
@@ -23,8 +23,8 @@ func TestQuantizationParams(t *testing.T) {
 	}
 
 	// For symmetric quantization, scale should map [-10, 10] to [-127, 127]
-	expectedScale := float32(10.0 / 127.0)
-	if math.Abs(float64(params.Scale-expectedScale)) > 0.001 {
+	expectedScale := float64(10.0 / 127.0)
+	if math.Abs(params.Scale-expectedScale) > 0.001 {
 		t.Errorf("Expected scale ~%.6f, got %.6f", expectedScale, params.Scale)
 	}
 
@@ -38,7 +38,7 @@ func TestQuantizationAsymmetric(t *testing.T) {
 
 	// Add samples with range [0, 255]
 	for i := 0; i <= 255; i++ {
-		calibrator.AddSample(float32(i))
+		calibrator.AddSample(float64(i))
 	}
 
 	params, err := calibrator.ComputeParams()
@@ -47,8 +47,8 @@ func TestQuantizationAsymmetric(t *testing.T) {
 	}
 
 	// For asymmetric quantization, scale should map [0, 255] to [0, 255]
-	expectedScale := float32(1.0)
-	if math.Abs(float64(params.Scale-expectedScale)) > 0.1 {
+	expectedScale := float64(1.0)
+	if math.Abs(params.Scale-expectedScale) > 0.1 {
 		t.Errorf("Expected scale ~%.6f, got %.6f", expectedScale, params.Scale)
 	}
 }
@@ -82,16 +82,15 @@ func TestQuantizeDequantize(t *testing.T) {
 	}
 
 	// Check reconstruction error (should be small)
-	inputData := input.Data()
-	dqData := dequantized.Data()
-	for i, val := range inputData {
-		reconstructed := dqData[i]
-		error := math.Abs(float64(val - reconstructed))
+	for indices := range input.Shape().Iterator() {
+		val := input.At(indices...)
+		reconstructed := dequantized.At(indices...)
+		error := math.Abs(val - reconstructed)
 		// Error should be less than one quantization step
 		maxError := params.Scale / 2.0
 		if error > float64(maxError) {
-			t.Errorf("Large reconstruction error at index %d: expected ~%.6f, got %.6f (error: %.6f, max: %.6f)",
-				i, val, reconstructed, error, maxError)
+			t.Errorf("Large reconstruction error at %v: expected ~%.6f, got %.6f (error: %.6f, max: %.6f)",
+				indices, val, reconstructed, error, maxError)
 		}
 	}
 }
@@ -102,7 +101,7 @@ func TestQuantizationPercentile(t *testing.T) {
 
 	// Add mostly small values, but a few outliers
 	for i := 0; i < 100; i++ {
-		calibrator.AddSample(float32(i) * 0.1) // Range [0, 9.9]
+		calibrator.AddSample(float64(i) * 0.1) // Range [0, 9.9]
 	}
 	// Add outliers
 	calibrator.AddSample(100.0)
