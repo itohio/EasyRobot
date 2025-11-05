@@ -129,7 +129,7 @@ func TestMNIST(t *testing.T) {
 
 	// Create loss and optimizer
 	lossFn := nn.NewCategoricalCrossEntropy(true) // fromLogits=true, applies softmax
-	optimizer := learn.NewAdam(0.001, 0.9, 0.999, 1e-8)
+	optimizer := learn.NewAdam(0.01, 0.9, 0.999, 1e-8)
 
 	// Training loop
 	epochs := 5

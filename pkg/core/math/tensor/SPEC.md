@@ -99,12 +99,12 @@ case tensor.DTINT8:
 
 The `types.Tensor` interface includes the following method categories:
 
-1. **Core Properties and Access** (11 methods)
-   - `DataType()`, `Data()`, `Shape()`, `Rank()`, `Size()`, `Empty()`
-   - `At()`, `SetAt()`, `Elements()`, `Clone()`, `Reshape()`
+1. **Core Properties and Access** (13 methods)
+   - `ID()`, `DataType()`, `Data()`, `Shape()`, `Rank()`, `Size()`, `Empty()`
+   - `At()`, `SetAt()`, `Elements()`, `Clone()`, `Copy()`, `Reshape()`, `Slice()`
 
-2. **Element-wise Operations (In-Place)** (14 methods)
-   - `Add()`, `Sub()`, `Mul()`, `Div()`, `Scale()`
+2. **Element-wise Operations (In-Place)** (15 methods)
+   - `Add()`, `Sub()`, `Mul()`, `Div()`, `Scale()`, `Fill()`
    - `Square()`, `Sqrt()`, `Exp()`, `Log()`, `Pow()`
    - `Abs()`, `Sign()`, `Cos()`, `Sin()`, `Negative()`
 
@@ -123,33 +123,41 @@ The `types.Tensor` interface includes the following method categories:
 7. **Broadcasting** (1 method)
    - `BroadcastTo()`
 
-8. **Linear Algebra Operations** (10 methods)
+8. **Linear Algebra Operations** (11 methods)
    - `MatMul()`, `MatMulTo()`, `MatMulTransposed()`, `MatVecMulTransposed()`
-   - `Transpose()`, `TransposeTo()`, `Dot()`, `Norm()`, `Normalize()`, `AddScaled()`
+   - `Transpose()`, `TransposeTo()`, `Permute()`, `Dot()`, `Norm()`, `Normalize()`, `AddScaled()`
 
-9. **Convolution Operations** (6 methods)
-   - `Conv1D()`, `Conv1DTo()`, `Conv2D()`, `Conv2DTo()`, `Conv2DTransposed()`, `Conv2DKernelGrad()`
+9. **Convolution Operations** (10 methods)
+   - `Conv1D()`, `Conv1DTo()`, `Conv1DTransposed()`, `Conv1DKernelGrad()`
+   - `Conv2D()`, `Conv2DTo()`, `Conv2DTransposed()`, `Conv2DKernelGrad()`
+   - `Conv3D()`, `DepthwiseConv2D()`, `GroupConv2D()`, `DilatedConv2D()`
 
-10. **Pooling Operations** (4 methods)
-    - `MaxPool2D()`, `AvgPool2D()`, `GlobalAvgPool2D()`, `AdaptiveAvgPool2D()`
+10. **Pooling Operations** (7 methods)
+    - `MaxPool2D()`, `MaxPool2DWithIndices()`, `MaxPool2DBackward()`
+    - `AvgPool2D()`, `AvgPool2DBackward()`
+    - `GlobalAvgPool2D()`, `AdaptiveAvgPool2D()`
 
 11. **Image/Column Conversion** (2 methods)
     - `Im2Col()`, `Col2Im()`
 
-12. **Activation Functions** (4 methods)
+12. **Gradient Routing and Utility Operations** (2 methods)
+    - `ScatterAdd()`, `Unpad()`
+
+13. **Activation Functions** (4 methods)
     - `ReLU()`, `Sigmoid()`, `Tanh()`, `Softmax()`
 
-13. **Dropout Operations** (2 methods)
+14. **Dropout Operations** (2 methods)
     - `DropoutForward()`, `DropoutMask()`
 
-**Total: 65 methods** defining the complete tensor operation contract.
+**Total: 80+ methods** defining the complete tensor operation contract.
 
 **Current Implementation:**
 
 - **`eager_tensor.Tensor`**: Concrete struct implementing `types.Tensor` with eager execution semantics
 - All operations are computed immediately when called
-- Data stored in contiguous `[]float32` slice for FP32 tensors
+- Data stored as `any` type supporting multiple data types: `[]float32`, `[]float64`, `[]int64`, `[]int32`, `[]int`, `[]int16`, `[]int8`
 - All methods satisfy the `types.Tensor` interface contract
+- Value receivers (not pointers) for interface compatibility
 
 ## Design Principles
 
@@ -217,16 +225,16 @@ For higher-dimensional tensors, storage is batch-major then row-major:
 
 ```go
 type Tensor struct {
-    dtype DataType  // Data type (currently FP32)
-    shape Shape     // Tensor dimensions
-    data  []float32 // Flat data storage (single allocation)
+    shape Shape  // Tensor dimensions
+    data  any    // Flat data storage (type depends on DataType)
 }
 ```
 
 **Characteristics:**
 - Typed data storage with extensible DataType system
 - Shape abstraction for dimension management
-- Single contiguous backing array (`[]float32`)
+- Single contiguous backing array (type varies: `[]float32`, `[]float64`, `[]int64`, etc.)
+- Data type determined dynamically from stored data
 - Zero-copy operations where possible
 - Row-major storage layout (matching Go nested arrays)
 
@@ -236,13 +244,30 @@ type Tensor struct {
 type DataType uint8
 
 const (
-    DTFP32 DataType = iota // 32-bit floating point (default)
+    DT_UNKNOWN DataType = iota
+    INT64               // 64-bit integer tensors
+    FP64                // 64-bit floating point tensors
+    INT32               // 32-bit integer tensors
+    FP32                // 32-bit floating point tensors (default)
+    INT                 // native integer tensors (32bit or 64bit)
+    INT16               // 16-bit integer tensors
+    FP16                // 16-bit floating point tensors
+    INT8                // 8-bit integer tensors
+    INT48               // 4-bit integer tensors unpacked into 8bit
 )
 ```
 
 **Current Support:**
 - `DTFP32`: 32-bit floating point tensors (primary data type)
-- Extensible for future data types (INT8, FP16, etc.)
+- `DTFP64`: 64-bit floating point tensors
+- `DTINT64`: 64-bit integer tensors
+- `DTINT32`: 32-bit integer tensors
+- `DTINT`: Native integer tensors (platform-dependent: 32bit or 64bit)
+- `DTINT16`: 16-bit integer tensors
+- `DTFP16`: 16-bit floating point tensors
+- `DTINT8`: 8-bit integer tensors
+- `DTINT48`: 4-bit integer tensors (unpacked into 8-bit storage)
+- `DT_UNKNOWN`: Unknown/unsupported data type
 
 ### Shape
 
@@ -252,10 +277,13 @@ type Shape []int // Represents tensor dimensions
 
 **Shape Methods:**
 - `Rank() int`: Returns number of dimensions
-- `Size() int`: Returns total number of elements
+- `Size() int`: Returns total number of elements (returns 1 for scalars, 0 for invalid shapes)
+- `Equal(other Shape) bool`: Checks if two shapes are equal
 - `Strides() []int`: Computes row-major strides
 - `IsContiguous(strides []int) bool`: Checks if strides represent contiguous layout
-- `ValidateAxes(axes []int) error`: Validates dimension indices
+- `ValidateAxes(axes []int) error`: Validates dimension indices (sorts axes in-place)
+- `ToSlice() []int`: Returns a copy of the shape as `[]int`
+- `Clone() Shape`: Creates a copy of the shape
 - `Iterator(fixedAxisValuePairs ...int) func(func([]int) bool)`: Creates iterator over shape indices (Go 1.22+ range-over-function)
 
 ### Tensor Creation
@@ -299,7 +327,15 @@ func (t Tensor) SetAt(value float64, indices ...int)
 func (t *Tensor) Elements(fixedAxisValuePairs ...int) func(func(Element) bool)
 
 // Reshape returns a new tensor with the same data but different shape (zero-copy when possible)
-func (t Tensor) Reshape(newShape []int) Tensor
+func (t Tensor) Reshape(newShape Shape) Tensor
+
+// Copy copies data from src tensor into this tensor (supports type conversion)
+// Both tensors must have the same shape
+func (t Tensor) Copy(src Tensor) Tensor
+
+// Slice extracts a contiguous slice along the specified dimension
+// Returns a new tensor view (zero-copy when possible)
+func (t Tensor) Slice(dim int, start int, length int) Tensor
 
 // Data returns the underlying data storage as any (part of types.Tensor interface)
 // Returns []float32 for FP32 tensors, []int8 for INT8 tensors, etc.
@@ -315,16 +351,13 @@ func (t Tensor) Flat() []float32
 
 ```go
 // Element represents a single tensor element with Get and Set methods
-type Element struct {
-    tensor *Tensor
-    index  int
+type Element interface {
+    Get() float64  // Returns float64 (converted from actual data type)
+    Set(value float64)  // Sets value (converted to actual data type)
 }
 
-// Get returns the float32 value at this element's position
-func (e Element) Get() float32
-
-// Set sets the float32 value at this element's position
-func (e Element) Set(value float32)
+// In eager_tensor implementation:
+// Element is a struct with tensor and index, converting between actual type and float64
 ```
 
 ### Shape Iterator
@@ -379,73 +412,77 @@ Beyond basic element-wise operations, the tensor package provides higher-level o
 
 #### In-Place Operations
 
-All in-place operations modify the tensor and return self for method chaining.
+Most element-wise operations accept an optional `dst Tensor` parameter. If `dst` is `nil` or empty, the operation modifies the tensor in-place. Otherwise, results are written to `dst`.
 
 | Function | Description | Primitive Used | Status |
 |----------|-------------|----------------|--------|
-| `Add(other Tensor) *Tensor` | Add tensor element-wise | `fp32.Axpy` | ✅ |
-| `Sub(other Tensor) *Tensor` | Subtract tensor element-wise | `fp32.Axpy` (alpha=-1) | ✅ |
-| `Mul(other Tensor) *Tensor` | Multiply element-wise | `fp32.ElemMul` | ✅ |
-| `Div(other Tensor) *Tensor` | Divide element-wise | `fp32.ElemDiv` | ✅ |
-| `Scale(scalar float32) *Tensor` | Multiply by scalar | `fp32.Scal` | ✅ |
-| `Square() *Tensor` | Element-wise square | `fp32.ElemSquare` | ✅ |
-| `Sqrt() *Tensor` | Element-wise square root | `fp32.ElemSqrt` | ✅ |
-| `Exp() *Tensor` | Element-wise exponential | `fp32.ElemExp` | ✅ |
-| `Log() *Tensor` | Element-wise natural logarithm | `fp32.ElemLog` | ✅ |
-| `Pow(power float32) *Tensor` | Element-wise power | `fp32.ElemPow` | ✅ |
-| `Abs() *Tensor` | Element-wise absolute value | `fp32.ElemAbs` | ✅ |
-| `Sign() *Tensor` | Element-wise sign (-1, 0, or 1) | `fp32.ElemSign` | ✅ |
-| `Cos() *Tensor` | Element-wise cosine | `fp32.ElemCos` | ✅ |
-| `Sin() *Tensor` | Element-wise sine | `fp32.ElemSin` | ✅ |
-| `Negative() *Tensor` | Element-wise negation | `fp32.ElemNegative` | ✅ |
+| `Add(other Tensor) Tensor` | Add tensor element-wise | `fp32.Axpy` | ✅ |
+| `Sub(other Tensor) Tensor` | Subtract tensor element-wise | `fp32.Axpy` (alpha=-1) | ✅ |
+| `Mul(other Tensor) Tensor` | Multiply element-wise | `fp32.ElemMul` | ✅ |
+| `Div(other Tensor) Tensor` | Divide element-wise | `fp32.ElemDiv` | ✅ |
+| `Scale(scalar float64) Tensor` | Multiply by scalar | `fp32.Scal` | ✅ |
+| `Fill(value float64) Tensor` | Fill tensor with constant value | `fp32.Fill` | ✅ |
+| `Square(dst Tensor) Tensor` | Element-wise square | `fp32.ElemSquare` | ✅ |
+| `Sqrt(dst Tensor) Tensor` | Element-wise square root | `fp32.ElemSqrt` | ✅ |
+| `Exp(dst Tensor) Tensor` | Element-wise exponential | `fp32.ElemExp` | ✅ |
+| `Log(dst Tensor) Tensor` | Element-wise natural logarithm | `fp32.ElemLog` | ✅ |
+| `Pow(dst Tensor, power float64) Tensor` | Element-wise power | `fp32.ElemPow` | ✅ |
+| `Abs(dst Tensor) Tensor` | Element-wise absolute value | `fp32.ElemAbs` | ✅ |
+| `Sign(dst Tensor) Tensor` | Element-wise sign (-1, 0, or 1) | `fp32.ElemSign` | ✅ |
+| `Cos(dst Tensor) Tensor` | Element-wise cosine | `fp32.ElemCos` | ✅ |
+| `Sin(dst Tensor) Tensor` | Element-wise sine | `fp32.ElemSin` | ✅ |
+| `Negative(dst Tensor) Tensor` | Element-wise negation | `fp32.ElemNegative` | ✅ |
 
 **Function Signatures:**
 
 ```go
-// Add: t = t + other (in-place)
-func (t *Tensor) Add(other Tensor) *Tensor
+// Add: t = t + other (in-place, returns Tensor interface)
+func (t Tensor) Add(other Tensor) Tensor
 
 // Sub: t = t - other (in-place)
-func (t *Tensor) Sub(other Tensor) *Tensor
+func (t Tensor) Sub(other Tensor) Tensor
 
 // Mul: t = t * other (element-wise, in-place)
-func (t *Tensor) Mul(other Tensor) *Tensor
+func (t Tensor) Mul(other Tensor) Tensor
 
 // Div: t = t / other (element-wise, in-place)
-func (t *Tensor) Div(other Tensor) *Tensor
+func (t Tensor) Div(other Tensor) Tensor
 
-// Scale: t = scalar * t (in-place)
-func (t *Tensor) Scale(scalar float32) *Tensor
+// Scale: t = scalar * t (in-place, scalar is float64)
+func (t Tensor) Scale(scalar float64) Tensor
 
-// Square: t[i] = t[i]^2 (in-place)
-func (t *Tensor) Square() *Tensor
+// Fill: Fill tensor with constant value (in-place)
+func (t Tensor) Fill(value float64) Tensor
 
-// Sqrt: t[i] = sqrt(t[i]) (in-place)
-func (t *Tensor) Sqrt() *Tensor
+// Square: dst[i] = t[i]^2 (if dst is nil, modifies t in-place)
+func (t Tensor) Square(dst Tensor) Tensor
 
-// Exp: t[i] = exp(t[i]) (in-place)
-func (t *Tensor) Exp() *Tensor
+// Sqrt: dst[i] = sqrt(t[i]) (if dst is nil, modifies t in-place)
+func (t Tensor) Sqrt(dst Tensor) Tensor
 
-// Log: t[i] = log(t[i]) (in-place)
-func (t *Tensor) Log() *Tensor
+// Exp: dst[i] = exp(t[i]) (if dst is nil, modifies t in-place)
+func (t Tensor) Exp(dst Tensor) Tensor
 
-// Pow: t[i] = t[i]^power (in-place)
-func (t *Tensor) Pow(power float32) *Tensor
+// Log: dst[i] = log(t[i]) (if dst is nil, modifies t in-place)
+func (t Tensor) Log(dst Tensor) Tensor
 
-// Abs: t[i] = abs(t[i]) (in-place)
-func (t *Tensor) Abs() *Tensor
+// Pow: dst[i] = t[i]^power (if dst is nil, modifies t in-place)
+func (t Tensor) Pow(dst Tensor, power float64) Tensor
 
-// Sign: t[i] = sign(t[i]) (in-place, returns -1, 0, or 1)
-func (t *Tensor) Sign() *Tensor
+// Abs: dst[i] = abs(t[i]) (if dst is nil, modifies t in-place)
+func (t Tensor) Abs(dst Tensor) Tensor
 
-// Cos: t[i] = cos(t[i]) (in-place)
-func (t *Tensor) Cos() *Tensor
+// Sign: dst[i] = sign(t[i]) (if dst is nil, modifies t in-place)
+func (t Tensor) Sign(dst Tensor) Tensor
 
-// Sin: t[i] = sin(t[i]) (in-place)
-func (t *Tensor) Sin() *Tensor
+// Cos: dst[i] = cos(t[i]) (if dst is nil, modifies t in-place)
+func (t Tensor) Cos(dst Tensor) Tensor
 
-// Negative: t[i] = -t[i] (in-place)
-func (t *Tensor) Negative() *Tensor
+// Sin: dst[i] = sin(t[i]) (if dst is nil, modifies t in-place)
+func (t Tensor) Sin(dst Tensor) Tensor
+
+// Negative: dst[i] = -t[i] (if dst is nil, modifies t in-place)
+func (t Tensor) Negative(dst Tensor) Tensor
 ```
 
 **Parameters:**
@@ -469,17 +506,17 @@ Comparison operations return new tensors with 1.0 where the condition is true, 0
 
 ```go
 // Equal: Returns tensor with 1.0 where t == other, 0.0 otherwise
-func (t Tensor) Equal(other Tensor) *Tensor
+func (t Tensor) Equal(other Tensor) Tensor
 
 // Greater: Returns tensor with 1.0 where t > other, 0.0 otherwise
 // Note: This is an alias for GreaterThan to match TensorFlow naming
-func (t Tensor) Greater(other Tensor) *Tensor
+func (t Tensor) Greater(other Tensor) Tensor
 
 // GreaterThan: Returns tensor with 1.0 where t > other, 0.0 otherwise
-func (t Tensor) GreaterThan(other Tensor) *Tensor
+func (t Tensor) GreaterThan(other Tensor) Tensor
 
 // Less: Returns tensor with 1.0 where t < other, 0.0 otherwise
-func (t Tensor) Less(other Tensor) *Tensor
+func (t Tensor) Less(other Tensor) Tensor
 ```
 
 **Note**: Comparison operations create new tensors (non-mutating) to match TensorFlow's behavior. They return boolean-like tensors where 1.0 represents true and 0.0 represents false.
@@ -497,12 +534,12 @@ func (t Tensor) Less(other Tensor) *Tensor
 // AddTo: result = t + other
 // If dst is nil, creates new tensor
 // If dst is provided, uses it (must match shape)
-func (t *Tensor) AddTo(other Tensor, dst *Tensor) *Tensor
+func (t Tensor) AddTo(other Tensor, dst Tensor) Tensor
 
 // MulTo: result = t * other (element-wise)
 // If dst is nil, creates new tensor
 // If dst is provided, uses it (must match shape)
-func (t *Tensor) MulTo(other Tensor, dst *Tensor) *Tensor
+func (t Tensor) MulTo(other Tensor, dst Tensor) Tensor
 ```
 
 ## Reduction Operations
@@ -560,7 +597,7 @@ sum := t.Sum(0, 2) // Reduces dimensions 0 and 2
 ```go
 // BroadcastTo: Broadcast tensor to target shape
 // Returns error if broadcasting is not possible
-func (t Tensor) BroadcastTo(shape []int) (*Tensor, error)
+func (t Tensor) BroadcastTo(shape Shape) (Tensor, error)
 ```
 
 **Notes:**
@@ -576,10 +613,13 @@ All linear algebra operations use `math/primitive/fp32` functions for optimal pe
 
 | Function | Description | Primitive Used | Status |
 |----------|-------------|----------------|--------|
-| `MatMul(other Tensor) *Tensor` | Matrix multiplication | `fp32.Gemm_*`, `GemmBatched`, `GemmStrided` | ✅ |
-| `MatMulTo(other Tensor, dst *Tensor) *Tensor` | Matrix multiply to destination | - | ✅ |
-| `Transpose(dims ...int) *Tensor` | Transpose dimensions | Manual implementation | ✅ (2D only) |
-| `TransposeTo(dst *Tensor, dims ...int) *Tensor` | Transpose to destination | - | ✅ (2D only) |
+| `MatMul(other Tensor) Tensor` | Matrix multiplication | `fp32.Gemm_*`, `GemmBatched`, `GemmStrided` | ✅ |
+| `MatMulTo(other Tensor, dst Tensor) Tensor` | Matrix multiply to destination | - | ✅ |
+| `MatMulTransposed(other, transposeA, transposeB bool, dst Tensor) Tensor` | Matrix multiply with optional transposition | `fp32.Gemm_NN`, `Gemm_NT`, `Gemm_TN`, `Gemm_TT` | ✅ |
+| `MatVecMulTransposed(matrix, vector, alpha, beta float64) Tensor` | Matrix-vector multiplication (transposed) | `fp32.Gemv_T` | ✅ |
+| `Transpose(dims ...int) Tensor` | Transpose dimensions | Manual implementation | ✅ (supports 2D+ via Permute) |
+| `TransposeTo(dst Tensor, dims ...int) Tensor` | Transpose to destination | - | ✅ |
+| `Permute(dims []int) Tensor` | Permute dimensions | `fp32.ElemCopy` | ✅ |
 
 **Function Signatures:**
 
@@ -588,17 +628,29 @@ All linear algebra operations use `math/primitive/fp32` functions for optimal pe
 // For 2D: [M, K] × [K, N] = [M, N]
 // For batched: [B, M, K] × [B, K, N] = [B, M, N]
 // Supports broadcasting: [M, K] × [B, K, N] or [B, M, K] × [K, N]
-func (t Tensor) MatMul(other Tensor) *Tensor
+func (t Tensor) MatMul(other Tensor) Tensor
 
 // MatMulTo: Matrix multiply to destination
-func (t Tensor) MatMulTo(other Tensor, dst *Tensor) *Tensor
+func (t Tensor) MatMulTo(other Tensor, dst Tensor) Tensor
 
-// Transpose: Transpose dimensions (currently supports 2D only)
-// [M, N] → [N, M]
-func (t Tensor) Transpose(dims ...int) *Tensor
+// MatMulTransposed: Matrix multiplication with optional transposition
+// Computes: (transposeA ? t^T : t) × (transposeB ? other^T : other)
+func (t Tensor) MatMulTransposed(other Tensor, transposeA, transposeB bool, dst Tensor) Tensor
+
+// MatVecMulTransposed: Matrix-vector multiplication: result = alpha * matrix^T × vector + beta * result
+func (t Tensor) MatVecMulTransposed(matrix, vector Tensor, alpha, beta float64) Tensor
+
+// Transpose: Transpose dimensions
+// For 2D: [M, N] → [N, M] (swaps last two dimensions if no dims provided)
+// For 4D+: uses Permute to rearrange dimensions
+func (t Tensor) Transpose(dims ...int) Tensor
 
 // TransposeTo: Transpose to destination
-func (t Tensor) TransposeTo(dst *Tensor, dims ...int) *Tensor
+func (t Tensor) TransposeTo(dst Tensor, dims ...int) Tensor
+
+// Permute: Permute dimensions according to permutation
+// dims: permutation of [0, 1, 2, ..., rank-1]
+func (t Tensor) Permute(dims []int) Tensor
 ```
 
 **MatMul Details:**
@@ -616,9 +668,10 @@ func (t Tensor) TransposeTo(dst *Tensor, dims ...int) *Tensor
 
 | Function | Description | Primitive Used | Status |
 |----------|-------------|----------------|--------|
-| `Dot(other Tensor) float32` | Dot product | `fp32.Dot` (vector case) | ✅ |
-| `Norm(ord int) float32` | Vector/matrix norm | `fp32.Nrm2`, `fp32.Asum` | ✅ |
-| `Normalize(dim int) *Tensor` | Normalize along dimension | `fp32.Nrm2` + `fp32.Scal` | ✅ |
+| `Dot(other Tensor) float64` | Dot product | `fp32.Dot` (vector case) | ✅ |
+| `Norm(ord int) float64` | Vector/matrix norm | `fp32.Nrm2`, `fp32.Asum` | ✅ |
+| `Normalize(dim int) Tensor` | Normalize along dimension | `fp32.Nrm2` + `fp32.Scal` | ✅ |
+| `AddScaled(other Tensor, alpha float64) Tensor` | Scaled addition: t = t + alpha * other | `fp32.Axpy` | ✅ |
 
 **Function Signatures:**
 
@@ -626,16 +679,21 @@ func (t Tensor) TransposeTo(dst *Tensor, dims ...int) *Tensor
 // Dot: Dot product (vector) or Frobenius inner product (matrix)
 // Vector case: dot product of two 1D tensors
 // Matrix case: Frobenius inner product (sum of element-wise products)
-func (t Tensor) Dot(other Tensor) float32
+// Returns float64 (converted from internal float32 computation)
+func (t Tensor) Dot(other Tensor) float64
 
 // Norm: Compute norm
 // ord: 0 = L1 norm, 1 = L2 norm, 2 = Frobenius norm (same as L2 for matrices)
-func (t Tensor) Norm(ord int) float32
+// Returns float64 (converted from internal float32 computation)
+func (t Tensor) Norm(ord int) float64
 
 // Normalize: L2 normalization along dimension
 // For 1D: normalizes entire vector
 // For 2D: normalizes along rows (dim=0) or columns (dim=1)
-func (t Tensor) Normalize(dim int) *Tensor
+func (t Tensor) Normalize(dim int) Tensor
+
+// AddScaled: t = t + alpha * other (in-place scaled addition)
+func (t Tensor) AddScaled(other Tensor, alpha float64) Tensor
 ```
 
 **Norm Details:**
@@ -651,13 +709,38 @@ All convolution operations use `math/primitive/fp32` functions for optimized com
 
 | Function | Description | Primitive Used | Status |
 |----------|-------------|----------------|--------|
-| `Conv2D(kernel, bias Tensor, stride, padding) *Tensor` | 2D convolution | `fp32.Conv2D` | ✅ |
-| `Conv2DTo(kernel, bias Tensor, dst *Tensor, stride, padding) *Tensor` | Conv to destination | - | ✅ |
-| `Conv2DTransposed(kernel, bias Tensor, stride, padding) *Tensor` | Transposed 2D convolution | `fp32.Conv2DTransposed` | ✅ |
+| `Conv1D(kernel, bias, stride, padding int) Tensor` | 1D convolution | `fp32.Conv2D` (via reshape) | ✅ |
+| `Conv1DTo(kernel, bias, dst, stride, padding int) Tensor` | 1D convolution to destination | `fp32.Conv2D` (via reshape) | ✅ |
+| `Conv1DTransposed(kernel, bias, stride, padding int) Tensor` | Transposed 1D convolution | `fp32.Conv2DTransposed` (via reshape) | ✅ |
+| `Conv1DKernelGrad(outputGrad, kernel, stride, padding int) Tensor` | 1D convolution kernel gradient | `fp32.Conv1DKernelGrad` | ✅ |
+| `Conv2D(kernel, bias, stride, padding []int) Tensor` | 2D convolution | `fp32.Conv2D` | ✅ |
+| `Conv2DTo(kernel, bias, dst, stride, padding []int) Tensor` | 2D convolution to destination | - | ✅ |
+| `Conv2DTransposed(kernel, bias, stride, padding []int) Tensor` | Transposed 2D convolution | `fp32.Conv2DTransposed` | ✅ |
+| `Conv2DKernelGrad(outputGrad, kernel, stride, padding []int) Tensor` | 2D convolution kernel gradient | `fp32.Conv2DKernelGrad` | ✅ |
+| `Conv3D(kernel, bias, stride, padding []int) Tensor` | 3D convolution | `fp32.Conv3D` | ✅ |
+| `DepthwiseConv2D(kernel, bias, stride, padding []int) Tensor` | Depthwise separable 2D convolution | `fp32.DepthwiseConv2D` | ✅ |
+| `GroupConv2D(kernel, bias, stride, padding []int, groups int) Tensor` | Grouped 2D convolution | `fp32.GroupConv2D` | ✅ |
+| `DilatedConv2D(kernel, bias, stride, padding, dilation []int) Tensor` | Dilated 2D convolution | `fp32.DilatedConv2D` | ✅ |
 
 **Function Signatures:**
 
 ```go
+// Conv1D: 1D convolution (implemented via 2D conv with width=1)
+// Input: [inChannels, length] or [batch, inChannels, length]
+// Kernel: [outChannels, inChannels, kernelLen]
+// Stride, padding: integers
+// Output: [outChannels, outLen] or [batch, outChannels, outLen]
+func (t Tensor) Conv1D(kernel, bias Tensor, stride, padding int) Tensor
+
+// Conv1DTo: 1D convolution to destination
+func (t Tensor) Conv1DTo(kernel, bias, dst Tensor, stride, padding int) Tensor
+
+// Conv1DTransposed: Transposed 1D convolution
+func (t Tensor) Conv1DTransposed(kernel, bias Tensor, stride, padding int) Tensor
+
+// Conv1DKernelGrad: Computes kernel gradient for 1D convolution
+func (t Tensor) Conv1DKernelGrad(outputGrad, kernel Tensor, stride, padding int) Tensor
+
 // Conv2D: 2D convolution
 // Input: [batch, inChannels, height, width]
 // Kernel: [outChannels, inChannels, kernelH, kernelW]
@@ -665,16 +748,38 @@ All convolution operations use `math/primitive/fp32` functions for optimized com
 // Stride: [strideH, strideW]
 // Padding: [padH, padW]
 // Output: [batch, outChannels, outHeight, outWidth]
-func (t Tensor) Conv2D(kernel, bias Tensor, stride, padding []int) *Tensor
+func (t Tensor) Conv2D(kernel, bias Tensor, stride, padding []int) Tensor
 
 // Conv2DTo: Conv2D to destination
-func (t Tensor) Conv2DTo(kernel, bias Tensor, dst *Tensor, stride, padding []int) *Tensor
+func (t Tensor) Conv2DTo(kernel, bias, dst Tensor, stride, padding []int) Tensor
 
 // Conv2DTransposed: Transposed 2D convolution (deconvolution)
 // Input: [batch, inChannels, height, width]
 // Kernel: [inChannels, outChannels, kernelH, kernelW] (transposed layout)
 // Output: [batch, outChannels, outHeight, outWidth]
-func (t Tensor) Conv2DTransposed(kernel, bias Tensor, stride, padding []int) *Tensor
+func (t Tensor) Conv2DTransposed(kernel, bias Tensor, stride, padding []int) Tensor
+
+// Conv2DKernelGrad: Computes kernel gradient for 2D convolution
+func (t Tensor) Conv2DKernelGrad(outputGrad, kernel Tensor, stride, padding []int) Tensor
+
+// Conv3D: 3D convolution
+// Input: [batch, inChannels, depth, height, width]
+// Kernel: [outChannels, inChannels, kernelD, kernelH, kernelW]
+// Stride: [strideD, strideH, strideW]
+// Padding: [padD, padH, padW]
+func (t Tensor) Conv3D(kernel, bias Tensor, stride, padding []int) Tensor
+
+// DepthwiseConv2D: Depthwise separable 2D convolution
+// Each input channel is convolved with its own kernel
+func (t Tensor) DepthwiseConv2D(kernel, bias Tensor, stride, padding []int) Tensor
+
+// GroupConv2D: Grouped 2D convolution
+// groups: number of groups (inChannels must be divisible by groups)
+func (t Tensor) GroupConv2D(kernel, bias Tensor, stride, padding []int, groups int) Tensor
+
+// DilatedConv2D: Dilated (atrous) 2D convolution
+// dilation: [dilationH, dilationW] - dilation rates
+func (t Tensor) DilatedConv2D(kernel, bias Tensor, stride, padding, dilation []int) Tensor
 ```
 
 **Output Dimension Calculation:**
@@ -768,10 +873,13 @@ All pooling operations use `math/primitive/fp32` functions for optimized computa
 
 | Function | Description | Primitive Used | Status |
 |----------|-------------|----------------|--------|
-| `MaxPool2D(kernelSize, stride, padding) *Tensor` | Max pooling | `fp32.MaxPool2D` | ✅ |
-| `AvgPool2D(kernelSize, stride, padding) *Tensor` | Average pooling | `fp32.AvgPool2D` | ✅ |
-| `GlobalAvgPool2D() *Tensor` | Global average pooling | `fp32.GlobalAvgPool2D` | ✅ |
-| `AdaptiveAvgPool2D(outputSize) *Tensor` | Adaptive average pooling | `fp32.AdaptiveAvgPool2D` | ✅ |
+| `MaxPool2D(kernelSize, stride, padding []int) Tensor` | Max pooling | `fp32.MaxPool2D` | ✅ |
+| `MaxPool2DWithIndices(kernelSize, stride, padding []int) (Tensor, Tensor)` | Max pooling with indices | `fp32.MaxPool2DWithIndices` | ✅ |
+| `MaxPool2DBackward(gradOutput, indices, kernelSize, stride, padding []int) Tensor` | Max pooling backward pass | `fp32.MaxPool2DBackward` | ✅ |
+| `AvgPool2D(kernelSize, stride, padding []int) Tensor` | Average pooling | `fp32.AvgPool2D` | ✅ |
+| `AvgPool2DBackward(gradOutput, kernelSize, stride, padding []int) Tensor` | Average pooling backward pass | `fp32.AvgPool2DBackward` | ✅ |
+| `GlobalAvgPool2D() Tensor` | Global average pooling | `fp32.GlobalAvgPool2D` | ✅ |
+| `AdaptiveAvgPool2D(outputSize []int) Tensor` | Adaptive average pooling | `fp32.AdaptiveAvgPool2D` | ✅ |
 
 **Function Signatures:**
 
@@ -782,24 +890,40 @@ All pooling operations use `math/primitive/fp32` functions for optimized computa
 // Stride: [strideH, strideW]
 // Padding: [padH, padW]
 // Output: [batch, channels, outHeight, outWidth]
-func (t Tensor) MaxPool2D(kernelSize, stride, padding []int) *Tensor
+func (t Tensor) MaxPool2D(kernelSize, stride, padding []int) Tensor
+
+// MaxPool2DWithIndices: Max pooling with indices
+// Returns: (output Tensor, indices Tensor)
+// Indices tensor is [batch, channels, outHeight, outWidth] as int16 (linear indices into input)
+func (t Tensor) MaxPool2DWithIndices(kernelSize, stride, padding []int) (Tensor, Tensor)
+
+// MaxPool2DBackward: Backward pass for max pooling using stored indices
+// gradOutput: [batch, channels, outHeight, outWidth]
+// indices: [batch, channels, outHeight, outWidth] (as int16)
+// Returns: gradient w.r.t. input [batch, channels, inHeight, inWidth]
+func (t Tensor) MaxPool2DBackward(gradOutput, indices Tensor, kernelSize, stride, padding []int) Tensor
 
 // AvgPool2D: Average pooling operation
 // Same signature as MaxPool2D
-func (t Tensor) AvgPool2D(kernelSize, stride, padding []int) *Tensor
+func (t Tensor) AvgPool2D(kernelSize, stride, padding []int) Tensor
+
+// AvgPool2DBackward: Backward pass for average pooling
+// gradOutput: [batch, channels, outHeight, outWidth]
+// Returns: gradient w.r.t. input [batch, channels, inHeight, inWidth]
+func (t Tensor) AvgPool2DBackward(gradOutput Tensor, kernelSize, stride, padding []int) Tensor
 
 // GlobalAvgPool2D: Global average pooling
 // Input: [batch, channels, height, width]
 // Output: [batch, channels]
 // Computes mean over spatial dimensions (height, width)
-func (t Tensor) GlobalAvgPool2D() *Tensor
+func (t Tensor) GlobalAvgPool2D() Tensor
 
 // AdaptiveAvgPool2D: Adaptive average pooling to fixed output size
 // Input: [batch, channels, height, width]
 // outputSize: [outHeight, outWidth] - target output spatial dimensions
 // Output: [batch, channels, outHeight, outWidth]
 // Divides input into approximately equal regions and averages each region
-func (t Tensor) AdaptiveAvgPool2D(outputSize []int) *Tensor
+func (t Tensor) AdaptiveAvgPool2D(outputSize []int) Tensor
 ```
 
 **Output Dimension Calculation:**
@@ -828,12 +952,36 @@ For `AdaptiveAvgPool2D`:
 // Im2Col: Convert image patches to columns for GEMM-based convolution
 // Input: [batch, channels, height, width]
 // Output: [batch*outHeight*outWidth, channels*kernelH*kernelW]
-func (t Tensor) Im2Col(kernelSize, stride, padding []int) *Tensor
+func (t Tensor) Im2Col(kernelSize, stride, padding []int) Tensor
 
 // Col2Im: Convert columns back to image (inverse of Im2Col)
 // Input: [batch*outHeight*outWidth, channels*kernelH*kernelW]
 // Output: [batch, channels, height, width]
-func (t Tensor) Col2Im(outputShape, kernelSize, stride, padding []int) *Tensor
+func (t Tensor) Col2Im(outputShape, kernelSize, stride, padding []int) Tensor
+```
+
+### Gradient Routing and Utility Operations
+
+| Function | Description | Primitive Used | Status |
+|----------|-------------|----------------|--------|
+| `ScatterAdd(dst, index, value Tensor) Tensor` | Scatter-add operation for gradient routing | `fp32.ScatterAdd` | ✅ |
+| `Unpad(padding []int) Tensor` | Remove padding from tensor | `fp32.ElemCopy` | ✅ |
+
+**Function Signatures:**
+
+```go
+// ScatterAdd: Adds values to destination tensor at positions specified by indices
+// dst: destination tensor (modified in-place, should be zero-initialized)
+// index: indices tensor [batch, channels, outHeight, outWidth] (as int16, linear indices)
+// value: values to add [batch, channels, outHeight, outWidth]
+// Returns the destination tensor
+func (t Tensor) ScatterAdd(dst, index, value Tensor) Tensor
+
+// Unpad: Removes padding from tensor
+// padding: [padBeforeDim0, padAfterDim0, padBeforeDim1, padAfterDim1, ...]
+// Each dimension has two padding values: before and after
+// Returns a new tensor with padding removed
+func (t Tensor) Unpad(padding []int) Tensor
 ```
 
 **Use Case:**
@@ -1011,35 +1159,104 @@ output := input.Conv2D(kernel, bias, []int{1, 1}, []int{1, 1})
 ### Pooling Operations
 
 ```go
-input := &tensor.Tensor{
-    Dim:  []int{1, 64, 112, 112},
-    Data: make([]float32, 1*64*112*112),
-}
+input := tensor.New(tensor.DTFP32, tensor.NewShape(1, 64, 112, 112))
 
 // Max pooling: 2x2 kernel, stride 2, no padding
 output := input.MaxPool2D([]int{2, 2}, []int{2, 2}, []int{0, 0})
 // Result: [1, 64, 56, 56]
+
+// Max pooling with indices (for backward pass)
+output, indices := input.MaxPool2DWithIndices([]int{2, 2}, []int{2, 2}, []int{0, 0})
+
+// Backward pass
+gradInput := input.MaxPool2DBackward(gradOutput, indices, []int{2, 2}, []int{2, 2}, []int{0, 0})
 
 // Global average pooling
 output := input.GlobalAvgPool2D()
 // Result: [1, 64]
 ```
 
+### Activation Functions
+
+```go
+input := tensor.New(tensor.DTFP32, tensor.NewShape(1, 64))
+
+// ReLU activation (in-place if dst is nil)
+output := input.ReLU(nil)
+
+// Sigmoid activation (write to destination)
+output := tensor.New(tensor.DTFP32, tensor.NewShape(1, 64))
+input.Sigmoid(output)
+
+// Softmax along dimension 0
+output := input.Softmax(0, nil)
+```
+
+### Initialization Functions
+
+```go
+rng := rand.New(rand.NewSource(42))
+
+// Xavier/Glorot uniform initialization
+weights := tensor.XavierUniform(tensor.DTFP32, tensor.NewShape(128, 64), 128, 64, rng)
+
+// Xavier/Glorot normal initialization
+weights := tensor.XavierNormal(tensor.DTFP32, tensor.NewShape(128, 64), 128, 64, rng)
+
+// Initialize like another tensor
+weights := tensor.XavierUniformLike(referenceTensor, 128, 64, rng)
+```
+
+## Initialization Functions
+
+The tensor package provides weight initialization functions for neural network layers:
+
+| Function | Description | Status |
+|----------|-------------|--------|
+| `XavierUniform(dtype, shape, fanIn, fanOut, rng) Tensor` | Xavier/Glorot uniform initialization | ✅ |
+| `XavierNormal(dtype, shape, fanIn, fanOut, rng) Tensor` | Xavier/Glorot normal initialization | ✅ |
+| `XavierUniformLike(ref, fanIn, fanOut, rng) Tensor` | Xavier uniform like reference tensor | ✅ |
+| `XavierNormalLike(ref, fanIn, fanOut, rng) Tensor` | Xavier normal like reference tensor | ✅ |
+
+**Function Signatures:**
+
+```go
+// XavierUniform: Creates tensor with Xavier/Glorot uniform initialization
+// limit = sqrt(6 / (fanIn + fanOut))
+func XavierUniform(dtype DataType, shape Shape, fanIn, fanOut int, rng RNG) Tensor
+
+// XavierNormal: Creates tensor with Xavier/Glorot normal initialization
+// stddev = sqrt(2 / (fanIn + fanOut))
+func XavierNormal(dtype DataType, shape Shape, fanIn, fanOut int, rng RNG) Tensor
+
+// XavierUniformLike: Creates tensor like reference with Xavier uniform initialization
+func XavierUniformLike(ref Tensor, fanIn, fanOut int, rng RNG) Tensor
+
+// XavierNormalLike: Creates tensor like reference with Xavier normal initialization
+func XavierNormalLike(ref Tensor, fanIn, fanOut int, rng RNG) Tensor
+```
+
+**Note**: `RNG` interface is defined in `types` package and is implemented by types like `*rand.Rand` from `math/rand`.
+
 ## Implementation Status
 
 ### ✅ Implemented
 
-- **Core Operations**: Shape, Size, Clone, At, SetAt, Reshape
+- **Core Operations**: ID, DataType, Data, Shape, Rank, Size, Empty, At, SetAt, Elements, Clone, Copy, Reshape, Slice
 - **Iteration**: Elements() (Go 1.22+ range-over-function), Shape.Iterator()
-- **Element-wise Operations**: Add, Sub, Mul, Div, Scale, Square, Sqrt, Exp, Log, Pow, Abs, Sign, Cos, Sin, Negative (in-place)
+- **Element-wise Operations**: Add, Sub, Mul, Div, Scale, Fill, Square, Sqrt, Exp, Log, Pow, Abs, Sign, Cos, Sin, Negative
 - **Comparison Operations**: Equal, Greater, GreaterThan, Less (return boolean-like tensors)
+- **Conditional Operations**: Where
 - **Reduction Operations**: Sum, Mean, Max, Min, ArgMax
-- **Broadcasting**: BroadcastTo (basic validation)
-- **Linear Algebra**: MatMul (2D and batched), Transpose (2D), Dot, Norm, Normalize
-- **Convolution**: Conv2D, Conv2DTransposed, Conv1D, Conv3D, DepthwiseConv2D, GroupConv2D, DilatedConv2D
-- **Pooling**: MaxPool2D, AvgPool2D, GlobalAvgPool2D, AdaptiveAvgPool2D
-- **Activation Functions**: ReLU, Sigmoid, Tanh, Softmax (see activations.go)
+- **Broadcasting**: BroadcastTo
+- **Linear Algebra**: MatMul (2D and batched), MatMulTransposed, MatVecMulTransposed, Transpose, Permute, Dot, Norm, Normalize, AddScaled
+- **Convolution**: Conv1D, Conv1DTo, Conv1DTransposed, Conv1DKernelGrad, Conv2D, Conv2DTo, Conv2DTransposed, Conv2DKernelGrad, Conv3D, DepthwiseConv2D, GroupConv2D, DilatedConv2D
+- **Pooling**: MaxPool2D, MaxPool2DWithIndices, MaxPool2DBackward, AvgPool2D, AvgPool2DBackward, GlobalAvgPool2D, AdaptiveAvgPool2D
+- **Gradient Routing**: ScatterAdd, Unpad
+- **Activation Functions**: ReLU, Sigmoid, Tanh, Softmax
+- **Dropout Operations**: DropoutForward, DropoutMask
 - **Unfolding/Folding**: Im2Col, Col2Im
+- **Initialization**: XavierUniform, XavierNormal, XavierUniformLike, XavierNormalLike
 
 ### 🔮 Future Work
 
@@ -1054,15 +1271,30 @@ output := input.GlobalAvgPool2D()
 
 ```
 pkg/core/math/tensor/
-├── dense.go                  # Core tensor structure and basic operations
-├── tensor_math.go            # Element-wise operations and reductions
-├── tensor_linalg.go          # Linear algebra operations
-├── tensor_conv.go            # Convolution and pooling operations
-├── tensor_math_test.go       # Tests for element-wise operations
-├── tensor_linalg_test.go     # Tests for linear algebra
-├── tensor_conv_test.go       # Tests for convolution operations
+├── tensor.go                 # Public API wrapper (type aliases and constructors)
 ├── SPEC.md                   # This file
-└── QUANTIZATION_PLAN.md      # INT8 quantization implementation plan
+├── QUANTIZATION_PLAN.md      # INT8 quantization implementation plan (if exists)
+├── types/
+│   ├── tensor.go             # Tensor interface definition (authoritative source)
+│   ├── shape.go              # Shape type and methods
+│   ├── dtype.go              # DataType definitions and helpers
+│   ├── tensor_test.go        # Tests for tensor interface
+│   ├── shape_test.go         # Tests for shape operations
+│   └── dtype_test.go         # Tests for data type operations
+└── eager_tensor/
+    ├── tensor.go             # Core tensor structure and basic operations
+    ├── tensor_math.go        # Element-wise operations and reductions
+    ├── tensor_linalg.go      # Linear algebra operations
+    ├── tensor_linalg_helpers.go  # Linear algebra helper functions
+    ├── tensor_conv.go        # Convolution and pooling operations
+    ├── activations.go        # Activation functions
+    ├── initialization.go     # Weight initialization functions
+    ├── tensor_test.go        # Tests for core tensor operations
+    ├── tensor_math_test.go   # Tests for element-wise operations
+    ├── tensor_linalg_test.go # Tests for linear algebra
+    ├── tensor_conv_test.go   # Tests for convolution operations
+    ├── tensor_slice_test.go  # Tests for slicing operations
+    └── activations_test.go   # Tests for activation functions
 ```
 
 ## Integration with Primitive Package
@@ -1107,7 +1339,19 @@ All tensor operations delegate to `math/primitive/fp32` when possible:
 | `Cos` | `fp32.ElemCos` | Element-wise cosine |
 | `Sin` | `fp32.ElemSin` | Element-wise sine |
 | `Negative` | `fp32.ElemNegative` | Element-wise negation |
-| `Tanh` | `fp32.Tanh` | Hyperbolic tangent (see activations.go) |
+| `Tanh` | `fp32.Tanh` | Hyperbolic tangent |
+| `Softmax` | `fp32.Softmax1D`, `fp32.Softmax2DRows`, `fp32.Softmax2DCols` | Softmax activation |
+| `MaxPool2DWithIndices` | `fp32.MaxPool2DWithIndices` | Max pooling with indices |
+| `MaxPool2DBackward` | `fp32.MaxPool2DBackward` | Max pooling backward pass |
+| `AvgPool2DBackward` | `fp32.AvgPool2DBackward` | Average pooling backward pass |
+| `ScatterAdd` | `fp32.ScatterAdd` | Scatter-add operation |
+| `Conv1DKernelGrad` | `fp32.Conv1DKernelGrad` | 1D convolution kernel gradient |
+| `MatMulTransposed` | `fp32.Gemm_NN`, `Gemm_NT`, `Gemm_TN`, `Gemm_TT` | Matrix multiplication with transposition |
+| `MatVecMulTransposed` | `fp32.Gemv_T` | Matrix-vector multiplication (transposed) |
+| `Permute` | `fp32.ElemCopy` | Dimension permutation |
+| `Fill` | `fp32.Fill` | Fill tensor with constant value |
+| `Copy` | `primitive.CopyWithConversion`, `fp32.Copy` | Copy with type conversion support |
+| `Slice` | `primitive.CopyWithStrides` | Slice tensor along dimension |
 
 ## Deprecated Gradient Functions
 
@@ -1180,23 +1424,17 @@ All operations have comprehensive unit tests:
 - Edge case tests (empty tensors, zero dimensions)
 - Shape validation tests
 - Numerical accuracy tests
+- Type conversion tests (for multi-type support)
 
 See test files for examples:
-- `tensor_math_test.go` - Element-wise and reduction operations
-- `tensor_linalg_test.go` - Linear algebra operations
-- `tensor_conv_test.go` - Convolution and pooling operations
-
-## Testing
-
-All operations have comprehensive unit tests:
-- Basic functionality tests
-- Edge case tests (empty tensors, zero dimensions)
-- Shape validation tests
-- Numerical accuracy tests
-
-See test files for examples:
-- `tensor_math_test.go` - Element-wise and reduction operations
-- `tensor_linalg_test.go` - Linear algebra operations
-- `tensor_conv_test.go` - Convolution and pooling operations
+- `types/tensor_test.go` - Interface compliance tests
+- `types/shape_test.go` - Shape operation tests
+- `types/dtype_test.go` - Data type tests
+- `eager_tensor/tensor_test.go` - Core tensor operations
+- `eager_tensor/tensor_math_test.go` - Element-wise and reduction operations
+- `eager_tensor/tensor_linalg_test.go` - Linear algebra operations
+- `eager_tensor/tensor_conv_test.go` - Convolution and pooling operations
+- `eager_tensor/tensor_slice_test.go` - Slicing operations
+- `eager_tensor/activations_test.go` - Activation function tests
 
 
