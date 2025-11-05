@@ -979,3 +979,32 @@ func (t Tensor) Negative(dst types.Tensor) types.Tensor {
 	}
 	return dst
 }
+
+// Fill fills the tensor with a constant value (in-place)
+// Uses fp32.Fill primitive for efficient computation
+func (t Tensor) Fill(value float64) types.Tensor {
+	if t.shape == nil {
+		return t
+	}
+
+	value32 := float32(value)
+	strides := t.shape.Strides()
+	size := t.Size()
+
+	if t.isContiguous() {
+		// Use fp32.Fill with stride=1 for contiguous tensors
+		tData := types.GetTensorData[[]float32](&t)
+		fp32.Fill(tData, value32, size, 1)
+		return t
+	}
+
+	// Use fp32.Fill with computed stride for non-contiguous tensors
+	// For non-contiguous, we need to use the minimum stride
+	minStride := 1
+	if len(strides) > 0 {
+		minStride = strides[len(strides)-1]
+	}
+	tData := types.GetTensorData[[]float32](&t)
+	fp32.Fill(tData, value32, size, minStride)
+	return t
+}

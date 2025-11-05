@@ -115,6 +115,11 @@ type Tensor interface {
 	// Returns self for method chaining.
 	Scale(scalar float64) Tensor
 
+	// Fill fills the tensor with a constant value (in-place).
+	// Uses optimized primitive for efficient computation.
+	// Returns self for method chaining.
+	Fill(value float64) Tensor
+
 	// Square computes element-wise square in-place: t[i] = t[i]^2.
 	// Returns self for method chaining.
 	Square(dst Tensor) Tensor
@@ -248,13 +253,21 @@ type Tensor interface {
 	// Returns a new tensor.
 	MatVecMulTransposed(matrix, vector Tensor, alpha, beta float64) Tensor
 
-	// Transpose transposes dimensions. Currently supports 2D only: [M, N] → [N, M].
-	// Returns a new tensor. Panics if tensor is not 2D.
+	// Transpose transposes dimensions.
+	// For 2D: [M, N] → [N, M] (swaps last two dimensions if no dims provided)
+	// For 4D+: uses Permute to rearrange dimensions
+	// Returns a new tensor. Panics if dimensions are invalid.
 	Transpose(dims ...int) Tensor
 
 	// TransposeTo transposes dimensions and stores result in dst.
 	// If dst is nil, creates a new tensor. Returns the destination tensor.
 	TransposeTo(dst Tensor, dims ...int) Tensor
+
+	// Permute permutes dimensions according to the provided permutation.
+	// dims: permutation of [0, 1, 2, ..., rank-1]
+	// Example: Permute([]int{1, 0, 2, 3}) swaps dimensions 0 and 1 in a 4D tensor.
+	// Returns a new tensor. Panics if permutation is invalid.
+	Permute(dims []int) Tensor
 
 	// Dot computes dot product (vector) or Frobenius inner product (matrix).
 	// For vectors: dot product of two 1D tensors.
@@ -318,6 +331,11 @@ type Tensor interface {
 	// Returns a new tensor with kernel gradient.
 	Conv2DKernelGrad(outputGrad, kernel Tensor, stride, padding []int) Tensor
 
+	// Conv1DKernelGrad computes the gradient of the 1D convolution kernel.
+	// Used in backpropagation for training 1D convolutional layers.
+	// Returns a new tensor with kernel gradient.
+	Conv1DKernelGrad(outputGrad, kernel Tensor, stride, padding int) Tensor
+
 	// Pooling Operations
 	// All pooling operations use optimized primitive functions for computation.
 
@@ -330,9 +348,33 @@ type Tensor interface {
 	// Returns a new tensor. Panics if shapes are incompatible.
 	MaxPool2D(kernelSize, stride, padding []int) Tensor
 
+	// MaxPool2DWithIndices performs max pooling and returns both output and indices.
+	// Input: [batch, channels, height, width]
+	// KernelSize: [kernelH, kernelW]
+	// Stride: [strideH, strideW]
+	// Padding: [padH, padW]
+	// Output: [batch, channels, outHeight, outWidth]
+	// Indices: [batch, channels, outHeight, outWidth] (as int16, linear indices into input)
+	// Returns: (output Tensor, indices Tensor)
+	// The indices are used for efficient backward pass computation.
+	MaxPool2DWithIndices(kernelSize, stride, padding []int) (Tensor, Tensor)
+
+	// MaxPool2DBackward performs backward pass for max pooling using stored indices.
+	// gradOutput: input gradient [batch, channels, outHeight, outWidth]
+	// indices: indices from forward pass [batch, channels, outHeight, outWidth] (as int16)
+	// kernelSize, stride, padding: pooling parameters
+	// Returns: gradient w.r.t. input [batch, channels, inHeight, inWidth]
+	MaxPool2DBackward(gradOutput, indices Tensor, kernelSize, stride, padding []int) Tensor
+
 	// AvgPool2D performs average pooling operation.
 	// Same signature as MaxPool2D. Returns a new tensor.
 	AvgPool2D(kernelSize, stride, padding []int) Tensor
+
+	// AvgPool2DBackward performs backward pass for average pooling.
+	// gradOutput: input gradient [batch, channels, outHeight, outWidth]
+	// kernelSize, stride, padding: pooling parameters
+	// Returns: gradient w.r.t. input [batch, channels, inHeight, inWidth]
+	AvgPool2DBackward(gradOutput Tensor, kernelSize, stride, padding []int) Tensor
 
 	// GlobalAvgPool2D performs global average pooling.
 	// Input: [batch, channels, height, width]
@@ -362,6 +404,25 @@ type Tensor interface {
 	// Output: [batch, channels, height, width]
 	// Returns a new tensor. Used in backpropagation for convolution gradients.
 	Col2Im(outputShape, kernelSize, stride, padding []int) Tensor
+
+	// Gradient Routing and Utility Operations
+	// These operations are used for efficient gradient computation and tensor manipulation.
+
+	// ScatterAdd adds values to destination tensor at positions specified by indices.
+	// dst: destination tensor (modified in-place, should be zero-initialized)
+	// index: indices tensor [batch, channels, outHeight, outWidth] (as int16, linear indices into dst)
+	// value: values to add [batch, channels, outHeight, outWidth]
+	// For each position in index, adds the corresponding value from value to dst[index[i]].
+	// This is a general scatter operation useful for gradient routing in backpropagation.
+	// Returns the destination tensor.
+	ScatterAdd(dst, index, value Tensor) Tensor
+
+	// Unpad removes padding from tensor.
+	// padding: [padBeforeDim0, padAfterDim0, padBeforeDim1, padAfterDim1, ...]
+	// Each dimension has two padding values: before and after.
+	// Returns a new tensor with padding removed.
+	// Panics if padding values are invalid or result shape would be invalid.
+	Unpad(padding []int) Tensor
 
 	// Activation Functions
 	// Activation functions apply non-linear transformations element-wise.

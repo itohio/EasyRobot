@@ -694,6 +694,163 @@ func (t Tensor) MaxPool2D(kernelSize, stride, padding []int) types.Tensor {
 	return resultPtr
 }
 
+// MaxPool2DWithIndices performs max pooling and returns both output and indices
+// Input shape: [batch, channels, height, width]
+// Output shape: [batch, channels, outHeight, outWidth]
+// Indices shape: [batch, channels, outHeight, outWidth] as int32 (linear indices into input)
+// Returns: (output Tensor, indices Tensor)
+func (t Tensor) MaxPool2DWithIndices(kernelSize, stride, padding []int) (types.Tensor, types.Tensor) {
+	if t.shape == nil {
+		return nil, nil
+	}
+
+	tShape := t.Shape()
+	if len(tShape) != 4 {
+		panic(fmt.Sprintf("tensor.MaxPool2DWithIndices: input must be 4D [batch, channels, height, width], got %v", tShape))
+	}
+
+	if len(kernelSize) != 2 {
+		panic(fmt.Sprintf("tensor.MaxPool2DWithIndices: kernelSize must have 2 elements [kernelH, kernelW], got %v", kernelSize))
+	}
+	if len(stride) != 2 {
+		panic(fmt.Sprintf("tensor.MaxPool2DWithIndices: stride must have 2 elements [strideH, strideW], got %v", stride))
+	}
+	if len(padding) != 2 {
+		panic(fmt.Sprintf("tensor.MaxPool2DWithIndices: padding must have 2 elements [padH, padW], got %v", padding))
+	}
+
+	batchSize := tShape[0]
+	channels := tShape[1]
+	inHeight := tShape[2]
+	inWidth := tShape[3]
+
+	kernelH := kernelSize[0]
+	kernelW := kernelSize[1]
+	strideH := stride[0]
+	strideW := stride[1]
+	padH := padding[0]
+	padW := padding[1]
+
+	// Calculate output dimensions
+	outHeight := (inHeight+2*padH-kernelH)/strideH + 1
+	outWidth := (inWidth+2*padW-kernelW)/strideW + 1
+
+	result := New(t.DataType(), types.NewShape(batchSize, channels, outHeight, outWidth))
+	resultPtr := &result
+
+	// Create indices tensor (int32 type for fp32 primitive, but we'll store as int16 for Tensor compatibility)
+	// Note: This limits tensor size to int16 max, but is sufficient for most use cases
+	indicesSize := batchSize * channels * outHeight * outWidth
+	indicesDataInt32 := make([]int32, indicesSize)
+
+	// Perform max pooling with indices using fp32
+	resultData := types.GetTensorData[[]float32](resultPtr)
+	tData := types.GetTensorData[[]float32](&t)
+	fp32.MaxPool2DWithIndices(
+		resultData,
+		tData,
+		indicesDataInt32,
+		batchSize, channels, inHeight, inWidth,
+		kernelH, kernelW, strideH, strideW, padH, padW,
+	)
+
+	// Convert int32 to int16 for Tensor storage (with bounds checking)
+	indicesDataInt16 := make([]int16, indicesSize)
+	for i := range indicesDataInt32 {
+		idx := indicesDataInt32[i]
+		if idx < 0 {
+			indicesDataInt16[i] = -1
+		} else if idx > 32767 {
+			panic(fmt.Sprintf("tensor.MaxPool2DWithIndices: index %d exceeds int16 max, need int32 support", idx))
+		} else {
+			indicesDataInt16[i] = int16(idx)
+		}
+	}
+
+	indices := FromArray(types.NewShape(batchSize, channels, outHeight, outWidth), indicesDataInt16)
+	return resultPtr, &indices
+}
+
+// MaxPool2DBackward performs backward pass for max pooling using stored indices
+// gradOutput: input gradient [batch, channels, outHeight, outWidth]
+// indices: indices from forward pass [batch, channels, outHeight, outWidth] as int32
+// kernelSize, stride, padding: pooling parameters
+// Returns: gradient w.r.t. input [batch, channels, inHeight, inWidth]
+func (t Tensor) MaxPool2DBackward(gradOutput types.Tensor, indices types.Tensor, kernelSize, stride, padding []int) types.Tensor {
+	if t.shape == nil || gradOutput == nil || gradOutput.Shape() == nil || indices == nil || indices.Shape() == nil {
+		return nil
+	}
+
+	tShape := t.Shape()
+	gradOutputShape := gradOutput.Shape()
+	indicesShape := indices.Shape()
+
+	if len(tShape) != 4 {
+		panic(fmt.Sprintf("tensor.MaxPool2DBackward: input must be 4D [batch, channels, height, width], got %v", tShape))
+	}
+	if len(gradOutputShape) != 4 {
+		panic(fmt.Sprintf("tensor.MaxPool2DBackward: gradOutput must be 4D [batch, channels, outHeight, outWidth], got %v", gradOutputShape))
+	}
+	if len(indicesShape) != 4 {
+		panic(fmt.Sprintf("tensor.MaxPool2DBackward: indices must be 4D [batch, channels, outHeight, outWidth], got %v", indicesShape))
+	}
+
+	if len(kernelSize) != 2 {
+		panic(fmt.Sprintf("tensor.MaxPool2DBackward: kernelSize must have 2 elements [kernelH, kernelW], got %v", kernelSize))
+	}
+	if len(stride) != 2 {
+		panic(fmt.Sprintf("tensor.MaxPool2DBackward: stride must have 2 elements [strideH, strideW], got %v", stride))
+	}
+	if len(padding) != 2 {
+		panic(fmt.Sprintf("tensor.MaxPool2DBackward: padding must have 2 elements [padH, padW], got %v", padding))
+	}
+
+	batchSize := tShape[0]
+	channels := tShape[1]
+	inHeight := tShape[2]
+	inWidth := tShape[3]
+
+	outHeight := gradOutputShape[2]
+	outWidth := gradOutputShape[3]
+
+	kernelH := kernelSize[0]
+	kernelW := kernelSize[1]
+	strideH := stride[0]
+	strideW := stride[1]
+	padH := padding[0]
+	padW := padding[1]
+
+	// Create gradient input tensor (zero-initialized)
+	gradInput := New(t.DataType(), types.NewShape(batchSize, channels, inHeight, inWidth))
+	gradInputPtr := &gradInput
+
+	// Get data
+	gradInputData := types.GetTensorData[[]float32](gradInputPtr)
+	gradOutputData := types.GetTensorData[[]float32](gradOutput)
+	indicesDataInt16 := types.GetTensorData[[]int16](indices)
+	tData := types.GetTensorData[[]float32](&t)
+
+	// Convert int16 indices to int32 for fp32 primitive
+	indicesSize := len(indicesDataInt16)
+	indicesDataInt32 := make([]int32, indicesSize)
+	for i, idx := range indicesDataInt16 {
+		indicesDataInt32[i] = int32(idx)
+	}
+
+	// Call fp32.MaxPool2DBackward
+	fp32.MaxPool2DBackward(
+		gradInputData,
+		gradOutputData,
+		indicesDataInt32,
+		tData,
+		batchSize, channels, inHeight, inWidth,
+		outHeight, outWidth,
+		kernelH, kernelW, strideH, strideW, padH, padW,
+	)
+
+	return gradInputPtr
+}
+
 // AvgPool2D performs average pooling operation
 // Input shape: [batch, channels, height, width]
 // Output shape: [batch, channels, outHeight, outWidth]
@@ -736,6 +893,70 @@ func (t Tensor) AvgPool2D(kernelSize, stride, padding []int) types.Tensor {
 	)
 
 	return resultPtr
+}
+
+// AvgPool2DBackward performs backward pass for average pooling
+// gradOutput: input gradient [batch, channels, outHeight, outWidth]
+// kernelSize, stride, padding: pooling parameters
+// Returns: gradient w.r.t. input [batch, channels, inHeight, inWidth]
+func (t Tensor) AvgPool2DBackward(gradOutput types.Tensor, kernelSize, stride, padding []int) types.Tensor {
+	if t.shape == nil || gradOutput == nil || gradOutput.Shape() == nil {
+		return nil
+	}
+
+	tShape := t.Shape()
+	gradOutputShape := gradOutput.Shape()
+
+	if len(tShape) != 4 {
+		panic(fmt.Sprintf("tensor.AvgPool2DBackward: input must be 4D [batch, channels, height, width], got %v", tShape))
+	}
+	if len(gradOutputShape) != 4 {
+		panic(fmt.Sprintf("tensor.AvgPool2DBackward: gradOutput must be 4D [batch, channels, outHeight, outWidth], got %v", gradOutputShape))
+	}
+
+	if len(kernelSize) != 2 {
+		panic(fmt.Sprintf("tensor.AvgPool2DBackward: kernelSize must have 2 elements [kernelH, kernelW], got %v", kernelSize))
+	}
+	if len(stride) != 2 {
+		panic(fmt.Sprintf("tensor.AvgPool2DBackward: stride must have 2 elements [strideH, strideW], got %v", stride))
+	}
+	if len(padding) != 2 {
+		panic(fmt.Sprintf("tensor.AvgPool2DBackward: padding must have 2 elements [padH, padW], got %v", padding))
+	}
+
+	batchSize := tShape[0]
+	channels := tShape[1]
+	inHeight := tShape[2]
+	inWidth := tShape[3]
+
+	outHeight := gradOutputShape[2]
+	outWidth := gradOutputShape[3]
+
+	kernelH := kernelSize[0]
+	kernelW := kernelSize[1]
+	strideH := stride[0]
+	strideW := stride[1]
+	padH := padding[0]
+	padW := padding[1]
+
+	// Create gradient input tensor (zero-initialized)
+	gradInput := New(t.DataType(), types.NewShape(batchSize, channels, inHeight, inWidth))
+	gradInputPtr := &gradInput
+
+	// Get data
+	gradInputData := types.GetTensorData[[]float32](gradInputPtr)
+	gradOutputData := types.GetTensorData[[]float32](gradOutput)
+
+	// Call fp32.AvgPool2DBackward
+	fp32.AvgPool2DBackward(
+		gradInputData,
+		gradOutputData,
+		batchSize, channels, inHeight, inWidth,
+		outHeight, outWidth,
+		kernelH, kernelW, strideH, strideW, padH, padW,
+	)
+
+	return gradInputPtr
 }
 
 // GlobalAvgPool2D performs global average pooling
@@ -1310,6 +1531,134 @@ func (t Tensor) Col2Im(outputShape, kernelSize, stride, padding []int) types.Ten
 		padW,
 		strideH,
 		strideW,
+	)
+
+	return resultPtr
+}
+
+// ScatterAdd adds values to destination tensor at positions specified by indices
+// dst: destination tensor (modified in-place, should be zero-initialized)
+// index: indices tensor [batch, channels, outHeight, outWidth] as int16 (linear indices into dst)
+// value: values to add [batch, channels, outHeight, outWidth]
+// For each position in index, adds the corresponding value from value to dst[index[i]]
+// This is a general scatter operation useful for gradient routing in backpropagation
+func (t Tensor) ScatterAdd(dst types.Tensor, index types.Tensor, value types.Tensor) types.Tensor {
+	if t.shape == nil || dst == nil || dst.Shape() == nil || index == nil || index.Shape() == nil || value == nil || value.Shape() == nil {
+		return nil
+	}
+
+	tShape := t.Shape()     // Source tensor shape
+	dstShape := dst.Shape() // Destination tensor shape
+	indexShape := index.Shape()
+	valueShape := value.Shape()
+
+	if len(tShape) != 4 {
+		panic(fmt.Sprintf("tensor.ScatterAdd: source must be 4D [batch, channels, height, width], got %v", tShape))
+	}
+	if len(dstShape) != 4 {
+		panic(fmt.Sprintf("tensor.ScatterAdd: destination must be 4D [batch, channels, inHeight, inWidth], got %v", dstShape))
+	}
+	if len(indexShape) != 4 {
+		panic(fmt.Sprintf("tensor.ScatterAdd: index must be 4D [batch, channels, outHeight, outWidth], got %v", indexShape))
+	}
+	if len(valueShape) != 4 {
+		panic(fmt.Sprintf("tensor.ScatterAdd: value must be 4D [batch, channels, outHeight, outWidth], got %v", valueShape))
+	}
+
+	batchSize := tShape[0]
+	channels := tShape[1]
+	inHeight := tShape[2]
+	inWidth := tShape[3]
+
+	outHeight := indexShape[2]
+	outWidth := indexShape[3]
+
+	// Get data
+	dstData := types.GetTensorData[[]float32](dst)
+	indexDataInt16 := types.GetTensorData[[]int16](index)
+	valueData := types.GetTensorData[[]float32](value)
+
+	// Convert int16 indices to int32 for fp32 primitive
+	indicesSize := len(indexDataInt16)
+	indexDataInt32 := make([]int32, indicesSize)
+	for i, idx := range indexDataInt16 {
+		indexDataInt32[i] = int32(idx)
+	}
+
+	// Call fp32.ScatterAdd
+	fp32.ScatterAdd(
+		dstData,
+		indexDataInt32,
+		valueData,
+		batchSize, channels, inHeight, inWidth,
+		outHeight, outWidth,
+	)
+
+	return dst
+}
+
+// Unpad removes padding from tensor
+// padding: [padBeforeDim0, padAfterDim0, padBeforeDim1, padAfterDim1, ...]
+// Returns: tensor with padding removed
+func (t Tensor) Unpad(padding []int) types.Tensor {
+	if t.shape == nil {
+		return nil
+	}
+
+	shape := t.Shape()
+	rank := shape.Rank()
+
+	if len(padding) != 2*rank {
+		panic(fmt.Sprintf("tensor.Unpad: padding must have %d elements (2 per dimension), got %d", 2*rank, len(padding)))
+	}
+
+	// Compute unpadded shape
+	newShape := make(types.Shape, rank)
+	for i := 0; i < rank; i++ {
+		padBefore := padding[2*i]
+		padAfter := padding[2*i+1]
+		if padBefore < 0 || padAfter < 0 {
+			panic(fmt.Sprintf("tensor.Unpad: padding values must be non-negative, got padBefore=%d, padAfter=%d for dim %d", padBefore, padAfter, i))
+		}
+		newShape[i] = shape[i] - padBefore - padAfter
+		if newShape[i] <= 0 {
+			panic(fmt.Sprintf("tensor.Unpad: unpadded dimension %d would be %d (invalid)", i, newShape[i]))
+		}
+	}
+
+	// Create result tensor
+	result := New(t.DataType(), types.NewShape(newShape...))
+	resultPtr := &result
+
+	// Compute strides
+	srcStrides := shape.Strides()
+	dstStrides := types.NewShape(newShape...).Strides()
+
+	// Calculate source offset (skip padding at the beginning of each dimension)
+	srcOffset := 0
+	for i := 0; i < rank; i++ {
+		padBefore := padding[2*i]
+		srcOffset += padBefore * srcStrides[i]
+	}
+
+	// Get data slices starting from offset
+	resultData := types.GetTensorData[[]float32](resultPtr)
+	tData := types.GetTensorData[[]float32](&t)
+
+	// Use ElemCopy with source offset handled by adjusting the source data pointer
+	// We'll create a view by copying with stride adjustment
+	if len(newShape) == 0 {
+		return resultPtr
+	}
+
+	// Create source view starting at offset
+	srcView := tData[srcOffset:]
+	fp32.ElemCopy(
+		resultData,
+		srcView,
+		newShape.ToSlice(),
+		dstStrides,
+		srcStrides, // Use original strides (offset is handled by srcView)
 	)
 
 	return resultPtr

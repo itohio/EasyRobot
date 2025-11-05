@@ -256,28 +256,99 @@ func (t Tensor) matMulBroadcastSecond(other types.Tensor, batchSize, M, N, K int
 }
 
 // Transpose transposes tensor dimensions. Currently supports 2D transpose.
-// Future: support arbitrary dimension permutation.
+// Transpose transposes dimensions using permutation.
+// For 2D: Transpose() or Transpose(0,1) swaps dimensions
+// For 4D+: Transpose(1,0,2,3) swaps first two dimensions
+// If no dims provided, defaults to swapping last two dimensions for 2D tensors
 func (t Tensor) Transpose(dims ...int) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
 
 	shape := t.Shape()
-	if shape.Rank() == 2 {
+	rank := shape.Rank()
+
+	if rank == 2 {
 		// Simple 2D transpose: [M, N] -> [N, M]
 		return t.transpose2D()
 	}
 
-	// For now, only support 2D transpose
+	// For higher dimensions, use Permute
 	if len(dims) == 0 {
-		if shape.Rank() == 2 {
-			return t.transpose2D()
+		// Default: swap last two dimensions
+		if rank < 2 {
+			panic(fmt.Sprintf("tensor.Transpose: need at least 2 dimensions, got %d", rank))
 		}
-		panic(fmt.Sprintf("tensor.Transpose: need dims for %dD tensor", shape.Rank()))
+		dims = make([]int, rank)
+		for i := 0; i < rank-2; i++ {
+			dims[i] = i
+		}
+		dims[rank-2] = rank - 1
+		dims[rank-1] = rank - 2
 	}
 
-	// Future: implement general transpose with dimension permutation
-	panic("tensor.Transpose: general dimension transpose not yet implemented")
+	return t.Permute(dims)
+}
+
+// Permute permutes dimensions according to the provided permutation
+// dims: permutation of [0, 1, 2, ..., rank-1]
+// Example: Permute([]int{1, 0, 2, 3}) swaps dimensions 0 and 1 in a 4D tensor
+func (t Tensor) Permute(dims []int) types.Tensor {
+	if t.shape == nil {
+		return nil
+	}
+
+	shape := t.Shape()
+	rank := shape.Rank()
+
+	if len(dims) != rank {
+		panic(fmt.Sprintf("tensor.Permute: permutation length %d must match tensor rank %d", len(dims), rank))
+	}
+
+	// Validate permutation
+	used := make(map[int]bool)
+	for i, d := range dims {
+		if d < 0 || d >= rank {
+			panic(fmt.Sprintf("tensor.Permute: invalid dimension %d at position %d (rank %d)", d, i, rank))
+		}
+		if used[d] {
+			panic(fmt.Sprintf("tensor.Permute: duplicate dimension %d in permutation", d))
+		}
+		used[d] = true
+	}
+
+	// Compute permuted shape
+	newShape := make(types.Shape, rank)
+	for i, d := range dims {
+		newShape[i] = shape[d]
+	}
+
+	// Compute source and destination strides
+	srcStrides := shape.Strides()
+	dstStrides := types.NewShape(newShape...).Strides()
+
+	// Create result tensor
+	result := New(t.DataType(), types.NewShape(newShape...))
+	resultPtr := &result
+
+	// Compute permuted source strides (map through permutation)
+	permutedSrcStrides := make([]int, rank)
+	for i, d := range dims {
+		permutedSrcStrides[i] = srcStrides[d]
+	}
+
+	// Use fp32.ElemCopy with permuted strides
+	resultData := types.GetTensorData[[]float32](resultPtr)
+	tData := types.GetTensorData[[]float32](&t)
+	fp32.ElemCopy(
+		resultData,
+		tData,
+		newShape.ToSlice(),
+		dstStrides,
+		permutedSrcStrides,
+	)
+
+	return resultPtr
 }
 
 // transpose2D transposes a 2D tensor: [M, N] -> [N, M]

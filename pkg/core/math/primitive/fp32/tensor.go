@@ -492,6 +492,172 @@ func MaxPool2D(
 	}
 }
 
+// MaxPool2DWithIndices performs 2D max pooling and stores indices of max elements
+// dst: output [batchSize, channels, outHeight, outWidth]
+// indices: output indices [batchSize, channels, outHeight, outWidth] as int32 (linear indices into src)
+// src: input [batchSize, channels, height, width]
+// outHeight = (height + 2*padH - kernelH) / strideH + 1
+// outWidth = (width + 2*padW - kernelW) / strideW + 1
+// Indices are stored as linear indices into the flattened input tensor for efficient backward pass
+func MaxPool2DWithIndices(
+	dst, src []float32,
+	indices []int32,
+	batchSize, channels, height, width int,
+	kernelH, kernelW, strideH, strideW, padH, padW int,
+) {
+	if batchSize == 0 || channels == 0 || height == 0 || width == 0 {
+		return
+	}
+
+	outHeight := (height+2*padH-kernelH)/strideH + 1
+	outWidth := (width+2*padW-kernelW)/strideW + 1
+
+	// Process each batch, channel, and output position
+	for b := 0; b < batchSize; b++ {
+		batchOffset := b * channels * height * width
+		dstBatchOffset := b * channels * outHeight * outWidth
+		indicesBatchOffset := b * channels * outHeight * outWidth
+
+		for c := 0; c < channels; c++ {
+			channelOffset := batchOffset + c*height*width
+			dstChannelOffset := dstBatchOffset + c*outHeight*outWidth
+			indicesChannelOffset := indicesBatchOffset + c*outHeight*outWidth
+
+			for outH := 0; outH < outHeight; outH++ {
+				for outW := 0; outW < outWidth; outW++ {
+					// Calculate input window position
+					startH := outH*strideH - padH
+					startW := outW*strideW - padW
+
+					// Find max in window and store index
+					maxVal := float32(-1e30)
+					maxIdx := int32(-1)
+					for kh := 0; kh < kernelH; kh++ {
+						for kw := 0; kw < kernelW; kw++ {
+							inH := startH + kh
+							inW := startW + kw
+
+							if inH >= 0 && inH < height && inW >= 0 && inW < width {
+								idx := channelOffset + inH*width + inW
+								val := src[idx]
+								if val > maxVal {
+									maxVal = val
+									maxIdx = int32(idx)
+								}
+							}
+						}
+					}
+
+					// Store max value and index
+					dstIdx := dstChannelOffset + outH*outWidth + outW
+					dst[dstIdx] = maxVal
+					indicesIdx := indicesChannelOffset + outH*outWidth + outW
+					indices[indicesIdx] = maxIdx
+				}
+			}
+		}
+	}
+}
+
+// MaxPool2DBackward performs backward pass for 2D max pooling
+// gradInput: output gradient [batchSize, channels, inHeight, inWidth] (accumulated, should be zero-initialized)
+// gradOutput: input gradient [batchSize, channels, outHeight, outWidth]
+// indices: indices from forward pass [batchSize, channels, outHeight, outWidth] as int32
+// src: original input [batchSize, channels, inHeight, inWidth] (used to resolve ties when multiple positions have same max)
+// batchSize, channels, inHeight, inWidth: input dimensions
+// outHeight, outWidth: output dimensions
+// kernelH, kernelW, strideH, strideW, padH, padW: pooling parameters
+// Routes gradients to input positions that produced the maximum value during forward pass.
+// If multiple positions had the same max value, the gradient is divided equally among them.
+func MaxPool2DBackward(
+	gradInput, gradOutput []float32,
+	indices []int32,
+	src []float32,
+	batchSize, channels, inHeight, inWidth int,
+	outHeight, outWidth int,
+	kernelH, kernelW, strideH, strideW, padH, padW int,
+) {
+	if batchSize == 0 || channels == 0 || inHeight == 0 || inWidth == 0 {
+		return
+	}
+
+	// Process each batch, channel, and output position
+	for b := 0; b < batchSize; b++ {
+		batchOffset := b * channels * inHeight * inWidth
+		gradOutputBatchOffset := b * channels * outHeight * outWidth
+		indicesBatchOffset := b * channels * outHeight * outWidth
+
+		for c := 0; c < channels; c++ {
+			channelOffset := batchOffset + c*inHeight*inWidth
+			gradOutputChannelOffset := gradOutputBatchOffset + c*outHeight*outWidth
+			indicesChannelOffset := indicesBatchOffset + c*outHeight*outWidth
+
+			for outH := 0; outH < outHeight; outH++ {
+				for outW := 0; outW < outWidth; outW++ {
+					// Get output gradient value
+					gradOutputIdx := gradOutputChannelOffset + outH*outWidth + outW
+					gradVal := gradOutput[gradOutputIdx]
+
+					// Get index from forward pass
+					indicesIdx := indicesChannelOffset + outH*outWidth + outW
+					maxIdx := indices[indicesIdx]
+
+					if maxIdx >= 0 {
+						// Get max value from original input to identify all positions with same value
+						maxVal := src[maxIdx]
+
+						// Calculate input window position
+						startH := outH*strideH - padH
+						startW := outW*strideW - padW
+
+						// Count how many input positions had the max value (for tie-breaking)
+						maxCount := 0
+						for kh := 0; kh < kernelH; kh++ {
+							for kw := 0; kw < kernelW; kw++ {
+								inH := startH + kh
+								inW := startW + kw
+
+								if inH >= 0 && inH < inHeight && inW >= 0 && inW < inWidth {
+									idx := channelOffset + inH*inWidth + inW
+									val := src[idx]
+									// Use epsilon for floating point comparison
+									epsilon := float32(1e-6)
+									diff := val - maxVal
+									if diff > -epsilon && diff < epsilon {
+										maxCount++
+									}
+								}
+							}
+						}
+
+						// Route gradient equally to all positions that had the max value
+						if maxCount > 0 {
+							gradPerPosition := gradVal / float32(maxCount)
+							for kh := 0; kh < kernelH; kh++ {
+								for kw := 0; kw < kernelW; kw++ {
+									inH := startH + kh
+									inW := startW + kw
+
+									if inH >= 0 && inH < inHeight && inW >= 0 && inW < inWidth {
+										idx := channelOffset + inH*inWidth + inW
+										val := src[idx]
+										// Use epsilon for floating point comparison
+										epsilon := float32(1e-6)
+										diff := val - maxVal
+										if diff > -epsilon && diff < epsilon {
+											gradInput[idx] += gradPerPosition
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
 // AvgPool2D performs 2D average pooling on batched input
 // dst: output [batchSize, channels, outHeight, outWidth]
 // src: input [batchSize, channels, height, width]
@@ -545,6 +711,66 @@ func AvgPool2D(
 						dst[dstIdx] = sum / float32(count)
 					} else {
 						dst[dstIdx] = 0
+					}
+				}
+			}
+		}
+	}
+}
+
+// AvgPool2DBackward performs backward pass for 2D average pooling
+// gradInput: output gradient [batchSize, channels, inHeight, inWidth] (accumulated, should be zero-initialized)
+// gradOutput: input gradient [batchSize, channels, outHeight, outWidth]
+// batchSize, channels, inHeight, inWidth: input dimensions
+// outHeight, outWidth: output dimensions
+// kernelH, kernelW, strideH, strideW, padH, padW: pooling parameters
+// Routes gradient equally to all input positions in each pooling window, divided by kernel area.
+func AvgPool2DBackward(
+	gradInput, gradOutput []float32,
+	batchSize, channels, inHeight, inWidth int,
+	outHeight, outWidth int,
+	kernelH, kernelW, strideH, strideW, padH, padW int,
+) {
+	if batchSize == 0 || channels == 0 || inHeight == 0 || inWidth == 0 {
+		return
+	}
+
+	// Compute kernel area for normalization
+	kernelArea := float32(kernelH * kernelW)
+
+	// Process each batch, channel, and output position
+	for b := 0; b < batchSize; b++ {
+		batchOffset := b * channels * inHeight * inWidth
+		gradOutputBatchOffset := b * channels * outHeight * outWidth
+
+		for c := 0; c < channels; c++ {
+			channelOffset := batchOffset + c*inHeight*inWidth
+			gradOutputChannelOffset := gradOutputBatchOffset + c*outHeight*outWidth
+
+			for outH := 0; outH < outHeight; outH++ {
+				for outW := 0; outW < outWidth; outW++ {
+					// Get output gradient value
+					gradOutputIdx := gradOutputChannelOffset + outH*outWidth + outW
+					gradVal := gradOutput[gradOutputIdx]
+
+					// Calculate input window position
+					startH := outH*strideH - padH
+					startW := outW*strideW - padW
+
+					// Distribute gradient equally to all valid positions in the window
+					// Divide by kernel area to match forward pass (average pooling)
+					gradPerPosition := gradVal / kernelArea
+
+					for kh := 0; kh < kernelH; kh++ {
+						for kw := 0; kw < kernelW; kw++ {
+							inH := startH + kh
+							inW := startW + kw
+
+							if inH >= 0 && inH < inHeight && inW >= 0 && inW < inWidth {
+								idx := channelOffset + inH*inWidth + inW
+								gradInput[idx] += gradPerPosition
+							}
+						}
 					}
 				}
 			}
@@ -845,6 +1071,75 @@ func DilatedConv2D(
 				}
 			}
 		}
+	}
+}
+
+// ScatterAdd adds values to destination tensor at positions specified by indices
+// dst: destination tensor [batchSize, channels, inHeight, inWidth] (modified in-place, should be zero-initialized)
+// index: indices tensor [batchSize, channels, outHeight, outWidth] as int32 (linear indices into dst)
+// value: values to add [batchSize, channels, outHeight, outWidth]
+// batchSize, channels, inHeight, inWidth: destination tensor dimensions
+// outHeight, outWidth: output dimensions (size of index/value tensors)
+// For each position in index, adds the corresponding value from value to dst[index[i]]
+// This is a general scatter operation useful for gradient routing in backpropagation
+func ScatterAdd(
+	dst []float32,
+	index []int32,
+	value []float32,
+	batchSize, channels, inHeight, inWidth int,
+	outHeight, outWidth int,
+) {
+	if batchSize == 0 || channels == 0 || inHeight == 0 || inWidth == 0 {
+		return
+	}
+
+	// Process each batch, channel, and output position
+	// Note: indices are linear indices into the full dst tensor, so we iterate over all positions
+	for b := 0; b < batchSize; b++ {
+		valueBatchOffset := b * channels * outHeight * outWidth
+		indexBatchOffset := b * channels * outHeight * outWidth
+
+		for c := 0; c < channels; c++ {
+			valueChannelOffset := valueBatchOffset + c*outHeight*outWidth
+			indexChannelOffset := indexBatchOffset + c*outHeight*outWidth
+
+			for outH := 0; outH < outHeight; outH++ {
+				for outW := 0; outW < outWidth; outW++ {
+					// Get index and value
+					indexIdx := indexChannelOffset + outH*outWidth + outW
+					valueIdx := valueChannelOffset + outH*outWidth + outW
+					dstIdx := index[indexIdx]
+					val := value[valueIdx]
+
+					// Add value to destination if index is valid
+					// Note: indices are already linear indices into the full tensor
+					if dstIdx >= 0 && int(dstIdx) < len(dst) {
+						dst[dstIdx] += val
+					}
+				}
+			}
+		}
+	}
+}
+
+// Fill fills a tensor with a constant value
+// dst: destination tensor (modified in-place)
+// value: value to fill
+// num: number of elements to fill
+// stride: access stride (for non-contiguous tensors)
+func Fill(
+	dst []float32,
+	value float32,
+	num, stride int,
+) {
+	if num == 0 {
+		return
+	}
+
+	idx := 0
+	for i := 0; i < num; i++ {
+		dst[idx] = value
+		idx += stride
 	}
 }
 
