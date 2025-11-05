@@ -28,11 +28,8 @@ func NewDense(inFeatures, outFeatures int, opts ...Option) (*Dense, error) {
 		return nil, fmt.Errorf("Dense: outFeatures must be positive, got %d", outFeatures)
 	}
 
-	// Create Base with all options
-	base := NewBase("dense", opts...)
-
-	// Check if bias parameter was set via options (e.g., WithBiases)
-	_, hasBiasParam := base.Parameter(ParamBiases)
+	// Create Base without options first
+	base := NewBase("dense")
 
 	dense := &Dense{
 		Base:        base,
@@ -41,23 +38,23 @@ func NewDense(inFeatures, outFeatures int, opts ...Option) (*Dense, error) {
 		hasBias:     true, // Always create bias by default
 	}
 
-	// Initialize weight parameter in map
-	// Default to FP32, but can be overridden by SetWeight
+	// Set defaults first: initialize weight and bias parameters
+	// Default to FP32, but can be overridden by options
 	weightData := tensor.New(tensor.DTFP32, tensor.NewShape(inFeatures, outFeatures))
 	dense.Base.SetParam(ParamWeights, Parameter{
 		Data:         weightData,
 		RequiresGrad: dense.Base.CanLearn(),
 	})
 
-	// Create bias parameter if not already set via options
 	// Bias data type must match weight data type
-	if !hasBiasParam {
-		biasData := tensor.New(weightData.DataType(), tensor.NewShape(outFeatures))
-		dense.Base.SetParam(ParamBiases, Parameter{
-			Data:         biasData,
-			RequiresGrad: dense.Base.CanLearn(),
-		})
-	}
+	biasData := tensor.New(weightData.DataType(), tensor.NewShape(outFeatures))
+	dense.Base.SetParam(ParamBiases, Parameter{
+		Data:         biasData,
+		RequiresGrad: dense.Base.CanLearn(),
+	})
+
+	// Parse options after defaults are set - options can override defaults
+	dense.Base.ParseOptions(opts...)
 
 	return dense, nil
 }

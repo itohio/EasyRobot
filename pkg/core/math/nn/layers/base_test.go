@@ -28,7 +28,8 @@ func TestNewBase(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			base := NewBase("", WithName(tt.input))
+			base := NewBase("")
+			base.ParseOptions(WithName(tt.input))
 			assert.Equal(t, tt.expected, base.Name(), "Name should match")
 			assert.False(t, base.CanLearn(), "Default CanLearn should be false")
 		})
@@ -36,7 +37,8 @@ func TestNewBase(t *testing.T) {
 }
 
 func TestBase_Name(t *testing.T) {
-	base := NewBase("", WithName("test"))
+	base := NewBase("")
+	base.ParseOptions(WithName("test"))
 	assert.Equal(t, "test", base.Name(), "Name should match")
 
 	// Test nil receiver
@@ -45,7 +47,8 @@ func TestBase_Name(t *testing.T) {
 }
 
 func TestBase_SetName(t *testing.T) {
-	base := NewBase("", WithName("old_name"))
+	base := NewBase("")
+	base.ParseOptions(WithName("old_name"))
 	base.SetName("new_name")
 	assert.Equal(t, "new_name", base.Name(), "Name should be updated")
 
@@ -91,7 +94,8 @@ func TestBase_Name_Default(t *testing.T) {
 			if tt.existingName != "" {
 				opts = append(opts, WithName(tt.existingName))
 			}
-			base := NewBase(tt.prefix, opts...)
+			base := NewBase(tt.prefix)
+			base.ParseOptions(opts...)
 			if tt.hasShape {
 				base.AllocOutput(tt.shape, 8)
 			}
@@ -142,7 +146,7 @@ func TestBase_Input(t *testing.T) {
 	// Test nil receiver
 	var nilBase *Base
 	retrieved = nilBase.Input()
-	assert.Equal(t, 0, retrieved.Rank(), "Nil base should return empty tensor")
+	assert.Nil(t, retrieved, "Nil base should return nil tensor")
 }
 
 func TestBase_Output(t *testing.T) {

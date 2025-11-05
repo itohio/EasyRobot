@@ -15,9 +15,11 @@ type ReLU struct {
 
 // NewReLU creates a new ReLU layer.
 func NewReLU(name string) *ReLU {
-	return &ReLU{
-		Base: NewBase("relu", WithName(name)),
+	relu := &ReLU{
+		Base: NewBase("relu"),
 	}
+	relu.Base.ParseOptions(WithName(name))
+	return relu
 }
 
 // Init initializes the layer.
@@ -93,9 +95,11 @@ type Sigmoid struct {
 
 // NewSigmoid creates a new Sigmoid layer.
 func NewSigmoid(name string) *Sigmoid {
-	return &Sigmoid{
-		Base: NewBase("sigmoid", WithName(name)),
+	sigmoid := &Sigmoid{
+		Base: NewBase("sigmoid"),
 	}
+	sigmoid.Base.ParseOptions(WithName(name))
+	return sigmoid
 }
 
 // Init initializes the layer.
@@ -169,9 +173,11 @@ type Tanh struct {
 
 // NewTanh creates a new Tanh layer.
 func NewTanh(name string) *Tanh {
-	return &Tanh{
-		Base: NewBase("tanh", WithName(name)),
+	tanh := &Tanh{
+		Base: NewBase("tanh"),
 	}
+	tanh.Base.ParseOptions(WithName(name))
+	return tanh
 }
 
 // Init initializes the layer.
@@ -246,10 +252,12 @@ type Softmax struct {
 
 // NewSoftmax creates a new Softmax layer for the given dimension.
 func NewSoftmax(name string, dim int) *Softmax {
-	return &Softmax{
-		Base: NewBase("softmax", WithName(name)),
+	softmax := &Softmax{
+		Base: NewBase("softmax"),
 		dim:  dim,
 	}
+	softmax.Base.ParseOptions(WithName(name))
+	return softmax
 }
 
 // Init initializes the layer.
@@ -373,11 +381,12 @@ type Dropout struct {
 // Default dropout rate is 0.5, default training mode is false (inference).
 func NewDropout(name string, opts ...DropoutOption) *Dropout {
 	d := &Dropout{
-		Base:       NewBase("dropout", WithName(name)),
+		Base:       NewBase("dropout"),
 		p:          0.5,
 		isTraining: false,
 		rng:        rand.New(rand.NewSource(rand.Int63())),
 	}
+	d.Base.ParseOptions(WithName(name))
 
 	// Apply options
 	for _, opt := range opts {

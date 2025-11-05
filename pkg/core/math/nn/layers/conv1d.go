@@ -36,7 +36,13 @@ func NewConv1D(
 		return nil, fmt.Errorf("Conv1D: stride must be positive, got %d", stride)
 	}
 
-	base := NewBase("conv1d", opts...)
+	// Create Base without options first
+	base := NewBase("conv1d")
+
+	// Parse options first to get configuration hints (like BiasHint)
+	base.ParseOptions(opts...)
+
+	// Determine if bias should be created based on hint
 	hasBias := false // Default to no bias
 	if hint := base.BiasHint(); hint != nil {
 		hasBias = *hint
@@ -52,21 +58,34 @@ func NewConv1D(
 		hasBias:     hasBias,
 	}
 
-	// Create kernel parameter: [outChannels, inChannels, kernelLen]
-	kernelData := tensor.New(tensor.DTFP32, tensor.NewShape(outChannels, inChannels, kernelLen))
-	conv.Base.SetParam(ParamKernels, Parameter{
-		Data:         kernelData,
-		RequiresGrad: conv.Base.CanLearn(),
-	})
-
-	// Create bias parameter if needed: [outChannels]
-	if conv.hasBias {
-		biasData := tensor.New(tensor.DTFP32, tensor.NewShape(outChannels))
-		conv.Base.SetParam(ParamBiases, Parameter{
-			Data:         biasData,
+	// Set defaults: create kernel parameter
+	// Default to FP32, but can be overridden if set via options
+	_, hasKernel := conv.Base.Parameter(ParamKernels)
+	if !hasKernel {
+		kernelData := tensor.New(tensor.DTFP32, tensor.NewShape(outChannels, inChannels, kernelLen))
+		conv.Base.SetParam(ParamKernels, Parameter{
+			Data:         kernelData,
 			RequiresGrad: conv.Base.CanLearn(),
 		})
 	}
+
+	// Create bias parameter if needed and not already set via options
+	if conv.hasBias {
+		_, hasBiasParam := conv.Base.Parameter(ParamBiases)
+		if !hasBiasParam {
+			// Use kernel's data type for bias
+			kernelParam, _ := conv.Base.Parameter(ParamKernels)
+			kernelDtype := kernelParam.Data.DataType()
+			biasData := tensor.New(kernelDtype, tensor.NewShape(outChannels))
+			conv.Base.SetParam(ParamBiases, Parameter{
+				Data:         biasData,
+				RequiresGrad: conv.Base.CanLearn(),
+			})
+		}
+	}
+
+	// Parse options again after defaults to allow overriding
+	conv.Base.ParseOptions(opts...)
 
 	return conv, nil
 }

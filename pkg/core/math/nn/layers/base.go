@@ -39,25 +39,31 @@ type Base struct {
 	layerIdx int64                    // Unique layer index assigned at creation
 }
 
-// NewBase creates a new Base layer with options.
-func NewBase(prefix string, opts ...Option) Base {
+// NewBase creates a new Base layer without options.
+// Options should be applied via ParseOptions after layer-specific defaults are set.
+func NewBase(prefix string) Base {
 	// Increment and capture global layer counter value for this layer
 	layerIdx := atomic.AddInt64(&layerCounter, 1)
 
-	b := Base{
+	return Base{
 		name:     "",
 		prefix:   prefix,
 		canLearn: false,
 		params:   make(map[ParamIndex]Parameter),
 		layerIdx: layerIdx,
 	}
+}
 
+// ParseOptions applies the given options to the Base layer.
+// This should be called after layer-specific defaults are set, allowing options to override defaults.
+func (b *Base) ParseOptions(opts ...Option) {
+	if b == nil {
+		return
+	}
 	// Apply options
 	for _, opt := range opts {
-		opt(&b)
+		opt(b)
 	}
-
-	return b
 }
 
 // Option implementations
@@ -77,10 +83,10 @@ func WithCanLearn(canLearn bool) Option {
 	}
 }
 
-// WithBias returns an Option that sets whether the layer uses bias.
+// UseBias returns an Option that sets whether the layer uses bias.
 // This is a hint for layers that support optional bias (like Conv1D, Conv2D).
 // Layers that don't support optional bias will ignore this option.
-func WithBias(hasBias bool) Option {
+func UseBias(hasBias bool) Option {
 	return func(b *Base) {
 		b.biasHint = &hasBias
 	}

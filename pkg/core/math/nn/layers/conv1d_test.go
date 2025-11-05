@@ -40,7 +40,7 @@ func TestNewConv1D(t *testing.T) {
 			kernelLen:      3,
 			stride:         1,
 			pad:            1,
-			opts:           []Option{WithBias(false)},
+			opts:           []Option{UseBias(false)},
 			expectError:    false,
 			expectBias:     false,
 			expectCanLearn: false,
@@ -52,7 +52,7 @@ func TestNewConv1D(t *testing.T) {
 			kernelLen:      3,
 			stride:         1,
 			pad:            1,
-			opts:           []Option{WithCanLearn(true), WithBias(true)},
+			opts:           []Option{WithCanLearn(true), UseBias(true)},
 			expectError:    false,
 			expectBias:     true,
 			expectCanLearn: true,
@@ -64,7 +64,7 @@ func TestNewConv1D(t *testing.T) {
 			kernelLen:   3,
 			stride:      1,
 			pad:         1,
-			opts:        []Option{WithName("my_conv1d"), WithBias(true)},
+			opts:        []Option{WithName("my_conv1d"), UseBias(true)},
 			expectError: false,
 			expectBias:  true,
 		},
@@ -356,7 +356,7 @@ func TestConv1D_Weight(t *testing.T) {
 
 func TestConv1D_Bias(t *testing.T) {
 	// Test with bias
-	conv, err := NewConv1D(3, 16, 3, 1, 1, WithBias(true))
+	conv, err := NewConv1D(3, 16, 3, 1, 1, UseBias(true))
 	require.NoError(t, err, "Should create Conv1D layer")
 
 	bias := conv.Bias()
@@ -364,7 +364,7 @@ func TestConv1D_Bias(t *testing.T) {
 	assert.Len(t, bias.Data(), 16, "Bias data size should match")
 
 	// Test without bias
-	conv2, err := NewConv1D(3, 16, 3, 1, 1, WithBias(false))
+	conv2, err := NewConv1D(3, 16, 3, 1, 1, UseBias(false))
 	require.NoError(t, err, "Should create Conv1D layer")
 
 	bias = conv2.Bias()
@@ -408,7 +408,7 @@ func TestConv1D_SetWeight(t *testing.T) {
 }
 
 func TestConv1D_SetBias(t *testing.T) {
-	conv, err := NewConv1D(3, 16, 3, 1, 1, WithBias(true))
+	conv, err := NewConv1D(3, 16, 3, 1, 1, UseBias(true))
 	require.NoError(t, err, "Should create Conv1D layer")
 
 	newBias := tensor.New(tensor.DTFP32, tensor.NewShape(16))
@@ -502,7 +502,7 @@ func TestConv1D_ComputeOutput(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			conv, err := NewConv1D(tt.inChannels, tt.outChannels, tt.kernelLen, tt.stride, tt.pad, WithBias(true))
+			conv, err := NewConv1D(tt.inChannels, tt.outChannels, tt.kernelLen, tt.stride, tt.pad, UseBias(true))
 			require.NoError(t, err, "Should create Conv1D layer")
 
 			err = conv.SetWeight(tt.weight)
@@ -613,7 +613,7 @@ func TestConv1D_BackwardAccuracy(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			opts := []Option{WithCanLearn(true)}
 			if tt.hasBias {
-				opts = append(opts, WithBias(true))
+				opts = append(opts, UseBias(true))
 			}
 
 			conv, err := NewConv1D(tt.inChannels, tt.outChannels, tt.kernelLen, tt.stride, tt.pad, opts...)
