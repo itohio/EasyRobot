@@ -161,7 +161,7 @@ func TestBase_Output(t *testing.T) {
 	// Test nil receiver
 	var nilBase *Base
 	retrieved = nilBase.Output()
-	assert.Equal(t, 0, retrieved.Rank(), "Nil base should return empty tensor")
+	assert.Nil(t, retrieved, "Nil base should return nil tensor")
 }
 
 func TestBase_Grad(t *testing.T) {
@@ -176,7 +176,7 @@ func TestBase_Grad(t *testing.T) {
 	// Test nil receiver
 	var nilBase *Base
 	retrieved = nilBase.Grad()
-	assert.Equal(t, 0, retrieved.Rank(), "Nil base should return empty tensor")
+	assert.Nil(t, retrieved, "Nil base should return nil tensor")
 }
 
 func TestBase_AllocOutput(t *testing.T) {
@@ -437,4 +437,114 @@ func TestBase_StoreGrad(t *testing.T) {
 	retrieved := base.Grad()
 	assert.Equal(t, grad.Shape().ToSlice(), retrieved.Shape().ToSlice(), "Grad dimensions should match")
 	assert.Equal(t, grad.Data(), retrieved.Data(), "Grad data should match")
+}
+
+func TestBase_ParseOptions(t *testing.T) {
+	base := NewBase("test")
+
+	// Test parsing multiple options
+	base.ParseOptions(
+		WithName("parsed_name"),
+		WithCanLearn(true),
+	)
+
+	assert.Equal(t, "parsed_name", base.Name(), "Name should be set via option")
+	assert.True(t, base.CanLearn(), "CanLearn should be set via option")
+
+	// Test nil receiver
+	var nilBase *Base
+	nilBase.ParseOptions(WithName("should_not_crash"))
+}
+
+func TestBase_BiasHint(t *testing.T) {
+	base := NewBase("")
+
+	// Test without bias hint
+	assert.Nil(t, base.BiasHint(), "BiasHint should be nil initially")
+
+	// Test with bias hint
+	base.ParseOptions(UseBias(true))
+	hint := base.BiasHint()
+	require.NotNil(t, hint, "BiasHint should not be nil after setting")
+	assert.True(t, *hint, "BiasHint should be true")
+
+	// Test with false bias hint
+	base2 := NewBase("")
+	base2.ParseOptions(UseBias(false))
+	hint2 := base2.BiasHint()
+	require.NotNil(t, hint2, "BiasHint should not be nil after setting")
+	assert.False(t, *hint2, "BiasHint should be false")
+
+	// Test nil receiver
+	var nilBase *Base
+	assert.Nil(t, nilBase.BiasHint(), "BiasHint should be nil for nil receiver")
+}
+
+func TestBase_Weights(t *testing.T) {
+	base := NewBase("")
+
+	// Test without weights
+	weights := base.Weights()
+	assert.True(t, tensor.IsNil(weights.Data), "Weights should be empty initially")
+
+	// Test with weights
+	weightTensor := tensor.FromFloat32(tensor.NewShape(2, 3), []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0})
+	base.SetParam(ParamWeights, Parameter{
+		Data:         weightTensor,
+		RequiresGrad: true,
+	})
+	weights = base.Weights()
+	assert.False(t, tensor.IsNil(weights.Data), "Weights should exist after setting")
+	assert.Equal(t, weightTensor.Shape().ToSlice(), weights.Data.Shape().ToSlice(), "Weights shape should match")
+
+	// Test nil receiver
+	var nilBase *Base
+	weights = nilBase.Weights()
+	assert.True(t, tensor.IsNil(weights.Data), "Weights should be empty for nil receiver")
+}
+
+func TestBase_Biases(t *testing.T) {
+	base := NewBase("")
+
+	// Test without biases
+	biases := base.Biases()
+	assert.True(t, tensor.IsNil(biases.Data), "Biases should be empty initially")
+
+	// Test with biases
+	biasTensor := tensor.FromFloat32(tensor.NewShape(3), []float32{1.0, 2.0, 3.0})
+	base.SetParam(ParamBiases, Parameter{
+		Data:         biasTensor,
+		RequiresGrad: true,
+	})
+	biases = base.Biases()
+	assert.False(t, tensor.IsNil(biases.Data), "Biases should exist after setting")
+	assert.Equal(t, biasTensor.Shape().ToSlice(), biases.Data.Shape().ToSlice(), "Biases shape should match")
+
+	// Test nil receiver
+	var nilBase *Base
+	biases = nilBase.Biases()
+	assert.True(t, tensor.IsNil(biases.Data), "Biases should be empty for nil receiver")
+}
+
+func TestBase_Kernels(t *testing.T) {
+	base := NewBase("")
+
+	// Test without kernels
+	kernels := base.Kernels()
+	assert.True(t, tensor.IsNil(kernels.Data), "Kernels should be empty initially")
+
+	// Test with kernels
+	kernelTensor := tensor.FromFloat32(tensor.NewShape(16, 3, 3, 3), make([]float32, 16*3*3*3))
+	base.SetParam(ParamKernels, Parameter{
+		Data:         kernelTensor,
+		RequiresGrad: true,
+	})
+	kernels = base.Kernels()
+	assert.False(t, tensor.IsNil(kernels.Data), "Kernels should exist after setting")
+	assert.Equal(t, kernelTensor.Shape().ToSlice(), kernels.Data.Shape().ToSlice(), "Kernels shape should match")
+
+	// Test nil receiver
+	var nilBase *Base
+	kernels = nilBase.Kernels()
+	assert.True(t, tensor.IsNil(kernels.Data), "Kernels should be empty for nil receiver")
 }

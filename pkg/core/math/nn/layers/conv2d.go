@@ -152,7 +152,7 @@ func (c *Conv2D) Forward(input types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("Conv2D.Forward: nil layer")
 	}
 
-	if input.Shape().Rank() == 0 {
+	if tensor.IsNil(input) {
 		return nil, fmt.Errorf("Conv2D.Forward: empty input")
 	}
 
@@ -161,7 +161,7 @@ func (c *Conv2D) Forward(input types.Tensor) (types.Tensor, error) {
 
 	// Get pre-allocated output tensor
 	output := c.Base.Output()
-	if output.Shape().Rank() == 0 {
+	if tensor.IsNil(output) {
 		return nil, fmt.Errorf("Conv2D.Forward: output not allocated, must call Init first")
 	}
 
@@ -192,12 +192,12 @@ func (c *Conv2D) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("Conv2D.Backward: nil layer")
 	}
 
-	if gradOutput.Shape().Rank() == 0 {
+	if tensor.IsNil(gradOutput) {
 		return nil, fmt.Errorf("Conv2D.Backward: empty gradOutput")
 	}
 
 	input := c.Base.Input()
-	if input.Shape().Rank() == 0 {
+	if tensor.IsNil(input) {
 		return nil, fmt.Errorf("Conv2D.Backward: input not stored, must call Forward first")
 	}
 
@@ -217,7 +217,7 @@ func (c *Conv2D) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 	if c.hasBias && c.Base.CanLearn() {
 		biasParam, ok := c.Base.Parameter(ParamBiases)
 		if ok && biasParam.RequiresGrad {
-			if biasParam.Grad == nil || biasParam.Grad.Shape().Rank() == 0 {
+			if tensor.IsNil(biasParam.Grad) {
 				biasParam.Grad = tensor.New(tensor.DTFP32, tensor.NewShape(c.outChannels))
 			}
 
@@ -232,7 +232,7 @@ func (c *Conv2D) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 
 	// Compute kernel gradient using primitive composition
 	if c.Base.CanLearn() && kernelParam.RequiresGrad {
-		if kernelParam.Grad == nil || kernelParam.Grad.Shape().Rank() == 0 {
+		if tensor.IsNil(kernelParam.Grad) {
 			kernelParam.Grad = tensor.New(tensor.DTFP32, kernelParam.Data.Shape())
 		}
 
@@ -293,17 +293,27 @@ func (c *Conv2D) OutputShape(inputShape []int) ([]int, error) {
 // Weight returns the kernel parameter tensor.
 func (c *Conv2D) Weight() types.Tensor {
 	if c == nil {
-		return nil
+		// Return empty tensor instead of nil to match test expectations
+		return tensor.Empty(tensor.DTFP32)
 	}
-	return c.Base.Kernels().Data
+	kernelParam := c.Base.Kernels()
+	if tensor.IsNil(kernelParam.Data) {
+		return tensor.Empty(tensor.DTFP32)
+	}
+	return kernelParam.Data
 }
 
 // Bias returns the bias parameter tensor.
 func (c *Conv2D) Bias() types.Tensor {
 	if c == nil || !c.hasBias {
-		return nil
+		// Return empty tensor instead of nil to match test expectations
+		return tensor.Empty(tensor.DTFP32)
 	}
-	return c.Base.Biases().Data
+	biasParam := c.Base.Biases()
+	if tensor.IsNil(biasParam.Data) {
+		return tensor.Empty(tensor.DTFP32)
+	}
+	return biasParam.Data
 }
 
 // SetWeight sets the weight parameter tensor.
@@ -311,7 +321,7 @@ func (c *Conv2D) SetWeight(weight types.Tensor) error {
 	if c == nil {
 		return fmt.Errorf("Conv2D.SetWeight: nil layer")
 	}
-	if weight.Shape().Rank() == 0 {
+	if tensor.IsNil(weight) {
 		return fmt.Errorf("Conv2D.SetWeight: empty weight tensor")
 	}
 	// Validate shape matches expected
@@ -343,7 +353,7 @@ func (c *Conv2D) SetBias(bias types.Tensor) error {
 	if !c.hasBias {
 		return fmt.Errorf("Conv2D.SetBias: layer has no bias")
 	}
-	if bias.Shape().Rank() == 0 {
+	if tensor.IsNil(bias) {
 		return fmt.Errorf("Conv2D.SetBias: empty bias tensor")
 	}
 	// Validate shape matches expected

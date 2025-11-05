@@ -69,7 +69,7 @@ func (f *Flatten) Forward(input types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("Flatten.Forward: nil layer")
 	}
 
-	if input.Rank() == 0 {
+	if tensor.IsNil(input) {
 		return nil, fmt.Errorf("Flatten.Forward: empty input")
 	}
 
@@ -78,7 +78,7 @@ func (f *Flatten) Forward(input types.Tensor) (types.Tensor, error) {
 
 	// Get pre-allocated output tensor
 	output := f.Base.Output()
-	if output.Rank() == 0 {
+	if tensor.IsNil(output) {
 		return nil, fmt.Errorf("Flatten.Forward: output not allocated, must call Init first")
 	}
 
@@ -101,12 +101,12 @@ func (f *Flatten) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("Flatten.Backward: nil layer")
 	}
 
-	if gradOutput.Rank() == 0 {
+	if tensor.IsNil(gradOutput) {
 		return nil, fmt.Errorf("Flatten.Backward: empty gradOutput")
 	}
 
 	input := f.Base.Input()
-	if input.Rank() == 0 {
+	if tensor.IsNil(input) {
 		return nil, fmt.Errorf("Flatten.Backward: input not stored, must call Forward first")
 	}
 
@@ -214,7 +214,7 @@ func (r *Reshape) Forward(input types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("Reshape.Forward: nil layer")
 	}
 
-	if input.Rank() == 0 {
+	if tensor.IsNil(input) {
 		return nil, fmt.Errorf("Reshape.Forward: empty input")
 	}
 
@@ -223,7 +223,7 @@ func (r *Reshape) Forward(input types.Tensor) (types.Tensor, error) {
 
 	// Get pre-allocated output tensor
 	output := r.Base.Output()
-	if output.Rank() == 0 {
+	if tensor.IsNil(output) {
 		return nil, fmt.Errorf("Reshape.Forward: output not allocated, must call Init first")
 	}
 
@@ -246,12 +246,12 @@ func (r *Reshape) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("Reshape.Backward: nil layer")
 	}
 
-	if gradOutput.Rank() == 0 {
+	if tensor.IsNil(gradOutput) {
 		return nil, fmt.Errorf("Reshape.Backward: empty gradOutput")
 	}
 
 	input := r.Base.Input()
-	if input.Rank() == 0 {
+	if tensor.IsNil(input) {
 		return nil, fmt.Errorf("Reshape.Backward: input not stored, must call Forward first")
 	}
 
@@ -369,14 +369,14 @@ func (u *Unsqueeze) Forward(input types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("Unsqueeze.Forward: nil layer")
 	}
 
-	if input.Rank() == 0 {
+	if tensor.IsNil(input) {
 		return nil, fmt.Errorf("Unsqueeze.Forward: empty input")
 	}
 
 	u.Base.StoreInput(input)
 
 	output := u.Base.Output()
-	if output.Rank() == 0 {
+	if tensor.IsNil(output) {
 		return nil, fmt.Errorf("Unsqueeze.Forward: output not allocated, must call Init first")
 	}
 
@@ -398,12 +398,12 @@ func (u *Unsqueeze) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("Unsqueeze.Backward: nil layer")
 	}
 
-	if gradOutput.Rank() == 0 {
+	if tensor.IsNil(gradOutput) {
 		return nil, fmt.Errorf("Unsqueeze.Backward: empty gradOutput")
 	}
 
 	input := u.Base.Input()
-	if input.Rank() == 0 {
+	if tensor.IsNil(input) {
 		return nil, fmt.Errorf("Unsqueeze.Backward: input not stored, must call Forward first")
 	}
 
@@ -527,14 +527,14 @@ func (s *Squeeze) Forward(input types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("Squeeze.Forward: nil layer")
 	}
 
-	if input.Rank() == 0 {
+	if tensor.IsNil(input) {
 		return nil, fmt.Errorf("Squeeze.Forward: empty input")
 	}
 
 	s.Base.StoreInput(input)
 
 	output := s.Base.Output()
-	if output.Rank() == 0 {
+	if tensor.IsNil(output) {
 		return nil, fmt.Errorf("Squeeze.Forward: output not allocated, must call Init first")
 	}
 
@@ -556,12 +556,12 @@ func (s *Squeeze) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("Squeeze.Backward: nil layer")
 	}
 
-	if gradOutput.Rank() == 0 {
+	if tensor.IsNil(gradOutput) {
 		return nil, fmt.Errorf("Squeeze.Backward: empty gradOutput")
 	}
 
 	input := s.Base.Input()
-	if input.Rank() == 0 {
+	if tensor.IsNil(input) {
 		return nil, fmt.Errorf("Squeeze.Backward: input not stored, must call Forward first")
 	}
 
@@ -647,7 +647,7 @@ func (t *Transpose) Forward(input types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("Transpose.Forward: nil layer")
 	}
 
-	if input.Rank() == 0 {
+	if tensor.IsNil(input) {
 		return nil, fmt.Errorf("Transpose.Forward: empty input")
 	}
 
@@ -658,7 +658,7 @@ func (t *Transpose) Forward(input types.Tensor) (types.Tensor, error) {
 	t.Base.StoreInput(input)
 
 	output := t.Base.Output()
-	if output.Rank() == 0 {
+	if tensor.IsNil(output) {
 		return nil, fmt.Errorf("Transpose.Forward: output not allocated, must call Init first")
 	}
 
@@ -681,12 +681,12 @@ func (t *Transpose) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("Transpose.Backward: nil layer")
 	}
 
-	if gradOutput.Rank() == 0 {
+	if tensor.IsNil(gradOutput) {
 		return nil, fmt.Errorf("Transpose.Backward: empty gradOutput")
 	}
 
 	input := t.Base.Input()
-	if input.Rank() == 0 {
+	if tensor.IsNil(input) {
 		return nil, fmt.Errorf("Transpose.Backward: input not stored, must call Forward first")
 	}
 
@@ -808,14 +808,14 @@ func (p *Pad) Forward(input types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("Pad.Forward: nil layer")
 	}
 
-	if input.Rank() == 0 {
+	if tensor.IsNil(input) {
 		return nil, fmt.Errorf("Pad.Forward: empty input")
 	}
 
 	p.Base.StoreInput(input)
 
 	output := p.Base.Output()
-	if output.Rank() == 0 {
+	if tensor.IsNil(output) {
 		return nil, fmt.Errorf("Pad.Forward: output not allocated, must call Init first")
 	}
 
@@ -884,12 +884,12 @@ func (p *Pad) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("Pad.Backward: nil layer")
 	}
 
-	if gradOutput.Rank() == 0 {
+	if tensor.IsNil(gradOutput) {
 		return nil, fmt.Errorf("Pad.Backward: empty gradOutput")
 	}
 
 	input := p.Base.Input()
-	if input.Rank() == 0 {
+	if tensor.IsNil(input) {
 		return nil, fmt.Errorf("Pad.Backward: input not stored, must call Forward first")
 	}
 
@@ -1079,7 +1079,7 @@ func (c *Concatenate) ForwardMulti(inputs []types.Tensor) (types.Tensor, error) 
 
 	// Validate inputs
 	for i, input := range inputs {
-		if input.Rank() == 0 {
+		if tensor.IsNil(input) {
 			return nil, fmt.Errorf("Concatenate.ForwardMulti: empty input[%d]", i)
 		}
 	}
@@ -1089,7 +1089,7 @@ func (c *Concatenate) ForwardMulti(inputs []types.Tensor) (types.Tensor, error) 
 	copy(c.inputs, inputs)
 
 	output := c.Base.Output()
-	if output.Rank() == 0 {
+	if tensor.IsNil(output) {
 		return nil, fmt.Errorf("Concatenate.ForwardMulti: output not allocated, must call Init first")
 	}
 
@@ -1175,7 +1175,7 @@ func (c *Concatenate) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("Concatenate.Backward: nil layer")
 	}
 
-	if gradOutput.Rank() == 0 {
+	if tensor.IsNil(gradOutput) {
 		return nil, fmt.Errorf("Concatenate.Backward: empty gradOutput")
 	}
 
@@ -1198,7 +1198,7 @@ func (c *Concatenate) BackwardMulti(gradOutput types.Tensor) ([]types.Tensor, er
 		return nil, fmt.Errorf("Concatenate.BackwardMulti: nil layer")
 	}
 
-	if gradOutput.Rank() == 0 {
+	if tensor.IsNil(gradOutput) {
 		return nil, fmt.Errorf("Concatenate.BackwardMulti: empty gradOutput")
 	}
 

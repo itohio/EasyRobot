@@ -725,3 +725,49 @@ func TestDense_BackwardAccuracy(t *testing.T) {
 		})
 	}
 }
+
+// TestDense_EdgeCases tests edge cases for Dense layer
+func TestDense_EdgeCases(t *testing.T) {
+	// Test nil receiver
+	var nilDense *Dense
+	_, err := nilDense.Forward(tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}))
+	assert.Error(t, err, "Forward should error on nil receiver")
+
+	// Test empty input
+	dense, err := NewDense(2, 3)
+	require.NoError(t, err)
+	err = dense.Init([]int{2})
+	require.NoError(t, err)
+
+	emptyInput := tensor.Empty(tensor.DTFP32)
+	_, err = dense.Forward(emptyInput)
+	assert.Error(t, err, "Forward should error on empty input")
+
+	// Test Forward without Init
+	dense2, err := NewDense(2, 3)
+	require.NoError(t, err)
+	input := tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0})
+	_, err = dense2.Forward(input)
+	assert.Error(t, err, "Forward should error if Init not called")
+
+	// Test Backward without Forward
+	dense3, err := NewDense(2, 3)
+	require.NoError(t, err)
+	err = dense3.Init([]int{2})
+	require.NoError(t, err)
+	gradOutput := tensor.FromFloat32(tensor.NewShape(3), []float32{1.0, 1.0, 1.0})
+	_, err = dense3.Backward(gradOutput)
+	assert.Error(t, err, "Backward should error if Forward not called")
+
+	// Test Backward with empty gradOutput
+	dense4, err := NewDense(2, 3)
+	require.NoError(t, err)
+	err = dense4.Init([]int{2})
+	require.NoError(t, err)
+	input2 := tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0})
+	_, err = dense4.Forward(input2)
+	require.NoError(t, err)
+	emptyGrad := tensor.Empty(tensor.DTFP32)
+	_, err = dense4.Backward(emptyGrad)
+	assert.Error(t, err, "Backward should error on empty gradOutput")
+}

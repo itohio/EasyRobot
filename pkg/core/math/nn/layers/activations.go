@@ -38,7 +38,10 @@ func (r *ReLU) Init(inputShape []int) error {
 
 // Forward computes ReLU: output = max(0, input).
 func (r *ReLU) Forward(input types.Tensor) (types.Tensor, error) {
-	if input.Shape().Rank() == 0 {
+	if r == nil {
+		return nil, fmt.Errorf("ReLU.Forward: nil layer")
+	}
+	if tensor.IsNil(input) {
 		return nil, fmt.Errorf("ReLU.Forward: empty input")
 	}
 
@@ -47,7 +50,7 @@ func (r *ReLU) Forward(input types.Tensor) (types.Tensor, error) {
 
 	// Get pre-allocated output tensor
 	output := r.Base.Output()
-	if output.Shape().Rank() == 0 {
+	if tensor.IsNil(output) {
 		return nil, fmt.Errorf("ReLU.Forward: output not allocated, must call Init first")
 	}
 
@@ -60,12 +63,15 @@ func (r *ReLU) Forward(input types.Tensor) (types.Tensor, error) {
 
 // Backward computes ReLU gradient: gradInput = gradOutput * (input > 0 ? 1 : 0).
 func (r *ReLU) Backward(gradOutput types.Tensor) (types.Tensor, error) {
-	if gradOutput == nil || gradOutput.Shape().Rank() == 0 {
+	if r == nil {
+		return nil, fmt.Errorf("ReLU.Backward: nil layer")
+	}
+	if tensor.IsNil(gradOutput) {
 		return nil, fmt.Errorf("ReLU.Backward: empty gradOutput")
 	}
 
 	input := r.Base.Input()
-	if input == nil || input.Shape().Rank() == 0 {
+	if tensor.IsNil(input) {
 		return nil, fmt.Errorf("ReLU.Backward: input not stored, must call Forward first")
 	}
 
@@ -118,7 +124,10 @@ func (s *Sigmoid) Init(inputShape []int) error {
 
 // Forward computes sigmoid: output = 1 / (1 + exp(-input)).
 func (s *Sigmoid) Forward(input types.Tensor) (types.Tensor, error) {
-	if input.Shape().Rank() == 0 {
+	if s == nil {
+		return nil, fmt.Errorf("Sigmoid.Forward: nil layer")
+	}
+	if tensor.IsNil(input) {
 		return nil, fmt.Errorf("Sigmoid.Forward: empty input")
 	}
 
@@ -127,7 +136,7 @@ func (s *Sigmoid) Forward(input types.Tensor) (types.Tensor, error) {
 
 	// Get pre-allocated output tensor
 	output := s.Base.Output()
-	if output.Shape().Rank() == 0 {
+	if tensor.IsNil(output) {
 		return nil, fmt.Errorf("Sigmoid.Forward: output not allocated, must call Init first")
 	}
 
@@ -140,12 +149,20 @@ func (s *Sigmoid) Forward(input types.Tensor) (types.Tensor, error) {
 
 // Backward computes sigmoid gradient: gradInput = gradOutput * output * (1 - output).
 func (s *Sigmoid) Backward(gradOutput types.Tensor) (types.Tensor, error) {
-	if gradOutput == nil || gradOutput.Shape().Rank() == 0 {
+	if s == nil {
+		return nil, fmt.Errorf("Sigmoid.Backward: nil layer")
+	}
+	if tensor.IsNil(gradOutput) {
 		return nil, fmt.Errorf("Sigmoid.Backward: empty gradOutput")
 	}
 
+	input := s.Base.Input()
+	if tensor.IsNil(input) {
+		return nil, fmt.Errorf("Sigmoid.Backward: input not stored, must call Forward first")
+	}
+
 	output := s.Base.Output()
-	if output == nil || output.Shape().Rank() == 0 {
+	if tensor.IsNil(output) {
 		return nil, fmt.Errorf("Sigmoid.Backward: output not stored, must call Forward first")
 	}
 
@@ -196,7 +213,10 @@ func (t *Tanh) Init(inputShape []int) error {
 
 // Forward computes tanh: output = tanh(input).
 func (t *Tanh) Forward(input types.Tensor) (types.Tensor, error) {
-	if input.Shape().Rank() == 0 {
+	if t == nil {
+		return nil, fmt.Errorf("Tanh.Forward: nil layer")
+	}
+	if tensor.IsNil(input) {
 		return nil, fmt.Errorf("Tanh.Forward: empty input")
 	}
 
@@ -205,7 +225,7 @@ func (t *Tanh) Forward(input types.Tensor) (types.Tensor, error) {
 
 	// Get pre-allocated output tensor
 	output := t.Base.Output()
-	if output.Shape().Rank() == 0 {
+	if tensor.IsNil(output) {
 		return nil, fmt.Errorf("Tanh.Forward: output not allocated, must call Init first")
 	}
 
@@ -218,12 +238,20 @@ func (t *Tanh) Forward(input types.Tensor) (types.Tensor, error) {
 
 // Backward computes tanh gradient: gradInput = gradOutput * (1 - output^2).
 func (t *Tanh) Backward(gradOutput types.Tensor) (types.Tensor, error) {
-	if gradOutput == nil || gradOutput.Shape().Rank() == 0 {
+	if t == nil {
+		return nil, fmt.Errorf("Tanh.Backward: nil layer")
+	}
+	if tensor.IsNil(gradOutput) {
 		return nil, fmt.Errorf("Tanh.Backward: empty gradOutput")
 	}
 
+	input := t.Base.Input()
+	if tensor.IsNil(input) {
+		return nil, fmt.Errorf("Tanh.Backward: input not stored, must call Forward first")
+	}
+
 	output := t.Base.Output()
-	if output == nil || output.Shape().Rank() == 0 {
+	if tensor.IsNil(output) {
 		return nil, fmt.Errorf("Tanh.Backward: output not stored, must call Forward first")
 	}
 
@@ -276,7 +304,10 @@ func (s *Softmax) Init(inputShape []int) error {
 
 // Forward computes softmax: output = softmax(input, dim).
 func (s *Softmax) Forward(input types.Tensor) (types.Tensor, error) {
-	if input.Shape().Rank() == 0 {
+	if s == nil {
+		return nil, fmt.Errorf("Softmax.Forward: nil layer")
+	}
+	if tensor.IsNil(input) {
 		return nil, fmt.Errorf("Softmax.Forward: empty input")
 	}
 
@@ -285,7 +316,7 @@ func (s *Softmax) Forward(input types.Tensor) (types.Tensor, error) {
 
 	// Get pre-allocated output tensor
 	output := s.Base.Output()
-	if output.Shape().Rank() == 0 {
+	if tensor.IsNil(output) {
 		return nil, fmt.Errorf("Softmax.Forward: output not allocated, must call Init first")
 	}
 
@@ -298,12 +329,20 @@ func (s *Softmax) Forward(input types.Tensor) (types.Tensor, error) {
 
 // Backward computes softmax gradient: gradInput = output * (gradOutput - sum(gradOutput * output)).
 func (s *Softmax) Backward(gradOutput types.Tensor) (types.Tensor, error) {
-	if gradOutput == nil || gradOutput.Shape().Rank() == 0 {
+	if s == nil {
+		return nil, fmt.Errorf("Softmax.Backward: nil layer")
+	}
+	if tensor.IsNil(gradOutput) {
 		return nil, fmt.Errorf("Softmax.Backward: empty gradOutput")
 	}
 
+	input := s.Base.Input()
+	if tensor.IsNil(input) {
+		return nil, fmt.Errorf("Softmax.Backward: input not stored, must call Forward first")
+	}
+
 	output := s.Base.Output()
-	if output == nil || output.Shape().Rank() == 0 {
+	if tensor.IsNil(output) {
 		return nil, fmt.Errorf("Softmax.Backward: output not stored, must call Forward first")
 	}
 
@@ -413,7 +452,10 @@ func (d *Dropout) Init(inputShape []int) error {
 // Forward computes dropout: during training, randomly zero elements with probability p and scale by 1/(1-p).
 // During inference, passes input through unchanged.
 func (d *Dropout) Forward(input types.Tensor) (types.Tensor, error) {
-	if input.Shape().Rank() == 0 {
+	if d == nil {
+		return nil, fmt.Errorf("Dropout.Forward: nil layer")
+	}
+	if tensor.IsNil(input) {
 		return nil, fmt.Errorf("Dropout.Forward: empty input")
 	}
 
@@ -422,7 +464,7 @@ func (d *Dropout) Forward(input types.Tensor) (types.Tensor, error) {
 
 	// Get pre-allocated output tensor
 	output := d.Base.Output()
-	if output.Shape().Rank() == 0 {
+	if tensor.IsNil(output) {
 		return nil, fmt.Errorf("Dropout.Forward: output not allocated, must call Init first")
 	}
 
@@ -431,7 +473,7 @@ func (d *Dropout) Forward(input types.Tensor) (types.Tensor, error) {
 
 	if d.isTraining && d.p > 0 {
 		// Allocate or reuse mask tensor
-		if d.mask == nil || d.mask.Shape().Rank() == 0 || d.mask.Size() != inputSize {
+		if tensor.IsNil(d.mask) || d.mask.Size() != inputSize {
 			d.mask = tensor.New(tensor.DTFP32, input.Shape())
 		}
 
@@ -456,17 +498,20 @@ func (d *Dropout) Forward(input types.Tensor) (types.Tensor, error) {
 
 // Backward computes dropout gradient: gradInput = gradOutput * mask.
 func (d *Dropout) Backward(gradOutput types.Tensor) (types.Tensor, error) {
-	if gradOutput.Shape().Rank() == 0 {
+	if d == nil {
+		return nil, fmt.Errorf("Dropout.Backward: nil layer")
+	}
+	if tensor.IsNil(gradOutput) {
 		return nil, fmt.Errorf("Dropout.Backward: empty gradOutput")
 	}
 
 	input := d.Base.Input()
-	if input.Shape().Rank() == 0 {
+	if tensor.IsNil(input) {
 		return nil, fmt.Errorf("Dropout.Backward: input not stored, must call Forward first")
 	}
 
 	var gradInput types.Tensor
-	if d.isTraining && d.p > 0 && d.mask != nil && d.mask.Shape().Rank() > 0 {
+	if d.isTraining && d.p > 0 && !tensor.IsNil(d.mask) {
 		// Training mode: gradInput = gradOutput * mask
 		gradInput = gradOutput.Clone().Mul(d.mask)
 	} else {

@@ -66,6 +66,48 @@ func TestReLU(t *testing.T) {
 	}
 }
 
+// TestReLU_EdgeCases tests edge cases for ReLU layer
+func TestReLU_EdgeCases(t *testing.T) {
+	// Test nil receiver
+	var nilReLU *ReLU
+	_, err := nilReLU.Forward(tensor.FromFloat32(tensor.NewShape(3), []float32{1.0, 2.0, 3.0}))
+	assert.Error(t, err, "Forward should error on nil receiver")
+
+	// Test empty input
+	relu := NewReLU("relu")
+	err = relu.Init([]int{3})
+	require.NoError(t, err)
+
+	emptyInput := tensor.Empty(tensor.DTFP32)
+	_, err = relu.Forward(emptyInput)
+	assert.Error(t, err, "Forward should error on empty input")
+
+	// Test Forward without Init
+	relu2 := NewReLU("relu2")
+	input := tensor.FromFloat32(tensor.NewShape(3), []float32{1.0, 2.0, 3.0})
+	_, err = relu2.Forward(input)
+	assert.Error(t, err, "Forward should error if Init not called")
+
+	// Test Backward without Forward
+	relu3 := NewReLU("relu3")
+	err = relu3.Init([]int{3})
+	require.NoError(t, err)
+	gradOutput := tensor.FromFloat32(tensor.NewShape(3), []float32{1.0, 1.0, 1.0})
+	_, err = relu3.Backward(gradOutput)
+	assert.Error(t, err, "Backward should error if Forward not called")
+
+	// Test Backward with empty gradOutput
+	relu4 := NewReLU("relu4")
+	err = relu4.Init([]int{3})
+	require.NoError(t, err)
+	input2 := tensor.FromFloat32(tensor.NewShape(3), []float32{1.0, 2.0, 3.0})
+	_, err = relu4.Forward(input2)
+	require.NoError(t, err)
+	emptyGrad := tensor.Empty(tensor.DTFP32)
+	_, err = relu4.Backward(emptyGrad)
+	assert.Error(t, err, "Backward should error on empty gradOutput")
+}
+
 // TestSigmoid tests the Sigmoid activation layer
 func TestSigmoid(t *testing.T) {
 	tests := []struct {
@@ -104,6 +146,48 @@ func TestSigmoid(t *testing.T) {
 			assert.InDelta(t, expectedGrad, gradInputData[0], 1e-6, "GradInput should match expected derivative")
 		})
 	}
+}
+
+// TestSigmoid_EdgeCases tests edge cases for Sigmoid layer
+func TestSigmoid_EdgeCases(t *testing.T) {
+	// Test nil receiver
+	var nilSigmoid *Sigmoid
+	_, err := nilSigmoid.Forward(tensor.FromFloat32(tensor.NewShape(1), []float32{1.0}))
+	assert.Error(t, err, "Forward should error on nil receiver")
+
+	// Test empty input
+	sigmoid := NewSigmoid("sigmoid")
+	err = sigmoid.Init([]int{1})
+	require.NoError(t, err)
+
+	emptyInput := tensor.Empty(tensor.DTFP32)
+	_, err = sigmoid.Forward(emptyInput)
+	assert.Error(t, err, "Forward should error on empty input")
+
+	// Test Forward without Init
+	sigmoid2 := NewSigmoid("sigmoid2")
+	input := tensor.FromFloat32(tensor.NewShape(1), []float32{1.0})
+	_, err = sigmoid2.Forward(input)
+	assert.Error(t, err, "Forward should error if Init not called")
+
+	// Test Backward without Forward
+	sigmoid3 := NewSigmoid("sigmoid3")
+	err = sigmoid3.Init([]int{1})
+	require.NoError(t, err)
+	gradOutput := tensor.FromFloat32(tensor.NewShape(1), []float32{1.0})
+	_, err = sigmoid3.Backward(gradOutput)
+	assert.Error(t, err, "Backward should error if Forward not called")
+
+	// Test Backward with empty gradOutput
+	sigmoid4 := NewSigmoid("sigmoid4")
+	err = sigmoid4.Init([]int{1})
+	require.NoError(t, err)
+	input2 := tensor.FromFloat32(tensor.NewShape(1), []float32{1.0})
+	_, err = sigmoid4.Forward(input2)
+	require.NoError(t, err)
+	emptyGrad := tensor.Empty(tensor.DTFP32)
+	_, err = sigmoid4.Backward(emptyGrad)
+	assert.Error(t, err, "Backward should error on empty gradOutput")
 }
 
 // TestTanh tests the Tanh activation layer
@@ -146,6 +230,48 @@ func TestTanh(t *testing.T) {
 	}
 }
 
+// TestTanh_EdgeCases tests edge cases for Tanh layer
+func TestTanh_EdgeCases(t *testing.T) {
+	// Test nil receiver
+	var nilTanh *Tanh
+	_, err := nilTanh.Forward(tensor.FromFloat32(tensor.NewShape(1), []float32{1.0}))
+	assert.Error(t, err, "Forward should error on nil receiver")
+
+	// Test empty input
+	tanh := NewTanh("tanh")
+	err = tanh.Init([]int{1})
+	require.NoError(t, err)
+
+	emptyInput := tensor.Empty(tensor.DTFP32)
+	_, err = tanh.Forward(emptyInput)
+	assert.Error(t, err, "Forward should error on empty input")
+
+	// Test Forward without Init
+	tanh2 := NewTanh("tanh2")
+	input := tensor.FromFloat32(tensor.NewShape(1), []float32{1.0})
+	_, err = tanh2.Forward(input)
+	assert.Error(t, err, "Forward should error if Init not called")
+
+	// Test Backward without Forward
+	tanh3 := NewTanh("tanh3")
+	err = tanh3.Init([]int{1})
+	require.NoError(t, err)
+	gradOutput := tensor.FromFloat32(tensor.NewShape(1), []float32{1.0})
+	_, err = tanh3.Backward(gradOutput)
+	assert.Error(t, err, "Backward should error if Forward not called")
+
+	// Test Backward with empty gradOutput
+	tanh4 := NewTanh("tanh4")
+	err = tanh4.Init([]int{1})
+	require.NoError(t, err)
+	input2 := tensor.FromFloat32(tensor.NewShape(1), []float32{1.0})
+	_, err = tanh4.Forward(input2)
+	require.NoError(t, err)
+	emptyGrad := tensor.Empty(tensor.DTFP32)
+	_, err = tanh4.Backward(emptyGrad)
+	assert.Error(t, err, "Backward should error on empty gradOutput")
+}
+
 // TestSoftmax tests the Softmax activation layer
 func TestSoftmax(t *testing.T) {
 	softmax := NewSoftmax("softmax", 0)
@@ -176,6 +302,48 @@ func TestSoftmax(t *testing.T) {
 	require.NoError(t, err, "Backward should succeed")
 	gradInputData := gradInput.Data().([]float32)
 	assert.Len(t, gradInputData, 3, "GradInput should have size 3")
+}
+
+// TestSoftmax_EdgeCases tests edge cases for Softmax layer
+func TestSoftmax_EdgeCases(t *testing.T) {
+	// Test nil receiver
+	var nilSoftmax *Softmax
+	_, err := nilSoftmax.Forward(tensor.FromFloat32(tensor.NewShape(3), []float32{1.0, 2.0, 3.0}))
+	assert.Error(t, err, "Forward should error on nil receiver")
+
+	// Test empty input
+	softmax := NewSoftmax("softmax", 0)
+	err = softmax.Init([]int{3})
+	require.NoError(t, err)
+
+	emptyInput := tensor.Empty(tensor.DTFP32)
+	_, err = softmax.Forward(emptyInput)
+	assert.Error(t, err, "Forward should error on empty input")
+
+	// Test Forward without Init
+	softmax2 := NewSoftmax("softmax2", 0)
+	input := tensor.FromFloat32(tensor.NewShape(3), []float32{1.0, 2.0, 3.0})
+	_, err = softmax2.Forward(input)
+	assert.Error(t, err, "Forward should error if Init not called")
+
+	// Test Backward without Forward
+	softmax3 := NewSoftmax("softmax3", 0)
+	err = softmax3.Init([]int{3})
+	require.NoError(t, err)
+	gradOutput := tensor.FromFloat32(tensor.NewShape(3), []float32{0.1, 0.2, 0.3})
+	_, err = softmax3.Backward(gradOutput)
+	assert.Error(t, err, "Backward should error if Forward not called")
+
+	// Test Backward with empty gradOutput
+	softmax4 := NewSoftmax("softmax4", 0)
+	err = softmax4.Init([]int{3})
+	require.NoError(t, err)
+	input2 := tensor.FromFloat32(tensor.NewShape(3), []float32{1.0, 2.0, 3.0})
+	_, err = softmax4.Forward(input2)
+	require.NoError(t, err)
+	emptyGrad := tensor.Empty(tensor.DTFP32)
+	_, err = softmax4.Backward(emptyGrad)
+	assert.Error(t, err, "Backward should error on empty gradOutput")
 }
 
 // TestDropout tests the Dropout layer
@@ -336,7 +504,8 @@ func TestDropout(t *testing.T) {
 		err := dropout.Init([]int{})
 		require.Error(t, err, "Init with empty shape should error")
 
-		input := tensor.FromFloat32(tensor.NewShape(), []float32{})
+		// Use Empty() to create a truly empty tensor (nil shape and data)
+		input := tensor.Empty(tensor.DTFP32)
 		_, err = dropout.Forward(input)
 		require.Error(t, err, "Forward with empty input should error")
 	})
@@ -350,4 +519,38 @@ func TestDropout(t *testing.T) {
 		_, err = dropout.Backward(gradOutput)
 		require.Error(t, err, "Backward without Forward should error")
 	})
+}
+
+// TestDropout_EdgeCases tests edge cases for Dropout layer
+func TestDropout_EdgeCases(t *testing.T) {
+	// Test nil receiver
+	var nilDropout *Dropout
+	_, err := nilDropout.Forward(tensor.FromFloat32(tensor.NewShape(4), []float32{1.0, 2.0, 3.0, 4.0}))
+	assert.Error(t, err, "Forward should error on nil receiver")
+
+	// Test empty input
+	dropout := NewDropout("dropout")
+	err = dropout.Init([]int{4})
+	require.NoError(t, err)
+
+	emptyInput := tensor.Empty(tensor.DTFP32)
+	_, err = dropout.Forward(emptyInput)
+	assert.Error(t, err, "Forward should error on empty input")
+
+	// Test Forward without Init
+	dropout2 := NewDropout("dropout2")
+	input := tensor.FromFloat32(tensor.NewShape(4), []float32{1.0, 2.0, 3.0, 4.0})
+	_, err = dropout2.Forward(input)
+	assert.Error(t, err, "Forward should error if Init not called")
+
+	// Test Backward with empty gradOutput
+	dropout3 := NewDropout("dropout3")
+	err = dropout3.Init([]int{4})
+	require.NoError(t, err)
+	input2 := tensor.FromFloat32(tensor.NewShape(4), []float32{1.0, 2.0, 3.0, 4.0})
+	_, err = dropout3.Forward(input2)
+	require.NoError(t, err)
+	emptyGrad := tensor.Empty(tensor.DTFP32)
+	_, err = dropout3.Backward(emptyGrad)
+	assert.Error(t, err, "Backward should error on empty gradOutput")
 }

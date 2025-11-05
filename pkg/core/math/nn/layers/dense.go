@@ -103,7 +103,7 @@ func (d *Dense) Forward(input types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("Dense.Forward: nil layer")
 	}
 
-	if input == nil || input.Shape() == nil || input.Shape().Rank() == 0 {
+	if tensor.IsNil(input) {
 		return nil, fmt.Errorf("Dense.Forward: empty input")
 	}
 
@@ -112,7 +112,7 @@ func (d *Dense) Forward(input types.Tensor) (types.Tensor, error) {
 
 	// Get pre-allocated output tensor
 	output := d.Base.Output()
-	if output == nil || output.Shape() == nil || output.Shape().Rank() == 0 {
+	if tensor.IsNil(output) {
 		return nil, fmt.Errorf("Dense.Forward: output not allocated, must call Init first")
 	}
 
@@ -198,17 +198,17 @@ func (d *Dense) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("Dense.Backward: nil layer")
 	}
 
-	if gradOutput == nil || gradOutput.Shape() == nil || gradOutput.Shape().Rank() == 0 {
+	if tensor.IsNil(gradOutput) {
 		return nil, fmt.Errorf("Dense.Backward: empty gradOutput")
 	}
 
 	input := d.Base.Input()
-	if input == nil || input.Shape() == nil || input.Shape().Rank() == 0 {
+	if tensor.IsNil(input) {
 		return nil, fmt.Errorf("Dense.Backward: input not stored, must call Forward first")
 	}
 
 	output := d.Base.Output()
-	if output == nil || output.Shape() == nil || output.Shape().Rank() == 0 {
+	if tensor.IsNil(output) {
 		return nil, fmt.Errorf("Dense.Backward: output not stored, must call Forward first")
 	}
 
@@ -226,7 +226,7 @@ func (d *Dense) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 		weightParam, ok := d.Base.Parameter(ParamWeights)
 		weightDtype := weightParam.Data.DataType()
 		if d.Base.CanLearn() && ok && weightParam.RequiresGrad {
-			if weightParam.Grad == nil || weightParam.Grad.Shape().Rank() == 0 {
+			if tensor.IsNil(weightParam.Grad) {
 				weightParam.Grad = tensor.New(weightDtype, tensor.NewShape(d.inFeatures, d.outFeatures))
 			}
 			// Use MatMulTransposed: gradWeight = input^T @ gradOutput
@@ -241,7 +241,7 @@ func (d *Dense) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 		if d.hasBias {
 			biasParam, ok := d.Base.Parameter(ParamBiases)
 			if d.Base.CanLearn() && ok && biasParam.RequiresGrad {
-				if biasParam.Grad == nil || biasParam.Grad.Shape().Rank() == 0 {
+				if tensor.IsNil(biasParam.Grad) {
 					biasParam.Grad = tensor.New(weightDtype, tensor.NewShape(d.outFeatures))
 				}
 				// Copy gradOutput directly (same shape)
@@ -276,7 +276,7 @@ func (d *Dense) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 		weightParam, ok := d.Base.Parameter(ParamWeights)
 		weightDtype := weightParam.Data.DataType()
 		if d.Base.CanLearn() && ok && weightParam.RequiresGrad {
-			if weightParam.Grad == nil || weightParam.Grad.Shape().Rank() == 0 {
+			if tensor.IsNil(weightParam.Grad) {
 				weightParam.Grad = tensor.New(weightDtype, tensor.NewShape(d.inFeatures, d.outFeatures))
 			}
 			// input^T @ gradOutput: transpose input, no transpose on gradOutput
@@ -290,7 +290,7 @@ func (d *Dense) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 		if d.hasBias {
 			biasParam, ok := d.Base.Parameter(ParamBiases)
 			if d.Base.CanLearn() && ok && biasParam.RequiresGrad {
-				if biasParam.Grad == nil || biasParam.Grad.Shape().Rank() == 0 {
+				if tensor.IsNil(biasParam.Grad) {
 					biasParam.Grad = tensor.New(weightDtype, tensor.NewShape(d.outFeatures))
 				}
 				// Sum gradOutput over batch dimension using tensor operations
@@ -337,11 +337,11 @@ func (d *Dense) OutputShape(inputShape []int) ([]int, error) {
 func (d *Dense) Weight() types.Tensor {
 	if d == nil {
 		// Return empty tensor instead of nil to match test expectations
-		return tensor.New(tensor.DTFP32, tensor.NewShape())
+		return tensor.Empty(tensor.DTFP32)
 	}
 	weightParam := d.Base.Weights()
-	if weightParam.Data == nil || weightParam.Data.Shape() == nil || weightParam.Data.Shape().Rank() == 0 {
-		return tensor.New(tensor.DTFP32, tensor.NewShape())
+	if tensor.IsNil(weightParam.Data) {
+		return tensor.Empty(tensor.DTFP32)
 	}
 	return weightParam.Data
 }
@@ -350,11 +350,11 @@ func (d *Dense) Weight() types.Tensor {
 func (d *Dense) Bias() types.Tensor {
 	if d == nil || !d.hasBias {
 		// Return empty tensor instead of nil to match test expectations
-		return tensor.New(tensor.DTFP32, tensor.NewShape())
+		return tensor.Empty(tensor.DTFP32)
 	}
 	biasParam := d.Base.Biases()
-	if biasParam.Data == nil || biasParam.Data.Shape() == nil || biasParam.Data.Shape().Rank() == 0 {
-		return tensor.New(tensor.DTFP32, tensor.NewShape())
+	if tensor.IsNil(biasParam.Data) {
+		return tensor.Empty(tensor.DTFP32)
 	}
 	return biasParam.Data
 }
@@ -364,7 +364,7 @@ func (d *Dense) SetWeight(weight types.Tensor) error {
 	if d == nil {
 		return fmt.Errorf("Dense.SetWeight: nil layer")
 	}
-	if weight == nil || weight.Shape() == nil || weight.Shape().Rank() == 0 {
+	if tensor.IsNil(weight) {
 		return fmt.Errorf("Dense.SetWeight: empty weight tensor")
 	}
 	// Validate shape matches expected
@@ -404,7 +404,7 @@ func (d *Dense) SetBias(bias types.Tensor) error {
 	if !d.hasBias {
 		return fmt.Errorf("Dense.SetBias: layer has no bias")
 	}
-	if bias == nil || bias.Shape() == nil || bias.Shape().Rank() == 0 {
+	if tensor.IsNil(bias) {
 		return fmt.Errorf("Dense.SetBias: empty bias tensor")
 	}
 	// Validate shape matches expected

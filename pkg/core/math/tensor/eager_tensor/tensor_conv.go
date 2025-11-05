@@ -128,7 +128,7 @@ func (t Tensor) Conv2DTo(kernel, bias types.Tensor, dst types.Tensor, stride, pa
 		return result
 	}
 
-	if !t.Shape().Equal(result.Shape()) || !t.Shape().Equal(dst.Shape()) {
+	if !result.Shape().Equal(dst.Shape()) {
 		panic(fmt.Sprintf("tensor.Conv2DTo: destination shape mismatch: %v vs %v", dst.Shape(), result.Shape()))
 	}
 

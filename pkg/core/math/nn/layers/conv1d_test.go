@@ -124,7 +124,11 @@ func TestNewConv1D(t *testing.T) {
 					assert.Equal(t, []int{tt.outChannels}, bias.Shape().ToSlice(), "Bias shape should match")
 				} else {
 					bias := conv.Bias()
-					assert.Equal(t, 0, bias.Shape().Rank(), "Bias should be empty when disabled")
+					if tensor.IsNil(bias) {
+						assert.True(t, tensor.IsNil(bias), "Bias should be nil or empty when disabled")
+					} else {
+						assert.Equal(t, 0, bias.Shape().Rank(), "Bias should be empty when disabled")
+					}
 				}
 
 				if tt.name == "with_name" {

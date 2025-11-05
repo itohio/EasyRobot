@@ -21,7 +21,7 @@ func (p *Parameter) ZeroGrad() {
 		return
 	}
 
-	if p.Grad == nil || p.Grad.Shape() == nil || p.Grad.Shape().Rank() == 0 {
+	if tensor.IsNil(p.Grad) {
 		// Lazy allocation: create gradient tensor with same shape as data
 		// Use data's data type instead of hardcoding DTFP32
 		p.Grad = tensor.New(p.Data.DataType(), p.Data.Shape())

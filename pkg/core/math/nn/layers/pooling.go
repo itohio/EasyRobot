@@ -96,7 +96,7 @@ func (m *MaxPool2D) Forward(input types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("MaxPool2D.Forward: nil layer")
 	}
 
-	if input.Shape().Rank() == 0 {
+	if tensor.IsNil(input) {
 		return nil, fmt.Errorf("MaxPool2D.Forward: empty input")
 	}
 
@@ -105,7 +105,7 @@ func (m *MaxPool2D) Forward(input types.Tensor) (types.Tensor, error) {
 
 	// Get pre-allocated output tensor
 	output := m.Base.Output()
-	if output.Shape().Rank() == 0 {
+	if tensor.IsNil(output) {
 		return nil, fmt.Errorf("MaxPool2D.Forward: output not allocated, must call Init first")
 	}
 
@@ -133,17 +133,17 @@ func (m *MaxPool2D) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("MaxPool2D.Backward: nil layer")
 	}
 
-	if gradOutput.Shape().Rank() == 0 {
+	if tensor.IsNil(gradOutput) {
 		return nil, fmt.Errorf("MaxPool2D.Backward: empty gradOutput")
 	}
 
 	input := m.Base.Input()
-	if input.Shape().Rank() == 0 {
+	if tensor.IsNil(input) {
 		return nil, fmt.Errorf("MaxPool2D.Backward: input not stored, must call Forward first")
 	}
 
 	output := m.Base.Output()
-	if output.Shape().Rank() == 0 {
+	if tensor.IsNil(output) {
 		return nil, fmt.Errorf("MaxPool2D.Backward: output not stored, must call Forward first")
 	}
 
@@ -349,7 +349,7 @@ func (a *AvgPool2D) Forward(input types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("AvgPool2D.Forward: nil layer")
 	}
 
-	if input.Shape().Rank() == 0 {
+	if tensor.IsNil(input) {
 		return nil, fmt.Errorf("AvgPool2D.Forward: empty input")
 	}
 
@@ -358,7 +358,7 @@ func (a *AvgPool2D) Forward(input types.Tensor) (types.Tensor, error) {
 
 	// Get pre-allocated output tensor
 	output := a.Base.Output()
-	if output.Shape().Rank() == 0 {
+	if tensor.IsNil(output) {
 		return nil, fmt.Errorf("AvgPool2D.Forward: output not allocated, must call Init first")
 	}
 
@@ -383,17 +383,17 @@ func (a *AvgPool2D) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("AvgPool2D.Backward: nil layer")
 	}
 
-	if gradOutput.Shape().Rank() == 0 {
+	if tensor.IsNil(gradOutput) {
 		return nil, fmt.Errorf("AvgPool2D.Backward: empty gradOutput")
 	}
 
 	input := a.Base.Input()
-	if input.Shape().Rank() == 0 {
+	if tensor.IsNil(input) {
 		return nil, fmt.Errorf("AvgPool2D.Backward: input not stored, must call Forward first")
 	}
 
 	output := a.Base.Output()
-	if output.Shape().Rank() == 0 {
+	if tensor.IsNil(output) {
 		return nil, fmt.Errorf("AvgPool2D.Backward: output not stored, must call Forward first")
 	}
 
@@ -470,7 +470,7 @@ func (g *GlobalAvgPool2D) Forward(input types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("GlobalAvgPool2D.Forward: nil layer")
 	}
 
-	if input.Shape().Rank() == 0 {
+	if tensor.IsNil(input) {
 		return nil, fmt.Errorf("GlobalAvgPool2D.Forward: empty input")
 	}
 
@@ -479,7 +479,7 @@ func (g *GlobalAvgPool2D) Forward(input types.Tensor) (types.Tensor, error) {
 
 	// Get pre-allocated output tensor
 	output := g.Base.Output()
-	if output.Shape().Rank() == 0 {
+	if tensor.IsNil(output) {
 		return nil, fmt.Errorf("GlobalAvgPool2D.Forward: output not allocated, must call Init first")
 	}
 
@@ -504,17 +504,17 @@ func (g *GlobalAvgPool2D) Backward(gradOutput types.Tensor) (types.Tensor, error
 		return nil, fmt.Errorf("GlobalAvgPool2D.Backward: nil layer")
 	}
 
-	if gradOutput.Shape().Rank() == 0 {
+	if tensor.IsNil(gradOutput) {
 		return nil, fmt.Errorf("GlobalAvgPool2D.Backward: empty gradOutput")
 	}
 
 	input := g.Base.Input()
-	if input.Shape().Rank() == 0 {
+	if tensor.IsNil(input) {
 		return nil, fmt.Errorf("GlobalAvgPool2D.Backward: input not stored, must call Forward first")
 	}
 
 	output := g.Base.Output()
-	if output.Shape().Rank() == 0 {
+	if tensor.IsNil(output) {
 		return nil, fmt.Errorf("GlobalAvgPool2D.Backward: output not stored, must call Forward first")
 	}
 
