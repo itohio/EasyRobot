@@ -37,8 +37,8 @@ func Empty(dt types.DataType) Tensor {
 	return Tensor{}
 }
 
-// EmptyAs creates an empty tensor with the same data type as the given tensor.
-func EmptyAs(t types.Tensor) Tensor {
+// EmptyLike creates an empty tensor with the same data type as the given tensor.
+func EmptyLike(t types.Tensor) Tensor {
 	return Tensor{data: types.MakeTensorData(t.DataType(), 0)}
 }
 

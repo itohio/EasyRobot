@@ -233,6 +233,7 @@ func (m *Sequential) ZeroGrad() {
 
 // Update updates all parameters using optimizer.
 // Use TrainStep from learn package for full training loop.
+// Delegates to each layer's Update method.
 func (m *Sequential) Update(optimizer types.Optimizer) error {
 	if m == nil {
 		return fmt.Errorf("model.Update: nil model")
@@ -242,32 +243,16 @@ func (m *Sequential) Update(optimizer types.Optimizer) error {
 		return fmt.Errorf("model.Update: nil optimizer")
 	}
 
-	// Note: Update() works with parameters as values.
-	// For optimizers that need pointer access, we create temporary pointers.
-	// After optimization, parameters are written back to layers via SetParam.
-	for _, layer := range m.layers {
-		type paramsGetter interface {
-			ParametersByIndex() map[types.ParamIndex]types.Parameter
-		}
-		type paramSetter interface {
-			SetParam(types.ParamIndex, types.Parameter)
+	// Delegate to each layer's Update method
+	// Each layer (which embeds Base) will handle its own parameter updates
+	for i, layer := range m.layers {
+		type updater interface {
+			Update(optimizer types.Optimizer) error
 		}
 
-		if pg, ok := layer.(paramsGetter); ok {
-			params := pg.ParametersByIndex()
-			if len(params) > 0 {
-				for _, param := range params {
-					// Optimizer.Update takes parameter by value
-					// Since Parameter.Data and Parameter.Grad are tensor references,
-					// the optimizer can modify the underlying tensor data in place
-					if param.RequiresGrad && param.Grad != nil && !tensor.IsNil(param.Grad) {
-						if err := optimizer.Update(param); err != nil {
-							return fmt.Errorf("model.Update: failed to update parameter: %w", err)
-						}
-						// Note: No need to call SetParam since the optimizer modifies
-						// the underlying tensor data through the reference
-					}
-				}
+		if u, ok := layer.(updater); ok {
+			if err := u.Update(optimizer); err != nil {
+				return fmt.Errorf("model.Update: layer %d failed: %w", i, err)
 			}
 		}
 	}

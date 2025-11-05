@@ -2,6 +2,7 @@ package layers
 
 import (
 	"fmt"
+	"math/rand"
 	"sync/atomic"
 
 	"github.com/itohio/EasyRobot/pkg/core/math/nn/types"
@@ -23,6 +24,7 @@ type Base struct {
 	canLearn bool
 	biasHint *bool           // Optional bias hint for layers that support it
 	dataType tensor.DataType // Data type for layer tensors (default: DTFP32)
+	rng      *rand.Rand      // Random number generator for initialization (optional)
 	input    tensorTypes.Tensor
 	output   tensorTypes.Tensor
 	grad     tensorTypes.Tensor                   // Gradient tensor for backward pass
@@ -40,7 +42,8 @@ func NewBase(prefix string) Base {
 		name:     "",
 		prefix:   prefix,
 		canLearn: false,
-		dataType: tensor.DTFP32, // Default to FP32
+		dataType: tensor.DTFP32,                          // Default to FP32
+		rng:      rand.New(rand.NewSource(rand.Int63())), // Default RNG
 		params:   make(map[types.ParamIndex]types.Parameter),
 		layerIdx: layerIdx,
 	}
@@ -90,6 +93,17 @@ func UseBias(hasBias bool) Option {
 func WithDataType(dt tensor.DataType) Option {
 	return func(b *Base) {
 		b.dataType = dt
+	}
+}
+
+// WithRNG returns an Option that sets the random number generator for the layer.
+// This RNG is used for initializing parameters with XavierUniform.
+// If not set, a default RNG is created.
+func WithRNG(rng *rand.Rand) Option {
+	return func(b *Base) {
+		if rng != nil {
+			b.rng = rng
+		}
 	}
 }
 
@@ -345,8 +359,11 @@ func (b *Base) ZeroGrad() {
 		return
 	}
 	for idx := range b.params {
+		// Get parameter value and call ZeroGrad (which has pointer receiver)
 		param := b.params[idx]
-		param.ZeroGrad()
+		paramPtr := &param
+		paramPtr.ZeroGrad()
+		// ZeroGrad modifies the gradient tensor in place, so we need to store it back
 		b.params[idx] = param
 	}
 }
@@ -415,16 +432,21 @@ func (b *Base) Update(optimizer types.Optimizer) error {
 	}
 
 	// Update each parameter using the optimizer
-	for idx, param := range b.params {
-		if param.RequiresGrad && param.Grad != nil && !tensor.IsNil(param.Grad) {
+	// We iterate over indices to ensure we can modify the map entries
+	for idx := range b.params {
+		param := b.params[idx]
+		if !tensor.IsNil(param.Data) && param.RequiresGrad && !tensor.IsNil(param.Grad) {
 			// Optimizer.Update takes parameter by value
-			// Since Parameter.Data and Parameter.Grad are tensor references,
-			// the optimizer can modify the underlying tensor data in place
+			// Since tensor operations like Sub() modify in place,
+			// the optimizer modifies param.Data directly through the tensor reference
+			// The tensor data is modified in place, so the parameter in b.params[idx].Data is already updated
+			// We don't need to reassign because param.Data is a reference to the tensor
 			if err := optimizer.Update(param); err != nil {
 				return fmt.Errorf("Base.Update: failed to update parameter %v: %w", idx, err)
 			}
-			// Note: No need to update b.params[idx] since the optimizer modifies
-			// the underlying tensor data through the reference
+			// Note: param.Data is a tensor interface reference, and Sub() modifies the underlying data
+			// Since we're working with the parameter from b.params[idx], the tensor reference is already
+			// the same one stored in the map, so the update is reflected automatically
 		}
 	}
 

@@ -325,7 +325,7 @@ func (c *Calibrator) computePercentileRange() (float64, float64) {
 // Returns the quantized tensor (stored as uint8 values) and the quantization parameters.
 func QuantizeTensor(t tensor.Tensor, params *QuantizationParams, scheme QuantizationScheme, bits int) (tensor.Tensor, *QuantizationParams, error) {
 	if len(t.Shape()) == 0 {
-		return tensor.EmptyAs(t), nil, fmt.Errorf("quantization: empty tensor")
+		return tensor.EmptyLike(t), nil, fmt.Errorf("quantization: empty tensor")
 	}
 
 	// Compute quantized range
@@ -361,7 +361,7 @@ func QuantizeTensor(t tensor.Tensor, params *QuantizationParams, scheme Quantiza
 // DequantizeTensor converts a quantized tensor back to float32.
 func DequantizeTensor(quantized tensor.Tensor, params *QuantizationParams) (tensor.Tensor, error) {
 	if len(quantized.Shape()) == 0 {
-		return tensor.EmptyAs(quantized), fmt.Errorf("quantization: empty quantized tensor")
+		return tensor.EmptyLike(quantized), fmt.Errorf("quantization: empty quantized tensor")
 	}
 
 	// Allocate dequantized tensor

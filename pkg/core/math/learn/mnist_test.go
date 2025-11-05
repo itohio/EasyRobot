@@ -89,7 +89,7 @@ func TestMNIST(t *testing.T) {
 	}
 
 	// Initialize model
-	if err := model.Init(tensor.NewShape(1, 28, 28)); err != nil {
+	if err := model.Init(tensor.NewShape(1, 1, 28, 28)); err != nil {
 		t.Fatalf("Failed to initialize model: %v", err)
 	}
 

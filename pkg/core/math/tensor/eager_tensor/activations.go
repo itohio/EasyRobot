@@ -164,8 +164,8 @@ func (t Tensor) DropoutForward(mask types.Tensor) types.Tensor {
 // DropoutMask generates a dropout mask tensor with the given dropout rate.
 // mask[i] = 0.0 if dropped (with probability p), scale otherwise.
 // scale = 1.0 / (1.0 - p) for inverted dropout.
-// rng is typed as interface{} to avoid importing math/rand in interface; actual type is *rand.Rand.
-func (t Tensor) DropoutMask(p float64, scale float64, rng interface{}) types.Tensor {
+// rng: random number generator implementing types.RNG interface
+func (t Tensor) DropoutMask(p float64, scale float64, rng types.RNG) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
@@ -175,25 +175,16 @@ func (t Tensor) DropoutMask(p float64, scale float64, rng interface{}) types.Ten
 		return t
 	}
 
-	// Type assert to *rand.Rand for random generation
-	randRng, ok := rng.(interface {
-		Float32() float32
-	})
-	if !ok {
-		panic("tensor.DropoutMask: rng must implement Float32() method")
+	if rng == nil {
+		panic("tensor.DropoutMask: rng must not be nil")
 	}
 
-	// For now, use direct data access since random generation is layer-specific
-	// In the future, this could be moved to fp32 package with a random interface
 	// Convert float64 parameters to float32 for internal computation
-	p32 := float32(p)
-	scale32 := float32(scale)
-	data := types.GetTensorData[[]float32](t)
-	for i := range data {
-		if randRng.Float32() < p32 {
-			data[i] = 0.0
+	for elem := range t.Elements() {
+		if rng.Float64() < p {
+			elem.Set(0.0)
 		} else {
-			data[i] = scale32
+			elem.Set(scale)
 		}
 	}
 

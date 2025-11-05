@@ -42,42 +42,21 @@ func NewDense(inFeatures, outFeatures int, opts ...Option) (*Dense, error) {
 	// Parse options first to get data type (if specified) and any pre-set weights/biases
 	dense.Base.ParseOptions(opts...)
 
-	// Set defaults: initialize weight and bias parameters using layer's data type
-	// Only create if not already set by options (e.g., WithWeights, WithBiases)
+	// Initialize parameters using Parameter.Init()
+	// This will use provided weights/biases if set via options, or initialize with XavierUniform
 	dtype := dense.Base.DataType()
-	_, hasWeights := dense.Base.Parameter(types.ParamWeights)
-	if !hasWeights {
-		weightData := tensor.New(dtype, tensor.NewShape(inFeatures, outFeatures))
-		dense.Base.SetParam(types.ParamWeights, types.Parameter{
-			Data:         weightData,
-			RequiresGrad: dense.Base.CanLearn(),
-		})
-	}
 
-	// Bias data type must match weight data type
-	_, hasBiases := dense.Base.Parameter(types.ParamBiases)
-	if !hasBiases {
-		biasData := tensor.New(dtype, tensor.NewShape(outFeatures))
-		dense.Base.SetParam(types.ParamBiases, types.Parameter{
-			Data:         biasData,
-			RequiresGrad: dense.Base.CanLearn(),
-		})
-	}
+	// Initialize weights parameter
+	dense.Base.initParam(types.ParamWeights)
+	weightParam, _ := dense.Base.Parameter(types.ParamWeights)
+	weightParam.Init(dtype, tensor.NewShape(inFeatures, outFeatures), types.ParamWeights, inFeatures, outFeatures, dense.Base.rng, dense.Base.CanLearn())
+	dense.Base.SetParam(types.ParamWeights, weightParam)
 
-	// Update RequiresGrad on parameters after options are parsed
-	// This ensures WithCanLearn option takes effect
-	if dense.Base.CanLearn() {
-		weightParam, ok := dense.Base.Parameter(types.ParamWeights)
-		if ok {
-			weightParam.RequiresGrad = true
-			dense.Base.SetParam(types.ParamWeights, weightParam)
-		}
-		biasParam, ok := dense.Base.Parameter(types.ParamBiases)
-		if ok {
-			biasParam.RequiresGrad = true
-			dense.Base.SetParam(types.ParamBiases, biasParam)
-		}
-	}
+	// Initialize bias parameter
+	dense.Base.initParam(types.ParamBiases)
+	biasParam, _ := dense.Base.Parameter(types.ParamBiases)
+	biasParam.Init(dtype, tensor.NewShape(outFeatures), types.ParamBiases, 1, outFeatures, dense.Base.rng, dense.Base.CanLearn())
+	dense.Base.SetParam(types.ParamBiases, biasParam)
 
 	return dense, nil
 }
@@ -142,13 +121,13 @@ func (d *Dense) Forward(input tensorTypes.Tensor) (tensorTypes.Tensor, error) {
 	// Compute linear transformation directly into output tensor
 	// output = input @ weight + bias
 	weightParam, ok := d.Base.Parameter(types.ParamWeights)
-	if !ok {
+	if !ok || tensor.IsNil(weightParam.Data) {
 		return nil, fmt.Errorf("Dense.Forward: weight parameter not initialized")
 	}
 	var biasParam tensorTypes.Tensor
 	if d.hasBias {
 		biasParamVal, ok := d.Base.Parameter(types.ParamBiases)
-		if ok {
+		if ok && !tensor.IsNil(biasParamVal.Data) {
 			biasParam = biasParamVal.Data
 		}
 	}
@@ -247,7 +226,7 @@ func (d *Dense) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tensor, err
 		// gradWeight = input^T @ gradOutput
 		// Only compute gradients if CanLearn is true
 		weightParam, ok := d.Base.Parameter(types.ParamWeights)
-		if !ok || weightParam.Data == nil {
+		if !ok || tensor.IsNil(weightParam.Data) {
 			return nil, fmt.Errorf("Dense.Backward: weight parameter not initialized")
 		}
 		weightDtype := weightParam.Data.DataType()
@@ -267,11 +246,11 @@ func (d *Dense) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tensor, err
 		// Only compute gradients if CanLearn is true
 		if d.hasBias {
 			biasParam, ok := d.Base.Parameter(types.ParamBiases)
-			if d.Base.CanLearn() && ok && biasParam.RequiresGrad {
+			if d.Base.CanLearn() && ok && !tensor.IsNil(biasParam.Data) && biasParam.RequiresGrad {
 				if tensor.IsNil(biasParam.Grad) {
 					biasParam.Grad = tensor.New(weightDtype, tensor.NewShape(d.outFeatures))
 				}
-				// Copy gradOutput directly (same shape)
+				// Copy gradOutput directly (same shape) - Copy replaces the destination
 				biasParam.Grad.Copy(gradOutput)
 				d.Base.SetParam(types.ParamBiases, biasParam)
 			}
@@ -301,8 +280,11 @@ func (d *Dense) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tensor, err
 		// Use MatMulTransposed: gradWeight = input^T @ gradOutput (accumulated over batch)
 		// Only compute gradients if CanLearn is true
 		weightParam, ok := d.Base.Parameter(types.ParamWeights)
+		if !ok || tensor.IsNil(weightParam.Data) {
+			return nil, fmt.Errorf("Dense.Backward: weight parameter not initialized")
+		}
 		weightDtype := weightParam.Data.DataType()
-		if d.Base.CanLearn() && ok && weightParam.RequiresGrad {
+		if d.Base.CanLearn() && weightParam.RequiresGrad {
 			if tensor.IsNil(weightParam.Grad) {
 				weightParam.Grad = tensor.New(weightDtype, tensor.NewShape(d.inFeatures, d.outFeatures))
 			}
@@ -316,7 +298,7 @@ func (d *Dense) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tensor, err
 		// Only compute gradients if CanLearn is true
 		if d.hasBias {
 			biasParam, ok := d.Base.Parameter(types.ParamBiases)
-			if d.Base.CanLearn() && ok && biasParam.RequiresGrad {
+			if d.Base.CanLearn() && ok && !tensor.IsNil(biasParam.Data) && biasParam.RequiresGrad {
 				if tensor.IsNil(biasParam.Grad) {
 					biasParam.Grad = tensor.New(weightDtype, tensor.NewShape(d.outFeatures))
 				}
@@ -404,7 +386,7 @@ func (d *Dense) SetWeight(weight tensorTypes.Tensor) error {
 			weightShape, d.inFeatures, d.outFeatures)
 	}
 	weightParam, ok := d.Base.Parameter(types.ParamWeights)
-	if !ok {
+	if !ok || tensor.IsNil(weightParam.Data) {
 		return fmt.Errorf("Dense.SetWeight: weight parameter not initialized")
 	}
 	// Preserve Grad when setting new weight, but update RequiresGrad based on CanLearn
@@ -415,10 +397,10 @@ func (d *Dense) SetWeight(weight tensorTypes.Tensor) error {
 	// Ensure bias data type matches weight data type
 	if d.hasBias {
 		biasParam, ok := d.Base.Parameter(types.ParamBiases)
-		if ok && biasParam.Data != nil && biasParam.Data.Shape() != nil && biasParam.Data.DataType() != weight.DataType() {
-			// Recreate bias with matching data type
+		if ok && !tensor.IsNil(biasParam.Data) && biasParam.Data.Shape() != nil && biasParam.Data.DataType() != weight.DataType() {
+			// Recreate bias with matching data type and Xavier initialization
 			biasShape := biasParam.Data.Shape()
-			biasParam.Data = tensor.New(weight.DataType(), biasShape)
+			biasParam.Data = tensor.XavierUniform(weight.DataType(), biasShape, 1, d.outFeatures, d.Base.rng)
 			d.Base.SetParam(types.ParamBiases, biasParam)
 		}
 	}
@@ -444,18 +426,15 @@ func (d *Dense) SetBias(bias tensorTypes.Tensor) error {
 	}
 	// Validate bias data type matches weight data type
 	weightParam, ok := d.Base.Parameter(types.ParamWeights)
-	if !ok {
+	if !ok || tensor.IsNil(weightParam.Data) {
 		return fmt.Errorf("Dense.SetBias: weight parameter not initialized")
-	}
-	if weightParam.Data == nil {
-		return fmt.Errorf("Dense.SetBias: weight data not initialized")
 	}
 	if bias.DataType() != weightParam.Data.DataType() {
 		return fmt.Errorf("Dense.SetBias: bias data type %v doesn't match weight data type %v",
 			bias.DataType(), weightParam.Data.DataType())
 	}
 	biasParam, ok := d.Base.Parameter(types.ParamBiases)
-	if !ok {
+	if !ok || tensor.IsNil(biasParam.Data) {
 		return fmt.Errorf("Dense.SetBias: bias parameter not initialized")
 	}
 	// Preserve Grad when setting new bias, but update RequiresGrad based on CanLearn

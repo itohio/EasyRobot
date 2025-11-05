@@ -1,5 +1,12 @@
 package types
 
+// RNG interface for random number generation used in tensor operations.
+// This interface is implemented by types like *rand.Rand from math/rand.
+type RNG interface {
+	Float64() float64
+	NormFloat64() float64
+}
+
 // Element interface represents a single tensor element with Get and Set methods.
 type Element interface {
 	Get() float64
@@ -377,9 +384,9 @@ type Tensor interface {
 	// DropoutMask creates a dropout mask with given probability and scale.
 	// p: probability of keeping an element (0.0 to 1.0)
 	// scale: scaling factor (typically 1.0 / (1.0 - p))
-	// rng: random number generator (interface{} to avoid importing math/rand; actual type is *rand.Rand)
+	// rng: random number generator implementing RNG interface (e.g., *rand.Rand)
 	// Returns a new tensor with the mask.
-	DropoutMask(p, scale float64, rng interface{}) Tensor
+	DropoutMask(p, scale float64, rng RNG) Tensor
 }
 
 // Helper functions that would accept Tensor interface:
@@ -391,9 +398,8 @@ type Tensor interface {
 // With interface-based design, they should return Tensor interface.
 // However, they would need to create concrete EagerTensor instances internally.
 //
-// NOTE on DropoutMask: The rng parameter is typed as interface{} to avoid
-// importing "math/rand" in this interface definition. In actual implementation,
-// it should be *rand.Rand. This interface is for documentation purposes only.
+// NOTE on DropoutMask: The rng parameter uses the RNG interface defined in this package,
+// which is implemented by types like *rand.Rand from math/rand.
 
 // Must is a helper function that panics if the error is not nil.
 // It is used to simplify error handling in the code.

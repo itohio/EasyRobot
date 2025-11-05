@@ -47,15 +47,7 @@ func TrainStep(layer types.Layer, optimizer types.Optimizer, lossFn nn.LossFunct
 	}
 
 	// Backward pass (layers use their stored inputs/outputs)
-	// Zero gradients for all parameters
-	params := layer.Parameters()
-	if params != nil {
-		for _, param := range params {
-			// ZeroGrad requires a pointer receiver, so we need to get a pointer
-			paramPtr := &param
-			paramPtr.ZeroGrad()
-		}
-	}
+	layer.ZeroGrad()
 	_, err = layer.Backward(gradOutput)
 	if err != nil {
 		return 0, fmt.Errorf("TrainStep: backward pass failed: %w", err)

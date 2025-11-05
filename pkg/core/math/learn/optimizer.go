@@ -51,9 +51,11 @@ func (s *SGD) Update(param types.Parameter) error {
 	// SGD update: data = data - lr * grad
 	// Use tensor operations: scale gradient by learning rate, then subtract from data
 	// Since param is by value but Data is a reference, we modify the underlying tensor
+	// Note: Sub() modifies in place and returns self, so we can just call it
 	scaledGrad := param.Grad.Clone()
 	scaledGrad = scaledGrad.Scale(s.lr)
-	param.Data = param.Data.Sub(scaledGrad)
+	// Sub() modifies param.Data in place, so the tensor data is updated
+	param.Data.Sub(scaledGrad)
 
 	return nil
 }
@@ -196,7 +198,8 @@ func (a *Adam) Update(param types.Parameter) error {
 	update := mHat.Clone()
 	update = update.Div(sqrtVHat)
 	update = update.Scale(a.lr)
-	param.Data = param.Data.Sub(update)
+	// Sub() modifies param.Data in place, so the tensor data is updated
+	param.Data.Sub(update)
 
 	return nil
 }

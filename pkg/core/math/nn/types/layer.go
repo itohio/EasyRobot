@@ -13,6 +13,11 @@ type Layer interface {
 	// Should be called after the layer is added to a model and input shape is known.
 	Init(inputShape tensor.Shape) error
 
+	// Parameter returns a trainable parameter by index.
+	// For Sequential models, returns parameter from the corresponding sublayer.
+	// For individual layers, returns parameter for the given index in that layer.
+	Parameter(idx ParamIndex) (Parameter, bool)
+
 	// Parameters returns all trainable parameters.
 	// For Sequential models, returns parameters from all layers.
 	// For individual layers, returns parameters from that layer.
@@ -51,4 +56,5 @@ type Layer interface {
 	// Update updates all parameters using the given optimizer.
 	// This allows both models and layers to be trained.
 	Update(optimizer Optimizer) error
+	ZeroGrad()
 }

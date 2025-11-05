@@ -37,9 +37,9 @@ func Empty(dt types.DataType) eager_tensor.Tensor {
 	return eager_tensor.Empty(dt)
 }
 
-// Empty creates an empty tensor of given data type.
-func EmptyAs(t types.Tensor) eager_tensor.Tensor {
-	return eager_tensor.EmptyAs(t)
+// EmptyLike creates an empty tensor with the same data type as the given tensor.
+func EmptyLike(t types.Tensor) eager_tensor.Tensor {
+	return eager_tensor.EmptyLike(t)
 }
 
 func FromArray[T types.DataElementType](shape types.Shape, data []T) eager_tensor.Tensor {
@@ -71,4 +71,40 @@ func FullLike(t types.Tensor, value float32) types.Tensor {
 // Returns true if t is nil, or if t.Shape() is nil, or if t.Empty() is true.
 func IsNil(t types.Tensor) bool {
 	return eager_tensor.IsNil(t)
+}
+
+// RNG interface for random number generation used in initialization.
+// This extends types.RNG with NormFloat64() for normal distribution initialization.
+type RNG = types.RNG
+
+// XavierUniform creates a new tensor with the given data type and shape,
+// and initializes it with Xavier/Glorot uniform initialization.
+// For weights, limit = sqrt(6 / (fanIn + fanOut))
+// Returns a new initialized tensor.
+func XavierUniform(dtype DataType, shape Shape, fanIn, fanOut int, rng RNG) Tensor {
+	return eager_tensor.XavierUniform(dtype, shape, fanIn, fanOut, rng)
+}
+
+// XavierNormal creates a new tensor with the given data type and shape,
+// and initializes it with Xavier/Glorot normal initialization.
+// For weights, stddev = sqrt(2 / (fanIn + fanOut))
+// Returns a new initialized tensor.
+func XavierNormal(dtype DataType, shape Shape, fanIn, fanOut int, rng RNG) Tensor {
+	return eager_tensor.XavierNormal(dtype, shape, fanIn, fanOut, rng)
+}
+
+// XavierUniformLike creates a new tensor with the same data type and shape as the reference tensor,
+// and initializes it with Xavier/Glorot uniform initialization.
+// For weights, limit = sqrt(6 / (fanIn + fanOut))
+// Returns a new initialized tensor.
+func XavierUniformLike(ref Tensor, fanIn, fanOut int, rng RNG) Tensor {
+	return eager_tensor.XavierUniformLike(ref, fanIn, fanOut, rng)
+}
+
+// XavierNormalLike creates a new tensor with the same data type and shape as the reference tensor,
+// and initializes it with Xavier/Glorot normal initialization.
+// For weights, stddev = sqrt(2 / (fanIn + fanOut))
+// Returns a new initialized tensor.
+func XavierNormalLike(ref Tensor, fanIn, fanOut int, rng RNG) Tensor {
+	return eager_tensor.XavierNormalLike(ref, fanIn, fanOut, rng)
 }
