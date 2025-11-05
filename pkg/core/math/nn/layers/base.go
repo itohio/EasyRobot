@@ -31,7 +31,8 @@ type Base struct {
 	nameSet  bool // Whether name was explicitly set
 	prefix   string
 	canLearn bool
-	biasHint *bool // Optional bias hint for layers that support it
+	biasHint *bool           // Optional bias hint for layers that support it
+	dataType tensor.DataType // Data type for layer tensors (default: DTFP32)
 	input    types.Tensor
 	output   types.Tensor
 	grad     types.Tensor             // Gradient tensor for backward pass
@@ -49,6 +50,7 @@ func NewBase(prefix string) Base {
 		name:     "",
 		prefix:   prefix,
 		canLearn: false,
+		dataType: tensor.DTFP32, // Default to FP32
 		params:   make(map[ParamIndex]Parameter),
 		layerIdx: layerIdx,
 	}
@@ -89,6 +91,15 @@ func WithCanLearn(canLearn bool) Option {
 func UseBias(hasBias bool) Option {
 	return func(b *Base) {
 		b.biasHint = &hasBias
+	}
+}
+
+// WithDataType returns an Option that sets the data type for the layer.
+// This data type will be used for creating weights, biases, and intermediate tensors.
+// Default is DTFP32.
+func WithDataType(dt tensor.DataType) Option {
+	return func(b *Base) {
+		b.dataType = dt
 	}
 }
 
@@ -211,6 +222,14 @@ func (b *Base) SetCanLearn(canLearn bool) {
 	b.canLearn = canLearn
 }
 
+// DataType returns the data type for this layer.
+func (b *Base) DataType() tensor.DataType {
+	if b == nil {
+		return tensor.DTFP32
+	}
+	return b.dataType
+}
+
 // Input returns the input tensor from the last Forward pass.
 func (b *Base) Input() types.Tensor {
 	if b == nil {
@@ -260,19 +279,21 @@ func (b *Base) setGrad(grad types.Tensor) {
 }
 
 // AllocOutput allocates the output tensor with the given shape and size.
+// Uses the layer's data type (from Base.DataType()).
 func (b *Base) AllocOutput(shape []int, size int) {
 	if b == nil {
 		return
 	}
-	b.output = tensor.FromFloat32(tensor.NewShape(shape...), make([]float32, size))
+	b.output = tensor.New(b.dataType, tensor.NewShape(shape...))
 }
 
 // AllocGrad allocates the gradient tensor with the given shape and size.
+// Uses the layer's data type (from Base.DataType()).
 func (b *Base) AllocGrad(shape []int, size int) {
 	if b == nil {
 		return
 	}
-	b.grad = tensor.FromFloat32(tensor.NewShape(shape...), make([]float32, size))
+	b.grad = tensor.New(b.dataType, tensor.NewShape(shape...))
 }
 
 // Helper method for layers to store input during Forward.

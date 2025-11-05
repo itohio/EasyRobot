@@ -38,23 +38,38 @@ func NewDense(inFeatures, outFeatures int, opts ...Option) (*Dense, error) {
 		hasBias:     true, // Always create bias by default
 	}
 
-	// Set defaults first: initialize weight and bias parameters
-	// Default to FP32, but can be overridden by options
-	weightData := tensor.New(tensor.DTFP32, tensor.NewShape(inFeatures, outFeatures))
+	// Parse options first to get data type (if specified)
+	dense.Base.ParseOptions(opts...)
+
+	// Set defaults: initialize weight and bias parameters using layer's data type
+	dtype := dense.Base.DataType()
+	weightData := tensor.New(dtype, tensor.NewShape(inFeatures, outFeatures))
 	dense.Base.SetParam(ParamWeights, Parameter{
 		Data:         weightData,
 		RequiresGrad: dense.Base.CanLearn(),
 	})
 
 	// Bias data type must match weight data type
-	biasData := tensor.New(weightData.DataType(), tensor.NewShape(outFeatures))
+	biasData := tensor.New(dtype, tensor.NewShape(outFeatures))
 	dense.Base.SetParam(ParamBiases, Parameter{
 		Data:         biasData,
 		RequiresGrad: dense.Base.CanLearn(),
 	})
 
-	// Parse options after defaults are set - options can override defaults
-	dense.Base.ParseOptions(opts...)
+	// Update RequiresGrad on parameters after options are parsed
+	// This ensures WithCanLearn option takes effect
+	if dense.Base.CanLearn() {
+		weightParam, ok := dense.Base.Parameter(ParamWeights)
+		if ok {
+			weightParam.RequiresGrad = true
+			dense.Base.SetParam(ParamWeights, weightParam)
+		}
+		biasParam, ok := dense.Base.Parameter(ParamBiases)
+		if ok {
+			biasParam.RequiresGrad = true
+			dense.Base.SetParam(ParamBiases, biasParam)
+		}
+	}
 
 	return dense, nil
 }

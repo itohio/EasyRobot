@@ -14,12 +14,12 @@ type Optimizer interface {
 }
 
 // Model represents a neural network model composed of layers.
+// Model embeds layers.Base and implements the Layer interface, allowing models to be used as layers.
 type Model struct {
+	layers.Base
 	layers     []Layer
 	layerNames map[string]int // Map from layer name to index
 	inputShape []int
-	Input      tensor.Tensor // Input tensor (set by user)
-	Output     tensor.Tensor // Output tensor (set after Forward)
 }
 
 // GetLayer returns the layer at the given index.
@@ -101,8 +101,8 @@ func (m *Model) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 		return nil, fmt.Errorf("model.Forward: input shape %v does not match expected shape %v", inputShape, m.inputShape)
 	}
 
-	// Set model input
-	m.Input = input
+	// Store input in Base
+	m.Base.StoreInput(input)
 
 	// Forward pass through all layers
 	// Reuse output tensors: each layer computes into its output tensor,
@@ -123,25 +123,26 @@ func (m *Model) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 		current = output
 	}
 
-	// Set model output
-	m.Output = current
+	// Store output in Base
+	m.Base.StoreOutput(current)
 
 	return current, nil
 }
 
 // Backward computes backward pass through all layers in reverse order.
 // Layers use their stored inputs/outputs from Forward pass.
-func (m *Model) Backward(gradOutput tensor.Tensor) error {
+func (m *Model) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 	if m == nil {
-		return fmt.Errorf("model.Backward: nil model")
+		return nil, fmt.Errorf("model.Backward: nil model")
 	}
 
 	if gradOutput.Shape().Rank() == 0 {
-		return fmt.Errorf("model.Backward: empty gradOutput")
+		return nil, fmt.Errorf("model.Backward: empty gradOutput")
 	}
 
-	if m.Output.Shape().Rank() == 0 {
-		return fmt.Errorf("model.Backward: model.Output is empty, must call Forward first")
+	output := m.Base.Output()
+	if output == nil || output.Shape().Rank() == 0 {
+		return nil, fmt.Errorf("model.Backward: model.Output is empty, must call Forward first")
 	}
 
 	// Backward pass through layers in reverse order
@@ -149,18 +150,21 @@ func (m *Model) Backward(gradOutput tensor.Tensor) error {
 	for i := len(m.layers) - 1; i >= 0; i-- {
 		layer := m.layers[i]
 		if layer == nil {
-			return fmt.Errorf("model.Backward: nil layer at index %d", i)
+			return nil, fmt.Errorf("model.Backward: nil layer at index %d", i)
 		}
 
 		gradInput, err := layer.Backward(currentGrad)
 		if err != nil {
-			return fmt.Errorf("model.Backward: layer %d failed: %w", i, err)
+			return nil, fmt.Errorf("model.Backward: layer %d failed: %w", i, err)
 		}
 
 		currentGrad = gradInput
 	}
 
-	return nil
+	// Store gradient in Base
+	m.Base.StoreGrad(currentGrad)
+
+	return currentGrad, nil
 }
 
 // Parameters returns all trainable parameters from all layers.
@@ -256,4 +260,77 @@ func (m *Model) Update(optimizer Optimizer) error {
 	}
 
 	return nil
+}
+
+// Name returns the name of the model (from Base).
+func (m *Model) Name() string {
+	if m == nil {
+		return ""
+	}
+	return m.Base.Name()
+}
+
+// CanLearn returns whether the model can learn (from Base).
+func (m *Model) CanLearn() bool {
+	if m == nil {
+		return false
+	}
+	return m.Base.CanLearn()
+}
+
+// SetCanLearn sets whether the model can learn (from Base).
+func (m *Model) SetCanLearn(canLearn bool) {
+	if m == nil {
+		return
+	}
+	m.Base.SetCanLearn(canLearn)
+}
+
+// Input returns the input tensor from the last Forward pass (from Base).
+func (m *Model) Input() tensor.Tensor {
+	if m == nil {
+		return nil
+	}
+	return m.Base.Input()
+}
+
+// Output returns the output tensor from the last Forward pass (from Base).
+func (m *Model) Output() tensor.Tensor {
+	if m == nil {
+		return nil
+	}
+	return m.Base.Output()
+}
+
+// OutputShape returns the output shape for given input shape.
+// Computes the output shape by propagating through all layers.
+func (m *Model) OutputShape(inputShape []int) ([]int, error) {
+	if m == nil {
+		return nil, fmt.Errorf("model.OutputShape: nil model")
+	}
+
+	if len(inputShape) == 0 {
+		return nil, fmt.Errorf("model.OutputShape: empty input shape")
+	}
+
+	// Validate input shape matches model's expected input shape
+	if !shapesEqual(inputShape, m.inputShape) {
+		return nil, fmt.Errorf("model.OutputShape: input shape %v does not match model input shape %v", inputShape, m.inputShape)
+	}
+
+	// Propagate shape through all layers
+	currentShape := inputShape
+	for i, layer := range m.layers {
+		if layer == nil {
+			return nil, fmt.Errorf("model.OutputShape: nil layer at index %d", i)
+		}
+
+		outputShape, err := layer.OutputShape(currentShape)
+		if err != nil {
+			return nil, fmt.Errorf("model.OutputShape: layer %d (%s) output shape failed: %w", i, layer.Name(), err)
+		}
+		currentShape = outputShape
+	}
+
+	return currentShape, nil
 }

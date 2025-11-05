@@ -46,7 +46,7 @@ func TrainStep(model *nn.Model, optimizer nn.Optimizer, lossFn nn.LossFunction, 
 
 	// Backward pass (layers use their stored inputs/outputs)
 	model.ZeroGrad()
-	err = model.Backward(gradOutput)
+	_, err = model.Backward(gradOutput)
 	if err != nil {
 		return 0, fmt.Errorf("TrainStep: backward pass failed: %w", err)
 	}

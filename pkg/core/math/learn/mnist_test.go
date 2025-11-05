@@ -74,7 +74,7 @@ func TestMNIST(t *testing.T) {
 	// Note: CategoricalCrossEntropy with fromLogits=true will apply softmax internally
 	// So we don't need an explicit softmax layer
 
-	model, err := nn.NewModelBuilder([]int{1, 1, 28, 28}).
+	model, err := nn.NewSequentialModelBuilder([]int{1, 1, 28, 28}).
 		AddLayer(conv1).
 		AddLayer(relu1).
 		AddLayer(conv2).

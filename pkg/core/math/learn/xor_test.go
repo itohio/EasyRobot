@@ -48,7 +48,7 @@ func TestXOR(t *testing.T) {
 
 	sigmoid := layers.NewSigmoid("sigmoid")
 
-	model, err := nn.NewModelBuilder([]int{2}).
+	model, err := nn.NewSequentialModelBuilder([]int{2}).
 		AddLayer(hiddenLayer).
 		AddLayer(relu).
 		AddLayer(outputLayer).

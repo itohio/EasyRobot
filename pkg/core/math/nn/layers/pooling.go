@@ -164,7 +164,8 @@ func (m *MaxPool2D) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 	outWidth := outputShape[3]
 
 	// Initialize gradient input with zeros
-	gradInput := tensor.New(tensor.DTFP32, tensor.NewShape(batchSize, channels, inHeight, inWidth))
+	// Use input's data type for input gradient (for correctness in backward pass)
+	gradInput := tensor.New(input.DataType(), tensor.NewShape(batchSize, channels, inHeight, inWidth))
 
 	// For each output position, route gradient back to input positions that produced the max
 	for b := 0; b < batchSize; b++ {
@@ -403,7 +404,8 @@ func (a *AvgPool2D) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 	}
 
 	// For inference-only, we don't compute gradients
-	gradInput := tensor.New(tensor.DTFP32, gradOutput.Shape())
+	// Use gradOutput's data type for input gradient (for correctness in backward pass)
+	gradInput := tensor.New(gradOutput.DataType(), gradOutput.Shape())
 
 	a.Base.StoreGrad(gradInput)
 	return gradInput, nil
@@ -524,7 +526,8 @@ func (g *GlobalAvgPool2D) Backward(gradOutput types.Tensor) (types.Tensor, error
 	}
 
 	// For inference-only, we don't compute gradients
-	gradInput := tensor.New(tensor.DTFP32, gradOutput.Shape())
+	// Use gradOutput's data type for input gradient (for correctness in backward pass)
+	gradInput := tensor.New(gradOutput.DataType(), gradOutput.Shape())
 
 	g.Base.StoreGrad(gradInput)
 	return gradInput, nil

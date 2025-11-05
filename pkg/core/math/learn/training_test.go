@@ -16,7 +16,7 @@ func TestTrainStep_NilInputs(t *testing.T) {
 	// Create a simple model for testing
 	denseLayer, err := layers.NewDense(2, 1, layers.WithCanLearn(true))
 	require.NoError(t, err)
-	model, err := nn.NewModelBuilder([]int{2}).
+	model, err := nn.NewSequentialModelBuilder([]int{2}).
 		AddLayer(denseLayer).
 		AddLayer(layers.NewSigmoid("sigmoid")).
 		Build()
@@ -49,7 +49,7 @@ func TestTrainStep_EmptyTensors(t *testing.T) {
 	// Create a simple model for testing
 	denseLayer, err := layers.NewDense(2, 1, layers.WithCanLearn(true))
 	require.NoError(t, err)
-	model, err := nn.NewModelBuilder([]int{2}).
+	model, err := nn.NewSequentialModelBuilder([]int{2}).
 		AddLayer(denseLayer).
 		AddLayer(layers.NewSigmoid("sigmoid")).
 		Build()
@@ -78,7 +78,7 @@ func TestTrainStep_SimpleTraining(t *testing.T) {
 	// Create a simple linear model: y = wx + b
 	denseLayer, err := layers.NewDense(1, 1, layers.WithCanLearn(true))
 	require.NoError(t, err)
-	model, err := nn.NewModelBuilder([]int{1}).
+	model, err := nn.NewSequentialModelBuilder([]int{1}).
 		AddLayer(denseLayer).
 		Build()
 	require.NoError(t, err)
@@ -139,7 +139,7 @@ func TestTrainStep_MultipleSteps(t *testing.T) {
 	// Create a simple model
 	denseLayer, err := layers.NewDense(1, 1, layers.WithCanLearn(true))
 	require.NoError(t, err)
-	model, err := nn.NewModelBuilder([]int{1}).
+	model, err := nn.NewSequentialModelBuilder([]int{1}).
 		AddLayer(denseLayer).
 		Build()
 	require.NoError(t, err)

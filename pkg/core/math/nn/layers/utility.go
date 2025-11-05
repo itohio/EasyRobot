@@ -112,14 +112,16 @@ func (f *Flatten) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 	}
 
 	// Gradient is just reshaping back
-	gradInput := tensor.New(tensor.DTFP32, input.Shape())
+	// Use input's data type for input gradient (for correctness in backward pass)
+	gradInput := tensor.New(input.DataType(), input.Shape())
 
 	if gradOutput.Size() != gradInput.Size() {
 		return nil, fmt.Errorf("Flatten.Backward: gradOutput size %d doesn't match input size %d",
 			gradOutput.Size(), gradInput.Size())
 	}
-	// Copy data using optimized Tensor.Copy method
-	gradInput.Copy(gradOutput)
+	// Reshape gradOutput to match input shape, then copy
+	gradOutputReshaped := gradOutput.Reshape(input.Shape())
+	gradInput.Copy(gradOutputReshaped)
 
 	f.Base.StoreGrad(gradInput)
 	return gradInput, nil
@@ -258,7 +260,8 @@ func (r *Reshape) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 	}
 
 	// Gradient is just reshaping back to input shape
-	gradInput := tensor.New(tensor.DTFP32, input.Shape())
+	// Use input's data type for input gradient (for correctness in backward pass)
+	gradInput := tensor.New(input.DataType(), input.Shape())
 
 	if gradOutput.Size() != gradInput.Size() {
 		return nil, fmt.Errorf("Reshape.Backward: gradOutput size %d doesn't match input size %d",
@@ -410,7 +413,8 @@ func (u *Unsqueeze) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("Unsqueeze.Backward: input not stored, must call Forward first")
 	}
 
-	gradInput := tensor.New(tensor.DTFP32, input.Shape())
+	// Use input's data type for input gradient (for correctness in backward pass)
+	gradInput := tensor.New(input.DataType(), input.Shape())
 
 	if gradOutput.Size() != gradInput.Size() {
 		return nil, fmt.Errorf("Unsqueeze.Backward: gradOutput size %d doesn't match input size %d",
@@ -569,7 +573,8 @@ func (s *Squeeze) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("Squeeze.Backward: input not stored, must call Forward first")
 	}
 
-	gradInput := tensor.New(tensor.DTFP32, input.Shape())
+	// Use input's data type for input gradient (for correctness in backward pass)
+	gradInput := tensor.New(input.DataType(), input.Shape())
 
 	if gradOutput.Size() != gradInput.Size() {
 		return nil, fmt.Errorf("Squeeze.Backward: gradOutput size %d doesn't match input size %d",
@@ -700,7 +705,8 @@ func (t *Transpose) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("Transpose.Backward: transpose failed")
 	}
 
-	gradInput := tensor.New(tensor.DTFP32, input.Shape())
+	// Use input's data type for input gradient (for correctness in backward pass)
+	gradInput := tensor.New(input.DataType(), input.Shape())
 	// Copy transposed data using optimized Tensor.Copy method
 	gradInput.Copy(transposed)
 
@@ -897,7 +903,8 @@ func (p *Pad) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("Pad.Backward: input not stored, must call Forward first")
 	}
 
-	gradInput := tensor.New(tensor.DTFP32, input.Shape())
+	// Use input's data type for input gradient (for correctness in backward pass)
+	gradInput := tensor.New(input.DataType(), input.Shape())
 
 	// Extract gradient from padded region using tensor methods
 	inputStrides := computeStrides(input.Shape().ToSlice())
@@ -1216,7 +1223,8 @@ func (c *Concatenate) BackwardMulti(gradOutput types.Tensor) ([]types.Tensor, er
 	// Split gradient for each input
 	outputOffset := 0
 	for i, input := range c.inputs {
-		grads[i] = tensor.New(tensor.DTFP32, input.Shape())
+		// Use input's data type for input gradient (for correctness in backward pass)
+		grads[i] = tensor.New(input.DataType(), input.Shape())
 
 		inputStrides := computeStrides(input.Shape().ToSlice())
 		// Extract gradient slice for this input

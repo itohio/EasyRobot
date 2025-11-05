@@ -473,8 +473,9 @@ func (d *Dropout) Forward(input types.Tensor) (types.Tensor, error) {
 
 	if d.isTraining && d.p > 0 {
 		// Allocate or reuse mask tensor
+		// Use layer's data type for intermediate mask tensor
 		if tensor.IsNil(d.mask) || d.mask.Size() != inputSize {
-			d.mask = tensor.New(tensor.DTFP32, input.Shape())
+			d.mask = tensor.New(d.Base.DataType(), input.Shape())
 		}
 
 		// Generate mask using tensor method

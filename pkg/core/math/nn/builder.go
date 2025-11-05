@@ -2,52 +2,68 @@ package nn
 
 import (
 	"fmt"
+
+	"github.com/itohio/EasyRobot/pkg/core/math/nn/layers"
 )
 
-// ModelBuilder helps construct models by adding layers sequentially.
-type ModelBuilder struct {
+// SequentialModelBuilder helps construct models by adding layers sequentially.
+type SequentialModelBuilder struct {
 	layers     []Layer
 	inputShape []int
 }
 
-// NewModelBuilder creates a new model builder with the given input shape.
-func NewModelBuilder(inputShape []int) *ModelBuilder {
+// NewSequentialModelBuilder creates a new sequential model builder with the given input shape.
+func NewSequentialModelBuilder(inputShape []int) *SequentialModelBuilder {
 	if inputShape == nil {
 		return nil
 	}
 	// Validate input shape
 	for _, dim := range inputShape {
 		if dim <= 0 {
-			panic(fmt.Sprintf("ModelBuilder: input shape dimensions must be positive, got %v", inputShape))
+			panic(fmt.Sprintf("SequentialModelBuilder: input shape dimensions must be positive, got %v", inputShape))
 		}
 	}
-	return &ModelBuilder{
+	return &SequentialModelBuilder{
 		layers:     []Layer{},
 		inputShape: inputShape,
 	}
 }
 
 // AddLayer adds a layer to the model.
-func (b *ModelBuilder) AddLayer(layer Layer) *ModelBuilder {
+func (b *SequentialModelBuilder) AddLayer(layer Layer) *SequentialModelBuilder {
 	if b == nil {
 		return nil
 	}
 	if layer == nil {
-		panic("ModelBuilder.AddLayer: cannot add nil layer")
+		panic("SequentialModelBuilder.AddLayer: cannot add nil layer")
 	}
 	b.layers = append(b.layers, layer)
 	return b
 }
 
+// WithLayers adds multiple layers to the model as varargs.
+func (b *SequentialModelBuilder) WithLayers(layers ...Layer) *SequentialModelBuilder {
+	if b == nil {
+		return nil
+	}
+	for _, layer := range layers {
+		if layer == nil {
+			panic("SequentialModelBuilder.WithLayers: cannot add nil layer")
+		}
+		b.layers = append(b.layers, layer)
+	}
+	return b
+}
+
 // Build creates the Model from the builder.
 // Validates that all layer shapes are compatible.
-func (b *ModelBuilder) Build() (*Model, error) {
+func (b *SequentialModelBuilder) Build() (*Model, error) {
 	if b == nil {
-		return nil, fmt.Errorf("ModelBuilder.Build: nil builder")
+		return nil, fmt.Errorf("SequentialModelBuilder.Build: nil builder")
 	}
 
 	if len(b.layers) == 0 {
-		return nil, fmt.Errorf("ModelBuilder.Build: no layers added")
+		return nil, fmt.Errorf("SequentialModelBuilder.Build: no layers added")
 	}
 
 	// Validate layer shapes
@@ -55,7 +71,7 @@ func (b *ModelBuilder) Build() (*Model, error) {
 	for i, layer := range b.layers {
 		outputShape, err := layer.OutputShape(currentShape)
 		if err != nil {
-			return nil, fmt.Errorf("ModelBuilder.Build: layer %d shape validation failed: %w", i, err)
+			return nil, fmt.Errorf("SequentialModelBuilder.Build: layer %d shape validation failed: %w", i, err)
 		}
 		currentShape = outputShape
 	}
@@ -68,14 +84,18 @@ func (b *ModelBuilder) Build() (*Model, error) {
 			if name != "" {
 				// Check for duplicate names
 				if _, exists := layerNames[name]; exists {
-					return nil, fmt.Errorf("ModelBuilder.Build: duplicate layer name: %s", name)
+					return nil, fmt.Errorf("SequentialModelBuilder.Build: duplicate layer name: %s", name)
 				}
 				layerNames[name] = i
 			}
 		}
 	}
 
+	// Initialize Base for the model
+	base := layers.NewBase("model")
+
 	return &Model{
+		Base:       base,
 		layers:     b.layers,
 		layerNames: layerNames,
 		inputShape: b.inputShape,

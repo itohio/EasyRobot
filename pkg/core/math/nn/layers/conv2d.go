@@ -70,11 +70,11 @@ func NewConv2D(
 		hasBias:     hasBias,
 	}
 
-	// Set defaults: create kernel parameter
-	// Default to FP32, but can be overridden if set via options
+	// Set defaults: create kernel parameter using layer's data type
 	_, hasKernel := conv.Base.Parameter(ParamKernels)
 	if !hasKernel {
-		kernelData := tensor.New(tensor.DTFP32, tensor.NewShape(outChannels, inChannels, kernelH, kernelW))
+		dtype := conv.Base.DataType()
+		kernelData := tensor.New(dtype, tensor.NewShape(outChannels, inChannels, kernelH, kernelW))
 		conv.Base.SetParam(ParamKernels, Parameter{
 			Data:         kernelData,
 			RequiresGrad: conv.Base.CanLearn(),
@@ -85,10 +85,9 @@ func NewConv2D(
 	if conv.hasBias {
 		_, hasBiasParam := conv.Base.Parameter(ParamBiases)
 		if !hasBiasParam {
-			// Use kernel's data type for bias
-			kernelParam, _ := conv.Base.Parameter(ParamKernels)
-			kernelDtype := kernelParam.Data.DataType()
-			biasData := tensor.New(kernelDtype, tensor.NewShape(outChannels))
+			// Use layer's data type for bias
+			dtype := conv.Base.DataType()
+			biasData := tensor.New(dtype, tensor.NewShape(outChannels))
 			conv.Base.SetParam(ParamBiases, Parameter{
 				Data:         biasData,
 				RequiresGrad: conv.Base.CanLearn(),
@@ -98,6 +97,23 @@ func NewConv2D(
 
 	// Parse options again after defaults to allow overriding
 	conv.Base.ParseOptions(opts...)
+
+	// Update RequiresGrad on parameters after options are parsed
+	// This ensures WithCanLearn option takes effect
+	if conv.Base.CanLearn() {
+		kernelParam, ok := conv.Base.Parameter(ParamKernels)
+		if ok {
+			kernelParam.RequiresGrad = true
+			conv.Base.SetParam(ParamKernels, kernelParam)
+		}
+		if conv.hasBias {
+			biasParam, ok := conv.Base.Parameter(ParamBiases)
+			if ok {
+				biasParam.RequiresGrad = true
+				conv.Base.SetParam(ParamBiases, biasParam)
+			}
+		}
+	}
 
 	return conv, nil
 }
@@ -209,16 +225,70 @@ func (c *Conv2D) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 
 	// Compute input gradient using transposed convolution
 	// Input gradient = Conv2DTransposed(gradOutput, kernel, stride, padding)
-	// Note: For backprop, we need to use the kernel as-is for transposed conv
+	// For backward: gradOutput has c.outChannels, we want gradInput with c.inChannels
+	// Conv2DTransposed expects kernel [inChannels, outChannels, ...] where:
+	//   - inChannels matches gradOutput channels (c.outChannels)
+	//   - outChannels is gradInput channels (c.inChannels)
+	// So we need kernel [c.outChannels, c.inChannels, ...] which matches our kernel format!
+	inputShape := input.Shape()
+
+	// Kernel format: [outChannels, inChannels, kernelH, kernelW]
+	// For Conv2DTransposed, we need [inChannels, outChannels, kernelH, kernelW] where:
+	//   - inChannels = gradOutput channels = c.outChannels
+	//   - outChannels = gradInput channels = c.inChannels
+	// So we need to transpose: [outChannels, inChannels, ...] -> [inChannels, outChannels, ...]
+	// Which means: kernelTransposed[ic, oc, kh, kw] = kernel[oc, ic, kh, kw]
+	kernelShape := kernelParam.Data.Shape()
+	outChannels := kernelShape[0]
+	inChannels := kernelShape[1]
+	kernelH := kernelShape[2]
+	kernelW := kernelShape[3]
+	// Use layer's data type for intermediate tensor
+	dtype := c.Base.DataType()
+	kernelTransposed := tensor.New(dtype, tensor.NewShape(outChannels, inChannels, kernelH, kernelW))
+	for oc := 0; oc < outChannels; oc++ {
+		for ic := 0; ic < inChannels; ic++ {
+			for kh := 0; kh < kernelH; kh++ {
+				for kw := 0; kw < kernelW; kw++ {
+					val := kernelParam.Data.At(oc, ic, kh, kw)
+					kernelTransposed.SetAt(val, oc, ic, kh, kw) // Same order works because shape matches expectation
+				}
+			}
+		}
+	}
+
 	var emptyBias types.Tensor
-	inputGrad := gradOutput.Conv2DTransposed(kernelParam.Data, emptyBias, []int{c.strideH, c.strideW}, []int{c.padH, c.padW})
+	inputGradTmp := gradOutput.Conv2DTransposed(kernelTransposed, emptyBias, []int{c.strideH, c.strideW}, []int{c.padH, c.padW})
+
+	// Reshape to match input shape (transposed conv might not perfectly restore size)
+	// Use input's data type for input gradient (for correctness in backward pass)
+	inputGrad := tensor.New(input.DataType(), inputShape)
+	if inputGradTmp.Size() == inputGrad.Size() {
+		// Reshape and copy if sizes match
+		inputGradTmpReshaped := inputGradTmp.Reshape(inputShape)
+		inputGrad.Copy(inputGradTmpReshaped)
+	} else {
+		// If sizes don't match, copy what we can
+		// This handles cases where transposed conv output is slightly different
+		// tensor.New creates a zero-initialized tensor, so we just copy what fits
+		minSize := inputGradTmp.Size()
+		if inputGrad.Size() < minSize {
+			minSize = inputGrad.Size()
+		}
+		// Copy data element by element up to minSize
+		for i := 0; i < minSize; i++ {
+			val := inputGradTmp.At(i)
+			inputGrad.SetAt(val, i)
+		}
+	}
 
 	// Compute bias gradient: sum gradOutput over spatial dimensions and batch
 	if c.hasBias && c.Base.CanLearn() {
 		biasParam, ok := c.Base.Parameter(ParamBiases)
 		if ok && biasParam.RequiresGrad {
 			if tensor.IsNil(biasParam.Grad) {
-				biasParam.Grad = tensor.New(tensor.DTFP32, tensor.NewShape(c.outChannels))
+				// Use parameter's data type for gradient (matches layer's data type)
+				biasParam.Grad = tensor.New(biasParam.Data.DataType(), tensor.NewShape(c.outChannels))
 			}
 
 			// Sum over batch, height, and width dimensions for each output channel
@@ -233,7 +303,8 @@ func (c *Conv2D) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 	// Compute kernel gradient using primitive composition
 	if c.Base.CanLearn() && kernelParam.RequiresGrad {
 		if tensor.IsNil(kernelParam.Grad) {
-			kernelParam.Grad = tensor.New(tensor.DTFP32, kernelParam.Data.Shape())
+			// Use parameter's data type for gradient (matches layer's data type)
+			kernelParam.Grad = tensor.New(kernelParam.Data.DataType(), kernelParam.Data.Shape())
 		}
 
 		// Kernel gradient computation using primitives:

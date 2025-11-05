@@ -100,9 +100,11 @@ func (t Tensor) Softmax(dim int, dst types.Tensor) types.Tensor {
 
 	var tData []float32
 	var dstData []float32
+	var result types.Tensor
 	if dst == nil || dst.Empty() {
 		tData = types.GetTensorData[[]float32](t)
 		dstData = types.GetTensorData[[]float32](t)
+		result = t // Return input tensor when dst is nil
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.Softmax: destination shape mismatch")
@@ -110,6 +112,7 @@ func (t Tensor) Softmax(dim int, dst types.Tensor) types.Tensor {
 
 		tData = types.GetTensorData[[]float32](t)
 		dstData = types.GetTensorData[[]float32](dst)
+		result = dst
 	}
 
 	dstShape := t.shape
@@ -136,7 +139,7 @@ func (t Tensor) Softmax(dim int, dst types.Tensor) types.Tensor {
 		panic("tensor.Softmax: only 1D and 2D tensors supported")
 	}
 
-	return dst
+	return result
 }
 
 // DropoutForward applies dropout during training.
