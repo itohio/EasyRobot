@@ -369,36 +369,47 @@ func CopyWithStrides(srcData, dstData any, shape []int, srcStrides, dstStrides [
 }
 
 // copyWithStridesSameType copies data element-by-element with strides for same type.
+// Uses iterative approach instead of recursion for better performance.
 func copyWithStridesSameType[T any](dst, src []T, shape []int, dstStrides, srcStrides []int) {
-	// Helper to compute linear offset from multi-dimensional indices
-	computeOffset := func(indices []int, strides []int) int {
-		offset := 0
-		for i := range indices {
-			offset += indices[i] * strides[i]
-		}
-		return offset
+	ndims := len(shape)
+	if ndims == 0 {
+		return
 	}
 
-	// Recursive iteration over all elements
-	var iterate func(indices []int, dim int)
-	iterate = func(indices []int, dim int) {
-		if dim == len(shape) {
-			// Reached leaf - copy element
-			sIdx := computeOffset(indices, srcStrides)
-			dIdx := computeOffset(indices, dstStrides)
+	indices := make([]int, ndims)
+	dim := 0
+
+	for {
+		// Process current element if we've reached the leaf
+		if dim == ndims {
+			// Hot path: compute offsets and copy
+			sIdx := computeStrideOffset(indices, srcStrides)
+			dIdx := computeStrideOffset(indices, dstStrides)
 			dst[dIdx] = src[sIdx]
-			return
+
+			// Backtrack to previous dimension
+			dim--
+			if dim < 0 {
+				break
+			}
+			indices[dim]++
+			continue
 		}
 
-		// Iterate over current dimension
-		for i := 0; i < shape[dim]; i++ {
-			indices[dim] = i
-			iterate(indices, dim+1)
+		// Check if we've exhausted current dimension
+		if indices[dim] >= shape[dim] {
+			indices[dim] = 0
+			dim--
+			if dim < 0 {
+				break
+			}
+			indices[dim]++
+			continue
 		}
+
+		// Move to next dimension
+		dim++
 	}
-
-	indices := make([]int, len(shape))
-	iterate(indices, 0)
 }
 
 // copyWithStridesAndConversion copies data element-by-element with strides,
@@ -408,82 +419,102 @@ func copyWithStridesAndConversion(srcData, dstData any, shape []int, srcStrides,
 	switch dst := dstData.(type) {
 	case []int16:
 		// Check if source is larger (float32/float64) - needs clamping
-		switch srcData.(type) {
-		case []float32, []float64:
-			copyWithStridesToInt16(dst, srcData, shape, srcStrides, dstStrides)
-		default:
-			// int16->int16 or int8->int16: direct conversion, no clamping
-			copyWithStridesGeneric(dst, srcData, shape, srcStrides, dstStrides)
+		switch src := srcData.(type) {
+		case []float32:
+			clampToInt16Strided(dst, src, shape, srcStrides, dstStrides)
+		case []float64:
+			clampToInt16Strided(dst, src, shape, srcStrides, dstStrides)
+		case []int16:
+			// Same type: direct copy
+			copyWithStridesGeneric(dst, src, shape, srcStrides, dstStrides)
+		case []int8:
+			// Up-conversion: direct conversion
+			copyWithStridesGeneric(dst, src, shape, srcStrides, dstStrides)
 		}
 	case []int8:
 		// Check if source is larger (float32/float64/int16) - needs clamping
-		switch srcData.(type) {
-		case []float32, []float64, []int16:
-			copyWithStridesToInt8(dst, srcData, shape, srcStrides, dstStrides)
-		default:
-			// int8->int8: direct conversion, no clamping
-			copyWithStridesGeneric(dst, srcData, shape, srcStrides, dstStrides)
+		switch src := srcData.(type) {
+		case []float32:
+			clampToInt8Strided(dst, src, shape, srcStrides, dstStrides)
+		case []float64:
+			clampToInt8Strided(dst, src, shape, srcStrides, dstStrides)
+		case []int16:
+			clampToInt8Strided(dst, src, shape, srcStrides, dstStrides)
+		case []int8:
+			// Same type: direct copy
+			copyWithStridesGeneric(dst, src, shape, srcStrides, dstStrides)
 		}
-	default:
-		// For float32/float64: always direct conversion (up-conversion or same-type)
-		copyWithStridesGeneric(dst, srcData, shape, srcStrides, dstStrides)
+	case []float32:
+		// For float32: always direct conversion
+		switch src := srcData.(type) {
+		case []float32:
+			copyWithStridesGeneric(dst, src, shape, srcStrides, dstStrides)
+		case []float64:
+			copyWithStridesGeneric(dst, src, shape, srcStrides, dstStrides)
+		case []int16:
+			copyWithStridesGeneric(dst, src, shape, srcStrides, dstStrides)
+		case []int8:
+			copyWithStridesGeneric(dst, src, shape, srcStrides, dstStrides)
+		}
+	case []float64:
+		// For float64: always direct conversion
+		switch src := srcData.(type) {
+		case []float32:
+			copyWithStridesGeneric(dst, src, shape, srcStrides, dstStrides)
+		case []float64:
+			copyWithStridesGeneric(dst, src, shape, srcStrides, dstStrides)
+		case []int16:
+			copyWithStridesGeneric(dst, src, shape, srcStrides, dstStrides)
+		case []int8:
+			copyWithStridesGeneric(dst, src, shape, srcStrides, dstStrides)
+		}
 	}
 }
 
 // copyWithStridesGeneric copies with strides using direct conversion - no clamping needed.
 // Handles up-conversions and same-type conversions.
-func copyWithStridesGeneric(dstData, srcData any, shape []int, srcStrides, dstStrides []int) {
-	var iterate func(indices []int, dim int)
-	iterate = func(indices []int, dim int) {
-		if dim == len(shape) {
+// Generic over source and destination types to eliminate type switches in hot path.
+func copyWithStridesGeneric[T, U numeric](dst []T, src []U, shape []int, srcStrides, dstStrides []int) {
+	// Iterative approach using a stack to avoid recursion overhead
+	ndims := len(shape)
+	if ndims == 0 {
+		return
+	}
+
+	indices := make([]int, ndims)
+	dim := 0
+
+	for {
+		// Process current element if we've reached the leaf
+		if dim == ndims {
 			sIdx := computeStrideOffset(indices, srcStrides)
 			dIdx := computeStrideOffset(indices, dstStrides)
-			// Direct conversion based on destination type
-			switch dst := dstData.(type) {
-			case []float32:
-				switch src := srcData.(type) {
-				case []float32:
-					dst[dIdx] = src[sIdx]
-				case []float64:
-					dst[dIdx] = float32(src[sIdx])
-				case []int16:
-					dst[dIdx] = float32(src[sIdx])
-				case []int8:
-					dst[dIdx] = float32(src[sIdx])
-				}
-			case []float64:
-				switch src := srcData.(type) {
-				case []float32:
-					dst[dIdx] = float64(src[sIdx])
-				case []float64:
-					dst[dIdx] = src[sIdx]
-				case []int16:
-					dst[dIdx] = float64(src[sIdx])
-				case []int8:
-					dst[dIdx] = float64(src[sIdx])
-				}
-			case []int16:
-				switch src := srcData.(type) {
-				case []int16:
-					dst[dIdx] = src[sIdx]
-				case []int8:
-					dst[dIdx] = int16(src[sIdx]) // Up-conversion, no clamping
-				}
-			case []int8:
-				switch src := srcData.(type) {
-				case []int8:
-					dst[dIdx] = src[sIdx]
-				}
+			// Hot path: direct conversion, no type switches
+			dst[dIdx] = T(src[sIdx])
+
+			// Backtrack to previous dimension
+			dim--
+			if dim < 0 {
+				break
 			}
-			return
+			indices[dim]++
+			continue
 		}
-		for i := 0; i < shape[dim]; i++ {
-			indices[dim] = i
-			iterate(indices, dim+1)
+
+		// Check if we've exhausted current dimension
+		if indices[dim] >= shape[dim] {
+			indices[dim] = 0
+			dim--
+			if dim < 0 {
+				break
+			}
+			indices[dim]++
+			continue
 		}
+
+		// Move to next dimension
+		dim++
 	}
-	indices := make([]int, len(shape))
-	iterate(indices, 0)
 }
 
 // Helper to compute linear offset from multi-dimensional indices
@@ -495,58 +526,110 @@ func computeStrideOffset(indices []int, strides []int) int {
 	return offset
 }
 
-// copyWithStridesToInt16 copies with strides to int16 destination with clamping.
-func copyWithStridesToInt16(dst []int16, srcData any, shape []int, srcStrides, dstStrides []int) {
-	var iterate func(indices []int, dim int)
-	iterate = func(indices []int, dim int) {
-		if dim == len(shape) {
+// clampToInt8Strided implements the hot path for strided copying with clamping to int8.
+// The entire iteration is implemented inside this function to avoid function call overhead.
+// Uses iterative approach instead of recursion for better performance.
+// Generic over source types that need clamping (float32, float64, int16).
+func clampToInt8Strided[U clampableToInt8](dst []int8, src []U, shape []int, srcStrides, dstStrides []int) {
+	ndims := len(shape)
+	if ndims == 0 {
+		return
+	}
+
+	indices := make([]int, ndims)
+	dim := 0
+
+	for {
+		// Process current element if we've reached the leaf
+		if dim == ndims {
+			// Hot path: compute offsets and clamp
 			sIdx := computeStrideOffset(indices, srcStrides)
 			dIdx := computeStrideOffset(indices, dstStrides)
-			switch src := srcData.(type) {
-			case []float32:
-				dst[dIdx] = clampToInt16Value(src[sIdx])
-			case []float64:
-				dst[dIdx] = clampToInt16Value(src[sIdx])
-			case []int16:
-				dst[dIdx] = src[sIdx]
-			case []int8:
-				dst[dIdx] = int16(src[sIdx]) // Up-conversion, no clamping
+			val := src[sIdx]
+			valFloat := float64(val)
+			if valFloat > 127 {
+				dst[dIdx] = 127
+			} else if valFloat < -128 {
+				dst[dIdx] = -128
+			} else {
+				dst[dIdx] = int8(val)
 			}
-			return
+
+			// Backtrack to previous dimension
+			dim--
+			if dim < 0 {
+				break
+			}
+			indices[dim]++
+			continue
 		}
-		for i := 0; i < shape[dim]; i++ {
-			indices[dim] = i
-			iterate(indices, dim+1)
+
+		// Check if we've exhausted current dimension
+		if indices[dim] >= shape[dim] {
+			indices[dim] = 0
+			dim--
+			if dim < 0 {
+				break
+			}
+			indices[dim]++
+			continue
 		}
+
+		// Move to next dimension
+		dim++
 	}
-	indices := make([]int, len(shape))
-	iterate(indices, 0)
 }
 
-// copyWithStridesToInt8 copies with strides to int8 destination with clamping.
-func copyWithStridesToInt8(dst []int8, srcData any, shape []int, srcStrides, dstStrides []int) {
-	var iterate func(indices []int, dim int)
-	iterate = func(indices []int, dim int) {
-		if dim == len(shape) {
+// clampToInt16Strided implements the hot path for strided copying with clamping to int16.
+// The entire iteration is implemented inside this function to avoid function call overhead.
+// Uses iterative approach instead of recursion for better performance.
+// Generic over source types that need clamping (float32, float64).
+func clampToInt16Strided[U clampableToInt16](dst []int16, src []U, shape []int, srcStrides, dstStrides []int) {
+	ndims := len(shape)
+	if ndims == 0 {
+		return
+	}
+
+	indices := make([]int, ndims)
+	dim := 0
+
+	for {
+		// Process current element if we've reached the leaf
+		if dim == ndims {
+			// Hot path: compute offsets and clamp
 			sIdx := computeStrideOffset(indices, srcStrides)
 			dIdx := computeStrideOffset(indices, dstStrides)
-			switch src := srcData.(type) {
-			case []float32:
-				dst[dIdx] = clampToInt8Value(src[sIdx])
-			case []float64:
-				dst[dIdx] = clampToInt8Value(src[sIdx])
-			case []int16:
-				dst[dIdx] = clampToInt8Value(src[sIdx])
-			case []int8:
-				dst[dIdx] = src[sIdx]
+			val := src[sIdx]
+			valFloat := float64(val)
+			if valFloat > 32767 {
+				dst[dIdx] = 32767
+			} else if valFloat < -32768 {
+				dst[dIdx] = -32768
+			} else {
+				dst[dIdx] = int16(val)
 			}
-			return
+
+			// Backtrack to previous dimension
+			dim--
+			if dim < 0 {
+				break
+			}
+			indices[dim]++
+			continue
 		}
-		for i := 0; i < shape[dim]; i++ {
-			indices[dim] = i
-			iterate(indices, dim+1)
+
+		// Check if we've exhausted current dimension
+		if indices[dim] >= shape[dim] {
+			indices[dim] = 0
+			dim--
+			if dim < 0 {
+				break
+			}
+			indices[dim]++
+			continue
 		}
+
+		// Move to next dimension
+		dim++
 	}
-	indices := make([]int, len(shape))
-	iterate(indices, 0)
 }
