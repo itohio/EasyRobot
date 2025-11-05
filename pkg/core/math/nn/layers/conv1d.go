@@ -212,68 +212,11 @@ func (c *Conv1D) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tensor, er
 			kernelParam.Grad = tensor.New(kernelParam.Data.DataType(), kernelParam.Data.Shape())
 		}
 
-		// Conv1D kernel gradient computation using primitives
-		// For 1D conv: output[b,oc,ol] = sum_ic,k: input[b,ic,il+k] * kernel[oc,ic,k]
-		// Kernel gradient: dL/dkernel[oc,ic,k] = sum_b,ol: gradOutput[b,oc,ol] * input[b,ic,il+k]
-
-		// Reshape for matrix operations:
-		// input: [batch, inChannels, inLength] -> [batch*inChannels, inLength]
-		// gradOutput: [batch, outChannels, outLength] -> [batch*outChannels, outLength]
-
-		inputShape := input.Shape()
-		gradOutputShape := gradOutput.Shape()
-		batchSize := inputShape[0]
-		inChannels := inputShape[1]
-		outChannels := gradOutputShape[1]
-		inLength := inputShape[2]
-		outLength := gradOutputShape[2]
-
-		// Flatten batch and channel dimensions for matrix operations
-		inputFlat := input.Reshape([]int{batchSize * inChannels, inLength})
-		gradOutputFlat := gradOutput.Reshape([]int{batchSize * outChannels, outLength})
-
-		// Create toeplitz-like matrices for convolution
-		// For each position, we need to correlate gradOutput with input patches
-		// This is equivalent to: kernelGrad = gradOutput_patches^T @ input_patches
-
-		// Create the kernel gradient by computing correlations
-		// Result shape: [outChannels, inChannels * kernelLen]
-		// Use layer's data type for intermediate tensor
-		dtype := c.Base.DataType()
-		kernelGradFlat := tensor.New(dtype, tensor.NewShape(outChannels, inChannels*c.kernelLen))
-
-		// For each output channel and kernel position, compute the correlation
-		for oc := 0; oc < outChannels; oc++ {
-			for ic := 0; ic < inChannels; ic++ {
-				for k := 0; k < c.kernelLen; k++ {
-					sum := float32(0.0)
-
-					// Correlate gradOutput[oc] with input[ic] at each valid position
-					for b := 0; b < batchSize; b++ {
-						for ol := 0; ol < outLength; ol++ {
-							// Corresponding input position: ol*stride + k - pad
-							il := ol*c.stride + k - c.pad
-							if il >= 0 && il < inLength {
-								gradIdx := b*outChannels + oc
-								inputIdx := b*inChannels + ic
-								// At() returns float64, convert to float32 for arithmetic
-								sum += float32(gradOutputFlat.At(gradIdx, ol) * inputFlat.At(inputIdx, il))
-							}
-						}
-					}
-
-					// Set the value using SetAt with computed multi-dimensional indices
-					// For a 2D tensor [outChannels, inChannels*kernelLen], indices are [oc, ic*kernelLen + k]
-					// Convert float32 to float64 for SetAt interface
-					kernelGradFlat.SetAt(float64(sum), oc, ic*c.kernelLen+k)
-				}
-			}
-		}
-
-		// Reshape to final kernel shape: [outChannels, inChannels, kernelLen]
-		kernelGradReshaped := kernelGradFlat.Reshape(tensor.NewShape(c.outChannels, c.inChannels, c.kernelLen))
+		// Compute kernel gradient using Conv1DKernelGrad primitive
+		// This efficiently computes gradients without element-wise operations
+		kernelGrad := input.Conv1DKernelGrad(gradOutput, kernelParam.Data, c.stride, c.pad)
 		// Copy using optimized Tensor.Copy method
-		kernelParam.Grad.Copy(kernelGradReshaped)
+		kernelParam.Grad.Copy(kernelGrad)
 		c.Base.SetParam(types.ParamKernels, kernelParam)
 	}
 

@@ -212,29 +212,13 @@ func (c *Conv2D) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tensor, er
 	inputShape := input.Shape()
 
 	// Kernel format: [outChannels, inChannels, kernelH, kernelW]
-	// For Conv2DTransposed, we need [inChannels, outChannels, kernelH, kernelW] where:
-	//   - inChannels = gradOutput channels = c.outChannels
-	//   - outChannels = gradInput channels = c.inChannels
-	// So we need to transpose: [outChannels, inChannels, ...] -> [inChannels, outChannels, ...]
-	// Which means: kernelTransposed[ic, oc, kh, kw] = kernel[oc, ic, kh, kw]
-	kernelShape := kernelParam.Data.Shape()
-	outChannels := kernelShape[0]
-	inChannels := kernelShape[1]
-	kernelH := kernelShape[2]
-	kernelW := kernelShape[3]
-	// Use layer's data type for intermediate tensor
-	dtype := c.Base.DataType()
-	kernelTransposed := tensor.New(dtype, tensor.NewShape(outChannels, inChannels, kernelH, kernelW))
-	for oc := 0; oc < outChannels; oc++ {
-		for ic := 0; ic < inChannels; ic++ {
-			for kh := 0; kh < kernelH; kh++ {
-				for kw := 0; kw < kernelW; kw++ {
-					val := kernelParam.Data.At(oc, ic, kh, kw)
-					kernelTransposed.SetAt(val, oc, ic, kh, kw) // Same order works because shape matches expectation
-				}
-			}
-		}
-	}
+	// For Conv2DTransposed backward pass:
+	//   - Input is gradOutput: [batch, outChannels, ...]
+	//   - Output is gradInput: [batch, inChannels, ...]
+	//   - Conv2DTransposed expects kernel [inChannels, outChannels, ...] where inChannels matches input
+	//   - Since input has outChannels, we need kernel [outChannels, inChannels, ...]
+	//   - Our kernel format [outChannels, inChannels, ...] already matches, so no permutation needed!
+	kernelTransposed := kernelParam.Data
 
 	var emptyBias tensorTypes.Tensor
 	inputGradTmp := gradOutput.Conv2DTransposed(kernelTransposed, emptyBias, []int{c.strideH, c.strideW}, []int{c.padH, c.padW})
@@ -247,18 +231,11 @@ func (c *Conv2D) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tensor, er
 		inputGradTmpReshaped := inputGradTmp.Reshape(inputShape)
 		inputGrad.Copy(inputGradTmpReshaped)
 	} else {
-		// If sizes don't match, copy what we can
+		// If sizes don't match, reshape and copy what we can
 		// This handles cases where transposed conv output is slightly different
-		// tensor.New creates a zero-initialized tensor, so we just copy what fits
-		minSize := inputGradTmp.Size()
-		if inputGrad.Size() < minSize {
-			minSize = inputGrad.Size()
-		}
-		// Copy data element by element up to minSize
-		for i := 0; i < minSize; i++ {
-			val := inputGradTmp.At(i)
-			inputGrad.SetAt(val, i)
-		}
+		// Use Reshape to match input shape, then copy
+		inputGradTmpReshaped := inputGradTmp.Reshape(inputShape)
+		inputGrad.Copy(inputGradTmpReshaped)
 	}
 
 	// Compute bias gradient: sum gradOutput over spatial dimensions and batch

@@ -461,7 +461,7 @@ func TestCopyWithConversion(t *testing.T) {
 
 	t.Run("wrong dst type returns nil", func(t *testing.T) {
 		src := []float32{1.0, 2.0, 3.0}
-		dst := []int{1, 2, 3} // Wrong type (not []int8, []int16, []float32, []float64)
+		dst := []string{"a", "b", "c"} // Wrong type (not a numeric type)
 
 		result := CopyWithConversion(dst, src)
 

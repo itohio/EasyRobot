@@ -16,6 +16,7 @@ type MaxPool2D struct {
 	strideW int
 	padH    int
 	padW    int
+	indices types.Tensor // Stored indices from forward pass for efficient backward pass
 }
 
 // MaxPool2DOption represents an option for configuring a MaxPool2D layer.
@@ -90,7 +91,7 @@ func (m *MaxPool2D) Init(inputShape tensor.Shape) error {
 	return nil
 }
 
-// Forward computes the forward pass using tensor.MaxPool2D.
+// Forward computes the forward pass using tensor.MaxPool2DWithIndices.
 func (m *MaxPool2D) Forward(input types.Tensor) (types.Tensor, error) {
 	if m == nil {
 		return nil, fmt.Errorf("MaxPool2D.Forward: nil layer")
@@ -109,8 +110,8 @@ func (m *MaxPool2D) Forward(input types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("MaxPool2D.Forward: output not allocated, must call Init first")
 	}
 
-	// Compute max pooling using tensor.MaxPool2D
-	result := input.MaxPool2D([]int{m.kernelH, m.kernelW}, []int{m.strideH, m.strideW}, []int{m.padH, m.padW})
+	// Compute max pooling with indices using tensor.MaxPool2DWithIndices
+	result, indices := input.MaxPool2DWithIndices([]int{m.kernelH, m.kernelW}, []int{m.strideH, m.strideW}, []int{m.padH, m.padW})
 
 	// Copy result to pre-allocated output using optimized Tensor.Copy method
 	if result.Size() != output.Size() {
@@ -119,15 +120,16 @@ func (m *MaxPool2D) Forward(input types.Tensor) (types.Tensor, error) {
 	}
 	output.Copy(result)
 
+	// Store indices for backward pass
+	m.indices = indices
+
 	// Store output
 	m.Base.StoreOutput(output)
 	return output, nil
 }
 
-// Backward computes gradients w.r.t. input.
-// For each output position, routes the gradient back to the input positions
-// that produced the maximum value during forward pass.
-// If multiple positions had the same max value, the gradient is divided equally among them.
+// Backward computes gradients w.r.t. input using stored indices.
+// Uses MaxPool2DBackward for efficient gradient computation.
 func (m *MaxPool2D) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 	if m == nil {
 		return nil, fmt.Errorf("MaxPool2D.Backward: nil layer")
@@ -142,99 +144,12 @@ func (m *MaxPool2D) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("MaxPool2D.Backward: input not stored, must call Forward first")
 	}
 
-	output := m.Base.Output()
-	if tensor.IsNil(output) {
-		return nil, fmt.Errorf("MaxPool2D.Backward: output not stored, must call Forward first")
+	if tensor.IsNil(m.indices) {
+		return nil, fmt.Errorf("MaxPool2D.Backward: indices not stored, must call Forward first")
 	}
 
-	inputShape := input.Shape()
-	gradOutputShape := gradOutput.Shape()
-	outputShape := output.Shape()
-
-	// Validate shapes
-	if len(inputShape) != 4 || len(gradOutputShape) != 4 || len(outputShape) != 4 {
-		return nil, fmt.Errorf("MaxPool2D.Backward: expected 4D tensors, got input %v, gradOutput %v, output %v", inputShape, gradOutputShape, outputShape)
-	}
-
-	batchSize := inputShape[0]
-	channels := inputShape[1]
-	inHeight := inputShape[2]
-	inWidth := inputShape[3]
-	outHeight := outputShape[2]
-	outWidth := outputShape[3]
-
-	// Initialize gradient input with zeros
-	// Use input's data type for input gradient (for correctness in backward pass)
-	gradInput := tensor.New(input.DataType(), tensor.NewShape(batchSize, channels, inHeight, inWidth))
-
-	// For each output position, route gradient back to input positions that produced the max
-	for b := 0; b < batchSize; b++ {
-		for c := 0; c < channels; c++ {
-			for outH := 0; outH < outHeight; outH++ {
-				for outW := 0; outW < outWidth; outW++ {
-					// Calculate input window position
-					startH := outH*m.strideH - m.padH
-					startW := outW*m.strideW - m.padW
-
-					// Get output value (max value from forward pass) using At()
-					// At() returns float64, convert to float32 for comparison
-					maxVal := float32(output.At(b, c, outH, outW))
-
-					// Get gradient for this output position using At()
-					// At() returns float64, convert to float32 for arithmetic
-					gradVal := float32(gradOutput.At(b, c, outH, outW))
-
-					// Count how many input positions had the max value
-					maxCount := 0
-					for kh := 0; kh < m.kernelH; kh++ {
-						for kw := 0; kw < m.kernelW; kw++ {
-							inH := startH + kh
-							inW := startW + kw
-
-							if inH >= 0 && inH < inHeight && inW >= 0 && inW < inWidth {
-								// Use At() to get input value
-								// At() returns float64, convert to float32 for comparison
-								inputVal := float32(input.At(b, c, inH, inW))
-								// Use epsilon to handle floating point comparison
-								epsilon := float32(1e-6)
-								diff := inputVal - maxVal
-								if diff > -epsilon && diff < epsilon {
-									maxCount++
-								}
-							}
-						}
-					}
-
-					// Route gradient equally to all positions that had the max value
-					if maxCount > 0 {
-						gradPerPosition := gradVal / float32(maxCount)
-						for kh := 0; kh < m.kernelH; kh++ {
-							for kw := 0; kw < m.kernelW; kw++ {
-								inH := startH + kh
-								inW := startW + kw
-
-								if inH >= 0 && inH < inHeight && inW >= 0 && inW < inWidth {
-									// Get current gradient value using At()
-									// At() returns float64, convert to float32 for arithmetic
-									currentGrad := float32(gradInput.At(b, c, inH, inW))
-									// At() returns float64, convert to float32 for comparison
-									inputVal := float32(input.At(b, c, inH, inW))
-									// Use epsilon to handle floating point comparison
-									epsilon := float32(1e-6)
-									diff := inputVal - maxVal
-									if diff > -epsilon && diff < epsilon {
-										// Set gradient using SetAt()
-										// Convert float32 to float64 for SetAt interface
-										gradInput.SetAt(float64(currentGrad+gradPerPosition), b, c, inH, inW)
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	}
+	// Use MaxPool2DBackward with stored indices
+	gradInput := input.MaxPool2DBackward(gradOutput, m.indices, []int{m.kernelH, m.kernelW}, []int{m.strideH, m.strideW}, []int{m.padH, m.padW})
 
 	m.Base.StoreGrad(gradInput)
 	return gradInput, nil
@@ -378,7 +293,7 @@ func (a *AvgPool2D) Forward(input types.Tensor) (types.Tensor, error) {
 	return output, nil
 }
 
-// Backward computes gradients w.r.t. input.
+// Backward computes gradients w.r.t. input using AvgPool2DBackward.
 func (a *AvgPool2D) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 	if a == nil {
 		return nil, fmt.Errorf("AvgPool2D.Backward: nil layer")
@@ -393,19 +308,8 @@ func (a *AvgPool2D) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("AvgPool2D.Backward: input not stored, must call Forward first")
 	}
 
-	output := a.Base.Output()
-	if tensor.IsNil(output) {
-		return nil, fmt.Errorf("AvgPool2D.Backward: output not stored, must call Forward first")
-	}
-
-	// For now, AvgPool2D backward is not implemented
-	if a.Base.CanLearn() {
-		return nil, fmt.Errorf("AvgPool2D.Backward: backward pass not yet implemented")
-	}
-
-	// For inference-only, we don't compute gradients
-	// Use gradOutput's data type for input gradient (for correctness in backward pass)
-	gradInput := tensor.New(gradOutput.DataType(), gradOutput.Shape())
+	// Use AvgPool2DBackward for efficient gradient computation
+	gradInput := input.AvgPool2DBackward(gradOutput, []int{a.kernelH, a.kernelW}, []int{a.strideH, a.strideW}, []int{a.padH, a.padW})
 
 	a.Base.StoreGrad(gradInput)
 	return gradInput, nil
