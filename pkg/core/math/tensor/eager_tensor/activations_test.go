@@ -24,7 +24,7 @@ func TestReLU(t *testing.T) {
 	t.Run("ReLU with destination", func(t *testing.T) {
 		tensor := FromFloat32(types.NewShape(3), []float32{-1, 0, 1})
 		expected := []float32{0, 0, 1}
-		dst := New(types.DTFP32, types.NewShape(3))
+		dst := New(types.FP32, types.NewShape(3))
 		originalData := tensor.Clone()
 
 		result := tensor.ReLU(dst)
@@ -59,7 +59,7 @@ func TestSigmoid(t *testing.T) {
 	t.Run("Sigmoid with destination", func(t *testing.T) {
 		tensor := FromFloat32(types.NewShape(2), []float32{0, -1})
 		expected := []float32{0.5, 1.0 / (1.0 + float32(math.Exp(1)))}
-		dst := New(types.DTFP32, types.NewShape(2))
+		dst := New(types.FP32, types.NewShape(2))
 		originalData := tensor.Clone()
 
 		result := tensor.Sigmoid(dst)
@@ -94,7 +94,7 @@ func TestTanh(t *testing.T) {
 	t.Run("Tanh with destination", func(t *testing.T) {
 		tensor := FromFloat32(types.NewShape(2), []float32{0, -1})
 		expected := []float32{0, float32(math.Tanh(-1))}
-		dst := New(types.DTFP32, types.NewShape(2))
+		dst := New(types.FP32, types.NewShape(2))
 		originalData := tensor.Clone()
 
 		result := tensor.Tanh(dst)

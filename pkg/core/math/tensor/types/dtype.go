@@ -9,52 +9,52 @@ type DataType uint8
 
 const (
 	DT_UNKNOWN DataType = iota
-	DTFP32              // DTFP32 represents 32-bit floating point tensors (default).
-	DTFP64              // 64-bit floating point tensors
-	DTFP16              // 16-bit floating point tensors
-	DTINT48             // 4-bit integer tensors unpacked into 8bit
-	DTINT8              // 8-bit integer tensors
-	DTINT16             // 16-bit integer tensors
-	DTINT               // 32-bit integer tensors
-	DTINT32             // 32-bit integer tensors
-	DTINT64             // 64-bit integer tensors
+	INT64               // 64-bit integer tensors
+	FP64                // 64-bit floating point tensors
+	INT32               // 32-bit integer tensors
+	FP32                // DTFP32 represents 32-bit floating point tensors (default)
+	INT                 // native integer tensors 32bit or 64bit
+	INT16               // 16-bit integer tensors
+	FP16                // 16-bit floating point tensors
+	INT8                // 8-bit integer tensors
+	INT48               // 4-bit integer tensors unpacked into 8bit
 )
 
 // DataElementType is the type constraint for the data elements in the tensor.
 type DataElementType interface {
-	~float64 | ~float32 | ~int16 | ~int8
+	~float64 | ~float32 | ~int64 | ~int | ~int32 | ~int16 | ~int8
 }
 
 func TypeFromData(v any) DataType {
 	switch any(v).(type) {
 	case float64:
-		return DTFP64
+		return FP64
 	case float32:
-		return DTFP32
+		return FP32
 	case int:
-		return DTINT
+		return INT
 	case int64:
-		return DTINT64
+		return INT64
 	case int32:
-		return DTINT32
+		return INT32
 	case int16:
-		return DTINT16
+		return INT16
 	case int8:
-		return DTINT8
+		return INT8
 	case []float64:
-		return DTFP64
+		return FP64
 	case []float32:
-		return DTFP32
+		return FP32
 	case []int16:
-		return DTINT16
+		return INT16
 	case []int:
-		return DTINT
+		return INT
 	case []int32:
-		return DTINT32
+		return INT32
 	case []int64:
-		return DTINT64
+		return INT64
 	case []int8:
-		return DTINT8
+		return INT8
 	default:
 		return DT_UNKNOWN
 	}
@@ -62,21 +62,21 @@ func TypeFromData(v any) DataType {
 
 func MakeTensorData(dt DataType, size int) any {
 	switch dt {
-	case DTFP32:
+	case FP32:
 		return make([]float32, size)
-	case DTFP64:
+	case FP64:
 		return make([]float64, size)
-	case DTINT16:
+	case INT16:
 		return make([]int16, size)
-	case DTINT:
+	case INT:
 		return make([]int, size)
-	case DTINT32:
+	case INT32:
 		return make([]int32, size)
-	case DTINT64:
+	case INT64:
 		return make([]int64, size)
-	case DTINT8:
+	case INT8:
 		return make([]int8, size)
-	case DTINT48:
+	case INT48:
 		return make([]int8, size)
 	default:
 		return nil

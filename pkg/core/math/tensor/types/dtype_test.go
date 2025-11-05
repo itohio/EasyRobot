@@ -16,42 +16,42 @@ func TestTypeFromData(t *testing.T) {
 		{
 			name:     "float64 scalar",
 			data:     float64(1.5),
-			expected: DTFP64,
+			expected: FP64,
 		},
 		{
 			name:     "float32 scalar",
 			data:     float32(1.5),
-			expected: DTFP32,
+			expected: FP32,
 		},
 		{
 			name:     "int16 scalar",
 			data:     int16(42),
-			expected: DTINT16,
+			expected: INT16,
 		},
 		{
 			name:     "int8 scalar",
 			data:     int8(42),
-			expected: DTINT8,
+			expected: INT8,
 		},
 		{
 			name:     "float64 slice",
 			data:     []float64{1.0, 2.0, 3.0},
-			expected: DTFP64,
+			expected: FP64,
 		},
 		{
 			name:     "float32 slice",
 			data:     []float32{1.0, 2.0, 3.0},
-			expected: DTFP32,
+			expected: FP32,
 		},
 		{
 			name:     "int16 slice",
 			data:     []int16{1, 2, 3},
-			expected: DTINT16,
+			expected: INT16,
 		},
 		{
 			name:     "int8 slice",
 			data:     []int8{1, 2, 3},
-			expected: DTINT8,
+			expected: INT8,
 		},
 		{
 			name:     "unknown type (string)",
@@ -87,31 +87,31 @@ func TestMakeTensorData(t *testing.T) {
 	}{
 		{
 			name:     "DTFP32",
-			dt:       DTFP32,
+			dt:       FP32,
 			size:     5,
 			expected: make([]float32, 5),
 		},
 		{
 			name:     "DTFP64",
-			dt:       DTFP64,
+			dt:       FP64,
 			size:     5,
 			expected: make([]float64, 5),
 		},
 		{
 			name:     "DTINT16",
-			dt:       DTINT16,
+			dt:       INT16,
 			size:     5,
 			expected: make([]int16, 5),
 		},
 		{
 			name:     "DTINT8",
-			dt:       DTINT8,
+			dt:       INT8,
 			size:     5,
 			expected: make([]int8, 5),
 		},
 		{
 			name:     "DTINT48",
-			dt:       DTINT48,
+			dt:       INT48,
 			size:     5,
 			expected: make([]int8, 5),
 		},
@@ -123,13 +123,13 @@ func TestMakeTensorData(t *testing.T) {
 		},
 		{
 			name:     "zero size",
-			dt:       DTFP32,
+			dt:       FP32,
 			size:     0,
 			expected: make([]float32, 0),
 		},
 		{
 			name:     "large size",
-			dt:       DTFP32,
+			dt:       FP32,
 			size:     1000,
 			expected: make([]float32, 1000),
 		},
@@ -266,73 +266,73 @@ func TestCloneTensorDataTo(t *testing.T) {
 	}{
 		{
 			name:     "float32 to float32",
-			dst:      DTFP32,
+			dst:      FP32,
 			data:     []float32{1.0, 2.0, 3.0},
 			expected: []float32{1.0, 2.0, 3.0},
 		},
 		{
 			name:     "float64 to float32",
-			dst:      DTFP32,
+			dst:      FP32,
 			data:     []float64{1.5, 2.5, 3.5},
 			expected: []float32{1.5, 2.5, 3.5},
 		},
 		{
 			name:     "float32 to float64",
-			dst:      DTFP64,
+			dst:      FP64,
 			data:     []float32{1.5, 2.5, 3.5},
 			expected: []float64{1.5, 2.5, 3.5},
 		},
 		{
 			name:     "int16 to float32",
-			dst:      DTFP32,
+			dst:      FP32,
 			data:     []int16{10, 20, 30},
 			expected: []float32{10.0, 20.0, 30.0},
 		},
 		{
 			name:     "int8 to float32",
-			dst:      DTFP32,
+			dst:      FP32,
 			data:     []int8{10, 20, 30},
 			expected: []float32{10.0, 20.0, 30.0},
 		},
 		{
 			name:     "float32 to int16",
-			dst:      DTINT16,
+			dst:      INT16,
 			data:     []float32{10.7, 20.3, 30.9},
 			expected: []int16{10, 20, 30},
 		},
 		{
 			name:     "float32 to int8",
-			dst:      DTINT8,
+			dst:      INT8,
 			data:     []float32{10.7, 20.3, 30.9},
 			expected: []int8{10, 20, 30},
 		},
 		{
 			name:     "int16 to int8",
-			dst:      DTINT8,
+			dst:      INT8,
 			data:     []int16{100, 200, 300},
 			expected: []int8{100, 127, 127}, // clamped to int8 max
 		},
 		{
 			name:     "int16 to int8 with negative clamping",
-			dst:      DTINT8,
+			dst:      INT8,
 			data:     []int16{-100, -200, -300},
 			expected: []int8{-100, -128, -128}, // clamped to int8 min
 		},
 		{
 			name:     "int16 to int8 with both clamping",
-			dst:      DTINT8,
+			dst:      INT8,
 			data:     []int16{-200, -100, 0, 100, 200},
 			expected: []int8{-128, -100, 0, 100, 127}, // clamped to int8 range
 		},
 		{
 			name:     "int8 to int16",
-			dst:      DTINT16,
+			dst:      INT16,
 			data:     []int8{10, 20, 30},
 			expected: []int16{10, 20, 30},
 		},
 		{
 			name:     "nil input",
-			dst:      DTFP32,
+			dst:      FP32,
 			data:     nil,
 			expected: nil,
 		},
@@ -478,7 +478,7 @@ func TestCopyTensorData(t *testing.T) {
 		},
 		{
 			name:     "wrong dst type",
-			dstData:  []int{1, 2, 3}, // Wrong type
+			dstData:  []string{"a", "b", "c"}, // Wrong type (not numeric)
 			srcData:  []float32{1.0, 2.0, 3.0},
 			expected: nil,
 			wantNil:  true,

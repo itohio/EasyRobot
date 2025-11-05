@@ -64,7 +64,7 @@ func copyTensorData(src, dst types.Tensor) {
 
 		if srcContiguous && dstContiguous {
 			// Use fast contiguous copy for float32
-			if srcDtype == types.DTFP32 {
+			if srcDtype == types.FP32 {
 				srcSlice, ok1 := srcData.([]float32)
 				dstSlice, ok2 := dstData.([]float32)
 				if ok1 && ok2 {

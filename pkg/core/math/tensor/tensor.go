@@ -11,12 +11,12 @@ type DataType = types.DataType
 
 const (
 	DT_UNKNOWN DataType = types.DT_UNKNOWN
-	DTINT48    DataType = types.DTINT48
-	DTINT8     DataType = types.DTINT8
-	DTINT16    DataType = types.DTINT16
-	DTFP16     DataType = types.DTFP16
-	DTFP32     DataType = types.DTFP32
-	DTFP64     DataType = types.DTFP64
+	DTINT48    DataType = types.INT48
+	DTINT8     DataType = types.INT8
+	DTINT16    DataType = types.INT16
+	DTFP16     DataType = types.FP16
+	DTFP32     DataType = types.FP32
+	DTFP64     DataType = types.FP64
 )
 
 func NewShape(dimensions ...int) Shape {

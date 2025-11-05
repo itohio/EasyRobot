@@ -76,6 +76,54 @@ func BenchmarkCopyWithConversion(b *testing.B) {
 			CopyWithConversion(dst, src)
 		}
 	})
+
+	b.Run("int32_to_float32", func(b *testing.B) {
+		src := make([]int32, 1000)
+		dst := make([]float32, 1000)
+		for i := range src {
+			src[i] = int32(i)
+		}
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			CopyWithConversion(dst, src)
+		}
+	})
+
+	b.Run("float32_to_int32", func(b *testing.B) {
+		src := make([]float32, 1000)
+		dst := make([]int32, 1000)
+		for i := range src {
+			src[i] = float32(i)
+		}
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			CopyWithConversion(dst, src)
+		}
+	})
+
+	b.Run("int32_to_float32_with_clamping", func(b *testing.B) {
+		src := make([]int32, 1000)
+		dst := make([]float32, 1000)
+		for i := range src {
+			src[i] = int32(i * 1000000) // Large values
+		}
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			CopyWithConversion(dst, src)
+		}
+	})
+
+	b.Run("float32_to_int32_with_clamping", func(b *testing.B) {
+		src := make([]float32, 1000)
+		dst := make([]int32, 1000)
+		for i := range src {
+			src[i] = float32(i * 1000000) // Large values that need clamping
+		}
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			CopyWithConversion(dst, src)
+		}
+	})
 }
 
 func BenchmarkCopyWithStrides(b *testing.B) {

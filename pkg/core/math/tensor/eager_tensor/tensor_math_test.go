@@ -262,7 +262,7 @@ func TestAddTo(t *testing.T) {
 	t.Run("use destination tensor", func(t *testing.T) {
 		t1 := FromFloat32(types.NewShape(2, 2), []float32{1, 2, 3, 4})
 		t2 := FromFloat32(types.NewShape(2, 2), []float32{5, 6, 7, 8})
-		dst := New(types.DTFP32, types.NewShape(2, 2))
+		dst := New(types.FP32, types.NewShape(2, 2))
 
 		result := t1.AddTo(t2, &dst)
 
@@ -302,7 +302,7 @@ func TestMulTo(t *testing.T) {
 	t.Run("use destination tensor", func(t *testing.T) {
 		t1 := FromFloat32(types.NewShape(2, 2), []float32{1, 2, 3, 4})
 		t2 := FromFloat32(types.NewShape(2, 2), []float32{2, 3, 4, 5})
-		dst := New(types.DTFP32, types.NewShape(2, 2))
+		dst := New(types.FP32, types.NewShape(2, 2))
 
 		result := t1.MulTo(t2, &dst)
 
@@ -545,7 +545,7 @@ func TestSquare(t *testing.T) {
 	t.Run("Square with destination", func(t *testing.T) {
 		tensor := FromFloat32(types.NewShape(3), []float32{1, 2, -3})
 		expected := []float32{1, 4, 9}
-		dst := New(types.DTFP32, types.NewShape(3))
+		dst := New(types.FP32, types.NewShape(3))
 		originalData := tensor.Clone()
 
 		result := tensor.Square(dst)
@@ -580,7 +580,7 @@ func TestSqrt(t *testing.T) {
 	t.Run("Sqrt with destination", func(t *testing.T) {
 		tensor := FromFloat32(types.NewShape(3), []float32{1, 4, 9})
 		expected := []float32{1, 2, 3}
-		dst := New(types.DTFP32, types.NewShape(3))
+		dst := New(types.FP32, types.NewShape(3))
 		originalData := tensor.Clone()
 
 		result := tensor.Sqrt(dst)
@@ -615,7 +615,7 @@ func TestExp(t *testing.T) {
 	t.Run("Exp with destination", func(t *testing.T) {
 		tensor := FromFloat32(types.NewShape(2), []float32{0, 1})
 		expected := []float32{1.0, float32(math.E)}
-		dst := New(types.DTFP32, types.NewShape(2))
+		dst := New(types.FP32, types.NewShape(2))
 		originalData := tensor.Clone()
 
 		result := tensor.Exp(dst)
@@ -650,7 +650,7 @@ func TestLog(t *testing.T) {
 	t.Run("Log with destination", func(t *testing.T) {
 		tensor := FromFloat32(types.NewShape(2), []float32{1, float32(math.E)})
 		expected := []float32{0, 1}
-		dst := New(types.DTFP32, types.NewShape(2))
+		dst := New(types.FP32, types.NewShape(2))
 		originalData := tensor.Clone()
 
 		result := tensor.Log(dst)
@@ -687,7 +687,7 @@ func TestPow(t *testing.T) {
 		tensor := FromFloat32(types.NewShape(3), []float32{4, 9, 16})
 		power := float64(0.5)
 		expected := []float32{2, 3, 4}
-		dst := New(types.DTFP32, types.NewShape(3))
+		dst := New(types.FP32, types.NewShape(3))
 		originalData := tensor.Clone()
 
 		result := tensor.Pow(dst, power)
@@ -722,7 +722,7 @@ func TestAbs(t *testing.T) {
 	t.Run("Abs with destination", func(t *testing.T) {
 		tensor := FromFloat32(types.NewShape(3), []float32{-1, 0, 1})
 		expected := []float32{1, 0, 1}
-		dst := New(types.DTFP32, types.NewShape(3))
+		dst := New(types.FP32, types.NewShape(3))
 		originalData := tensor.Clone()
 
 		result := tensor.Abs(dst)
@@ -757,7 +757,7 @@ func TestSign(t *testing.T) {
 	t.Run("Sign with destination", func(t *testing.T) {
 		tensor := FromFloat32(types.NewShape(4), []float32{-5, 0, 2, -0.1})
 		expected := []float32{-1, 0, 1, -1}
-		dst := New(types.DTFP32, types.NewShape(4))
+		dst := New(types.FP32, types.NewShape(4))
 		originalData := tensor.Clone()
 
 		result := tensor.Sign(dst)
@@ -792,7 +792,7 @@ func TestCos(t *testing.T) {
 	t.Run("Cos with destination", func(t *testing.T) {
 		tensor := FromFloat32(types.NewShape(2), []float32{0, float32(math.Pi)})
 		expected := []float32{1, -1}
-		dst := New(types.DTFP32, types.NewShape(2))
+		dst := New(types.FP32, types.NewShape(2))
 		originalData := tensor.Clone()
 
 		result := tensor.Cos(dst)
@@ -827,7 +827,7 @@ func TestSin(t *testing.T) {
 	t.Run("Sin with destination", func(t *testing.T) {
 		tensor := FromFloat32(types.NewShape(2), []float32{0, float32(math.Pi / 2)})
 		expected := []float32{0, 1}
-		dst := New(types.DTFP32, types.NewShape(2))
+		dst := New(types.FP32, types.NewShape(2))
 		originalData := tensor.Clone()
 
 		result := tensor.Sin(dst)
@@ -862,7 +862,7 @@ func TestNegative(t *testing.T) {
 	t.Run("Negative with destination", func(t *testing.T) {
 		tensor := FromFloat32(types.NewShape(3), []float32{1, 0, -1})
 		expected := []float32{-1, 0, 1}
-		dst := New(types.DTFP32, types.NewShape(3))
+		dst := New(types.FP32, types.NewShape(3))
 		originalData := tensor.Clone()
 
 		result := tensor.Negative(dst)

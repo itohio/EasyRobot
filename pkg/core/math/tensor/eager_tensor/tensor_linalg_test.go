@@ -132,7 +132,7 @@ func TestMatMulTo(t *testing.T) {
 	t.Run("use destination tensor", func(t *testing.T) {
 		t1 := FromFloat32(types.NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
 		t2 := FromFloat32(types.NewShape(3, 2), []float32{1, 2, 3, 4, 5, 6})
-		dst := New(types.DTFP32, types.NewShape(2, 2))
+		dst := New(types.FP32, types.NewShape(2, 2))
 
 		result := t1.MatMulTo(t2, &dst)
 
@@ -205,7 +205,7 @@ func TestTransposeTo(t *testing.T) {
 
 	t.Run("use destination tensor", func(t *testing.T) {
 		t1 := FromFloat32(types.NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
-		dst := New(types.DTFP32, types.NewShape(3, 2))
+		dst := New(types.FP32, types.NewShape(3, 2))
 
 		result := t1.TransposeTo(&dst)
 

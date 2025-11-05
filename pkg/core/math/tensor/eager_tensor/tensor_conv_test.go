@@ -65,7 +65,7 @@ func TestConv2D(t *testing.T) {
 
 	t.Run("with multiple channels", func(t *testing.T) {
 		// Input: [1, 2, 3, 3] (batch, inChannels, height, width)
-		input := New(types.DTFP32, types.NewShape(1, 2, 3, 3))
+		input := New(types.FP32, types.NewShape(1, 2, 3, 3))
 		inputData := input.Data().([]float32)
 		for i := range inputData {
 			inputData[i] = float32(i + 1)
@@ -142,7 +142,7 @@ func TestConv1D(t *testing.T) {
 
 	t.Run("with batch", func(t *testing.T) {
 		// Input: [2, 2, 5] (batch, inChannels, length)
-		input := New(types.DTFP32, types.NewShape(2, 2, 5))
+		input := New(types.FP32, types.NewShape(2, 2, 5))
 		inputData := input.Data().([]float32)
 		for i := range inputData {
 			inputData[i] = float32(i + 1)
@@ -288,7 +288,7 @@ func TestIm2Col(t *testing.T) {
 func TestCol2Im(t *testing.T) {
 	t.Run("basic Col2Im", func(t *testing.T) {
 		// Input columns: [4, 4] (from 1 batch, 2x2 output, 1 channel, 2x2 kernel)
-		col := New(types.DTFP32, types.NewShape(4, 4))
+		col := New(types.FP32, types.NewShape(4, 4))
 		colData := col.Data().([]float32)
 		for i := range colData {
 			colData[i] = float32(i + 1)
@@ -374,7 +374,7 @@ func TestDepthwiseConv2D(t *testing.T) {
 func TestGroupConv2D(t *testing.T) {
 	t.Run("grouped convolution with 2 groups", func(t *testing.T) {
 		// Input: [1, 4, 2, 2] - batch=1, channels=4, height=2, width=2
-		input := New(types.DTFP32, types.NewShape(1, 4, 2, 2))
+		input := New(types.FP32, types.NewShape(1, 4, 2, 2))
 		inputData := input.Data().([]float32)
 		for i := range inputData {
 			inputData[i] = float32(i + 1)
@@ -382,7 +382,7 @@ func TestGroupConv2D(t *testing.T) {
 
 		// Kernel: [4, 2, 1, 1] - outChannels=4, inChannels/groups=2, kernelH=1, kernelW=1
 		// With groups=2, we have 2 groups, each processing 2 input channels to produce 2 output channels
-		kernel := New(types.DTFP32, types.NewShape(4, 2, 1, 1))
+		kernel := New(types.FP32, types.NewShape(4, 2, 1, 1))
 		kernelData := kernel.Data().([]float32)
 		for i := range kernelData {
 			kernelData[i] = float32(i + 1)
@@ -403,7 +403,7 @@ func TestGroupConv2D(t *testing.T) {
 func TestDilatedConv2D(t *testing.T) {
 	t.Run("dilated convolution", func(t *testing.T) {
 		// Input: [1, 1, 5, 5]
-		input := New(types.DTFP32, types.NewShape(1, 1, 5, 5))
+		input := New(types.FP32, types.NewShape(1, 1, 5, 5))
 		inputData := input.Data().([]float32)
 		for i := range inputData {
 			inputData[i] = float32(i + 1)
@@ -429,7 +429,7 @@ func TestDilatedConv2D(t *testing.T) {
 func TestConv3D(t *testing.T) {
 	t.Run("basic 3D convolution", func(t *testing.T) {
 		// Input: [1, 1, 3, 3, 3] - batch=1, channels=1, depth=3, height=3, width=3
-		input := New(types.DTFP32, types.NewShape(1, 1, 3, 3, 3))
+		input := New(types.FP32, types.NewShape(1, 1, 3, 3, 3))
 		inputData := input.Data().([]float32)
 		for i := range inputData {
 			inputData[i] = float32(i + 1)
