@@ -294,12 +294,16 @@ func TestDense_Backward(t *testing.T) {
 			assert.NotEmpty(t, gradInput2.Shape().ToSlice(), "GradInput should have dimensions")
 
 			// Verify gradients were computed
-			weightParam, _ := dense2.Base.Parameter(ParamWeights)
-			assert.NotEmpty(t, weightParam.Grad.Shape().ToSlice(), "Weight grad should be allocated")
+			weightParam, ok := dense2.Base.Parameter(ParamWeights)
+			require.True(t, ok, "Weight parameter should exist")
+			require.NotNil(t, weightParam.Grad, "Weight grad should be allocated")
+			assert.NotEmpty(t, weightParam.Grad.Shape().ToSlice(), "Weight grad should have dimensions")
 
 			if tt.name == "1d_input" || tt.name == "2d_input" {
-				biasParam, _ := dense2.Base.Parameter(ParamBiases)
-				assert.NotEmpty(t, biasParam.Grad.Shape().ToSlice(), "Bias grad should be allocated")
+				biasParam, ok := dense2.Base.Parameter(ParamBiases)
+				require.True(t, ok, "Bias parameter should exist")
+				require.NotNil(t, biasParam.Grad, "Bias grad should be allocated")
+				assert.NotEmpty(t, biasParam.Grad.Shape().ToSlice(), "Bias grad should have dimensions")
 			}
 		})
 	}
@@ -448,7 +452,7 @@ func TestDense_SetBias(t *testing.T) {
 	require.NoError(t, err, "SetBias should succeed")
 
 	bias := dense.Bias()
-	assert.Equal(t, newBias.Data, bias.Data, "Bias data should match")
+	assert.Equal(t, newBias.Data(), bias.Data(), "Bias data should match")
 
 	// Test error cases
 	err = dense.SetBias(tensor.FromFloat32(tensor.NewShape(3), []float32{0, 0, 0}))
@@ -499,15 +503,19 @@ func TestDense_BackwardGradientComputation(t *testing.T) {
 	assert.InDelta(t, 1.0, gradInputData[1], 1e-6, "GradInput[1] should be 1.0")
 
 	// Check weight gradient: should be [1.0, 2.0] (input @ gradOutput)
-	weightParam, _ := dense.Base.Parameter(ParamWeights)
-	assert.NotEmpty(t, weightParam.Grad.Shape().ToSlice(), "Weight grad should be allocated")
+	weightParam, ok := dense.Base.Parameter(ParamWeights)
+	require.True(t, ok, "Weight parameter should exist")
+	require.NotNil(t, weightParam.Grad, "Weight grad should be allocated")
+	assert.NotEmpty(t, weightParam.Grad.Shape().ToSlice(), "Weight grad should have dimensions")
 	weightGradData := weightParam.Grad.Data().([]float32)
 	assert.InDelta(t, 1.0, weightGradData[0], 1e-6, "Weight grad[0] should be 1.0")
 	assert.InDelta(t, 2.0, weightGradData[1], 1e-6, "Weight grad[1] should be 2.0")
 
 	// Check bias gradient: should be [1.0]
-	biasParam, _ := dense.Base.Parameter(ParamBiases)
-	assert.NotEmpty(t, biasParam.Grad.Shape().ToSlice(), "Bias grad should be allocated")
+	biasParam, ok := dense.Base.Parameter(ParamBiases)
+	require.True(t, ok, "Bias parameter should exist")
+	require.NotNil(t, biasParam.Grad, "Bias grad should be allocated")
+	assert.NotEmpty(t, biasParam.Grad.Shape().ToSlice(), "Bias grad should have dimensions")
 	biasGradData := biasParam.Grad.Data().([]float32)
 	assert.InDelta(t, 1.0, biasGradData[0], 1e-6, "Bias grad[0] should be 1.0")
 }

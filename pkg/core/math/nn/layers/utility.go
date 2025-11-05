@@ -87,8 +87,9 @@ func (f *Flatten) Forward(input types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("Flatten.Forward: input size %d doesn't match output size %d",
 			input.Size(), output.Size())
 	}
-	// Copy data using optimized Tensor.Copy method
-	output.Copy(input)
+	// Reshape input to match output shape, then copy
+	inputReshaped := input.Reshape(output.Shape())
+	output.Copy(inputReshaped)
 
 	// Store output
 	f.Base.StoreOutput(output)
@@ -232,8 +233,9 @@ func (r *Reshape) Forward(input types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("Reshape.Forward: input size %d doesn't match output size %d",
 			input.Size(), output.Size())
 	}
-	// Copy data using optimized Tensor.Copy method
-	output.Copy(input)
+	// Reshape input to match output shape, then copy
+	inputReshaped := input.Reshape(output.Shape())
+	output.Copy(inputReshaped)
 
 	// Store output
 	r.Base.StoreOutput(output)
@@ -386,7 +388,8 @@ func (u *Unsqueeze) Forward(input types.Tensor) (types.Tensor, error) {
 			input.Size(), output.Size())
 	}
 	// Copy data using optimized Tensor.Copy method
-	output.Copy(input)
+	inputReshaped := input.Reshape(output.Shape())
+	output.Copy(inputReshaped)
 
 	u.Base.StoreOutput(output)
 	return output, nil
@@ -544,7 +547,8 @@ func (s *Squeeze) Forward(input types.Tensor) (types.Tensor, error) {
 			input.Size(), output.Size())
 	}
 	// Copy data using optimized Tensor.Copy method
-	output.Copy(input)
+	inputReshaped := input.Reshape(output.Shape())
+	output.Copy(inputReshaped)
 
 	s.Base.StoreOutput(output)
 	return output, nil

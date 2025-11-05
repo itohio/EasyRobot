@@ -224,8 +224,11 @@ func (d *Dense) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 		// gradWeight = input^T @ gradOutput
 		// Only compute gradients if CanLearn is true
 		weightParam, ok := d.Base.Parameter(ParamWeights)
+		if !ok || weightParam.Data == nil {
+			return nil, fmt.Errorf("Dense.Backward: weight parameter not initialized")
+		}
 		weightDtype := weightParam.Data.DataType()
-		if d.Base.CanLearn() && ok && weightParam.RequiresGrad {
+		if d.Base.CanLearn() && weightParam.RequiresGrad {
 			if tensor.IsNil(weightParam.Grad) {
 				weightParam.Grad = tensor.New(weightDtype, tensor.NewShape(d.inFeatures, d.outFeatures))
 			}
@@ -234,6 +237,7 @@ func (d *Dense) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 			inputReshaped := input.Reshape(tensor.NewShape(1, d.inFeatures))
 			gradReshaped := gradOutput.Reshape(tensor.NewShape(1, d.outFeatures))
 			inputReshaped.MatMulTransposed(gradReshaped, true, false, weightParam.Grad)
+			d.Base.SetParam(ParamWeights, weightParam)
 		}
 
 		// Compute gradient w.r.t. bias: gradBias = gradOutput
@@ -262,7 +266,7 @@ func (d *Dense) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 		}
 		// Reshape back to 1D
 		gradInput := result.Reshape(tensor.NewShape(d.inFeatures))
-		if d.Base.CanLearn() && ok {
+		if d.Base.CanLearn() {
 			d.Base.SetParam(ParamWeights, weightParam)
 		}
 		return gradInput, nil
@@ -380,7 +384,9 @@ func (d *Dense) SetWeight(weight types.Tensor) error {
 	if !ok {
 		return fmt.Errorf("Dense.SetWeight: weight parameter not initialized")
 	}
+	// Preserve Grad when setting new weight, but update RequiresGrad based on CanLearn
 	weightParam.Data = weight
+	weightParam.RequiresGrad = d.Base.CanLearn()
 	d.Base.SetParam(ParamWeights, weightParam)
 
 	// Ensure bias data type matches weight data type
@@ -429,7 +435,9 @@ func (d *Dense) SetBias(bias types.Tensor) error {
 	if !ok {
 		return fmt.Errorf("Dense.SetBias: bias parameter not initialized")
 	}
+	// Preserve Grad when setting new bias, but update RequiresGrad based on CanLearn
 	biasParam.Data = bias
+	biasParam.RequiresGrad = d.Base.CanLearn()
 	d.Base.SetParam(ParamBiases, biasParam)
 	return nil
 }

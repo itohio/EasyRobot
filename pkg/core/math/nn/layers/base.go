@@ -165,24 +165,17 @@ func (b *Base) Name() string {
 	if b.nameSet {
 		return b.name
 	}
-	// Generate default name from prefix, layer_idx and shape
+	// Generate default name from prefix and layer_idx
+	// Don't use output shape in name generation as output may not be initialized yet
 	var nameFormat string
 	if b.prefix != "" {
-		if b.output.Shape().Rank() > 0 {
-			shapeStr := fmt.Sprintf("%v", b.output.Shape().ToSlice())
-			nameFormat = fmt.Sprintf("%s_%d_%s", b.prefix, b.layerIdx, shapeStr)
-		} else {
-			nameFormat = fmt.Sprintf("%s_%d", b.prefix, b.layerIdx)
-		}
+		nameFormat = fmt.Sprintf("%s_%d", b.prefix, b.layerIdx)
 	} else {
-		if b.output.Shape().Rank() > 0 {
-			shapeStr := fmt.Sprintf("%v", b.output.Shape().ToSlice())
-			nameFormat = fmt.Sprintf("%d_%s", b.layerIdx, shapeStr)
-		} else {
-			nameFormat = fmt.Sprintf("%d", b.layerIdx)
-		}
+		nameFormat = fmt.Sprintf("layer_%d", b.layerIdx)
 	}
-	return nameFormat
+	b.name = nameFormat
+	b.nameSet = true
+	return b.name
 }
 
 // SetName sets the name of this layer.

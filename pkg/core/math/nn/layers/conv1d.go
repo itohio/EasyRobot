@@ -279,10 +279,24 @@ func (c *Conv1D) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 	}
 
 	// Compute input gradient using transposed convolution
-	// TODO: Implement Conv1DTransposed or use alternative approach for proper gradient computation
-	// For now, create a placeholder - this needs proper implementation
-	gradInput := tensor.New(tensor.DTFP32, input.Shape())
-	// TODO: Implement proper transposed convolution gradient computation
+	// Input gradient = Conv2DTransposed(gradOutput_4D, kernel_4D, stride, padding)
+	// Use Conv2DTransposed with width=1 dimension, similar to how Conv1D uses Conv2D
+	gradOutputShape := gradOutput.Shape()
+	batchSize := gradOutputShape[0]
+
+	// Reshape gradOutput from [batch, outChannels, outLength] to [batch, outChannels, outLength, 1]
+	gradOutput4D := gradOutput.Reshape(tensor.NewShape(batchSize, c.outChannels, gradOutputShape[2], 1))
+
+	// Reshape kernel from [outChannels, inChannels, kernelLen] to [outChannels, inChannels, kernelLen, 1]
+	kernel4D := kernelParam.Data.Reshape(tensor.NewShape(c.outChannels, c.inChannels, c.kernelLen, 1))
+
+	// Use Conv2DTransposed with width=1
+	var emptyBias types.Tensor
+	gradInput4D := gradOutput4D.Conv2DTransposed(kernel4D, emptyBias, []int{c.stride, 1}, []int{c.pad, 0})
+
+	// Reshape back to 3D: [batch, inChannels, inLength, 1] -> [batch, inChannels, inLength]
+	gradInputShape := gradInput4D.Shape()
+	gradInput := gradInput4D.Reshape(tensor.NewShape(gradInputShape[0], gradInputShape[1], gradInputShape[2]))
 
 	c.Base.StoreGrad(gradInput)
 	return gradInput, nil

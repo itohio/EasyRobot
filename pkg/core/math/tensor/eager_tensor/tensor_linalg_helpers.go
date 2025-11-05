@@ -119,11 +119,12 @@ func (t Tensor) MatMulTransposed(other types.Tensor, transposeA, transposeB bool
 		outputSize *= d
 	}
 
-	// Prepare result tensor
+	// Prepare result tensor - try to use dst directly if it's an eager tensor and shape matches
 	var result Tensor
+	usedDst := false
 	if dst != nil {
 		dstShape := dst.Shape()
-		// Check if dst has correct shape, if not create new one
+		// Check if dst has correct shape
 		if len(dstShape) == len(resultShape) {
 			match := true
 			for i := range dstShape {
@@ -133,9 +134,14 @@ func (t Tensor) MatMulTransposed(other types.Tensor, transposeA, transposeB bool
 				}
 			}
 			if match {
-				// Can use dst, but need to cast - this is a limitation
-				// For now, create new tensor to avoid casting
-				result = New(t.DataType(), types.NewShape(resultShape...))
+				// Try to use dst directly if it's an eager tensor
+				if dstTensor, ok := dst.(Tensor); ok {
+					result = dstTensor
+					usedDst = true
+				} else {
+					// Not an eager tensor, need to create new and copy
+					result = New(t.DataType(), types.NewShape(resultShape...))
+				}
 			} else {
 				result = New(t.DataType(), types.NewShape(resultShape...))
 			}
@@ -186,8 +192,13 @@ func (t Tensor) MatMulTransposed(other types.Tensor, transposeA, transposeB bool
 				1.0, 0.0,
 			)
 		}
-		// If dst was provided and has correct shape, copy result to dst
+		// If dst was provided and we used it directly, return it
+		// Otherwise, if dst was provided but we created a new tensor, copy result to dst
 		if dst != nil {
+			if usedDst {
+				return dst
+			}
+			// Need to copy result to dst
 			copyTensorData(result, dst)
 			return dst
 		}
@@ -209,6 +220,25 @@ func (t Tensor) MatMulTransposed(other types.Tensor, transposeA, transposeB bool
 		otherStride := K2 * N
 		resultStride := M * N
 
+		// Use dst directly if it was provided and matches shape (for batched case)
+		if !usedDst && dst != nil {
+			if dstTensor, ok := dst.(Tensor); ok {
+				dstShape := dstTensor.Shape()
+				if len(dstShape) == len(resultShape) {
+					match := true
+					for i := range dstShape {
+						if dstShape[i] != resultShape[i] {
+							match = false
+							break
+						}
+					}
+					if match {
+						result = dstTensor
+						usedDst = true
+					}
+				}
+			}
+		}
 		tData := types.GetTensorData[[]float32](&t)
 		otherData := types.GetTensorData[[]float32](other)
 		resultData := types.GetTensorData[[]float32](&result)
@@ -257,8 +287,13 @@ func (t Tensor) MatMulTransposed(other types.Tensor, transposeA, transposeB bool
 				)
 			}
 		}
-		// If dst was provided and has correct shape, copy result to dst
+		// If dst was provided and we used it directly, return it
+		// Otherwise, if dst was provided but we created a new tensor, copy result to dst
 		if dst != nil {
+			if usedDst {
+				return dst
+			}
+			// Need to copy result to dst
 			copyTensorData(&result, dst)
 			return dst
 		}

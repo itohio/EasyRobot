@@ -238,19 +238,25 @@ func (c *Conv2D) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 
 		// Kernel gradient computation using primitives:
 		// kernelGrad = (gradOutput ⊛ input) where ⊛ is correlation
-		// This is equivalent to: kernelGrad = Im2Col(gradOutput)^T @ Im2Col(input)
+		// This is equivalent to: kernelGrad = gradOutput_reshaped^T @ Im2Col(input)
+		// where gradOutput_reshaped: [batch*outHeight*outWidth, outChannels]
 
-		// Convert input and gradOutput to column format
+		// Convert input to column format
 		inputCols := input.Im2Col([]int{c.kernelH, c.kernelW}, []int{c.strideH, c.strideW}, []int{c.padH, c.padW})
-		gradOutputCols := gradOutput.Im2Col([]int{c.kernelH, c.kernelW}, []int{c.strideH, c.strideW}, []int{c.padH, c.padW})
-
-		// Compute: kernelGrad = gradOutputCols^T @ inputCols
-		// Reshape to proper matrix dimensions for MatMul
 		// inputCols shape: [batch*outHeight*outWidth, inChannels*kernelH*kernelW]
-		// gradOutputCols shape: [batch*outHeight*outWidth, outChannels]
-		// We want: [outChannels, inChannels*kernelH*kernelW] = gradOutputCols^T @ inputCols
 
-		kernelGradMatrix := gradOutputCols.Transpose().MatMul(inputCols)
+		// Reshape gradOutput from [batch, outChannels, outHeight, outWidth] to [batch*outHeight*outWidth, outChannels]
+		gradOutputShape := gradOutput.Shape()
+		batchSize := gradOutputShape[0]
+		outHeight := gradOutputShape[2]
+		outWidth := gradOutputShape[3]
+		gradOutputReshaped := gradOutput.Reshape(tensor.NewShape(batchSize*outHeight*outWidth, c.outChannels))
+
+		// Compute: kernelGrad = gradOutputReshaped^T @ inputCols
+		// gradOutputReshaped^T shape: [outChannels, batch*outHeight*outWidth]
+		// inputCols shape: [batch*outHeight*outWidth, inChannels*kernelH*kernelW]
+		// Result: [outChannels, inChannels*kernelH*kernelW]
+		kernelGradMatrix := gradOutputReshaped.Transpose().MatMul(inputCols)
 
 		// Reshape result to kernel shape: [outChannels, inChannels, kernelH, kernelW]
 		kernelGradReshaped := kernelGradMatrix.Reshape(tensor.NewShape(c.outChannels, c.inChannels, c.kernelH, c.kernelW))
