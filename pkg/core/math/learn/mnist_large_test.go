@@ -103,7 +103,7 @@ func TestMNISTLarge(t *testing.T) {
 		t.Fatalf("Failed to create dense2: %v", err)
 	}
 
-	model, err := nn.NewSequentialModelBuilder([]int{1, 1, 28, 28}).
+	model, err := nn.NewSequentialModelBuilder(tensor.NewShape(1, 1, 28, 28)).
 		AddLayer(conv1).
 		AddLayer(relu1).
 		AddLayer(pool1).
@@ -121,7 +121,7 @@ func TestMNISTLarge(t *testing.T) {
 	}
 
 	// Initialize model
-	if err := model.Init(); err != nil {
+	if err := model.Init(tensor.NewShape(1, 28, 28)); err != nil {
 		t.Fatalf("Failed to initialize model: %v", err)
 	}
 

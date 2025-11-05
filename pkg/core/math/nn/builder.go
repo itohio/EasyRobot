@@ -4,16 +4,19 @@ import (
 	"fmt"
 
 	"github.com/itohio/EasyRobot/pkg/core/math/nn/layers"
+	"github.com/itohio/EasyRobot/pkg/core/math/nn/models"
+	"github.com/itohio/EasyRobot/pkg/core/math/nn/types"
+	tensorTypes "github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
 )
 
 // SequentialModelBuilder helps construct models by adding layers sequentially.
 type SequentialModelBuilder struct {
-	layers     []Layer
-	inputShape []int
+	layers     []types.Layer
+	inputShape tensorTypes.Shape
 }
 
 // NewSequentialModelBuilder creates a new sequential model builder with the given input shape.
-func NewSequentialModelBuilder(inputShape []int) *SequentialModelBuilder {
+func NewSequentialModelBuilder(inputShape tensorTypes.Shape) *SequentialModelBuilder {
 	if inputShape == nil {
 		return nil
 	}
@@ -24,13 +27,13 @@ func NewSequentialModelBuilder(inputShape []int) *SequentialModelBuilder {
 		}
 	}
 	return &SequentialModelBuilder{
-		layers:     []Layer{},
+		layers:     []types.Layer{},
 		inputShape: inputShape,
 	}
 }
 
 // AddLayer adds a layer to the model.
-func (b *SequentialModelBuilder) AddLayer(layer Layer) *SequentialModelBuilder {
+func (b *SequentialModelBuilder) AddLayer(layer types.Layer) *SequentialModelBuilder {
 	if b == nil {
 		return nil
 	}
@@ -42,7 +45,7 @@ func (b *SequentialModelBuilder) AddLayer(layer Layer) *SequentialModelBuilder {
 }
 
 // WithLayers adds multiple layers to the model as varargs.
-func (b *SequentialModelBuilder) WithLayers(layers ...Layer) *SequentialModelBuilder {
+func (b *SequentialModelBuilder) WithLayers(layers ...types.Layer) *SequentialModelBuilder {
 	if b == nil {
 		return nil
 	}
@@ -57,7 +60,7 @@ func (b *SequentialModelBuilder) WithLayers(layers ...Layer) *SequentialModelBui
 
 // Build creates the Model from the builder.
 // Validates that all layer shapes are compatible.
-func (b *SequentialModelBuilder) Build() (*Model, error) {
+func (b *SequentialModelBuilder) Build() (*models.Sequential, error) {
 	if b == nil {
 		return nil, fmt.Errorf("SequentialModelBuilder.Build: nil builder")
 	}
@@ -94,10 +97,6 @@ func (b *SequentialModelBuilder) Build() (*Model, error) {
 	// Initialize Base for the model
 	base := layers.NewBase("model")
 
-	return &Model{
-		Base:       base,
-		layers:     b.layers,
-		layerNames: layerNames,
-		inputShape: b.inputShape,
-	}, nil
+	// Use NewSequential constructor
+	return models.NewSequential(base, b.layers, layerNames, b.inputShape), nil
 }

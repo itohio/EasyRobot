@@ -43,7 +43,7 @@ func TestReLU(t *testing.T) {
 			inputTensor := tensor.FromFloat32(tensor.NewShape(len(tt.input)), tt.input)
 
 			// Test Init
-			err := relu.Init([]int{len(tt.input)})
+			err := relu.Init(tensor.NewShape(len(tt.input)))
 			require.NoError(t, err, "Init should succeed")
 
 			// Test Forward
@@ -75,7 +75,7 @@ func TestReLU_EdgeCases(t *testing.T) {
 
 	// Test empty input
 	relu := NewReLU("relu")
-	err = relu.Init([]int{3})
+	err = relu.Init(tensor.NewShape(3))
 	require.NoError(t, err)
 
 	emptyInput := tensor.Empty(tensor.DTFP32)
@@ -90,7 +90,7 @@ func TestReLU_EdgeCases(t *testing.T) {
 
 	// Test Backward without Forward
 	relu3 := NewReLU("relu3")
-	err = relu3.Init([]int{3})
+	err = relu3.Init(tensor.NewShape(3))
 	require.NoError(t, err)
 	gradOutput := tensor.FromFloat32(tensor.NewShape(3), []float32{1.0, 1.0, 1.0})
 	_, err = relu3.Backward(gradOutput)
@@ -98,7 +98,7 @@ func TestReLU_EdgeCases(t *testing.T) {
 
 	// Test Backward with empty gradOutput
 	relu4 := NewReLU("relu4")
-	err = relu4.Init([]int{3})
+	err = relu4.Init(tensor.NewShape(3))
 	require.NoError(t, err)
 	input2 := tensor.FromFloat32(tensor.NewShape(3), []float32{1.0, 2.0, 3.0})
 	_, err = relu4.Forward(input2)
@@ -127,7 +127,7 @@ func TestSigmoid(t *testing.T) {
 			sigmoid := NewSigmoid("sigmoid")
 			inputTensor := tensor.FromFloat32(tensor.NewShape(1), []float32{tt.input})
 
-			err := sigmoid.Init([]int{1})
+			err := sigmoid.Init(tensor.NewShape(1))
 			require.NoError(t, err, "Init should succeed")
 
 			output, err := sigmoid.Forward(inputTensor)
@@ -157,7 +157,7 @@ func TestSigmoid_EdgeCases(t *testing.T) {
 
 	// Test empty input
 	sigmoid := NewSigmoid("sigmoid")
-	err = sigmoid.Init([]int{1})
+	err = sigmoid.Init(tensor.NewShape(1))
 	require.NoError(t, err)
 
 	emptyInput := tensor.Empty(tensor.DTFP32)
@@ -172,7 +172,7 @@ func TestSigmoid_EdgeCases(t *testing.T) {
 
 	// Test Backward without Forward
 	sigmoid3 := NewSigmoid("sigmoid3")
-	err = sigmoid3.Init([]int{1})
+	err = sigmoid3.Init(tensor.NewShape(1))
 	require.NoError(t, err)
 	gradOutput := tensor.FromFloat32(tensor.NewShape(1), []float32{1.0})
 	_, err = sigmoid3.Backward(gradOutput)
@@ -180,7 +180,7 @@ func TestSigmoid_EdgeCases(t *testing.T) {
 
 	// Test Backward with empty gradOutput
 	sigmoid4 := NewSigmoid("sigmoid4")
-	err = sigmoid4.Init([]int{1})
+	err = sigmoid4.Init(tensor.NewShape(1))
 	require.NoError(t, err)
 	input2 := tensor.FromFloat32(tensor.NewShape(1), []float32{1.0})
 	_, err = sigmoid4.Forward(input2)
@@ -209,7 +209,7 @@ func TestTanh(t *testing.T) {
 			tanh := NewTanh("tanh")
 			inputTensor := tensor.FromFloat32(tensor.NewShape(1), []float32{tt.input})
 
-			err := tanh.Init([]int{1})
+			err := tanh.Init(tensor.NewShape(1))
 			require.NoError(t, err, "Init should succeed")
 
 			output, err := tanh.Forward(inputTensor)
@@ -239,7 +239,7 @@ func TestTanh_EdgeCases(t *testing.T) {
 
 	// Test empty input
 	tanh := NewTanh("tanh")
-	err = tanh.Init([]int{1})
+	err = tanh.Init(tensor.NewShape(1))
 	require.NoError(t, err)
 
 	emptyInput := tensor.Empty(tensor.DTFP32)
@@ -254,7 +254,7 @@ func TestTanh_EdgeCases(t *testing.T) {
 
 	// Test Backward without Forward
 	tanh3 := NewTanh("tanh3")
-	err = tanh3.Init([]int{1})
+	err = tanh3.Init(tensor.NewShape(1))
 	require.NoError(t, err)
 	gradOutput := tensor.FromFloat32(tensor.NewShape(1), []float32{1.0})
 	_, err = tanh3.Backward(gradOutput)
@@ -262,7 +262,7 @@ func TestTanh_EdgeCases(t *testing.T) {
 
 	// Test Backward with empty gradOutput
 	tanh4 := NewTanh("tanh4")
-	err = tanh4.Init([]int{1})
+	err = tanh4.Init(tensor.NewShape(1))
 	require.NoError(t, err)
 	input2 := tensor.FromFloat32(tensor.NewShape(1), []float32{1.0})
 	_, err = tanh4.Forward(input2)
@@ -277,7 +277,7 @@ func TestSoftmax(t *testing.T) {
 	softmax := NewSoftmax("softmax", 0)
 	inputTensor := tensor.FromFloat32(tensor.NewShape(3), []float32{1.0, 2.0, 3.0})
 
-	err := softmax.Init([]int{3})
+	err := softmax.Init(tensor.NewShape(3))
 	require.NoError(t, err, "Init should succeed")
 
 	output, err := softmax.Forward(inputTensor)
@@ -313,7 +313,7 @@ func TestSoftmax_EdgeCases(t *testing.T) {
 
 	// Test empty input
 	softmax := NewSoftmax("softmax", 0)
-	err = softmax.Init([]int{3})
+	err = softmax.Init(tensor.NewShape(3))
 	require.NoError(t, err)
 
 	emptyInput := tensor.Empty(tensor.DTFP32)
@@ -328,7 +328,7 @@ func TestSoftmax_EdgeCases(t *testing.T) {
 
 	// Test Backward without Forward
 	softmax3 := NewSoftmax("softmax3", 0)
-	err = softmax3.Init([]int{3})
+	err = softmax3.Init(tensor.NewShape(3))
 	require.NoError(t, err)
 	gradOutput := tensor.FromFloat32(tensor.NewShape(3), []float32{0.1, 0.2, 0.3})
 	_, err = softmax3.Backward(gradOutput)
@@ -336,7 +336,7 @@ func TestSoftmax_EdgeCases(t *testing.T) {
 
 	// Test Backward with empty gradOutput
 	softmax4 := NewSoftmax("softmax4", 0)
-	err = softmax4.Init([]int{3})
+	err = softmax4.Init(tensor.NewShape(3))
 	require.NoError(t, err)
 	input2 := tensor.FromFloat32(tensor.NewShape(3), []float32{1.0, 2.0, 3.0})
 	_, err = softmax4.Forward(input2)
@@ -352,7 +352,7 @@ func TestDropout(t *testing.T) {
 		dropout := NewDropout("dropout", WithTrainingMode(false))
 		input := tensor.FromFloat32(tensor.NewShape(4), []float32{1.0, 2.0, 3.0, 4.0})
 
-		err := dropout.Init([]int{4})
+		err := dropout.Init(tensor.NewShape(4))
 		require.NoError(t, err)
 
 		output, err := dropout.Forward(input)
@@ -374,7 +374,7 @@ func TestDropout(t *testing.T) {
 		dropout := NewDropout("dropout", WithDropoutRate(0.0), WithTrainingMode(true))
 		input := tensor.FromFloat32(tensor.NewShape(4), []float32{1.0, 2.0, 3.0, 4.0})
 
-		err := dropout.Init([]int{4})
+		err := dropout.Init(tensor.NewShape(4))
 		require.NoError(t, err)
 
 		output, err := dropout.Forward(input)
@@ -402,7 +402,7 @@ func TestDropout(t *testing.T) {
 
 		input := tensor.FromFloat32(tensor.NewShape(10), []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0})
 
-		err := dropout.Init([]int{10})
+		err := dropout.Init(tensor.NewShape(10))
 		require.NoError(t, err)
 
 		output, err := dropout.Forward(input)
@@ -501,7 +501,7 @@ func TestDropout(t *testing.T) {
 
 	t.Run("empty_input_error", func(t *testing.T) {
 		dropout := NewDropout("dropout")
-		err := dropout.Init([]int{})
+		err := dropout.Init(tensor.NewShape())
 		require.Error(t, err, "Init with empty shape should error")
 
 		// Use Empty() to create a truly empty tensor (nil shape and data)
@@ -512,7 +512,7 @@ func TestDropout(t *testing.T) {
 
 	t.Run("backward_without_forward_error", func(t *testing.T) {
 		dropout := NewDropout("dropout")
-		err := dropout.Init([]int{4})
+		err := dropout.Init(tensor.NewShape(4))
 		require.NoError(t, err)
 
 		gradOutput := tensor.FromFloat32(tensor.NewShape(4), []float32{1.0, 1.0, 1.0, 1.0})
@@ -530,7 +530,7 @@ func TestDropout_EdgeCases(t *testing.T) {
 
 	// Test empty input
 	dropout := NewDropout("dropout")
-	err = dropout.Init([]int{4})
+	err = dropout.Init(tensor.NewShape(4))
 	require.NoError(t, err)
 
 	emptyInput := tensor.Empty(tensor.DTFP32)
@@ -545,7 +545,7 @@ func TestDropout_EdgeCases(t *testing.T) {
 
 	// Test Backward with empty gradOutput
 	dropout3 := NewDropout("dropout3")
-	err = dropout3.Init([]int{4})
+	err = dropout3.Init(tensor.NewShape(4))
 	require.NoError(t, err)
 	input2 := tensor.FromFloat32(tensor.NewShape(4), []float32{1.0, 2.0, 3.0, 4.0})
 	_, err = dropout3.Forward(input2)

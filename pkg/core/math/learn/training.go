@@ -4,14 +4,16 @@ import (
 	"fmt"
 
 	"github.com/itohio/EasyRobot/pkg/core/math/nn"
+	"github.com/itohio/EasyRobot/pkg/core/math/nn/types"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
 )
 
 // TrainStep performs a single training step: forward pass, loss computation, backward pass, and weight update.
-// Optimizer must implement the nn.Optimizer interface.
-func TrainStep(model *nn.Model, optimizer nn.Optimizer, lossFn nn.LossFunction, input, target tensor.Tensor) (float64, error) {
-	if model == nil {
-		return 0, fmt.Errorf("TrainStep: nil model")
+// Optimizer must implement the types.Optimizer interface.
+// Layer can be either a Sequential model or a single Layer that implements the Layer interface.
+func TrainStep(layer types.Layer, optimizer types.Optimizer, lossFn nn.LossFunction, input, target tensor.Tensor) (float64, error) {
+	if layer == nil {
+		return 0, fmt.Errorf("TrainStep: nil layer")
 	}
 	if optimizer == nil {
 		return 0, fmt.Errorf("TrainStep: nil optimizer")
@@ -27,7 +29,7 @@ func TrainStep(model *nn.Model, optimizer nn.Optimizer, lossFn nn.LossFunction, 
 	}
 
 	// Forward pass
-	output, err := model.Forward(input)
+	output, err := layer.Forward(input)
 	if err != nil {
 		return 0, fmt.Errorf("TrainStep: forward pass failed: %w", err)
 	}
@@ -45,14 +47,22 @@ func TrainStep(model *nn.Model, optimizer nn.Optimizer, lossFn nn.LossFunction, 
 	}
 
 	// Backward pass (layers use their stored inputs/outputs)
-	model.ZeroGrad()
-	_, err = model.Backward(gradOutput)
+	// Zero gradients for all parameters
+	params := layer.Parameters()
+	if params != nil {
+		for _, param := range params {
+			// ZeroGrad requires a pointer receiver, so we need to get a pointer
+			paramPtr := &param
+			paramPtr.ZeroGrad()
+		}
+	}
+	_, err = layer.Backward(gradOutput)
 	if err != nil {
 		return 0, fmt.Errorf("TrainStep: backward pass failed: %w", err)
 	}
 
 	// Update weights
-	err = model.Update(optimizer)
+	err = layer.Update(optimizer)
 	if err != nil {
 		return 0, fmt.Errorf("TrainStep: weight update failed: %w", err)
 	}

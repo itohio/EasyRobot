@@ -1,4 +1,4 @@
-package nn
+package types
 
 import (
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
@@ -11,7 +11,12 @@ type Layer interface {
 
 	// Init initializes the layer, creating internal computation tensors.
 	// Should be called after the layer is added to a model and input shape is known.
-	Init(inputShape []int) error
+	Init(inputShape tensor.Shape) error
+
+	// Parameters returns all trainable parameters.
+	// For Sequential models, returns parameters from all layers.
+	// For individual layers, returns parameters from that layer.
+	Parameters() map[ParamIndex]Parameter
 
 	// Forward computes the forward pass: output = layer(input)
 	// Validates input dimensions and computes directly into pre-allocated output tensor.
@@ -27,7 +32,7 @@ type Layer interface {
 
 	// OutputShape returns the output shape for given input shape.
 	// Used for dimension validation before Forward.
-	OutputShape(inputShape []int) ([]int, error)
+	OutputShape(inputShape tensor.Shape) (tensor.Shape, error)
 
 	// CanLearn returns whether this layer computes gradients during backward pass.
 	// If false, backward pass only computes gradient w.r.t. input (propagation).
@@ -42,4 +47,8 @@ type Layer interface {
 
 	// Output returns the output tensor from the last Forward pass.
 	Output() tensor.Tensor
+
+	// Update updates all parameters using the given optimizer.
+	// This allows both models and layers to be trained.
+	Update(optimizer Optimizer) error
 }

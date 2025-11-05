@@ -74,7 +74,7 @@ func TestMNIST(t *testing.T) {
 	// Note: CategoricalCrossEntropy with fromLogits=true will apply softmax internally
 	// So we don't need an explicit softmax layer
 
-	model, err := nn.NewSequentialModelBuilder([]int{1, 1, 28, 28}).
+	model, err := nn.NewSequentialModelBuilder(tensor.NewShape(1, 1, 28, 28)).
 		AddLayer(conv1).
 		AddLayer(relu1).
 		AddLayer(conv2).
@@ -89,7 +89,7 @@ func TestMNIST(t *testing.T) {
 	}
 
 	// Initialize model
-	if err := model.Init(); err != nil {
+	if err := model.Init(tensor.NewShape(1, 28, 28)); err != nil {
 		t.Fatalf("Failed to initialize model: %v", err)
 	}
 

@@ -1,10 +1,21 @@
-package layers
+package types
 
 import (
 	"math"
 
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+)
+
+// ParamIndex represents a typed parameter index for layers
+type ParamIndex int
+
+// Standard parameter indices
+const (
+	ParamWeights ParamIndex = 1
+	ParamBiases  ParamIndex = 2
+	ParamKernels ParamIndex = 3
+	ParamCustom  ParamIndex = 100
 )
 
 // Parameter represents a trainable parameter (weight or bias).

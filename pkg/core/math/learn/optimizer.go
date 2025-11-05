@@ -5,7 +5,7 @@ import (
 	"math"
 	"sync"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/nn/layers"
+	"github.com/itohio/EasyRobot/pkg/core/math/nn/types"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
 )
 
@@ -24,24 +24,22 @@ func NewSGD(lr float64) *SGD {
 }
 
 // Update applies SGD update: param.Data = param.Data - lr * param.Grad.
-func (s *SGD) Update(param *layers.Parameter) error {
+func (s *SGD) Update(param types.Parameter) error {
 	if s == nil {
 		return fmt.Errorf("SGD.Update: nil optimizer")
 	}
 
-	if param == nil {
-		return fmt.Errorf("SGD.Update: nil parameter")
-	}
-
+	// Note: param is passed by value, but Data and Grad are tensor references
+	// We modify the underlying tensor data in place
 	if !param.RequiresGrad {
 		return nil // No gradient tracking
 	}
 
-	if len(param.Grad.Shape()) == 0 {
+	if param.Grad == nil || tensor.IsNil(param.Grad) || len(param.Grad.Shape()) == 0 {
 		return nil // No gradient computed
 	}
 
-	if len(param.Data.Shape()) == 0 {
+	if param.Data == nil || tensor.IsNil(param.Data) || len(param.Data.Shape()) == 0 {
 		return fmt.Errorf("SGD.Update: empty parameter data")
 	}
 
@@ -52,6 +50,7 @@ func (s *SGD) Update(param *layers.Parameter) error {
 
 	// SGD update: data = data - lr * grad
 	// Use tensor operations: scale gradient by learning rate, then subtract from data
+	// Since param is by value but Data is a reference, we modify the underlying tensor
 	scaledGrad := param.Grad.Clone()
 	scaledGrad = scaledGrad.Scale(s.lr)
 	param.Data = param.Data.Sub(scaledGrad)
@@ -111,24 +110,22 @@ func NewAdam(lr, beta1, beta2, epsilon float64) *Adam {
 //	m_hat_t = m_t / (1 - beta1^t)
 //	v_hat_t = v_t / (1 - beta2^t)
 //	param = param - lr * m_hat_t / (sqrt(v_hat_t) + epsilon)
-func (a *Adam) Update(param *layers.Parameter) error {
+func (a *Adam) Update(param types.Parameter) error {
 	if a == nil {
 		return fmt.Errorf("Adam.Update: nil optimizer")
 	}
 
-	if param == nil {
-		return fmt.Errorf("Adam.Update: nil parameter")
-	}
-
+	// Note: param is passed by value, but Data and Grad are tensor references
+	// We modify the underlying tensor data in place
 	if !param.RequiresGrad {
 		return nil // No gradient tracking
 	}
 
-	if len(param.Grad.Shape()) == 0 {
+	if param.Grad == nil || tensor.IsNil(param.Grad) || len(param.Grad.Shape()) == 0 {
 		return nil // No gradient computed
 	}
 
-	if len(param.Data.Shape()) == 0 {
+	if param.Data == nil || tensor.IsNil(param.Data) || len(param.Data.Shape()) == 0 {
 		return fmt.Errorf("Adam.Update: empty parameter data")
 	}
 

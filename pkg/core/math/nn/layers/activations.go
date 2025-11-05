@@ -23,7 +23,7 @@ func NewReLU(name string) *ReLU {
 }
 
 // Init initializes the layer.
-func (r *ReLU) Init(inputShape []int) error {
+func (r *ReLU) Init(inputShape tensor.Shape) error {
 	if len(inputShape) == 0 {
 		return fmt.Errorf("ReLU.Init: empty input shape")
 	}
@@ -88,7 +88,7 @@ func (r *ReLU) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 }
 
 // OutputShape returns the output shape (same as input shape for ReLU).
-func (r *ReLU) OutputShape(inputShape []int) ([]int, error) {
+func (r *ReLU) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
 	outputShape := make([]int, len(inputShape))
 	copy(outputShape, inputShape)
 	return outputShape, nil
@@ -109,7 +109,7 @@ func NewSigmoid(name string) *Sigmoid {
 }
 
 // Init initializes the layer.
-func (s *Sigmoid) Init(inputShape []int) error {
+func (s *Sigmoid) Init(inputShape tensor.Shape) error {
 	if len(inputShape) == 0 {
 		return fmt.Errorf("Sigmoid.Init: empty input shape")
 	}
@@ -177,7 +177,7 @@ func (s *Sigmoid) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 }
 
 // OutputShape returns the output shape (same as input shape for Sigmoid).
-func (s *Sigmoid) OutputShape(inputShape []int) ([]int, error) {
+func (s *Sigmoid) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
 	outputShape := make([]int, len(inputShape))
 	copy(outputShape, inputShape)
 	return outputShape, nil
@@ -198,7 +198,7 @@ func NewTanh(name string) *Tanh {
 }
 
 // Init initializes the layer.
-func (t *Tanh) Init(inputShape []int) error {
+func (t *Tanh) Init(inputShape tensor.Shape) error {
 	if len(inputShape) == 0 {
 		return fmt.Errorf("Tanh.Init: empty input shape")
 	}
@@ -266,7 +266,7 @@ func (t *Tanh) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 }
 
 // OutputShape returns the output shape (same as input shape for Tanh).
-func (t *Tanh) OutputShape(inputShape []int) ([]int, error) {
+func (t *Tanh) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
 	outputShape := make([]int, len(inputShape))
 	copy(outputShape, inputShape)
 	return outputShape, nil
@@ -289,7 +289,7 @@ func NewSoftmax(name string, dim int) *Softmax {
 }
 
 // Init initializes the layer.
-func (s *Softmax) Init(inputShape []int) error {
+func (s *Softmax) Init(inputShape tensor.Shape) error {
 	if len(inputShape) == 0 {
 		return fmt.Errorf("Softmax.Init: empty input shape")
 	}
@@ -370,7 +370,7 @@ func (s *Softmax) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 }
 
 // OutputShape returns the output shape (same as input shape for Softmax).
-func (s *Softmax) OutputShape(inputShape []int) ([]int, error) {
+func (s *Softmax) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
 	outputShape := make([]int, len(inputShape))
 	copy(outputShape, inputShape)
 	return outputShape, nil
@@ -436,7 +436,7 @@ func NewDropout(name string, opts ...DropoutOption) *Dropout {
 }
 
 // Init initializes the layer.
-func (d *Dropout) Init(inputShape []int) error {
+func (d *Dropout) Init(inputShape tensor.Shape) error {
 	if len(inputShape) == 0 {
 		return fmt.Errorf("Dropout.Init: empty input shape")
 	}
@@ -525,7 +525,7 @@ func (d *Dropout) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 }
 
 // OutputShape returns the output shape (same as input shape for Dropout).
-func (d *Dropout) OutputShape(inputShape []int) ([]int, error) {
+func (d *Dropout) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
 	outputShape := make([]int, len(inputShape))
 	copy(outputShape, inputShape)
 	return outputShape, nil

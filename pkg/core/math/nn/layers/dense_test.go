@@ -3,6 +3,7 @@ package layers
 import (
 	"testing"
 
+	nntypes "github.com/itohio/EasyRobot/pkg/core/math/nn/types"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
 	"github.com/stretchr/testify/assert"
@@ -142,7 +143,7 @@ func TestDense_Init(t *testing.T) {
 
 	// Test nil receiver
 	var nilDense *Dense
-	err = nilDense.Init([]int{4})
+	err = nilDense.Init(tensor.NewShape(4))
 	assert.Error(t, err, "Should return error for nil receiver")
 }
 
@@ -294,13 +295,13 @@ func TestDense_Backward(t *testing.T) {
 			assert.NotEmpty(t, gradInput2.Shape().ToSlice(), "GradInput should have dimensions")
 
 			// Verify gradients were computed
-			weightParam, ok := dense2.Base.Parameter(ParamWeights)
+			weightParam, ok := dense2.Base.Parameter(nntypes.ParamWeights)
 			require.True(t, ok, "Weight parameter should exist")
 			require.NotNil(t, weightParam.Grad, "Weight grad should be allocated")
 			assert.NotEmpty(t, weightParam.Grad.Shape().ToSlice(), "Weight grad should have dimensions")
 
 			if tt.name == "1d_input" || tt.name == "2d_input" {
-				biasParam, ok := dense2.Base.Parameter(ParamBiases)
+				biasParam, ok := dense2.Base.Parameter(nntypes.ParamBiases)
 				require.True(t, ok, "Bias parameter should exist")
 				require.NotNil(t, biasParam.Grad, "Bias grad should be allocated")
 				assert.NotEmpty(t, biasParam.Grad.Shape().ToSlice(), "Bias grad should have dimensions")
@@ -315,7 +316,7 @@ func TestDense_Backward(t *testing.T) {
 	assert.Error(t, err, "Should return error for nil receiver")
 
 	dense, _ := NewDense(4, 2)
-	dense.Init([]int{4})
+	dense.Init(tensor.NewShape(4))
 	dense.Forward(tensor.FromFloat32(tensor.NewShape(4), make([]float32, 4)))
 
 	var emptyGrad types.Tensor
@@ -324,7 +325,7 @@ func TestDense_Backward(t *testing.T) {
 
 	// Test without Forward
 	dense3, _ := NewDense(4, 2)
-	dense3.Init([]int{4})
+	dense3.Init(tensor.NewShape(4))
 	_, err = dense3.Backward(gradOutput)
 	assert.Error(t, err, "Should return error if Forward not called")
 }
@@ -481,7 +482,7 @@ func TestDense_BackwardGradientComputation(t *testing.T) {
 	dense.SetBias(bias)
 
 	// Initialize and forward
-	err = dense.Init([]int{2})
+	err = dense.Init(tensor.NewShape(2))
 	require.NoError(t, err, "Init should succeed")
 
 	input := tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0})
@@ -503,7 +504,7 @@ func TestDense_BackwardGradientComputation(t *testing.T) {
 	assert.InDelta(t, 1.0, gradInputData[1], 1e-6, "GradInput[1] should be 1.0")
 
 	// Check weight gradient: should be [1.0, 2.0] (input @ gradOutput)
-	weightParam, ok := dense.Base.Parameter(ParamWeights)
+	weightParam, ok := dense.Base.Parameter(nntypes.ParamWeights)
 	require.True(t, ok, "Weight parameter should exist")
 	require.NotNil(t, weightParam.Grad, "Weight grad should be allocated")
 	assert.NotEmpty(t, weightParam.Grad.Shape().ToSlice(), "Weight grad should have dimensions")
@@ -512,7 +513,7 @@ func TestDense_BackwardGradientComputation(t *testing.T) {
 	assert.InDelta(t, 2.0, weightGradData[1], 1e-6, "Weight grad[1] should be 2.0")
 
 	// Check bias gradient: should be [1.0]
-	biasParam, ok := dense.Base.Parameter(ParamBiases)
+	biasParam, ok := dense.Base.Parameter(nntypes.ParamBiases)
 	require.True(t, ok, "Bias parameter should exist")
 	require.NotNil(t, biasParam.Grad, "Bias grad should be allocated")
 	assert.NotEmpty(t, biasParam.Grad.Shape().ToSlice(), "Bias grad should have dimensions")
@@ -700,7 +701,7 @@ func TestDense_BackwardAccuracy(t *testing.T) {
 			require.NoError(t, err, "Backward should succeed")
 
 			// Verify weight gradient
-			weightParam, _ := dense.Base.Parameter(ParamWeights)
+			weightParam, _ := dense.Base.Parameter(nntypes.ParamWeights)
 			require.NotNil(t, weightParam, "Weight parameter should exist")
 			require.NotEmpty(t, weightParam.Grad.Shape().ToSlice(), "Weight grad should be allocated")
 			weightGradData := weightParam.Grad.Data().([]float32)
@@ -711,7 +712,7 @@ func TestDense_BackwardAccuracy(t *testing.T) {
 			}
 
 			// Verify bias gradient (bias is always created)
-			biasParam, _ := dense.Base.Parameter(ParamBiases)
+			biasParam, _ := dense.Base.Parameter(nntypes.ParamBiases)
 			require.NotNil(t, biasParam, "Bias parameter should exist")
 			if tt.expectedBiasGrad != nil {
 				require.NotEmpty(t, biasParam.Grad.Shape().ToSlice(), "Bias grad should be allocated")
@@ -744,7 +745,7 @@ func TestDense_EdgeCases(t *testing.T) {
 	// Test empty input
 	dense, err := NewDense(2, 3)
 	require.NoError(t, err)
-	err = dense.Init([]int{2})
+	err = dense.Init(tensor.NewShape(2))
 	require.NoError(t, err)
 
 	emptyInput := tensor.Empty(tensor.DTFP32)
@@ -761,7 +762,7 @@ func TestDense_EdgeCases(t *testing.T) {
 	// Test Backward without Forward
 	dense3, err := NewDense(2, 3)
 	require.NoError(t, err)
-	err = dense3.Init([]int{2})
+	err = dense3.Init(tensor.NewShape(2))
 	require.NoError(t, err)
 	gradOutput := tensor.FromFloat32(tensor.NewShape(3), []float32{1.0, 1.0, 1.0})
 	_, err = dense3.Backward(gradOutput)
@@ -770,7 +771,7 @@ func TestDense_EdgeCases(t *testing.T) {
 	// Test Backward with empty gradOutput
 	dense4, err := NewDense(2, 3)
 	require.NoError(t, err)
-	err = dense4.Init([]int{2})
+	err = dense4.Init(tensor.NewShape(2))
 	require.NoError(t, err)
 	input2 := tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0})
 	_, err = dense4.Forward(input2)

@@ -1,29 +1,35 @@
-package nn
+package models
 
 import (
 	"fmt"
 
 	"github.com/itohio/EasyRobot/pkg/core/math/nn/layers"
+	"github.com/itohio/EasyRobot/pkg/core/math/nn/types"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
 )
 
-// Optimizer interface for updating parameters during training.
-type Optimizer interface {
-	// Update updates parameter using gradient.
-	Update(param *layers.Parameter) error
+// Sequential represents a neural network model composed of layers.
+// Sequential embeds layers.Base and implements the Layer interface, allowing models to be used as layers.
+type Sequential struct {
+	layers.Base
+	layers     []types.Layer
+	layerNames map[string]int // Map from layer name to index
+	inputShape tensor.Shape
 }
 
-// Model represents a neural network model composed of layers.
-// Model embeds layers.Base and implements the Layer interface, allowing models to be used as layers.
-type Model struct {
-	layers.Base
-	layers     []Layer
-	layerNames map[string]int // Map from layer name to index
-	inputShape []int
+// NewSequential creates a new Sequential model with the given layers, layer names, and input shape.
+// This is used by the builder to construct models.
+func NewSequential(base layers.Base, layers []types.Layer, layerNames map[string]int, inputShape tensor.Shape) *Sequential {
+	return &Sequential{
+		Base:       base,
+		layers:     layers,
+		layerNames: layerNames,
+		inputShape: inputShape,
+	}
 }
 
 // GetLayer returns the layer at the given index.
-func (m *Model) GetLayer(index int) Layer {
+func (m *Sequential) GetLayer(index int) types.Layer {
 	if m == nil || index < 0 || index >= len(m.layers) {
 		return nil
 	}
@@ -31,7 +37,7 @@ func (m *Model) GetLayer(index int) Layer {
 }
 
 // GetLayerByName returns the layer with the given name, or nil if not found.
-func (m *Model) GetLayerByName(name string) Layer {
+func (m *Sequential) GetLayerByName(name string) types.Layer {
 	if m == nil || m.layerNames == nil {
 		return nil
 	}
@@ -42,7 +48,7 @@ func (m *Model) GetLayerByName(name string) Layer {
 }
 
 // LayerCount returns the number of layers in the model.
-func (m *Model) LayerCount() int {
+func (m *Sequential) LayerCount() int {
 	if m == nil {
 		return 0
 	}
@@ -51,17 +57,22 @@ func (m *Model) LayerCount() int {
 
 // Init initializes all layers in the model.
 // This should be called after building the model and before first Forward pass.
-func (m *Model) Init() error {
+// Init initializes the model with the given input shape.
+// This implements the types.Layer interface.
+func (m *Sequential) Init(inputShape tensor.Shape) error {
 	if m == nil {
 		return fmt.Errorf("model.Init: nil model")
 	}
 
-	if len(m.inputShape) == 0 {
-		return fmt.Errorf("model.Init: input shape not set")
+	if len(inputShape) == 0 {
+		return fmt.Errorf("model.Init: input shape is empty")
 	}
 
+	// Store the input shape
+	m.inputShape = inputShape
+
 	// Initialize each layer with its input shape
-	currentShape := m.inputShape
+	currentShape := inputShape
 	for i, layer := range m.layers {
 		if layer == nil {
 			return fmt.Errorf("model.Init: nil layer at index %d", i)
@@ -86,7 +97,7 @@ func (m *Model) Init() error {
 // Forward computes forward pass through all layers.
 // Sets m.Input to input and m.Output to final output.
 // Layers store their own inputs/outputs internally.
-func (m *Model) Forward(input tensor.Tensor) (tensor.Tensor, error) {
+func (m *Sequential) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 	if m == nil {
 		return nil, fmt.Errorf("model.Forward: nil model")
 	}
@@ -97,7 +108,7 @@ func (m *Model) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 
 	// Validate input shape
 	inputShape := input.Shape()
-	if !shapesEqual(inputShape, m.inputShape) {
+	if !tensor.Shape(inputShape).Equal(tensor.Shape(m.inputShape)) {
 		return nil, fmt.Errorf("model.Forward: input shape %v does not match expected shape %v", inputShape, m.inputShape)
 	}
 
@@ -131,7 +142,7 @@ func (m *Model) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 
 // Backward computes backward pass through all layers in reverse order.
 // Layers use their stored inputs/outputs from Forward pass.
-func (m *Model) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
+func (m *Sequential) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 	if m == nil {
 		return nil, fmt.Errorf("model.Backward: nil model")
 	}
@@ -168,26 +179,29 @@ func (m *Model) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 }
 
 // Parameters returns all trainable parameters from all layers.
-// Collects parameters from layers that have a Parameters() method returning map[layers.ParamIndex]layers.Parameter.
-// Returns a combined map where keys are "layer_index:param_index" and values are layers.Parameter structs (not pointers).
-func (m *Model) Parameters() map[string]layers.Parameter {
+// For Sequential models with multiple layers, this aggregates parameters from all layers.
+// Since different layers may have the same ParamIndex, we use a composite key approach:
+// we collect parameters from all layers and return them with their ParamIndex keys.
+// Note: If multiple layers have the same ParamIndex, the last layer's parameter will overwrite previous ones.
+func (m *Sequential) Parameters() map[types.ParamIndex]types.Parameter {
 	if m == nil {
 		return nil
 	}
 
-	result := make(map[string]layers.Parameter)
-	for layerIdx, layer := range m.layers {
+	result := make(map[types.ParamIndex]types.Parameter)
+	for _, layer := range m.layers {
 		// Check if layer has Parameters() method
 		// Layers embedding Base will have this method promoted
 		type paramsGetter interface {
-			Parameters() map[layers.ParamIndex]layers.Parameter
+			Parameters() map[types.ParamIndex]types.Parameter
 		}
 
 		if pg, ok := layer.(paramsGetter); ok {
-			params := pg.Parameters()
-			for paramIdx, param := range params {
-				key := fmt.Sprintf("%d:%v", layerIdx, paramIdx)
-				result[key] = param
+			layerParams := pg.Parameters()
+			// Merge parameters from this layer into result
+			// Note: If multiple layers have the same ParamIndex, later layers overwrite earlier ones
+			for paramIdx, param := range layerParams {
+				result[paramIdx] = param
 			}
 		}
 	}
@@ -199,7 +213,7 @@ func (m *Model) Parameters() map[string]layers.Parameter {
 }
 
 // ZeroGrad zeros all parameter gradients.
-func (m *Model) ZeroGrad() {
+func (m *Sequential) ZeroGrad() {
 	if m == nil {
 		return
 	}
@@ -219,7 +233,7 @@ func (m *Model) ZeroGrad() {
 
 // Update updates all parameters using optimizer.
 // Use TrainStep from learn package for full training loop.
-func (m *Model) Update(optimizer Optimizer) error {
+func (m *Sequential) Update(optimizer types.Optimizer) error {
 	if m == nil {
 		return fmt.Errorf("model.Update: nil model")
 	}
@@ -233,26 +247,25 @@ func (m *Model) Update(optimizer Optimizer) error {
 	// After optimization, parameters are written back to layers via SetParam.
 	for _, layer := range m.layers {
 		type paramsGetter interface {
-			Parameters() map[layers.ParamIndex]layers.Parameter
+			ParametersByIndex() map[types.ParamIndex]types.Parameter
 		}
 		type paramSetter interface {
-			SetParam(layers.ParamIndex, layers.Parameter)
+			SetParam(types.ParamIndex, types.Parameter)
 		}
 
 		if pg, ok := layer.(paramsGetter); ok {
-			params := pg.Parameters()
+			params := pg.ParametersByIndex()
 			if len(params) > 0 {
-				if ps, ok2 := layer.(paramSetter); ok2 {
-					for paramIdx, param := range params {
-						// Create a pointer to the parameter for optimizer
-						paramPtr := &param
-
-						// Optimizer.Update updates the parameter in-place
-						if err := optimizer.Update(paramPtr); err != nil {
+				for _, param := range params {
+					// Optimizer.Update takes parameter by value
+					// Since Parameter.Data and Parameter.Grad are tensor references,
+					// the optimizer can modify the underlying tensor data in place
+					if param.RequiresGrad && param.Grad != nil && !tensor.IsNil(param.Grad) {
+						if err := optimizer.Update(param); err != nil {
 							return fmt.Errorf("model.Update: failed to update parameter: %w", err)
 						}
-						// Update the layer with the modified parameter
-						ps.SetParam(paramIdx, *paramPtr)
+						// Note: No need to call SetParam since the optimizer modifies
+						// the underlying tensor data through the reference
 					}
 				}
 			}
@@ -263,7 +276,7 @@ func (m *Model) Update(optimizer Optimizer) error {
 }
 
 // Name returns the name of the model (from Base).
-func (m *Model) Name() string {
+func (m *Sequential) Name() string {
 	if m == nil {
 		return ""
 	}
@@ -271,7 +284,7 @@ func (m *Model) Name() string {
 }
 
 // CanLearn returns whether the model can learn (from Base).
-func (m *Model) CanLearn() bool {
+func (m *Sequential) CanLearn() bool {
 	if m == nil {
 		return false
 	}
@@ -279,7 +292,7 @@ func (m *Model) CanLearn() bool {
 }
 
 // SetCanLearn sets whether the model can learn (from Base).
-func (m *Model) SetCanLearn(canLearn bool) {
+func (m *Sequential) SetCanLearn(canLearn bool) {
 	if m == nil {
 		return
 	}
@@ -287,7 +300,7 @@ func (m *Model) SetCanLearn(canLearn bool) {
 }
 
 // Input returns the input tensor from the last Forward pass (from Base).
-func (m *Model) Input() tensor.Tensor {
+func (m *Sequential) Input() tensor.Tensor {
 	if m == nil {
 		return nil
 	}
@@ -295,7 +308,7 @@ func (m *Model) Input() tensor.Tensor {
 }
 
 // Output returns the output tensor from the last Forward pass (from Base).
-func (m *Model) Output() tensor.Tensor {
+func (m *Sequential) Output() tensor.Tensor {
 	if m == nil {
 		return nil
 	}
@@ -304,7 +317,7 @@ func (m *Model) Output() tensor.Tensor {
 
 // OutputShape returns the output shape for given input shape.
 // Computes the output shape by propagating through all layers.
-func (m *Model) OutputShape(inputShape []int) ([]int, error) {
+func (m *Sequential) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
 	if m == nil {
 		return nil, fmt.Errorf("model.OutputShape: nil model")
 	}
@@ -314,7 +327,7 @@ func (m *Model) OutputShape(inputShape []int) ([]int, error) {
 	}
 
 	// Validate input shape matches model's expected input shape
-	if !shapesEqual(inputShape, m.inputShape) {
+	if !inputShape.Equal(m.inputShape) {
 		return nil, fmt.Errorf("model.OutputShape: input shape %v does not match model input shape %v", inputShape, m.inputShape)
 	}
 

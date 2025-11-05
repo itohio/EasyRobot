@@ -48,7 +48,7 @@ func TestXOR(t *testing.T) {
 
 	sigmoid := layers.NewSigmoid("sigmoid")
 
-	model, err := nn.NewSequentialModelBuilder([]int{2}).
+	model, err := nn.NewSequentialModelBuilder(tensor.NewShape(2)).
 		AddLayer(hiddenLayer).
 		AddLayer(relu).
 		AddLayer(outputLayer).
@@ -59,7 +59,7 @@ func TestXOR(t *testing.T) {
 	}
 
 	// Initialize model (allocates output tensors for layers)
-	if err := model.Init(); err != nil {
+	if err := model.Init(tensor.NewShape(2)); err != nil {
 		t.Fatalf("Failed to initialize model: %v", err)
 	}
 
@@ -109,6 +109,9 @@ func TestXOR(t *testing.T) {
 	// Test the trained model
 	t.Log("\nTesting trained model:")
 	allCorrect := true
+	correctCount := 0
+	totalCount := len(inputs)
+
 	for i, input := range inputs {
 		output, err := model.Forward(input)
 		if err != nil {
@@ -123,9 +126,20 @@ func TestXOR(t *testing.T) {
 			input.At(0), input.At(1), predicted, expected, error)
 
 		// Consider correct if error < 0.2 (XOR is binary, but we use sigmoid so values are in [0,1])
-		if error > 0.2 {
+		if error <= 0.2 {
+			correctCount++
+		} else {
 			allCorrect = false
 		}
+	}
+
+	// Calculate accuracy
+	accuracy := float64(correctCount) / float64(totalCount) * 100.0
+	t.Logf("\nAccuracy: %d/%d = %.2f%%", correctCount, totalCount, accuracy)
+
+	// Verify accuracy is > 50%
+	if accuracy <= 50.0 {
+		t.Errorf("Accuracy %.2f%% is not > 50%%, model did not learn XOR function", accuracy)
 	}
 
 	if !allCorrect {

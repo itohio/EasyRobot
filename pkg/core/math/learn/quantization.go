@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/nn"
+	"github.com/itohio/EasyRobot/pkg/core/math/nn/types"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
 )
 
@@ -379,9 +379,10 @@ func DequantizeTensor(quantized tensor.Tensor, params *QuantizationParams) (tens
 	return dequantized, nil
 }
 
-// QuantizeModel quantizes all learnable parameters in a model.
+// QuantizeModel quantizes all learnable parameters in a layer.
 // Returns a map from parameter key to quantization parameters.
-func QuantizeModel(model *nn.Model, opts ...QuantizationOption) (map[string]*QuantizationParams, error) {
+// Layer can be either a Sequential model or a single Layer that implements the Layer interface.
+func QuantizeModel(layer types.Layer, opts ...QuantizationOption) (map[string]*QuantizationParams, error) {
 	config := &quantizationConfig{
 		scheme:      QuantSymmetric,
 		bits:        8,
@@ -392,10 +393,10 @@ func QuantizeModel(model *nn.Model, opts ...QuantizationOption) (map[string]*Qua
 		opt(config)
 	}
 
-	params := model.Parameters()
+	params := layer.Parameters()
 	quantParams := make(map[string]*QuantizationParams)
 
-	for key, param := range params {
+	for paramIdx, param := range params {
 		// Create calibrator
 		calibrator := NewCalibrator(config.calibMethod, config.scheme, config.bits)
 
@@ -405,9 +406,11 @@ func QuantizeModel(model *nn.Model, opts ...QuantizationOption) (map[string]*Qua
 		// Compute quantization parameters
 		qp, err := calibrator.ComputeParams()
 		if err != nil {
-			return nil, fmt.Errorf("quantization: failed to compute params for %v: %w", key, err)
+			return nil, fmt.Errorf("quantization: failed to compute params for %v: %w", paramIdx, err)
 		}
 
+		// Use string representation of ParamIndex as key
+		key := fmt.Sprintf("%v", paramIdx)
 		quantParams[key] = qp
 	}
 

@@ -3,6 +3,7 @@ package layers
 import (
 	"testing"
 
+	"github.com/itohio/EasyRobot/pkg/core/math/nn/types"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -270,7 +271,7 @@ func TestBase_SetParam(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			base := NewBase("")
 			for i := 0; i < tt.numParams; i++ {
-				base.SetParam(ParamIndex(i), Parameter{
+				base.SetParam(types.ParamIndex(i), types.Parameter{
 					Data:         tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
 					RequiresGrad: true,
 				})
@@ -287,31 +288,31 @@ func TestBase_SetParam(t *testing.T) {
 
 func TestBase_Parameter(t *testing.T) {
 	base := NewBase("")
-	base.SetParam(ParamWeights, Parameter{
+	base.SetParam(types.ParamWeights, types.Parameter{
 		Data:         tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
 		RequiresGrad: true,
 	})
-	base.SetParam(ParamBiases, Parameter{
+	base.SetParam(types.ParamBiases, types.Parameter{
 		Data:         tensor.FromFloat32(tensor.NewShape(2), []float32{3.0, 4.0}),
 		RequiresGrad: true,
 	})
 
 	// Test valid index
-	param, ok := base.Parameter(ParamWeights)
+	param, ok := base.Parameter(types.ParamWeights)
 	assert.True(t, ok, "Parameter should exist")
 	assert.True(t, len(param.Data.Shape().ToSlice()) > 0, "Parameter should have shape")
 
-	param, ok = base.Parameter(ParamBiases)
+	param, ok = base.Parameter(types.ParamBiases)
 	assert.True(t, ok, "Parameter should exist")
 	assert.True(t, len(param.Data.Shape().ToSlice()) > 0, "Parameter should have shape")
 
 	// Test invalid index
-	_, ok = base.Parameter(ParamCustom)
+	_, ok = base.Parameter(types.ParamCustom)
 	assert.False(t, ok, "Parameter should not exist for unused index")
 
 	// Test nil receiver
 	var nilBase *Base
-	_, ok = nilBase.Parameter(ParamWeights)
+	_, ok = nilBase.Parameter(types.ParamWeights)
 	assert.False(t, ok, "Parameter should not exist for nil receiver")
 }
 
@@ -323,18 +324,18 @@ func TestBase_Parameters(t *testing.T) {
 	assert.Nil(t, params, "Parameters should be nil when empty")
 
 	// Test with params
-	base.SetParam(ParamWeights, Parameter{
+	base.SetParam(types.ParamWeights, types.Parameter{
 		Data:         tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
 		RequiresGrad: true,
 	})
-	base.SetParam(ParamBiases, Parameter{
+	base.SetParam(types.ParamBiases, types.Parameter{
 		Data:         tensor.FromFloat32(tensor.NewShape(2), []float32{3.0, 4.0}),
 		RequiresGrad: false,
 	})
 	params = base.Parameters()
 	assert.Len(t, params, 2, "Parameters should have length 2")
-	assert.NotNil(t, params[ParamWeights], "Weights parameter should exist")
-	assert.NotNil(t, params[ParamBiases], "Biases parameter should exist")
+	assert.NotNil(t, params[types.ParamWeights], "Weights parameter should exist")
+	assert.NotNil(t, params[types.ParamBiases], "Biases parameter should exist")
 
 	// Test nil receiver
 	var nilBase *Base
@@ -345,12 +346,12 @@ func TestBase_Parameters(t *testing.T) {
 func TestBase_SetParameters(t *testing.T) {
 	base := NewBase("")
 
-	newParams := map[ParamIndex]Parameter{
-		ParamWeights: {
+	newParams := map[types.ParamIndex]types.Parameter{
+		types.ParamWeights: {
 			Data:         tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
 			RequiresGrad: true,
 		},
-		ParamBiases: {
+		types.ParamBiases: {
 			Data:         tensor.FromFloat32(tensor.NewShape(3), []float32{3.0, 4.0, 5.0}),
 			RequiresGrad: false,
 		},
@@ -362,12 +363,12 @@ func TestBase_SetParameters(t *testing.T) {
 	// Verify parameters were set
 	params := base.Parameters()
 	require.Len(t, params, 2, "Parameters should have length 2")
-	weights := params[ParamWeights]
-	newWeights := newParams[ParamWeights]
+	weights := params[types.ParamWeights]
+	newWeights := newParams[types.ParamWeights]
 	assert.Equal(t, newWeights.Data.Shape().ToSlice(), weights.Data.Shape().ToSlice(), "Weights parameter shape should match")
 
-	biases := params[ParamBiases]
-	newBiases := newParams[ParamBiases]
+	biases := params[types.ParamBiases]
+	newBiases := newParams[types.ParamBiases]
 	assert.Equal(t, newBiases.Data.Shape().ToSlice(), biases.Data.Shape().ToSlice(), "Biases parameter shape should match")
 
 	// Test nil receiver
@@ -378,12 +379,12 @@ func TestBase_SetParameters(t *testing.T) {
 
 func TestBase_ZeroGrad(t *testing.T) {
 	base := NewBase("")
-	base.SetParam(ParamWeights, Parameter{
+	base.SetParam(types.ParamWeights, types.Parameter{
 		Data:         tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
 		RequiresGrad: true,
 		Grad:         tensor.FromFloat32(tensor.NewShape(2), []float32{1.0, 2.0}),
 	})
-	base.SetParam(ParamBiases, Parameter{
+	base.SetParam(types.ParamBiases, types.Parameter{
 		Data:         tensor.FromFloat32(tensor.NewShape(3), []float32{3.0, 4.0, 5.0}),
 		RequiresGrad: true,
 		Grad:         tensor.FromFloat32(tensor.NewShape(3), []float32{3.0, 4.0, 5.0}),
@@ -393,12 +394,12 @@ func TestBase_ZeroGrad(t *testing.T) {
 	base.ZeroGrad()
 
 	// Verify gradients are zeroed
-	param0, _ := base.Parameter(ParamWeights)
+	param0, _ := base.Parameter(types.ParamWeights)
 	param0GradData := param0.Grad.Data().([]float32)
 	for i := 0; i < len(param0GradData); i++ {
 		assert.Equal(t, float32(0.0), param0GradData[i], "Param0 grad should be zero")
 	}
-	param1, _ := base.Parameter(ParamBiases)
+	param1, _ := base.Parameter(types.ParamBiases)
 	param1GradData := param1.Grad.Data().([]float32)
 	for i := 0; i < len(param1GradData); i++ {
 		assert.Equal(t, float32(0.0), param1GradData[i], "Param1 grad should be zero")
@@ -489,7 +490,7 @@ func TestBase_Weights(t *testing.T) {
 
 	// Test with weights
 	weightTensor := tensor.FromFloat32(tensor.NewShape(2, 3), []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0})
-	base.SetParam(ParamWeights, Parameter{
+	base.SetParam(types.ParamWeights, types.Parameter{
 		Data:         weightTensor,
 		RequiresGrad: true,
 	})
@@ -512,7 +513,7 @@ func TestBase_Biases(t *testing.T) {
 
 	// Test with biases
 	biasTensor := tensor.FromFloat32(tensor.NewShape(3), []float32{1.0, 2.0, 3.0})
-	base.SetParam(ParamBiases, Parameter{
+	base.SetParam(types.ParamBiases, types.Parameter{
 		Data:         biasTensor,
 		RequiresGrad: true,
 	})
@@ -535,7 +536,7 @@ func TestBase_Kernels(t *testing.T) {
 
 	// Test with kernels
 	kernelTensor := tensor.FromFloat32(tensor.NewShape(16, 3, 3, 3), make([]float32, 16*3*3*3))
-	base.SetParam(ParamKernels, Parameter{
+	base.SetParam(types.ParamKernels, types.Parameter{
 		Data:         kernelTensor,
 		RequiresGrad: true,
 	})

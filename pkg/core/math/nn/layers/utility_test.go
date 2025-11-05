@@ -53,7 +53,7 @@ func TestReshape(t *testing.T) {
 
 	inputTensor := tensor.FromFloat32(tensor.NewShape(1, 8), []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0})
 
-	err := reshape.Init([]int{1, 8})
+	err := reshape.Init(tensor.NewShape(1, 8))
 	require.NoError(t, err, "Init should succeed")
 
 	output, err := reshape.Forward(inputTensor)
@@ -73,7 +73,7 @@ func TestUnsqueeze(t *testing.T) {
 		unsqueeze := NewUnsqueeze(0)
 		input := tensor.FromFloat32(tensor.NewShape(3, 4), []float32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12})
 
-		err := unsqueeze.Init([]int{3, 4})
+		err := unsqueeze.Init(tensor.NewShape(3, 4))
 		require.NoError(t, err)
 
 		output, err := unsqueeze.Forward(input)
@@ -84,7 +84,7 @@ func TestUnsqueeze(t *testing.T) {
 
 	t.Run("add_dim_at_end", func(t *testing.T) {
 		unsqueeze := NewUnsqueeze(-1)
-		err := unsqueeze.Init([]int{3, 4})
+		err := unsqueeze.Init(tensor.NewShape(3, 4))
 		require.NoError(t, err)
 
 		outputShape, err := unsqueeze.OutputShape([]int{3, 4})
@@ -99,7 +99,7 @@ func TestSqueeze(t *testing.T) {
 		squeeze := NewSqueeze()
 		input := tensor.FromFloat32(tensor.NewShape(1, 3, 1, 4), []float32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12})
 
-		err := squeeze.Init([]int{1, 3, 1, 4})
+		err := squeeze.Init(tensor.NewShape(1, 3, 1, 4))
 		require.NoError(t, err)
 
 		output, err := squeeze.Forward(input)
@@ -110,7 +110,7 @@ func TestSqueeze(t *testing.T) {
 
 	t.Run("squeeze_specific_dim", func(t *testing.T) {
 		squeeze := NewSqueezeDims(0, 2)
-		err := squeeze.Init([]int{1, 3, 1, 4})
+		err := squeeze.Init(tensor.NewShape(1, 3, 1, 4))
 		require.NoError(t, err)
 
 		outputShape, err := squeeze.OutputShape([]int{1, 3, 1, 4})
@@ -124,7 +124,7 @@ func TestTranspose(t *testing.T) {
 	transpose := NewTranspose()
 	input := tensor.FromFloat32(tensor.NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
 
-	err := transpose.Init([]int{2, 3})
+	err := transpose.Init(tensor.NewShape(2, 3))
 	require.NoError(t, err)
 
 	output, err := transpose.Forward(input)

@@ -55,7 +55,7 @@ func NewMaxPool2D(kernelH, kernelW, strideH, strideW, padH, padW int) (*MaxPool2
 }
 
 // Init initializes the layer, creating internal computation tensors.
-func (m *MaxPool2D) Init(inputShape []int) error {
+func (m *MaxPool2D) Init(inputShape tensor.Shape) error {
 	if m == nil {
 		return fmt.Errorf("MaxPool2D.Init: nil layer")
 	}
@@ -83,7 +83,7 @@ func (m *MaxPool2D) Init(inputShape []int) error {
 			outWidth, inWidth, m.kernelW, m.padW, m.strideW)
 	}
 
-	outputShape := []int{batchSize, channels, outHeight, outWidth}
+	outputShape := tensor.NewShape(batchSize, channels, outHeight, outWidth)
 	outputSize := batchSize * channels * outHeight * outWidth
 	m.Base.AllocOutput(outputShape, outputSize)
 
@@ -241,7 +241,7 @@ func (m *MaxPool2D) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 }
 
 // OutputShape returns the output shape for given input shape.
-func (m *MaxPool2D) OutputShape(inputShape []int) ([]int, error) {
+func (m *MaxPool2D) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
 	if m == nil {
 		return nil, fmt.Errorf("MaxPool2D.OutputShape: nil layer")
 	}
@@ -258,7 +258,7 @@ func (m *MaxPool2D) OutputShape(inputShape []int) ([]int, error) {
 	outHeight := (inHeight+2*m.padH-m.kernelH)/m.strideH + 1
 	outWidth := (inWidth+2*m.padW-m.kernelW)/m.strideW + 1
 
-	return []int{batchSize, channels, outHeight, outWidth}, nil
+	return tensor.NewShape(batchSize, channels, outHeight, outWidth), nil
 }
 
 // AvgPool2D represents a 2D average pooling layer.
@@ -309,7 +309,7 @@ func NewAvgPool2D(kernelH, kernelW, strideH, strideW, padH, padW int) (*AvgPool2
 }
 
 // Init initializes the layer, creating internal computation tensors.
-func (a *AvgPool2D) Init(inputShape []int) error {
+func (a *AvgPool2D) Init(inputShape tensor.Shape) error {
 	if a == nil {
 		return fmt.Errorf("AvgPool2D.Init: nil layer")
 	}
@@ -337,7 +337,7 @@ func (a *AvgPool2D) Init(inputShape []int) error {
 			outWidth, inWidth, a.kernelW, a.padW, a.strideW)
 	}
 
-	outputShape := []int{batchSize, channels, outHeight, outWidth}
+	outputShape := tensor.NewShape(batchSize, channels, outHeight, outWidth)
 	outputSize := batchSize * channels * outHeight * outWidth
 	a.Base.AllocOutput(outputShape, outputSize)
 
@@ -412,7 +412,7 @@ func (a *AvgPool2D) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 }
 
 // OutputShape returns the output shape for given input shape.
-func (a *AvgPool2D) OutputShape(inputShape []int) ([]int, error) {
+func (a *AvgPool2D) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
 	if a == nil {
 		return nil, fmt.Errorf("AvgPool2D.OutputShape: nil layer")
 	}
@@ -429,7 +429,7 @@ func (a *AvgPool2D) OutputShape(inputShape []int) ([]int, error) {
 	outHeight := (inHeight+2*a.padH-a.kernelH)/a.strideH + 1
 	outWidth := (inWidth+2*a.padW-a.kernelW)/a.strideW + 1
 
-	return []int{batchSize, channels, outHeight, outWidth}, nil
+	return tensor.NewShape(batchSize, channels, outHeight, outWidth), nil
 }
 
 // GlobalAvgPool2D represents a global average pooling layer.
@@ -445,7 +445,7 @@ func NewGlobalAvgPool2D() *GlobalAvgPool2D {
 }
 
 // Init initializes the layer, creating internal computation tensors.
-func (g *GlobalAvgPool2D) Init(inputShape []int) error {
+func (g *GlobalAvgPool2D) Init(inputShape tensor.Shape) error {
 	if g == nil {
 		return fmt.Errorf("GlobalAvgPool2D.Init: nil layer")
 	}
@@ -459,7 +459,7 @@ func (g *GlobalAvgPool2D) Init(inputShape []int) error {
 	channels := inputShape[1]
 
 	// Output shape: [batch, channels]
-	outputShape := []int{batchSize, channels}
+	outputShape := tensor.NewShape(batchSize, channels)
 	outputSize := batchSize * channels
 	g.Base.AllocOutput(outputShape, outputSize)
 
@@ -534,7 +534,7 @@ func (g *GlobalAvgPool2D) Backward(gradOutput types.Tensor) (types.Tensor, error
 }
 
 // OutputShape returns the output shape for given input shape.
-func (g *GlobalAvgPool2D) OutputShape(inputShape []int) ([]int, error) {
+func (g *GlobalAvgPool2D) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
 	if g == nil {
 		return nil, fmt.Errorf("GlobalAvgPool2D.OutputShape: nil layer")
 	}
@@ -546,5 +546,5 @@ func (g *GlobalAvgPool2D) OutputShape(inputShape []int) ([]int, error) {
 	batchSize := inputShape[0]
 	channels := inputShape[1]
 
-	return []int{batchSize, channels}, nil
+	return tensor.NewShape(batchSize, channels), nil
 }

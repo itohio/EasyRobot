@@ -18,7 +18,7 @@ func TestMaxPool2D_EdgeCases(t *testing.T) {
 	// Test empty input
 	pool, err := NewMaxPool2D(2, 2, 2, 2, 0, 0)
 	require.NoError(t, err)
-	err = pool.Init([]int{1, 1, 4, 4})
+	err = pool.Init(tensor.NewShape(1, 1, 4, 4))
 	require.NoError(t, err)
 
 	emptyInput := tensor.Empty(tensor.DTFP32)
@@ -35,7 +35,7 @@ func TestMaxPool2D_EdgeCases(t *testing.T) {
 	// Test Backward without Forward
 	pool3, err := NewMaxPool2D(2, 2, 2, 2, 0, 0)
 	require.NoError(t, err)
-	err = pool3.Init([]int{1, 1, 4, 4})
+	err = pool3.Init(tensor.NewShape(1, 1, 4, 4))
 	require.NoError(t, err)
 	gradOutput := tensor.FromFloat32(tensor.NewShape(1, 1, 2, 2), make([]float32, 4))
 	_, err = pool3.Backward(gradOutput)
@@ -44,7 +44,7 @@ func TestMaxPool2D_EdgeCases(t *testing.T) {
 	// Test Backward with empty gradOutput
 	pool4, err := NewMaxPool2D(2, 2, 2, 2, 0, 0)
 	require.NoError(t, err)
-	err = pool4.Init([]int{1, 1, 4, 4})
+	err = pool4.Init(tensor.NewShape(1, 1, 4, 4))
 	require.NoError(t, err)
 	input2 := tensor.FromFloat32(tensor.NewShape(1, 1, 4, 4), make([]float32, 16))
 	_, err = pool4.Forward(input2)
@@ -64,7 +64,7 @@ func TestAvgPool2D_EdgeCases(t *testing.T) {
 	// Test empty input
 	pool, err := NewAvgPool2D(2, 2, 2, 2, 0, 0)
 	require.NoError(t, err)
-	err = pool.Init([]int{1, 1, 4, 4})
+	err = pool.Init(tensor.NewShape(1, 1, 4, 4))
 	require.NoError(t, err)
 
 	emptyInput := tensor.Empty(tensor.DTFP32)
@@ -81,7 +81,7 @@ func TestAvgPool2D_EdgeCases(t *testing.T) {
 	// Test Backward without Forward
 	pool3, err := NewAvgPool2D(2, 2, 2, 2, 0, 0)
 	require.NoError(t, err)
-	err = pool3.Init([]int{1, 1, 4, 4})
+	err = pool3.Init(tensor.NewShape(1, 1, 4, 4))
 	require.NoError(t, err)
 	gradOutput2 := tensor.FromFloat32(tensor.NewShape(1, 1, 2, 2), make([]float32, 4))
 	_, err = pool3.Backward(gradOutput2)
@@ -90,7 +90,7 @@ func TestAvgPool2D_EdgeCases(t *testing.T) {
 	// Test Backward with empty gradOutput
 	pool4, err := NewAvgPool2D(2, 2, 2, 2, 0, 0)
 	require.NoError(t, err)
-	err = pool4.Init([]int{1, 1, 4, 4})
+	err = pool4.Init(tensor.NewShape(1, 1, 4, 4))
 	require.NoError(t, err)
 	input2 := tensor.FromFloat32(tensor.NewShape(1, 1, 4, 4), make([]float32, 16))
 	_, err = pool4.Forward(input2)
@@ -109,7 +109,7 @@ func TestGlobalAvgPool2D_EdgeCases(t *testing.T) {
 
 	// Test empty input
 	pool := NewGlobalAvgPool2D()
-	err = pool.Init([]int{1, 2, 3, 3})
+	err = pool.Init(tensor.NewShape(1, 2, 3, 3))
 	require.NoError(t, err)
 
 	emptyInput := tensor.Empty(tensor.DTFP32)
@@ -124,7 +124,7 @@ func TestGlobalAvgPool2D_EdgeCases(t *testing.T) {
 
 	// Test Backward without Forward
 	pool3 := NewGlobalAvgPool2D()
-	err = pool3.Init([]int{1, 2, 3, 3})
+	err = pool3.Init(tensor.NewShape(1, 2, 3, 3))
 	require.NoError(t, err)
 	gradOutput3 := tensor.FromFloat32(tensor.NewShape(1, 2), make([]float32, 2))
 	_, err = pool3.Backward(gradOutput3)
@@ -132,7 +132,7 @@ func TestGlobalAvgPool2D_EdgeCases(t *testing.T) {
 
 	// Test Backward with empty gradOutput
 	pool4 := NewGlobalAvgPool2D()
-	err = pool4.Init([]int{1, 2, 3, 3})
+	err = pool4.Init(tensor.NewShape(1, 2, 3, 3))
 	require.NoError(t, err)
 	input2 := tensor.FromFloat32(tensor.NewShape(1, 2, 3, 3), make([]float32, 18))
 	_, err = pool4.Forward(input2)

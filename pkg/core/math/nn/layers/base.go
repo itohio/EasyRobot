@@ -4,22 +4,12 @@ import (
 	"fmt"
 	"sync/atomic"
 
+	"github.com/itohio/EasyRobot/pkg/core/math/nn/types"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+	tensorTypes "github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
 )
 
 var layerCounter int64
-
-// ParamIndex represents a typed parameter index for layers
-type ParamIndex int
-
-// Standard parameter indices
-const (
-	ParamWeights ParamIndex = 1
-	ParamBiases  ParamIndex = 2
-	ParamKernels ParamIndex = 3
-	ParamCustom  ParamIndex = 100
-)
 
 // Option represents a configuration option for layers.
 type Option func(*Base)
@@ -33,11 +23,11 @@ type Base struct {
 	canLearn bool
 	biasHint *bool           // Optional bias hint for layers that support it
 	dataType tensor.DataType // Data type for layer tensors (default: DTFP32)
-	input    types.Tensor
-	output   types.Tensor
-	grad     types.Tensor             // Gradient tensor for backward pass
-	params   map[ParamIndex]Parameter // Parameters map
-	layerIdx int64                    // Unique layer index assigned at creation
+	input    tensorTypes.Tensor
+	output   tensorTypes.Tensor
+	grad     tensorTypes.Tensor                   // Gradient tensor for backward pass
+	params   map[types.ParamIndex]types.Parameter // Parameters map
+	layerIdx int64                                // Unique layer index assigned at creation
 }
 
 // NewBase creates a new Base layer without options.
@@ -51,7 +41,7 @@ func NewBase(prefix string) Base {
 		prefix:   prefix,
 		canLearn: false,
 		dataType: tensor.DTFP32, // Default to FP32
-		params:   make(map[ParamIndex]Parameter),
+		params:   make(map[types.ParamIndex]types.Parameter),
 		layerIdx: layerIdx,
 	}
 }
@@ -104,40 +94,40 @@ func WithDataType(dt tensor.DataType) Option {
 }
 
 // WithWeights returns an Option that sets the weight parameter at ParamWeights index.
-func WithWeights(weight types.Tensor) Option {
+func WithWeights(weight tensorTypes.Tensor) Option {
 	return func(b *Base) {
-		b.initParam(ParamWeights)
-		param := b.params[ParamWeights]
+		b.initParam(types.ParamWeights)
+		param := b.params[types.ParamWeights]
 		param.Data = weight
 		param.RequiresGrad = b.canLearn
-		b.params[ParamWeights] = param
+		b.params[types.ParamWeights] = param
 	}
 }
 
 // WithBiases returns an Option that sets the bias parameter at ParamBiases index.
-func WithBiases(bias types.Tensor) Option {
+func WithBiases(bias tensorTypes.Tensor) Option {
 	return func(b *Base) {
-		b.initParam(ParamBiases)
-		param := b.params[ParamBiases]
+		b.initParam(types.ParamBiases)
+		param := b.params[types.ParamBiases]
 		param.Data = bias
 		param.RequiresGrad = b.canLearn
-		b.params[ParamBiases] = param
+		b.params[types.ParamBiases] = param
 	}
 }
 
 // WithKernels returns an Option that sets the kernel parameter at ParamKernels index.
-func WithKernels(kernel types.Tensor) Option {
+func WithKernels(kernel tensorTypes.Tensor) Option {
 	return func(b *Base) {
-		b.initParam(ParamKernels)
-		param := b.params[ParamKernels]
+		b.initParam(types.ParamKernels)
+		param := b.params[types.ParamKernels]
 		param.Data = kernel
 		param.RequiresGrad = b.canLearn
-		b.params[ParamKernels] = param
+		b.params[types.ParamKernels] = param
 	}
 }
 
 // WithParameter returns an Option that sets a parameter at the given index.
-func WithParameter(idx ParamIndex, param Parameter) Option {
+func WithParameter(idx types.ParamIndex, param types.Parameter) Option {
 	return func(b *Base) {
 		b.initParam(idx)
 		param.RequiresGrad = b.canLearn
@@ -147,7 +137,7 @@ func WithParameter(idx ParamIndex, param Parameter) Option {
 
 // WithParameters returns an Option that sets multiple parameters.
 // Copies as many parameters as fit into Base.params.
-func WithParameters(params map[ParamIndex]Parameter) Option {
+func WithParameters(params map[types.ParamIndex]types.Parameter) Option {
 	return func(b *Base) {
 		// Copy as many parameters as fit
 		for idx, param := range params {
@@ -159,9 +149,9 @@ func WithParameters(params map[ParamIndex]Parameter) Option {
 }
 
 // Helper to initialize a parameter if it doesn't exist
-func (b *Base) initParam(idx ParamIndex) {
+func (b *Base) initParam(idx types.ParamIndex) {
 	if _, ok := b.params[idx]; !ok {
-		b.params[idx] = Parameter{}
+		b.params[idx] = types.Parameter{}
 	}
 }
 
@@ -231,7 +221,7 @@ func (b *Base) DataType() tensor.DataType {
 }
 
 // Input returns the input tensor from the last Forward pass.
-func (b *Base) Input() types.Tensor {
+func (b *Base) Input() tensorTypes.Tensor {
 	if b == nil {
 		return nil
 	}
@@ -239,7 +229,7 @@ func (b *Base) Input() types.Tensor {
 }
 
 // Output returns the output tensor from the last Forward pass.
-func (b *Base) Output() types.Tensor {
+func (b *Base) Output() tensorTypes.Tensor {
 	if b == nil {
 		return nil
 	}
@@ -247,7 +237,7 @@ func (b *Base) Output() types.Tensor {
 }
 
 // Grad returns the gradient tensor from the last Backward pass.
-func (b *Base) Grad() types.Tensor {
+func (b *Base) Grad() tensorTypes.Tensor {
 	if b == nil {
 		return nil
 	}
@@ -255,7 +245,7 @@ func (b *Base) Grad() types.Tensor {
 }
 
 // setInput stores the input tensor (internal method).
-func (b *Base) setInput(input types.Tensor) {
+func (b *Base) setInput(input tensorTypes.Tensor) {
 	if b == nil {
 		return
 	}
@@ -263,7 +253,7 @@ func (b *Base) setInput(input types.Tensor) {
 }
 
 // setOutput stores the output tensor (internal method).
-func (b *Base) setOutput(output types.Tensor) {
+func (b *Base) setOutput(output tensorTypes.Tensor) {
 	if b == nil {
 		return
 	}
@@ -271,7 +261,7 @@ func (b *Base) setOutput(output types.Tensor) {
 }
 
 // setGrad stores the gradient tensor (internal method).
-func (b *Base) setGrad(grad types.Tensor) {
+func (b *Base) setGrad(grad tensorTypes.Tensor) {
 	if b == nil {
 		return
 	}
@@ -297,37 +287,38 @@ func (b *Base) AllocGrad(shape []int, size int) {
 }
 
 // Helper method for layers to store input during Forward.
-func (b *Base) StoreInput(input types.Tensor) {
+func (b *Base) StoreInput(input tensorTypes.Tensor) {
 	b.setInput(input)
 }
 
 // Helper method for layers to store output during Forward.
-func (b *Base) StoreOutput(output types.Tensor) {
+func (b *Base) StoreOutput(output tensorTypes.Tensor) {
 	b.setOutput(output)
 }
 
 // Helper method for layers to store grad during Backward.
-func (b *Base) StoreGrad(grad types.Tensor) {
+func (b *Base) StoreGrad(grad tensorTypes.Tensor) {
 	b.setGrad(grad)
 }
 
 // Parameter returns the parameter at the given index and whether it exists.
-func (b *Base) Parameter(idx ParamIndex) (Parameter, bool) {
+func (b *Base) Parameter(idx types.ParamIndex) (types.Parameter, bool) {
 	if b == nil {
-		return Parameter{}, false
+		return types.Parameter{}, false
 	}
 	param, ok := b.params[idx]
 	return param, ok
 }
 
-// Parameters returns all parameters from the params map.
+// ParametersByIndex returns all parameters from the params map.
 // Returns map[ParamIndex]Parameter where values are Parameter structs (not pointers).
-func (b *Base) Parameters() map[ParamIndex]Parameter {
+// This is the internal method used by layers.
+func (b *Base) ParametersByIndex() map[types.ParamIndex]types.Parameter {
 	if b == nil {
 		return nil
 	}
 
-	result := make(map[ParamIndex]Parameter)
+	result := make(map[types.ParamIndex]types.Parameter)
 	for idx, param := range b.params {
 		result[idx] = param
 	}
@@ -338,7 +329,7 @@ func (b *Base) Parameters() map[ParamIndex]Parameter {
 }
 
 // SetParameters sets all parameters in the map.
-func (b *Base) SetParameters(params map[ParamIndex]Parameter) error {
+func (b *Base) SetParameters(params map[types.ParamIndex]types.Parameter) error {
 	if b == nil {
 		return fmt.Errorf("Base.SetParameters: nil layer")
 	}
@@ -361,7 +352,7 @@ func (b *Base) ZeroGrad() {
 }
 
 // SetParam sets a parameter in the map at the given index.
-func (b *Base) SetParam(idx ParamIndex, param Parameter) {
+func (b *Base) SetParam(idx types.ParamIndex, param types.Parameter) {
 	if b == nil {
 		return
 	}
@@ -370,25 +361,72 @@ func (b *Base) SetParam(idx ParamIndex, param Parameter) {
 }
 
 // Weights returns the weights parameter.
-func (b *Base) Weights() Parameter {
+func (b *Base) Weights() types.Parameter {
 	if b == nil {
-		return Parameter{}
+		return types.Parameter{}
 	}
-	return b.params[ParamWeights]
+	return b.params[types.ParamWeights]
 }
 
 // Biases returns the biases parameter.
-func (b *Base) Biases() Parameter {
+func (b *Base) Biases() types.Parameter {
 	if b == nil {
-		return Parameter{}
+		return types.Parameter{}
 	}
-	return b.params[ParamBiases]
+	return b.params[types.ParamBiases]
 }
 
 // Kernels returns the kernels parameter.
-func (b *Base) Kernels() Parameter {
+func (b *Base) Kernels() types.Parameter {
 	if b == nil {
-		return Parameter{}
+		return types.Parameter{}
 	}
-	return b.params[ParamKernels]
+	return b.params[types.ParamKernels]
+}
+
+// Parameters returns all parameters as a map with ParamIndex keys.
+// This implements the types.Model interface.
+func (b *Base) Parameters() map[types.ParamIndex]types.Parameter {
+	if b == nil {
+		return nil
+	}
+
+	result := make(map[types.ParamIndex]types.Parameter)
+	for idx, param := range b.params {
+		result[idx] = param
+	}
+
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+// Update updates all parameters using the given optimizer.
+// This allows individual layers to be trained directly.
+// This implements the types.Layer interface.
+func (b *Base) Update(optimizer types.Optimizer) error {
+	if b == nil {
+		return fmt.Errorf("Base.Update: nil layer")
+	}
+
+	if optimizer == nil {
+		return fmt.Errorf("Base.Update: nil optimizer")
+	}
+
+	// Update each parameter using the optimizer
+	for idx, param := range b.params {
+		if param.RequiresGrad && param.Grad != nil && !tensor.IsNil(param.Grad) {
+			// Optimizer.Update takes parameter by value
+			// Since Parameter.Data and Parameter.Grad are tensor references,
+			// the optimizer can modify the underlying tensor data in place
+			if err := optimizer.Update(param); err != nil {
+				return fmt.Errorf("Base.Update: failed to update parameter %v: %w", idx, err)
+			}
+			// Note: No need to update b.params[idx] since the optimizer modifies
+			// the underlying tensor data through the reference
+		}
+	}
+
+	return nil
 }

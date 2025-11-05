@@ -3,8 +3,9 @@ package layers
 import (
 	"fmt"
 
+	"github.com/itohio/EasyRobot/pkg/core/math/nn/types"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+	tensorTypes "github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
 )
 
 // Conv1D represents a 1D convolution layer.
@@ -59,11 +60,11 @@ func NewConv1D(
 	}
 
 	// Set defaults: create kernel parameter using layer's data type
-	_, hasKernel := conv.Base.Parameter(ParamKernels)
+	_, hasKernel := conv.Base.Parameter(types.ParamKernels)
 	if !hasKernel {
 		dtype := conv.Base.DataType()
 		kernelData := tensor.New(dtype, tensor.NewShape(outChannels, inChannels, kernelLen))
-		conv.Base.SetParam(ParamKernels, Parameter{
+		conv.Base.SetParam(types.ParamKernels, types.Parameter{
 			Data:         kernelData,
 			RequiresGrad: conv.Base.CanLearn(),
 		})
@@ -71,12 +72,12 @@ func NewConv1D(
 
 	// Create bias parameter if needed and not already set via options
 	if conv.hasBias {
-		_, hasBiasParam := conv.Base.Parameter(ParamBiases)
+		_, hasBiasParam := conv.Base.Parameter(types.ParamBiases)
 		if !hasBiasParam {
 			// Use layer's data type for bias
 			dtype := conv.Base.DataType()
 			biasData := tensor.New(dtype, tensor.NewShape(outChannels))
-			conv.Base.SetParam(ParamBiases, Parameter{
+			conv.Base.SetParam(types.ParamBiases, types.Parameter{
 				Data:         biasData,
 				RequiresGrad: conv.Base.CanLearn(),
 			})
@@ -89,16 +90,16 @@ func NewConv1D(
 	// Update RequiresGrad on parameters after options are parsed
 	// This ensures WithCanLearn option takes effect
 	if conv.Base.CanLearn() {
-		kernelParam, ok := conv.Base.Parameter(ParamKernels)
+		kernelParam, ok := conv.Base.Parameter(types.ParamKernels)
 		if ok {
 			kernelParam.RequiresGrad = true
-			conv.Base.SetParam(ParamKernels, kernelParam)
+			conv.Base.SetParam(types.ParamKernels, kernelParam)
 		}
 		if conv.hasBias {
-			biasParam, ok := conv.Base.Parameter(ParamBiases)
+			biasParam, ok := conv.Base.Parameter(types.ParamBiases)
 			if ok {
 				biasParam.RequiresGrad = true
-				conv.Base.SetParam(ParamBiases, biasParam)
+				conv.Base.SetParam(types.ParamBiases, biasParam)
 			}
 		}
 	}
@@ -107,7 +108,7 @@ func NewConv1D(
 }
 
 // Init initializes the layer, creating internal computation tensors.
-func (c *Conv1D) Init(inputShape []int) error {
+func (c *Conv1D) Init(inputShape tensor.Shape) error {
 	if c == nil {
 		return fmt.Errorf("Conv1D.Init: nil layer")
 	}
@@ -137,7 +138,7 @@ func (c *Conv1D) Init(inputShape []int) error {
 			outLen, length, c.kernelLen, c.pad, c.stride)
 	}
 
-	outputShape := []int{batchSize, c.outChannels, outLen}
+	outputShape := tensor.NewShape(batchSize, c.outChannels, outLen)
 	outputSize := batchSize * c.outChannels * outLen
 	c.Base.AllocOutput(outputShape, outputSize)
 
@@ -145,7 +146,7 @@ func (c *Conv1D) Init(inputShape []int) error {
 }
 
 // Forward computes the forward pass using tensor.Conv1D.
-func (c *Conv1D) Forward(input types.Tensor) (types.Tensor, error) {
+func (c *Conv1D) Forward(input tensorTypes.Tensor) (tensorTypes.Tensor, error) {
 	if c == nil {
 		return nil, fmt.Errorf("Conv1D.Forward: nil layer")
 	}
@@ -164,13 +165,13 @@ func (c *Conv1D) Forward(input types.Tensor) (types.Tensor, error) {
 	}
 
 	// Compute convolution using tensor.Conv1DTo with pre-allocated output
-	kernelParam, ok := c.Base.Parameter(ParamKernels)
+	kernelParam, ok := c.Base.Parameter(types.ParamKernels)
 	if !ok {
 		return nil, fmt.Errorf("Conv1D.Forward: kernel parameter not initialized")
 	}
-	var biasTensor types.Tensor
+	var biasTensor tensorTypes.Tensor
 	if c.hasBias {
-		biasParamVal, ok := c.Base.Parameter(ParamBiases)
+		biasParamVal, ok := c.Base.Parameter(types.ParamBiases)
 		if ok {
 			biasTensor = biasParamVal.Data
 		}
@@ -183,7 +184,7 @@ func (c *Conv1D) Forward(input types.Tensor) (types.Tensor, error) {
 }
 
 // Backward computes gradients w.r.t. input, weight, and bias.
-func (c *Conv1D) Backward(gradOutput types.Tensor) (types.Tensor, error) {
+func (c *Conv1D) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tensor, error) {
 	if c == nil {
 		return nil, fmt.Errorf("Conv1D.Backward: nil layer")
 	}
@@ -203,14 +204,14 @@ func (c *Conv1D) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 	}
 
 	// Get kernel parameter
-	kernelParam, ok := c.Base.Parameter(ParamKernels)
+	kernelParam, ok := c.Base.Parameter(types.ParamKernels)
 	if !ok {
 		return nil, fmt.Errorf("Conv1D.Backward: kernel parameter not initialized")
 	}
 
 	// Compute bias gradient: sum gradOutput over spatial dimensions and batch
 	if c.hasBias && c.Base.CanLearn() {
-		biasParam, ok := c.Base.Parameter(ParamBiases)
+		biasParam, ok := c.Base.Parameter(types.ParamBiases)
 		if ok && biasParam.RequiresGrad {
 			if tensor.IsNil(biasParam.Grad) {
 				// Use parameter's data type for gradient (matches layer's data type)
@@ -222,7 +223,7 @@ func (c *Conv1D) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 			summed := gradOutput.Sum(0, 2) // Sum over batch, length -> [outChannels]
 			// Copy summed values to bias gradient using optimized Tensor.Copy method
 			biasParam.Grad.Copy(summed)
-			c.Base.SetParam(ParamBiases, biasParam)
+			c.Base.SetParam(types.ParamBiases, biasParam)
 		}
 	}
 
@@ -295,7 +296,7 @@ func (c *Conv1D) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 		kernelGradReshaped := kernelGradFlat.Reshape(tensor.NewShape(c.outChannels, c.inChannels, c.kernelLen))
 		// Copy using optimized Tensor.Copy method
 		kernelParam.Grad.Copy(kernelGradReshaped)
-		c.Base.SetParam(ParamKernels, kernelParam)
+		c.Base.SetParam(types.ParamKernels, kernelParam)
 	}
 
 	// Compute input gradient using transposed convolution
@@ -311,7 +312,7 @@ func (c *Conv1D) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 	kernel4D := kernelParam.Data.Reshape(tensor.NewShape(c.outChannels, c.inChannels, c.kernelLen, 1))
 
 	// Use Conv2DTransposed with width=1
-	var emptyBias types.Tensor
+	var emptyBias tensorTypes.Tensor
 	gradInput4D := gradOutput4D.Conv2DTransposed(kernel4D, emptyBias, []int{c.stride, 1}, []int{c.pad, 0})
 
 	// Reshape back to 3D: [batch, inChannels, inLength, 1] -> [batch, inChannels, inLength]
@@ -323,7 +324,7 @@ func (c *Conv1D) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 }
 
 // OutputShape returns the output shape for given input shape.
-func (c *Conv1D) OutputShape(inputShape []int) ([]int, error) {
+func (c *Conv1D) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
 	if c == nil {
 		return nil, fmt.Errorf("Conv1D.OutputShape: nil layer")
 	}
@@ -342,11 +343,11 @@ func (c *Conv1D) OutputShape(inputShape []int) ([]int, error) {
 
 	outLen := (length+2*c.pad-c.kernelLen)/c.stride + 1
 
-	return []int{batchSize, c.outChannels, outLen}, nil
+	return tensor.NewShape(batchSize, c.outChannels, outLen), nil
 }
 
 // Weight returns the kernel parameter tensor.
-func (c *Conv1D) Weight() types.Tensor {
+func (c *Conv1D) Weight() tensorTypes.Tensor {
 	if c == nil {
 		// Return empty tensor instead of nil to match test expectations
 		return tensor.Empty(tensor.DTFP32)
@@ -359,7 +360,7 @@ func (c *Conv1D) Weight() types.Tensor {
 }
 
 // Bias returns the bias parameter tensor.
-func (c *Conv1D) Bias() types.Tensor {
+func (c *Conv1D) Bias() tensorTypes.Tensor {
 	if c == nil || !c.hasBias {
 		// Return empty tensor instead of nil to match test expectations
 		return tensor.Empty(tensor.DTFP32)
@@ -372,7 +373,7 @@ func (c *Conv1D) Bias() types.Tensor {
 }
 
 // SetWeight sets the kernel parameter tensor.
-func (c *Conv1D) SetWeight(weight types.Tensor) error {
+func (c *Conv1D) SetWeight(weight tensorTypes.Tensor) error {
 	if c == nil {
 		return fmt.Errorf("Conv1D.SetWeight: nil layer")
 	}
@@ -391,17 +392,17 @@ func (c *Conv1D) SetWeight(weight types.Tensor) error {
 				weightShape, expectedShape)
 		}
 	}
-	kernelParam, ok := c.Base.Parameter(ParamKernels)
+	kernelParam, ok := c.Base.Parameter(types.ParamKernels)
 	if !ok {
 		return fmt.Errorf("Conv1D.SetWeight: kernel parameter not initialized")
 	}
 	kernelParam.Data = weight
-	c.Base.SetParam(ParamKernels, kernelParam)
+	c.Base.SetParam(types.ParamKernels, kernelParam)
 	return nil
 }
 
 // SetBias sets the bias parameter tensor.
-func (c *Conv1D) SetBias(bias types.Tensor) error {
+func (c *Conv1D) SetBias(bias tensorTypes.Tensor) error {
 	if c == nil {
 		return fmt.Errorf("Conv1D.SetBias: nil layer")
 	}
@@ -417,11 +418,11 @@ func (c *Conv1D) SetBias(bias types.Tensor) error {
 		return fmt.Errorf("Conv1D.SetBias: bias shape %v doesn't match expected [%d]",
 			biasShape, c.outChannels)
 	}
-	biasParam, ok := c.Base.Parameter(ParamBiases)
+	biasParam, ok := c.Base.Parameter(types.ParamBiases)
 	if !ok {
 		return fmt.Errorf("Conv1D.SetBias: bias parameter not initialized")
 	}
 	biasParam.Data = bias
-	c.Base.SetParam(ParamBiases, biasParam)
+	c.Base.SetParam(types.ParamBiases, biasParam)
 	return nil
 }

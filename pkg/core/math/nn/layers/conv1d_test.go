@@ -3,6 +3,7 @@ package layers
 import (
 	"testing"
 
+	nntypes "github.com/itohio/EasyRobot/pkg/core/math/nn/types"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
 	"github.com/stretchr/testify/assert"
@@ -199,7 +200,7 @@ func TestConv1D_Init(t *testing.T) {
 
 	// Test nil receiver
 	var nilConv *Conv1D
-	err = nilConv.Init([]int{1, 3, 10})
+	err = nilConv.Init(tensor.NewShape(1, 3, 10))
 	assert.Error(t, err, "Should return error for nil receiver")
 }
 
@@ -647,7 +648,7 @@ func TestConv1D_BackwardAccuracy(t *testing.T) {
 
 			// Verify weight gradient
 			if tt.expectedWeightGrad != nil {
-				weightParam, ok := conv.Base.Parameter(ParamKernels)
+				weightParam, ok := conv.Base.Parameter(nntypes.ParamKernels)
 				require.True(t, ok, "Weight parameter should exist")
 				require.NotEmpty(t, weightParam.Grad.Shape().ToSlice(), "Weight grad should be allocated")
 				weightGradData := weightParam.Grad.Data().([]float32)
@@ -660,7 +661,7 @@ func TestConv1D_BackwardAccuracy(t *testing.T) {
 
 			// Verify bias gradient
 			if tt.hasBias && tt.expectedBiasGrad != nil {
-				biasParam, ok := conv.Base.Parameter(ParamBiases)
+				biasParam, ok := conv.Base.Parameter(nntypes.ParamBiases)
 				require.True(t, ok, "Bias parameter should exist")
 				require.NotEmpty(t, biasParam.Grad.Shape().ToSlice(), "Bias grad should be allocated")
 				biasGradData := biasParam.Grad.Data().([]float32)

@@ -20,7 +20,7 @@ func TestMaxPool2D(t *testing.T) {
 		13.0, 14.0, 15.0, 16.0,
 	})
 
-	err = pool.Init([]int{1, 1, 4, 4})
+	err = pool.Init(tensor.NewShape(1, 1, 4, 4))
 	require.NoError(t, err, "Init should succeed")
 
 	output, err := pool.Forward(inputTensor)
@@ -44,7 +44,7 @@ func TestAvgPool2D(t *testing.T) {
 		13.0, 14.0, 15.0, 16.0,
 	})
 
-	err = pool.Init([]int{1, 1, 4, 4})
+	err = pool.Init(tensor.NewShape(1, 1, 4, 4))
 	require.NoError(t, err, "Init should succeed")
 
 	output, err := pool.Forward(inputTensor)
@@ -74,7 +74,7 @@ func TestGlobalAvgPool2D(t *testing.T) {
 		16.0, 17.0, 18.0,
 	})
 
-	err := pool.Init([]int{1, 2, 3, 3})
+	err := pool.Init(tensor.NewShape(1, 2, 3, 3))
 	require.NoError(t, err, "Init should succeed")
 
 	output, err := pool.Forward(inputTensor)

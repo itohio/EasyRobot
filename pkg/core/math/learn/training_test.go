@@ -9,6 +9,7 @@ import (
 	"github.com/itohio/EasyRobot/pkg/core/math/learn"
 	"github.com/itohio/EasyRobot/pkg/core/math/nn"
 	"github.com/itohio/EasyRobot/pkg/core/math/nn/layers"
+	"github.com/itohio/EasyRobot/pkg/core/math/nn/types"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
 )
 
@@ -16,12 +17,12 @@ func TestTrainStep_NilInputs(t *testing.T) {
 	// Create a simple model for testing
 	denseLayer, err := layers.NewDense(2, 1, layers.WithCanLearn(true))
 	require.NoError(t, err)
-	model, err := nn.NewSequentialModelBuilder([]int{2}).
+	model, err := nn.NewSequentialModelBuilder(tensor.NewShape(2)).
 		AddLayer(denseLayer).
 		AddLayer(layers.NewSigmoid("sigmoid")).
 		Build()
 	require.NoError(t, err)
-	require.NoError(t, model.Init())
+	require.NoError(t, model.Init(tensor.NewShape(2)))
 
 	optimizer := learn.NewSGD(0.1)
 	lossFn := nn.NewMSE()
@@ -29,10 +30,10 @@ func TestTrainStep_NilInputs(t *testing.T) {
 	input := tensor.FromFloat32(tensor.NewShape(2), []float32{1, 0})
 	target := tensor.FromFloat32(tensor.NewShape(1), []float32{1})
 
-	// Test nil model
+	// Test nil layer
 	_, err = learn.TrainStep(nil, optimizer, lossFn, input, target)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "nil model")
+	assert.Contains(t, err.Error(), "nil layer")
 
 	// Test nil optimizer
 	_, err = learn.TrainStep(model, nil, lossFn, input, target)
@@ -49,12 +50,12 @@ func TestTrainStep_EmptyTensors(t *testing.T) {
 	// Create a simple model for testing
 	denseLayer, err := layers.NewDense(2, 1, layers.WithCanLearn(true))
 	require.NoError(t, err)
-	model, err := nn.NewSequentialModelBuilder([]int{2}).
+	model, err := nn.NewSequentialModelBuilder(tensor.NewShape(2)).
 		AddLayer(denseLayer).
 		AddLayer(layers.NewSigmoid("sigmoid")).
 		Build()
 	require.NoError(t, err)
-	require.NoError(t, model.Init())
+	require.NoError(t, model.Init(tensor.NewShape(2)))
 
 	optimizer := learn.NewSGD(0.1)
 	lossFn := nn.NewMSE()
@@ -78,11 +79,11 @@ func TestTrainStep_SimpleTraining(t *testing.T) {
 	// Create a simple linear model: y = wx + b
 	denseLayer, err := layers.NewDense(1, 1, layers.WithCanLearn(true))
 	require.NoError(t, err)
-	model, err := nn.NewSequentialModelBuilder([]int{1}).
+	model, err := nn.NewSequentialModelBuilder(tensor.NewShape(1)).
 		AddLayer(denseLayer).
 		Build()
 	require.NoError(t, err)
-	require.NoError(t, model.Init())
+	require.NoError(t, model.Init(tensor.NewShape(1)))
 
 	optimizer := learn.NewSGD(0.1)
 	lossFn := nn.NewMSE()
@@ -90,7 +91,7 @@ func TestTrainStep_SimpleTraining(t *testing.T) {
 	// Set initial weights to [2] and bias to [1], so y = 2x + 1
 	params := model.Parameters()
 	// For a dense layer, parameters are typically "0:0" for weights and "0:1" for bias
-	var weightParam, biasParam layers.Parameter
+	var weightParam, biasParam types.Parameter
 	for _, param := range params {
 		if len(param.Data.Shape()) == 2 { // weights are 2D
 			weightParam = param
@@ -120,8 +121,8 @@ func TestTrainStep_SimpleTraining(t *testing.T) {
 	finalLoss, err := learn.TrainStep(model, optimizer, lossFn, input, target)
 	require.NoError(t, err)
 
-	// Loss should be the same as computed initially
-	assert.Equal(t, initialLoss, finalLoss)
+	// Loss should be the same as computed initially (convert to same type for comparison)
+	assert.InDelta(t, float64(initialLoss), finalLoss, 1e-6)
 
 	// After one training step, the model should have updated its parameters
 	// Since it's a simple case with perfect initialization, loss should decrease
@@ -139,18 +140,18 @@ func TestTrainStep_MultipleSteps(t *testing.T) {
 	// Create a simple model
 	denseLayer, err := layers.NewDense(1, 1, layers.WithCanLearn(true))
 	require.NoError(t, err)
-	model, err := nn.NewSequentialModelBuilder([]int{1}).
+	model, err := nn.NewSequentialModelBuilder(tensor.NewShape(1)).
 		AddLayer(denseLayer).
 		Build()
 	require.NoError(t, err)
-	require.NoError(t, model.Init())
+	require.NoError(t, model.Init(tensor.NewShape(1)))
 
 	optimizer := learn.NewSGD(0.01) // Small learning rate
 	lossFn := nn.NewMSE()
 
 	// Initialize with wrong weights
 	params := model.Parameters()
-	var weightParam, biasParam layers.Parameter
+	var weightParam, biasParam types.Parameter
 	for _, param := range params {
 		if len(param.Data.Shape()) == 2 { // weights are 2D
 			weightParam = param
