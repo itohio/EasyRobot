@@ -127,38 +127,64 @@ func TestXOR(t *testing.T) {
 			trials:         3,
 		},
 		{
-			name: "Config4: Dense -> Conv1D -> Sigmoid",
+			name: "Config4: Dense -> Reshape -> Conv2D -> Conv1D -> Sigmoid",
 			buildModel: func(rng *rand.Rand) (types.Layer, error) {
-				// Dense: [2] -> [8]
-				dense1, err := layers.NewDense(2, 8, layers.WithCanLearn(true))
+				// Dense: [2] -> [64] (more neurons for better capacity)
+				dense1, err := layers.NewDense(2, 64, layers.WithCanLearn(true))
 				if err != nil {
 					return nil, err
 				}
-				// Reshape: [8] -> [1, 8, 1] for Conv1D (batch=1, channels=8, length=1)
-				reshape1 := layers.NewReshape([]int{1, 8, 1})
-				// Conv1D: [1, 8, 1] -> [1, 4, 1] (outChannels=4, kernelLen=1, stride=1, pad=0)
-				conv1d, err := layers.NewConv1D(8, 4, 1, 1, 0, layers.WithCanLearn(true), layers.UseBias(true))
+				// ReLU activation for non-linearity
+				relu1 := layers.NewReLU("relu1")
+				// Reshape: [64] -> [1, 1, 8, 8] for Conv2D (batch=1, channels=1, height=8, width=8)
+				reshape1 := layers.NewReshape([]int{1, 1, 8, 8})
+				// Conv2D: [1, 1, 8, 8] -> [1, 32, 7, 7] (outChannels=32, kernel=2x2, stride=1x1, pad=0x0)
+				// Using 2x2 kernel with more neurons to add spatial reasoning
+				// Output: (8-2+0)/1+1 = 7, so [1, 32, 7, 7] = 1568
+				conv2d, err := layers.NewConv2D(1, 32, 2, 2, 1, 1, 0, 0, layers.WithCanLearn(true), layers.UseBias(true))
 				if err != nil {
 					return nil, err
 				}
-				// Reshape: [1, 4, 1] -> [4]
-				reshape2 := layers.NewReshape([]int{4})
-				// Dense: [4] -> [1]
-				dense2, err := layers.NewDense(4, 1, layers.WithCanLearn(true))
+				// ReLU after Conv2D
+				relu2 := layers.NewReLU("relu2")
+				// Reshape: [1, 32, 7, 7] -> [1, 224, 7] for Conv1D (batch=1, channels=224, length=7)
+				// 32*7*7 = 1568, so we want 224*7 = 1568
+				reshape2 := layers.NewReshape([]int{1, 224, 7})
+				// Conv1D: [1, 224, 7] -> [1, 112, 8] (outChannels=112, kernelLen=2, stride=1, pad=1)
+				// Using kernelLen=2 with more neurons to add temporal/spatial reasoning
+				// Output length: (7 + 2*1 - 2)/1 + 1 = 8
+				conv1d, err := layers.NewConv1D(224, 112, 2, 1, 1, layers.WithCanLearn(true), layers.UseBias(true))
+				if err != nil {
+					return nil, err
+				}
+				// ReLU after Conv1D
+				relu3 := layers.NewReLU("relu3")
+				// Flatten: [1, 112, 8] -> [896]
+				flatten := layers.NewFlatten(1, 3) // Flatten from dim 1 to end
+				// Reshape: [1, 896] -> [896] (remove batch dimension)
+				reshape3 := layers.NewReshape([]int{896})
+				// Dense: [896] -> [1]
+				dense2, err := layers.NewDense(896, 1, layers.WithCanLearn(true))
 				if err != nil {
 					return nil, err
 				}
 				sigmoid := layers.NewSigmoid("sigmoid")
 				return nn.NewSequentialModelBuilder(tensor.NewShape(2)).
 					AddLayer(dense1).
+					AddLayer(relu1).
 					AddLayer(reshape1).
-					AddLayer(conv1d).
+					AddLayer(conv2d).
+					AddLayer(relu2).
 					AddLayer(reshape2).
+					AddLayer(conv1d).
+					AddLayer(relu3).
+					AddLayer(flatten).
+					AddLayer(reshape3).
 					AddLayer(dense2).
 					AddLayer(sigmoid).
 					Build()
 			},
-			learningRate:   0.05,
+			learningRate:   0.1,
 			useAdam:        true,
 			epochs:         5000,
 			expectedMinAcc: 90.0,
@@ -167,22 +193,24 @@ func TestXOR(t *testing.T) {
 		{
 			name: "Config5: Dense -> Pooling -> Dense -> Sigmoid",
 			buildModel: func(rng *rand.Rand) (types.Layer, error) {
-				// Dense: [2] -> [16]
-				dense1, err := layers.NewDense(2, 16, layers.WithCanLearn(true))
+				// Dense: [2] -> [32] (increased from 16)
+				dense1, err := layers.NewDense(2, 32, layers.WithCanLearn(true))
 				if err != nil {
 					return nil, err
 				}
-				// Reshape: [16] -> [1, 4, 2, 2] for pooling (batch=1, channels=4, height=2, width=2)
-				reshape1 := layers.NewReshape([]int{1, 4, 2, 2})
-				// MaxPool2D: [1, 4, 2, 2] -> [1, 4, 1, 1] (kernel=2x2, stride=2x2)
+				// Reshape: [32] -> [1, 8, 2, 2] for pooling (batch=1, channels=8, height=2, width=2)
+				reshape1 := layers.NewReshape([]int{1, 8, 2, 2})
+				// MaxPool2D: [1, 8, 2, 2] -> [1, 8, 1, 1] (kernel=2x2, stride=2x2)
 				pool, err := layers.NewMaxPool2D(2, 2, 2, 2, 0, 0)
 				if err != nil {
 					return nil, err
 				}
-				// Flatten: [1, 4, 1, 1] -> [4]
-				flatten := layers.NewFlatten(1, -1) // Flatten from dim 1 to end (channels, height, width)
-				// Dense: [4] -> [1]
-				dense2, err := layers.NewDense(4, 1, layers.WithCanLearn(true))
+				// Flatten: [1, 8, 1, 1] -> [8] (flatten everything except batch)
+				flatten := layers.NewFlatten(1, 4) // Flatten from dim 1 to end (channels, height, width) - endDim=4 for 4D tensor
+				// Reshape: [1, 8] -> [8] (remove batch dimension)
+				reshape2 := layers.NewReshape([]int{8})
+				// Dense: [8] -> [1]
+				dense2, err := layers.NewDense(8, 1, layers.WithCanLearn(true))
 				if err != nil {
 					return nil, err
 				}
@@ -192,6 +220,7 @@ func TestXOR(t *testing.T) {
 					AddLayer(reshape1).
 					AddLayer(pool).
 					AddLayer(flatten).
+					AddLayer(reshape2).
 					AddLayer(dense2).
 					AddLayer(sigmoid).
 					Build()
@@ -200,35 +229,38 @@ func TestXOR(t *testing.T) {
 			useAdam:        true,
 			epochs:         5000,
 			expectedMinAcc: 90.0,
-			trials:         3,
+			trials:         5, // More trials for pooling
 		},
 		{
 			name: "Config6: Dense -> Dropout(10%) -> Dense -> Sigmoid",
 			buildModel: func(rng *rand.Rand) (types.Layer, error) {
-				// Dense: [2] -> [8]
-				dense1, err := layers.NewDense(2, 8, layers.WithCanLearn(true))
+				// Dense: [2] -> [16] (increased from 8)
+				dense1, err := layers.NewDense(2, 16, layers.WithCanLearn(true))
 				if err != nil {
 					return nil, err
 				}
-				// Dropout: [8] -> [8] with 10% dropout rate
+				// ReLU activation for non-linearity
+				relu1 := layers.NewReLU("relu1")
+				// Dropout: [16] -> [16] with 10% dropout rate
 				dropout := layers.NewDropout("dropout",
 					layers.WithDropoutRate(0.1),
 					layers.WithTrainingMode(true),
 					layers.WithDropoutRNG(rng))
-				// Dense: [8] -> [1]
-				dense2, err := layers.NewDense(8, 1, layers.WithCanLearn(true))
+				// Dense: [16] -> [1]
+				dense2, err := layers.NewDense(16, 1, layers.WithCanLearn(true))
 				if err != nil {
 					return nil, err
 				}
 				sigmoid := layers.NewSigmoid("sigmoid")
 				return nn.NewSequentialModelBuilder(tensor.NewShape(2)).
 					AddLayer(dense1).
+					AddLayer(relu1).
 					AddLayer(dropout).
 					AddLayer(dense2).
 					AddLayer(sigmoid).
 					Build()
 			},
-			learningRate:   0.05,
+			learningRate:   0.1,
 			useAdam:        true,
 			epochs:         5000,
 			expectedMinAcc: 90.0,
