@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
+	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
 )
 
 var layerCounter int64
@@ -31,9 +32,9 @@ type Base struct {
 	prefix   string
 	canLearn bool
 	biasHint *bool // Optional bias hint for layers that support it
-	input    tensor.Tensor
-	output   tensor.Tensor
-	grad     tensor.Tensor            // Gradient tensor for backward pass
+	input    types.Tensor
+	output   types.Tensor
+	grad     types.Tensor             // Gradient tensor for backward pass
 	params   map[ParamIndex]Parameter // Parameters map
 	layerIdx int64                    // Unique layer index assigned at creation
 }
@@ -86,7 +87,7 @@ func WithBias(hasBias bool) Option {
 }
 
 // WithWeights returns an Option that sets the weight parameter at ParamWeights index.
-func WithWeights(weight tensor.Tensor) Option {
+func WithWeights(weight types.Tensor) Option {
 	return func(b *Base) {
 		b.initParam(ParamWeights)
 		param := b.params[ParamWeights]
@@ -97,7 +98,7 @@ func WithWeights(weight tensor.Tensor) Option {
 }
 
 // WithBiases returns an Option that sets the bias parameter at ParamBiases index.
-func WithBiases(bias tensor.Tensor) Option {
+func WithBiases(bias types.Tensor) Option {
 	return func(b *Base) {
 		b.initParam(ParamBiases)
 		param := b.params[ParamBiases]
@@ -108,7 +109,7 @@ func WithBiases(bias tensor.Tensor) Option {
 }
 
 // WithKernels returns an Option that sets the kernel parameter at ParamKernels index.
-func WithKernels(kernel tensor.Tensor) Option {
+func WithKernels(kernel types.Tensor) Option {
 	return func(b *Base) {
 		b.initParam(ParamKernels)
 		param := b.params[ParamKernels]
@@ -212,31 +213,31 @@ func (b *Base) SetCanLearn(canLearn bool) {
 }
 
 // Input returns the input tensor from the last Forward pass.
-func (b *Base) Input() tensor.Tensor {
+func (b *Base) Input() types.Tensor {
 	if b == nil {
-		return tensor.Tensor{}
+		return nil
 	}
 	return b.input
 }
 
 // Output returns the output tensor from the last Forward pass.
-func (b *Base) Output() tensor.Tensor {
+func (b *Base) Output() types.Tensor {
 	if b == nil {
-		return tensor.Tensor{}
+		return nil
 	}
 	return b.output
 }
 
 // Grad returns the gradient tensor from the last Backward pass.
-func (b *Base) Grad() tensor.Tensor {
+func (b *Base) Grad() types.Tensor {
 	if b == nil {
-		return tensor.Tensor{}
+		return nil
 	}
 	return b.grad
 }
 
 // setInput stores the input tensor (internal method).
-func (b *Base) setInput(input tensor.Tensor) {
+func (b *Base) setInput(input types.Tensor) {
 	if b == nil {
 		return
 	}
@@ -244,7 +245,7 @@ func (b *Base) setInput(input tensor.Tensor) {
 }
 
 // setOutput stores the output tensor (internal method).
-func (b *Base) setOutput(output tensor.Tensor) {
+func (b *Base) setOutput(output types.Tensor) {
 	if b == nil {
 		return
 	}
@@ -252,7 +253,7 @@ func (b *Base) setOutput(output tensor.Tensor) {
 }
 
 // setGrad stores the gradient tensor (internal method).
-func (b *Base) setGrad(grad tensor.Tensor) {
+func (b *Base) setGrad(grad types.Tensor) {
 	if b == nil {
 		return
 	}
@@ -276,17 +277,17 @@ func (b *Base) AllocGrad(shape []int, size int) {
 }
 
 // Helper method for layers to store input during Forward.
-func (b *Base) StoreInput(input tensor.Tensor) {
+func (b *Base) StoreInput(input types.Tensor) {
 	b.setInput(input)
 }
 
 // Helper method for layers to store output during Forward.
-func (b *Base) StoreOutput(output tensor.Tensor) {
+func (b *Base) StoreOutput(output types.Tensor) {
 	b.setOutput(output)
 }
 
 // Helper method for layers to store grad during Backward.
-func (b *Base) StoreGrad(grad tensor.Tensor) {
+func (b *Base) StoreGrad(grad types.Tensor) {
 	b.setGrad(grad)
 }
 

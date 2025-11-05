@@ -88,17 +88,17 @@ func (m *Model) Init() error {
 // Layers store their own inputs/outputs internally.
 func (m *Model) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 	if m == nil {
-		return tensor.Tensor{}, fmt.Errorf("model.Forward: nil model")
+		return nil, fmt.Errorf("model.Forward: nil model")
 	}
 
 	if input.Shape().Rank() == 0 {
-		return tensor.Tensor{}, fmt.Errorf("model.Forward: empty input")
+		return nil, fmt.Errorf("model.Forward: empty input")
 	}
 
 	// Validate input shape
 	inputShape := input.Shape()
 	if !shapesEqual(inputShape, m.inputShape) {
-		return tensor.Tensor{}, fmt.Errorf("model.Forward: input shape %v does not match expected shape %v", inputShape, m.inputShape)
+		return nil, fmt.Errorf("model.Forward: input shape %v does not match expected shape %v", inputShape, m.inputShape)
 	}
 
 	// Set model input
@@ -110,13 +110,13 @@ func (m *Model) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 	current := input
 	for i, layer := range m.layers {
 		if layer == nil {
-			return tensor.Tensor{}, fmt.Errorf("model.Forward: nil layer at index %d", i)
+			return nil, fmt.Errorf("model.Forward: nil layer at index %d", i)
 		}
 
 		// Forward computes into layer's pre-allocated output tensor
 		output, err := layer.Forward(current)
 		if err != nil {
-			return tensor.Tensor{}, fmt.Errorf("model.Forward: layer %d (%s) failed: %w", i, layer.Name(), err)
+			return nil, fmt.Errorf("model.Forward: layer %d (%s) failed: %w", i, layer.Name(), err)
 		}
 
 		// Next layer uses this layer's output tensor directly

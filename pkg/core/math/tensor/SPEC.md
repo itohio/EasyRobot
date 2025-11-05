@@ -42,8 +42,8 @@ type Tensor interface {
     Rank() int
     Size() int
     Empty() bool
-    At(indices ...int) float32
-    SetAt(indices []int, value float32)
+    At(indices ...int) float64
+    SetAt(value float64, indices ...int)
     Elements(fixedAxisValuePairs ...int) func(func(Element) bool)
     Clone() Tensor                 // Returns Tensor interface
     Reshape(newShape []int) Tensor // Returns Tensor interface
@@ -60,8 +60,8 @@ type Tensor interface {
 - **`Rank() int`**: Returns the number of dimensions
 - **`Size() int`**: Returns the total number of elements
 - **`Empty() bool`**: Returns true if the tensor is empty (no shape or data)
-- **`At(indices ...int) float32`**: Access element at multi-dimensional indices
-- **`SetAt(indices []int, value float32)`**: Set element at multi-dimensional indices
+- **`At(indices ...int) float64`**: Access element at multi-dimensional indices. When only one index is provided and tensor rank > 1, uses linear indexing (direct data access).
+- **`SetAt(value float64, indices ...int)`**: Set element at multi-dimensional indices. When only one index is provided and tensor rank > 1, uses linear indexing (direct data access).
 - **`Elements(...)`**: Create iterator over tensor elements (Go 1.22+ range-over-function)
 - **`Clone() Tensor`**: Create a deep copy (returns Tensor interface)
 - **`Reshape(newShape []int) Tensor`**: Reshape tensor (returns Tensor interface)
@@ -289,10 +289,10 @@ func (t Tensor) Size() int
 func (t Tensor) Clone() Tensor
 
 // At returns the element at the given indices
-func (t Tensor) At(indices ...int) float32
+func (t Tensor) At(indices ...int) float64
 
 // SetAt sets the element at the given indices
-func (t *Tensor) SetAt(indices []int, value float32)
+func (t Tensor) SetAt(value float64, indices ...int)
 
 // Elements creates an iterator over tensor elements (Go 1.22+ range-over-function)
 // Returns Element objects with Get() and Set() methods
@@ -339,8 +339,13 @@ func (s Shape) Iterator(fixedAxisValuePairs ...int) func(func([]int) bool)
 
 **Element Access:**
 - `At(indices ...int)`: Returns the element at the given multi-dimensional indices
-- `SetAt(indices []int, value float32)`: Sets the element at the given indices
+  - When only one index is provided and tensor rank > 1, uses linear indexing (direct data access)
+  - Otherwise, indices must match the tensor's dimensions for multi-dimensional access
+- `SetAt(value float64, indices ...int)`: Sets the element at the given indices
+  - When only one index is provided and tensor rank > 1, uses linear indexing (direct data access)
+  - Otherwise, indices must match the tensor's dimensions for multi-dimensional access
 - Both functions validate indices and compute linear index using strides
+- Example: For a 2D tensor with shape [2, 3], `At(5)` accesses the element at linear index 5 (row-major order)
 
 **Element Iteration:**
 - `Elements(fixedAxisValuePairs ...int)`: Creates an iterator over tensor elements (Go 1.22+ range-over-function)
@@ -953,7 +958,7 @@ for elem := range t.Elements(0, 1, 2, 3) {
 shape := tensor.NewShape(2, 3, 4)
 for indices := range shape.Iterator(0, 1) {
     value := t.At(indices...)
-    t.SetAt(indices, value * 2)
+    t.SetAt(value * 2, indices...)
 }
 ```
 

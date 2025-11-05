@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
+	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
 )
 
 // Dense parameter indices (use standard ParamWeights, ParamBiases from base)
@@ -98,13 +99,13 @@ func (d *Dense) Init(inputShape []int) error {
 
 // Forward computes the forward pass: output = input @ weight + bias.
 // Computes directly into pre-allocated output tensor.
-func (d *Dense) Forward(input tensor.Tensor) (tensor.Tensor, error) {
+func (d *Dense) Forward(input types.Tensor) (types.Tensor, error) {
 	if d == nil {
-		return tensor.Tensor{}, fmt.Errorf("Dense.Forward: nil layer")
+		return nil, fmt.Errorf("Dense.Forward: nil layer")
 	}
 
 	if input.Shape().Rank() == 0 {
-		return tensor.Tensor{}, fmt.Errorf("Dense.Forward: empty input")
+		return nil, fmt.Errorf("Dense.Forward: empty input")
 	}
 
 	// Store input
@@ -113,24 +114,24 @@ func (d *Dense) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 	// Get pre-allocated output tensor
 	output := d.Base.Output()
 	if output.Shape().Rank() == 0 {
-		return tensor.Tensor{}, fmt.Errorf("Dense.Forward: output not allocated, must call Init first")
+		return nil, fmt.Errorf("Dense.Forward: output not allocated, must call Init first")
 	}
 
 	// Compute linear transformation directly into output tensor
 	// output = input @ weight + bias
 	weightParam, ok := d.Base.Parameter(ParamWeights)
 	if !ok {
-		return tensor.Tensor{}, fmt.Errorf("Dense.Forward: weight parameter not initialized")
+		return nil, fmt.Errorf("Dense.Forward: weight parameter not initialized")
 	}
-	var biasParam *tensor.Tensor
+	var biasParam *types.Tensor
 	if d.hasBias {
 		biasParamVal, ok := d.Base.Parameter(ParamBiases)
 		if ok {
 			biasParam = &biasParamVal.Data
 		}
 	}
-	if err := computeLinear(&input, &weightParam.Data, biasParam, &output); err != nil {
-		return tensor.Tensor{}, fmt.Errorf("Dense.Forward: Linear operation failed: %w", err)
+	if err := computeLinear(input, weightParam.Data, biasParam, output); err != nil {
+		return nil, fmt.Errorf("Dense.Forward: Linear operation failed: %w", err)
 	}
 
 	// Store output
@@ -139,7 +140,7 @@ func (d *Dense) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 }
 
 // computeLinear computes output = input @ weight + bias directly into output tensor.
-func computeLinear(input *tensor.Tensor, weight *tensor.Tensor, bias *tensor.Tensor, output *tensor.Tensor) error {
+func computeLinear(input types.Tensor, weight types.Tensor, bias *types.Tensor, output types.Tensor) error {
 	inputShape := input.Shape()
 	weightShape := weight.Shape()
 	inFeatures := weightShape[0]
@@ -148,15 +149,15 @@ func computeLinear(input *tensor.Tensor, weight *tensor.Tensor, bias *tensor.Ten
 	if len(inputShape) == 1 {
 		// Single sample: [inFeatures] → [outFeatures]
 		// output = input @ weight = weight^T @ input
-		inputTensor := tensor.FromFloat32(tensor.NewShape(inFeatures), input.Data())
-		weightTensor := tensor.FromFloat32(tensor.NewShape(inFeatures, outFeatures), weight.Data())
-		outputTensor := tensor.FromFloat32(tensor.NewShape(outFeatures), output.Data())
+		inputTensor := tensor.FromFloat32(tensor.NewShape(inFeatures), input.Data().([]float32))
+		weightTensor := tensor.FromFloat32(tensor.NewShape(inFeatures, outFeatures), weight.Data().([]float32))
+		outputTensor := tensor.FromFloat32(tensor.NewShape(outFeatures), output.Data().([]float32))
 		outputTensor.MatVecMulTransposed(weightTensor, inputTensor, 1.0, 0.0)
 
 		if bias != nil {
-			biasShape := bias.Shape()
+			biasShape := (*bias).Shape()
 			if len(biasShape) == 1 && biasShape[0] == outFeatures {
-				biasTensor := tensor.FromFloat32(tensor.NewShape(outFeatures), bias.Data())
+				biasTensor := tensor.FromFloat32(tensor.NewShape(outFeatures), (*bias).Data().([]float32))
 				outputTensor.AddScaled(biasTensor, 1.0)
 			}
 		}
@@ -165,18 +166,19 @@ func computeLinear(input *tensor.Tensor, weight *tensor.Tensor, bias *tensor.Ten
 		batchSize := inputShape[0]
 
 		// Use MatMul: output = input @ weight
-		inputTensor := tensor.FromFloat32(tensor.NewShape(batchSize, inFeatures), input.Data())
-		weightTensor := tensor.FromFloat32(tensor.NewShape(inFeatures, outFeatures), weight.Data())
-		outputTensor := tensor.FromFloat32(tensor.NewShape(batchSize, outFeatures), output.Data())
+		inputTensor := tensor.FromFloat32(tensor.NewShape(batchSize, inFeatures), input.Data().([]float32))
+		weightTensor := tensor.FromFloat32(tensor.NewShape(inFeatures, outFeatures), weight.Data().([]float32))
+		outputTensor := tensor.FromFloat32(tensor.NewShape(batchSize, outFeatures), output.Data().([]float32))
 		inputTensor.MatMulTo(weightTensor, &outputTensor)
 
 		if bias != nil {
-			biasShape := bias.Shape()
+			biasShape := (*bias).Shape()
 			if len(biasShape) == 1 && biasShape[0] == outFeatures {
-				biasTensor := tensor.FromFloat32(tensor.NewShape(outFeatures), bias.Data())
+				biasTensor := tensor.FromFloat32(tensor.NewShape(outFeatures), (*bias).Data().([]float32))
 				// Add bias to each batch element
+				outputData := output.Data().([]float32)
 				for b := 0; b < batchSize; b++ {
-					batchOutput := tensor.FromFloat32(tensor.NewShape(outFeatures), output.Data()[b*outFeatures:(b+1)*outFeatures])
+					batchOutput := tensor.FromFloat32(tensor.NewShape(outFeatures), outputData[b*outFeatures:(b+1)*outFeatures])
 					batchOutput.AddScaled(biasTensor, 1.0)
 				}
 			}
@@ -188,26 +190,26 @@ func computeLinear(input *tensor.Tensor, weight *tensor.Tensor, bias *tensor.Ten
 
 // Backward computes gradients w.r.t. input, weight, and bias.
 // Uses stored input/output from Forward pass.
-func (d *Dense) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
+func (d *Dense) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 	if d == nil {
-		return tensor.Tensor{}, fmt.Errorf("Dense.Backward: nil layer")
+		return nil, fmt.Errorf("Dense.Backward: nil layer")
 	}
 
 	if gradOutput.Shape().Rank() == 0 {
-		return tensor.Tensor{}, fmt.Errorf("Dense.Backward: empty gradOutput")
+		return nil, fmt.Errorf("Dense.Backward: empty gradOutput")
 	}
 
 	input := d.Base.Input()
-	if input.Shape().Rank() == 0 {
-		return tensor.Tensor{}, fmt.Errorf("Dense.Backward: input not stored, must call Forward first")
+	if input == nil || input.Shape().Rank() == 0 {
+		return nil, fmt.Errorf("Dense.Backward: input not stored, must call Forward first")
 	}
 
 	output := d.Base.Output()
-	if output.Shape().Rank() == 0 {
-		return tensor.Tensor{}, fmt.Errorf("Dense.Backward: output not stored, must call Forward first")
+	if output == nil || output.Shape().Rank() == 0 {
+		return nil, fmt.Errorf("Dense.Backward: output not stored, must call Forward first")
 	}
 
-	inputPtr := &input
+	inputPtr := input
 
 	// Compute gradient w.r.t. weight: gradWeight = gradOutput^T @ input
 	// For batch: gradWeight = sum over batch of (input^T @ gradOutput)
@@ -220,15 +222,15 @@ func (d *Dense) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		// Only compute gradients if CanLearn is true
 		weightParam, ok := d.Base.Parameter(ParamWeights)
 		if d.Base.CanLearn() && ok && weightParam.RequiresGrad {
-			if weightParam.Grad.Shape().Rank() == 0 {
+			if weightParam.Grad == nil || weightParam.Grad.Shape().Rank() == 0 {
 				weightParam.Grad = tensor.New(tensor.DTFP32, tensor.NewShape(d.inFeatures, d.outFeatures))
 			}
 			// Use MatMulTransposed: gradWeight = input^T @ gradOutput
 			// Treat input [inFeatures] as [1, inFeatures] and gradOutput [outFeatures] as [1, outFeatures]
 			// Outer product: input^T @ gradOutput = [inFeatures, 1] @ [1, outFeatures]
-			inputTensor := tensor.FromFloat32(tensor.NewShape(1, d.inFeatures), input.Data())
-			gradTensor := tensor.FromFloat32(tensor.NewShape(1, d.outFeatures), gradOutput.Data())
-			gradWeightTensor := tensor.FromFloat32(tensor.NewShape(d.inFeatures, d.outFeatures), weightParam.Grad.Data())
+			inputTensor := tensor.FromFloat32(tensor.NewShape(1, d.inFeatures), input.Data().([]float32))
+			gradTensor := tensor.FromFloat32(tensor.NewShape(1, d.outFeatures), gradOutput.Data().([]float32))
+			gradWeightTensor := tensor.FromFloat32(tensor.NewShape(d.inFeatures, d.outFeatures), weightParam.Grad.Data().([]float32))
 			inputTensor.MatMulTransposed(gradTensor, true, false, &gradWeightTensor)
 		}
 
@@ -237,11 +239,11 @@ func (d *Dense) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		if d.hasBias {
 			biasParam, ok := d.Base.Parameter(ParamBiases)
 			if d.Base.CanLearn() && ok && biasParam.RequiresGrad {
-				if biasParam.Grad.Shape().Rank() == 0 {
+				if biasParam.Grad == nil || biasParam.Grad.Shape().Rank() == 0 {
 					biasParam.Grad = tensor.New(tensor.DTFP32, tensor.NewShape(d.outFeatures))
 				}
-				biasGradTensor := tensor.FromFloat32(tensor.NewShape(d.outFeatures), biasParam.Grad.Data())
-				gradTensor := tensor.FromFloat32(tensor.NewShape(d.outFeatures), gradOutput.Data())
+				biasGradTensor := tensor.FromFloat32(tensor.NewShape(d.outFeatures), biasParam.Grad.Data().([]float32))
+				gradTensor := tensor.FromFloat32(tensor.NewShape(d.outFeatures), gradOutput.Data().([]float32))
 				biasGradTensor.AddScaled(gradTensor, 1.0)
 				d.Base.SetParam(ParamBiases, biasParam)
 			}
@@ -250,9 +252,9 @@ func (d *Dense) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		// Compute gradient w.r.t. input: gradInput = gradOutput @ weight^T
 		gradInput := tensor.New(tensor.DTFP32, tensor.NewShape(d.inFeatures))
 		// Treat gradOutput [outFeatures] as [1, outFeatures] and weight^T
-		gradTensor := tensor.FromFloat32(tensor.NewShape(1, d.outFeatures), gradOutput.Data())
-		weightTensor := tensor.FromFloat32(tensor.NewShape(d.inFeatures, d.outFeatures), weightParam.Data.Data())
-		gradInputTensor := tensor.FromFloat32(tensor.NewShape(1, d.inFeatures), gradInput.Data())
+		gradTensor := tensor.FromFloat32(tensor.NewShape(1, d.outFeatures), gradOutput.Data().([]float32))
+		weightTensor := tensor.FromFloat32(tensor.NewShape(d.inFeatures, d.outFeatures), weightParam.Data.Data().([]float32))
+		gradInputTensor := tensor.FromFloat32(tensor.NewShape(1, d.inFeatures), gradInput.Data().([]float32))
 		gradTensor.MatMulTransposed(weightTensor, false, true, &gradInputTensor)
 		if d.Base.CanLearn() && ok {
 			d.Base.SetParam(ParamWeights, weightParam)
@@ -267,13 +269,13 @@ func (d *Dense) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		// Only compute gradients if CanLearn is true
 		weightParam, ok := d.Base.Parameter(ParamWeights)
 		if d.Base.CanLearn() && ok && weightParam.RequiresGrad {
-			if weightParam.Grad.Shape().Rank() == 0 {
+			if weightParam.Grad == nil || weightParam.Grad.Shape().Rank() == 0 {
 				weightParam.Grad = tensor.New(tensor.DTFP32, tensor.NewShape(d.inFeatures, d.outFeatures))
 			}
 			// input^T @ gradOutput: transpose input, no transpose on gradOutput
-			inputTensor := tensor.FromFloat32(tensor.NewShape(batchSize, d.inFeatures), inputPtr.Data())
-			gradTensor := tensor.FromFloat32(tensor.NewShape(batchSize, d.outFeatures), gradOutput.Data())
-			gradWeightTensor := tensor.FromFloat32(tensor.NewShape(d.inFeatures, d.outFeatures), weightParam.Grad.Data())
+			inputTensor := tensor.FromFloat32(tensor.NewShape(batchSize, d.inFeatures), inputPtr.Data().([]float32))
+			gradTensor := tensor.FromFloat32(tensor.NewShape(batchSize, d.outFeatures), gradOutput.Data().([]float32))
+			gradWeightTensor := tensor.FromFloat32(tensor.NewShape(d.inFeatures, d.outFeatures), weightParam.Grad.Data().([]float32))
 			inputTensor.MatMulTransposed(gradTensor, true, false, &gradWeightTensor)
 			d.Base.SetParam(ParamWeights, weightParam)
 		}
@@ -283,13 +285,14 @@ func (d *Dense) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		if d.hasBias {
 			biasParam, ok := d.Base.Parameter(ParamBiases)
 			if d.Base.CanLearn() && ok && biasParam.RequiresGrad {
-				if biasParam.Grad.Shape().Rank() == 0 {
+				if biasParam.Grad == nil || biasParam.Grad.Shape().Rank() == 0 {
 					biasParam.Grad = tensor.New(tensor.DTFP32, tensor.NewShape(d.outFeatures))
 				}
 				// Sum gradOutput over batch dimension
-				biasGradTensor := tensor.FromFloat32(tensor.NewShape(d.outFeatures), biasParam.Grad.Data())
+				biasGradTensor := tensor.FromFloat32(tensor.NewShape(d.outFeatures), biasParam.Grad.Data().([]float32))
+				gradOutputData := gradOutput.Data().([]float32)
 				for b := 0; b < batchSize; b++ {
-					batchGrad := tensor.FromFloat32(tensor.NewShape(d.outFeatures), gradOutput.Data()[b*d.outFeatures:(b+1)*d.outFeatures])
+					batchGrad := tensor.FromFloat32(tensor.NewShape(d.outFeatures), gradOutputData[b*d.outFeatures:(b+1)*d.outFeatures])
 					biasGradTensor.AddScaled(batchGrad, 1.0)
 				}
 				d.Base.SetParam(ParamBiases, biasParam)
@@ -299,15 +302,15 @@ func (d *Dense) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 		// Compute gradient w.r.t. input: gradInput = gradOutput @ weight^T
 		gradInput := tensor.New(tensor.DTFP32, tensor.NewShape(batchSize, d.inFeatures))
 		// gradOutput @ weight^T: no transpose on gradOutput, transpose weight
-		gradTensor := tensor.FromFloat32(tensor.NewShape(batchSize, d.outFeatures), gradOutput.Data())
-		weightTensor := tensor.FromFloat32(tensor.NewShape(d.inFeatures, d.outFeatures), weightParam.Data.Data())
-		gradInputTensor := tensor.FromFloat32(tensor.NewShape(batchSize, d.inFeatures), gradInput.Data())
+		gradTensor := tensor.FromFloat32(tensor.NewShape(batchSize, d.outFeatures), gradOutput.Data().([]float32))
+		weightTensor := tensor.FromFloat32(tensor.NewShape(d.inFeatures, d.outFeatures), weightParam.Data.Data().([]float32))
+		gradInputTensor := tensor.FromFloat32(tensor.NewShape(batchSize, d.inFeatures), gradInput.Data().([]float32))
 		gradTensor.MatMulTransposed(weightTensor, false, true, &gradInputTensor)
 		d.Base.StoreGrad(gradInput)
 		return gradInput, nil
 	}
 
-	return tensor.Tensor{}, fmt.Errorf("Dense.Backward: unsupported input shape: %v", inputPtr.Shape())
+	return nil, fmt.Errorf("Dense.Backward: unsupported input shape: %v", inputPtr.Shape())
 }
 
 // OutputShape returns the output shape for given input shape.
@@ -331,23 +334,23 @@ func (d *Dense) OutputShape(inputShape []int) ([]int, error) {
 }
 
 // Weight returns the weight parameter tensor.
-func (d *Dense) Weight() tensor.Tensor {
+func (d *Dense) Weight() types.Tensor {
 	if d == nil {
-		return tensor.Tensor{}
+		return nil
 	}
 	return d.Base.Weights().Data
 }
 
 // Bias returns the bias parameter tensor.
-func (d *Dense) Bias() tensor.Tensor {
+func (d *Dense) Bias() types.Tensor {
 	if d == nil || !d.hasBias {
-		return tensor.Tensor{}
+		return nil
 	}
 	return d.Base.Biases().Data
 }
 
 // SetWeight sets the weight parameter tensor.
-func (d *Dense) SetWeight(weight tensor.Tensor) error {
+func (d *Dense) SetWeight(weight types.Tensor) error {
 	if d == nil {
 		return fmt.Errorf("Dense.SetWeight: nil layer")
 	}
@@ -373,7 +376,7 @@ func (d *Dense) SetWeight(weight tensor.Tensor) error {
 }
 
 // SetBias sets the bias parameter tensor.
-func (d *Dense) SetBias(bias tensor.Tensor) error {
+func (d *Dense) SetBias(bias types.Tensor) error {
 	if d == nil {
 		return fmt.Errorf("Dense.SetBias: nil layer")
 	}

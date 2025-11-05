@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"unsafe"
 
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
 )
 
@@ -111,7 +112,7 @@ func (t Tensor) Rank() int {
 // Size returns the total number of elements in the tensor.
 func (t Tensor) Size() int {
 	if t.shape == nil {
-		tData := types.GetTensorData[[]float32](&t)
+		tData := types.GetTensorData[[]float32](t)
 		if tData == nil {
 			return 0
 		}
@@ -128,7 +129,36 @@ func (t Tensor) Clone() types.Tensor {
 
 	clonedData := types.CloneTensorDataTo(t.DataType(), t.Data())
 	clonedShape := t.Shape().Clone()
-	return &Tensor{shape: clonedShape, data: clonedData}
+	return Tensor{shape: clonedShape, data: clonedData}
+}
+
+// Copy copies data from src tensor into this tensor.
+// Both tensors must have the same shape.
+// Supports data type conversion between different tensor data types.
+// Uses optimized primitive copy functions for efficient copying.
+// Returns self for method chaining. Panics if shapes don't match.
+func (t Tensor) Copy(src types.Tensor) types.Tensor {
+	if src == nil {
+		return t
+	}
+	if t.shape == nil && t.data == nil {
+		return t
+	}
+
+	// Validate shapes match
+	if t.Shape() == nil || src.Shape() == nil {
+		panic("tensor.Copy: cannot copy to/from tensor with nil shape")
+	}
+
+	if !t.Shape().Equal(src.Shape()) {
+		panic(fmt.Sprintf("tensor.Copy: shape mismatch: dst %v vs src %v", t.Shape(), src.Shape()))
+	}
+
+	// Use the existing optimized copyTensorData function
+	// Pass pointer to t so copyTensorData can modify it
+	copyTensorData(src, t)
+
+	return t
 }
 
 // isContiguous checks if the tensor data is contiguous (no gaps).
@@ -141,7 +171,7 @@ func (t Tensor) isContiguous() bool {
 	}
 	strides := t.shape.Strides()
 	expectedSize := strides[0] * t.shape[0]
-	tData := types.GetTensorData[[]float32](&t)
+	tData := types.GetTensorData[[]float32](t)
 	if tData == nil {
 		return false
 	}
@@ -157,17 +187,93 @@ func (t Tensor) elementIndex(indices []int, strides []int) int {
 	return idx
 }
 
-// At returns the element at the given indices.
-// Indices must match the tensor's dimensions.
-func (t Tensor) At(indices ...int) float32 {
-	tData := types.GetTensorData[[]float32](&t)
-	if t.shape == nil || (t.shape.Rank() == 0 && len(indices) == 0) {
-		if tData == nil || len(tData) == 0 {
-			panic("tensor.At: empty tensor")
-		}
-		return tData[0]
+// getElementAtIndex returns the element at the given linear index, converting from the actual data type to float64.
+func (t Tensor) getElementAtIndex(index int) float64 {
+	if t.data == nil {
+		panic("tensor.getElementAtIndex: tensor has nil data")
 	}
 
+	switch data := t.data.(type) {
+	case []float32:
+		if index >= len(data) {
+			panic("tensor.getElementAtIndex: index out of bounds")
+		}
+		return primitive.ConvertValue[float32, float64](data[index])
+	case []float64:
+		if index >= len(data) {
+			panic("tensor.getElementAtIndex: index out of bounds")
+		}
+		return data[index]
+	case []int16:
+		if index >= len(data) {
+			panic("tensor.getElementAtIndex: index out of bounds")
+		}
+		return primitive.ConvertValue[int16, float64](data[index])
+	case []int8:
+		if index >= len(data) {
+			panic("tensor.getElementAtIndex: index out of bounds")
+		}
+		return primitive.ConvertValue[int8, float64](data[index])
+	default:
+		panic(fmt.Sprintf("tensor.getElementAtIndex: unsupported data type"))
+	}
+}
+
+// setElementAtIndex sets the element at the given linear index, converting from float64 to the actual data type.
+func (t Tensor) setElementAtIndex(index int, value float64) {
+	if t.data == nil {
+		panic("tensor.setElementAtIndex: tensor has nil data")
+	}
+
+	switch data := t.data.(type) {
+	case []float32:
+		if index >= len(data) {
+			panic("tensor.setElementAtIndex: index out of bounds")
+		}
+		data[index] = primitive.ConvertValue[float64, float32](value)
+	case []float64:
+		if index >= len(data) {
+			panic("tensor.setElementAtIndex: index out of bounds")
+		}
+		data[index] = value
+	case []int16:
+		if index >= len(data) {
+			panic("tensor.setElementAtIndex: index out of bounds")
+		}
+		data[index] = primitive.ConvertValue[float64, int16](value)
+	case []int8:
+		if index >= len(data) {
+			panic("tensor.setElementAtIndex: index out of bounds")
+		}
+		data[index] = primitive.ConvertValue[float64, int8](value)
+	default:
+		panic(fmt.Sprintf("tensor.setElementAtIndex: unsupported data type"))
+	}
+}
+
+// At returns the element at the given indices.
+// When only one index is provided and tensor rank > 1, uses linear indexing (direct data access).
+// Otherwise, indices must match the tensor's dimensions for multi-dimensional access.
+func (t Tensor) At(indices ...int) float64 {
+	if t.shape == nil || (t.shape.Rank() == 0 && len(indices) == 0) {
+		if t.data == nil {
+			panic("tensor.At: empty tensor")
+		}
+		// Handle scalar case - convert from actual type to float64
+		return t.getElementAtIndex(0)
+	}
+
+	// Special case: single index with rank > 1 uses linear indexing
+	if len(indices) == 1 && t.shape.Rank() > 1 {
+		idx := indices[0]
+		size := t.Size()
+		if idx < 0 || idx >= size {
+			panic("tensor.At: linear index out of bounds")
+		}
+		return t.getElementAtIndex(idx)
+	}
+
+	// Normal multi-dimensional indexing
 	if len(indices) != t.shape.Rank() {
 		panic("tensor.At: number of indices must match tensor dimensions")
 	}
@@ -180,24 +286,34 @@ func (t Tensor) At(indices ...int) float32 {
 
 	strides := t.shape.Strides()
 	linearIdx := t.elementIndex(indices, strides)
-	if tData == nil || linearIdx >= len(tData) {
-		panic("tensor.At: computed index out of bounds")
-	}
-	return tData[linearIdx]
+	return t.getElementAtIndex(linearIdx)
 }
 
 // SetAt sets the element at the given indices.
-// Indices must match the tensor's dimensions.
-func (t Tensor) SetAt(indices []int, value float32) {
-	tData := types.GetTensorData[[]float32](&t)
+// When only one index is provided and tensor rank > 1, uses linear indexing (direct data access).
+// Otherwise, indices must match the tensor's dimensions for multi-dimensional access.
+func (t Tensor) SetAt(value float64, indices ...int) {
 	if t.shape == nil || (t.shape.Rank() == 0 && len(indices) == 0) {
-		if tData == nil || len(tData) == 0 {
+		if t.data == nil {
 			panic("tensor.SetAt: cannot set element of empty tensor")
 		}
-		tData[0] = value
+		// Handle scalar case - convert from float64 to actual type
+		t.setElementAtIndex(0, value)
 		return
 	}
 
+	// Special case: single index with rank > 1 uses linear indexing
+	if len(indices) == 1 && t.shape.Rank() > 1 {
+		idx := indices[0]
+		size := t.Size()
+		if idx < 0 || idx >= size {
+			panic("tensor.SetAt: linear index out of bounds")
+		}
+		t.setElementAtIndex(idx, value)
+		return
+	}
+
+	// Normal multi-dimensional indexing
 	if len(indices) != t.shape.Rank() {
 		panic("tensor.SetAt: number of indices must match tensor dimensions")
 	}
@@ -210,10 +326,7 @@ func (t Tensor) SetAt(indices []int, value float32) {
 
 	strides := t.shape.Strides()
 	linearIdx := t.elementIndex(indices, strides)
-	if tData == nil || linearIdx >= len(tData) {
-		panic("tensor.SetAt: computed index out of bounds")
-	}
-	tData[linearIdx] = value
+	t.setElementAtIndex(linearIdx, value)
 }
 
 // Reshape returns a new tensor with the same data but different shape (zero-copy when possible).
@@ -223,7 +336,7 @@ func (t Tensor) Reshape(newShape types.Shape) types.Tensor {
 		return nil
 	}
 	shape := types.NewShape(newShape...)
-	tData := types.GetTensorData[[]float32](&t)
+	tData := types.GetTensorData[[]float32](t)
 	if tData == nil {
 		panic("tensor.Reshape: cannot reshape tensor with nil data")
 	}
@@ -233,39 +346,20 @@ func (t Tensor) Reshape(newShape types.Shape) types.Tensor {
 	return Tensor{shape: shape, data: t.data}
 }
 
-// reset replaces the tensor contents with the provided dtype, shape, and optional backing slice (no copy).
-func (t Tensor) reset(dtype types.DataType, shape []int, data []float32) {
-	s := types.NewShape(shape...)
-	size := s.Size()
-	var buf []float32
-	if data == nil {
-		buf = make([]float32, size)
-	} else {
-		if len(data) != size {
-			panic(fmt.Sprintf("tensor.reset: data length %d does not match shape size %d", len(data), size))
-		}
-		buf = data
-	}
-	t.shape = s
-	t.data = buf
-}
-
 // Element represents a single tensor element with Get and Set methods.
 type Element struct {
 	tensor Tensor
 	index  int
 }
 
-// Get returns the float32 value at this element's position.
-func (e Element) Get() float32 {
-	tData := types.GetTensorData[[]float32](&e.tensor)
-	return tData[e.index]
+// Get returns the float64 value at this element's position.
+func (e Element) Get() float64 {
+	return e.tensor.getElementAtIndex(e.index)
 }
 
-// Set sets the float32 value at this element's position.
-func (e Element) Set(value float32) {
-	tData := types.GetTensorData[[]float32](&e.tensor)
-	tData[e.index] = value
+// Set sets the float64 value at this element's position.
+func (e Element) Set(value float64) {
+	e.tensor.setElementAtIndex(e.index, value)
 }
 
 // Elements creates an iterator that fixes specified dimensions and iterates over the remaining ones.
@@ -285,8 +379,16 @@ func (e Element) Set(value float32) {
 //	    elem.Set(0.0)
 //	}
 func (t Tensor) Elements(fixedAxisValuePairs ...int) func(func(types.Element) bool) {
-	tData := types.GetTensorData[[]float32](&t)
-	if t.shape == nil || tData == nil || len(tData) == 0 {
+	if t.shape == nil || t.data == nil {
+		return func(yield func(types.Element) bool) {
+			// Empty tensor - yield once with invalid element
+			yield(Element{tensor: t, index: 0})
+		}
+	}
+
+	// Get size to validate indices
+	size := t.Size()
+	if size == 0 {
 		return func(yield func(types.Element) bool) {
 			// Empty tensor - yield once with invalid element
 			yield(Element{tensor: t, index: 0})
@@ -301,7 +403,7 @@ func (t Tensor) Elements(fixedAxisValuePairs ...int) func(func(types.Element) bo
 		for indices := range shapeIter {
 			// Compute linear index from multi-dimensional indices
 			linearIdx := t.elementIndex(indices, strides)
-			if linearIdx >= len(tData) {
+			if linearIdx >= size {
 				continue // Skip invalid indices
 			}
 

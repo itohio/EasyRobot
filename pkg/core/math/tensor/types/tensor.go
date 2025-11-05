@@ -2,8 +2,8 @@ package types
 
 // Element interface represents a single tensor element with Get and Set methods.
 type Element interface {
-	Get() float32
-	Set(value float32)
+	Get() float64
+	Set(value float64)
 }
 
 // Tensor defines the complete interface for tensor operations.
@@ -39,12 +39,16 @@ type Tensor interface {
 	Empty() bool
 
 	// At returns the element at the given multi-dimensional indices.
+	// When only one index is provided and tensor rank > 1, uses linear indexing (direct data access).
+	// Otherwise, indices must match the tensor's dimensions for multi-dimensional access.
 	// Panics if indices are out of bounds or incorrect number of indices provided.
-	At(indices ...int) float32
+	At(indices ...int) float64
 
 	// SetAt sets the element at the given multi-dimensional indices to the specified value.
+	// When only one index is provided and tensor rank > 1, uses linear indexing (direct data access).
+	// Otherwise, indices must match the tensor's dimensions for multi-dimensional access.
 	// Panics if indices are out of bounds or incorrect number of indices provided.
-	SetAt(indices []int, value float32)
+	SetAt(value float64, indices ...int)
 
 	// Elements creates an iterator over tensor elements (Go 1.22+ range-over-function).
 	// Returns a function that can be used in range loops.
@@ -56,6 +60,13 @@ type Tensor interface {
 	// Clone creates a deep copy of the tensor and returns it as a Tensor interface.
 	// The returned tensor is independent of the original.
 	Clone() Tensor
+
+	// Copy copies data from src tensor into this tensor.
+	// Both tensors must have the same shape.
+	// Supports data type conversion between different tensor data types.
+	// Uses optimized primitive copy functions for efficient copying.
+	// Returns self for method chaining. Panics if shapes don't match.
+	Copy(src Tensor) Tensor
 
 	// Reshape returns a new tensor with the same data but different shape (zero-copy when possible).
 	// The total number of elements must remain the same.
@@ -84,7 +95,7 @@ type Tensor interface {
 
 	// Scale multiplies the tensor by a scalar in-place: t = scalar * t.
 	// Returns self for method chaining.
-	Scale(scalar float32) Tensor
+	Scale(scalar float64) Tensor
 
 	// Square computes element-wise square in-place: t[i] = t[i]^2.
 	// Returns self for method chaining.
@@ -104,7 +115,7 @@ type Tensor interface {
 
 	// Pow computes element-wise power in-place: t[i] = t[i]^power.
 	// Returns self for method chaining.
-	Pow(dst Tensor, power float32) Tensor
+	Pow(dst Tensor, power float64) Tensor
 
 	// Abs computes element-wise absolute value in-place: t[i] = |t[i]|.
 	// Returns self for method chaining.
@@ -217,7 +228,7 @@ type Tensor interface {
 
 	// MatVecMulTransposed performs matrix-vector multiplication with scaling: result = alpha * matrix^T × vector + beta * result.
 	// Returns a new tensor.
-	MatVecMulTransposed(matrix, vector Tensor, alpha, beta float32) Tensor
+	MatVecMulTransposed(matrix, vector Tensor, alpha, beta float64) Tensor
 
 	// Transpose transposes dimensions. Currently supports 2D only: [M, N] → [N, M].
 	// Returns a new tensor. Panics if tensor is not 2D.
@@ -231,12 +242,12 @@ type Tensor interface {
 	// For vectors: dot product of two 1D tensors.
 	// For matrices: Frobenius inner product (sum of element-wise products).
 	// Panics if shapes are incompatible.
-	Dot(other Tensor) float32
+	Dot(other Tensor) float64
 
 	// Norm computes vector/matrix norm.
 	// ord: 0 = L1 norm, 1 = L2 norm, 2 = Frobenius norm (same as L2 for matrices).
 	// Panics if ord is invalid.
-	Norm(ord int) float32
+	Norm(ord int) float64
 
 	// Normalize performs L2 normalization along the specified dimension.
 	// For 1D: normalizes entire vector. For 2D: normalizes along rows (dim=0) or columns (dim=1).
@@ -245,7 +256,7 @@ type Tensor interface {
 
 	// AddScaled computes t = t + alpha * other (scaled addition).
 	// Panics if shapes don't match. Returns self for method chaining.
-	AddScaled(other Tensor, alpha float32) Tensor
+	AddScaled(other Tensor, alpha float64) Tensor
 
 	// Convolution Operations
 	// All convolution operations use optimized primitive functions for computation.
@@ -368,7 +379,7 @@ type Tensor interface {
 	// scale: scaling factor (typically 1.0 / (1.0 - p))
 	// rng: random number generator (interface{} to avoid importing math/rand; actual type is *rand.Rand)
 	// Returns a new tensor with the mask.
-	DropoutMask(p, scale float32, rng interface{}) Tensor
+	DropoutMask(p, scale float64, rng interface{}) Tensor
 }
 
 // Helper functions that would accept Tensor interface:

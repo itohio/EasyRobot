@@ -191,7 +191,7 @@ func TestScale(t *testing.T) {
 	tests := []struct {
 		name     string
 		t        Tensor
-		scalar   float32
+		scalar   float64
 		expected []float32
 	}{
 		{
@@ -672,7 +672,7 @@ func TestLog(t *testing.T) {
 func TestPow(t *testing.T) {
 	t.Run("Pow in-place", func(t *testing.T) {
 		tensor := FromFloat32(types.NewShape(2, 2), []float32{2, 3, 4, 5})
-		power := float32(2.0)
+		power := float64(2.0)
 		expected := []float32{4, 9, 16, 25}
 
 		tensor.Pow(nil, power)
@@ -685,7 +685,7 @@ func TestPow(t *testing.T) {
 
 	t.Run("Pow with destination", func(t *testing.T) {
 		tensor := FromFloat32(types.NewShape(3), []float32{4, 9, 16})
-		power := float32(0.5)
+		power := float64(0.5)
 		expected := []float32{2, 3, 4}
 		dst := New(types.DTFP32, types.NewShape(3))
 		originalData := tensor.Clone()

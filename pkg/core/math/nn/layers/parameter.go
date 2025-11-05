@@ -4,13 +4,14 @@ import (
 	"math"
 
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
+	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
 )
 
 // Parameter represents a trainable parameter (weight or bias).
 type Parameter struct {
-	Data         tensor.Tensor // Parameter values
-	Grad         tensor.Tensor // Gradients (lazy allocation)
-	RequiresGrad bool          // Whether to compute gradients (deprecated, use layer CanLearn)
+	Data         types.Tensor // Parameter values
+	Grad         types.Tensor // Gradients (lazy allocation)
+	RequiresGrad bool         // Whether to compute gradients (deprecated, use layer CanLearn)
 }
 
 // ZeroGrad zeros the gradient tensor.
@@ -39,7 +40,8 @@ func InitXavier(param *Parameter, fanIn, fanOut int, rng RNG) {
 
 	limit := float32(math.Sqrt(6.0 / float64(fanIn+fanOut)))
 	for idx := range param.Data.Shape().Iterator() {
-		param.Data.SetAt(idx, (rng.Float32()*2-1)*limit)
+		// Convert float32 to float64 for SetAt interface
+		param.Data.SetAt(float64((rng.Float32()*2-1)*limit), idx...)
 	}
 }
 
@@ -58,6 +60,7 @@ func InitXavierNormal(param *Parameter, fanIn, fanOut int, rng RNG) {
 	stddev := float32(math.Sqrt(2.0 / float64(fanIn+fanOut)))
 
 	for idx := range param.Data.Shape().Iterator() {
-		param.Data.SetAt(idx, float32(rng.NormFloat64())*stddev)
+		// Convert float32 to float64 for SetAt interface
+		param.Data.SetAt(float64(float32(rng.NormFloat64())*stddev), idx...)
 	}
 }

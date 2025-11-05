@@ -330,7 +330,8 @@ func (t Tensor) TransposeTo(dst types.Tensor, dims ...int) types.Tensor {
 // For vectors: dot product of two 1D tensors
 // For matrices: Frobenius inner product (sum of element-wise products)
 // Uses fp32 primitive.Dot for vector case.
-func (t Tensor) Dot(other types.Tensor) float32 {
+// Returns float64 result converted from internal float32 computation.
+func (t Tensor) Dot(other types.Tensor) float64 {
 	if t.shape == nil || other == nil || other.Shape() == nil {
 		return 0
 	}
@@ -347,7 +348,7 @@ func (t Tensor) Dot(other types.Tensor) float32 {
 		tData := types.GetTensorData[[]float32](&t)
 		otherData := types.GetTensorData[[]float32](other)
 		if t.isContiguous() && isTensorContiguous(other) {
-			return fp32.Dot(tData, otherData, 1, 1, tShape[0])
+			return float64(fp32.Dot(tData, otherData, 1, 1, tShape[0]))
 		}
 
 		// Strided case
@@ -364,7 +365,7 @@ func (t Tensor) Dot(other types.Tensor) float32 {
 }
 
 // dotStrided computes dot product for strided vectors
-func (t Tensor) dotStrided(other types.Tensor, n int) float32 {
+func (t Tensor) dotStrided(other types.Tensor, n int) float64 {
 	tStrides := t.shape.Strides()
 	otherStrides := other.Shape().Strides()
 
@@ -376,11 +377,11 @@ func (t Tensor) dotStrided(other types.Tensor, n int) float32 {
 		otherIdx := i * otherStrides[0]
 		sum += tData[tIdx] * otherData[otherIdx]
 	}
-	return sum
+	return float64(sum)
 }
 
 // dotFrobenius computes Frobenius inner product (sum of element-wise products)
-func (t Tensor) dotFrobenius(other types.Tensor) float32 {
+func (t Tensor) dotFrobenius(other types.Tensor) float64 {
 	var sum float32
 	size := t.Size()
 	tData := types.GetTensorData[[]float32](&t)
@@ -388,13 +389,14 @@ func (t Tensor) dotFrobenius(other types.Tensor) float32 {
 	for i := 0; i < size; i++ {
 		sum += tData[i] * otherData[i]
 	}
-	return sum
+	return float64(sum)
 }
 
 // Norm computes vector or matrix norm.
 // ord: 0 = L1 norm (|x|_1), 1 = L2 norm (|x|_2), 2 = Frobenius norm for matrices
 // Uses fp32 primitive.Nrm2 for L2 norm, fp32 primitive.Asum for L1 norm.
-func (t Tensor) Norm(ord int) float32 {
+// Returns float64 result converted from internal float32 computation.
+func (t Tensor) Norm(ord int) float64 {
 	if t.shape == nil {
 		return 0
 	}
@@ -404,7 +406,7 @@ func (t Tensor) Norm(ord int) float32 {
 		// L1 norm
 		if t.isContiguous() {
 			tData := types.GetTensorData[[]float32](&t)
-			return fp32.Asum(tData, 1, t.Size())
+			return float64(fp32.Asum(tData, 1, t.Size()))
 		}
 		return t.norm1Strided()
 
@@ -412,7 +414,7 @@ func (t Tensor) Norm(ord int) float32 {
 		// L2 norm (Euclidean norm)
 		if t.isContiguous() {
 			tData := types.GetTensorData[[]float32](&t)
-			return fp32.Nrm2(tData, 1, t.Size())
+			return float64(fp32.Nrm2(tData, 1, t.Size()))
 		}
 		return t.norm2Strided()
 
@@ -420,7 +422,7 @@ func (t Tensor) Norm(ord int) float32 {
 		// Frobenius norm for matrices (same as L2 norm on flattened matrix)
 		if t.isContiguous() {
 			tData := types.GetTensorData[[]float32](&t)
-			return fp32.Nrm2(tData, 1, t.Size())
+			return float64(fp32.Nrm2(tData, 1, t.Size()))
 		}
 		return t.norm2Strided()
 
@@ -430,23 +432,23 @@ func (t Tensor) Norm(ord int) float32 {
 }
 
 // norm1Strided computes L1 norm for strided tensor
-func (t Tensor) norm1Strided() float32 {
-	var sum float32
+func (t Tensor) norm1Strided() float64 {
+	var sum float64
 	strides := t.shape.Strides()
 	indices := make([]int, t.shape.Rank())
 	t.norm1StridedRecursive(&sum, indices, strides, 0)
 	return sum
 }
 
-func (t Tensor) norm1StridedRecursive(sum *float32, indices []int, strides []int, dim int) {
+func (t Tensor) norm1StridedRecursive(sum *float64, indices []int, strides []int, dim int) {
 	if dim == t.shape.Rank() {
 		idx := t.elementIndex(indices, strides)
 		tData := types.GetTensorData[[]float32](&t)
 		val := tData[idx]
 		if val < 0 {
-			*sum -= val
+			*sum -= float64(val)
 		} else {
-			*sum += val
+			*sum += float64(val)
 		}
 		return
 	}
@@ -458,8 +460,8 @@ func (t Tensor) norm1StridedRecursive(sum *float32, indices []int, strides []int
 }
 
 // norm2Strided computes L2 norm for strided tensor
-func (t Tensor) norm2Strided() float32 {
-	var sumSq float32
+func (t Tensor) norm2Strided() float64 {
+	var sumSq float64
 	strides := t.shape.Strides()
 	indices := make([]int, t.shape.Rank())
 	t.norm2StridedRecursive(&sumSq, indices, strides, 0)
@@ -471,10 +473,10 @@ func (t Tensor) norm2Strided() float32 {
 	// Use simple sqrt approximation or call Nrm2 on flattened
 	// For now, let's use the sum of squares and take sqrt
 	// Better: use primitive.Nrm2 on a flattened view if possible
-	return t.norm2StridedCompute(sumSq)
+	return t.norm2StridedCompute(float32(sumSq))
 }
 
-func (t Tensor) norm2StridedCompute(sumSq float32) float32 {
+func (t Tensor) norm2StridedCompute(sumSq float32) float64 {
 	// Compute sqrt using primitive approach - for now use approximation
 	// Actually, we can flatten and use Nrm2 if size is reasonable
 	size := t.Size()
@@ -486,20 +488,20 @@ func (t Tensor) norm2StridedCompute(sumSq float32) float32 {
 	return 0
 }
 
-func (t Tensor) sqrtApprox(x float32) float32 {
+func (t Tensor) sqrtApprox(x float32) float64 {
 	// Use math32.Sqrt for square root computation
 	if x <= 0 {
 		return 0
 	}
-	return math32.Sqrt(x)
+	return float64(math32.Sqrt(x))
 }
 
-func (t Tensor) norm2StridedRecursive(sum *float32, indices []int, strides []int, dim int) {
+func (t Tensor) norm2StridedRecursive(sum *float64, indices []int, strides []int, dim int) {
 	if dim == t.shape.Rank() {
 		idx := t.elementIndex(indices, strides)
 		tData := types.GetTensorData[[]float32](&t)
 		val := tData[idx]
-		*sum += val * val
+		*sum += float64(val * val)
 		return
 	}
 

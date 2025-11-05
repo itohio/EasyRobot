@@ -691,3 +691,46 @@ func clampToInt16Strided[U clampableToInt16](dst []int16, src []U, shape []int, 
 		dim++
 	}
 }
+
+// ConvertValue converts a value from type T to type U with appropriate clamping.
+// This is a naive implementation for single value conversion.
+// Handles all conversions including clamping for down-conversions (e.g., float64 -> int8).
+func ConvertValue[T, U numeric](value T) U {
+	var zeroU U
+	switch any(zeroU).(type) {
+	case float32:
+		return U(float32(value))
+	case float64:
+		return U(float64(value))
+	case int16:
+		// Need to clamp if converting from larger types
+		switch v := any(value).(type) {
+		case float32:
+			return U(clampToInt16Value(v))
+		case float64:
+			return U(clampToInt16Value(v))
+		case int16:
+			return U(v)
+		case int8:
+			return U(int16(v)) // Up-conversion, no clamping needed
+		default:
+			return U(int16(value))
+		}
+	case int8:
+		// Need to clamp if converting from larger types
+		switch v := any(value).(type) {
+		case float32:
+			return U(clampToInt8Value(v))
+		case float64:
+			return U(clampToInt8Value(v))
+		case int16:
+			return U(clampToInt8Value(v))
+		case int8:
+			return U(v)
+		default:
+			return U(int8(value))
+		}
+	default:
+		return U(value)
+	}
+}

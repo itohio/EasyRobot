@@ -49,7 +49,8 @@ func TestReLU(t *testing.T) {
 			// Test Forward
 			output, err := relu.Forward(inputTensor)
 			require.NoError(t, err, "Forward should succeed")
-			assert.Equal(t, tt.output, output.Data(), "Output should match expected")
+			outputData := output.Data().([]float32)
+			assert.Equal(t, tt.output, outputData, "Output should match expected")
 
 			// Test Backward - create gradOutput with ones matching input size
 			gradOutputData := make([]float32, len(tt.input))
@@ -59,7 +60,8 @@ func TestReLU(t *testing.T) {
 			gradOutput := tensor.FromFloat32(tensor.NewShape(len(tt.input)), gradOutputData)
 			gradInput, err := relu.Backward(gradOutput)
 			require.NoError(t, err, "Backward should succeed")
-			assert.Equal(t, tt.gradInput, gradInput.Data(), "GradInput should match expected")
+			gradInputData := gradInput.Data().([]float32)
+			assert.Equal(t, tt.gradInput, gradInputData, "GradInput should match expected")
 		})
 	}
 }
@@ -88,7 +90,8 @@ func TestSigmoid(t *testing.T) {
 
 			output, err := sigmoid.Forward(inputTensor)
 			require.NoError(t, err, "Forward should succeed")
-			assert.InDelta(t, tt.output, output.Data()[0], 1e-6, "Output should match expected")
+			outputData := output.Data().([]float32)
+			assert.InDelta(t, tt.output, outputData[0], 1e-6, "Output should match expected")
 
 			// Test Backward
 			gradOutput := tensor.FromFloat32(tensor.NewShape(1), []float32{1.0})
@@ -96,8 +99,9 @@ func TestSigmoid(t *testing.T) {
 			require.NoError(t, err, "Backward should succeed")
 
 			// Sigmoid derivative: output * (1 - output)
-			expectedGrad := output.Data()[0] * (1 - output.Data()[0])
-			assert.InDelta(t, expectedGrad, gradInput.Data()[0], 1e-6, "GradInput should match expected derivative")
+			gradInputData := gradInput.Data().([]float32)
+			expectedGrad := outputData[0] * (1 - outputData[0])
+			assert.InDelta(t, expectedGrad, gradInputData[0], 1e-6, "GradInput should match expected derivative")
 		})
 	}
 }
@@ -126,7 +130,8 @@ func TestTanh(t *testing.T) {
 
 			output, err := tanh.Forward(inputTensor)
 			require.NoError(t, err, "Forward should succeed")
-			assert.InDelta(t, tt.output, output.Data()[0], 1e-6, "Output should match expected")
+			outputData := output.Data().([]float32)
+			assert.InDelta(t, tt.output, outputData[0], 1e-6, "Output should match expected")
 
 			// Test Backward
 			gradOutput := tensor.FromFloat32(tensor.NewShape(1), []float32{1.0})
@@ -134,8 +139,9 @@ func TestTanh(t *testing.T) {
 			require.NoError(t, err, "Backward should succeed")
 
 			// Tanh derivative: 1 - output^2
-			expectedGrad := 1 - output.Data()[0]*output.Data()[0]
-			assert.InDelta(t, expectedGrad, gradInput.Data()[0], 1e-6, "GradInput should match expected derivative")
+			gradInputData := gradInput.Data().([]float32)
+			expectedGrad := 1 - outputData[0]*outputData[0]
+			assert.InDelta(t, expectedGrad, gradInputData[0], 1e-6, "GradInput should match expected derivative")
 		})
 	}
 }
@@ -152,14 +158,15 @@ func TestSoftmax(t *testing.T) {
 	require.NoError(t, err, "Forward should succeed")
 
 	// Check that outputs sum to 1.0
+	outputData := output.Data().([]float32)
 	sum := float32(0)
-	for _, v := range output.Data() {
+	for _, v := range outputData {
 		sum += v
 	}
 	assert.InDelta(t, 1.0, sum, 1e-6, "Softmax outputs should sum to 1")
 
 	// Check that all outputs are non-negative
-	for i, v := range output.Data() {
+	for i, v := range outputData {
 		assert.GreaterOrEqual(t, v, float32(0), "Output[%d] should be non-negative", i)
 	}
 
@@ -167,7 +174,8 @@ func TestSoftmax(t *testing.T) {
 	gradOutput := tensor.FromFloat32(tensor.NewShape(3), []float32{0.1, 0.2, 0.3})
 	gradInput, err := softmax.Backward(gradOutput)
 	require.NoError(t, err, "Backward should succeed")
-	assert.Len(t, gradInput.Data(), 3, "GradInput should have size 3")
+	gradInputData := gradInput.Data().([]float32)
+	assert.Len(t, gradInputData, 3, "GradInput should have size 3")
 }
 
 // TestDropout tests the Dropout layer
@@ -181,13 +189,17 @@ func TestDropout(t *testing.T) {
 
 		output, err := dropout.Forward(input)
 		require.NoError(t, err)
-		assert.Equal(t, input.Data(), output.Data(), "Inference mode should pass through unchanged")
+		inputData := input.Data().([]float32)
+		outputData := output.Data().([]float32)
+		assert.Equal(t, inputData, outputData, "Inference mode should pass through unchanged")
 
 		// Test backward
 		gradOutput := tensor.FromFloat32(tensor.NewShape(4), []float32{0.1, 0.2, 0.3, 0.4})
 		gradInput, err := dropout.Backward(gradOutput)
 		require.NoError(t, err)
-		assert.Equal(t, gradOutput.Data(), gradInput.Data(), "Inference mode backward should pass through unchanged")
+		gradOutputData := gradOutput.Data().([]float32)
+		gradInputData := gradInput.Data().([]float32)
+		assert.Equal(t, gradOutputData, gradInputData, "Inference mode backward should pass through unchanged")
 	})
 
 	t.Run("training_mode_p_zero", func(t *testing.T) {
@@ -199,12 +211,16 @@ func TestDropout(t *testing.T) {
 
 		output, err := dropout.Forward(input)
 		require.NoError(t, err)
-		assert.Equal(t, input.Data(), output.Data(), "p=0 should pass through unchanged even in training")
+		inputData := input.Data().([]float32)
+		outputData := output.Data().([]float32)
+		assert.Equal(t, inputData, outputData, "p=0 should pass through unchanged even in training")
 
 		gradOutput := tensor.FromFloat32(tensor.NewShape(4), []float32{0.1, 0.2, 0.3, 0.4})
 		gradInput, err := dropout.Backward(gradOutput)
 		require.NoError(t, err)
-		assert.Equal(t, gradOutput.Data(), gradInput.Data(), "p=0 backward should pass through unchanged")
+		gradOutputData := gradOutput.Data().([]float32)
+		gradInputData := gradInput.Data().([]float32)
+		assert.Equal(t, gradOutputData, gradInputData, "p=0 backward should pass through unchanged")
 	})
 
 	t.Run("training_mode_deterministic", func(t *testing.T) {
@@ -229,13 +245,15 @@ func TestDropout(t *testing.T) {
 		zeroCount := 0
 		scaledCount := 0
 
-		for i, val := range output.Data() {
+		outputData := output.Data().([]float32)
+		inputData := input.Data().([]float32)
+		for i, val := range outputData {
 			if val == 0 {
 				zeroCount++
 				assert.Equal(t, float32(0), val, "Dropped element should be zero")
 			} else {
 				scaledCount++
-				expected := input.Data()[i] * scale
+				expected := inputData[i] * scale
 				assert.InDelta(t, expected, val, 1e-6, "Non-dropped element should be scaled")
 			}
 		}
@@ -257,11 +275,12 @@ func TestDropout(t *testing.T) {
 		require.NoError(t, err)
 
 		// Gradient should be multiplied by mask (0 or scale)
-		for i := range gradInput.Data() {
-			if output.Data()[i] == 0 {
-				assert.Equal(t, float32(0), gradInput.Data()[i], "Gradient for dropped element should be zero")
+		gradInputData := gradInput.Data().([]float32)
+		for i := range gradInputData {
+			if outputData[i] == 0 {
+				assert.Equal(t, float32(0), gradInputData[i], "Gradient for dropped element should be zero")
 			} else {
-				assert.InDelta(t, scale, gradInput.Data()[i], 1e-6, "Gradient for kept element should be scaled")
+				assert.InDelta(t, scale, gradInputData[i], 1e-6, "Gradient for kept element should be scaled")
 			}
 		}
 	})

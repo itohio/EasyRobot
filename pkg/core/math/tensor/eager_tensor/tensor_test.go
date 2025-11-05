@@ -102,6 +102,22 @@ func TestAt(t *testing.T) {
 		{
 			name:        "too few indices",
 			indices:     []int{0},
+			shouldPanic: false, // Single index uses linear indexing for rank > 1
+			expected:    1.0,   // Linear index 0
+		},
+		{
+			name:     "linear indexing - single index",
+			indices:  []int{3},
+			expected: 4.0, // Linear index 3 (row-major: [1,2,3,4,5,6], index 3 is 4)
+		},
+		{
+			name:     "linear indexing - last element",
+			indices:  []int{5},
+			expected: 6.0, // Last element
+		},
+		{
+			name:        "linear indexing - out of bounds",
+			indices:     []int{6},
 			shouldPanic: true,
 		},
 		{
@@ -147,6 +163,15 @@ func TestAt(t *testing.T) {
 	tensor3D := FromFloat32(types.NewShape(2, 2, 2), []float32{1, 2, 3, 4, 5, 6, 7, 8})
 	result := tensor3D.At(1, 0, 1)
 	assert.InDelta(t, 6.0, result, 1e-6, "At(1, 0, 1) for 3D tensor = %f, expected 6.0", result)
+
+	// Test 3D tensor with linear indexing
+	resultLinear := tensor3D.At(3)
+	assert.InDelta(t, 4.0, resultLinear, 1e-6, "At(3) for 3D tensor (linear) = %f, expected 4.0", resultLinear)
+
+	// Test 1D tensor - single index should still use normal indexing (not linear)
+	tensor1D := FromFloat32(types.NewShape(3), []float32{10, 20, 30})
+	result1D := tensor1D.At(1)
+	assert.InDelta(t, 20.0, result1D, 1e-6, "At(1) for 1D tensor = %f, expected 20.0", result1D)
 }
 
 func TestSetAt(t *testing.T) {
@@ -155,8 +180,8 @@ func TestSetAt(t *testing.T) {
 	tests := []struct {
 		name        string
 		indices     []int
-		value       float32
-		expected    float32
+		value       float64
+		expected    float64
 		shouldPanic bool
 	}{
 		{
@@ -172,8 +197,15 @@ func TestSetAt(t *testing.T) {
 			expected: 20.0,
 		},
 		{
-			name:        "too few indices",
-			indices:     []int{0},
+			name:        "linear indexing - single index",
+			indices:     []int{3},
+			value:       99.0,
+			expected:    99.0, // Linear index 3
+			shouldPanic: false,
+		},
+		{
+			name:        "linear indexing - out of bounds",
+			indices:     []int{10},
 			value:       5.0,
 			shouldPanic: true,
 		},
@@ -208,13 +240,13 @@ func TestSetAt(t *testing.T) {
 					} else {
 						// Verify the value was set
 						result := tensorCopy.At(tt.indices...)
-						assert.InDeltaf(t, tt.expected, result, 1e-6, "After SetAt(%v, %f), At(%v) = %f, expected %f",
-							tt.indices, tt.value, tt.indices, result, tt.expected)
+						assert.InDeltaf(t, tt.expected, result, 1e-6, "After SetAt(%f, %v...), At(%v...) = %f, expected %f",
+							tt.value, tt.indices, tt.indices, result, tt.expected)
 					}
 				}
 			}()
 
-			tensorCopy.SetAt(tt.indices, tt.value)
+			tensorCopy.SetAt(tt.value, tt.indices...)
 		})
 	}
 }
@@ -347,7 +379,7 @@ func TestTensorIterator(t *testing.T) {
 		var got []float32
 
 		for elem := range tensor.Elements() {
-			got = append(got, elem.Get())
+			got = append(got, float32(elem.Get()))
 		}
 
 		assert.Equal(t, expected, got)
@@ -358,7 +390,7 @@ func TestTensorIterator(t *testing.T) {
 
 		value := float32(10.0)
 		for elem := range tensor.Elements() {
-			elem.Set(value)
+			elem.Set(float64(value))
 			value++
 		}
 
@@ -377,7 +409,7 @@ func TestTensorIterator(t *testing.T) {
 		// Double all values
 		for elem := range tensor.Elements() {
 			val := elem.Get()
-			elem.Set(val * 2)
+			elem.Set(val * 2.0)
 		}
 
 		expected := []float32{2, 4, 6, 8, 10, 12}
@@ -393,7 +425,7 @@ func TestTensorIterator(t *testing.T) {
 		// Initialize with index values
 		idx := 0
 		for elem := range tensor.Elements() {
-			elem.Set(float32(idx))
+			elem.Set(float64(idx))
 			idx++
 		}
 
@@ -415,7 +447,7 @@ func TestTensorIterator(t *testing.T) {
 		count := 0
 		for elem := range tensor.Elements(0, 1, 2, 3) {
 			// Should iterate over dimensions 1 and 3 (15 elements)
-			elem.Set(float32(count))
+			elem.Set(float64(count))
 			count++
 		}
 
@@ -427,7 +459,7 @@ func TestTensorIterator(t *testing.T) {
 
 		// Fix all dimensions - should iterate once
 		count := 0
-		var value float32
+		var value float64
 		for elem := range tensor.Elements(0, 1, 1, 2, 2, 3) {
 			value = elem.Get()
 			count++
@@ -435,7 +467,7 @@ func TestTensorIterator(t *testing.T) {
 
 		assert.Equal(t, 1, count)
 		// Value at [1, 2, 3] should be at index: 1*12 + 2*4 + 3 = 12 + 8 + 3 = 23
-		assert.Equal(t, float32(24), value) // 0-indexed, so 24th element
+		assert.Equal(t, float64(24), value) // 0-indexed, so 24th element
 	})
 
 	t.Run("row-major order", func(t *testing.T) {
@@ -443,7 +475,7 @@ func TestTensorIterator(t *testing.T) {
 
 		var got []float32
 		for elem := range tensor.Elements() {
-			got = append(got, elem.Get())
+			got = append(got, float32(elem.Get()))
 		}
 
 		// Row-major: last dimension changes fastest
@@ -456,14 +488,14 @@ func TestTensorIterator(t *testing.T) {
 		tensor := FromFloat32(types.NewShape(), []float32{42})
 
 		count := 0
-		var value float32
+		var value float64
 		for elem := range tensor.Elements() {
 			value = elem.Get()
 			count++
 		}
 
 		assert.Equal(t, 1, count)
-		assert.Equal(t, float32(42), value)
+		assert.Equal(t, float64(42), value)
 	})
 
 	t.Run("modify during iteration", func(t *testing.T) {
@@ -472,7 +504,7 @@ func TestTensorIterator(t *testing.T) {
 		// Modify elements as we iterate
 		for elem := range tensor.Elements() {
 			val := elem.Get()
-			elem.Set(val + 10)
+			elem.Set(val + 10.0)
 		}
 
 		expected := []float32{11, 12, 13, 14, 15, 16}
@@ -487,7 +519,7 @@ func TestTensorIterator(t *testing.T) {
 
 		var got []float32
 		for elem := range tensor.Elements() {
-			got = append(got, elem.Get())
+			got = append(got, float32(elem.Get()))
 		}
 
 		assert.Equal(t, []float32{10, 20, 30}, got)

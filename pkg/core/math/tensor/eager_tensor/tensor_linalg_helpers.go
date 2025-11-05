@@ -13,7 +13,7 @@ import (
 // result: [N] tensor (output vector)
 // Uses fp32 primitive.Gemv_T internally.
 // NOTE: Does not guarantee returning a
-func (t Tensor) MatVecMulTransposed(matrix types.Tensor, vector types.Tensor, alpha, beta float32) types.Tensor {
+func (t Tensor) MatVecMulTransposed(matrix types.Tensor, vector types.Tensor, alpha, beta float64) types.Tensor {
 	if t.shape == nil || matrix == nil || matrix.Shape() == nil || vector == nil || vector.Shape() == nil {
 		return nil
 	}
@@ -50,6 +50,9 @@ func (t Tensor) MatVecMulTransposed(matrix types.Tensor, vector types.Tensor, al
 	ldA := N
 
 	// Use primitive.Gemv_T
+	// Convert float64 parameters to float32 for internal computation
+	alpha32 := float32(alpha)
+	beta32 := float32(beta)
 	matrixData := types.GetTensorData[[]float32](matrix)
 	vectorData := types.GetTensorData[[]float32](vector)
 	resultData := types.GetTensorData[[]float32](resultPtr)
@@ -58,7 +61,7 @@ func (t Tensor) MatVecMulTransposed(matrix types.Tensor, vector types.Tensor, al
 		matrixData, // A (matrix)
 		vectorData, // x (vector)
 		ldA, M, N,  // leading dimension, rows, cols
-		alpha, beta, // scaling factors
+		alpha32, beta32, // scaling factors
 	)
 
 	return resultPtr
@@ -268,7 +271,8 @@ func (t Tensor) MatMulTransposed(other types.Tensor, transposeA, transposeB bool
 // AddScaled adds a scaled tensor to this tensor in-place: t = t + alpha * other
 // Uses fp32 primitive.Axpy internally.
 // Returns the tensor itself for method chaining.
-func (t Tensor) AddScaled(other types.Tensor, alpha float32) types.Tensor {
+// Converts float64 alpha to float32 for internal computation.
+func (t Tensor) AddScaled(other types.Tensor, alpha float64) types.Tensor {
 	if t.shape == nil || other == nil || other.Shape() == nil {
 		return t
 	}
@@ -280,18 +284,19 @@ func (t Tensor) AddScaled(other types.Tensor, alpha float32) types.Tensor {
 
 	tData := types.GetTensorData[[]float32](&t)
 	otherData := types.GetTensorData[[]float32](other)
+	alpha32 := float32(alpha)
 
 	if !t.isContiguous() || !isTensorContiguous(other) {
 		// Handle strided case manually
 		size := t.Size()
 		for i := 0; i < size; i++ {
-			tData[i] += alpha * otherData[i]
+			tData[i] += alpha32 * otherData[i]
 		}
 		return &t
 	}
 
 	// Use primitive.Axpy for contiguous case
 	size := t.Size()
-	fp32.Axpy(tData, otherData, 1, 1, size, alpha)
+	fp32.Axpy(tData, otherData, 1, 1, size, alpha32)
 	return &t
 }

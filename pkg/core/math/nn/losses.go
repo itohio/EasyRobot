@@ -47,7 +47,8 @@ func (m *MSELoss) Gradient(pred, target tensor.Tensor) (tensor.Tensor, error) {
 	var grad tensor.Tensor
 	grad = pred.Clone()
 	grad = grad.Sub(target)
-	grad = grad.Scale(2.0 / float32(size))
+	// Convert float32 to float64 for Scale interface
+	grad = grad.Scale(float64(2.0 / float32(size)))
 
 	return grad, nil
 }
@@ -94,7 +95,7 @@ func (c *CrossEntropyLoss) Gradient(pred, target tensor.Tensor) (tensor.Tensor, 
 	mask := pred.GreaterThan(zeros) // 1.0 where pred > 0, 0.0 otherwise
 	epsilonTensor := tensor.FullLike(pred, epsilon)
 	predPlusEps := pred.Clone().Add(epsilonTensor)
-	negTarget := target.Clone().Negative()
+	negTarget := target.Clone().Negative(nil)
 	gradComputed := negTarget.Div(predPlusEps)
 	grad := pred.Where(mask, gradComputed, zeros)
 
@@ -177,7 +178,7 @@ func (c *CategoricalCrossEntropy) Gradient(pred, target tensor.Tensor) (tensor.T
 	mask := pred.GreaterThan(zeros) // 1.0 where pred > 0, 0.0 otherwise
 	epsilonTensor := tensor.FullLike(pred, epsilon)
 	predPlusEps := pred.Clone().Add(epsilonTensor)
-	negTarget := target.Clone().Negative()
+	negTarget := target.Clone().Negative(nil)
 	gradComputed := negTarget.Div(predPlusEps)
 	grad := pred.Where(mask, gradComputed, zeros)
 
@@ -197,7 +198,8 @@ func MSE(pred, target tensor.Tensor) float32 {
 	size := pred.Shape().Size()
 	sum := squaredDiff.Sum()
 	if size > 0 {
-		return sum.At(0) / float32(size)
+		// At() returns float64, convert to float32 for division
+		return float32(sum.At(0)) / float32(size)
 	}
 
 	return 0
@@ -211,7 +213,7 @@ func CrossEntropy(pred, target tensor.Tensor) float32 {
 
 	// Create masks: target != 0 && pred > 0
 	zeros := tensor.ZerosLike(pred)
-	targetAbs := target.Clone().Abs()
+	targetAbs := target.Clone().Abs(nil)
 	targetNonZero := targetAbs.GreaterThan(zeros)   // mask for target != 0
 	predPositive := pred.GreaterThan(zeros)         // mask for pred > 0
 	combinedMask := targetNonZero.Mul(predPositive) // combined condition mask
@@ -220,12 +222,13 @@ func CrossEntropy(pred, target tensor.Tensor) float32 {
 	const epsilon = 1e-10
 	epsilonTensor := tensor.FullLike(pred, epsilon)
 	predPlusEps := pred.Clone().Add(epsilonTensor)
-	logPred := predPlusEps.Log()
+	logPred := predPlusEps.Log(nil)
 	targetLogPred := target.Clone().Mul(logPred)
 	maskedLoss := targetLogPred.Mul(combinedMask)
 
 	// Sum and negate to get final loss
-	loss := -maskedLoss.Sum().At(0)
+	// At() returns float64, convert to float32 for return
+	loss := -float32(maskedLoss.Sum().At(0))
 
 	return loss
 }

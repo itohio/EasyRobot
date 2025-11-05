@@ -5,6 +5,7 @@ import (
 	"math/rand"
 
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
+	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
 )
 
 // ReLU layer implements ReLU activation as a Layer.
@@ -34,9 +35,9 @@ func (r *ReLU) Init(inputShape []int) error {
 }
 
 // Forward computes ReLU: output = max(0, input).
-func (r *ReLU) Forward(input tensor.Tensor) (tensor.Tensor, error) {
+func (r *ReLU) Forward(input types.Tensor) (types.Tensor, error) {
 	if input.Shape().Rank() == 0 {
-		return tensor.Tensor{}, fmt.Errorf("ReLU.Forward: empty input")
+		return nil, fmt.Errorf("ReLU.Forward: empty input")
 	}
 
 	// Store input
@@ -45,37 +46,37 @@ func (r *ReLU) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 	// Get pre-allocated output tensor
 	output := r.Base.Output()
 	if output.Shape().Rank() == 0 {
-		return tensor.Tensor{}, fmt.Errorf("ReLU.Forward: output not allocated, must call Init first")
+		return nil, fmt.Errorf("ReLU.Forward: output not allocated, must call Init first")
 	}
 
 	// Apply ReLU directly to output
-	input.ReLU(&output)
+	output = input.ReLU(output)
 
 	r.Base.StoreOutput(output)
 	return output, nil
 }
 
 // Backward computes ReLU gradient: gradInput = gradOutput * (input > 0 ? 1 : 0).
-func (r *ReLU) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
-	if gradOutput.Shape().Rank() == 0 {
-		return tensor.Tensor{}, fmt.Errorf("ReLU.Backward: empty gradOutput")
+func (r *ReLU) Backward(gradOutput types.Tensor) (types.Tensor, error) {
+	if gradOutput == nil || gradOutput.Shape().Rank() == 0 {
+		return nil, fmt.Errorf("ReLU.Backward: empty gradOutput")
 	}
 
 	input := r.Base.Input()
-	if input.Shape().Rank() == 0 {
-		return tensor.Tensor{}, fmt.Errorf("ReLU.Backward: input not stored, must call Forward first")
+	if input == nil || input.Shape().Rank() == 0 {
+		return nil, fmt.Errorf("ReLU.Backward: input not stored, must call Forward first")
 	}
 
 	// ReLU gradient using primitives: gradInput = gradOutput * (input > 0 ? 1 : 0)
 	// Create mask: 1.0 where input > 0, 0.0 otherwise
 	zeros := tensor.ZerosLike(input)
-	mask := input.GreaterThan(*zeros)
+	mask := input.GreaterThan(zeros)
 
 	// Element-wise multiply: gradOutput * mask
-	gradInput := (&gradOutput).Clone().Mul(*mask)
+	gradInput := gradOutput.Clone().Mul(mask)
 
-	r.Base.StoreGrad(*gradInput)
-	return *gradInput, nil
+	r.Base.StoreGrad(gradInput)
+	return gradInput, nil
 }
 
 // OutputShape returns the output shape (same as input shape for ReLU).
@@ -112,9 +113,9 @@ func (s *Sigmoid) Init(inputShape []int) error {
 }
 
 // Forward computes sigmoid: output = 1 / (1 + exp(-input)).
-func (s *Sigmoid) Forward(input tensor.Tensor) (tensor.Tensor, error) {
+func (s *Sigmoid) Forward(input types.Tensor) (types.Tensor, error) {
 	if input.Shape().Rank() == 0 {
-		return tensor.Tensor{}, fmt.Errorf("Sigmoid.Forward: empty input")
+		return nil, fmt.Errorf("Sigmoid.Forward: empty input")
 	}
 
 	// Store input
@@ -123,35 +124,35 @@ func (s *Sigmoid) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 	// Get pre-allocated output tensor
 	output := s.Base.Output()
 	if output.Shape().Rank() == 0 {
-		return tensor.Tensor{}, fmt.Errorf("Sigmoid.Forward: output not allocated, must call Init first")
+		return nil, fmt.Errorf("Sigmoid.Forward: output not allocated, must call Init first")
 	}
 
 	// Apply sigmoid directly to output
-	input.Sigmoid(&output)
+	output = input.Sigmoid(output)
 
 	s.Base.StoreOutput(output)
 	return output, nil
 }
 
 // Backward computes sigmoid gradient: gradInput = gradOutput * output * (1 - output).
-func (s *Sigmoid) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
-	if gradOutput.Shape().Rank() == 0 {
-		return tensor.Tensor{}, fmt.Errorf("Sigmoid.Backward: empty gradOutput")
+func (s *Sigmoid) Backward(gradOutput types.Tensor) (types.Tensor, error) {
+	if gradOutput == nil || gradOutput.Shape().Rank() == 0 {
+		return nil, fmt.Errorf("Sigmoid.Backward: empty gradOutput")
 	}
 
 	output := s.Base.Output()
-	if output.Shape().Rank() == 0 {
-		return tensor.Tensor{}, fmt.Errorf("Sigmoid.Backward: output not stored, must call Forward first")
+	if output == nil || output.Shape().Rank() == 0 {
+		return nil, fmt.Errorf("Sigmoid.Backward: output not stored, must call Forward first")
 	}
 
 	// Sigmoid gradient using primitives: gradInput = gradOutput * output * (1 - output)
 	ones := tensor.OnesLike(output)
-	term1 := ones.Clone().Sub(output)              // (1 - output) - clone ones first to avoid modifying it
-	term2 := (&output).Clone().Mul(*term1)         // output * (1 - output) - clone output to avoid modifying stored tensor
-	gradInput := (&gradOutput).Clone().Mul(*term2) // gradOutput * output * (1 - output) - clone gradOutput
+	term1 := ones.Clone().Sub(output)          // (1 - output) - clone ones first to avoid modifying it
+	term2 := output.Clone().Mul(term1)         // output * (1 - output) - clone output to avoid modifying stored tensor
+	gradInput := gradOutput.Clone().Mul(term2) // gradOutput * output * (1 - output) - clone gradOutput
 
-	s.Base.StoreGrad(*gradInput)
-	return *gradInput, nil
+	s.Base.StoreGrad(gradInput)
+	return gradInput, nil
 }
 
 // OutputShape returns the output shape (same as input shape for Sigmoid).
@@ -188,9 +189,9 @@ func (t *Tanh) Init(inputShape []int) error {
 }
 
 // Forward computes tanh: output = tanh(input).
-func (t *Tanh) Forward(input tensor.Tensor) (tensor.Tensor, error) {
+func (t *Tanh) Forward(input types.Tensor) (types.Tensor, error) {
 	if input.Shape().Rank() == 0 {
-		return tensor.Tensor{}, fmt.Errorf("Tanh.Forward: empty input")
+		return nil, fmt.Errorf("Tanh.Forward: empty input")
 	}
 
 	// Store input
@@ -199,35 +200,35 @@ func (t *Tanh) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 	// Get pre-allocated output tensor
 	output := t.Base.Output()
 	if output.Shape().Rank() == 0 {
-		return tensor.Tensor{}, fmt.Errorf("Tanh.Forward: output not allocated, must call Init first")
+		return nil, fmt.Errorf("Tanh.Forward: output not allocated, must call Init first")
 	}
 
 	// Apply tanh directly to output
-	input.Tanh(&output)
+	output = input.Tanh(output)
 
 	t.Base.StoreOutput(output)
 	return output, nil
 }
 
 // Backward computes tanh gradient: gradInput = gradOutput * (1 - output^2).
-func (t *Tanh) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
-	if gradOutput.Shape().Rank() == 0 {
-		return tensor.Tensor{}, fmt.Errorf("Tanh.Backward: empty gradOutput")
+func (t *Tanh) Backward(gradOutput types.Tensor) (types.Tensor, error) {
+	if gradOutput == nil || gradOutput.Shape().Rank() == 0 {
+		return nil, fmt.Errorf("Tanh.Backward: empty gradOutput")
 	}
 
 	output := t.Base.Output()
-	if output.Shape().Rank() == 0 {
-		return tensor.Tensor{}, fmt.Errorf("Tanh.Backward: output not stored, must call Forward first")
+	if output == nil || output.Shape().Rank() == 0 {
+		return nil, fmt.Errorf("Tanh.Backward: output not stored, must call Forward first")
 	}
 
 	// Tanh gradient using primitives: gradInput = gradOutput * (1 - output^2)
-	squared := (&output).Clone().Mul(output) // output^2
+	squared := output.Clone().Mul(output) // output^2
 	ones := tensor.OnesLike(output)
-	term := ones.Clone().Sub(*squared)            // (1 - output^2)
-	gradInput := (&gradOutput).Clone().Mul(*term) // gradOutput * (1 - output^2)
+	term := ones.Clone().Sub(squared)         // (1 - output^2)
+	gradInput := gradOutput.Clone().Mul(term) // gradOutput * (1 - output^2)
 
-	t.Base.StoreGrad(*gradInput)
-	return *gradInput, nil
+	t.Base.StoreGrad(gradInput)
+	return gradInput, nil
 }
 
 // OutputShape returns the output shape (same as input shape for Tanh).
@@ -266,9 +267,9 @@ func (s *Softmax) Init(inputShape []int) error {
 }
 
 // Forward computes softmax: output = softmax(input, dim).
-func (s *Softmax) Forward(input tensor.Tensor) (tensor.Tensor, error) {
+func (s *Softmax) Forward(input types.Tensor) (types.Tensor, error) {
 	if input.Shape().Rank() == 0 {
-		return tensor.Tensor{}, fmt.Errorf("Softmax.Forward: empty input")
+		return nil, fmt.Errorf("Softmax.Forward: empty input")
 	}
 
 	// Store input
@@ -277,30 +278,30 @@ func (s *Softmax) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 	// Get pre-allocated output tensor
 	output := s.Base.Output()
 	if output.Shape().Rank() == 0 {
-		return tensor.Tensor{}, fmt.Errorf("Softmax.Forward: output not allocated, must call Init first")
+		return nil, fmt.Errorf("Softmax.Forward: output not allocated, must call Init first")
 	}
 
 	// Apply softmax directly to output
-	input.Softmax(s.dim, &output)
+	output = input.Softmax(s.dim, output)
 
 	s.Base.StoreOutput(output)
 	return output, nil
 }
 
 // Backward computes softmax gradient: gradInput = output * (gradOutput - sum(gradOutput * output)).
-func (s *Softmax) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
-	if gradOutput.Shape().Rank() == 0 {
-		return tensor.Tensor{}, fmt.Errorf("Softmax.Backward: empty gradOutput")
+func (s *Softmax) Backward(gradOutput types.Tensor) (types.Tensor, error) {
+	if gradOutput == nil || gradOutput.Shape().Rank() == 0 {
+		return nil, fmt.Errorf("Softmax.Backward: empty gradOutput")
 	}
 
 	output := s.Base.Output()
-	if output.Shape().Rank() == 0 {
-		return tensor.Tensor{}, fmt.Errorf("Softmax.Backward: output not stored, must call Forward first")
+	if output == nil || output.Shape().Rank() == 0 {
+		return nil, fmt.Errorf("Softmax.Backward: output not stored, must call Forward first")
 	}
 
 	// Softmax gradient using primitives: gradInput = output * (gradOutput - sum(gradOutput * output))
 	// Step 1: Compute element-wise product: gradOutput * output
-	prod := (&gradOutput).Clone().Mul(output)
+	prod := gradOutput.Clone().Mul(output)
 
 	// Step 2: Sum along the softmax dimension
 	sumTerm := prod.Sum(s.dim)
@@ -308,17 +309,17 @@ func (s *Softmax) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 	// Step 3: Broadcast sum back to original shape
 	sumBroadcast, err := sumTerm.BroadcastTo(output.Shape())
 	if err != nil {
-		return tensor.Tensor{}, fmt.Errorf("Softmax.Backward: broadcast failed: %w", err)
+		return nil, fmt.Errorf("Softmax.Backward: broadcast failed: %w", err)
 	}
 
 	// Step 4: Compute: gradOutput - sumTerm
-	diff := (&gradOutput).Clone().Sub(*sumBroadcast)
+	diff := gradOutput.Clone().Sub(sumBroadcast)
 
 	// Step 5: Compute final gradient: output * (gradOutput - sumTerm)
-	gradInput := (&output).Clone().Mul(*diff)
+	gradInput := output.Clone().Mul(diff)
 
-	s.Base.StoreGrad(*gradInput)
-	return *gradInput, nil
+	s.Base.StoreGrad(gradInput)
+	return gradInput, nil
 }
 
 // OutputShape returns the output shape (same as input shape for Softmax).
@@ -362,10 +363,10 @@ func WithDropoutRNG(rng *rand.Rand) DropoutOption {
 // During inference: passes input through unchanged.
 type Dropout struct {
 	Base
-	p          float32       // Dropout rate (probability of dropping, 0.0 to 1.0)
-	isTraining bool          // Whether in training mode
-	mask       tensor.Tensor // Mask stored from forward pass (for backward)
-	rng        *rand.Rand    // Random number generator
+	p          float32      // Dropout rate (probability of dropping, 0.0 to 1.0)
+	isTraining bool         // Whether in training mode
+	mask       types.Tensor // Mask stored from forward pass (for backward)
+	rng        *rand.Rand   // Random number generator
 }
 
 // NewDropout creates a new Dropout layer.
@@ -402,9 +403,9 @@ func (d *Dropout) Init(inputShape []int) error {
 
 // Forward computes dropout: during training, randomly zero elements with probability p and scale by 1/(1-p).
 // During inference, passes input through unchanged.
-func (d *Dropout) Forward(input tensor.Tensor) (tensor.Tensor, error) {
+func (d *Dropout) Forward(input types.Tensor) (types.Tensor, error) {
 	if input.Shape().Rank() == 0 {
-		return tensor.Tensor{}, fmt.Errorf("Dropout.Forward: empty input")
+		return nil, fmt.Errorf("Dropout.Forward: empty input")
 	}
 
 	// Store input
@@ -413,7 +414,7 @@ func (d *Dropout) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 	// Get pre-allocated output tensor
 	output := d.Base.Output()
 	if output.Shape().Rank() == 0 {
-		return tensor.Tensor{}, fmt.Errorf("Dropout.Forward: output not allocated, must call Init first")
+		return nil, fmt.Errorf("Dropout.Forward: output not allocated, must call Init first")
 	}
 
 	inputSize := input.Size()
@@ -421,21 +422,23 @@ func (d *Dropout) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 
 	if d.isTraining && d.p > 0 {
 		// Allocate or reuse mask tensor
-		if d.mask.Shape().Rank() == 0 || d.mask.Size() != inputSize {
+		if d.mask == nil || d.mask.Shape().Rank() == 0 || d.mask.Size() != inputSize {
 			d.mask = tensor.New(tensor.DTFP32, input.Shape())
 		}
 
 		// Generate mask using tensor method
-		(&d.mask).DropoutMask(d.p, scale, d.rng)
+		// Convert float32 to float64 for interface
+		d.mask = d.mask.DropoutMask(float64(d.p), float64(scale), d.rng)
 
 		// Copy input to output and apply dropout using tensor method
-		copy(output.Data(), input.Data())
-		(&output).DropoutForward(d.mask)
+		// Use Clone to copy input to output, then apply dropout
+		output = input.Clone()
+		output = output.DropoutForward(d.mask)
 	} else {
 		// Inference mode: pass through unchanged
-		copy(output.Data(), input.Data())
+		output = input.Clone()
 		// Clear mask (not needed in inference)
-		d.mask = tensor.Tensor{}
+		d.mask = nil
 	}
 
 	d.Base.StoreOutput(output)
@@ -443,27 +446,27 @@ func (d *Dropout) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 }
 
 // Backward computes dropout gradient: gradInput = gradOutput * mask.
-func (d *Dropout) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
+func (d *Dropout) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 	if gradOutput.Shape().Rank() == 0 {
-		return tensor.Tensor{}, fmt.Errorf("Dropout.Backward: empty gradOutput")
+		return nil, fmt.Errorf("Dropout.Backward: empty gradOutput")
 	}
 
 	input := d.Base.Input()
 	if input.Shape().Rank() == 0 {
-		return tensor.Tensor{}, fmt.Errorf("Dropout.Backward: input not stored, must call Forward first")
+		return nil, fmt.Errorf("Dropout.Backward: input not stored, must call Forward first")
 	}
 
-	var gradInput *tensor.Tensor
-	if d.isTraining && d.p > 0 && d.mask.Shape().Rank() > 0 {
+	var gradInput types.Tensor
+	if d.isTraining && d.p > 0 && d.mask != nil && d.mask.Shape().Rank() > 0 {
 		// Training mode: gradInput = gradOutput * mask
-		gradInput = (&gradOutput).Clone().Mul(d.mask)
+		gradInput = gradOutput.Clone().Mul(d.mask)
 	} else {
 		// Inference mode or no dropout: pass gradient through unchanged
-		gradInput = (&gradOutput).Clone()
+		gradInput = gradOutput.Clone()
 	}
 
-	d.Base.StoreGrad(*gradInput)
-	return *gradInput, nil
+	d.Base.StoreGrad(gradInput)
+	return gradInput, nil
 }
 
 // OutputShape returns the output shape (same as input shape for Dropout).

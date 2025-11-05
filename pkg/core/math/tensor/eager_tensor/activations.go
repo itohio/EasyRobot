@@ -162,7 +162,7 @@ func (t Tensor) DropoutForward(mask types.Tensor) types.Tensor {
 // mask[i] = 0.0 if dropped (with probability p), scale otherwise.
 // scale = 1.0 / (1.0 - p) for inverted dropout.
 // rng is typed as interface{} to avoid importing math/rand in interface; actual type is *rand.Rand.
-func (t Tensor) DropoutMask(p float32, scale float32, rng interface{}) types.Tensor {
+func (t Tensor) DropoutMask(p float64, scale float64, rng interface{}) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
@@ -182,12 +182,15 @@ func (t Tensor) DropoutMask(p float32, scale float32, rng interface{}) types.Ten
 
 	// For now, use direct data access since random generation is layer-specific
 	// In the future, this could be moved to fp32 package with a random interface
+	// Convert float64 parameters to float32 for internal computation
+	p32 := float32(p)
+	scale32 := float32(scale)
 	data := types.GetTensorData[[]float32](t)
 	for i := range data {
-		if randRng.Float32() < p {
+		if randRng.Float32() < p32 {
 			data[i] = 0.0
 		} else {
-			data[i] = scale
+			data[i] = scale32
 		}
 	}
 

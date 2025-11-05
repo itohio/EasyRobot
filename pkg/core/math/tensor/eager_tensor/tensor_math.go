@@ -77,15 +77,6 @@ func copyTensorData(src, dst types.Tensor) {
 			return
 		}
 
-		// Same type but non-contiguous: use ElemCopy for float32
-		if srcDtype == types.DTFP32 {
-			srcSlice, ok1 := srcData.([]float32)
-			dstSlice, ok2 := dstData.([]float32)
-			if ok1 && ok2 {
-				fp32.ElemCopy(dstSlice, srcSlice, shapeSlice, dstStrides, srcStrides)
-				return
-			}
-		}
 		// For other types with strides, fall through to element-by-element copy
 	}
 
@@ -178,19 +169,21 @@ func (t Tensor) Div(other types.Tensor) types.Tensor {
 
 // Scale multiplies the tensor by a scalar in-place.
 // Uses fp32 primitive.Scal for efficient computation.
-func (t Tensor) Scale(scalar float32) types.Tensor {
+// Converts float64 scalar to float32 for internal computation.
+func (t Tensor) Scale(scalar float64) types.Tensor {
 	if t.shape == nil {
 		return t
 	}
 
 	strides := t.shape.Strides()
+	scalar32 := float32(scalar)
 	if t.isContiguous() {
 		size := t.Size()
-		fp32.Scal(types.GetTensorData[[]float32](t), 1, size, scalar)
+		fp32.Scal(types.GetTensorData[[]float32](t), 1, size, scalar32)
 		return t
 	}
 
-	fp32.ElemScale(types.GetTensorData[[]float32](t), scalar, []int(t.shape), strides)
+	fp32.ElemScale(types.GetTensorData[[]float32](t), scalar32, []int(t.shape), strides)
 	return t
 }
 
@@ -712,7 +705,8 @@ func (t Tensor) Log(dst types.Tensor) types.Tensor {
 
 // Pow computes element-wise power in-place: t[i] = t[i]^power
 // If dst is nil, applies in-place on t. Otherwise writes to dst.
-func (t Tensor) Pow(dst types.Tensor, power float32) types.Tensor {
+// Converts float64 power to float32 for internal computation.
+func (t Tensor) Pow(dst types.Tensor, power float64) types.Tensor {
 	if t.shape == nil {
 		return t
 	}
@@ -737,7 +731,8 @@ func (t Tensor) Pow(dst types.Tensor, power float32) types.Tensor {
 		dstStrides = dst.Shape().Strides()
 	}
 
-	fp32.ElemPow(dstData, tData, power, []int(t.shape), dstStrides, strides)
+	power32 := float32(power)
+	fp32.ElemPow(dstData, tData, power32, []int(t.shape), dstStrides, strides)
 	if dst == nil || dst.Empty() {
 		return t
 	}

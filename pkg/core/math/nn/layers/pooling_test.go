@@ -28,7 +28,8 @@ func TestMaxPool2D(t *testing.T) {
 
 	// Expected output: max pooling 2x2 on 4x4 input should give 2x2 output
 	expectedOutput := []float32{6.0, 8.0, 14.0, 16.0}
-	assert.Equal(t, expectedOutput, output.Data(), "Output should match expected")
+	outputData := output.Data().([]float32)
+	assert.Equal(t, expectedOutput, outputData, "Output should match expected")
 }
 
 // TestAvgPool2D tests the AvgPool2D layer
@@ -51,9 +52,10 @@ func TestAvgPool2D(t *testing.T) {
 
 	// Expected output: avg pooling 2x2 on 4x4 input should give 2x2 output
 	expectedOutput := []float32{3.5, 5.5, 11.5, 13.5}
-	require.Len(t, output.Data(), len(expectedOutput), "Output size should match")
+	outputData := output.Data().([]float32)
+	require.Len(t, outputData, len(expectedOutput), "Output size should match")
 	for i := range expectedOutput {
-		assert.InDelta(t, expectedOutput[i], output.Data()[i], 1e-6, "Output[%d] should match", i)
+		assert.InDelta(t, expectedOutput[i], outputData[i], 1e-6, "Output[%d] should match", i)
 	}
 }
 
@@ -80,8 +82,9 @@ func TestGlobalAvgPool2D(t *testing.T) {
 
 	// Expected output: global average of each channel [1, 2] -> [5.0, 14.0]
 	expectedOutput := []float32{5.0, 14.0}
-	require.Len(t, output.Data(), len(expectedOutput), "Output size should match")
+	outputData := output.Data().([]float32)
+	require.Len(t, outputData, len(expectedOutput), "Output size should match")
 	for i := range expectedOutput {
-		assert.InDelta(t, expectedOutput[i], output.Data()[i], 1e-6, "Output[%d] should match", i)
+		assert.InDelta(t, expectedOutput[i], outputData[i], 1e-6, "Output[%d] should match", i)
 	}
 }
