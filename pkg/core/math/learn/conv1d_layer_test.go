@@ -64,14 +64,20 @@ func TestConv1D_Layer_Learning(t *testing.T) {
 	lossFn := nn.NewMSE()
 	optimizer := learn.NewAdam(0.1, 0.9, 0.999, 1e-8) // Higher learning rate
 
+	// Create a reusable input tensor for training
+	trainingInput := tensor.New(trainingInputs[0].DataType(), trainingInputs[0].Shape())
+
 	// Train for multiple epochs
 	epochs := 1000
 	for epoch := 0; epoch < epochs; epoch++ {
 		totalLoss := float64(0)
 
 		for i := range trainingInputs {
+			// Copy original input into training tensor
+			trainingInput.Copy(trainingInputs[i])
+
 			// Forward pass
-			output, err := conv1d.Forward(trainingInputs[i])
+			output, err := conv1d.Forward(trainingInput)
 			if err != nil {
 				t.Fatalf("Forward failed at epoch %d, sample %d: %v", epoch, i, err)
 			}
@@ -245,14 +251,20 @@ func TestDenseConv1D_CombinedLearning(t *testing.T) {
 	lossFn := nn.NewMSE()
 	optimizer := learn.NewAdam(0.1, 0.9, 0.999, 1e-8)
 
+	// Create a reusable input tensor for training
+	trainingInput := tensor.New(trainingInputs[0].DataType(), trainingInputs[0].Shape())
+
 	// Train for multiple epochs
 	epochs := 1000
 	for epoch := 0; epoch < epochs; epoch++ {
 		totalLoss := float64(0)
 
 		for i := range trainingInputs {
+			// Copy original input into training tensor
+			trainingInput.Copy(trainingInputs[i])
+
 			// Forward pass through model
-			output, err := model.Forward(trainingInputs[i])
+			output, err := model.Forward(trainingInput)
 			if err != nil {
 				t.Fatalf("Forward failed at epoch %d, sample %d: %v", epoch, i, err)
 			}

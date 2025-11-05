@@ -1,6 +1,7 @@
 package learn_test
 
 import (
+	"math"
 	"math/rand"
 	"testing"
 	"time"
@@ -184,11 +185,11 @@ func TestXOR(t *testing.T) {
 					AddLayer(sigmoid).
 					Build()
 			},
-			learningRate:   0.1,
+			learningRate:   0.3,
 			useAdam:        true,
-			epochs:         5000,
+			epochs:         10000, // More epochs for complex architecture
 			expectedMinAcc: 90.0,
-			trials:         5, // More trials for Conv1D
+			trials:         3, // Reduce trials to avoid timeout
 		},
 		{
 			name: "Config5: Dense -> Pooling -> Dense -> Sigmoid",
@@ -357,6 +358,36 @@ func TestXOR(t *testing.T) {
 							conv1d.Base.SetParam(types.ParamBiases, biasParam)
 						}
 					}
+
+					// Initialize Conv2D layers
+					if conv2d, ok := layer.(*layers.Conv2D); ok {
+						kernelParam, ok := conv2d.Base.Parameter(types.ParamKernels)
+						if ok && !tensor.IsNil(kernelParam.Data) {
+							kernelShape := kernelParam.Data.Shape()
+							if len(kernelShape) >= 4 {
+								// Conv2D kernel: [outChannels, inChannels, kernelH, kernelW]
+								fanIn := kernelShape[1] * kernelShape[2] * kernelShape[3] // inChannels * kernelH * kernelW
+								fanOut := kernelShape[0]                                  // outChannels
+								limit := 1.0 / float64(fanIn+fanOut)
+								limit = limit * 6.0
+								limit = limit * 0.5
+								for indices := range kernelParam.Data.Shape().Iterator() {
+									val := float64((rng.Float32()*2 - 1) * float32(limit))
+									kernelParam.Data.SetAt(val, indices...)
+								}
+								conv2d.Base.SetParam(types.ParamKernels, kernelParam)
+							}
+						}
+
+						biasParam, ok := conv2d.Base.Parameter(types.ParamBiases)
+						if ok && !tensor.IsNil(biasParam.Data) {
+							for indices := range biasParam.Data.Shape().Iterator() {
+								val := float64((rng.Float32()*2 - 1) * 0.1)
+								biasParam.Data.SetAt(val, indices...)
+							}
+							conv2d.Base.SetParam(types.ParamBiases, biasParam)
+						}
+					}
 				}
 
 				// Create loss and optimizer
@@ -368,13 +399,43 @@ func TestXOR(t *testing.T) {
 					optimizer = learn.NewSGD(config.learningRate)
 				}
 
+				// Create a reusable input tensor for training (will copy data into it)
+				trainingInput := tensor.New(inputs[0].DataType(), inputs[0].Shape())
+
+				// Create a reusable noise tensor if needed (for complex architectures)
+				var noiseTensor tensor.Tensor
+				needsNoise := config.name == "Config4: Dense -> Reshape -> Conv2D -> Conv1D -> Sigmoid" ||
+					config.name == "Config5: Dense -> Pooling -> Dense -> Sigmoid" ||
+					config.name == "Config6: Dense -> Dropout(10%) -> Dense -> Sigmoid"
+				if needsNoise {
+					noiseTensor = tensor.New(inputs[0].DataType(), inputs[0].Shape())
+				}
+
 				// Train for multiple epochs
 				for epoch := 0; epoch < config.epochs; epoch++ {
 					totalLoss := float64(0)
 
 					// Train on all 4 examples
 					for i := range inputs {
-						loss, err := learn.TrainStep(model, optimizer, lossFn, inputs[i], targets[i])
+						// Copy original input into training tensor
+						trainingInput.Copy(inputs[i])
+
+						// Add noise in-place if needed (for complex architectures)
+						if needsNoise {
+							// Generate Gaussian noise with 0.01 standard deviation
+							noiseData := make([]float32, noiseTensor.Shape().Size())
+							for j := range noiseData {
+								u1 := rng.Float32()
+								u2 := rng.Float32()
+								z := float32(math.Sqrt(-2.0*math.Log(float64(u1+1e-10))) * math.Cos(2.0*math.Pi*float64(u2)))
+								noiseData[j] = z * 0.01
+							}
+							// Copy noise data into noise tensor and add it in-place
+							noiseTensor.Copy(tensor.FromFloat32(noiseTensor.Shape(), noiseData))
+							trainingInput.Add(noiseTensor)
+						}
+
+						loss, err := learn.TrainStep(model, optimizer, lossFn, trainingInput, targets[i])
 						if err != nil {
 							t.Fatalf("TrainStep failed at epoch %d, sample %d: %v", epoch, i, err)
 						}
@@ -460,6 +521,411 @@ func TestXOR(t *testing.T) {
 	// Require all configs to pass
 	if passedCount < len(testConfigs) {
 		t.Errorf("Not all configurations achieved 90%%+ accuracy. %d/%d passed", passedCount, len(testConfigs))
+	}
+}
+
+// TestComplexXOR3Input trains a neural network to learn a complex 3-input XOR-like function.
+// This is a more challenging problem that requires non-linear relationships.
+// Target: Achieve reasonable accuracy (e.g., 80%+ with tolerance of 0.15).
+func TestComplexXOR3Input(t *testing.T) {
+	// Complex 3-input truth table:
+	// 000: 0
+	// 001: 1
+	// 100: 1
+	// 010: 1
+	// 110: 0.75
+	// 011: 0.25
+	// 101: 0.5
+	// 111: 0
+
+	// Create training data
+	inputs := []tensor.Tensor{
+		tensor.FromFloat32(tensor.NewShape(3), []float32{0, 0, 0}), // 000 -> 0
+		tensor.FromFloat32(tensor.NewShape(3), []float32{0, 0, 1}), // 001 -> 1
+		tensor.FromFloat32(tensor.NewShape(3), []float32{1, 0, 0}), // 100 -> 1
+		tensor.FromFloat32(tensor.NewShape(3), []float32{0, 1, 0}), // 010 -> 1
+		tensor.FromFloat32(tensor.NewShape(3), []float32{1, 1, 0}), // 110 -> 0.75
+		tensor.FromFloat32(tensor.NewShape(3), []float32{0, 1, 1}), // 011 -> 0.25
+		tensor.FromFloat32(tensor.NewShape(3), []float32{1, 0, 1}), // 101 -> 0.5
+		tensor.FromFloat32(tensor.NewShape(3), []float32{1, 1, 1}), // 111 -> 0
+	}
+	targets := []tensor.Tensor{
+		tensor.FromFloat32(tensor.NewShape(1), []float32{0}),
+		tensor.FromFloat32(tensor.NewShape(1), []float32{1}),
+		tensor.FromFloat32(tensor.NewShape(1), []float32{1}),
+		tensor.FromFloat32(tensor.NewShape(1), []float32{1}),
+		tensor.FromFloat32(tensor.NewShape(1), []float32{0.75}),
+		tensor.FromFloat32(tensor.NewShape(1), []float32{0.25}),
+		tensor.FromFloat32(tensor.NewShape(1), []float32{0.5}),
+		tensor.FromFloat32(tensor.NewShape(1), []float32{0}),
+	}
+
+	// Test configurations with different architectures
+	testConfigs := []struct {
+		name           string
+		buildModel     func(*rand.Rand) (types.Layer, error)
+		learningRate   float64
+		useAdam        bool
+		epochs         int
+		expectedMinAcc float64
+		trials         int
+	}{
+		{
+			name: "Simple: Dense -> ReLU -> Dense -> Sigmoid",
+			buildModel: func(rng *rand.Rand) (types.Layer, error) {
+				hiddenLayer, err := layers.NewDense(3, 8, layers.WithCanLearn(true))
+				if err != nil {
+					return nil, err
+				}
+				relu := layers.NewReLU("relu")
+				outputLayer, err := layers.NewDense(8, 1, layers.WithCanLearn(true))
+				if err != nil {
+					return nil, err
+				}
+				sigmoid := layers.NewSigmoid("sigmoid")
+				return nn.NewSequentialModelBuilder(tensor.NewShape(3)).
+					AddLayer(hiddenLayer).
+					AddLayer(relu).
+					AddLayer(outputLayer).
+					AddLayer(sigmoid).
+					Build()
+			},
+			learningRate:   0.1,
+			useAdam:        true,
+			epochs:         5000,
+			expectedMinAcc: 80.0,
+			trials:         3,
+		},
+		{
+			name: "Deeper: Dense -> ReLU -> Dense -> ReLU -> Dense -> Sigmoid",
+			buildModel: func(rng *rand.Rand) (types.Layer, error) {
+				hiddenLayer1, err := layers.NewDense(3, 16, layers.WithCanLearn(true))
+				if err != nil {
+					return nil, err
+				}
+				relu1 := layers.NewReLU("relu1")
+				hiddenLayer2, err := layers.NewDense(16, 8, layers.WithCanLearn(true))
+				if err != nil {
+					return nil, err
+				}
+				relu2 := layers.NewReLU("relu2")
+				outputLayer, err := layers.NewDense(8, 1, layers.WithCanLearn(true))
+				if err != nil {
+					return nil, err
+				}
+				sigmoid := layers.NewSigmoid("sigmoid")
+				return nn.NewSequentialModelBuilder(tensor.NewShape(3)).
+					AddLayer(hiddenLayer1).
+					AddLayer(relu1).
+					AddLayer(hiddenLayer2).
+					AddLayer(relu2).
+					AddLayer(outputLayer).
+					AddLayer(sigmoid).
+					Build()
+			},
+			learningRate:   0.05,
+			useAdam:        true,
+			epochs:         5000,
+			expectedMinAcc: 80.0,
+			trials:         3,
+		},
+		{
+			name: "With Conv: Dense -> Reshape -> Conv2D -> ReLU -> Conv1D -> ReLU -> Dense -> Sigmoid",
+			buildModel: func(rng *rand.Rand) (types.Layer, error) {
+				dense1, err := layers.NewDense(3, 32, layers.WithCanLearn(true))
+				if err != nil {
+					return nil, err
+				}
+				relu1 := layers.NewReLU("relu1")
+				// Reshape: [32] -> [1, 1, 4, 8] for Conv2D
+				reshape1 := layers.NewReshape([]int{1, 1, 4, 8})
+				conv2d, err := layers.NewConv2D(1, 8, 2, 2, 1, 1, 0, 0, layers.WithCanLearn(true), layers.UseBias(true))
+				if err != nil {
+					return nil, err
+				}
+				relu2 := layers.NewReLU("relu2")
+				// Reshape: [1, 8, 3, 7] -> [1, 24, 7] for Conv1D
+				// 8*3*7 = 168, so 24*7 = 168
+				reshape2 := layers.NewReshape([]int{1, 24, 7})
+				conv1d, err := layers.NewConv1D(24, 12, 2, 1, 1, layers.WithCanLearn(true), layers.UseBias(true))
+				if err != nil {
+					return nil, err
+				}
+				relu3 := layers.NewReLU("relu3")
+				flatten := layers.NewFlatten(1, 3)
+				reshape3 := layers.NewReshape([]int{96}) // 12 * 8 = 96
+				dense2, err := layers.NewDense(96, 1, layers.WithCanLearn(true))
+				if err != nil {
+					return nil, err
+				}
+				sigmoid := layers.NewSigmoid("sigmoid")
+				return nn.NewSequentialModelBuilder(tensor.NewShape(3)).
+					AddLayer(dense1).
+					AddLayer(relu1).
+					AddLayer(reshape1).
+					AddLayer(conv2d).
+					AddLayer(relu2).
+					AddLayer(reshape2).
+					AddLayer(conv1d).
+					AddLayer(relu3).
+					AddLayer(flatten).
+					AddLayer(reshape3).
+					AddLayer(dense2).
+					AddLayer(sigmoid).
+					Build()
+			},
+			learningRate:   0.1,
+			useAdam:        true,
+			epochs:         5000,
+			expectedMinAcc: 80.0,
+			trials:         3,
+		},
+	}
+
+	bestConfig := ""
+	bestAccuracy := 0.0
+	passedCount := 0
+
+	for _, config := range testConfigs {
+		t.Run(config.name, func(t *testing.T) {
+			bestTrialAcc := 0.0
+			var bestTrialModel types.Layer
+
+			// Run multiple trials and take the best result
+			for trial := 0; trial < config.trials; trial++ {
+				rng := rand.New(rand.NewSource(time.Now().UnixNano() + int64(trial)))
+
+				// Build model
+				model, err := config.buildModel(rng)
+				if err != nil {
+					t.Fatalf("Failed to build model: %v", err)
+				}
+
+				// Initialize model
+				if err := model.Init(tensor.NewShape(3)); err != nil {
+					t.Fatalf("Failed to initialize model: %v", err)
+				}
+
+				// Initialize learnable parameters with Xavier initialization
+				seqModel := model.(*models.Sequential)
+				for i := 0; i < seqModel.LayerCount(); i++ {
+					layer := seqModel.GetLayer(i)
+
+					// Initialize Dense layers
+					if dense, ok := layer.(*layers.Dense); ok {
+						weightParam, ok := dense.Base.Parameter(types.ParamWeights)
+						if ok && !tensor.IsNil(weightParam.Data) {
+							weightShape := weightParam.Data.Shape()
+							if len(weightShape) >= 2 {
+								fanIn := weightShape[0]
+								fanOut := weightShape[1]
+								limit := 1.0 / float64(fanIn+fanOut)
+								limit = limit * 6.0 * 0.5
+								for indices := range weightParam.Data.Shape().Iterator() {
+									val := float64((rng.Float32()*2 - 1) * float32(limit))
+									weightParam.Data.SetAt(val, indices...)
+								}
+								dense.Base.SetParam(types.ParamWeights, weightParam)
+							}
+						}
+
+						biasParam, ok := dense.Base.Parameter(types.ParamBiases)
+						if ok && !tensor.IsNil(biasParam.Data) {
+							for indices := range biasParam.Data.Shape().Iterator() {
+								val := float64((rng.Float32()*2 - 1) * 0.1)
+								biasParam.Data.SetAt(val, indices...)
+							}
+							dense.Base.SetParam(types.ParamBiases, biasParam)
+						}
+					}
+
+					// Initialize Conv1D layers
+					if conv1d, ok := layer.(*layers.Conv1D); ok {
+						kernelParam, ok := conv1d.Base.Parameter(types.ParamKernels)
+						if ok && !tensor.IsNil(kernelParam.Data) {
+							kernelShape := kernelParam.Data.Shape()
+							if len(kernelShape) >= 3 {
+								fanIn := kernelShape[1] * kernelShape[2]
+								fanOut := kernelShape[0]
+								limit := 1.0 / float64(fanIn+fanOut)
+								limit = limit * 6.0 * 0.5
+								for indices := range kernelParam.Data.Shape().Iterator() {
+									val := float64((rng.Float32()*2 - 1) * float32(limit))
+									kernelParam.Data.SetAt(val, indices...)
+								}
+								conv1d.Base.SetParam(types.ParamKernels, kernelParam)
+							}
+						}
+
+						biasParam, ok := conv1d.Base.Parameter(types.ParamBiases)
+						if ok && !tensor.IsNil(biasParam.Data) {
+							for indices := range biasParam.Data.Shape().Iterator() {
+								val := float64((rng.Float32()*2 - 1) * 0.1)
+								biasParam.Data.SetAt(val, indices...)
+							}
+							conv1d.Base.SetParam(types.ParamBiases, biasParam)
+						}
+					}
+
+					// Initialize Conv2D layers
+					if conv2d, ok := layer.(*layers.Conv2D); ok {
+						kernelParam, ok := conv2d.Base.Parameter(types.ParamKernels)
+						if ok && !tensor.IsNil(kernelParam.Data) {
+							kernelShape := kernelParam.Data.Shape()
+							if len(kernelShape) >= 4 {
+								fanIn := kernelShape[1] * kernelShape[2] * kernelShape[3]
+								fanOut := kernelShape[0]
+								limit := 1.0 / float64(fanIn+fanOut)
+								limit = limit * 6.0 * 0.5
+								for indices := range kernelParam.Data.Shape().Iterator() {
+									val := float64((rng.Float32()*2 - 1) * float32(limit))
+									kernelParam.Data.SetAt(val, indices...)
+								}
+								conv2d.Base.SetParam(types.ParamKernels, kernelParam)
+							}
+						}
+
+						biasParam, ok := conv2d.Base.Parameter(types.ParamBiases)
+						if ok && !tensor.IsNil(biasParam.Data) {
+							for indices := range biasParam.Data.Shape().Iterator() {
+								val := float64((rng.Float32()*2 - 1) * 0.1)
+								biasParam.Data.SetAt(val, indices...)
+							}
+							conv2d.Base.SetParam(types.ParamBiases, biasParam)
+						}
+					}
+				}
+
+				// Create loss and optimizer
+				lossFn := nn.NewMSE()
+				var optimizer types.Optimizer
+				if config.useAdam {
+					optimizer = learn.NewAdam(config.learningRate, 0.9, 0.999, 1e-8)
+				} else {
+					optimizer = learn.NewSGD(config.learningRate)
+				}
+
+				// Create a reusable input tensor for training (will copy data into it)
+				trainingInput := tensor.New(inputs[0].DataType(), inputs[0].Shape())
+
+				// Create a reusable noise tensor if needed (for complex architectures)
+				var noiseTensor tensor.Tensor
+				needsNoise := config.name == "Deeper: Dense -> ReLU -> Dense -> ReLU -> Dense -> Sigmoid" ||
+					config.name == "With Conv: Dense -> Reshape -> Conv2D -> ReLU -> Conv1D -> ReLU -> Dense -> Sigmoid"
+				if needsNoise {
+					noiseTensor = tensor.New(inputs[0].DataType(), inputs[0].Shape())
+				}
+
+				// Train for multiple epochs
+				for epoch := 0; epoch < config.epochs; epoch++ {
+					totalLoss := float64(0)
+
+					for i := range inputs {
+						// Copy original input into training tensor
+						trainingInput.Copy(inputs[i])
+
+						// Add noise in-place if needed (for complex architectures)
+						if needsNoise {
+							// Generate Gaussian noise with 0.01 standard deviation
+							noiseData := make([]float32, noiseTensor.Shape().Size())
+							for j := range noiseData {
+								// Generate random number from standard normal distribution
+								// Using Box-Muller transform
+								u1 := rng.Float32()
+								u2 := rng.Float32()
+								z := float32(math.Sqrt(-2.0*math.Log(float64(u1+1e-10))) * math.Cos(2.0*math.Pi*float64(u2)))
+								noiseData[j] = z * 0.01 // Scale to 0.01 stddev
+							}
+							// Copy noise data into noise tensor and add it in-place
+							noiseTensor.Copy(tensor.FromFloat32(noiseTensor.Shape(), noiseData))
+							trainingInput.Add(noiseTensor)
+						}
+
+						loss, err := learn.TrainStep(model, optimizer, lossFn, trainingInput, targets[i])
+						if err != nil {
+							t.Fatalf("TrainStep failed at epoch %d, sample %d: %v", epoch, i, err)
+						}
+						totalLoss += loss
+					}
+
+					avgLoss := totalLoss / float64(len(inputs))
+
+					if avgLoss < 0.001 {
+						break
+					}
+				}
+
+				// Test the trained model (use original inputs without noise)
+				correctCount := 0
+				totalCount := len(inputs)
+
+				for i, input := range inputs {
+					output, err := model.Forward(input)
+					if err != nil {
+						t.Fatalf("Forward failed for input %d: %v", i, err)
+					}
+
+					expected := targets[i].At(0)
+					predicted := output.At(0)
+					error := abs(float32(predicted - expected))
+
+					// Consider correct if error < 0.15 (more lenient for fractional outputs)
+					if error <= 0.15 {
+						correctCount++
+					}
+				}
+
+				// Calculate accuracy
+				accuracy := float64(correctCount) / float64(totalCount) * 100.0
+
+				// Track best trial
+				if accuracy > bestTrialAcc {
+					bestTrialAcc = accuracy
+					bestTrialModel = model
+				}
+			}
+
+			// Use best trial result
+			accuracy := bestTrialAcc
+			t.Logf("Best trial accuracy: %.2f%% (out of %d trials)", accuracy, config.trials)
+
+			// Log predictions from best model
+			if bestTrialModel != nil {
+				t.Log("\nBest trial predictions:")
+				for i, input := range inputs {
+					output, err := bestTrialModel.Forward(input)
+					if err == nil {
+						expected := targets[i].At(0)
+						predicted := output.At(0)
+						error := abs(float32(predicted - expected))
+						t.Logf("Input: [%.0f, %.0f, %.0f] -> Predicted: %.4f, Expected: %.2f, Error: %.4f",
+							input.At(0), input.At(1), input.At(2), predicted, expected, error)
+					}
+				}
+			}
+
+			// Track best config
+			if accuracy > bestAccuracy {
+				bestAccuracy = accuracy
+				bestConfig = config.name
+			}
+
+			// Verify accuracy is >= expected minimum
+			if accuracy >= config.expectedMinAcc {
+				passedCount++
+				t.Logf("✓ Model achieved %.2f%% accuracy (target: %.2f%%)", accuracy, config.expectedMinAcc)
+			} else {
+				t.Errorf("Accuracy %.2f%% is < %.2f%%, model did not learn the function well enough", accuracy, config.expectedMinAcc)
+			}
+		})
+	}
+
+	t.Logf("\n=== Summary: %d/%d configs passed ===", passedCount, len(testConfigs))
+	t.Logf("=== Best Configuration: %s with %.2f%% accuracy ===", bestConfig, bestAccuracy)
+
+	// Require at least one config to pass
+	if passedCount == 0 {
+		t.Errorf("No configurations achieved 80%%+ accuracy")
 	}
 }
 

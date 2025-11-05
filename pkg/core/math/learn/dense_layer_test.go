@@ -76,12 +76,18 @@ func TestDenseLayer_SimpleLinearRegression(t *testing.T) {
 	initialBias := dense.Base.Biases().Data.At(0)
 	t.Logf("Initial weight: %.6f, bias: %.6f", initialWeight, initialBias)
 
+	// Create a reusable input tensor for training
+	trainingInput := tensor.New(inputs[0].DataType(), inputs[0].Shape())
+
 	// Train for multiple epochs
 	epochs := 100
 	for epoch := 0; epoch < epochs; epoch++ {
 		totalLoss := 0.0
 		for i := range inputs {
-			loss, err := TrainStep(dense, optimizer, lossFn, inputs[i], targets[i])
+			// Copy original input into training tensor
+			trainingInput.Copy(inputs[i])
+			
+			loss, err := TrainStep(dense, optimizer, lossFn, trainingInput, targets[i])
 			if err != nil {
 				t.Fatalf("TrainStep failed at epoch %d, sample %d: %v", epoch, i, err)
 			}
