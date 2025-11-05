@@ -1,5 +1,9 @@
 package types
 
+import (
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
+)
+
 // DataType represents the underlying element type stored by a tensor.
 type DataType uint8
 
@@ -80,7 +84,9 @@ func CloneTensorDataTo(dst DataType, data any) any {
 	if newData == nil {
 		return nil
 	}
-	return CopyTensorData(dst, newData, data)
+	// Use primitive.CopyWithConversion instead of CopyTensorData
+	primitive.CopyWithConversion(newData, data)
+	return newData
 }
 
 func CloneTensorData(data any) any {
@@ -90,116 +96,9 @@ func CloneTensorData(data any) any {
 	return CloneTensorDataTo(TypeFromData(data), data)
 }
 
-func CopyTensorData(dst DataType, dstData, srcData any) any {
-	if srcData == nil || dstData == nil {
-		return nil
-	}
-
-	switch dst {
-	case DTFP32:
-		dstSlice, ok := dstData.([]float32)
-		if !ok {
-			return nil
-		}
-		switch src := srcData.(type) {
-		case []float32:
-			copy(dstSlice, src)
-		case []float64:
-			for i := range dstSlice {
-				dstSlice[i] = float32(src[i])
-			}
-		case []int16:
-			for i := range dstSlice {
-				dstSlice[i] = float32(src[i])
-			}
-		case []int8:
-			for i := range dstSlice {
-				dstSlice[i] = float32(src[i])
-			}
-		default:
-			return nil
-		}
-		return dstSlice
-	case DTFP64:
-		dstSlice, ok := dstData.([]float64)
-		if !ok {
-			return nil
-		}
-		switch src := srcData.(type) {
-		case []float32:
-			for i := range dstSlice {
-				dstSlice[i] = float64(src[i])
-			}
-		case []float64:
-			copy(dstSlice, src)
-		case []int16:
-			for i := range dstSlice {
-				dstSlice[i] = float64(src[i])
-			}
-		case []int8:
-			for i := range dstSlice {
-				dstSlice[i] = float64(src[i])
-			}
-		default:
-			return nil
-		}
-		return dstSlice
-	case DTINT16:
-		dstSlice, ok := dstData.([]int16)
-		if !ok {
-			return nil
-		}
-		switch src := srcData.(type) {
-		case []float32:
-			for i := range dstSlice {
-				dstSlice[i] = int16(src[i])
-			}
-		case []float64:
-			for i := range dstSlice {
-				dstSlice[i] = int16(src[i])
-			}
-		case []int16:
-			copy(dstSlice, src)
-		case []int8:
-			for i := range dstSlice {
-				dstSlice[i] = int16(src[i])
-			}
-		default:
-			return nil
-		}
-		return dstSlice
-	case DTINT8, DTINT48:
-		dstSlice, ok := dstData.([]int8)
-		if !ok {
-			return nil
-		}
-		switch src := srcData.(type) {
-		case []float32:
-			for i := range dstSlice {
-				dstSlice[i] = int8(src[i])
-			}
-		case []float64:
-			for i := range dstSlice {
-				dstSlice[i] = int8(src[i])
-			}
-		case []int16:
-			for i := range dstSlice {
-				dstSlice[i] = int8(src[i])
-			}
-		case []int8:
-			copy(dstSlice, src)
-		default:
-			return nil
-		}
-		return dstSlice
-	default:
-		return nil
-	}
-}
-
 // Helper functions to work with interface tensors
 func GetTensorData[T any](t Tensor) T {
-	if t == nil {
+	if t == nil || t.Empty() {
 		var zero T
 		return zero
 	}

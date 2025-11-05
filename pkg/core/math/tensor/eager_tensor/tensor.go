@@ -2,6 +2,7 @@ package eager_tensor
 
 import (
 	"fmt"
+	"unsafe"
 
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
 )
@@ -56,6 +57,24 @@ func FromFloat32(shape types.Shape, data []float32) Tensor {
 
 func (t Tensor) Empty() bool {
 	return t.shape == nil && t.data == nil
+}
+
+func (t Tensor) ID() uintptr {
+	if t.Empty() {
+		return 0
+	}
+	switch t := t.data.(type) {
+	case []float32:
+		return uintptr(unsafe.Pointer(&t[0]))
+	case []float64:
+		return uintptr(unsafe.Pointer(&t[0]))
+	case []int16:
+		return uintptr(unsafe.Pointer(&t[0]))
+	case []int8:
+		return uintptr(unsafe.Pointer(&t[0]))
+	default:
+		return 0
+	}
 }
 
 // types.DataType returns the tensor's data type.

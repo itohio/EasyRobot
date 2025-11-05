@@ -3,7 +3,6 @@ package nn
 import (
 	"fmt"
 
-	"github.com/chewxy/math32"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
 )
 
@@ -27,29 +26,30 @@ func (m *MSELoss) Compute(pred, target tensor.Tensor) (float32, error) {
 // Gradient computes gradient w.r.t. predictions: gradPred = 2 * (pred - target) / size.
 func (m *MSELoss) Gradient(pred, target tensor.Tensor) (tensor.Tensor, error) {
 	if pred.Shape().Rank() == 0 || target.Shape().Rank() == 0 {
-		return tensor.Tensor{}, fmt.Errorf("MSE.Gradient: empty input")
+		return nil, fmt.Errorf("MSE.Gradient: empty input")
 	}
 
 	predShape := pred.Shape()
 	targetShape := target.Shape()
 
 	if len(predShape) != len(targetShape) {
-		return tensor.Tensor{}, fmt.Errorf("MSE.Gradient: shape mismatch: pred %v, target %v", predShape, targetShape)
+		return nil, fmt.Errorf("MSE.Gradient: shape mismatch: pred %v, target %v", predShape, targetShape)
 	}
 
 	for i := range predShape {
 		if predShape[i] != targetShape[i] {
-			return tensor.Tensor{}, fmt.Errorf("MSE.Gradient: shape mismatch: pred %v, target %v", predShape, targetShape)
+			return nil, fmt.Errorf("MSE.Gradient: shape mismatch: pred %v, target %v", predShape, targetShape)
 		}
 	}
 
 	// gradPred = 2 * (pred - target) / size
 	size := pred.Shape().Size()
-	grad := pred.Clone()
+	var grad tensor.Tensor
+	grad = pred.Clone()
 	grad = grad.Sub(target)
 	grad = grad.Scale(2.0 / float32(size))
 
-	return *grad, nil
+	return grad, nil
 }
 
 // CrossEntropyLoss implements cross-entropy loss function.
@@ -72,38 +72,33 @@ func (c *CrossEntropyLoss) Compute(pred, target tensor.Tensor) (float32, error) 
 // Gradient computes gradient w.r.t. predictions: gradPred = -target / (pred + epsilon).
 func (c *CrossEntropyLoss) Gradient(pred, target tensor.Tensor) (tensor.Tensor, error) {
 	if pred.Shape().Rank() == 0 || target.Shape().Rank() == 0 {
-		return tensor.Tensor{}, fmt.Errorf("CrossEntropy.Gradient: empty input")
+		return nil, fmt.Errorf("CrossEntropy.Gradient: empty input")
 	}
 
 	predShape := pred.Shape()
 	targetShape := target.Shape()
 
 	if len(predShape) != len(targetShape) {
-		return tensor.Tensor{}, fmt.Errorf("CrossEntropy.Gradient: shape mismatch: pred %v, target %v", predShape, targetShape)
+		return nil, fmt.Errorf("CrossEntropy.Gradient: shape mismatch: pred %v, target %v", predShape, targetShape)
 	}
 
 	for i := range predShape {
 		if predShape[i] != targetShape[i] {
-			return tensor.Tensor{}, fmt.Errorf("CrossEntropy.Gradient: shape mismatch: pred %v, target %v", predShape, targetShape)
+			return nil, fmt.Errorf("CrossEntropy.Gradient: shape mismatch: pred %v, target %v", predShape, targetShape)
 		}
 	}
 
-	// gradPred = -target / (pred + epsilon)
+	// gradPred = -target / (pred + epsilon) where pred > 0, else 0
 	const epsilon = 1e-10
-	grad := pred.Clone()
-	predData := pred.Data()
-	targetData := target.Data()
-	gradData := grad.Data()
+	zeros := tensor.ZerosLike(pred)
+	mask := pred.GreaterThan(zeros) // 1.0 where pred > 0, 0.0 otherwise
+	epsilonTensor := tensor.FullLike(pred, epsilon)
+	predPlusEps := pred.Clone().Add(epsilonTensor)
+	negTarget := target.Clone().Negative()
+	gradComputed := negTarget.Div(predPlusEps)
+	grad := pred.Where(mask, gradComputed, zeros)
 
-	for i := range gradData {
-		if predData[i] > 0 {
-			gradData[i] = -targetData[i] / (predData[i] + epsilon)
-		} else {
-			gradData[i] = 0
-		}
-	}
-
-	return *grad, nil
+	return grad, nil
 }
 
 // CategoricalCrossEntropy implements categorical cross-entropy loss with optional softmax.
@@ -135,7 +130,7 @@ func (c *CategoricalCrossEntropy) Compute(pred, target tensor.Tensor) (float32, 
 		if predProb == nil {
 			return 0, fmt.Errorf("CategoricalCrossEntropy.Compute: softmax returned nil")
 		}
-		return CrossEntropy(*predProb, target), nil
+		return CrossEntropy(predProb, target), nil
 	}
 
 	return CrossEntropy(pred, target), nil
@@ -146,19 +141,19 @@ func (c *CategoricalCrossEntropy) Compute(pred, target tensor.Tensor) (float32, 
 // Otherwise, returns: gradPred = -target / (pred + epsilon).
 func (c *CategoricalCrossEntropy) Gradient(pred, target tensor.Tensor) (tensor.Tensor, error) {
 	if pred.Shape().Rank() == 0 || target.Shape().Rank() == 0 {
-		return tensor.Tensor{}, fmt.Errorf("CategoricalCrossEntropy.Gradient: empty input")
+		return nil, fmt.Errorf("CategoricalCrossEntropy.Gradient: empty input")
 	}
 
 	predShape := pred.Shape()
 	targetShape := target.Shape()
 
 	if len(predShape) != len(targetShape) {
-		return tensor.Tensor{}, fmt.Errorf("CategoricalCrossEntropy.Gradient: shape mismatch: pred %v, target %v", predShape, targetShape)
+		return nil, fmt.Errorf("CategoricalCrossEntropy.Gradient: shape mismatch: pred %v, target %v", predShape, targetShape)
 	}
 
 	for i := range predShape {
 		if predShape[i] != targetShape[i] {
-			return tensor.Tensor{}, fmt.Errorf("CategoricalCrossEntropy.Gradient: shape mismatch: pred %v, target %v", predShape, targetShape)
+			return nil, fmt.Errorf("CategoricalCrossEntropy.Gradient: shape mismatch: pred %v, target %v", predShape, targetShape)
 		}
 	}
 
@@ -167,31 +162,26 @@ func (c *CategoricalCrossEntropy) Gradient(pred, target tensor.Tensor) (tensor.T
 		dim := len(predShape) - 1
 		predProb := pred.Softmax(dim, nil)
 		if predProb == nil {
-			return tensor.Tensor{}, fmt.Errorf("CategoricalCrossEntropy.Gradient: softmax returned nil")
+			return nil, fmt.Errorf("CategoricalCrossEntropy.Gradient: softmax returned nil")
 		}
 
 		// Gradient after softmax: pred - target
 		grad := predProb.Clone()
 		grad = grad.Sub(target)
-		return *grad, nil
+		return grad, nil
 	}
 
-	// Standard cross-entropy gradient
+	// Standard cross-entropy gradient: -target / (pred + epsilon) where pred > 0, else 0
 	const epsilon = 1e-10
-	grad := pred.Clone()
-	predData := pred.Data()
-	targetData := target.Data()
-	gradData := grad.Data()
+	zeros := tensor.ZerosLike(pred)
+	mask := pred.GreaterThan(zeros) // 1.0 where pred > 0, 0.0 otherwise
+	epsilonTensor := tensor.FullLike(pred, epsilon)
+	predPlusEps := pred.Clone().Add(epsilonTensor)
+	negTarget := target.Clone().Negative()
+	gradComputed := negTarget.Div(predPlusEps)
+	grad := pred.Where(mask, gradComputed, zeros)
 
-	for i := range gradData {
-		if predData[i] > 0 {
-			gradData[i] = -targetData[i] / (predData[i] + epsilon)
-		} else {
-			gradData[i] = 0
-		}
-	}
-
-	return *grad, nil
+	return grad, nil
 }
 
 // MSE computes Mean Squared Error between tensor and target
@@ -202,12 +192,12 @@ func MSE(pred, target tensor.Tensor) float32 {
 
 	squaredDiff := pred.Clone()
 	squaredDiff = squaredDiff.Sub(target)
-	squaredDiff = squaredDiff.Mul(*squaredDiff)
+	squaredDiff = squaredDiff.Mul(squaredDiff)
 
 	size := pred.Shape().Size()
 	sum := squaredDiff.Sum()
 	if size > 0 {
-		return sum.Data()[0] / float32(size)
+		return sum.At(0) / float32(size)
 	}
 
 	return 0
@@ -219,14 +209,23 @@ func CrossEntropy(pred, target tensor.Tensor) float32 {
 		return 0
 	}
 
-	var loss float32
-	predData := pred.Data()
-	targetData := target.Data()
-	for i := range predData {
-		if targetData[i] != 0 && predData[i] > 0 {
-			loss -= targetData[i] * math32.Log(predData[i]+1e-10)
-		}
-	}
+	// Create masks: target != 0 && pred > 0
+	zeros := tensor.ZerosLike(pred)
+	targetAbs := target.Clone().Abs()
+	targetNonZero := targetAbs.GreaterThan(zeros)   // mask for target != 0
+	predPositive := pred.GreaterThan(zeros)         // mask for pred > 0
+	combinedMask := targetNonZero.Mul(predPositive) // combined condition mask
+
+	// Compute: -target * log(pred + epsilon) where condition is true
+	const epsilon = 1e-10
+	epsilonTensor := tensor.FullLike(pred, epsilon)
+	predPlusEps := pred.Clone().Add(epsilonTensor)
+	logPred := predPlusEps.Log()
+	targetLogPred := target.Clone().Mul(logPred)
+	maskedLoss := targetLogPred.Mul(combinedMask)
+
+	// Sum and negate to get final loss
+	loss := -maskedLoss.Sum().At(0)
 
 	return loss
 }

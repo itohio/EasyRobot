@@ -3,6 +3,7 @@ package types
 import (
 	"testing"
 
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -362,10 +363,11 @@ func TestCloneTensorDataTo(t *testing.T) {
 	}
 }
 
+// TestCopyTensorData is now testing primitive.CopyWithConversion
+// This test is kept for backward compatibility but now uses the primitive function.
 func TestCopyTensorData(t *testing.T) {
 	tests := []struct {
 		name     string
-		dst      DataType
 		dstData  any
 		srcData  any
 		expected any
@@ -373,7 +375,6 @@ func TestCopyTensorData(t *testing.T) {
 	}{
 		{
 			name:     "float32 to float32",
-			dst:      DTFP32,
 			dstData:  make([]float32, 3),
 			srcData:  []float32{1.0, 2.0, 3.0},
 			expected: []float32{1.0, 2.0, 3.0},
@@ -381,7 +382,6 @@ func TestCopyTensorData(t *testing.T) {
 		},
 		{
 			name:     "float64 to float32",
-			dst:      DTFP32,
 			dstData:  make([]float32, 3),
 			srcData:  []float64{1.5, 2.5, 3.5},
 			expected: []float32{1.5, 2.5, 3.5},
@@ -389,7 +389,6 @@ func TestCopyTensorData(t *testing.T) {
 		},
 		{
 			name:     "float32 to float64",
-			dst:      DTFP64,
 			dstData:  make([]float64, 3),
 			srcData:  []float32{1.5, 2.5, 3.5},
 			expected: []float64{1.5, 2.5, 3.5},
@@ -397,7 +396,6 @@ func TestCopyTensorData(t *testing.T) {
 		},
 		{
 			name:     "int16 to float32",
-			dst:      DTFP32,
 			dstData:  make([]float32, 3),
 			srcData:  []int16{10, 20, 30},
 			expected: []float32{10.0, 20.0, 30.0},
@@ -405,7 +403,6 @@ func TestCopyTensorData(t *testing.T) {
 		},
 		{
 			name:     "int8 to float32",
-			dst:      DTFP32,
 			dstData:  make([]float32, 3),
 			srcData:  []int8{10, 20, 30},
 			expected: []float32{10.0, 20.0, 30.0},
@@ -413,7 +410,6 @@ func TestCopyTensorData(t *testing.T) {
 		},
 		{
 			name:     "float32 to int16",
-			dst:      DTINT16,
 			dstData:  make([]int16, 3),
 			srcData:  []float32{10.7, 20.3, 30.9},
 			expected: []int16{10, 20, 30},
@@ -421,7 +417,6 @@ func TestCopyTensorData(t *testing.T) {
 		},
 		{
 			name:     "float32 to int8",
-			dst:      DTINT8,
 			dstData:  make([]int8, 3),
 			srcData:  []float32{10.7, 20.3, 30.9},
 			expected: []int8{10, 20, 30},
@@ -429,7 +424,6 @@ func TestCopyTensorData(t *testing.T) {
 		},
 		{
 			name:     "int16 to int8",
-			dst:      DTINT8,
 			dstData:  make([]int8, 3),
 			srcData:  []int16{100, 200, 300},
 			expected: []int8{100, -56, 44}, // int8 overflow
@@ -437,7 +431,6 @@ func TestCopyTensorData(t *testing.T) {
 		},
 		{
 			name:     "int8 to int16",
-			dst:      DTINT16,
 			dstData:  make([]int16, 3),
 			srcData:  []int8{10, 20, 30},
 			expected: []int16{10, 20, 30},
@@ -445,7 +438,6 @@ func TestCopyTensorData(t *testing.T) {
 		},
 		{
 			name:     "nil dst",
-			dst:      DTFP32,
 			dstData:  nil,
 			srcData:  []float32{1.0, 2.0, 3.0},
 			expected: nil,
@@ -453,7 +445,6 @@ func TestCopyTensorData(t *testing.T) {
 		},
 		{
 			name:     "nil src",
-			dst:      DTFP32,
 			dstData:  make([]float32, 3),
 			srcData:  nil,
 			expected: nil,
@@ -461,7 +452,6 @@ func TestCopyTensorData(t *testing.T) {
 		},
 		{
 			name:     "wrong dst type",
-			dst:      DTFP32,
 			dstData:  []int{1, 2, 3}, // Wrong type
 			srcData:  []float32{1.0, 2.0, 3.0},
 			expected: nil,
@@ -469,15 +459,13 @@ func TestCopyTensorData(t *testing.T) {
 		},
 		{
 			name:     "unknown src type",
-			dst:      DTFP32,
 			dstData:  make([]float32, 3),
 			srcData:  []string{"a", "b", "c"}, // Unknown type
 			expected: nil,
 			wantNil:  true,
 		},
 		{
-			name:     "DTINT48 to int8",
-			dst:      DTINT48,
+			name:     "float32 to int8 (DTINT48 equivalent)",
 			dstData:  make([]int8, 3),
 			srcData:  []float32{10.7, 20.3, 30.9},
 			expected: []int8{10, 20, 30},
@@ -487,7 +475,7 @@ func TestCopyTensorData(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := CopyTensorData(tt.dst, tt.dstData, tt.srcData)
+			result := primitive.CopyWithConversion(tt.dstData, tt.srcData)
 			if tt.wantNil {
 				assert.Nil(t, result)
 			} else {

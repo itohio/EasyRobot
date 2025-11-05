@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"sync"
-	"unsafe"
 
 	"github.com/itohio/EasyRobot/pkg/core/math/nn/layers"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
@@ -141,13 +140,7 @@ func (a *Adam) Update(param *layers.Parameter) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	// Use the data pointer as a stable key for this parameter
-	// Even when Parameter struct is copied, the underlying slice points to the same array
-	data := param.Data.Data()
-	if len(data) == 0 {
-		return fmt.Errorf("Adam.Update: parameter data slice is empty")
-	}
-	key := uintptr(unsafe.Pointer(&data[0]))
+	key := param.Data.ID()
 
 	// Get or create state for this parameter
 	state, exists := a.state[key]

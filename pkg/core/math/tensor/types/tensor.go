@@ -13,6 +13,10 @@ type Element interface {
 type Tensor interface {
 	// Core Properties and Access
 
+	// ID returns a unique identifier for the tensor.
+	ID() uintptr
+
+	// New creates a new tensor with the given shape and data type.
 	// DataType returns the tensor's data type (e.g., DTFP32, DTINT8).
 	DataType() DataType
 
@@ -84,43 +88,43 @@ type Tensor interface {
 
 	// Square computes element-wise square in-place: t[i] = t[i]^2.
 	// Returns self for method chaining.
-	Square() Tensor
+	Square(dst Tensor) Tensor
 
 	// Sqrt computes element-wise square root in-place: t[i] = sqrt(t[i]).
 	// Panics on negative values. Returns self for method chaining.
-	Sqrt() Tensor
+	Sqrt(dst Tensor) Tensor
 
 	// Exp computes element-wise exponential in-place: t[i] = exp(t[i]).
 	// Returns self for method chaining.
-	Exp() Tensor
+	Exp(dst Tensor) Tensor
 
 	// Log computes element-wise natural logarithm in-place: t[i] = log(t[i]).
 	// Panics on non-positive values. Returns self for method chaining.
-	Log() Tensor
+	Log(dst Tensor) Tensor
 
 	// Pow computes element-wise power in-place: t[i] = t[i]^power.
 	// Returns self for method chaining.
-	Pow(power float32) Tensor
+	Pow(dst Tensor, power float32) Tensor
 
 	// Abs computes element-wise absolute value in-place: t[i] = |t[i]|.
 	// Returns self for method chaining.
-	Abs() Tensor
+	Abs(dst Tensor) Tensor
 
 	// Sign computes element-wise sign in-place: t[i] = sign(t[i]) (-1, 0, or 1).
 	// Returns self for method chaining.
-	Sign() Tensor
+	Sign(dst Tensor) Tensor
 
 	// Cos computes element-wise cosine in-place: t[i] = cos(t[i]).
 	// Returns self for method chaining.
-	Cos() Tensor
+	Cos(dst Tensor) Tensor
 
 	// Sin computes element-wise sine in-place: t[i] = sin(t[i]).
 	// Returns self for method chaining.
-	Sin() Tensor
+	Sin(dst Tensor) Tensor
 
 	// Negative computes element-wise negation in-place: t[i] = -t[i].
 	// Returns self for method chaining.
-	Negative() Tensor
+	Negative(dst Tensor) Tensor
 
 	// Element-wise Operations (Non-Mutating)
 	// These operations create new tensors instead of modifying in-place.

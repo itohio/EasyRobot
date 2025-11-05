@@ -6,83 +6,89 @@ import (
 )
 
 // ReLU applies the Rectified Linear Unit activation function: dst[i] = max(0, t[i])
-// If dst is nil, applies in-place on t. Otherwise writes to dst.
+// If dst is nil, creates a new tensor. Otherwise writes to dst.
 func (t Tensor) ReLU(dst types.Tensor) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
 
+	var tData []float32
+	var dstData []float32
+	if dst == nil || dst.Empty() {
+		tData = types.GetTensorData[[]float32](t)
+		dstData = types.GetTensorData[[]float32](t)
+	} else {
+		if !t.Shape().Equal(dst.Shape()) {
+			panic("tensor.ReLU: destination shape mismatch")
+		}
+
+		tData = types.GetTensorData[[]float32](t)
+		dstData = types.GetTensorData[[]float32](dst)
+	}
+
 	size := t.Size()
-	if dst == nil {
-		// Apply in-place
-		tData := types.GetTensorData[[]float32](&t)
-		fp32.ReLU(tData, tData, size)
-		return t
-	}
 
-	if !t.Shape().Equal(dst.Shape()) {
-		panic("tensor.ReLU: destination shape mismatch")
-	}
-
-	dstData := types.GetTensorData[[]float32](dst)
-	tData := types.GetTensorData[[]float32](t)
 	fp32.ReLU(dstData, tData, size)
 	return dst
 }
 
 // Sigmoid applies the sigmoid activation function: dst[i] = 1 / (1 + exp(-t[i]))
-// If dst is nil, applies in-place on t. Otherwise writes to dst.
+// If dst is nil, creates a new tensor. Otherwise writes to dst.
 func (t Tensor) Sigmoid(dst types.Tensor) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
 
+	var tData []float32
+	var dstData []float32
+	if dst == nil || dst.Empty() {
+		tData = types.GetTensorData[[]float32](t)
+		dstData = types.GetTensorData[[]float32](t)
+	} else {
+		if !t.Shape().Equal(dst.Shape()) {
+			panic("tensor.Sigmoid: destination shape mismatch")
+		}
+
+		tData = types.GetTensorData[[]float32](t)
+		dstData = types.GetTensorData[[]float32](dst)
+	}
+
 	size := t.Size()
-	if dst == nil {
-		// Apply in-place
-		tData := types.GetTensorData[[]float32](&t)
-		fp32.Sigmoid(tData, tData, size)
-		return t
-	}
 
-	if !t.Shape().Equal(dst.Shape()) {
-		panic("tensor.Sigmoid: destination shape mismatch")
-	}
-
-	dstData := types.GetTensorData[[]float32](dst)
-	tData := types.GetTensorData[[]float32](t)
 	fp32.Sigmoid(dstData, tData, size)
 	return dst
 }
 
 // Tanh applies the hyperbolic tangent activation function: dst[i] = tanh(t[i])
-// If dst is nil, applies in-place on t. Otherwise writes to dst.
+// If dst is nil, creates a new tensor. Otherwise writes to dst.
 func (t Tensor) Tanh(dst types.Tensor) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
 
+	var tData []float32
+	var dstData []float32
+	if dst == nil || dst.Empty() {
+		tData = types.GetTensorData[[]float32](t)
+		dstData = types.GetTensorData[[]float32](t)
+	} else {
+		if !t.Shape().Equal(dst.Shape()) {
+			panic("tensor.Tanh: destination shape mismatch")
+		}
+
+		tData = types.GetTensorData[[]float32](t)
+		dstData = types.GetTensorData[[]float32](dst)
+	}
+
 	size := t.Size()
-	if dst == nil {
-		// Apply in-place
-		tData := types.GetTensorData[[]float32](&t)
-		fp32.Tanh(tData, tData, size)
-		return t
-	}
 
-	if !t.Shape().Equal(dst.Shape()) {
-		panic("tensor.Tanh: destination shape mismatch")
-	}
-
-	dstData := types.GetTensorData[[]float32](dst)
-	tData := types.GetTensorData[[]float32](t)
 	fp32.Tanh(dstData, tData, size)
 	return dst
 }
 
 // Softmax applies softmax along the specified dimension.
 // Currently supports 1D tensors and 2D tensors with dim=0 (rows) or dim=1 (columns).
-// If dst is nil, applies in-place on t. Otherwise writes to dst.
+// If dst is nil, creates a new tensor. Otherwise writes to dst.
 func (t Tensor) Softmax(dim int, dst types.Tensor) types.Tensor {
 	if t.shape == nil {
 		return nil
@@ -92,20 +98,33 @@ func (t Tensor) Softmax(dim int, dst types.Tensor) types.Tensor {
 		panic("tensor.Softmax: dimension out of range")
 	}
 
-	if dst == nil {
-		dst = t
+	var tData []float32
+	var dstData []float32
+	if dst == nil || dst.Empty() {
+		tData = types.GetTensorData[[]float32](t)
+		dstData = types.GetTensorData[[]float32](t)
+	} else {
+		if !t.Shape().Equal(dst.Shape()) {
+			panic("tensor.Softmax: destination shape mismatch")
+		}
+
+		tData = types.GetTensorData[[]float32](t)
+		dstData = types.GetTensorData[[]float32](dst)
 	}
 
-	if !t.Shape().Equal(dst.Shape()) {
-		panic("tensor.Softmax: destination shape mismatch")
+	dstShape := t.shape
+	if dst != nil && !dst.Empty() {
+		dstShape = dst.Shape()
 	}
-
-	dstData := types.GetTensorData[[]float32](dst)
-	dstShape := dst.Shape()
 
 	if t.shape.Rank() == 1 {
-		fp32.Softmax1D(types.GetTensorData[[]float32](t), dstData, dst.Size())
+		// Softmax1D reads from src and writes to dst
+		fp32.Softmax1D(tData, dstData, t.Size())
 	} else if t.shape.Rank() == 2 {
+		// Softmax2D functions operate in-place on dst, so copy first if needed
+		if dst != nil && !dst.Empty() {
+			copyTensorData(t, dst)
+		}
 		if dim == 0 {
 			fp32.Softmax2DRows(dstData, dstShape[0], dstShape[1])
 		} else if dim == 1 {
@@ -134,7 +153,7 @@ func (t Tensor) DropoutForward(mask types.Tensor) types.Tensor {
 
 	maskData := types.GetTensorData[[]float32](mask)
 	size := t.Size()
-	tData := types.GetTensorData[[]float32](&t)
+	tData := types.GetTensorData[[]float32](t)
 	fp32.ElemMul(tData, tData, maskData, []int{size}, []int{1}, []int{1}, []int{1})
 	return t
 }
@@ -163,7 +182,7 @@ func (t Tensor) DropoutMask(p float32, scale float32, rng interface{}) types.Ten
 
 	// For now, use direct data access since random generation is layer-specific
 	// In the future, this could be moved to fp32 package with a random interface
-	data := types.GetTensorData[[]float32](&t)
+	data := types.GetTensorData[[]float32](t)
 	for i := range data {
 		if randRng.Float32() < p {
 			data[i] = 0.0
