@@ -57,6 +57,15 @@ type clampableToInt16 interface {
 	~float32 | ~float64
 }
 
+// Integer types that need clamping (for optimized integer-only paths)
+type clampableIntToInt8 interface {
+	~int16
+}
+
+type clampableIntToInt16 interface {
+	// No integer types need clamping to int16 (only floats)
+}
+
 // copyWithConversion performs type conversion between different types.
 // Optimizes by copying the minimum of the two slice lengths to avoid bounds checks.
 // Type switches happen once at dispatch, then generic functions handle the hot path.
@@ -122,12 +131,14 @@ func copyConvertNumeric[T, U numeric](dst []T, src []U) any {
 
 // copyConvertGeneric handles up-conversions and same-type conversions.
 // Uses direct T(src) conversion - no clamping needed, no switches in hot path.
+// Optimized to detect same type at compile time when possible.
 func copyConvertGeneric[T, U numeric](dst []T, src []U) []T {
 	n := len(dst)
 	if len(src) < n {
 		n = len(src)
 	}
 	// Fast path: same type - use type assertion to check and use copy
+	// This is optimized by the compiler when T == U
 	switch d := any(dst).(type) {
 	case []float32:
 		if s, ok := any(src).([]float32); ok {
@@ -139,8 +150,23 @@ func copyConvertGeneric[T, U numeric](dst []T, src []U) []T {
 			copy(d, s[:n])
 			return dst
 		}
+	case []int16:
+		if s, ok := any(src).([]int16); ok {
+			copy(d, s[:n])
+			return dst
+		}
+	case []int8:
+		if s, ok := any(src).([]int8); ok {
+			copy(d, s[:n])
+			return dst
+		}
 	}
 	// Generic conversion: compiler optimizes T(src[i]) for each type combination
+	// Bounds check elimination
+	if n > 0 {
+		_ = dst[n-1]
+		_ = src[n-1]
+	}
 	for i := 0; i < n; i++ {
 		dst[i] = T(src[i])
 	}
@@ -221,8 +247,8 @@ func copyConvertToInt8(dst []int8, src any) []int8 {
 			n = len(s)
 		}
 		if n > 0 {
-			// Hot path: generic clamp function avoids bounds checks
-			clampToInt8(dst, s, n)
+			// Hot path: optimized integer-only clamp (no float64 conversion)
+			clampIntToInt8(dst, s, n)
 		}
 	case []int8:
 		n := len(dst)
@@ -238,6 +264,7 @@ func copyConvertToInt8(dst []int8, src any) []int8 {
 // Generic over source types that need clamping (float32, float64, int16).
 // n is the number of elements to process (bounds checks eliminated by explicit length).
 // The inner loop is implemented directly here to avoid function call overhead.
+// Uses branchless min/max for better performance.
 func clampToInt8[U clampableToInt8](dst []int8, src []U, n int) {
 	if n == 0 {
 		return
@@ -247,13 +274,40 @@ func clampToInt8[U clampableToInt8](dst []int8, src []U, n int) {
 	for i := 0; i < n; i++ {
 		val := src[i]
 		valFloat := float64(val)
-		if valFloat > 127 {
-			dst[i] = 127
-		} else if valFloat < -128 {
-			dst[i] = -128
-		} else {
-			dst[i] = int8(val)
+		// Min/max pattern: compiler optimizes to conditional moves (CMOV)
+		// First clamp to minimum, then to maximum
+		clamped := valFloat
+		if clamped < -128 {
+			clamped = -128
 		}
+		if clamped > 127 {
+			clamped = 127
+		}
+		dst[i] = int8(clamped)
+	}
+}
+
+// clampIntToInt8 implements optimized integer-only clamping to int8.
+// Avoids float64 conversion for better performance with integer sources.
+// Uses branchless min/max for better performance.
+func clampIntToInt8[U clampableIntToInt8](dst []int8, src []U, n int) {
+	if n == 0 {
+		return
+	}
+	_ = dst[n-1] // Bounds check elimination hint
+	_ = src[n-1] // Bounds check elimination hint
+	for i := 0; i < n; i++ {
+		val := int(src[i])
+		// Min/max pattern: compiler optimizes to conditional moves (CMOV)
+		// First clamp to minimum, then to maximum
+		clamped := val
+		if clamped < -128 {
+			clamped = -128
+		}
+		if clamped > 127 {
+			clamped = 127
+		}
+		dst[i] = int8(clamped)
 	}
 }
 
@@ -261,6 +315,7 @@ func clampToInt8[U clampableToInt8](dst []int8, src []U, n int) {
 // Generic over source types that need clamping (float32, float64).
 // n is the number of elements to process (bounds checks eliminated by explicit length).
 // The inner loop is implemented directly here to avoid function call overhead.
+// Uses branchless min/max for better performance.
 func clampToInt16[U clampableToInt16](dst []int16, src []U, n int) {
 	if n == 0 {
 		return
@@ -270,13 +325,16 @@ func clampToInt16[U clampableToInt16](dst []int16, src []U, n int) {
 	for i := 0; i < n; i++ {
 		val := src[i]
 		valFloat := float64(val)
-		if valFloat > 32767 {
-			dst[i] = 32767
-		} else if valFloat < -32768 {
-			dst[i] = -32768
-		} else {
-			dst[i] = int16(val)
+		// Min/max pattern: compiler optimizes to conditional moves (CMOV)
+		// First clamp to minimum, then to maximum
+		clamped := valFloat
+		if clamped < -32768 {
+			clamped = -32768
 		}
+		if clamped > 32767 {
+			clamped = 32767
+		}
+		dst[i] = int16(clamped)
 	}
 }
 
