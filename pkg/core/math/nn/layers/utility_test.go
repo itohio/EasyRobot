@@ -87,9 +87,9 @@ func TestUnsqueeze(t *testing.T) {
 		err := unsqueeze.Init(tensor.NewShape(3, 4))
 		require.NoError(t, err)
 
-		outputShape, err := unsqueeze.OutputShape([]int{3, 4})
+		outputShape, err := unsqueeze.OutputShape(tensor.NewShape(3, 4))
 		require.NoError(t, err)
-		assert.Equal(t, []int{3, 4, 1}, outputShape)
+		assert.Equal(t, []int{3, 4, 1}, outputShape.ToSlice())
 	})
 }
 
@@ -113,9 +113,9 @@ func TestSqueeze(t *testing.T) {
 		err := squeeze.Init(tensor.NewShape(1, 3, 1, 4))
 		require.NoError(t, err)
 
-		outputShape, err := squeeze.OutputShape([]int{1, 3, 1, 4})
+		outputShape, err := squeeze.OutputShape(tensor.NewShape(1, 3, 1, 4))
 		require.NoError(t, err)
-		assert.Equal(t, []int{3, 4}, outputShape)
+		assert.Equal(t, []int{3, 4}, outputShape.ToSlice())
 	})
 }
 

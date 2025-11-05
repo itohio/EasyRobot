@@ -267,8 +267,9 @@ func (r *Reshape) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("Reshape.Backward: gradOutput size %d doesn't match input size %d",
 			gradOutput.Size(), gradInput.Size())
 	}
-	// Copy data using optimized Tensor.Copy method
-	gradInput.Copy(gradOutput)
+	// Reshape gradOutput to match input shape, then copy
+	gradOutputReshaped := gradOutput.Reshape(input.Shape())
+	gradInput.Copy(gradOutputReshaped)
 
 	r.Base.StoreGrad(gradInput)
 	return gradInput, nil

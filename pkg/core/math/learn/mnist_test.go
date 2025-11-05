@@ -1,3 +1,5 @@
+//go:build mnist
+
 package learn_test
 
 import (

@@ -95,32 +95,32 @@ func TestNewDense(t *testing.T) {
 func TestDense_Init(t *testing.T) {
 	tests := []struct {
 		name        string
-		inputShape  []int
+		inputShape  tensor.Shape
 		expectError bool
 	}{
 		{
 			name:        "valid_1d",
-			inputShape:  []int{4},
+			inputShape:  tensor.NewShape(4),
 			expectError: false,
 		},
 		{
 			name:        "valid_2d",
-			inputShape:  []int{2, 4},
+			inputShape:  tensor.NewShape(2, 4),
 			expectError: false,
 		},
 		{
 			name:        "invalid_1d_shape",
-			inputShape:  []int{3},
+			inputShape:  tensor.NewShape(3),
 			expectError: true,
 		},
 		{
 			name:        "invalid_2d_shape",
-			inputShape:  []int{2, 3},
+			inputShape:  tensor.NewShape(2, 3),
 			expectError: true,
 		},
 		{
 			name:        "invalid_dimension",
-			inputShape:  []int{2, 3, 4},
+			inputShape:  tensor.NewShape(2, 3, 4),
 			expectError: true,
 		},
 	}
@@ -150,21 +150,21 @@ func TestDense_Init(t *testing.T) {
 func TestDense_Forward(t *testing.T) {
 	tests := []struct {
 		name       string
-		inputShape []int
+		inputShape tensor.Shape
 		inputData  []float32
 		weightData []float32
 		biasData   []float32
 	}{
 		{
 			name:       "1d_input",
-			inputShape: []int{4},
+			inputShape: tensor.NewShape(4),
 			inputData:  []float32{1.0, 2.0, 3.0, 4.0},
 			weightData: []float32{1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0},
 			biasData:   []float32{0.0, 0.0},
 		},
 		{
 			name:       "2d_input",
-			inputShape: []int{2, 4},
+			inputShape: tensor.NewShape(2, 4),
 			inputData:  []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0},
 			weightData: []float32{1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0},
 			biasData:   []float32{0.0, 0.0},
@@ -190,7 +190,7 @@ func TestDense_Forward(t *testing.T) {
 			require.NoError(t, err, "Init should succeed")
 
 			// Forward pass
-			input := tensor.FromFloat32(tensor.NewShape(tt.inputShape...), tt.inputData)
+			input := tensor.FromFloat32(tt.inputShape, tt.inputData)
 
 			output, err := dense.Forward(input)
 			require.NoError(t, err, "Forward should succeed")
@@ -200,7 +200,7 @@ func TestDense_Forward(t *testing.T) {
 			// Verify output shape
 			expectedShape, err := dense.OutputShape(tt.inputShape)
 			require.NoError(t, err, "OutputShape should succeed")
-			assert.Equal(t, expectedShape, output.Shape().ToSlice(), "Output shape should match")
+			assert.Equal(t, expectedShape.ToSlice(), output.Shape().ToSlice(), "Output shape should match")
 		})
 	}
 
@@ -224,15 +224,15 @@ func TestDense_Forward(t *testing.T) {
 func TestDense_Backward(t *testing.T) {
 	tests := []struct {
 		name       string
-		inputShape []int
+		inputShape tensor.Shape
 	}{
 		{
 			name:       "1d_input",
-			inputShape: []int{4},
+			inputShape: tensor.NewShape(4),
 		},
 		{
 			name:       "2d_input",
-			inputShape: []int{2, 4},
+			inputShape: tensor.NewShape(2, 4),
 		},
 	}
 
@@ -246,10 +246,10 @@ func TestDense_Backward(t *testing.T) {
 			require.NoError(t, err, "Init should succeed")
 
 			inputSize := 1
-			for _, dim := range tt.inputShape {
+			for _, dim := range tt.inputShape.ToSlice() {
 				inputSize *= dim
 			}
-			input := tensor.FromFloat32(tensor.NewShape(tt.inputShape...), make([]float32, inputSize))
+			input := tensor.FromFloat32(tt.inputShape, make([]float32, inputSize))
 			inputData := input.Data().([]float32)
 			for i := range inputData {
 				inputData[i] = float32(i) * 0.1
@@ -260,10 +260,10 @@ func TestDense_Backward(t *testing.T) {
 
 			outputShape, _ := dense.OutputShape(tt.inputShape)
 			outputSize := 1
-			for _, dim := range outputShape {
+			for _, dim := range outputShape.ToSlice() {
 				outputSize *= dim
 			}
-			gradOutput := tensor.FromFloat32(tensor.NewShape(outputShape...), make([]float32, outputSize))
+			gradOutput := tensor.FromFloat32(outputShape, make([]float32, outputSize))
 			gradOutputData := gradOutput.Data().([]float32)
 			for i := range gradOutputData {
 				gradOutputData[i] = float32(i) * 0.01
@@ -333,35 +333,35 @@ func TestDense_Backward(t *testing.T) {
 func TestDense_OutputShape(t *testing.T) {
 	tests := []struct {
 		name        string
-		inputShape  []int
+		inputShape  tensor.Shape
 		expectError bool
 		expected    []int
 	}{
 		{
 			name:        "1d_input",
-			inputShape:  []int{4},
+			inputShape:  tensor.NewShape(4),
 			expectError: false,
 			expected:    []int{2},
 		},
 		{
 			name:        "2d_input",
-			inputShape:  []int{2, 4},
+			inputShape:  tensor.NewShape(2, 4),
 			expectError: false,
 			expected:    []int{2, 2},
 		},
 		{
 			name:        "invalid_1d_shape",
-			inputShape:  []int{3},
+			inputShape:  tensor.NewShape(3),
 			expectError: true,
 		},
 		{
 			name:        "invalid_2d_shape",
-			inputShape:  []int{2, 3},
+			inputShape:  tensor.NewShape(2, 3),
 			expectError: true,
 		},
 		{
 			name:        "invalid_dimension",
-			inputShape:  []int{2, 3, 4},
+			inputShape:  tensor.NewShape(2, 3, 4),
 			expectError: true,
 		},
 	}
@@ -376,14 +376,14 @@ func TestDense_OutputShape(t *testing.T) {
 				assert.Error(t, err, "Should return error")
 			} else {
 				require.NoError(t, err, "OutputShape should succeed")
-				assert.Equal(t, tt.expected, outputShape, "Output shape should match")
+				assert.Equal(t, tt.expected, outputShape.ToSlice(), "Output shape should match")
 			}
 		})
 	}
 
 	// Test nil receiver
 	var nilDense *Dense
-	_, err = nilDense.OutputShape([]int{4})
+	_, err = nilDense.OutputShape(tensor.NewShape(4))
 	assert.Error(t, err, "Should return error for nil receiver")
 }
 

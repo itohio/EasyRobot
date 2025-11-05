@@ -208,11 +208,11 @@ func TestConv1D_Forward(t *testing.T) {
 	conv, err := NewConv1D(3, 16, 3, 1, 1)
 	require.NoError(t, err, "Should create Conv1D layer")
 
-	inputShape := []int{1, 3, 10}
+	inputShape := tensor.NewShape(1, 3, 10)
 	err = conv.Init(inputShape)
 	require.NoError(t, err, "Init should succeed")
 
-	input := tensor.New(tensor.DTFP32, tensor.NewShape(inputShape...))
+	input := tensor.New(tensor.DTFP32, inputShape)
 	inputData := input.Data().([]float32)
 	for i := range inputData {
 		inputData[i] = float32(i) * 0.1
@@ -226,7 +226,7 @@ func TestConv1D_Forward(t *testing.T) {
 	// Verify output shape
 	expectedShape, err := conv.OutputShape(inputShape)
 	require.NoError(t, err, "OutputShape should succeed")
-	assert.Equal(t, expectedShape, output.Shape().ToSlice(), "Output shape should match")
+	assert.Equal(t, expectedShape.ToSlice(), output.Shape().ToSlice(), "Output shape should match")
 
 	// Test error cases
 	var nilConv *Conv1D
@@ -247,26 +247,26 @@ func TestConv1D_Backward(t *testing.T) {
 	conv, err := NewConv1D(3, 16, 3, 1, 1)
 	require.NoError(t, err, "Should create Conv1D layer")
 
-	inputShape := []int{1, 3, 10}
+	inputShape := tensor.NewShape(1, 3, 10)
 	err = conv.Init(inputShape)
 	require.NoError(t, err, "Init should succeed")
 
-	input := tensor.New(tensor.DTFP32, tensor.NewShape(inputShape...))
+	input := tensor.New(tensor.DTFP32, inputShape)
 	_, err = conv.Forward(input)
 	require.NoError(t, err, "Forward should succeed")
 
 	outputShape, _ := conv.OutputShape(inputShape)
 	outputSize := 1
-	for _, dim := range outputShape {
+	for _, dim := range outputShape.ToSlice() {
 		outputSize *= dim
 	}
-	gradOutput := tensor.New(tensor.DTFP32, tensor.NewShape(outputShape...))
+	gradOutput := tensor.New(tensor.DTFP32, outputShape)
 
 	// Test with CanLearn = false (inference-only)
 	gradInput, err := conv.Backward(gradOutput)
 	require.NoError(t, err, "Backward should succeed for inference-only")
 	assert.True(t, gradInput.Shape().Rank() > 0, "GradInput should have dimensions")
-	assert.Equal(t, inputShape, gradInput.Shape().ToSlice(), "GradInput shape should match input shape")
+	assert.Equal(t, inputShape.ToSlice(), gradInput.Shape().ToSlice(), "GradInput shape should match input shape")
 
 	// Test with CanLearn = true (backward is now implemented)
 	conv2, _ := NewConv1D(3, 16, 3, 1, 1, WithCanLearn(true))
@@ -275,7 +275,7 @@ func TestConv1D_Backward(t *testing.T) {
 	gradInput2, err := conv2.Backward(gradOutput)
 	require.NoError(t, err, "Backward should succeed when CanLearn is true")
 	assert.True(t, gradInput2.Shape().Rank() > 0, "GradInput should have dimensions")
-	assert.Equal(t, inputShape, gradInput2.Shape().ToSlice(), "GradInput shape should match input shape")
+	assert.Equal(t, inputShape.ToSlice(), gradInput2.Shape().ToSlice(), "GradInput shape should match input shape")
 
 	// Test error cases
 	var nilConv *Conv1D
@@ -329,19 +329,19 @@ func TestConv1D_OutputShape(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			outputShape, err := conv.OutputShape(tt.inputShape)
+			outputShape, err := conv.OutputShape(tensor.NewShape(tt.inputShape...))
 			if tt.expectError {
 				assert.Error(t, err, "Should return error")
 			} else {
 				require.NoError(t, err, "OutputShape should succeed")
-				assert.Equal(t, tt.expected, outputShape, "Output shape should match")
+				assert.Equal(t, tt.expected, outputShape.ToSlice(), "Output shape should match")
 			}
 		})
 	}
 
 	// Test nil receiver
 	var nilConv *Conv1D
-	_, err = nilConv.OutputShape([]int{1, 3, 10})
+	_, err = nilConv.OutputShape(tensor.NewShape(1, 3, 10))
 	assert.Error(t, err, "Should return error for nil receiver")
 }
 
@@ -516,7 +516,7 @@ func TestConv1D_ComputeOutput(t *testing.T) {
 			err = conv.SetBias(tt.bias)
 			require.NoError(t, err, "SetBias should succeed")
 
-			err = conv.Init(tt.inputShape)
+			err = conv.Init(tensor.NewShape(tt.inputShape...))
 			require.NoError(t, err, "Init should succeed")
 
 			output, err := conv.Forward(tt.input)

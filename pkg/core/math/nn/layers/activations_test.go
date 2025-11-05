@@ -461,13 +461,14 @@ func TestDropout(t *testing.T) {
 		}
 
 		for _, shape := range shapes {
+			shapeTensor := tensor.NewShape(shape...)
 			dropout := NewDropout("dropout", WithTrainingMode(false))
-			err := dropout.Init(shape)
+			err := dropout.Init(shapeTensor)
 			require.NoError(t, err)
 
-			outputShape, err := dropout.OutputShape(shape)
+			outputShape, err := dropout.OutputShape(shapeTensor)
 			require.NoError(t, err)
-			assert.Equal(t, shape, outputShape, "Output shape should match input shape")
+			assert.Equal(t, shape, outputShape.ToSlice(), "Output shape should match input shape")
 		}
 	})
 
