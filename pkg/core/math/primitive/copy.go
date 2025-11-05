@@ -342,13 +342,14 @@ func clampToInt8[U clampableToInt8](dst []int8, src []U, n int) {
 	_ = src[n-1] // Bounds check elimination hint
 	for i := 0; i < n; i++ {
 		val := src[i]
-		if val < U(math.MinInt8) {
-			val = math.MinInt8
-		}
+		// Direct assignment to avoid type conversion issues and improve performance
 		if val > U(math.MaxInt8) {
-			val = math.MaxInt8
+			dst[i] = math.MaxInt8
+		} else if val < U(math.MinInt8) {
+			dst[i] = math.MinInt8
+		} else {
+			dst[i] = int8(val)
 		}
-		dst[i] = int8(val)
 	}
 }
 
@@ -362,14 +363,14 @@ func clampToInt64[U clampableToInt64](dst []int64, src []U, n int) {
 	_ = src[n-1]
 	for i := 0; i < n; i++ {
 		val := src[i]
-		// For int64, we clamp to int64 max/min
-		if val < U(int64(math.MinInt64)) {
-			val = math.MinInt64
-		}
+		// Direct assignment to avoid type conversion issues and improve performance
 		if val > U(int64(math.MaxInt64)) {
-			val = math.MaxInt64
+			dst[i] = math.MaxInt64
+		} else if val < U(int64(math.MinInt64)) {
+			dst[i] = math.MinInt64
+		} else {
+			dst[i] = int64(val)
 		}
-		dst[i] = int64(val)
 	}
 }
 
@@ -383,13 +384,14 @@ func clampToInt[U clampableToInt](dst []int, src []U, n int) {
 	_ = src[n-1]
 	for i := 0; i < n; i++ {
 		val := src[i]
-		if val < U(math.MinInt) {
-			val = math.MinInt
-		}
+		// Direct assignment to avoid type conversion issues and improve performance
 		if val > U(math.MaxInt) {
-			val = math.MaxInt
+			dst[i] = math.MaxInt
+		} else if val < U(math.MinInt) {
+			dst[i] = math.MinInt
+		} else {
+			dst[i] = int(val)
 		}
-		dst[i] = int(val)
 	}
 }
 
@@ -403,13 +405,15 @@ func clampToInt32[U clampableToInt32](dst []int32, src []U, n int) {
 	_ = src[n-1]
 	for i := 0; i < n; i++ {
 		val := src[i]
-		if val < U(math.MinInt32) {
-			val = math.MinInt32
-		}
+		// Direct assignment to avoid float32 precision issues when val is float32
+		// When val > MaxInt32, assigning math.MaxInt32 to float32 causes overflow
 		if val > U(math.MaxInt32) {
-			val = math.MaxInt32
+			dst[i] = math.MaxInt32
+		} else if val < U(math.MinInt32) {
+			dst[i] = math.MinInt32
+		} else {
+			dst[i] = int32(val)
 		}
-		dst[i] = int32(val)
 	}
 }
 
@@ -426,15 +430,14 @@ func clampToInt16[U clampableToInt16](dst []int16, src []U, n int) {
 	_ = src[n-1] // Bounds check elimination hint
 	for i := 0; i < n; i++ {
 		val := src[i]
-		// Min/max pattern: compiler optimizes to conditional moves (CMOV)
-		// First clamp to minimum, then to maximum
-		if val < U(math.MinInt16) {
-			val = math.MinInt16
-		}
+		// Direct assignment to avoid type conversion issues and improve performance
 		if val > U(math.MaxInt16) {
-			val = math.MaxInt16
+			dst[i] = math.MaxInt16
+		} else if val < U(math.MinInt16) {
+			dst[i] = math.MinInt16
+		} else {
+			dst[i] = int16(val)
 		}
-		dst[i] = int16(val)
 	}
 }
 

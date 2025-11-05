@@ -54,13 +54,38 @@ func TestTypeFromData(t *testing.T) {
 			expected: INT8,
 		},
 		{
-			name:     "unknown type (string)",
-			data:     "not a number",
-			expected: DT_UNKNOWN,
+			name:     "int32 scalar",
+			data:     int32(42),
+			expected: INT32,
 		},
 		{
-			name:     "unknown type (int)",
+			name:     "int32 slice",
+			data:     []int32{1, 2, 3},
+			expected: INT32,
+		},
+		{
+			name:     "int64 scalar",
+			data:     int64(42),
+			expected: INT64,
+		},
+		{
+			name:     "int64 slice",
+			data:     []int64{1, 2, 3},
+			expected: INT64,
+		},
+		{
+			name:     "int scalar",
 			data:     int(42),
+			expected: INT,
+		},
+		{
+			name:     "int slice",
+			data:     []int{1, 2, 3},
+			expected: INT,
+		},
+		{
+			name:     "unknown type (string)",
+			data:     "not a number",
 			expected: DT_UNKNOWN,
 		},
 		{
@@ -108,6 +133,24 @@ func TestMakeTensorData(t *testing.T) {
 			dt:       INT8,
 			size:     5,
 			expected: make([]int8, 5),
+		},
+		{
+			name:     "DTINT32",
+			dt:       INT32,
+			size:     5,
+			expected: make([]int32, 5),
+		},
+		{
+			name:     "DTINT64",
+			dt:       INT64,
+			size:     5,
+			expected: make([]int64, 5),
+		},
+		{
+			name:     "DTINT",
+			dt:       INT,
+			size:     5,
+			expected: make([]int, 5),
 		},
 		{
 			name:     "DTINT48",
@@ -160,6 +203,18 @@ func TestMakeTensorData(t *testing.T) {
 					actual, ok := result.([]int8)
 					assert.True(t, ok)
 					assert.Equal(t, len(expected), len(actual))
+				case []int32:
+					actual, ok := result.([]int32)
+					assert.True(t, ok)
+					assert.Equal(t, len(expected), len(actual))
+				case []int64:
+					actual, ok := result.([]int64)
+					assert.True(t, ok)
+					assert.Equal(t, len(expected), len(actual))
+				case []int:
+					actual, ok := result.([]int)
+					assert.True(t, ok)
+					assert.Equal(t, len(expected), len(actual))
 				}
 			}
 		})
@@ -193,6 +248,21 @@ func TestCloneTensorData(t *testing.T) {
 			expected: []int8{1, 2, 3},
 		},
 		{
+			name:     "int32 slice",
+			data:     []int32{1, 2, 3},
+			expected: []int32{1, 2, 3},
+		},
+		{
+			name:     "int64 slice",
+			data:     []int64{1, 2, 3},
+			expected: []int64{1, 2, 3},
+		},
+		{
+			name:     "int slice",
+			data:     []int{1, 2, 3},
+			expected: []int{1, 2, 3},
+		},
+		{
 			name:     "nil input",
 			data:     nil,
 			expected: nil,
@@ -217,6 +287,12 @@ func TestCloneTensorData(t *testing.T) {
 				originalData = append([]int16(nil), d...)
 			case []int8:
 				originalData = append([]int8(nil), d...)
+			case []int32:
+				originalData = append([]int32(nil), d...)
+			case []int64:
+				originalData = append([]int64(nil), d...)
+			case []int:
+				originalData = append([]int(nil), d...)
 			default:
 				originalData = tt.data
 			}
@@ -331,6 +407,54 @@ func TestCloneTensorDataTo(t *testing.T) {
 			expected: []int16{10, 20, 30},
 		},
 		{
+			name:     "int32 to float32",
+			dst:      FP32,
+			data:     []int32{10, 20, 30},
+			expected: []float32{10.0, 20.0, 30.0},
+		},
+		{
+			name:     "float32 to int32",
+			dst:      INT32,
+			data:     []float32{10.7, 20.3, 30.9},
+			expected: []int32{10, 20, 30},
+		},
+		{
+			name:     "int64 to float64",
+			dst:      FP64,
+			data:     []int64{10, 20, 30},
+			expected: []float64{10.0, 20.0, 30.0},
+		},
+		{
+			name:     "float64 to int64",
+			dst:      INT64,
+			data:     []float64{10.7, 20.3, 30.9},
+			expected: []int64{10, 20, 30},
+		},
+		{
+			name:     "int to float32",
+			dst:      FP32,
+			data:     []int{10, 20, 30},
+			expected: []float32{10.0, 20.0, 30.0},
+		},
+		{
+			name:     "float32 to int",
+			dst:      INT,
+			data:     []float32{10.7, 20.3, 30.9},
+			expected: []int{10, 20, 30},
+		},
+		{
+			name:     "int32 to int64",
+			dst:      INT64,
+			data:     []int32{10, 20, 30},
+			expected: []int64{10, 20, 30},
+		},
+		{
+			name:     "int64 to int32 with clamping",
+			dst:      INT32,
+			data:     []int64{3000000000, 2000000000, -3000000000},
+			expected: []int32{2147483647, 2000000000, -2147483648},
+		},
+		{
 			name:     "nil input",
 			dst:      FP32,
 			data:     nil,
@@ -367,6 +491,18 @@ func TestCloneTensorDataTo(t *testing.T) {
 					assert.Equal(t, expected, actual)
 				case []int8:
 					actual, ok := result.([]int8)
+					assert.True(t, ok)
+					assert.Equal(t, expected, actual)
+				case []int32:
+					actual, ok := result.([]int32)
+					assert.True(t, ok)
+					assert.Equal(t, expected, actual)
+				case []int64:
+					actual, ok := result.([]int64)
+					assert.True(t, ok)
+					assert.Equal(t, expected, actual)
+				case []int:
+					actual, ok := result.([]int)
 					assert.True(t, ok)
 					assert.Equal(t, expected, actual)
 				}
@@ -528,6 +664,18 @@ func TestCopyTensorData(t *testing.T) {
 					assert.Equal(t, expected, actual)
 				case []int8:
 					actual, ok := result.([]int8)
+					assert.True(t, ok)
+					assert.Equal(t, expected, actual)
+				case []int32:
+					actual, ok := result.([]int32)
+					assert.True(t, ok)
+					assert.Equal(t, expected, actual)
+				case []int64:
+					actual, ok := result.([]int64)
+					assert.True(t, ok)
+					assert.Equal(t, expected, actual)
+				case []int:
+					actual, ok := result.([]int)
 					assert.True(t, ok)
 					assert.Equal(t, expected, actual)
 				}
