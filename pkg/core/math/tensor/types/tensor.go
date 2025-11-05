@@ -80,6 +80,17 @@ type Tensor interface {
 	// Returns Tensor interface. Panics if newShape is incompatible with current size.
 	Reshape(newShape Shape) Tensor
 
+	// Slice extracts a contiguous slice along the specified dimension.
+	// Returns a new tensor view (zero-copy when possible) with the sliced data.
+	// Parameters:
+	//   - dim: dimension along which to slice (0-based)
+	//   - start: starting index along the dimension (inclusive)
+	//   - length: number of elements to extract along the dimension
+	// The result tensor has the same rank as the input, but dimension 'dim' is reduced to 'length'.
+	// Panics if dim is out of range, or if start+length exceeds the dimension size.
+	// Example: For tensor [2, 4, 3], Slice(1, 1, 2) returns [2, 2, 3] (slicing dimension 1 from index 1 to 3).
+	Slice(dim int, start int, length int) Tensor
+
 	// Element-wise Operations (In-Place)
 	// All in-place operations modify the tensor and return self for method chaining.
 	// Panics if shapes don't match (for binary operations) or on invalid operations.

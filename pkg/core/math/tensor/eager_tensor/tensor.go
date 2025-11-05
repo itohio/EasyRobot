@@ -346,6 +346,80 @@ func (t Tensor) Reshape(newShape types.Shape) types.Tensor {
 	return Tensor{shape: shape, data: t.data}
 }
 
+// Slice extracts a contiguous slice along the specified dimension.
+// Returns a new tensor view (zero-copy when possible) with the sliced data.
+func (t Tensor) Slice(dim int, start int, length int) types.Tensor {
+	if t.shape == nil && t.data == nil {
+		return nil
+	}
+
+	shape := t.Shape()
+	if shape == nil {
+		panic("tensor.Slice: cannot slice tensor with nil shape")
+	}
+
+	// Validate dimension
+	if dim < 0 || dim >= len(shape) {
+		panic(fmt.Sprintf("tensor.Slice: dimension %d out of range for rank %d", dim, len(shape)))
+	}
+
+	dimSize := shape[dim]
+	if start < 0 || start >= dimSize {
+		panic(fmt.Sprintf("tensor.Slice: start index %d out of range for dimension %d (size %d)", start, dim, dimSize))
+	}
+	if length <= 0 {
+		panic(fmt.Sprintf("tensor.Slice: length must be positive, got %d", length))
+	}
+	if start+length > dimSize {
+		panic(fmt.Sprintf("tensor.Slice: start+length (%d+%d=%d) exceeds dimension size %d", start, length, start+length, dimSize))
+	}
+
+	// Compute strides for the original tensor
+	strides := shape.Strides()
+
+	// Create new shape with reduced dimension
+	newShape := make(types.Shape, len(shape))
+	copy(newShape, shape)
+	newShape[dim] = length
+
+	// Create destination buffer with same type as source
+	newSize := newShape.Size()
+	slicedBuf := types.MakeTensorData(t.DataType(), newSize)
+
+	// For CopyWithStrides, we need to map destination indices to source indices
+	// with offset in the sliced dimension. We can do this by:
+	// 1. Using original data and strides
+	// 2. Creating a custom source stride that accounts for offset
+	// Actually, simpler: adjust source data pointer by base offset for the sliced dimension
+	// and use original strides - but this won't work because strides are absolute.
+
+	// The correct approach: use CopyWithStrides with adjusted source data pointer
+	// that starts at the base offset, and the strides will correctly map indices
+	srcOffset := start * strides[dim]
+	srcView := t.data
+
+	// Adjust source view by offset (type-agnostic via MakeTensorData pattern)
+	switch data := t.data.(type) {
+	case []float32:
+		srcView = data[srcOffset:]
+	case []float64:
+		srcView = data[srcOffset:]
+	case []int16:
+		srcView = data[srcOffset:]
+	case []int8:
+		srcView = data[srcOffset:]
+	}
+
+	// Use primitive.CopyWithStrides - it handles all types automatically!
+	// The strides work correctly because CopyWithStrides computes indices relative to the data pointer
+	dstStrides := newShape.Strides()
+	primitive.CopyWithStrides(srcView, slicedBuf, newShape.ToSlice(), strides, dstStrides)
+
+	slicedData := slicedBuf
+
+	return Tensor{shape: newShape, data: slicedData}
+}
+
 // Element represents a single tensor element with Get and Set methods.
 type Element struct {
 	tensor Tensor

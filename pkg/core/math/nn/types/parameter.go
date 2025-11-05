@@ -16,6 +16,15 @@ const (
 	ParamCustom  ParamIndex = 100
 )
 
+// LSTM parameter indices
+// LSTM uses concatenated weights for all 4 gates (input, forget, cell, output)
+// Order: input gate, forget gate, cell gate, output gate
+const (
+	ParamLSTMWeightIH ParamIndex = 101 // Input-to-hidden weights [4*hidden_size, input_size]
+	ParamLSTMWeightHH ParamIndex = 102 // Hidden-to-hidden weights [4*hidden_size, hidden_size]
+	ParamLSTMBias     ParamIndex = 103 // Bias [4*hidden_size] (optional)
+)
+
 // Parameter represents a trainable parameter (weight or bias).
 type Parameter struct {
 	Data         types.Tensor // Parameter values
