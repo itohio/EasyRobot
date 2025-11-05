@@ -243,7 +243,7 @@ func (l *LSTM) computeForward(input, weightIH, weightHH, bias,
 	if !isBatch {
 		sliceDim = 0
 	}
-	
+
 	iGate := gates.Slice(sliceDim, 0, l.hiddenSize)
 	fGate := gates.Slice(sliceDim, l.hiddenSize, l.hiddenSize)
 	gGate := gates.Slice(sliceDim, 2*l.hiddenSize, l.hiddenSize)
@@ -282,7 +282,6 @@ func (l *LSTM) computeForward(input, weightIH, weightHH, bias,
 
 	return nil
 }
-
 
 // ResetState resets the hidden state and cell state to zeros.
 func (l *LSTM) ResetState() {
