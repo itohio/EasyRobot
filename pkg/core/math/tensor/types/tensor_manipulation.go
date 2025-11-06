@@ -61,6 +61,21 @@ type TensorManipulation interface {
 	// Returns the destination tensor.
 	FillTo(dst Tensor, value float64) Tensor
 
+	// Pad adds padding to tensor with constant value (matches tf.pad).
+	// padding: [padBeforeDim0, padAfterDim0, padBeforeDim1, padAfterDim1, ...]
+	// Each dimension has two padding values: before and after.
+	// value: constant value to pad with
+	// Returns a new tensor with padding added.
+	// Panics if padding values are invalid.
+	Pad(padding []int, value float64) Tensor
+
+	// PadTo adds padding to tensor with constant value and stores result in dst.
+	// padding: [padBeforeDim0, padAfterDim0, padBeforeDim1, padAfterDim1, ...]
+	// value: constant value to pad with
+	// If dst is nil, creates a new tensor. If dst is provided, uses it (must match output shape).
+	// Returns the destination tensor.
+	PadTo(dst Tensor, padding []int, value float64) Tensor
+
 	// Unpad removes padding from tensor.
 	// padding: [padBeforeDim0, padAfterDim0, padBeforeDim1, padAfterDim1, ...]
 	// Each dimension has two padding values: before and after.

@@ -1663,3 +1663,85 @@ func (t Tensor) Unpad(padding []int) types.Tensor {
 
 	return resultPtr
 }
+
+// Pad adds padding to tensor with constant value (matches tf.pad).
+// padding: [padBeforeDim0, padAfterDim0, padBeforeDim1, padAfterDim1, ...]
+// value: constant value to pad with
+// Returns a new tensor with padding added.
+func (t Tensor) Pad(padding []int, value float64) types.Tensor {
+	return t.PadTo(nil, padding, value)
+}
+
+// PadTo adds padding to tensor with constant value and stores result in dst.
+// padding: [padBeforeDim0, padAfterDim0, padBeforeDim1, padAfterDim1, ...]
+// value: constant value to pad with
+// If dst is nil, creates a new tensor. If dst is provided, uses it (must match output shape).
+func (t Tensor) PadTo(dst types.Tensor, padding []int, value float64) types.Tensor {
+	if t.shape == nil {
+		return nil
+	}
+
+	shape := t.Shape()
+	rank := shape.Rank()
+
+	if len(padding) != 2*rank {
+		panic(fmt.Sprintf("tensor.Pad: padding must have %d elements (2 per dimension), got %d", 2*rank, len(padding)))
+	}
+
+	// Compute padded shape
+	paddedShape := make(types.Shape, rank)
+	for i := 0; i < rank; i++ {
+		padBefore := padding[2*i]
+		padAfter := padding[2*i+1]
+		if padBefore < 0 || padAfter < 0 {
+			panic(fmt.Sprintf("tensor.Pad: padding values must be non-negative, got padBefore=%d, padAfter=%d for dim %d", padBefore, padAfter, i))
+		}
+		paddedShape[i] = shape[i] + padBefore + padAfter
+		if paddedShape[i] <= 0 {
+			panic(fmt.Sprintf("tensor.Pad: padded dimension %d would be %d (invalid)", i, paddedShape[i]))
+		}
+	}
+
+	// Create or validate result tensor
+	var result types.Tensor
+	if dst == nil || dst.Empty() {
+		result = New(t.DataType(), types.NewShape(paddedShape...))
+	} else {
+		if !dst.Shape().Equal(types.NewShape(paddedShape...)) {
+			panic("tensor.PadTo: destination shape mismatch")
+		}
+		result = dst
+	}
+
+	// Fill result with padding value
+	result.Fill(value)
+
+	// Copy input data to the appropriate position in result
+	srcStrides := shape.Strides()
+	dstStrides := result.Shape().Strides()
+
+	// Calculate destination offset (skip padding at the beginning of each dimension)
+	dstOffset := 0
+	for i := 0; i < rank; i++ {
+		padBefore := padding[2*i]
+		dstOffset += padBefore * dstStrides[i]
+	}
+
+	// Get data slices
+	resultData := types.GetTensorData[[]float32](result)
+	tData := types.GetTensorData[[]float32](&t)
+
+	// Create destination view starting at offset
+	dstView := resultData[dstOffset:]
+
+	// Copy input data to padded region
+	fp32.ElemCopy(
+		dstView,
+		tData,
+		shape.ToSlice(),
+		dstStrides,
+		srcStrides,
+	)
+
+	return result
+}

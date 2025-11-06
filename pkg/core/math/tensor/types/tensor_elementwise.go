@@ -224,4 +224,3 @@ type TensorElementWise interface {
 	// If dst is nil, creates a new tensor. Returns the destination tensor.
 	WhereTo(dst Tensor, condition, a, b Tensor) Tensor
 }
-

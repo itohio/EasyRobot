@@ -908,17 +908,21 @@ type Tensor interface {
 **Reduction operations**: ✅ **COMPLETED**
 4. ✅ `ArgMin(dim int) Tensor` - Index of minimum element (matches `tf.argmin`)
 
-**Activation functions**:
-5. `ReLU6(dst Tensor) Tensor` - ReLU6 activation (matches `tf.nn.relu6`)
-6. `LeakyReLU(dst Tensor, alpha float64) Tensor` - Leaky ReLU (matches `tf.nn.leaky_relu`)
-7. `ELU(dst Tensor, alpha float64) Tensor` - ELU activation (matches `tf.nn.elu`)
-8. `Softplus(dst Tensor) Tensor` - Softplus activation (matches `tf.nn.softplus`)
-9. `Swish(dst Tensor) Tensor` - Swish activation (matches `tf.nn.swish`)
-10. `GELU(dst Tensor) Tensor` - GELU activation (matches `tf.nn.gelu`)
+**Activation functions**: ✅ **COMPLETED**
+5. ✅ `ReLU6(dst Tensor) Tensor` - ReLU6 activation (matches `tf.nn.relu6`)
+6. ✅ `LeakyReLU(dst Tensor, alpha float64) Tensor` - Leaky ReLU (matches `tf.nn.leaky_relu`)
+7. ✅ `ELU(dst Tensor, alpha float64) Tensor` - ELU activation (matches `tf.nn.elu`)
+8. ✅ `Softplus(dst Tensor) Tensor` - Softplus activation (matches `tf.nn.softplus`)
+9. ✅ `Swish(dst Tensor) Tensor` - Swish activation (matches `tf.nn.swish`)
+10. ✅ `GELU(dst Tensor) Tensor` - GELU activation (matches `tf.nn.gelu`)
 
-**Manipulation operations**:
-11. `Pad(padding []int, value float64) Tensor` - Pad tensor (matches `tf.pad`)
-12. `PadTo(dst Tensor, padding []int, value float64) Tensor` - Pad to destination
+**Manipulation operations**: ✅ **COMPLETED**
+11. ✅ `Pad(padding []int, value float64) Tensor` - Pad tensor (matches `tf.pad`)
+12. ✅ `PadTo(dst Tensor, padding []int, value float64) Tensor` - Pad to destination
+
+**Dropout operations**: ✅ **COMPLETED**
+- ✅ `DropoutBackward(gradOutput, mask Tensor) Tensor` - Dropout backward pass
+- ✅ `DropoutBackwardTo(dst Tensor, gradOutput, mask Tensor) Tensor` - Dropout backward to destination
 
 **Pooling operations** (if missing):
 13. `MaxPool1D(kernelSize, stride, padding []int) Tensor` - 1D max pooling
@@ -954,9 +958,9 @@ type Tensor interface {
 **Pooling gradient operations** (if missing):
 61-72+. All pooling gradient operations (1D, 2D, 3D max/avg pooling gradients)
 
-**Dropout gradient operations**:
-73. `DropoutBackward(gradOutput, mask Tensor) Tensor` - Dropout backward pass
-74. `DropoutBackwardTo(dst Tensor, gradOutput, mask Tensor) Tensor` - Dropout backward to destination
+**Dropout gradient operations**: ✅ **COMPLETED**
+73. ✅ `DropoutBackward(gradOutput, mask Tensor) Tensor` - Dropout backward pass
+74. ✅ `DropoutBackwardTo(dst Tensor, gradOutput, mask Tensor) Tensor` - Dropout backward to destination
 
 **Workflow per operation**:
 1. Add operation signature to appropriate category interface
@@ -1123,7 +1127,7 @@ Each operation must have:
 - ✅ Phase 1: COMPLETED (Interface splitting)
 - ✅ Phase 2: COMPLETED (Core destination-based variants)
 - ✅ Phase 3: COMPLETED (Core TensorFlow aliases)
-- ⏳ Phase 4: IN PROGRESS (Core comparison and reduction operations completed, activation functions and pooling operations pending)
+- ⏳ Phase 4: IN PROGRESS (Comparison, reduction, activation functions, manipulation, and dropout operations completed; pooling and gradient operations pending)
 - ⏳ Phase 5: PENDING (Tests and benchmarks)
 
 ## Progress Tracking
@@ -1182,8 +1186,11 @@ Each operation must have:
 **Operations added**:
 - ✅ Comparison: NotEqual, GreaterEqual, LessEqual
 - ✅ Reduction: ArgMin
+- ✅ Activation functions: ReLU6, LeakyReLU, ELU, Softplus, Swish, GELU
+- ✅ Manipulation: Pad, PadTo
+- ✅ Dropout: DropoutBackward, DropoutBackwardTo
 
-**Operations remaining**: Activation functions, pooling operations, gradient operations (see Phase 4 section for full list)
+**Operations remaining**: Pooling operations, activation gradient operations, convolution gradient operations (see Phase 4 section for full list)
 
 ## Notes
 
