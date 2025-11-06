@@ -81,6 +81,62 @@ This report compares the performance of generic implementations against non-gene
 
 ---
 
+## Performance Comparison Table (Multi-threaded Build)
+
+This table shows benchmark results when building with the `use_mt` build tag, which enables multi-threaded implementations. All benchmarks use 10,000 elements unless otherwise specified.
+
+**Latest Run:** November 6, 2025
+
+| Operation | G (ns/op, allocs) | NG (ns/op, allocs) | D (ns/op) | % vs D |
+|-----------|-------------------|---------------------|-----------|--------|
+| **Copy Operations** |
+| ElemCopy | 1,685 (0 B, 0 allocs) | 1,588 (0 B, 0 allocs) | 12,928 | -87.0% |
+| ElemCopyStrided | 2,044 (32 B, 2 allocs) | 71,846 (16 B, 1 alloc) | 17,337 | -88.2% |
+| BLAS Copy | N/A | N/A | N/A | N/A |
+| BLAS CopyStrided | N/A | N/A | N/A | N/A |
+| **Swap Operations** |
+| ElemSwap | 12,582 (0 B, 0 allocs) | 9,584 (0 B, 0 allocs) | 21,695 | -42.0% |
+| ElemSwapStrided | 10,608 (32 B, 2 allocs) | 89,949 (16 B, 1 alloc) | 22,138 | -52.1% |
+| BLAS Swap | N/A | N/A | N/A | N/A |
+| BLAS SwapStrided | N/A | N/A | N/A | N/A |
+| **Apply Operations** |
+| ElemApplyUnary | 66,855 (576 B, 12 allocs) | 8,540 (0 B, 0 allocs) | 13,470 | +396.3% |
+| ElemApplyBinary | 45,895 (592 B, 12 allocs) | 8,929 (0 B, 0 allocs) | 21,014 | +118.4% |
+| ElemApplyBinaryStrided | 44,981 (640 B, 15 allocs) | 32,169 (48 B, 3 allocs) | 22,091 | +103.6% |
+| ElemApplyUnaryScalar | 58,360 (576 B, 12 allocs) | 10,020 (0 B, 0 allocs) | 24,026 | +142.9% |
+| ElemApplyUnaryScalarStrided | 53,633 (608 B, 14 allocs) | 29,898 (32 B, 2 allocs) | 19,163 | +179.9% |
+| **Comparison Operations** |
+| ElemGreaterThan | 29,346 (592 B, 12 allocs) | 14,757 (0 B, 0 allocs) | 19,699 | +49.0% |
+| ElemGreaterThanStrided | 44,083 (640 B, 15 allocs) | 16,303 (48 B, 3 allocs) | 33,458 | +31.8% |
+| ElemEqual | 74,120 (592 B, 12 allocs) | 18,547 (0 B, 0 allocs) | 22,800 | +225.1% |
+| ElemLess | 32,324 (592 B, 12 allocs) | 18,315 (0 B, 0 allocs) | 23,334 | +38.5% |
+| **Unary Operations** |
+| ElemSign | 16,097 (0 B, 0 allocs) | 18,782 (0 B, 0 allocs) | 25,234 | -36.2% |
+| ElemSignStrided | 19,350 (32 B, 2 allocs) | 24,499 (32 B, 2 allocs) | 30,701 | -37.0% |
+| ElemNegative | 12,273 (0 B, 0 allocs) | 9,271 (0 B, 0 allocs) | 15,322 | -19.9% |
+| ElemNegativeStrided | 12,520 (32 B, 2 allocs) | 10,127 (32 B, 2 allocs) | 19,134 | -34.6% |
+| **Scalar Operations** |
+| ElemFill | 9,498 (0 B, 0 allocs) | 8,082 (0 B, 0 allocs) | 8,457 | +12.3% |
+| ElemEqualScalar | 19,063 (0 B, 0 allocs) | 14,859 (0 B, 0 allocs) | 23,091 | -17.4% |
+| ElemGreaterScalar | 14,511 (0 B, 0 allocs) | 17,192 (0 B, 0 allocs) | 22,443 | -35.3% |
+| **Vector/Matrix Apply Operations** |
+| ElemVecApplyStrided | 49,551 (576 B, 12 allocs) | 28,387 (0 B, 0 allocs) | 11,202 | +342.3% |
+| ElemMatApplyStrided | 48,864 (576 B, 12 allocs) | 38,903 (0 B, 0 allocs) | 16,584 | +194.6% |
+| **Iterator Operations** |
+| Elements | 55,832 (88 B, 5 allocs) | 398,002 (160056 B, 10004 allocs) | 5,897 | +846.8% |
+| ElementsVec | 4,227 (0 B, 0 allocs) | 8,216 (0 B, 0 allocs) | 4,159 | +1.6% |
+| ElementsVecStrided | 8,446 (0 B, 0 allocs) | 5,037 (0 B, 0 allocs) | N/A | N/A |
+| ElementsMat | 6,223 (0 B, 0 allocs) | 5,295 (0 B, 0 allocs) | 5,365 | +16.0% |
+| ElementsMatStrided | 6,592 (0 B, 0 allocs) | 7,415 (0 B, 0 allocs) | N/A | N/A |
+| **Conversion Operations** |
+| ElemConvert | 29,808 (560 B, 12 allocs) | 12,305 (0 B, 0 allocs) | 15,634 | +90.7% |
+| ElemConvert (Clamping) | 37,891 (560 B, 12 allocs) | 7,164 (0 B, 0 allocs) | 10,077 | +276.0% |
+| ElemConvertStrided | 126,438 (240 B, 7 allocs) | 140,484 (16 B, 1 alloc) | 20,851 | +506.4% |
+
+**Note:** Multi-threaded implementations show higher overhead for small arrays (10,000 elements) due to goroutine pool management and synchronization costs. Performance improvements are expected for larger arrays where parallelization overhead is amortized. The allocations shown are primarily from goroutine pool management and chunk coordination.
+
+---
+
 ## Historical Run Dates
 
 - **H1 (Current):** November 6, 2025

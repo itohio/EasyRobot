@@ -5,10 +5,11 @@ import (
 	"sync"
 )
 
-const (
+var (
 	// minParallelSize is the minimum number of elements required to enable parallelization.
 	// Operations with fewer elements will use single-threaded execution to avoid overhead.
-	minParallelSize = 1000
+	minParallelSize = 1000 * runtime.NumCPU()
+	numWorkers      = runtime.NumCPU()
 )
 
 var (
@@ -32,7 +33,6 @@ type task func()
 
 // init initializes the global worker pool when the package is loaded.
 func init() {
-	numWorkers := runtime.NumCPU()
 	if numWorkers < 1 {
 		numWorkers = 1
 	}
@@ -142,12 +142,6 @@ func shouldParallelize(n int) bool {
 // If n < minParallelSize or only 1 CPU, executes sequentially.
 // fn is called with (start, end) for each chunk.
 func parallelChunks(n int, fn func(start, end int)) {
-	if !shouldParallelize(n) {
-		fn(0, n)
-		return
-	}
-
-	numWorkers := runtime.NumCPU()
 	chunkSize := (n + numWorkers - 1) / numWorkers
 
 	var wg sync.WaitGroup
@@ -175,12 +169,6 @@ func parallelChunks(n int, fn func(start, end int)) {
 // If rows < minParallelSize or only 1 CPU, executes sequentially.
 // fn is called with (startRow, endRow) for each chunk.
 func parallelRows(rows int, fn func(startRow, endRow int)) {
-	if !shouldParallelize(rows) {
-		fn(0, rows)
-		return
-	}
-
-	numWorkers := runtime.NumCPU()
 	chunkSize := (rows + numWorkers - 1) / numWorkers
 
 	var wg sync.WaitGroup
@@ -213,12 +201,7 @@ func parallelTensorChunks(shape []int, fn func(startDim0, endDim0 int)) {
 	}
 
 	dim0Size := shape[0]
-	if !shouldParallelize(dim0Size) {
-		fn(0, dim0Size)
-		return
-	}
 
-	numWorkers := runtime.NumCPU()
 	chunkSize := (dim0Size + numWorkers - 1) / numWorkers
 
 	var wg sync.WaitGroup
@@ -246,12 +229,6 @@ func parallelTensorChunks(shape []int, fn func(startDim0, endDim0 int)) {
 // totalSize is the total number of elements to iterate over.
 // fn is called with (startIdx, endIdx) for each chunk.
 func parallelIteratorChunks(totalSize int, fn func(startIdx, endIdx int)) {
-	if !shouldParallelize(totalSize) {
-		fn(0, totalSize)
-		return
-	}
-
-	numWorkers := runtime.NumCPU()
 	chunkSize := (totalSize + numWorkers - 1) / numWorkers
 
 	var wg sync.WaitGroup

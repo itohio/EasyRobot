@@ -188,8 +188,11 @@ Operations that apply a scalar value element-wise or fill arrays with constant v
 |-----------|------------------|--------|-------------|-------|-----------|--------|
 | Fill (Contiguous) | `ElemFill[T](dst []T, value T, n int)` | ✅ | None/Minimal | None | 🔒 | `fp32/tensor_elementwise.go:268` |
 | Fill (Strided) | `ElemFillStrided[T](dst []T, value T, shape []int, stridesDst []int)` | ✅ | None/Minimal | None | 🔒 | `fp32/tensor_elementwise.go:268` |
+| Value Convert | `ValueConvert[T, U](value T) U` | ✅ | Low | None | 🔒 | `primitive/copy.go:14` |
 
-**Note**: `ElemFill` writes `value` to all elements of `dst` according to `shape` and `stridesDst`.
+**Note**: 
+- `ElemFill` writes `value` to all elements of `dst` according to `shape` and `stridesDst`.
+- `ValueConvert` converts a single scalar value from type `T` to type `U` with appropriate clamping for down-conversions. This is a scalar operation (operates on a single value, not an array), so it does not support multithreading.
 
 **Excluded**: Arithmetic scalar operations (`AddScalar`, `SubScalar`, `MulScalar`, `DivScalar`) - rely on type precision and clamping.
 
