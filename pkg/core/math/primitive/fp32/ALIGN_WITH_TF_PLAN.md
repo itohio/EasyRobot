@@ -4,9 +4,33 @@
 
 This document outlines the plan to add missing raw primitive operations in the `fp32` package to support the Tensor API transition plan (`tensor/API_TRANSITION_PLAN.md`). The goal is to ensure all tensor operations have efficient primitive implementations that follow the zero-allocation principle.
 
+**⚠️ IMPORTANT: Operation Selection Strategy**
+
+When implementing operations, **prioritize efficiency** by choosing the most efficient implementation available:
+
+1. **Use Generic Operations** (`primitive/generics`) when:
+   - Generic equivalent exists and is well-tested
+   - Operation is type-agnostic (works for all numeric types)
+   - Generic implementation is more efficient than fp32-specific version
+   - Operation already uses `applyElem*` helpers (generics are highly optimized and will improve performance)
+
+2. **Use FP32-Specific Operations** when:
+   - Operation requires BLAS/LAPACK optimizations (e.g., `Axpy`, `Scal`, `Gemm`)
+   - Operation requires float32-specific math libraries (e.g., `math32.Sqrt`, `math32.Exp`)
+   - Operation is a specialized algorithm (convolutions, pooling, reductions)
+   - Operation has SIMD optimizations or platform-specific code
+   - Direct loop implementation is simpler and more efficient
+
+3. **⚠️ DO NOT Use Generic Iterators**:
+   - Generic iterator functions (`generics.Elements`, `generics.ElementsStrided`, `generics.ElementsWindow`, etc.) are **too slow for production use**
+   - Use direct nested loops instead for operations requiring iteration (e.g., Im2Col, Col2Im, window-based operations)
+
 **Reference Documents**:
 - `tensor/API_TRANSITION_PLAN.md` - Tensor API transition requirements
 - `fp32/OPS.md` - Current fp32 operations catalog
+- `fp32/GENERIC_OPS_MIGRATION_PLAN.md` - Guidance on when to use generics vs fp32
+- `tensor/GENERIC_OPS_MIGRATION_PLAN.md` - Tensor-level generic migration guidance
+- `generics/OPS.md` - Generic operations specification
 
 ## Scope
 
@@ -146,9 +170,10 @@ Based on `OPS.md` and codebase analysis, the following operations are already av
 **Priority**: High (needed for tensor API transition)
 
 **Implementation Notes**:
-- Follow pattern from `ElemSquare`, `ElemSqrt`, etc.
-- Use `math32` package for trigonometric functions
-- Support stride-based access for non-contiguous tensors
+- ✅ **IMPLEMENTED**: These operations now use `generics.ElemApplyUnaryStrided[float32]` with appropriate math functions
+- Use `math32` package for trigonometric functions (passed as operation function to generics)
+- Support stride-based access for non-contiguous tensors (handled by generics)
+- Generic implementation is more efficient than manual loop implementation
 
 **Proposed Signatures**:
 ```go
@@ -175,9 +200,11 @@ func ElemNegative(dst, src []float32, shape []int, stridesDst, stridesSrc []int)
 **Priority**: High (needed for tensor API transition)
 
 **Implementation Notes**:
+- ✅ **IMPLEMENTED**: These operations now use `generics.ElemApplyUnaryScalarStrided[float32]` or `generics.ElemFillStrided[float32]`
 - `ElemScale` exists but operates in-place; `ElemMulScalar` provides the dst-based version
 - Scalar operations are common in neural networks
 - All scalar operations now implemented with dst-based pattern
+- Generic implementation is more efficient than manual loop implementation
 
 **Proposed Signatures**:
 ```go
@@ -208,8 +235,10 @@ func ElemDivScalar(dst, src []float32, scalar float32, shape []int, stridesDst, 
 **Priority**: Medium (useful for conditional operations)
 
 **Implementation Notes**:
+- ✅ **IMPLEMENTED**: These operations now use `generics.Elem*Strided[float32]` functions directly
 - Follow pattern from `ElemEqual`, `ElemGreaterThan`, `ElemLess`
 - Return 1.0 for true, 0.0 for false (matching TensorFlow behavior)
+- Generic implementation is more efficient than manual loop implementation
 
 **Proposed Signatures**:
 ```go
@@ -251,8 +280,10 @@ func Argmin(dst []int32, dstShape, dstStrides []int, src []float32, srcShape, sr
 **Priority**: Medium (optimization for common training patterns)
 
 **Implementation Notes**:
+- ✅ **IMPLEMENTED**: These operations now use `generics.ElemApplyUnaryScalarStrided[float32]` with appropriate operation functions
 - These are composite operations that can be optimized
 - Common in optimizer updates (e.g., Adam)
+- Generic implementation is more efficient than manual loop implementation
 
 **Proposed Signatures**:
 ```go
@@ -283,7 +314,9 @@ func ElemAddScaledSquareMul(dst, other []float32, scalar float32, shape []int, s
   - Fewer function calls (less overhead)
   - SIMD optimization potential
 - Existing functions use simple size-based signatures
+- ✅ **Stride-based versions** now use `generics.ElemWhere[float32]` or `generics.ElemApplyBinaryStrided[float32]` with appropriate operation functions
 - Added stride-based versions for consistency with tensor API and non-contiguous tensor support
+- Generic implementation for stride versions is more efficient than manual stride iteration
 - These are more efficient than composing from primitives for embedded use cases
 
 **Implemented Stride-based Versions**:
@@ -320,6 +353,8 @@ func TanhGradStride(dst, gradOutput, output []float32, shape []int, stridesDst, 
 **Implementation Notes**:
 - Extend existing 2D implementations to 1D and 3D
 - Follow patterns from existing pooling operations
+- **Use direct nested loops** - generic iterators are too slow for window-based operations
+- These are specialized algorithms that require careful handling of kernel windows, strides, and padding
 
 **Proposed Signatures**:
 ```go
@@ -382,6 +417,8 @@ func AvgPool2DBackward(dst, gradOutput []float32, batchSize, channels, height, w
 **Implementation Notes**:
 - All convolution operations are now implemented, including specialized variants for GAN architectures and 3D operations
 - `SeparableConv2D` provides an optimized implementation combining depthwise and pointwise convolutions
+- **Use direct nested loops** - generic iterators are too slow for Im2Col/Col2Im and window-based operations
+- These are specialized algorithms that use Im2Col transformations and GEMM operations
 
 **Proposed Signatures**:
 ```go
@@ -494,6 +531,30 @@ func Conv3DTransposed(dst, src, kernel, bias []float32, batchSize, inChannels, o
 
 ## Implementation Guidelines
 
+### Operation Selection Strategy
+
+**Priority: Efficiency First**
+
+When implementing new operations or refactoring existing ones, follow this decision tree:
+
+1. **Check if generic operation exists** (`primitive/generics`):
+   - ✅ If generic exists and is efficient → **Use generic operation**
+   - ✅ If operation uses `applyElem*` helpers → **Migrate to generics** (generics are highly optimized)
+   - ❌ If generic iterator needed → **Use direct nested loops** (iterators are too slow)
+
+2. **Check if BLAS operation exists** (`fp32` BLAS):
+   - ✅ If BLAS equivalent exists → **Use BLAS operation** (highly optimized)
+   - Examples: `Axpy`, `Scal`, `Gemm`, `Dot`, `Nrm2`, `Asum`
+
+3. **Check if specialized fp32 operation exists**:
+   - ✅ If specialized algorithm exists → **Use specialized operation**
+   - Examples: Convolutions, pooling, reductions, activations with special math
+
+4. **Implement new operation**:
+   - For simple element-wise operations → Consider using `generics.ElemApply*` functions
+   - For complex algorithms → Implement directly in fp32 with optimized loops
+   - **Never use generic iterators** - use direct nested loops instead
+
 ### Code Style
 
 1. **Follow existing patterns**: Use `tensor_elementwise.go` as reference for element-wise operations
@@ -507,6 +568,10 @@ func Conv3DTransposed(dst, src, kernel, bias []float32, batchSize, inChannels, o
 7. **Naming convention**: All in-place operations MUST be suffixed with `InPlace` (e.g., `ElemScaleInPlace`, `NormalizeVecInPlace`)
    - Base operation name (without `InPlace`) should be reserved for dst-based version: `Operation(dst, src, ...)`
    - Example: `ElemScale(dst, src, scalar, ...)` is dst-based, `ElemScaleInPlace(dst, scalar, ...)` is in-place
+8. **Use generics when appropriate**: 
+   - Operations that are thin wrappers should use generics directly
+   - Operations with operation functions should use `generics.ElemApply*` functions
+   - **Never use generic iterators** - they are too slow for production use
 
 ### Testing Requirements
 
@@ -535,11 +600,23 @@ func Conv3DTransposed(dst, src, kernel, bias []float32, batchSize, inChannels, o
 
 ## Notes
 
-- **Gradient Operations**: **Dedicated gradient functions are recommended** for embedded systems. They provide better performance (zero allocations, single pass, better cache locality) compared to composing from primitives. Stride-based versions have been added for consistency with the tensor API and to support non-contiguous tensors.
+- **Gradient Operations**: **Dedicated gradient functions are recommended** for embedded systems. They provide better performance (zero allocations, single pass, better cache locality) compared to composing from primitives. Stride-based versions have been added for consistency with the tensor API and to support non-contiguous tensors. Stride-based versions now use generic operations (`generics.ElemWhere`, `generics.ElemApplyBinaryStrided`) which are highly optimized.
+
+- **Generic Operations**: Many operations now use generic implementations from `primitive/generics` package:
+  - Element-wise operations (Copy, Sign, Negative, Fill) use `generics.Elem*Strided[float32]`
+  - Comparison operations use `generics.Elem*Strided[float32]`
+  - Binary operations (Add, Sub, Mul) use `generics.ElemApplyBinaryStrided[float32]`
+  - Unary math operations (Square, Sqrt, Exp, etc.) use `generics.ElemApplyUnaryStrided[float32]`
+  - Scalar operations use `generics.ElemApplyUnaryScalarStrided[float32]`
+  - **Generic iterators are NOT used** - they are too slow for production use
+
+- **BLAS Operations**: Keep using fp32 BLAS operations (`Axpy`, `Scal`, `Gemm`, etc.) - these are highly optimized and should not be replaced with generics.
+
+- **Specialized Algorithms**: Convolutions, pooling, and reductions remain fp32-specific as they are specialized algorithms that cannot be easily genericized.
 
 - **Existing Operations**: Some operations may already exist but need to be extended (e.g., `Fill` exists but may need stride support, `ElemScale` exists but may need dst parameter support).
 
-- **Performance**: All new operations should be optimized for performance, using SIMD where possible and avoiding unnecessary allocations.
+- **Performance**: All new operations should be optimized for performance, using SIMD where possible and avoiding unnecessary allocations. When choosing between generics and fp32, prioritize the more efficient option.
 
 ## Implementation Summary
 

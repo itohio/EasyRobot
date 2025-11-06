@@ -2,7 +2,7 @@
 
 This document catalogs all primitive operations implemented in the `fp32` package, organized by category. **Deprecated functions are marked for removal** in v2.0.0 as part of the tensor/fp32 consolidation effort.
 
-**⚠️ IMPORTANT**: 11 functions are deprecated and will be removed in v2.0.0. See `tensor/CONSOLIDATION_PLAN.md` for migration guidance.
+**⚠️ IMPORTANT**: 11 functions are deprecated and will be removed in v2.0.0. These are thin wrappers that call `generics` package functions directly. See `GENERIC_OPS_MIGRATION_PLAN.md` for migration guidance. Use `generics.Elem*Strided[float32]` functions directly instead.
 
 ## Table of Contents
 
@@ -87,7 +87,7 @@ Located in `batched.go`. Extensions of BLAS operations for batched processing.
 
 | Operation | Function | Description | Status |
 |-----------|----------|-------------|--------|
-| Element-wise Copy | `ElemCopy(dst, src, shape, stridesDst, stridesSrc)` | `dst[i] = src[i]` | ✅ **RECOMMENDED** |
+| Element-wise Copy | `ElemCopy(dst, src, shape, stridesDst, stridesSrc)` | `dst[i] = src[i]` | ⚠️ **DEPRECATED** - Use `generics.ElemCopyStrided[float32]` |
 | Element-wise Scale In-Place | `ElemScaleInPlace(dst, scalar, shape, stridesDst)` | `dst[i] *= scalar` (in-place) | ✅ **FOR IN-PLACE USE** |
 | Element-wise Scale | `ElemScale(dst, src, scalar, shape, stridesDst, stridesSrc)` | `dst[i] = src[i] * scalar` (dst-based) | ✅ **RECOMMENDED** |
 | Element-wise Square | `ElemSquare(dst, src, shape, stridesDst, stridesSrc)` | `dst[i] = src[i]^2` | ✅ **RECOMMENDED** |
@@ -96,17 +96,17 @@ Located in `batched.go`. Extensions of BLAS operations for batched processing.
 | Element-wise Logarithm | `ElemLog(dst, src, shape, stridesDst, stridesSrc)` | `dst[i] = log(src[i])` | ✅ **RECOMMENDED** |
 | Element-wise Power | `ElemPow(dst, src, power, shape, stridesDst, stridesSrc)` | `dst[i] = src[i]^power` | ✅ **RECOMMENDED** |
 | Element-wise Absolute | `ElemAbs(dst, src, shape, stridesDst, stridesSrc)` | `dst[i] = abs(src[i])` | ✅ **RECOMMENDED** |
-| Element-wise Sign | `ElemSign(dst, src, shape, stridesDst, stridesSrc)` | `dst[i] = sign(src[i])` (-1, 0, or 1) | ✅ **RECOMMENDED** |
+| Element-wise Sign | `ElemSign(dst, src, shape, stridesDst, stridesSrc)` | `dst[i] = sign(src[i])` (-1, 0, or 1) | ⚠️ **DEPRECATED** - Use `generics.ElemSignStrided[float32]` |
 | Element-wise Cosine | `ElemCos(dst, src, shape, stridesDst, stridesSrc)` | `dst[i] = cos(src[i])` | ✅ **RECOMMENDED** |
 | Element-wise Sine | `ElemSin(dst, src, shape, stridesDst, stridesSrc)` | `dst[i] = sin(src[i])` | ✅ **RECOMMENDED** |
 | Element-wise Tanh | `ElemTanh(dst, src, shape, stridesDst, stridesSrc)` | `dst[i] = tanh(src[i])` | ✅ **RECOMMENDED** |
-| Element-wise Negation | `ElemNegative(dst, src, shape, stridesDst, stridesSrc)` | `dst[i] = -src[i]` | ✅ **RECOMMENDED** |
+| Element-wise Negation | `ElemNegative(dst, src, shape, stridesDst, stridesSrc)` | `dst[i] = -src[i]` | ⚠️ **DEPRECATED** - Use `generics.ElemNegativeStrided[float32]` |
 
 #### Scalar Operations
 
 | Operation | Function | Description | Status |
 |-----------|----------|-------------|--------|
-| Element-wise Fill | `ElemFill(dst, value, shape, stridesDst)` | `dst[i] = value` | ✅ **RECOMMENDED** |
+| Element-wise Fill | `ElemFill(dst, value, shape, stridesDst)` | `dst[i] = value` | ⚠️ **DEPRECATED** - Use `generics.ElemFillStrided[float32]` |
 | Add Scalar | `ElemAddScalar(dst, src, scalar, shape, stridesDst, stridesSrc)` | `dst[i] = src[i] + scalar` | ✅ **RECOMMENDED** |
 | Subtract Scalar | `ElemSubScalar(dst, src, scalar, shape, stridesDst, stridesSrc)` | `dst[i] = src[i] - scalar` | ✅ **RECOMMENDED** |
 | Divide Scalar | `ElemDivScalar(dst, src, scalar, shape, stridesDst, stridesSrc)` | `dst[i] = src[i] / scalar` | ✅ **RECOMMENDED** |
@@ -115,18 +115,18 @@ Located in `batched.go`. Extensions of BLAS operations for batched processing.
 
 | Operation | Function | Description | Status |
 |-----------|----------|-------------|--------|
-| Element-wise Greater Than | `ElemGreaterThan(dst, a, b, shape, stridesDst, stridesA, stridesB)` | `dst[i] = 1.0 if a[i] > b[i], else 0.0` | ✅ **RECOMMENDED** |
-| Element-wise Equal | `ElemEqual(dst, a, b, shape, stridesDst, stridesA, stridesB)` | `dst[i] = 1.0 if a[i] == b[i], else 0.0` | ✅ **RECOMMENDED** |
-| Element-wise Less | `ElemLess(dst, a, b, shape, stridesDst, stridesA, stridesB)` | `dst[i] = 1.0 if a[i] < b[i], else 0.0` | ✅ **RECOMMENDED** |
-| Element-wise Not Equal | `ElemNotEqual(dst, a, b, shape, stridesDst, stridesA, stridesB)` | `dst[i] = 1.0 if a[i] != b[i], else 0.0` | ✅ **RECOMMENDED** |
-| Element-wise Less Equal | `ElemLessEqual(dst, a, b, shape, stridesDst, stridesA, stridesB)` | `dst[i] = 1.0 if a[i] <= b[i], else 0.0` | ✅ **RECOMMENDED** |
-| Element-wise Greater Equal | `ElemGreaterEqual(dst, a, b, shape, stridesDst, stridesA, stridesB)` | `dst[i] = 1.0 if a[i] >= b[i], else 0.0` | ✅ **RECOMMENDED** |
+| Element-wise Greater Than | `ElemGreaterThan(dst, a, b, shape, stridesDst, stridesA, stridesB)` | `dst[i] = 1.0 if a[i] > b[i], else 0.0` | ⚠️ **DEPRECATED** - Use `generics.ElemGreaterThanStrided[float32]` |
+| Element-wise Equal | `ElemEqual(dst, a, b, shape, stridesDst, stridesA, stridesB)` | `dst[i] = 1.0 if a[i] == b[i], else 0.0` | ⚠️ **DEPRECATED** - Use `generics.ElemEqualStrided[float32]` |
+| Element-wise Less | `ElemLess(dst, a, b, shape, stridesDst, stridesA, stridesB)` | `dst[i] = 1.0 if a[i] < b[i], else 0.0` | ⚠️ **DEPRECATED** - Use `generics.ElemLessStrided[float32]` |
+| Element-wise Not Equal | `ElemNotEqual(dst, a, b, shape, stridesDst, stridesA, stridesB)` | `dst[i] = 1.0 if a[i] != b[i], else 0.0` | ⚠️ **DEPRECATED** - Use `generics.ElemNotEqualStrided[float32]` |
+| Element-wise Less Equal | `ElemLessEqual(dst, a, b, shape, stridesDst, stridesA, stridesB)` | `dst[i] = 1.0 if a[i] <= b[i], else 0.0` | ⚠️ **DEPRECATED** - Use `generics.ElemLessEqualStrided[float32]` |
+| Element-wise Greater Equal | `ElemGreaterEqual(dst, a, b, shape, stridesDst, stridesA, stridesB)` | `dst[i] = 1.0 if a[i] >= b[i], else 0.0` | ⚠️ **DEPRECATED** - Use `generics.ElemGreaterEqualStrided[float32]` |
 
 #### Ternary Operations
 
 | Operation | Function | Description | Status |
 |-----------|----------|-------------|--------|
-| Element-wise Where | `ElemWhere(dst, condition, a, b, shape, stridesDst, stridesCond, stridesA, stridesB)` | `dst[i] = a[i] if condition[i] > 0, else b[i]` | ✅ **RECOMMENDED** |
+| Element-wise Where | `ElemWhere(dst, condition, a, b, shape, stridesDst, stridesCond, stridesA, stridesB)` | `dst[i] = a[i] if condition[i] > 0, else b[i]` | ⚠️ **DEPRECATED** - Use `generics.ElemWhere[float32]` |
 
 #### Scaled Operations (Optimized Composite)
 
@@ -194,12 +194,35 @@ Located in `tensor.go`.
 
 ## Convolution Operations
 
-Located in `conv.go`.
+### 1D Convolution (conv.go)
+
+Located in `conv.go`. These are specialized 1D convolution implementations.
 
 | Operation | Function | Description | Status |
 |-----------|----------|-------------|--------|
 | 1D Convolution | `Convolve1D(dst, vec, kernel, N, M, stride, transposed)` | 1D convolution: `dst = conv(vec, kernel)` (dst-based) | ✅ **RECOMMENDED** |
 | 1D Convolution Add | `Convolve1DAdd(dst, vec, kernel, N, M, stride, transposed)` | 1D convolution with add: `dst += conv(...)` (accumulation) | ✅ **FOR ACCUMULATION** |
+
+### Multi-dimensional Convolution (tensor.go)
+
+Located in `tensor.go`. These use Im2Col + GEMM for optimized computation. All operations follow destination-first convention.
+
+**Forward Operations:**
+- `Conv2D` - 2D convolution using Im2Col + GEMM
+- `Conv2DTransposed` - Transposed 2D convolution (deconvolution)
+- `Conv2DTransposedWithOutputPadding` - Transposed 2D convolution with output padding
+- `Conv3D` - 3D convolution
+- `Conv3DTransposed` - Transposed 3D convolution
+- `DepthwiseConv2D` - Depthwise separable 2D convolution
+- `GroupConv2D` - Grouped 2D convolution
+- `DilatedConv2D` - Dilated (atrous) 2D convolution
+- `SeparableConv2D` - Separable 2D convolution (depthwise + pointwise)
+
+**Gradient Operations:**
+- `Conv2DKernelGrad` - Kernel gradients for 2D convolution
+- `Conv1DKernelGrad` - Kernel gradients for 1D convolution
+
+**Note**: Input gradients are computed using transposed convolution operations (e.g., `Conv2DTransposed` for 2D input gradients).
 
 ## Activation Functions
 
@@ -281,9 +304,28 @@ Located in `la.go`. LAPACK-style operations.
 
 ## Duplicates Summary
 
-### ✅ Consolidation Complete
+### ⚠️ Deprecated Functions (11 total)
 
-All deprecated functions have been removed as of this version. The fp32 package now contains only the recommended implementations:
+The following functions are **deprecated** and will be removed in v2.0.0. They are thin wrappers that call `generics` package functions directly. Use the generic functions instead:
+
+**Deprecated Element-wise Operations:**
+1. `ElemCopy` → Use `generics.ElemCopyStrided[float32]`
+2. `ElemFill` → Use `generics.ElemFillStrided[float32]`
+3. `ElemSign` → Use `generics.ElemSignStrided[float32]`
+4. `ElemNegative` → Use `generics.ElemNegativeStrided[float32]`
+5. `ElemWhere` → Use `generics.ElemWhere[float32]`
+6. `ElemGreaterThan` → Use `generics.ElemGreaterThanStrided[float32]`
+7. `ElemEqual` → Use `generics.ElemEqualStrided[float32]`
+8. `ElemLess` → Use `generics.ElemLessStrided[float32]`
+9. `ElemNotEqual` → Use `generics.ElemNotEqualStrided[float32]`
+10. `ElemLessEqual` → Use `generics.ElemLessEqualStrided[float32]`
+11. `ElemGreaterEqual` → Use `generics.ElemGreaterEqualStrided[float32]`
+
+See `GENERIC_OPS_MIGRATION_PLAN.md` for detailed migration guidance.
+
+### ✅ Recommended Implementations
+
+The fp32 package contains recommended implementations for all operations:
 
 - **Element-wise operations**: Use `ElemAdd`, `ElemSub`, `ElemMul`, `ElemDiv` from `tensor_elementwise.go`
 - **BLAS operations**: Use Level 1-3 operations (`Axpy`, `Dot`, `Scal`, `Gemm`, etc.)
@@ -307,7 +349,7 @@ All deprecated functions have been removed as of this version. The fp32 package 
 - **Utilities**: 12 (Array: 7, Vector: 5, Tensor: 4) ✓ **CLEANED** (includes dst-based versions)
 
 **Total Operations**: 125 functions across 13 categories
-**Consolidation Result**: Removed 11 deprecated functions, eliminated duplicates, added 31 new element-wise operations, added 16 new pooling operations, added 3 stride-based gradient functions, added 3 convolution extension operations, renamed 3 operations for naming consistency, added 5 dst-based operation versions
+**Migration Status**: 11 functions are deprecated (thin wrappers calling generics). 17 functions migrated to use generics internally (keep for API compatibility). All operations follow destination-first convention. See `GENERIC_OPS_MIGRATION_PLAN.md` for details.
 
 ### Operation Patterns
 

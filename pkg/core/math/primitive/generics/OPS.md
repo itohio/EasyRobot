@@ -297,16 +297,23 @@ Utility functions for stride iteration and shape manipulation. These are already
 
 ### Iterator Functions
 
+**⚠️ PERFORMANCE WARNING**: Generic iterator functions (`Elements`, `ElementsStrided`, `ElementsVec`, `ElementsMat`, `ElementsVecStrided`, `ElementsMatStrided`) are currently **too slow for production use** in performance-critical code paths. These iterators have significant overhead compared to direct nested loops. **Do NOT use these iterators** in hot paths such as:
+- Convolution operations (Im2Col, Col2Im)
+- Window-based operations (pooling, windowed convolutions)
+- Any operation requiring iteration over multi-dimensional indices in performance-critical code
+
+**Use direct nested loops instead** for these operations until iterator performance is improved.
+
 Iterator functions that can be used with Go's `range` keyword. These return iterator functions compatible with `iter.Seq` (Go 1.23+).
 
 | Operation | Generic Function | Status | Performance | Tests | Threading | Source |
 |-----------|------------------|--------|-------------|-------|-----------|--------|
-| Elements | `Elements(shape []int) func(func([]int) bool)` | ✅ | None/Minimal | Complete | 🔀 | New |
-| Elements Strided | `ElementsStrided(shape []int, strides []int) func(func([]int) bool)` | ✅ | None/Minimal | Complete | 🔀 | New |
-| Elements Vec | `ElementsVec(n int) func(func(int) bool)` | ✅ | None/Minimal | Complete | 🔀 | New |
-| Elements Vec Strided | `ElementsVecStrided(n int, stride int) func(func(int) bool)` | ✅ | None/Minimal | Complete | 🔀 | New |
-| Elements Mat | `ElementsMat(rows, cols int) func(func([2]int) bool)` | ✅ | None/Minimal | Complete | 🔀 | New |
-| Elements Mat Strided | `ElementsMatStrided(rows, cols int, ld int) func(func([2]int) bool)` | ✅ | None/Minimal | Complete | 🔀 | New |
+| Elements | `Elements(shape []int) func(func([]int) bool)` | ✅ | ⚠️ **TOO SLOW** | Complete | 🔀 | New |
+| Elements Strided | `ElementsStrided(shape []int, strides []int) func(func([]int) bool)` | ✅ | ⚠️ **TOO SLOW** | Complete | 🔀 | New |
+| Elements Vec | `ElementsVec(n int) func(func(int) bool)` | ✅ | ⚠️ **TOO SLOW** | Complete | 🔀 | New |
+| Elements Vec Strided | `ElementsVecStrided(n int, stride int) func(func(int) bool)` | ✅ | ⚠️ **TOO SLOW** | Complete | 🔀 | New |
+| Elements Mat | `ElementsMat(rows, cols int) func(func([2]int) bool)` | ✅ | ⚠️ **TOO SLOW** | Complete | 🔀 | New |
+| Elements Mat Strided | `ElementsMatStrided(rows, cols int, ld int) func(func([2]int) bool)` | ✅ | ⚠️ **TOO SLOW** | Complete | 🔀 | New |
 
 **Usage Examples:**
 ```go
@@ -327,11 +334,12 @@ for idx := range ElementsMat(rows, cols) {
 ```
 
 **Note**: 
+- ⚠️ **These iterators are currently too slow for production use** - use direct nested loops in performance-critical code paths
 - `Elements` and `ElementsStrided` yield `[]int` representing multi-dimensional indices
 - `ElementsVec` and `ElementsVecStrided` yield `int` representing linear indices (scalar for vectors)
 - `ElementsMat` and `ElementsMatStrided` yield `[2]int` representing (row, col) tuples
 - All iterators support early exit when `yield` returns `false`
-- `IterateOffsets` and `IterateOffsetsWithIndices` are callback-based convenience wrappers
+- `IterateOffsets` and `IterateOffsetsWithIndices` are callback-based convenience wrappers (these are fine to use, they're not iterator-based)
 
 ---
 

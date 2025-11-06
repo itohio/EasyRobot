@@ -17,6 +17,10 @@ This document identifies which eager tensor operations can be migrated to use ge
 
 **Key Principle**: Operations that are type-agnostic and don't rely on float32-specific precision or behavior should use generics. Operations that require float32-specific algorithms (e.g., BLAS, convolutions, pooling) must remain fp32-specific.
 
+**⚠️ IMPORTANT: Generic Iterators Are Too Slow**
+
+Generic iterator functions (`generics.Elements`, `generics.ElementsStrided`, `generics.ElementsVec`, `generics.ElementsMat`, `generics.ElementsWindow`, `generics.ElementsWindows`) are currently **too slow for production use** and should **NOT be used** in performance-critical code paths. Use direct nested loops instead for operations requiring iteration (e.g., Im2Col, Col2Im, window-based operations).
+
 ---
 
 ## Decision Framework
@@ -34,6 +38,7 @@ This document identifies which eager tensor operations can be migrated to use ge
 - Operation is specialized (convolutions, pooling, activations with special math)
 - Operation is in hot path with direct loop implementation
 - Operation has SIMD optimizations or platform-specific code
+- Operation requires iteration over windows or multi-dimensional indices (use direct nested loops instead of generic iterators)
 
 ---
 
