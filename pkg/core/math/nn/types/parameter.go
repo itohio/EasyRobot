@@ -123,5 +123,5 @@ func (p *Parameter) ZeroGrad() {
 	}
 
 	// Zero all gradient values
-	p.Grad.Scale(0)
+	p.Grad.Fill(nil, 0.0)
 }
