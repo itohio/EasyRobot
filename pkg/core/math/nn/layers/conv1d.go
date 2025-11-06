@@ -154,7 +154,7 @@ func (c *Conv1D) Forward(input tensorTypes.Tensor) (tensorTypes.Tensor, error) {
 			biasTensor = biasParamVal.Data
 		}
 	}
-	output = input.Conv1DTo(kernelParam.Data, biasTensor, output, c.stride, c.pad)
+	output = input.Conv1D(output, kernelParam.Data, biasTensor, c.stride, c.pad)
 
 	// Store output
 	c.Base.StoreOutput(output)
@@ -198,9 +198,10 @@ func (c *Conv1D) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tensor, er
 
 			// Sum over batch and length dimensions for each output channel
 			// gradOutput shape: [batch, outChannels, outLength]
-			summed := gradOutput.Sum(0, 2) // Sum over batch, length -> [outChannels]
-			// Copy summed values to bias gradient using optimized Tensor.Copy method
-			biasParam.Grad.Copy(summed)
+			// Sum over dimensions 0 (batch) and 2 (length), keeping dimension 1 (channels)
+			summed := gradOutput.Sum(biasParam.Grad, []int{0, 2}) // Sum over batch, length -> [outChannels]
+			// Copy summed values to bias gradient
+			biasParam.Grad = summed
 			c.Base.SetParam(types.ParamBiases, biasParam)
 		}
 	}
@@ -234,7 +235,9 @@ func (c *Conv1D) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tensor, er
 
 	// Use Conv2DTransposed with width=1
 	var emptyBias tensorTypes.Tensor
-	gradInput4D := gradOutput4D.Conv2DTransposed(kernel4D, emptyBias, []int{c.stride, 1}, []int{c.pad, 0})
+	gradInput4DShape := tensor.NewShape(batchSize, c.inChannels, input.Shape()[2], 1)
+	gradInput4DTmp := tensor.New(gradOutput.DataType(), gradInput4DShape)
+	gradInput4D := gradOutput4D.Conv2DTransposed(gradInput4DTmp, kernel4D, emptyBias, []int{c.stride, 1}, []int{c.pad, 0})
 
 	// Reshape back to 3D: [batch, inChannels, inLength, 1] -> [batch, inChannels, inLength]
 	gradInputShape := gradInput4D.Shape()

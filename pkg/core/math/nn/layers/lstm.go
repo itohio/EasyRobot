@@ -195,12 +195,14 @@ func (l *LSTM) computeForward(input, weightIH, weightHH, bias,
 	if isBatch {
 		// input: [batch_size, input_size], weight_ih: [4*hidden_size, input_size]
 		// input @ weight_ih.T = [batch_size, 4*hidden_size]
-		gates = input.MatMulTransposed(weightIH, false, true, nil)
+		gatesShape := tensor.NewShape(inputShape[0], 4*l.hiddenSize)
+		gatesTmp := tensor.New(input.DataType(), gatesShape)
+		gates = input.MatMulTransposed(gatesTmp, weightIH, false, true)
 	} else {
 		// input: [input_size], weight_ih: [4*hidden_size, input_size]
 		// Reshape input to [1, input_size] for matrix multiplication
 		inputReshaped := input.Reshape(tensor.NewShape(1, l.inputSize))
-		gatesTemp := inputReshaped.MatMulTransposed(weightIH, false, true, nil)
+		gatesTemp := inputReshaped.MatMulTransposed(nil, weightIH, false, true)
 		// Reshape back to [4*hidden_size]
 		gates = gatesTemp.Reshape(tensor.NewShape(4 * l.hiddenSize))
 	}
@@ -210,16 +212,18 @@ func (l *LSTM) computeForward(input, weightIH, weightHH, bias,
 	if isBatch {
 		// hiddenState: [batch_size, hidden_size], weight_hh: [4*hidden_size, hidden_size]
 		// hiddenState @ weight_hh.T = [batch_size, 4*hidden_size]
-		hiddenContribution = hiddenState.MatMulTransposed(weightHH, false, true, nil)
+		hiddenContributionShape := tensor.NewShape(inputShape[0], 4*l.hiddenSize)
+		hiddenContributionTmp := tensor.New(hiddenState.DataType(), hiddenContributionShape)
+		hiddenContribution = hiddenState.MatMulTransposed(hiddenContributionTmp, weightHH, false, true)
 	} else {
 		// hiddenState: [hidden_size], weight_hh: [4*hidden_size, hidden_size]
 		hiddenStateReshaped := hiddenState.Reshape(tensor.NewShape(1, l.hiddenSize))
-		hiddenContributionTemp := hiddenStateReshaped.MatMulTransposed(weightHH, false, true, nil)
+		hiddenContributionTemp := hiddenStateReshaped.MatMulTransposed(nil, weightHH, false, true)
 		hiddenContribution = hiddenContributionTemp.Reshape(tensor.NewShape(4 * l.hiddenSize))
 	}
 
 	// Add contributions: gates = gates + hiddenContribution
-	gates.Add(hiddenContribution)
+	gates = gates.Add(gates, hiddenContribution)
 
 	// Add bias (broadcast if needed)
 	if isBatch {
@@ -230,10 +234,10 @@ func (l *LSTM) computeForward(input, weightIH, weightHH, bias,
 		if err != nil {
 			return fmt.Errorf("LSTM.computeForward: bias broadcast failed: %w", err)
 		}
-		gates.Add(biasFull)
+		gates = gates.Add(gates, biasFull)
 	} else {
 		// gates: [4*hidden_size], bias: [4*hidden_size]
-		gates.Add(bias)
+		gates = gates.Add(gates, bias)
 	}
 
 	// Split gates into i, f, g, o using Slice operation
@@ -267,14 +271,17 @@ func (l *LSTM) computeForward(input, weightIH, weightHH, bias,
 	oGate = oGateSigmoid
 
 	// Update cell state: cell = fGate * cellState + iGate * gGate
-	cellNew := cellState.Clone()
-	cellNew.Mul(fGate)                 // cellNew = fGate * cellState
-	iGateG := iGate.Clone().Mul(gGate) // iGate * gGate
-	cellNew.Add(iGateG)                // cellNew = fGate * cellState + iGate * gGate
+	cellNew := tensor.New(cellState.DataType(), cellState.Shape())
+	cellState.Multiply(cellNew, fGate) // cellNew = cellState * fGate
+	iGateG := tensor.New(iGate.DataType(), iGate.Shape())
+	iGate.Multiply(iGateG, gGate) // iGateG = iGate * gGate
+	cellNew.Add(cellNew, iGateG)  // cellNew = cellNew + iGateG (in-place)
 
 	// Update hidden state: hidden = oGate * tanh(cellNew)
-	cellNewTanh := cellNew.Clone().Tanh(nil)
-	outputNew := oGate.Clone().Mul(cellNewTanh) // output = oGate * tanh(cellNew)
+	cellNewTanhTmp := tensor.New(cellNew.DataType(), cellNew.Shape())
+	cellNewTanh := cellNew.Tanh(cellNewTanhTmp)
+	outputNew := tensor.New(oGate.DataType(), oGate.Shape())
+	oGate.Multiply(outputNew, cellNewTanh) // outputNew = oGate * cellNewTanh
 
 	// Copy to output and cellState
 	output.Copy(outputNew)
@@ -289,10 +296,10 @@ func (l *LSTM) ResetState() {
 		return
 	}
 	if !tensor.IsNil(l.hiddenState) {
-		l.hiddenState.Scale(0)
+		l.hiddenState.ScalarMul(l.hiddenState, 0)
 	}
 	if !tensor.IsNil(l.cellState) {
-		l.cellState.Scale(0)
+		l.cellState.ScalarMul(l.cellState, 0)
 	}
 }
 

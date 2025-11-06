@@ -432,7 +432,7 @@ func TestXOR(t *testing.T) {
 							}
 							// Copy noise data into noise tensor and add it in-place
 							noiseTensor.Copy(tensor.FromFloat32(noiseTensor.Shape(), noiseData))
-							trainingInput.Add(noiseTensor)
+							trainingInput.Add(nil, noiseTensor)
 						}
 
 						loss, err := learn.TrainStep(model, optimizer, lossFn, trainingInput, targets[i])
@@ -838,7 +838,7 @@ func TestComplexXOR3Input(t *testing.T) {
 							}
 							// Copy noise data into noise tensor and add it in-place
 							noiseTensor.Copy(tensor.FromFloat32(noiseTensor.Shape(), noiseData))
-							trainingInput.Add(noiseTensor)
+							trainingInput.Add(nil, noiseTensor)
 						}
 
 						loss, err := learn.TrainStep(model, optimizer, lossFn, trainingInput, targets[i])

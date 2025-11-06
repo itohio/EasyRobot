@@ -172,7 +172,7 @@ func (c *Conv2D) Forward(input tensorTypes.Tensor) (tensorTypes.Tensor, error) {
 			biasTensor = biasParamVal.Data
 		}
 	}
-	output = input.Conv2DTo(kernelParam.Data, biasTensor, output, []int{c.strideH, c.strideW}, []int{c.padH, c.padW})
+	output = input.Conv2D(output, kernelParam.Data, biasTensor, []int{c.strideH, c.strideW}, []int{c.padH, c.padW})
 
 	// Store output
 	c.Base.StoreOutput(output)
@@ -221,7 +221,8 @@ func (c *Conv2D) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tensor, er
 	kernelTransposed := kernelParam.Data
 
 	var emptyBias tensorTypes.Tensor
-	inputGradTmp := gradOutput.Conv2DTransposed(kernelTransposed, emptyBias, []int{c.strideH, c.strideW}, []int{c.padH, c.padW})
+	inputGradTmpTensor := tensor.New(gradOutput.DataType(), inputShape)
+	inputGradTmp := gradOutput.Conv2DTransposed(inputGradTmpTensor, kernelTransposed, emptyBias, []int{c.strideH, c.strideW}, []int{c.padH, c.padW})
 
 	// Reshape to match input shape (transposed conv might not perfectly restore size)
 	// Use input's data type for input gradient (for correctness in backward pass)
@@ -249,9 +250,10 @@ func (c *Conv2D) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tensor, er
 
 			// Sum over batch, height, and width dimensions for each output channel
 			// gradOutput shape: [batch, outChannels, outHeight, outWidth]
-			summed := gradOutput.Sum(0, 2, 3) // Sum over batch, height, width -> [outChannels]
-			// Copy summed values to bias gradient using optimized Tensor.Copy method
-			biasParam.Grad.Copy(summed)
+			// Sum over dimensions 0 (batch), 2 (height), and 3 (width), keeping dimension 1 (channels)
+			summed := gradOutput.Sum(biasParam.Grad, []int{0, 2, 3}) // Sum over batch, height, width -> [outChannels]
+			// Copy summed values to bias gradient
+			biasParam.Grad = summed
 			c.Base.SetParam(types.ParamBiases, biasParam)
 		}
 	}
@@ -283,7 +285,12 @@ func (c *Conv2D) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tensor, er
 		// gradOutputReshaped^T shape: [outChannels, batch*outHeight*outWidth]
 		// inputCols shape: [batch*outHeight*outWidth, inChannels*kernelH*kernelW]
 		// Result: [outChannels, inChannels*kernelH*kernelW]
-		kernelGradMatrix := gradOutputReshaped.Transpose().MatMul(inputCols)
+		gradOutputTShape := tensor.NewShape(c.outChannels, batchSize*outHeight*outWidth)
+		gradOutputTTmp := tensor.New(gradOutputReshaped.DataType(), gradOutputTShape)
+		gradOutputT := gradOutputReshaped.Transpose(gradOutputTTmp, []int{1, 0})
+		kernelGradMatrixShape := tensor.NewShape(c.outChannels, c.inChannels*c.kernelH*c.kernelW)
+		kernelGradMatrixTmp := tensor.New(gradOutputT.DataType(), kernelGradMatrixShape)
+		kernelGradMatrix := gradOutputT.MatMul(kernelGradMatrixTmp, inputCols)
 
 		// Reshape result to kernel shape: [outChannels, inChannels, kernelH, kernelW]
 		kernelGradReshaped := kernelGradMatrix.Reshape(tensor.NewShape(c.outChannels, c.inChannels, c.kernelH, c.kernelW))

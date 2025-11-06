@@ -46,9 +46,9 @@ func (m *MSELoss) Gradient(pred, target tensor.Tensor) (tensor.Tensor, error) {
 	size := pred.Shape().Size()
 	var grad tensor.Tensor
 	grad = pred.Clone()
-	grad = grad.Sub(target)
+	grad = grad.Subtract(nil, target)
 	// Convert float32 to float64 for Scale interface
-	grad = grad.Scale(float64(2.0 / float32(size)))
+	grad = grad.MulScalar(nil, float64(2.0/float32(size)))
 
 	return grad, nil
 }
@@ -94,10 +94,10 @@ func (c *CrossEntropyLoss) Gradient(pred, target tensor.Tensor) (tensor.Tensor, 
 	zeros := tensor.ZerosLike(pred)
 	mask := pred.GreaterThan(zeros) // 1.0 where pred > 0, 0.0 otherwise
 	epsilonTensor := tensor.FullLike(pred, epsilon)
-	predPlusEps := pred.Clone().Add(epsilonTensor)
+	predPlusEps := pred.Clone().Add(nil, epsilonTensor)
 	negTarget := target.Clone().Negative(nil)
-	gradComputed := negTarget.Div(predPlusEps)
-	grad := pred.Where(mask, gradComputed, zeros)
+	gradComputed := negTarget.Divide(nil, predPlusEps)
+	grad := pred.Where(nil, mask, gradComputed, zeros)
 
 	return grad, nil
 }
@@ -168,7 +168,7 @@ func (c *CategoricalCrossEntropy) Gradient(pred, target tensor.Tensor) (tensor.T
 
 		// Gradient after softmax: pred - target
 		grad := predProb.Clone()
-		grad = grad.Sub(target)
+		grad = grad.Subtract(nil, target)
 		return grad, nil
 	}
 
@@ -177,10 +177,10 @@ func (c *CategoricalCrossEntropy) Gradient(pred, target tensor.Tensor) (tensor.T
 	zeros := tensor.ZerosLike(pred)
 	mask := pred.GreaterThan(zeros) // 1.0 where pred > 0, 0.0 otherwise
 	epsilonTensor := tensor.FullLike(pred, epsilon)
-	predPlusEps := pred.Clone().Add(epsilonTensor)
+	predPlusEps := pred.Clone().Add(nil, epsilonTensor)
 	negTarget := target.Clone().Negative(nil)
-	gradComputed := negTarget.Div(predPlusEps)
-	grad := pred.Where(mask, gradComputed, zeros)
+	gradComputed := negTarget.Divide(nil, predPlusEps)
+	grad := pred.Where(nil, mask, gradComputed, zeros)
 
 	return grad, nil
 }
@@ -192,11 +192,11 @@ func MSE(pred, target tensor.Tensor) float32 {
 	}
 
 	squaredDiff := pred.Clone()
-	squaredDiff = squaredDiff.Sub(target)
-	squaredDiff = squaredDiff.Mul(squaredDiff)
+	squaredDiff = squaredDiff.Subtract(nil, target)
+	squaredDiff = squaredDiff.Multiply(nil, squaredDiff)
 
 	size := pred.Shape().Size()
-	sum := squaredDiff.Sum()
+	sum := squaredDiff.Sum(nil, nil)
 	if size > 0 {
 		// At() returns float64, convert to float32 for division
 		return float32(sum.At(0)) / float32(size)
@@ -214,21 +214,21 @@ func CrossEntropy(pred, target tensor.Tensor) float32 {
 	// Create masks: target != 0 && pred > 0
 	zeros := tensor.ZerosLike(pred)
 	targetAbs := target.Clone().Abs(nil)
-	targetNonZero := targetAbs.GreaterThan(zeros)   // mask for target != 0
-	predPositive := pred.GreaterThan(zeros)         // mask for pred > 0
-	combinedMask := targetNonZero.Mul(predPositive) // combined condition mask
+	targetNonZero := targetAbs.GreaterThan(zeros)             // mask for target != 0
+	predPositive := pred.GreaterThan(zeros)                   // mask for pred > 0
+	combinedMask := targetNonZero.Multiply(nil, predPositive) // combined condition mask
 
 	// Compute: -target * log(pred + epsilon) where condition is true
 	const epsilon = 1e-10
 	epsilonTensor := tensor.FullLike(pred, epsilon)
-	predPlusEps := pred.Clone().Add(epsilonTensor)
+	predPlusEps := pred.Clone().Add(nil, epsilonTensor)
 	logPred := predPlusEps.Log(nil)
-	targetLogPred := target.Clone().Mul(logPred)
-	maskedLoss := targetLogPred.Mul(combinedMask)
+	targetLogPred := target.Clone().Multiply(nil, logPred)
+	maskedLoss := targetLogPred.Multiply(nil, combinedMask)
 
 	// Sum and negate to get final loss
 	// At() returns float64, convert to float32 for return
-	loss := -float32(maskedLoss.Sum().At(0))
+	loss := -float32(maskedLoss.Sum(nil, nil).At(0))
 
 	return loss
 }

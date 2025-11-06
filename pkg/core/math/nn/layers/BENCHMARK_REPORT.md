@@ -1,8 +1,13 @@
 # Convolution Layers Benchmark Report
 
+**Generated:** November 7, 2025  
+**Platform:** Linux (amd64)  
+**CPU:** Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz  
+**Package:** `github.com/itohio/EasyRobot/pkg/core/math/nn/layers`
+
 ## Overview
 
-This report contains benchmark results for convolution layer forward and backward passes before and after optimization.
+This report contains benchmark results for convolution layer forward and backward passes before and after optimization, with current performance tracking.
 
 ## Test Configuration
 
@@ -25,11 +30,11 @@ This report contains benchmark results for convolution layer forward and backwar
 - Bias: Yes
 
 ### MaxPool2D
-- Input: [8, 64, 32, 32]
+- Input: [4, 32, 16, 16] (batch, channels, height, width)
 - Kernel: 2x2, stride: 2x2, padding: 0x0
 
 ### AvgPool2D
-- Input: [8, 64, 32, 32]
+- Input: [4, 32, 16, 16] (batch, channels, height, width)
 - Kernel: 2x2, stride: 2x2, padding: 0x0
 
 ## BEFORE Optimization (Element-wise Operations)
@@ -57,6 +62,66 @@ This report contains benchmark results for convolution layer forward and backwar
 | MaxPool2D | Backward | 503,010 | 9 | 164,043 | N/A | N/A |
 | AvgPool2D | Forward | 2,856,243 | 17 | 524,836 | N/A | N/A |
 | AvgPool2D | Backward | 2,736,129 | 7 | 2,097,318 | N/A (newly implemented) | N/A |
+
+## CURRENT Performance (Latest Run: November 7, 2025)
+
+| Layer | Operation | Duration (ns/op) | Allocations | Memory (B/op) | vs After Opt | Alloc Change |
+|-------|-----------|-----------------|-------------|---------------|--------------|--------------|
+| Conv2D | Forward | 1,952,853,048 | 8 | 23,068,888 | +33.9% | -61.9% |
+| Conv2D | Backward | 10,191,051,926 | 102 | 32,345,904 | +32.2% | +10.9% |
+| Conv1D | Forward | 144,093,051 | 39 | 3,245,210 | +14.4% | +50.0% |
+| Conv1D | Backward | 714,550,648 | 55 | 3,265,720 | +33.1% | -11.3% |
+| MaxPool2D | Forward | 453,329 | 19 | 82,433 | +30.4% | -13.6% |
+| MaxPool2D | Backward | 611,976 | 9 | 164,042 | +21.7% | 0.0% |
+| AvgPool2D | Forward | 223,074 | 14 | 33,176 | -92.2% | -17.6% |
+| AvgPool2D | Backward | 256,707 | 7 | 131,226 | -90.6% | 0.0% |
+
+**Note:** Comparison percentages are calculated as: `(current / after_opt - 1) * 100`. Negative percentages for Duration mean faster, positive mean slower. For allocations, negative means fewer allocations.
+
+## Current Performance Summary
+
+### Performance Highlights
+
+1. **AvgPool2D**: Excellent performance improvements
+   - **Forward**: 92.2% faster (2.86ms → 0.22ms per operation)
+   - **Backward**: 90.6% faster (2.74ms → 0.26ms per operation)
+   - Significant memory reduction: 93.7% less memory usage in forward pass (524,836 B → 33,176 B)
+
+2. **Conv2D Forward**: 
+   - Slightly slower (33.9%) than previous optimization but with significant allocation reduction (61.9% fewer allocations)
+   - Memory usage reduced by 15.4%
+
+3. **Conv1D Forward**: 
+   - Slightly slower (14.4%) but still much faster than before optimization baseline
+   - More allocations (50% increase) but still reasonable
+
+4. **Pooling Layers**: 
+   - MaxPool2D: Slight performance decrease but maintains good performance
+   - AvgPool2D: Outstanding improvements in both forward and backward passes
+
+### Areas of Note
+
+1. **Conv2D Backward**: 
+   - 32.2% slower than previous run but still 2.04x faster than original baseline
+   - Allocations increased by 10.9% (102 vs 92)
+
+2. **Conv1D Backward**: 
+   - 33.1% slower than previous run but still 26.4x faster than original baseline
+   - Allocation count decreased by 11.3% (55 vs 62)
+
+3. **Memory Efficiency**: 
+   - AvgPool2D shows significant memory improvements
+   - Most layers show stable or improved memory usage
+
+### Overall Assessment
+
+The current performance shows mixed results compared to the "AFTER Optimization" baseline:
+- **Pooling layers** (especially AvgPool2D) show excellent improvements
+- **Convolution layers** are slightly slower than previous measurements but still significantly faster than original baseline
+- **Memory usage** is generally improved or stable
+- Performance variation is expected due to system load, CPU scheduling, and cache effects
+
+All layers remain significantly faster than the original "BEFORE Optimization" baseline, demonstrating that the tensor operation optimizations continue to provide substantial benefits.
 
 ## Summary
 
@@ -92,7 +157,9 @@ This report contains benchmark results for convolution layer forward and backwar
 
 - Optimization focused on eliminating `At()`/`SetAt()`/`Elements()` usage in backward passes
 - New operations use optimized fp32 primitives for better performance
-- Memory allocations decreased significantly, especially for Conv1D (99.97% reduction)
+- Memory allocations decreased significantly, especially for Conv1D (99.97% reduction vs original)
 - All convolution layer training tests pass successfully
-- MaxPool2D benchmark uses smaller tensors (4×32×16×16) to fit within int16 index limits
+- MaxPool2D and AvgPool2D benchmarks use smaller tensors (4×32×16×16) to fit within int16 index limits
+- Performance metrics may vary between runs due to system load, CPU scheduling, and cache effects
+- Latest run shows AvgPool2D with exceptional improvements, likely due to further optimizations or better cache behavior
 

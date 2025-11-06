@@ -53,9 +53,9 @@ func (s *SGD) Update(param types.Parameter) error {
 	// Since param is by value but Data is a reference, we modify the underlying tensor
 	// Note: Sub() modifies in place and returns self, so we can just call it
 	scaledGrad := param.Grad.Clone()
-	scaledGrad = scaledGrad.Scale(s.lr)
+	scaledGrad = scaledGrad.MulScalar(nil, s.lr)
 	// Sub() modifies param.Data in place, so the tensor data is updated
-	param.Data.Sub(scaledGrad)
+	param.Data.Subtract(nil, scaledGrad)
 
 	return nil
 }
@@ -164,24 +164,24 @@ func (a *Adam) Update(param types.Parameter) error {
 	biasCorrection2 := 1 - beta2Power
 
 	// Update first moment estimate: m = beta1 * m + (1-beta1) * g
-	state.m = state.m.Scale(a.beta1)
+	state.m = state.m.MulScalar(nil, a.beta1)
 	scaledGrad1 := param.Grad.Clone()
-	scaledGrad1 = scaledGrad1.Scale(1 - a.beta1)
-	state.m = state.m.Add(scaledGrad1)
+	scaledGrad1 = scaledGrad1.MulScalar(nil, 1-a.beta1)
+	state.m = state.m.Add(nil, scaledGrad1)
 
 	// Update second moment estimate: v = beta2 * v + (1-beta2) * g^2
 	gradSquared := param.Grad.Clone()
-	gradSquared = gradSquared.Mul(param.Grad)
-	state.v = state.v.Scale(a.beta2)
+	gradSquared = gradSquared.Multiply(nil, param.Grad)
+	state.v = state.v.MulScalar(nil, a.beta2)
 	scaledGrad2 := gradSquared.Clone()
-	scaledGrad2 = scaledGrad2.Scale(1 - a.beta2)
-	state.v = state.v.Add(scaledGrad2)
+	scaledGrad2 = scaledGrad2.MulScalar(nil, 1-a.beta2)
+	state.v = state.v.Add(nil, scaledGrad2)
 
 	// Compute bias-corrected estimates: mHat = m / (1 - beta1^t), vHat = v / (1 - beta2^t)
 	mHat := state.m.Clone()
-	mHat = mHat.Scale(1.0 / biasCorrection1)
+	mHat = mHat.MulScalar(nil, 1.0/biasCorrection1)
 	vHat := state.v.Clone()
-	vHat = vHat.Scale(1.0 / biasCorrection2)
+	vHat = vHat.MulScalar(nil, 1.0/biasCorrection2)
 
 	// Compute sqrt(vHat) + epsilon
 	sqrtVHat := vHat.Clone()
@@ -192,14 +192,14 @@ func (a *Adam) Update(param types.Parameter) error {
 	for elem := range epsilonTensor.Elements() {
 		elem.Set(a.epsilon)
 	}
-	sqrtVHat = sqrtVHat.Add(epsilonTensor)
+	sqrtVHat = sqrtVHat.Add(nil, epsilonTensor)
 
 	// Compute update: param = param - lr * mHat / (sqrt(vHat) + epsilon)
 	update := mHat.Clone()
-	update = update.Div(sqrtVHat)
-	update = update.Scale(a.lr)
+	update = update.Divide(nil, sqrtVHat)
+	update = update.MulScalar(nil, a.lr)
 	// Sub() modifies param.Data in place, so the tensor data is updated
-	param.Data.Sub(update)
+	param.Data.Subtract(nil, update)
 
 	return nil
 }

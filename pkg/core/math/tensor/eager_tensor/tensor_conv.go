@@ -768,8 +768,6 @@ func (t Tensor) MaxPool2DWithIndices(kernelSize, stride, padding []int) (types.T
 	result := New(t.DataType(), types.NewShape(batchSize, channels, outHeight, outWidth))
 	resultPtr := &result
 
-	// Create indices tensor (int32 type for fp32 primitive, but we'll store as int16 for Tensor compatibility)
-	// Note: This limits tensor size to int16 max, but is sufficient for most use cases
 	indicesSize := batchSize * channels * outHeight * outWidth
 	indicesDataInt32 := make([]int32, indicesSize)
 
@@ -784,20 +782,7 @@ func (t Tensor) MaxPool2DWithIndices(kernelSize, stride, padding []int) (types.T
 		kernelH, kernelW, strideH, strideW, padH, padW,
 	)
 
-	// Convert int32 to int16 for Tensor storage (with bounds checking)
-	indicesDataInt16 := make([]int16, indicesSize)
-	for i := range indicesDataInt32 {
-		idx := indicesDataInt32[i]
-		if idx < 0 {
-			indicesDataInt16[i] = -1
-		} else if idx > 32767 {
-			panic(fmt.Sprintf("tensor.MaxPool2DWithIndices: index %d exceeds int16 max, need int32 support", idx))
-		} else {
-			indicesDataInt16[i] = int16(idx)
-		}
-	}
-
-	indices := FromArray(types.NewShape(batchSize, channels, outHeight, outWidth), indicesDataInt16)
+	indices := FromArray(types.NewShape(batchSize, channels, outHeight, outWidth), indicesDataInt32)
 	return resultPtr, &indices
 }
 
@@ -857,15 +842,8 @@ func (t Tensor) MaxPool2DBackward(gradOutput types.Tensor, indices types.Tensor,
 	// Get data
 	gradInputData := types.GetTensorData[[]float32](gradInputPtr)
 	gradOutputData := types.GetTensorData[[]float32](gradOutput)
-	indicesDataInt16 := types.GetTensorData[[]int16](indices)
+	indicesDataInt32 := types.GetTensorData[[]int32](indices)
 	tData := types.GetTensorData[[]float32](t)
-
-	// Convert int16 indices to int32 for fp32 primitive
-	indicesSize := len(indicesDataInt16)
-	indicesDataInt32 := make([]int32, indicesSize)
-	for i, idx := range indicesDataInt16 {
-		indicesDataInt32[i] = int32(idx)
-	}
 
 	// Call fp32.MaxPool2DBackward
 	fp32.MaxPool2DBackward(
@@ -1568,7 +1546,7 @@ func (t Tensor) Col2Im(outputShape, kernelSize, stride, padding []int) types.Ten
 
 // ScatterAdd adds values to destination tensor at positions specified by indices
 // dst: destination tensor (modified in-place, should be zero-initialized)
-// index: indices tensor [batch, channels, outHeight, outWidth] as int16 (linear indices into dst)
+// index: indices tensor [batch, channels, outHeight, outWidth] as int32 (linear indices into dst)
 // value: values to add [batch, channels, outHeight, outWidth]
 // For each position in index, adds the corresponding value from value to dst[index[i]]
 // This is a general scatter operation useful for gradient routing in backpropagation
@@ -1605,15 +1583,8 @@ func (t Tensor) ScatterAdd(dst types.Tensor, index types.Tensor, value types.Ten
 
 	// Get data
 	dstData := types.GetTensorData[[]float32](dst)
-	indexDataInt16 := types.GetTensorData[[]int16](index)
+	indexDataInt32 := types.GetTensorData[[]int32](index)
 	valueData := types.GetTensorData[[]float32](value)
-
-	// Convert int16 indices to int32 for fp32 primitive
-	indicesSize := len(indexDataInt16)
-	indexDataInt32 := make([]int32, indicesSize)
-	for i, idx := range indexDataInt16 {
-		indexDataInt32[i] = int32(idx)
-	}
 
 	// Call fp32.ScatterAdd
 	fp32.ScatterAdd(

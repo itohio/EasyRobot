@@ -135,7 +135,7 @@ func TestConv2D_Layer_Learning(t *testing.T) {
 
 			// Mean output to get scalar: output shape [1, 4, 3, 3] -> mean all elements -> scalar
 			// This normalizes the output to a reasonable range
-			outputMean := output.Mean() // Returns [1] tensor with mean
+			outputMean := output.Mean(nil, nil) // Returns [1] tensor with mean
 
 			// Scale target to match expected output range (since we're using mean)
 			// Mean of [1, 4, 3, 3] = 36 elements, so scale target by 36 to match sum
@@ -197,7 +197,7 @@ func TestConv2D_Layer_Learning(t *testing.T) {
 		}
 
 		// Mean output to get scalar
-		outputMean := output.Mean()
+		outputMean := output.Mean(nil, nil)
 		predicted := float32(outputMean.At(0))
 
 		// Scale target to match (since we're using mean of 36 elements)
@@ -218,7 +218,7 @@ func TestConv2D_Layer_Learning(t *testing.T) {
 	for i, input := range testInputs {
 		output, err := conv2d.Forward(input)
 		if err == nil {
-			outputMean := output.Mean()
+			outputMean := output.Mean(nil, nil)
 			predicted := float32(outputMean.At(0))
 			expected := float32(testTargets[i].At(0)) * 36.0
 			error := absFloat32(predicted - expected)
@@ -372,7 +372,7 @@ func TestDenseConv2D_CombinedLearning(t *testing.T) {
 			}
 
 			// Mean output to get scalar
-			outputMean := output.Mean()
+			outputMean := output.Mean(nil, nil)
 			scaledTarget := tensor.FromFloat32(tensor.NewShape(1), []float32{float32(trainingTargets[i].At(0)) * 36.0})
 
 			// Compute loss
@@ -428,7 +428,7 @@ func TestDenseConv2D_CombinedLearning(t *testing.T) {
 			t.Fatalf("Forward failed for test input %d: %v", i, err)
 		}
 
-		outputMean := output.Mean()
+		outputMean := output.Mean(nil, nil)
 		predicted := float32(outputMean.At(0))
 		expected := float32(testTargets[i].At(0)) * 36.0
 		error := absFloat32(predicted - expected)

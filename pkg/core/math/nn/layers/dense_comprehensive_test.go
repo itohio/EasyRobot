@@ -308,7 +308,7 @@ func TestDense_NumericalGradientCheck(t *testing.T) {
 		// Forward pass with perturbed weight
 		outputPlus, err := dense.Forward(input)
 		require.NoError(t, err)
-		lossPlusTensor := outputPlus.Sum()
+		lossPlusTensor := outputPlus.Sum(nil, nil) // Sum over all dimensions
 		lossPlus := lossPlusTensor.At(0)
 
 		// Restore weight
@@ -318,7 +318,7 @@ func TestDense_NumericalGradientCheck(t *testing.T) {
 		// Forward pass with original weight
 		outputOrig, err := dense.Forward(input)
 		require.NoError(t, err)
-		lossOrigTensor := outputOrig.Sum()
+		lossOrigTensor := outputOrig.Sum(nil, nil) // Sum over all dimensions
 		lossOrig := lossOrigTensor.At(0)
 
 		// Numerical gradient
@@ -353,7 +353,7 @@ func TestDense_NumericalGradientCheck(t *testing.T) {
 		// Forward pass with perturbed bias
 		outputPlus, err := dense.Forward(input)
 		require.NoError(t, err)
-		lossPlusTensor := outputPlus.Sum()
+		lossPlusTensor := outputPlus.Sum(nil, nil) // Sum over all dimensions
 		lossPlus := lossPlusTensor.At(0)
 
 		// Restore bias
@@ -363,7 +363,7 @@ func TestDense_NumericalGradientCheck(t *testing.T) {
 		// Forward pass with original bias
 		outputOrig, err := dense.Forward(input)
 		require.NoError(t, err)
-		lossOrigTensor := outputOrig.Sum()
+		lossOrigTensor := outputOrig.Sum(nil, nil) // Sum over all dimensions
 		lossOrig := lossOrigTensor.At(0)
 
 		// Numerical gradient

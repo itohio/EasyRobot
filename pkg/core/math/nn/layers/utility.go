@@ -672,14 +672,12 @@ func (t *Transpose) Forward(input types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("Transpose.Forward: output not allocated, must call Init first")
 	}
 
-	// Use tensor.Transpose
-	transposed := input.Transpose()
+	// Use tensor.Transpose with output as destination
+	// For 2D transpose, dims should be [1, 0] to swap dimensions
+	transposed := input.Transpose(output, []int{1, 0})
 	if transposed == nil {
 		return nil, fmt.Errorf("Transpose.Forward: transpose failed")
 	}
-
-	// Copy transposed data to output using optimized Tensor.Copy method
-	output.Copy(transposed)
 
 	t.Base.StoreOutput(output)
 	return output, nil
@@ -701,15 +699,13 @@ func (t *Transpose) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 	}
 
 	// Gradient of transpose is transpose of gradient
-	transposed := gradOutput.Transpose()
-	if transposed == nil {
+	// Use input's data type for input gradient (for correctness in backward pass)
+	gradInputTmp := tensor.New(input.DataType(), input.Shape())
+	// For 2D transpose, dims should be [1, 0] to swap dimensions
+	gradInput := gradOutput.Transpose(gradInputTmp, []int{1, 0})
+	if tensor.IsNil(gradInput) {
 		return nil, fmt.Errorf("Transpose.Backward: transpose failed")
 	}
-
-	// Use input's data type for input gradient (for correctness in backward pass)
-	gradInput := tensor.New(input.DataType(), input.Shape())
-	// Copy transposed data using optimized Tensor.Copy method
-	gradInput.Copy(transposed)
 
 	t.Base.StoreGrad(gradInput)
 	return gradInput, nil

@@ -45,8 +45,8 @@ func numericalGradient(f func(types.Tensor) (types.Tensor, error), input types.T
 			gradVal = (fPlus.At(0) - fOrig.At(0)) / epsilon
 		} else {
 			// Sum all elements of the output
-			sumPlusTensor := fPlus.Sum()
-			sumOrigTensor := fOrig.Sum()
+			sumPlusTensor := fPlus.Sum(nil, nil) // Sum over all dimensions
+			sumOrigTensor := fOrig.Sum(nil, nil) // Sum over all dimensions
 			sumPlus := sumPlusTensor.At(0)
 			sumOrig := sumOrigTensor.At(0)
 			gradVal = (sumPlus - sumOrig) / epsilon
@@ -96,7 +96,7 @@ func checkGradientAccuracy(analyticalGrad, numericalGrad types.Tensor, tolerance
 // computeLoss creates a simple loss function that sums all elements
 // This is useful for gradient checking
 func computeLoss(output types.Tensor) float64 {
-	sumTensor := output.Sum()
+	sumTensor := output.Sum(nil, nil) // Sum over all dimensions
 	return sumTensor.At(0)
 }
 

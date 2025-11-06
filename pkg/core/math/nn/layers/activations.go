@@ -80,8 +80,9 @@ func (r *ReLU) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 	zeros := tensor.ZerosLike(input)
 	mask := input.GreaterThan(zeros)
 
-	// Element-wise multiply: gradOutput * mask
-	gradInput := gradOutput.Clone().Mul(mask)
+	// Element-wise multiply: gradInput = gradOutput * mask
+	gradInput := tensor.New(gradOutput.DataType(), gradOutput.Shape())
+	gradOutput.Multiply(gradInput, mask)
 
 	r.Base.StoreGrad(gradInput)
 	return gradInput, nil
@@ -168,9 +169,12 @@ func (s *Sigmoid) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 
 	// Sigmoid gradient using primitives: gradInput = gradOutput * output * (1 - output)
 	ones := tensor.OnesLike(output)
-	term1 := ones.Clone().Sub(output)          // (1 - output) - clone ones first to avoid modifying it
-	term2 := output.Clone().Mul(term1)         // output * (1 - output) - clone output to avoid modifying stored tensor
-	gradInput := gradOutput.Clone().Mul(term2) // gradOutput * output * (1 - output) - clone gradOutput
+	term1 := tensor.New(output.DataType(), output.Shape())
+	ones.Subtract(term1, output) // term1 = ones - output
+	term2 := tensor.New(output.DataType(), output.Shape())
+	output.Multiply(term2, term1) // term2 = output * term1
+	gradInput := tensor.New(gradOutput.DataType(), gradOutput.Shape())
+	gradOutput.Multiply(gradInput, term2) // gradInput = gradOutput * term2
 
 	s.Base.StoreGrad(gradInput)
 	return gradInput, nil
@@ -256,10 +260,13 @@ func (t *Tanh) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 	}
 
 	// Tanh gradient using primitives: gradInput = gradOutput * (1 - output^2)
-	squared := output.Clone().Mul(output) // output^2
+	squared := tensor.New(output.DataType(), output.Shape())
+	output.Multiply(squared, output) // squared = output * output
 	ones := tensor.OnesLike(output)
-	term := ones.Clone().Sub(squared)         // (1 - output^2)
-	gradInput := gradOutput.Clone().Mul(term) // gradOutput * (1 - output^2)
+	term := tensor.New(ones.DataType(), ones.Shape())
+	ones.Subtract(term, squared) // term = ones - squared
+	gradInput := tensor.New(gradOutput.DataType(), gradOutput.Shape())
+	gradOutput.Multiply(gradInput, term) // gradInput = gradOutput * term
 
 	t.Base.StoreGrad(gradInput)
 	return gradInput, nil
@@ -348,10 +355,12 @@ func (s *Softmax) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 
 	// Softmax gradient using primitives: gradInput = output * (gradOutput - sum(gradOutput * output))
 	// Step 1: Compute element-wise product: gradOutput * output
-	prod := gradOutput.Clone().Mul(output)
+	prod := tensor.New(gradOutput.DataType(), gradOutput.Shape())
+	gradOutput.Multiply(prod, output)
 
 	// Step 2: Sum along the softmax dimension
-	sumTerm := prod.Sum(s.dim)
+	// Sum with nil dst will create a new tensor with appropriate shape
+	sumTerm := prod.Sum(nil, []int{s.dim})
 
 	// Step 3: Broadcast sum back to original shape
 	sumBroadcast, err := sumTerm.BroadcastTo(output.Shape())
@@ -360,10 +369,12 @@ func (s *Softmax) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 	}
 
 	// Step 4: Compute: gradOutput - sumTerm
-	diff := gradOutput.Clone().Sub(sumBroadcast)
+	diff := tensor.New(gradOutput.DataType(), gradOutput.Shape())
+	gradOutput.Subtract(diff, sumBroadcast)
 
 	// Step 5: Compute final gradient: output * (gradOutput - sumTerm)
-	gradInput := output.Clone().Mul(diff)
+	gradInput := tensor.New(output.DataType(), output.Shape())
+	output.Multiply(gradInput, diff)
 
 	s.Base.StoreGrad(gradInput)
 	return gradInput, nil
@@ -485,7 +496,7 @@ func (d *Dropout) Forward(input types.Tensor) (types.Tensor, error) {
 		// Copy input to output and apply dropout using tensor method
 		// Use Clone to copy input to output, then apply dropout
 		output = input.Clone()
-		output = output.DropoutForward(d.mask)
+		output = output.DropoutForward(output, d.mask)
 	} else {
 		// Inference mode: pass through unchanged
 		output = input.Clone()
@@ -514,7 +525,8 @@ func (d *Dropout) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 	var gradInput types.Tensor
 	if d.isTraining && d.p > 0 && !tensor.IsNil(d.mask) {
 		// Training mode: gradInput = gradOutput * mask
-		gradInput = gradOutput.Clone().Mul(d.mask)
+		gradInput = tensor.New(gradOutput.DataType(), gradOutput.Shape())
+		gradOutput.Multiply(gradInput, d.mask)
 	} else {
 		// Inference mode or no dropout: pass gradient through unchanged
 		gradInput = gradOutput.Clone()
