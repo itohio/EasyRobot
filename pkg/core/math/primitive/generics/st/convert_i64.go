@@ -8,10 +8,7 @@ import (
 	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 )
 
-// Types that need clamping when converting to int (sorted by type size)
-type clampableToInt interface {
-	~float64 | ~float32
-}
+// clampableToInt is now in helpers package as ClampableToInt
 
 // elemConvertToInt handles conversions to int with clamping.
 // Handles: float32/float64 -> int (needs clamping)
@@ -37,7 +34,7 @@ func elemConvertToInt[U Numeric](dst []int, src []U) {
 
 // clampToInt implements the hot path inner loop for clamping to int range.
 // Generic over source types that need clamping (float32, float64).
-func clampToInt[U clampableToInt](dst []int, src []U, n int) {
+func clampToInt[U ClampableToInt](dst []int, src []U, n int) {
 	if n == 0 {
 		return
 	}
@@ -68,7 +65,7 @@ func elemConvertToIntStrided[U Numeric](dst []int, src []U, shape []int, srcStri
 
 // clampToIntStrided implements the hot path for strided copying with clamping to int.
 // Generic over source types that need clamping (float32, float64).
-func clampToIntStrided[U clampableToInt](dst []int, src []U, shape []int, srcStrides, dstStrides []int) {
+func clampToIntStrided[U ClampableToInt](dst []int, src []U, shape []int, srcStrides, dstStrides []int) {
 	ndims := len(shape)
 	if ndims == 0 {
 		return
@@ -112,15 +109,4 @@ func clampToIntStrided[U clampableToInt](dst []int, src []U, shape []int, srcStr
 	}
 }
 
-// clampToIntValue clamps a single value to int range.
-// Used by stride-based copying where we process one element at a time.
-func clampToIntValue[U clampableToInt](v U) int {
-	if v > U(math.MaxInt) {
-		return math.MaxInt
-	}
-	if v < U(math.MinInt) {
-		return math.MinInt
-	}
-	return int(v)
-}
-
+// clampToIntValue now uses helpers.ClampToIntValue

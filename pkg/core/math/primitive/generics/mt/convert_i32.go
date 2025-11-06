@@ -1,6 +1,6 @@
 //go:build 386 || arm || mips || mipsle
 
-package st
+package mt
 
 import (
 	"math"

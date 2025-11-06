@@ -18,6 +18,18 @@ This document outlines the plan for parallelizing generic operations to improve 
 - **`*_mt.go`**: Multi-threaded implementations (requires `use_mt` build tag)
 - **`multithreaded.go`**: Goroutine pool implementation (only built with `use_mt` tag)
 
+### Subpackage organization
+- **st**: Single threaded implementations
+- **mt**: multithreaded implementations with fallback to st subpackage implementations for small arrays
+
+st and mt packages do not need to be guarded by tags. Only generics master package should have tag guided exports of st/mt functions.
+
+### Multithreaded implementation guides:
+- Early fallback to st subpackage operations
+- Avoid duplicate implementation. 
+- If it is more efficient to keep internal implementations - it is better to import them from st subpackage than to duplicate
+- It is better to call st subpackage implementation for chunks
+
 ### Goroutine Pool
 - Initialized in `init()` when `use_mt` tag is present
 - Number of goroutines = `runtime.NumCPU()`

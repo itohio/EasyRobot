@@ -1,15 +1,77 @@
-//go:build !use_mt
-
 package generics
 
-import (
-	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
-	st "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/st"
-)
+import . "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 
 // ValueConvert converts a value from type T to type U with appropriate clamping.
 // This is a naive implementation for single value conversion.
 // Handles all conversions including clamping for down-conversions (e.g., float64 -> int8).
 func ValueConvert[T, U Numeric](value T) (zeroU U) {
-	return st.ValueConvert[T, U](value)
+	switch any(zeroU).(type) {
+	case float32, float64:
+		return U(value)
+	case int64:
+		// Need to clamp if converting from larger types
+		switch v := any(value).(type) {
+		case float32:
+			return U(ClampToInt64Value(v))
+		case float64:
+			return U(ClampToInt64Value(v))
+		default:
+			return U(value)
+		}
+	case int:
+		// Need to clamp if converting from larger types (platform-specific)
+		// Platform-specific handling is in helpers/value_convert_i32.go and helpers/value_convert_i64.go
+		return ValueConvertToInt[T, U](value)
+	case int32:
+		// Need to clamp if converting from larger types
+		switch v := any(value).(type) {
+		case float32:
+			return U(ClampToInt32Value(v))
+		case float64:
+			return U(ClampToInt32Value(v))
+		case int64:
+			return U(ClampToInt32Value(v))
+		case int:
+			return U(ClampToInt32Value(v))
+		default:
+			return U(value)
+		}
+	case int16:
+		// Need to clamp if converting from larger types
+		switch v := any(value).(type) {
+		case float32:
+			return U(ClampToInt16Value(v))
+		case float64:
+			return U(ClampToInt16Value(v))
+		case int64:
+			return U(ClampToInt16Value(v))
+		case int:
+			return U(ClampToInt16Value(v))
+		case int32:
+			return U(ClampToInt16Value(v))
+		default:
+			return U(value)
+		}
+	case int8:
+		// Need to clamp if converting from larger types
+		switch v := any(value).(type) {
+		case float32:
+			return U(ClampToInt8Value(v))
+		case float64:
+			return U(ClampToInt8Value(v))
+		case int64:
+			return U(ClampToInt8Value(v))
+		case int:
+			return U(ClampToInt8Value(v))
+		case int32:
+			return U(ClampToInt8Value(v))
+		case int16:
+			return U(ClampToInt8Value(v))
+		default:
+			return U(value)
+		}
+	default:
+		return U(value)
+	}
 }

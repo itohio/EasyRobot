@@ -1,0 +1,31 @@
+//go:build use_mt
+
+package generics
+
+import mt "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/mt"
+
+// Re-export iterator functions from multi-threaded implementation
+func Elements(shape []int) func(func([]int) bool) {
+	return mt.Elements(shape)
+}
+
+func ElementsStrided(shape []int, strides []int) func(func([]int) bool) {
+	return mt.ElementsStrided(shape, strides)
+}
+
+func ElementsVec(n int) func(func(int) bool) {
+	return mt.ElementsVec(n)
+}
+
+func ElementsVecStrided(n int, stride int) func(func(int) bool) {
+	return mt.ElementsVecStrided(n, stride)
+}
+
+func ElementsMat(rows, cols int) func(func([2]int) bool) {
+	return mt.ElementsMat(rows, cols)
+}
+
+func ElementsMatStrided(rows, cols int, ld int) func(func([2]int) bool) {
+	return mt.ElementsMatStrided(rows, cols, ld)
+}
+

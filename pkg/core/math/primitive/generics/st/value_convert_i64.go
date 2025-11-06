@@ -2,18 +2,5 @@
 
 package st
 
-import . "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
-
-// valueConvertToInt handles conversion to int with clamping (64-bit platform).
-// On 64-bit platforms, only float32/float64 need clamping when converting to int.
-func valueConvertToInt[T, U Numeric](value T) (zeroU U) {
-	switch v := any(value).(type) {
-	case float32:
-		return U(clampToIntValue(v))
-	case float64:
-		return U(clampToIntValue(v))
-	default:
-		return U(value)
-	}
-}
+// valueConvertToInt is now in helpers package as ValueConvertToInt
 

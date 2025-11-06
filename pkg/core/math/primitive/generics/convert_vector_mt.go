@@ -1,0 +1,18 @@
+//go:build use_mt
+
+package generics
+
+import (
+	mt "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/mt"
+	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+)
+
+// Re-export vector/matrix conversion functions from multi-threaded implementation
+func ElemVecConvertStrided[T, U Numeric](dst []T, src []U, n int, strideDst, strideSrc int) {
+	mt.ElemVecConvertStrided(dst, src, n, strideDst, strideSrc)
+}
+
+func ElemMatConvertStrided[T, U Numeric](dst []T, src []U, rows, cols int, ldDst, ldSrc int) {
+	mt.ElemMatConvertStrided(dst, src, rows, cols, ldDst, ldSrc)
+}
+
