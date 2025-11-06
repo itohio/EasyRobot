@@ -27,7 +27,7 @@ func TestConv2D(t *testing.T) {
 		// Bias: [1]
 		bias := FromFloat32(types.NewShape(1), []float32{0})
 
-		result := input.Conv2D(kernel, bias, []int{1, 1}, []int{0, 0})
+		result := input.Conv2D(nil, kernel, bias, []int{1, 1}, []int{0, 0})
 
 		expectedShape := []int{1, 1, 2, 2} // outHeight = (4+0-3)/1+1 = 2, outWidth = 2
 		resultShape := result.Shape()
@@ -52,7 +52,7 @@ func TestConv2D(t *testing.T) {
 			1, 1,
 		})
 
-		result := input.Conv2D(kernel, Empty(kernel.DataType()), []int{1, 1}, []int{1, 1})
+		result := input.Conv2D(nil, kernel, Empty(kernel.DataType()), []int{1, 1}, []int{1, 1})
 
 		// With padding=1, outHeight = (3+2*1-2)/1+1 = 4
 		expectedShape := []int{1, 1, 4, 4}
@@ -77,7 +77,7 @@ func TestConv2D(t *testing.T) {
 			1, 1, 1, 1, // channel 1, filter 0
 		})
 
-		result := input.Conv2D(kernel, Empty(kernel.DataType()), []int{1, 1}, []int{0, 0})
+		result := input.Conv2D(nil, kernel, Empty(kernel.DataType()), []int{1, 1}, []int{0, 0})
 
 		// outHeight = (3+0-2)/1+1 = 2, outWidth = 2
 		expectedShape := []int{1, 1, 2, 2}
@@ -103,7 +103,7 @@ func TestConv2DTransposed(t *testing.T) {
 			1, 1,
 		})
 
-		result := input.Conv2DTransposed(kernel, Empty(kernel.DataType()), []int{1, 1}, []int{0, 0})
+		result := input.Conv2DTransposed(nil, kernel, Empty(kernel.DataType()), []int{1, 1}, []int{0, 0})
 
 		// outHeight = (2-1)*1 - 2*0 + 2 = 3
 		expectedShape := []int{1, 1, 3, 3}
@@ -129,7 +129,7 @@ func TestConv1D(t *testing.T) {
 			1, 1, 1, // channel 1, filter 0
 		})
 
-		result := input.Conv1D(kernel, Empty(kernel.DataType()), 1, 0)
+		result := input.Conv1D(nil, kernel, Empty(kernel.DataType()), 1, 0)
 
 		// outLen = (5+0-3)/1+1 = 3
 		expectedShape := []int{1, 3} // [outChannels, outLen]
@@ -150,7 +150,7 @@ func TestConv1D(t *testing.T) {
 
 		kernel := FromFloat32(types.NewShape(1, 2, 3), []float32{1, 1, 1, 1, 1, 1})
 
-		result := input.Conv1D(kernel, Empty(kernel.DataType()), 1, 0)
+		result := input.Conv1D(nil, kernel, Empty(kernel.DataType()), 1, 0)
 
 		expectedShape := []int{2, 1, 3} // [batch, outChannels, outLen]
 		resultShape := result.Shape()

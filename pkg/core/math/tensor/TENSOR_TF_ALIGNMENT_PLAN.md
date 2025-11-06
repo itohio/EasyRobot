@@ -8,10 +8,12 @@ This document outlines the migration plan for the Tensor interface to align more
 
 **Key Principles**:
 1. **Destination-based operations**: All operations should support destination parameters for efficient memory reuse
-2. **TensorFlow alignment**: API should align with TensorFlow's operation naming and semantics where applicable
-3. **Interface composition**: Main `Tensor` interface should embed all category interfaces for readability
-4. **Zero allocations**: Operations should support destination parameters to avoid unnecessary allocations
-5. **Backward compatibility**: Migration should maintain existing functionality while improving structure
+2. **CRITICAL: dst parameter is FIRST**: The `dst` parameter MUST be the FIRST parameter in all destination-based operations (after the receiver)
+3. **TensorFlow alignment**: API should align with TensorFlow's operation naming and semantics where applicable
+4. **Interface composition**: Main `Tensor` interface should embed all category interfaces for readability
+5. **Zero allocations**: Operations should support destination parameters to avoid unnecessary allocations
+6. **Interface + Implementation**: When updating an interface, you MUST also update the corresponding `eager_tensor` implementation
+7. **Backward compatibility**: Migration should maintain existing functionality while improving structure
 
 ## Current State Analysis
 
@@ -1016,18 +1018,22 @@ For each operation:
 
 ### Operation-by-Operation Workflow
 
+**CRITICAL**: When updating an interface, you MUST also update the corresponding `eager_tensor` implementation!
+
 For each operation migration:
 
 1. **Interface Update**:
-   - Add method to appropriate category interface
+   - Add/update method to appropriate category interface
+   - **dst parameter MUST be the FIRST parameter** (after receiver)
    - Update main `Tensor` interface if needed
    - Verify interface compiles
 
-2. **Implementation**:
-   - Implement in `eager_tensor/` package
+2. **Implementation Update (REQUIRED)**:
+   - **MUST update `eager_tensor/` package implementation** to match new interface signature
    - Follow existing patterns
    - Use primitive operations from `fp32` package
    - Handle edge cases
+   - **dst parameter MUST be the FIRST parameter** in implementation too
 
 3. **Testing**:
    - Add unit tests
@@ -1047,18 +1053,56 @@ For each operation migration:
 
 ### Destination Parameter Pattern
 
+**CRITICAL**: The `dst` parameter MUST be the FIRST parameter in all destination-based operations!
+
 All destination-based operations should follow this pattern:
 
 ```go
 // Destination-based operation (writes to dst)
-func (t Tensor) OperationTo(dst Tensor, ...) Tensor {
-    if dst == nil || dst.Empty() {
-        dst = NewAs(t) // Create new tensor with same shape/type
+// dst MUST be the first parameter!
+func (t Tensor) Operation(dst Tensor, ...) Tensor {
+    if dst == nil {
+        // For in-place operations, dst == nil means modify t and return t
+        // For operations that create new tensors, create new tensor
+        dst = NewAs(t) // or calculate output shape and create new tensor
     }
     // Validate dst shape matches expected output shape
     // Perform operation writing to dst
     return dst
 }
+```
+
+**Key Rules**:
+1. **dst is ALWAYS the first parameter** (after the receiver)
+2. **dst == nil** means:
+   - For in-place operations: modify `t` and return `t`
+   - For operations that create new tensors: create a new tensor and return it
+3. **dst != nil**: Write result to `dst` and return `dst`
+4. **No `*To` suffix**: Base operations are destination-based, no suffix needed
+
+dst == nil must be checked with IsNil helper!
+
+**Example Signatures**:
+```go
+// Binary operations: dst is first, then other operands
+Add(dst Tensor, other Tensor) Tensor
+Multiply(dst Tensor, other Tensor) Tensor
+
+// Scalar operations: dst is first, then scalar
+ScalarMul(dst Tensor, scalar float64) Tensor
+AddScalar(dst Tensor, scalar float64) Tensor
+
+// Reduction operations: dst is first, then dimensions
+Sum(dst Tensor, dims []int) Tensor
+Mean(dst Tensor, dims []int) Tensor
+
+// Unary operations: dst is first (only parameter after receiver)
+Square(dst Tensor) Tensor
+Sqrt(dst Tensor) Tensor
+
+// Operations with multiple parameters: dst is first
+MatMul(dst Tensor, other Tensor) Tensor
+Conv2D(dst Tensor, kernel, bias Tensor, stride, padding []int) Tensor
 ```
 
 ### Testing Requirements

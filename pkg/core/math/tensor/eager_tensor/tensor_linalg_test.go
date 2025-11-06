@@ -41,7 +41,7 @@ func TestMatMul2D(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.t1.MatMul(tt.t2)
+			result := tt.t1.MatMul(nil, tt.t2)
 
 			resultShape := result.Shape()
 			assert.Equal(t, len(tt.expShape), len(resultShape), "Shape length mismatch")
@@ -70,7 +70,7 @@ func TestMatMulBatched(t *testing.T) {
 			1, 2, 3, 4, 5, 6, 7, 8, // Second batch: 2×4
 		})
 
-		result := t1.MatMul(t2)
+		result := t1.MatMul(nil, t2)
 
 		expectedShape := []int{2, 3, 4}
 		resultShape := result.Shape()
@@ -96,7 +96,7 @@ func TestMatMulBatched(t *testing.T) {
 			1, 2, 3, 4, 5, 6, 7, 8, // Second batch
 		})
 
-		result := t1.MatMul(t2)
+		result := t1.MatMul(nil, t2)
 
 		expectedShape := []int{2, 3, 4}
 		resultShape := result.Shape()
@@ -118,7 +118,7 @@ func TestMatMulTo(t *testing.T) {
 		t1 := FromFloat32(types.NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
 		t2 := FromFloat32(types.NewShape(3, 2), []float32{1, 2, 3, 4, 5, 6})
 
-		result := t1.MatMulTo(t2, nil)
+		result := t1.MatMul(nil, t2)
 
 		expectedShape := []int{2, 2}
 		resultShape := result.Shape()
@@ -134,7 +134,7 @@ func TestMatMulTo(t *testing.T) {
 		t2 := FromFloat32(types.NewShape(3, 2), []float32{1, 2, 3, 4, 5, 6})
 		dst := New(types.FP32, types.NewShape(2, 2))
 
-		result := t1.MatMulTo(t2, &dst)
+		result := t1.MatMul(&dst, t2)
 
 		assert.Equal(t, &dst, result, "MatMulTo should return dst")
 
@@ -167,7 +167,7 @@ func TestTranspose2D(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.t.Transpose()
+			result := tt.t.Transpose(nil, nil)
 
 			resultShape := result.Shape()
 			assert.Equal(t, len(tt.expShape), len(resultShape), "Shape length mismatch")
@@ -188,7 +188,7 @@ func TestTransposeTo(t *testing.T) {
 	t.Run("create new tensor", func(t *testing.T) {
 		t1 := FromFloat32(types.NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
 
-		result := t1.TransposeTo(nil)
+		result := t1.Transpose(nil, nil)
 
 		if result == nil {
 			t.Fatal("TransposeTo returned nil")
@@ -207,7 +207,7 @@ func TestTransposeTo(t *testing.T) {
 		t1 := FromFloat32(types.NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
 		dst := New(types.FP32, types.NewShape(3, 2))
 
-		result := t1.TransposeTo(&dst)
+		result := t1.Transpose(&dst, nil)
 
 		assert.Equal(t, &dst, result, "TransposeTo should return dst")
 
@@ -284,7 +284,7 @@ func TestNorm(t *testing.T) {
 func TestNormalize(t *testing.T) {
 	t.Run("normalize vector", func(t *testing.T) {
 		t1 := FromFloat32(types.NewShape(3), []float32{3, 4, 0})
-		result := t1.Normalize(0)
+		result := t1.Normalize(nil, 0)
 
 		// After normalization, L2 norm should be 1
 		norm := result.Norm(1)
@@ -298,7 +298,7 @@ func TestNormalize(t *testing.T) {
 
 	t.Run("normalize matrix along rows", func(t *testing.T) {
 		t1 := FromFloat32(types.NewShape(2, 3), []float32{3, 4, 0, 0, 0, 0})
-		result := t1.Normalize(0)
+		result := t1.Normalize(nil, 0)
 
 		// First row should have L2 norm = 1
 		resultData := result.Data().([]float32)
@@ -313,7 +313,7 @@ func TestNormalize(t *testing.T) {
 
 	t.Run("normalize matrix along columns", func(t *testing.T) {
 		t1 := FromFloat32(types.NewShape(2, 3), []float32{3, 0, 0, 4, 0, 0})
-		result := t1.Normalize(1)
+		result := t1.Normalize(nil, 1)
 
 		// First column should have L2 norm = 1
 		resultData := result.Data().([]float32)

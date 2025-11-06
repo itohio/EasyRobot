@@ -30,15 +30,13 @@ type TensorManipulation interface {
 	// Example: For tensor [2, 4, 3], Slice(1, 1, 2) returns [2, 2, 3] (slicing dimension 1 from index 1 to 3).
 	Slice(dim int, start int, length int) Tensor
 
-	// Transpose transposes dimensions.
+	// Transpose transposes dimensions (matches tf.transpose).
 	// For 2D: [M, N] → [N, M] (swaps last two dimensions if no dims provided)
 	// For 4D+: uses Permute to rearrange dimensions
-	// Returns a new tensor. Panics if dimensions are invalid.
-	Transpose(dims ...int) Tensor
-
-	// TransposeTo transposes dimensions and stores result in dst.
-	// If dst is nil, creates a new tensor. Returns the destination tensor.
-	TransposeTo(dst Tensor, dims ...int) Tensor
+	// If dst is nil, creates a new tensor.
+	// If dst is provided, writes result to dst and returns dst.
+	// Panics if dimensions are invalid.
+	Transpose(dst Tensor, dims []int) Tensor
 
 	// Permute permutes dimensions according to the provided permutation.
 	// dims: permutation of [0, 1, 2, ..., rank-1]
@@ -51,30 +49,20 @@ type TensorManipulation interface {
 	// Currently creates a clone if shapes match exactly.
 	BroadcastTo(shape Shape) (Tensor, error)
 
-	// Fill fills the tensor with a constant value (in-place).
+	// Fill fills the tensor with a constant value.
+	// If dst is nil, operation is in-place (modifies t) and returns t.
+	// If dst is provided, writes result to dst and returns dst.
 	// Uses optimized primitive for efficient computation.
-	// Returns self for method chaining.
-	Fill(value float64) Tensor
-
-	// FillTo fills the tensor with a constant value and stores result in dst.
-	// If dst is nil, creates a new tensor. If dst is provided, uses it (must match shape).
-	// Returns the destination tensor.
-	FillTo(dst Tensor, value float64) Tensor
+	Fill(dst Tensor, value float64) Tensor
 
 	// Pad adds padding to tensor with constant value (matches tf.pad).
 	// padding: [padBeforeDim0, padAfterDim0, padBeforeDim1, padAfterDim1, ...]
 	// Each dimension has two padding values: before and after.
 	// value: constant value to pad with
-	// Returns a new tensor with padding added.
+	// If dst is nil, creates a new tensor.
+	// If dst is provided, writes result to dst and returns dst.
 	// Panics if padding values are invalid.
-	Pad(padding []int, value float64) Tensor
-
-	// PadTo adds padding to tensor with constant value and stores result in dst.
-	// padding: [padBeforeDim0, padAfterDim0, padBeforeDim1, padAfterDim1, ...]
-	// value: constant value to pad with
-	// If dst is nil, creates a new tensor. If dst is provided, uses it (must match output shape).
-	// Returns the destination tensor.
-	PadTo(dst Tensor, padding []int, value float64) Tensor
+	Pad(dst Tensor, padding []int, value float64) Tensor
 
 	// Unpad removes padding from tensor.
 	// padding: [padBeforeDim0, padAfterDim0, padBeforeDim1, padAfterDim1, ...]

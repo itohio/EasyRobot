@@ -4,468 +4,338 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
 	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/generics"
+	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
 )
 
-func isTensorContiguous(t types.Tensor) bool {
-	otherTensor, ok := t.(Tensor)
-	if !ok {
-		// For non-eager tensors, assume non-contiguous (safer)
-		return false
-	}
-	return otherTensor.isContiguous()
-}
-
-// copyTensorData copies data from src to dst using primitive.CopyWithConversion for type conversion.
-// Both tensors must have the same shape.
-// Supports data type conversion between different tensor data types.
-func copyTensorData(src, dst types.Tensor) {
-	if src == nil || dst == nil {
-		return
-	}
-
-	srcShape := src.Shape()
-	if srcShape == nil {
-		return
-	}
-
-	if dst.Shape() == nil {
-		return
-	}
-
-	if srcShape.Rank() != dst.Shape().Rank() {
-		panic(fmt.Sprintf("copyTensorData: shape rank mismatch"))
-	}
-
-	size := src.Size()
-	if size == 0 {
-		return
-	}
-
-	srcDtype := src.DataType()
-	dstDtype := dst.DataType()
-	srcData := src.Data()
-	dstData := dst.Data()
-
-	if srcData == nil || dstData == nil {
-		return
-	}
-
-	srcStrides := srcShape.Strides()
-	dstStrides := dst.Shape().Strides()
-	shapeSlice := srcShape.ToSlice()
-
-	// Fast path: same type
-	if srcDtype == dstDtype {
-		srcContiguous := isTensorContiguous(src)
-		dstContiguous := isTensorContiguous(dst)
-
-		if srcContiguous && dstContiguous {
-			// Use fast contiguous copy for float32
-			if srcDtype == types.FP32 {
-				srcSlice, ok1 := srcData.([]float32)
-				dstSlice, ok2 := dstData.([]float32)
-				if ok1 && ok2 {
-					fp32.Copy(dstSlice, srcSlice, 1, 1, size)
-					return
-				}
-			}
-			// For other types, use primitive.CopyWithConversion (works on contiguous slices)
-			primitive.CopyWithConversion(dstData, srcData)
-			return
-		}
-
-		// For other types with strides, fall through to element-by-element copy
-	}
-
-	// Different types or non-float32: use primitive.CopyWithStrides
-	primitive.CopyWithStrides(srcData, dstData, shapeSlice, srcStrides, dstStrides)
-}
-
-// Add adds another tensor element-wise in-place.
-// Uses fp32 primitive.Axpy for efficient computation.
-// Returns the tensor itself for method chaining.
-func (t Tensor) Add(other types.Tensor) types.Tensor {
-	if t.shape == nil || other == nil || other.Shape() == nil {
+// Add performs element-wise addition: dst = t + other (matches tf.add).
+// If dst is nil, operation is in-place (modifies t) and returns t.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) Add(dst types.Tensor, other types.Tensor) types.Tensor {
+	if t.shape == nil {
 		return t
 	}
-
+	if IsNil(other) {
+		return t
+	}
 	if !t.Shape().Equal(other.Shape()) {
 		panic(fmt.Sprintf("tensor.Add: shape mismatch: %v vs %v", t.shape, other.Shape()))
 	}
 
+	var tData []float32
+	var dstData []float32
+	var result types.Tensor
+	if IsNil(dst) {
+		tData = types.GetTensorData[[]float32](t)
+		dstData = types.GetTensorData[[]float32](t)
+		result = t
+	} else {
+		if !t.Shape().Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.Add: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
+		}
+		tData = types.GetTensorData[[]float32](t)
+		dstData = types.GetTensorData[[]float32](dst)
+		result = dst
+	}
+
 	otherData := types.GetTensorData[[]float32](other)
-	if t.isContiguous() && isTensorContiguous(other) {
+	tStrides := t.shape.Strides()
+	dstStrides := result.Shape().Strides()
+	otherStrides := other.Shape().Strides()
+
+	// Fast path for contiguous tensors
+	shapeSlice := []int(t.shape)
+	if t.isContiguous() && IsContiguous(otherStrides, shapeSlice) && IsContiguous(dstStrides, shapeSlice) {
+		if !IsNil(dst) {
+			// Copy t to dst using generics
+			generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dstStrides, tStrides)
+		}
 		size := t.Size()
-		fp32.Axpy(types.GetTensorData[[]float32](t), otherData, 1, 1, size, 1.0)
-		return t
-	}
-
-	stridesT := t.shape.Strides()
-	stridesOther := other.Shape().Strides()
-	fp32.ElemAdd(types.GetTensorData[[]float32](t), types.GetTensorData[[]float32](t), otherData, []int(t.shape), stridesT, stridesT, stridesOther)
-	return t
-}
-
-// Sub subtracts another tensor element-wise in-place.
-// Uses fp32 primitive.Axpy with alpha=-1.
-func (t Tensor) Sub(other types.Tensor) types.Tensor {
-	if t.shape == nil || other == nil || other.Shape() == nil {
-		return t
-	}
-
-	if !t.Shape().Equal(other.Shape()) {
-		panic(fmt.Sprintf("tensor.Sub: shape mismatch: %v vs %v", t.shape, other.Shape()))
-	}
-
-	otherData := types.GetTensorData[[]float32](other)
-	if t.isContiguous() && isTensorContiguous(other) {
-		size := t.Size()
-		fp32.Axpy(types.GetTensorData[[]float32](t), otherData, 1, 1, size, -1.0)
-		return t
-	}
-
-	stridesT := t.shape.Strides()
-	stridesOther := other.Shape().Strides()
-	fp32.ElemSub(types.GetTensorData[[]float32](t), types.GetTensorData[[]float32](t), otherData, []int(t.shape), stridesT, stridesT, stridesOther)
-	return t
-}
-
-// Mul multiplies another tensor element-wise in-place.
-func (t Tensor) Mul(other types.Tensor) types.Tensor {
-	if t.shape == nil || other == nil || other.Shape() == nil {
-		return t
-	}
-
-	if !t.Shape().Equal(other.Shape()) {
-		panic(fmt.Sprintf("tensor.Mul: shape mismatch: %v vs %v", t.shape, other.Shape()))
-	}
-
-	otherData := types.GetTensorData[[]float32](other)
-	stridesT := t.shape.Strides()
-	stridesOther := other.Shape().Strides()
-	fp32.ElemMul(types.GetTensorData[[]float32](t), types.GetTensorData[[]float32](t), otherData, []int(t.shape), stridesT, stridesT, stridesOther)
-	return t
-}
-
-// Multiply is an alias for Mul (matches TensorFlow naming: tf.multiply).
-func (t Tensor) Multiply(other types.Tensor) types.Tensor {
-	return t.Mul(other)
-}
-
-// Subtract is an alias for Sub (matches TensorFlow naming: tf.subtract).
-func (t Tensor) Subtract(other types.Tensor) types.Tensor {
-	return t.Sub(other)
-}
-
-// Divide is an alias for Div (matches TensorFlow naming: tf.divide).
-func (t Tensor) Divide(other types.Tensor) types.Tensor {
-	return t.Div(other)
-}
-
-// Div divides by another tensor element-wise in-place.
-func (t Tensor) Div(other types.Tensor) types.Tensor {
-	if t.shape == nil || other == nil || other.Shape() == nil {
-		return t
-	}
-
-	if !t.Shape().Equal(other.Shape()) {
-		panic(fmt.Sprintf("tensor.Div: shape mismatch: %v vs %v", t.shape, other.Shape()))
-	}
-
-	otherData := types.GetTensorData[[]float32](other)
-	stridesT := t.shape.Strides()
-	stridesOther := other.Shape().Strides()
-	fp32.ElemDiv(types.GetTensorData[[]float32](t), types.GetTensorData[[]float32](t), otherData, []int(t.shape), stridesT, stridesT, stridesOther)
-	return t
-}
-
-// Scale multiplies the tensor by a scalar in-place.
-// Uses fp32 primitive.Scal for efficient computation.
-// Converts float64 scalar to float32 for internal computation.
-func (t Tensor) Scale(scalar float64) types.Tensor {
-	if t.shape == nil {
-		return t
-	}
-
-	strides := t.shape.Strides()
-	scalar32 := float32(scalar)
-	if t.isContiguous() {
-		size := t.Size()
-		fp32.Scal(types.GetTensorData[[]float32](t), 1, size, scalar32)
-		return t
-	}
-
-	fp32.ElemScaleInPlace(types.GetTensorData[[]float32](t), scalar32, []int(t.shape), strides)
-	return t
-}
-
-// ScalarMul is an alias for Scale (matches TensorFlow naming: tf.scalar_mul).
-func (t Tensor) ScalarMul(scalar float64) types.Tensor {
-	return t.Scale(scalar)
-}
-
-// AddScalar adds a scalar value to all elements in-place.
-func (t Tensor) AddScalar(scalar float64) types.Tensor {
-	if t.shape == nil {
-		return t
-	}
-
-	scalar32 := float32(scalar)
-	strides := t.shape.Strides()
-	tData := types.GetTensorData[[]float32](t)
-
-	fp32.ElemAddScalar(tData, tData, scalar32, []int(t.shape), strides, strides)
-	return t
-}
-
-// SubScalar subtracts a scalar value from all elements in-place.
-func (t Tensor) SubScalar(scalar float64) types.Tensor {
-	if t.shape == nil {
-		return t
-	}
-
-	scalar32 := float32(scalar)
-	strides := t.shape.Strides()
-	tData := types.GetTensorData[[]float32](t)
-
-	fp32.ElemSubScalar(tData, tData, scalar32, []int(t.shape), strides, strides)
-	return t
-}
-
-// MulScalar multiplies all elements by a scalar in-place.
-func (t Tensor) MulScalar(scalar float64) types.Tensor {
-	return t.Scale(scalar)
-}
-
-// DivScalar divides all elements by a scalar in-place.
-func (t Tensor) DivScalar(scalar float64) types.Tensor {
-	if t.shape == nil {
-		return t
-	}
-
-	scalar32 := float32(scalar)
-	strides := t.shape.Strides()
-	tData := types.GetTensorData[[]float32](t)
-
-	fp32.ElemDivScalar(tData, tData, scalar32, []int(t.shape), strides, strides)
-	return t
-}
-
-// ScaleTo multiplies the tensor by a scalar and stores result in dst.
-func (t Tensor) ScaleTo(dst types.Tensor, scalar float64) types.Tensor {
-	if t.shape == nil {
-		return nil
-	}
-
-	scalar32 := float32(scalar)
-	if dst == nil {
-		result := t.Clone()
-		result.Scale(scalar)
+		fp32.Axpy(dstData, otherData, 1, 1, size, 1.0)
 		return result
 	}
 
-	if !t.Shape().Equal(dst.Shape()) {
-		panic(fmt.Sprintf("tensor.ScaleTo: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
-	}
-
-	tData := types.GetTensorData[[]float32](t)
-	dstData := types.GetTensorData[[]float32](dst)
-	tStrides := t.shape.Strides()
-	dstStrides := dst.Shape().Strides()
-
-	fp32.ElemScale(dstData, tData, scalar32, []int(t.shape), dstStrides, tStrides)
-	return dst
+	// General path
+	fp32.ElemAdd(dstData, tData, otherData, []int(t.shape), dstStrides, tStrides, otherStrides)
+	return result
 }
 
-// AddScalarTo adds a scalar value to all elements and stores result in dst.
-func (t Tensor) AddScalarTo(dst types.Tensor, scalar float64) types.Tensor {
+// Subtract performs element-wise subtraction: dst = t - other (matches tf.subtract).
+// If dst is nil, operation is in-place (modifies t) and returns t.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) Subtract(dst types.Tensor, other types.Tensor) types.Tensor {
 	if t.shape == nil {
-		return nil
+		return t
+	}
+	if IsNil(other) {
+		return t
+	}
+	if !t.Shape().Equal(other.Shape()) {
+		panic(fmt.Sprintf("tensor.Subtract: shape mismatch: %v vs %v", t.shape, other.Shape()))
 	}
 
-	scalar32 := float32(scalar)
-	if dst == nil {
-		result := t.Clone()
-		result.AddScalar(scalar)
+	var tData []float32
+	var dstData []float32
+	var result types.Tensor
+	if IsNil(dst) {
+		tData = types.GetTensorData[[]float32](t)
+		dstData = types.GetTensorData[[]float32](t)
+		result = t
+	} else {
+		if !t.Shape().Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.Subtract: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
+		}
+		tData = types.GetTensorData[[]float32](t)
+		dstData = types.GetTensorData[[]float32](dst)
+		result = dst
+	}
+
+	otherData := types.GetTensorData[[]float32](other)
+	tStrides := t.shape.Strides()
+	dstStrides := result.Shape().Strides()
+	otherStrides := other.Shape().Strides()
+
+	// Fast path for contiguous tensors
+	shapeSlice := []int(t.shape)
+	if t.isContiguous() && IsContiguous(otherStrides, shapeSlice) && IsContiguous(dstStrides, shapeSlice) {
+		if !IsNil(dst) {
+			// Copy t to dst using generics
+			generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dstStrides, tStrides)
+		}
+		size := t.Size()
+		fp32.Axpy(dstData, otherData, 1, 1, size, -1.0)
 		return result
 	}
 
-	if !t.Shape().Equal(dst.Shape()) {
-		panic(fmt.Sprintf("tensor.AddScalarTo: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
+	// General path
+	fp32.ElemSub(dstData, tData, otherData, []int(t.shape), dstStrides, tStrides, otherStrides)
+	return result
+}
+
+// Multiply performs element-wise multiplication: dst = t * other (matches tf.multiply).
+// If dst is nil, operation is in-place (modifies t) and returns t.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) Multiply(dst types.Tensor, other types.Tensor) types.Tensor {
+	if t.shape == nil {
+		return t
+	}
+	if IsNil(other) {
+		return t
+	}
+	if !t.Shape().Equal(other.Shape()) {
+		panic(fmt.Sprintf("tensor.Multiply: shape mismatch: %v vs %v", t.shape, other.Shape()))
 	}
 
-	tData := types.GetTensorData[[]float32](t)
-	dstData := types.GetTensorData[[]float32](dst)
-	tStrides := t.shape.Strides()
-	dstStrides := dst.Shape().Strides()
+	var tData []float32
+	var dstData []float32
+	var result types.Tensor
+	if IsNil(dst) {
+		tData = types.GetTensorData[[]float32](t)
+		dstData = types.GetTensorData[[]float32](t)
+		result = t
+	} else {
+		if !t.Shape().Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.Multiply: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
+		}
+		tData = types.GetTensorData[[]float32](t)
+		dstData = types.GetTensorData[[]float32](dst)
+		result = dst
+	}
 
+	otherData := types.GetTensorData[[]float32](other)
+	tStrides := t.shape.Strides()
+	dstStrides := result.Shape().Strides()
+	otherStrides := other.Shape().Strides()
+
+	fp32.ElemMul(dstData, tData, otherData, []int(t.shape), dstStrides, tStrides, otherStrides)
+	return result
+}
+
+// Divide performs element-wise division: dst = t / other (matches tf.divide).
+// If dst is nil, operation is in-place (modifies t) and returns t.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) Divide(dst types.Tensor, other types.Tensor) types.Tensor {
+	if t.shape == nil {
+		return t
+	}
+	if IsNil(other) {
+		return t
+	}
+	if !t.Shape().Equal(other.Shape()) {
+		panic(fmt.Sprintf("tensor.Divide: shape mismatch: %v vs %v", t.shape, other.Shape()))
+	}
+
+	var tData []float32
+	var dstData []float32
+	var result types.Tensor
+	if IsNil(dst) {
+		tData = types.GetTensorData[[]float32](t)
+		dstData = types.GetTensorData[[]float32](t)
+		result = t
+	} else {
+		if !t.Shape().Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.Divide: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
+		}
+		tData = types.GetTensorData[[]float32](t)
+		dstData = types.GetTensorData[[]float32](dst)
+		result = dst
+	}
+
+	otherData := types.GetTensorData[[]float32](other)
+	tStrides := t.shape.Strides()
+	dstStrides := result.Shape().Strides()
+	otherStrides := other.Shape().Strides()
+
+	fp32.ElemDiv(dstData, tData, otherData, []int(t.shape), dstStrides, tStrides, otherStrides)
+	return result
+}
+
+// ScalarMul multiplies the tensor by a scalar: dst = scalar * t (matches tf.scalar_mul).
+// If dst is nil, operation is in-place (modifies t) and returns t.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) ScalarMul(dst types.Tensor, scalar float64) types.Tensor {
+	if t.shape == nil {
+		return t
+	}
+
+	scalar32 := float32(scalar)
+
+	var tData []float32
+	var dstData []float32
+	var result types.Tensor
+	if IsNil(dst) {
+		tData = types.GetTensorData[[]float32](t)
+		dstData = types.GetTensorData[[]float32](t)
+		result = t
+	} else {
+		if !t.Shape().Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.ScalarMul: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
+		}
+		tData = types.GetTensorData[[]float32](t)
+		dstData = types.GetTensorData[[]float32](dst)
+		result = dst
+	}
+
+	// Fast path for contiguous tensors (in-place only)
+	if IsNil(dst) && t.isContiguous() {
+		size := t.Size()
+		fp32.Scal(dstData, 1, size, scalar32)
+		return result
+	}
+
+	tStrides := t.shape.Strides()
+	dstStrides := result.Shape().Strides()
+	if IsNil(dst) {
+		fp32.ElemScaleInPlace(dstData, scalar32, []int(t.shape), tStrides)
+	} else {
+		fp32.ElemScale(dstData, tData, scalar32, []int(t.shape), dstStrides, tStrides)
+	}
+	return result
+}
+
+// AddScalar adds a scalar value to all elements: dst[i] = t[i] + scalar.
+// If dst is nil, operation is in-place (modifies t) and returns t.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) AddScalar(dst types.Tensor, scalar float64) types.Tensor {
+	if t.shape == nil {
+		return t
+	}
+
+	scalar32 := float32(scalar)
+
+	var tData []float32
+	var dstData []float32
+	var result types.Tensor
+	if IsNil(dst) {
+		tData = types.GetTensorData[[]float32](t)
+		dstData = types.GetTensorData[[]float32](t)
+		result = t
+	} else {
+		if !t.Shape().Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.AddScalar: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
+		}
+		tData = types.GetTensorData[[]float32](t)
+		dstData = types.GetTensorData[[]float32](dst)
+		result = dst
+	}
+
+	tStrides := t.shape.Strides()
+	dstStrides := result.Shape().Strides()
 	fp32.ElemAddScalar(dstData, tData, scalar32, []int(t.shape), dstStrides, tStrides)
-	return dst
+	return result
 }
 
-// SubScalarTo subtracts a scalar value from all elements and stores result in dst.
-func (t Tensor) SubScalarTo(dst types.Tensor, scalar float64) types.Tensor {
+// SubScalar subtracts a scalar value from all elements: dst[i] = t[i] - scalar.
+// If dst is nil, operation is in-place (modifies t) and returns t.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) SubScalar(dst types.Tensor, scalar float64) types.Tensor {
 	if t.shape == nil {
-		return nil
+		return t
 	}
 
 	scalar32 := float32(scalar)
-	if dst == nil {
-		result := t.Clone()
-		result.SubScalar(scalar)
-		return result
+
+	var tData []float32
+	var dstData []float32
+	var result types.Tensor
+	if IsNil(dst) {
+		tData = types.GetTensorData[[]float32](t)
+		dstData = types.GetTensorData[[]float32](t)
+		result = t
+	} else {
+		if !t.Shape().Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.SubScalar: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
+		}
+		tData = types.GetTensorData[[]float32](t)
+		dstData = types.GetTensorData[[]float32](dst)
+		result = dst
 	}
 
-	if !t.Shape().Equal(dst.Shape()) {
-		panic(fmt.Sprintf("tensor.SubScalarTo: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
-	}
-
-	tData := types.GetTensorData[[]float32](t)
-	dstData := types.GetTensorData[[]float32](dst)
 	tStrides := t.shape.Strides()
-	dstStrides := dst.Shape().Strides()
-
+	dstStrides := result.Shape().Strides()
 	fp32.ElemSubScalar(dstData, tData, scalar32, []int(t.shape), dstStrides, tStrides)
-	return dst
+	return result
 }
 
-// MulScalarTo multiplies all elements by a scalar and stores result in dst.
-func (t Tensor) MulScalarTo(dst types.Tensor, scalar float64) types.Tensor {
-	return t.ScaleTo(dst, scalar)
+// MulScalar multiplies all elements by a scalar: dst[i] = t[i] * scalar.
+// If dst is nil, operation is in-place (modifies t) and returns t.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) MulScalar(dst types.Tensor, scalar float64) types.Tensor {
+	return t.ScalarMul(dst, scalar)
 }
 
-// DivScalarTo divides all elements by a scalar and stores result in dst.
-func (t Tensor) DivScalarTo(dst types.Tensor, scalar float64) types.Tensor {
+// DivScalar divides all elements by a scalar: dst[i] = t[i] / scalar.
+// If dst is nil, operation is in-place (modifies t) and returns t.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) DivScalar(dst types.Tensor, scalar float64) types.Tensor {
 	if t.shape == nil {
-		return nil
+		return t
 	}
 
 	scalar32 := float32(scalar)
-	if dst == nil {
-		result := t.Clone()
-		result.DivScalar(scalar)
-		return result
+
+	var tData []float32
+	var dstData []float32
+	var result types.Tensor
+	if IsNil(dst) {
+		tData = types.GetTensorData[[]float32](t)
+		dstData = types.GetTensorData[[]float32](t)
+		result = t
+	} else {
+		if !t.Shape().Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.DivScalar: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
+		}
+		tData = types.GetTensorData[[]float32](t)
+		dstData = types.GetTensorData[[]float32](dst)
+		result = dst
 	}
 
-	if !t.Shape().Equal(dst.Shape()) {
-		panic(fmt.Sprintf("tensor.DivScalarTo: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
-	}
-
-	tData := types.GetTensorData[[]float32](t)
-	dstData := types.GetTensorData[[]float32](dst)
 	tStrides := t.shape.Strides()
-	dstStrides := dst.Shape().Strides()
-
+	dstStrides := result.Shape().Strides()
 	fp32.ElemDivScalar(dstData, tData, scalar32, []int(t.shape), dstStrides, tStrides)
-	return dst
-}
-
-// AddTo adds two tensors and stores result in dst (or creates new tensor if dst is nil).
-// Returns the destination tensor.
-func (t Tensor) AddTo(other types.Tensor, dst types.Tensor) types.Tensor {
-	if t.shape == nil || other == nil || other.Shape() == nil {
-		return nil
-	}
-
-	if !t.Shape().Equal(other.Shape()) {
-		panic(fmt.Sprintf("tensor.AddTo: shape mismatch: %v vs %v", t.shape, other.Shape()))
-	}
-
-	if dst == nil {
-		result := t.Clone()
-		result.Add(other)
-		return result
-	}
-
-	if !t.Shape().Equal(dst.Shape()) {
-		panic(fmt.Sprintf("tensor.AddTo: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
-	}
-
-	// Copy t to dst, then add other
-	copyTensorData(t, dst)
-	dst.Add(other)
-	return dst
-}
-
-// MulTo multiplies two tensors element-wise and stores result in dst (or creates new tensor if dst is nil).
-func (t Tensor) MulTo(other types.Tensor, dst types.Tensor) types.Tensor {
-	if t.shape == nil || other == nil || other.Shape() == nil {
-		return nil
-	}
-
-	if !t.Shape().Equal(other.Shape()) {
-		panic(fmt.Sprintf("tensor.MulTo: shape mismatch: %v vs %v", t.shape, other.Shape()))
-	}
-
-	if dst == nil {
-		result := t.Clone()
-		result.Mul(other)
-		return result
-	}
-
-	if !t.Shape().Equal(dst.Shape()) {
-		panic(fmt.Sprintf("tensor.MulTo: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
-	}
-
-	// Copy t to dst, then multiply by other
-	copyTensorData(t, dst)
-	dst.Mul(other)
-	return dst
-}
-
-// SubTo subtracts two tensors element-wise and stores result in dst (or creates new tensor if dst is nil).
-func (t Tensor) SubTo(other types.Tensor, dst types.Tensor) types.Tensor {
-	if t.shape == nil || other == nil || other.Shape() == nil {
-		return nil
-	}
-
-	if !t.Shape().Equal(other.Shape()) {
-		panic(fmt.Sprintf("tensor.SubTo: shape mismatch: %v vs %v", t.shape, other.Shape()))
-	}
-
-	if dst == nil {
-		result := t.Clone()
-		result.Sub(other)
-		return result
-	}
-
-	if !t.Shape().Equal(dst.Shape()) {
-		panic(fmt.Sprintf("tensor.SubTo: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
-	}
-
-	// Copy t to dst, then subtract other
-	copyTensorData(t, dst)
-	dst.Sub(other)
-	return dst
-}
-
-// DivTo divides two tensors element-wise and stores result in dst (or creates new tensor if dst is nil).
-func (t Tensor) DivTo(other types.Tensor, dst types.Tensor) types.Tensor {
-	if t.shape == nil || other == nil || other.Shape() == nil {
-		return nil
-	}
-
-	if !t.Shape().Equal(other.Shape()) {
-		panic(fmt.Sprintf("tensor.DivTo: shape mismatch: %v vs %v", t.shape, other.Shape()))
-	}
-
-	if dst == nil {
-		result := t.Clone()
-		result.Div(other)
-		return result
-	}
-
-	if !t.Shape().Equal(dst.Shape()) {
-		panic(fmt.Sprintf("tensor.DivTo: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
-	}
-
-	// Copy t to dst, then divide by other
-	copyTensorData(t, dst)
-	dst.Div(other)
-	return dst
+	return result
 }
 
 // BroadcastTo broadcasts the tensor to a new shape.
@@ -508,167 +378,146 @@ func (t Tensor) BroadcastTo(shape types.Shape) (types.Tensor, error) {
 
 // Sum computes sum along specified dimensions.
 // If no dimensions specified, sums all elements.
-func (t Tensor) Sum(dims ...int) types.Tensor {
+// Sum sums along specified dimensions. If no dimensions specified, sums all elements (matches tf.reduce_sum).
+// If dst is nil, creates a new tensor.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) Sum(dst types.Tensor, dims []int) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
 
-	// If no dimensions specified, sum all elements
-	if len(dims) == 0 {
-		if t.isContiguous() {
-			size := t.Size()
-			sum := fp32.Asum(types.GetTensorData[[]float32](t), 1, size)
-			result := FromFloat32(types.NewShape(1), []float32{sum})
-			return &result
-		}
-		return t.reduceTensor(nil, true, fp32.ReduceSum)
+	result := t.reduceTensor(dims, true, fp32.ReduceSum)
+	if result == nil {
+		return nil
 	}
 
-	return t.reduceTensor(dims, true, fp32.ReduceSum)
+	if IsNil(dst) {
+		return result
+	}
+
+	if !result.Shape().Equal(dst.Shape()) {
+		panic(fmt.Sprintf("tensor.Sum: destination shape mismatch: expected %v, got %v", result.Shape(), dst.Shape()))
+	}
+
+	// Copy result to dst using generics
+	resultData := types.GetTensorData[[]float32](result)
+	dstData := types.GetTensorData[[]float32](dst)
+	shapeSlice := result.Shape().ToSlice()
+	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(), result.Shape().Strides())
+	return dst
 }
 
 // ReduceSum is an alias for Sum (matches TensorFlow naming: tf.reduce_sum).
-func (t Tensor) ReduceSum(dims ...int) types.Tensor {
-	return t.Sum(dims...)
+func (t Tensor) ReduceSum(dst types.Tensor, dims []int) types.Tensor {
+	return t.Sum(dst, dims)
 }
 
-// SumTo sums along specified dimensions and stores result in dst.
-func (t Tensor) SumTo(dst types.Tensor, dims ...int) types.Tensor {
+// Mean computes mean along specified dimensions. If no dimensions specified, means all elements (matches tf.reduce_mean).
+// If dst is nil, creates a new tensor.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) Mean(dst types.Tensor, dims []int) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
 
-	result := t.Sum(dims...)
+	result := t.reduceTensor(dims, true, fp32.ReduceMean)
 	if result == nil {
 		return nil
 	}
 
-	if dst == nil {
+	if IsNil(dst) {
 		return result
 	}
 
 	if !result.Shape().Equal(dst.Shape()) {
-		panic(fmt.Sprintf("tensor.SumTo: destination shape mismatch: expected %v, got %v", result.Shape(), dst.Shape()))
+		panic(fmt.Sprintf("tensor.Mean: destination shape mismatch: expected %v, got %v", result.Shape(), dst.Shape()))
 	}
 
-	copyTensorData(result, dst)
+	// Copy result to dst using generics
+	resultData := types.GetTensorData[[]float32](result)
+	dstData := types.GetTensorData[[]float32](dst)
+	shapeSlice := result.Shape().ToSlice()
+	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(), result.Shape().Strides())
 	return dst
-}
-
-// Mean computes mean along specified dimensions.
-func (t Tensor) Mean(dims ...int) types.Tensor {
-	if t.shape == nil {
-		return nil
-	}
-
-	return t.reduceTensor(dims, true, fp32.ReduceMean)
 }
 
 // ReduceMean is an alias for Mean (matches TensorFlow naming: tf.reduce_mean).
-func (t Tensor) ReduceMean(dims ...int) types.Tensor {
-	return t.Mean(dims...)
+func (t Tensor) ReduceMean(dst types.Tensor, dims []int) types.Tensor {
+	return t.Mean(dst, dims)
 }
 
-// MeanTo computes mean along specified dimensions and stores result in dst.
-func (t Tensor) MeanTo(dst types.Tensor, dims ...int) types.Tensor {
+// Max computes maximum along specified dimensions. If no dimensions specified, finds global maximum (matches tf.reduce_max).
+// If dst is nil, creates a new tensor.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) Max(dst types.Tensor, dims []int) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
 
-	result := t.Mean(dims...)
+	result := t.reduceTensor(dims, true, fp32.ReduceMax)
 	if result == nil {
 		return nil
 	}
 
-	if dst == nil {
+	if IsNil(dst) {
 		return result
 	}
 
 	if !result.Shape().Equal(dst.Shape()) {
-		panic(fmt.Sprintf("tensor.MeanTo: destination shape mismatch: expected %v, got %v", result.Shape(), dst.Shape()))
+		panic(fmt.Sprintf("tensor.Max: destination shape mismatch: expected %v, got %v", result.Shape(), dst.Shape()))
 	}
 
-	copyTensorData(result, dst)
+	// Copy result to dst using generics
+	resultData := types.GetTensorData[[]float32](result)
+	dstData := types.GetTensorData[[]float32](dst)
+	shapeSlice := result.Shape().ToSlice()
+	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(), result.Shape().Strides())
 	return dst
-}
-
-// Max computes maximum along specified dimensions.
-func (t Tensor) Max(dims ...int) types.Tensor {
-	if t.shape == nil {
-		return nil
-	}
-
-	return t.reduceTensor(dims, true, fp32.ReduceMax)
 }
 
 // ReduceMax is an alias for Max (matches TensorFlow naming: tf.reduce_max).
-func (t Tensor) ReduceMax(dims ...int) types.Tensor {
-	return t.Max(dims...)
+func (t Tensor) ReduceMax(dst types.Tensor, dims []int) types.Tensor {
+	return t.Max(dst, dims)
 }
 
-// MaxTo computes maximum along specified dimensions and stores result in dst.
-func (t Tensor) MaxTo(dst types.Tensor, dims ...int) types.Tensor {
+// Min computes minimum along specified dimensions. If no dimensions specified, finds global minimum (matches tf.reduce_min).
+// If dst is nil, creates a new tensor.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) Min(dst types.Tensor, dims []int) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
 
-	result := t.Max(dims...)
+	result := t.reduceTensor(dims, true, fp32.ReduceMin)
 	if result == nil {
 		return nil
 	}
 
-	if dst == nil {
+	if IsNil(dst) {
 		return result
 	}
 
 	if !result.Shape().Equal(dst.Shape()) {
-		panic(fmt.Sprintf("tensor.MaxTo: destination shape mismatch: expected %v, got %v", result.Shape(), dst.Shape()))
+		panic(fmt.Sprintf("tensor.Min: destination shape mismatch: expected %v, got %v", result.Shape(), dst.Shape()))
 	}
 
-	copyTensorData(result, dst)
+	// Copy result to dst using generics
+	resultData := types.GetTensorData[[]float32](result)
+	dstData := types.GetTensorData[[]float32](dst)
+	shapeSlice := result.Shape().ToSlice()
+	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(), result.Shape().Strides())
 	return dst
-}
-
-// Min computes minimum along specified dimensions.
-func (t Tensor) Min(dims ...int) types.Tensor {
-	if t.shape == nil {
-		return nil
-	}
-
-	return t.reduceTensor(dims, true, fp32.ReduceMin)
 }
 
 // ReduceMin is an alias for Min (matches TensorFlow naming: tf.reduce_min).
-func (t Tensor) ReduceMin(dims ...int) types.Tensor {
-	return t.Min(dims...)
+func (t Tensor) ReduceMin(dst types.Tensor, dims []int) types.Tensor {
+	return t.Min(dst, dims)
 }
 
-// MinTo computes minimum along specified dimensions and stores result in dst.
-func (t Tensor) MinTo(dst types.Tensor, dims ...int) types.Tensor {
-	if t.shape == nil {
-		return nil
-	}
-
-	result := t.Min(dims...)
-	if result == nil {
-		return nil
-	}
-
-	if dst == nil {
-		return result
-	}
-
-	if !result.Shape().Equal(dst.Shape()) {
-		panic(fmt.Sprintf("tensor.MinTo: destination shape mismatch: expected %v, got %v", result.Shape(), dst.Shape()))
-	}
-
-	copyTensorData(result, dst)
-	return dst
-}
-
-// ArgMax returns indices of maximum elements along specified dimension.
-// Uses fp32 primitive.Iamax for vector case.
-func (t Tensor) ArgMax(dim int) types.Tensor {
+// ArgMax returns the index of the maximum element along the specified dimension (matches tf.argmax).
+// If dst is nil, creates a new tensor.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) ArgMax(dst types.Tensor, dim int) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
@@ -677,31 +526,48 @@ func (t Tensor) ArgMax(dim int) types.Tensor {
 		panic(fmt.Sprintf("tensor.ArgMax: dimension %d out of range for shape %v", dim, t.shape))
 	}
 
+	var resultPtr types.Tensor
 	if t.shape.Rank() == 1 && t.isContiguous() {
 		idx := fp32.Iamax(types.GetTensorData[[]float32](t), 1, t.Size())
 		result := FromFloat32(types.NewShape(1), []float32{float32(idx)})
-		return &result
+		resultPtr = &result
+	} else {
+		resultShape, axis := t.prepareArgmax(dim)
+		result := New(t.DataType(), types.NewShape(resultShape...))
+		resultPtr = &result
+		resultData := types.GetTensorData[[]float32](resultPtr)
+		tData := types.GetTensorData[[]float32](t)
+		fp32.Argmax(
+			resultData,
+			resultPtr.Shape().ToSlice(),
+			resultPtr.Shape().Strides(),
+			tData,
+			t.shape.ToSlice(),
+			t.shape.Strides(),
+			axis,
+		)
 	}
 
-	resultShape, axis := t.prepareArgmax(dim)
-	result := New(t.DataType(), types.NewShape(resultShape...))
-	resultPtr := &result
+	if IsNil(dst) {
+		return resultPtr
+	}
+
+	if !resultPtr.Shape().Equal(dst.Shape()) {
+		panic(fmt.Sprintf("tensor.ArgMax: destination shape mismatch: expected %v, got %v", resultPtr.Shape(), dst.Shape()))
+	}
+
+	// Copy result to dst using generics
 	resultData := types.GetTensorData[[]float32](resultPtr)
-	tData := types.GetTensorData[[]float32](t)
-	fp32.Argmax(
-		resultData,
-		resultPtr.shape.ToSlice(),
-		resultPtr.shape.Strides(),
-		tData,
-		t.shape.ToSlice(),
-		t.shape.Strides(),
-		axis,
-	)
-	return resultPtr
+	dstData := types.GetTensorData[[]float32](dst)
+	shapeSlice := resultPtr.Shape().ToSlice()
+	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(), resultPtr.Shape().Strides())
+	return dst
 }
 
-// ArgMin returns indices of minimum elements along specified dimension.
-func (t Tensor) ArgMin(dim int) types.Tensor {
+// ArgMin returns the index of the minimum element along the specified dimension (matches tf.argmin).
+// If dst is nil, creates a new tensor.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) ArgMin(dst types.Tensor, dim int) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
@@ -734,7 +600,19 @@ func (t Tensor) ArgMin(dim int) types.Tensor {
 		resultData[i] = float32(resultDataInt32[i])
 	}
 
-	return resultPtr
+	if IsNil(dst) {
+		return resultPtr
+	}
+
+	if !resultPtr.Shape().Equal(dst.Shape()) {
+		panic(fmt.Sprintf("tensor.ArgMin: destination shape mismatch: expected %v, got %v", resultPtr.Shape(), dst.Shape()))
+	}
+
+	// Copy result to dst using generics
+	dstData := types.GetTensorData[[]float32](dst)
+	shapeSlice := resultPtr.Shape().ToSlice()
+	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(), resultPtr.Shape().Strides())
+	return dst
 }
 
 // Helper functions
@@ -839,30 +717,42 @@ func (t Tensor) copyTo(dst Tensor) {
 		return
 	}
 
-	if t.isContiguous() && dst.isContiguous() {
-		fp32.Copy(types.GetTensorData[[]float32](&dst), types.GetTensorData[[]float32](t), 1, 1, size)
-		return
-	}
-
+	dstData := types.GetTensorData[[]float32](dst)
+	tData := types.GetTensorData[[]float32](t)
+	shapeSlice := []int(t.shape)
 	stridesSrc := t.shape.Strides()
 	stridesDst := dst.shape.Strides()
-	fp32.ElemCopy(types.GetTensorData[[]float32](&dst), types.GetTensorData[[]float32](t), []int(t.shape), stridesDst, stridesSrc)
+
+	// Use generics.ElemCopyStrided which handles both contiguous and strided cases
+	generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, stridesDst, stridesSrc)
 }
 
 // Where creates a new tensor by selecting elements from a where condition is true, otherwise from b.
 // condition, a, b must have compatible shapes.
-func (t Tensor) Where(condition, a, b types.Tensor) types.Tensor {
+// If dst is nil, creates a new tensor.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) Where(dst types.Tensor, condition, a, b types.Tensor) types.Tensor {
 	if t.shape == nil || condition == nil || condition.Shape() == nil || a == nil || a.Shape() == nil || b == nil || b.Shape() == nil {
-		return nil
-	}
-
-	result := t.Clone()
-	if result == nil {
 		return nil
 	}
 
 	if !t.Shape().Equal(condition.Shape()) || !t.Shape().Equal(a.Shape()) || !t.Shape().Equal(b.Shape()) {
 		panic("tensor.Where: shape mismatch")
+	}
+
+	var result types.Tensor
+	if IsNil(dst) {
+		// Create new tensor
+		result = t.Clone()
+		if result == nil {
+			return nil
+		}
+	} else {
+		// Validate dst shape
+		if !t.Shape().Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.Where: destination shape mismatch: expected %v, got %v", t.Shape(), dst.Shape()))
+		}
+		result = dst
 	}
 
 	shape := t.Shape().ToSlice()
@@ -872,43 +762,11 @@ func (t Tensor) Where(condition, a, b types.Tensor) types.Tensor {
 	bData := types.GetTensorData[[]float32](b)
 	resultData := types.GetTensorData[[]float32](result)
 
-	fp32.ElemWhere(
+	generics.ElemWhere[float32](
 		resultData, conditionData, aData, bData,
 		shape, strides, strides, strides, strides,
 	)
 	return result
-}
-
-// WhereTo performs element-wise selection and stores result in dst.
-func (t Tensor) WhereTo(dst types.Tensor, condition, a, b types.Tensor) types.Tensor {
-	if t.shape == nil || condition == nil || condition.Shape() == nil || a == nil || a.Shape() == nil || b == nil || b.Shape() == nil {
-		return nil
-	}
-
-	if dst == nil {
-		return t.Where(condition, a, b)
-	}
-
-	if !t.Shape().Equal(condition.Shape()) || !t.Shape().Equal(a.Shape()) || !t.Shape().Equal(b.Shape()) {
-		panic("tensor.WhereTo: shape mismatch")
-	}
-
-	if !t.Shape().Equal(dst.Shape()) {
-		panic(fmt.Sprintf("tensor.WhereTo: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
-	}
-
-	shape := t.Shape().ToSlice()
-	strides := fp32.ComputeStrides(shape)
-	conditionData := types.GetTensorData[[]float32](condition)
-	aData := types.GetTensorData[[]float32](a)
-	bData := types.GetTensorData[[]float32](b)
-	dstData := types.GetTensorData[[]float32](dst)
-
-	fp32.ElemWhere(
-		dstData, conditionData, aData, bData,
-		shape, strides, strides, strides, strides,
-	)
-	return dst
 }
 
 // GreaterThan creates a tensor with 1.0 where t > other, 0.0 otherwise.
@@ -930,7 +788,7 @@ func (t Tensor) GreaterThan(other types.Tensor) types.Tensor {
 	otherData := types.GetTensorData[[]float32](other)
 	resultData := types.GetTensorData[[]float32](resultPtr)
 
-	fp32.ElemGreaterThan(
+	generics.ElemGreaterThanStrided[float32](
 		resultData, tData, otherData,
 		shape, strides, strides, strides,
 	)
@@ -988,8 +846,9 @@ func FullLike(t types.Tensor, value float32) types.Tensor {
 	return resultPtr
 }
 
-// Square computes element-wise square in-place: t[i] = t[i]^2
-// If dst is nil, applies in-place on t. Otherwise writes to dst.
+// Square computes element-wise square: dst[i] = t[i]^2 (matches tf.square).
+// If dst is nil, operation is in-place (modifies t) and returns t.
+// If dst is provided, writes result to dst and returns dst.
 func (t Tensor) Square(dst types.Tensor) types.Tensor {
 	if t.shape == nil {
 		return t
@@ -997,33 +856,29 @@ func (t Tensor) Square(dst types.Tensor) types.Tensor {
 
 	var tData []float32
 	var dstData []float32
-	if dst == nil || dst.Empty() {
+	var result types.Tensor
+	if IsNil(dst) {
 		tData = types.GetTensorData[[]float32](t)
 		dstData = types.GetTensorData[[]float32](t)
+		result = t
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.Square: destination shape mismatch")
 		}
-
 		tData = types.GetTensorData[[]float32](t)
 		dstData = types.GetTensorData[[]float32](dst)
+		result = dst
 	}
 
-	strides := t.shape.Strides()
-	dstStrides := strides
-	if dst != nil && !dst.Empty() {
-		dstStrides = dst.Shape().Strides()
-	}
-
-	fp32.ElemSquare(dstData, tData, []int(t.shape), dstStrides, strides)
-	if dst == nil || dst.Empty() {
-		return t
-	}
-	return dst
+	tStrides := t.shape.Strides()
+	dstStrides := result.Shape().Strides()
+	fp32.ElemSquare(dstData, tData, []int(t.shape), dstStrides, tStrides)
+	return result
 }
 
-// Sqrt computes element-wise square root in-place: t[i] = sqrt(t[i])
-// If dst is nil, applies in-place on t. Otherwise writes to dst.
+// Sqrt computes element-wise square root: dst[i] = sqrt(t[i]) (matches tf.sqrt).
+// If dst is nil, operation is in-place (modifies t) and returns t.
+// If dst is provided, writes result to dst and returns dst.
 func (t Tensor) Sqrt(dst types.Tensor) types.Tensor {
 	if t.shape == nil {
 		return t
@@ -1031,33 +886,29 @@ func (t Tensor) Sqrt(dst types.Tensor) types.Tensor {
 
 	var tData []float32
 	var dstData []float32
-	if dst == nil || dst.Empty() {
+	var result types.Tensor
+	if IsNil(dst) {
 		tData = types.GetTensorData[[]float32](t)
 		dstData = types.GetTensorData[[]float32](t)
+		result = t
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.Sqrt: destination shape mismatch")
 		}
-
 		tData = types.GetTensorData[[]float32](t)
 		dstData = types.GetTensorData[[]float32](dst)
+		result = dst
 	}
 
-	strides := t.shape.Strides()
-	dstStrides := strides
-	if dst != nil && !dst.Empty() {
-		dstStrides = dst.Shape().Strides()
-	}
-
-	fp32.ElemSqrt(dstData, tData, []int(t.shape), dstStrides, strides)
-	if dst == nil || dst.Empty() {
-		return t
-	}
-	return dst
+	tStrides := t.shape.Strides()
+	dstStrides := result.Shape().Strides()
+	fp32.ElemSqrt(dstData, tData, []int(t.shape), dstStrides, tStrides)
+	return result
 }
 
-// Exp computes element-wise exponential in-place: t[i] = exp(t[i])
-// If dst is nil, applies in-place on t. Otherwise writes to dst.
+// Exp computes element-wise exponential: dst[i] = exp(t[i]) (matches tf.exp).
+// If dst is nil, operation is in-place (modifies t) and returns t.
+// If dst is provided, writes result to dst and returns dst.
 func (t Tensor) Exp(dst types.Tensor) types.Tensor {
 	if t.shape == nil {
 		return t
@@ -1065,33 +916,29 @@ func (t Tensor) Exp(dst types.Tensor) types.Tensor {
 
 	var tData []float32
 	var dstData []float32
-	if dst == nil || dst.Empty() {
+	var result types.Tensor
+	if IsNil(dst) {
 		tData = types.GetTensorData[[]float32](t)
 		dstData = types.GetTensorData[[]float32](t)
+		result = t
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.Exp: destination shape mismatch")
 		}
-
 		tData = types.GetTensorData[[]float32](t)
 		dstData = types.GetTensorData[[]float32](dst)
+		result = dst
 	}
 
-	strides := t.shape.Strides()
-	dstStrides := strides
-	if dst != nil && !dst.Empty() {
-		dstStrides = dst.Shape().Strides()
-	}
-
-	fp32.ElemExp(dstData, tData, []int(t.shape), dstStrides, strides)
-	if dst == nil || dst.Empty() {
-		return t
-	}
-	return dst
+	tStrides := t.shape.Strides()
+	dstStrides := result.Shape().Strides()
+	fp32.ElemExp(dstData, tData, []int(t.shape), dstStrides, tStrides)
+	return result
 }
 
-// Log computes element-wise natural logarithm in-place: t[i] = log(t[i])
-// If dst is nil, applies in-place on t. Otherwise writes to dst.
+// Log computes element-wise natural logarithm: dst[i] = log(t[i]) (matches tf.log).
+// If dst is nil, operation is in-place (modifies t) and returns t.
+// If dst is provided, writes result to dst and returns dst.
 func (t Tensor) Log(dst types.Tensor) types.Tensor {
 	if t.shape == nil {
 		return t
@@ -1099,65 +946,56 @@ func (t Tensor) Log(dst types.Tensor) types.Tensor {
 
 	var tData []float32
 	var dstData []float32
-	if dst == nil || dst.Empty() {
+	var result types.Tensor
+	if IsNil(dst) {
 		tData = types.GetTensorData[[]float32](t)
 		dstData = types.GetTensorData[[]float32](t)
+		result = t
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.Log: destination shape mismatch")
 		}
-
 		tData = types.GetTensorData[[]float32](t)
 		dstData = types.GetTensorData[[]float32](dst)
+		result = dst
 	}
 
-	strides := t.shape.Strides()
-	dstStrides := strides
-	if dst != nil && !dst.Empty() {
-		dstStrides = dst.Shape().Strides()
-	}
-
-	fp32.ElemLog(dstData, tData, []int(t.shape), dstStrides, strides)
-	if dst == nil || dst.Empty() {
-		return t
-	}
-	return dst
+	tStrides := t.shape.Strides()
+	dstStrides := result.Shape().Strides()
+	fp32.ElemLog(dstData, tData, []int(t.shape), dstStrides, tStrides)
+	return result
 }
 
-// Pow computes element-wise power in-place: t[i] = t[i]^power
-// If dst is nil, applies in-place on t. Otherwise writes to dst.
-// Converts float64 power to float32 for internal computation.
+// Pow computes element-wise power: dst[i] = t[i]^power (matches tf.pow).
+// If dst is nil, operation is in-place (modifies t) and returns t.
+// If dst is provided, writes result to dst and returns dst.
 func (t Tensor) Pow(dst types.Tensor, power float64) types.Tensor {
 	if t.shape == nil {
 		return t
 	}
 
+	power32 := float32(power)
+
 	var tData []float32
 	var dstData []float32
-	if dst == nil || dst.Empty() {
+	var result types.Tensor
+	if IsNil(dst) {
 		tData = types.GetTensorData[[]float32](t)
 		dstData = types.GetTensorData[[]float32](t)
+		result = t
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.Pow: destination shape mismatch")
 		}
-
 		tData = types.GetTensorData[[]float32](t)
 		dstData = types.GetTensorData[[]float32](dst)
+		result = dst
 	}
 
-	strides := t.shape.Strides()
-	dstStrides := strides
-	if dst != nil && !dst.Empty() {
-		dstStrides = dst.Shape().Strides()
-	}
-
-	power32 := float32(power)
-	fp32.ElemPow(dstData, tData, power32, []int(t.shape), dstStrides, strides)
-	if dst == nil || dst.Empty() {
-		return t
-	}
-	return dst
+	tStrides := t.shape.Strides()
+	dstStrides := result.Shape().Strides()
+	fp32.ElemPow(dstData, tData, power32, []int(t.shape), dstStrides, tStrides)
+	return result
 }
 
 // Equal creates a tensor with 1.0 where t == other, 0.0 otherwise.
@@ -1179,7 +1017,7 @@ func (t Tensor) Equal(other types.Tensor) types.Tensor {
 	otherData := types.GetTensorData[[]float32](other)
 	resultData := types.GetTensorData[[]float32](resultPtr)
 
-	fp32.ElemEqual(
+	generics.ElemEqualStrided[float32](
 		resultData, tData, otherData,
 		shape, strides, strides, strides,
 	)
@@ -1212,7 +1050,7 @@ func (t Tensor) Less(other types.Tensor) types.Tensor {
 	otherData := types.GetTensorData[[]float32](other)
 	resultData := types.GetTensorData[[]float32](resultPtr)
 
-	fp32.ElemLess(
+	generics.ElemLessStrided[float32](
 		resultData, tData, otherData,
 		shape, strides, strides, strides,
 	)
@@ -1237,7 +1075,7 @@ func (t Tensor) NotEqual(other types.Tensor) types.Tensor {
 	otherData := types.GetTensorData[[]float32](other)
 	resultData := types.GetTensorData[[]float32](resultPtr)
 
-	fp32.ElemNotEqual(
+	generics.ElemNotEqualStrided[float32](
 		resultData, tData, otherData,
 		shape, strides, strides, strides,
 	)
@@ -1262,7 +1100,7 @@ func (t Tensor) GreaterEqual(other types.Tensor) types.Tensor {
 	otherData := types.GetTensorData[[]float32](other)
 	resultData := types.GetTensorData[[]float32](resultPtr)
 
-	fp32.ElemGreaterEqual(
+	generics.ElemGreaterEqualStrided[float32](
 		resultData, tData, otherData,
 		shape, strides, strides, strides,
 	)
@@ -1287,15 +1125,16 @@ func (t Tensor) LessEqual(other types.Tensor) types.Tensor {
 	otherData := types.GetTensorData[[]float32](other)
 	resultData := types.GetTensorData[[]float32](resultPtr)
 
-	fp32.ElemLessEqual(
+	generics.ElemLessEqualStrided[float32](
 		resultData, tData, otherData,
 		shape, strides, strides, strides,
 	)
 	return resultPtr
 }
 
-// Abs computes element-wise absolute value in-place: t[i] = abs(t[i])
-// If dst is nil, applies in-place on t. Otherwise writes to dst.
+// Abs computes element-wise absolute value: dst[i] = |t[i]| (matches tf.abs).
+// If dst is nil, operation is in-place (modifies t) and returns t.
+// If dst is provided, writes result to dst and returns dst.
 func (t Tensor) Abs(dst types.Tensor) types.Tensor {
 	if t.shape == nil {
 		return t
@@ -1303,33 +1142,29 @@ func (t Tensor) Abs(dst types.Tensor) types.Tensor {
 
 	var tData []float32
 	var dstData []float32
-	if dst == nil || dst.Empty() {
+	var result types.Tensor
+	if IsNil(dst) {
 		tData = types.GetTensorData[[]float32](t)
 		dstData = types.GetTensorData[[]float32](t)
+		result = t
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.Abs: destination shape mismatch")
 		}
-
 		tData = types.GetTensorData[[]float32](t)
 		dstData = types.GetTensorData[[]float32](dst)
+		result = dst
 	}
 
-	strides := t.shape.Strides()
-	dstStrides := strides
-	if dst != nil && !dst.Empty() {
-		dstStrides = dst.Shape().Strides()
-	}
-
-	fp32.ElemAbs(dstData, tData, []int(t.shape), dstStrides, strides)
-	if dst == nil || dst.Empty() {
-		return t
-	}
-	return dst
+	tStrides := t.shape.Strides()
+	dstStrides := result.Shape().Strides()
+	fp32.ElemAbs(dstData, tData, []int(t.shape), dstStrides, tStrides)
+	return result
 }
 
-// Sign computes element-wise sign in-place: t[i] = sign(t[i]) (-1, 0, or 1)
-// If dst is nil, applies in-place on t. Otherwise writes to dst.
+// Sign computes element-wise sign: dst[i] = sign(t[i]) (-1, 0, or 1) (matches tf.sign).
+// If dst is nil, operation is in-place (modifies t) and returns t.
+// If dst is provided, writes result to dst and returns dst.
 func (t Tensor) Sign(dst types.Tensor) types.Tensor {
 	if t.shape == nil {
 		return t
@@ -1337,33 +1172,29 @@ func (t Tensor) Sign(dst types.Tensor) types.Tensor {
 
 	var tData []float32
 	var dstData []float32
-	if dst == nil || dst.Empty() {
+	var result types.Tensor
+	if IsNil(dst) {
 		tData = types.GetTensorData[[]float32](t)
 		dstData = types.GetTensorData[[]float32](t)
+		result = t
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.Sign: destination shape mismatch")
 		}
-
 		tData = types.GetTensorData[[]float32](t)
 		dstData = types.GetTensorData[[]float32](dst)
+		result = dst
 	}
 
-	strides := t.shape.Strides()
-	dstStrides := strides
-	if dst != nil && !dst.Empty() {
-		dstStrides = dst.Shape().Strides()
-	}
-
-	fp32.ElemSign(dstData, tData, []int(t.shape), dstStrides, strides)
-	if dst == nil || dst.Empty() {
-		return t
-	}
-	return dst
+	tStrides := t.shape.Strides()
+	dstStrides := result.Shape().Strides()
+	generics.ElemSignStrided[float32](dstData, tData, []int(t.shape), dstStrides, tStrides)
+	return result
 }
 
-// Cos computes element-wise cosine in-place: t[i] = cos(t[i])
-// If dst is nil, applies in-place on t. Otherwise writes to dst.
+// Cos computes element-wise cosine: dst[i] = cos(t[i]) (matches tf.cos).
+// If dst is nil, operation is in-place (modifies t) and returns t.
+// If dst is provided, writes result to dst and returns dst.
 func (t Tensor) Cos(dst types.Tensor) types.Tensor {
 	if t.shape == nil {
 		return t
@@ -1371,33 +1202,29 @@ func (t Tensor) Cos(dst types.Tensor) types.Tensor {
 
 	var tData []float32
 	var dstData []float32
-	if dst == nil || dst.Empty() {
+	var result types.Tensor
+	if IsNil(dst) {
 		tData = types.GetTensorData[[]float32](t)
 		dstData = types.GetTensorData[[]float32](t)
+		result = t
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.Cos: destination shape mismatch")
 		}
-
 		tData = types.GetTensorData[[]float32](t)
 		dstData = types.GetTensorData[[]float32](dst)
+		result = dst
 	}
 
-	strides := t.shape.Strides()
-	dstStrides := strides
-	if dst != nil && !dst.Empty() {
-		dstStrides = dst.Shape().Strides()
-	}
-
-	fp32.ElemCos(dstData, tData, []int(t.shape), dstStrides, strides)
-	if dst == nil || dst.Empty() {
-		return t
-	}
-	return dst
+	tStrides := t.shape.Strides()
+	dstStrides := result.Shape().Strides()
+	fp32.ElemCos(dstData, tData, []int(t.shape), dstStrides, tStrides)
+	return result
 }
 
-// Sin computes element-wise sine in-place: t[i] = sin(t[i])
-// If dst is nil, applies in-place on t. Otherwise writes to dst.
+// Sin computes element-wise sine: dst[i] = sin(t[i]) (matches tf.sin).
+// If dst is nil, operation is in-place (modifies t) and returns t.
+// If dst is provided, writes result to dst and returns dst.
 func (t Tensor) Sin(dst types.Tensor) types.Tensor {
 	if t.shape == nil {
 		return t
@@ -1405,33 +1232,29 @@ func (t Tensor) Sin(dst types.Tensor) types.Tensor {
 
 	var tData []float32
 	var dstData []float32
-	if dst == nil || dst.Empty() {
+	var result types.Tensor
+	if IsNil(dst) {
 		tData = types.GetTensorData[[]float32](t)
 		dstData = types.GetTensorData[[]float32](t)
+		result = t
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.Sin: destination shape mismatch")
 		}
-
 		tData = types.GetTensorData[[]float32](t)
 		dstData = types.GetTensorData[[]float32](dst)
+		result = dst
 	}
 
-	strides := t.shape.Strides()
-	dstStrides := strides
-	if dst != nil && !dst.Empty() {
-		dstStrides = dst.Shape().Strides()
-	}
-
-	fp32.ElemSin(dstData, tData, []int(t.shape), dstStrides, strides)
-	if dst == nil || dst.Empty() {
-		return t
-	}
-	return dst
+	tStrides := t.shape.Strides()
+	dstStrides := result.Shape().Strides()
+	fp32.ElemSin(dstData, tData, []int(t.shape), dstStrides, tStrides)
+	return result
 }
 
-// Negative computes element-wise negation in-place: t[i] = -t[i]
-// If dst is nil, applies in-place on t. Otherwise writes to dst.
+// Negative computes element-wise negation: dst[i] = -t[i] (matches tf.negative).
+// If dst is nil, operation is in-place (modifies t) and returns t.
+// If dst is provided, writes result to dst and returns dst.
 func (t Tensor) Negative(dst types.Tensor) types.Tensor {
 	if t.shape == nil {
 		return t
@@ -1439,123 +1262,58 @@ func (t Tensor) Negative(dst types.Tensor) types.Tensor {
 
 	var tData []float32
 	var dstData []float32
-	if dst == nil || dst.Empty() {
+	var result types.Tensor
+	if IsNil(dst) {
 		tData = types.GetTensorData[[]float32](t)
 		dstData = types.GetTensorData[[]float32](t)
+		result = t
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.Negative: destination shape mismatch")
 		}
-
 		tData = types.GetTensorData[[]float32](t)
 		dstData = types.GetTensorData[[]float32](dst)
+		result = dst
 	}
 
-	strides := t.shape.Strides()
-	dstStrides := strides
-	if dst != nil && !dst.Empty() {
-		dstStrides = dst.Shape().Strides()
-	}
-
-	fp32.ElemNegative(dstData, tData, []int(t.shape), dstStrides, strides)
-	if dst == nil || dst.Empty() {
-		return t
-	}
-	return dst
+	tStrides := t.shape.Strides()
+	dstStrides := result.Shape().Strides()
+	generics.ElemNegativeStrided[float32](dstData, tData, []int(t.shape), dstStrides, tStrides)
+	return result
 }
 
-// Explicit To variants for unary operations (for consistency with *To pattern)
-// SquareTo is an alias for Square(dst)
-func (t Tensor) SquareTo(dst types.Tensor) types.Tensor {
-	return t.Square(dst)
-}
-
-// SqrtTo is an alias for Sqrt(dst)
-func (t Tensor) SqrtTo(dst types.Tensor) types.Tensor {
-	return t.Sqrt(dst)
-}
-
-// ExpTo is an alias for Exp(dst)
-func (t Tensor) ExpTo(dst types.Tensor) types.Tensor {
-	return t.Exp(dst)
-}
-
-// LogTo is an alias for Log(dst)
-func (t Tensor) LogTo(dst types.Tensor) types.Tensor {
-	return t.Log(dst)
-}
-
-// PowTo is an alias for Pow(dst, power)
-func (t Tensor) PowTo(dst types.Tensor, power float64) types.Tensor {
-	return t.Pow(dst, power)
-}
-
-// AbsTo is an alias for Abs(dst)
-func (t Tensor) AbsTo(dst types.Tensor) types.Tensor {
-	return t.Abs(dst)
-}
-
-// SignTo is an alias for Sign(dst)
-func (t Tensor) SignTo(dst types.Tensor) types.Tensor {
-	return t.Sign(dst)
-}
-
-// CosTo is an alias for Cos(dst)
-func (t Tensor) CosTo(dst types.Tensor) types.Tensor {
-	return t.Cos(dst)
-}
-
-// SinTo is an alias for Sin(dst)
-func (t Tensor) SinTo(dst types.Tensor) types.Tensor {
-	return t.Sin(dst)
-}
-
-// NegativeTo is an alias for Negative(dst)
-func (t Tensor) NegativeTo(dst types.Tensor) types.Tensor {
-	return t.Negative(dst)
-}
-
-// Fill fills the tensor with a constant value (in-place)
-// Uses fp32.Fill primitive for efficient computation
-func (t Tensor) Fill(value float64) types.Tensor {
+// Fill fills the tensor with a constant value.
+// If dst is nil, operation is in-place (modifies t) and returns t.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) Fill(dst types.Tensor, value float64) types.Tensor {
 	if t.shape == nil {
 		return t
 	}
 
 	value32 := float32(value)
-	strides := t.shape.Strides()
-	size := t.Size()
 
-	if t.isContiguous() {
-		// Use fp32.Fill with stride=1 for contiguous tensors
-		tData := types.GetTensorData[[]float32](&t)
-		fp32.Fill(tData, value32, size, 1)
-		return t
+	var dstData []float32
+	var result types.Tensor
+	if IsNil(dst) {
+		dstData = types.GetTensorData[[]float32](t)
+		result = t
+	} else {
+		if !t.Shape().Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.Fill: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
+		}
+		dstData = types.GetTensorData[[]float32](dst)
+		result = dst
 	}
 
-	// Handle non-contiguous case
-	fp32.ElemFill(types.GetTensorData[[]float32](&t), value32, []int(t.shape), strides)
-	return t
-}
-
-// FillTo fills the tensor with a constant value and stores result in dst.
-func (t Tensor) FillTo(dst types.Tensor, value float64) types.Tensor {
-	if t.shape == nil {
-		return nil
+	shapeSlice := []int(t.shape)
+	strides := result.Shape().Strides()
+	if IsContiguous(strides, shapeSlice) {
+		// Fast path: contiguous - use ElemFill
+		size := t.Size()
+		generics.ElemFill[float32](dstData, value32, size)
+	} else {
+		// Strided path: use ElemFillStrided
+		generics.ElemFillStrided[float32](dstData, value32, shapeSlice, strides)
 	}
-
-	if dst == nil {
-		result := t.Clone()
-		result.Fill(value)
-		return result
-	}
-
-	if !t.Shape().Equal(dst.Shape()) {
-		panic(fmt.Sprintf("tensor.FillTo: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
-	}
-
-	// Copy t to dst, then fill
-	copyTensorData(t, dst)
-	dst.Fill(value)
-	return dst
+	return result
 }

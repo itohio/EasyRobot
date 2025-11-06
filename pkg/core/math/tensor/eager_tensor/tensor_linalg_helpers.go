@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/generics"
+	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
 )
 
@@ -12,8 +14,9 @@ import (
 // vector: [M] tensor (input vector)
 // result: [N] tensor (output vector)
 // Uses fp32 primitive.Gemv_T internally.
-// NOTE: Does not guarantee returning a
-func (t Tensor) MatVecMulTransposed(matrix types.Tensor, vector types.Tensor, alpha, beta float64) types.Tensor {
+// If dst is nil, creates a new tensor.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) MatVecMulTransposed(dst types.Tensor, matrix types.Tensor, vector types.Tensor, alpha, beta float64) types.Tensor {
 	if t.shape == nil || matrix == nil || matrix.Shape() == nil || vector == nil || vector.Shape() == nil {
 		return nil
 	}
@@ -34,17 +37,20 @@ func (t Tensor) MatVecMulTransposed(matrix types.Tensor, vector types.Tensor, al
 
 	M, N := matrixShape[0], matrixShape[1]
 
-	// Ensure result tensor has correct shape
-	var result Tensor
-	tShape := t.Shape()
-	if len(tShape) == 1 && tShape[0] == N {
-		// Reuse provided tensor if shape matches
-		result = t
-	} else {
+	// Determine result tensor
+	var result types.Tensor
+	if IsNil(dst) {
 		// Create new result tensor
-		result = New(t.DataType(), types.NewShape(N))
+		resultTensor := New(t.DataType(), types.NewShape(N))
+		result = &resultTensor
+	} else {
+		// Validate dst shape
+		dstShape := dst.Shape()
+		if len(dstShape) != 1 || dstShape[0] != N {
+			panic(fmt.Sprintf("tensor.MatVecMulTransposed: destination shape mismatch: expected [%d], got %v", N, dstShape))
+		}
+		result = dst
 	}
-	resultPtr := &result
 
 	// Leading dimension of matrix (row-major: number of columns)
 	ldA := N
@@ -55,7 +61,7 @@ func (t Tensor) MatVecMulTransposed(matrix types.Tensor, vector types.Tensor, al
 	beta32 := float32(beta)
 	matrixData := types.GetTensorData[[]float32](matrix)
 	vectorData := types.GetTensorData[[]float32](vector)
-	resultData := types.GetTensorData[[]float32](resultPtr)
+	resultData := types.GetTensorData[[]float32](result)
 	fp32.Gemv_T(
 		resultData, // y (output)
 		matrixData, // A (matrix)
@@ -64,7 +70,7 @@ func (t Tensor) MatVecMulTransposed(matrix types.Tensor, vector types.Tensor, al
 		alpha32, beta32, // scaling factors
 	)
 
-	return resultPtr
+	return result
 }
 
 // MatMulTransposed performs matrix multiplication with optional transposition.
@@ -72,8 +78,9 @@ func (t Tensor) MatVecMulTransposed(matrix types.Tensor, vector types.Tensor, al
 // If transposeB is true: uses Gemm_NT (A @ B^T)
 // If both are false: uses Gemm_NN (A @ B)
 // If both are true: uses Gemm_TT (A^T @ B^T)
-// Returns result tensor (creates new one if dst is nil, otherwise uses dst).
-func (t Tensor) MatMulTransposed(other types.Tensor, transposeA, transposeB bool, dst types.Tensor) types.Tensor {
+// If dst is nil, creates a new tensor.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) MatMulTransposed(dst types.Tensor, other types.Tensor, transposeA, transposeB bool) types.Tensor {
 	if t.shape == nil || other == nil || other.Shape() == nil {
 		return nil
 	}
@@ -153,9 +160,9 @@ func (t Tensor) MatMulTransposed(other types.Tensor, transposeA, transposeB bool
 	}
 
 	// Handle 2D case
-	tData := types.GetTensorData[[]float32](&t)
+	tData := types.GetTensorData[[]float32](t)
 	otherData := types.GetTensorData[[]float32](other)
-	resultData := types.GetTensorData[[]float32](&result)
+	resultData := types.GetTensorData[[]float32](result)
 
 	if len(tShape) == 2 && len(otherShape) == 2 {
 		switch {
@@ -199,7 +206,10 @@ func (t Tensor) MatMulTransposed(other types.Tensor, transposeA, transposeB bool
 				return dst
 			}
 			// Need to copy result to dst
-			copyTensorData(result, dst)
+			resultData := types.GetTensorData[[]float32](result)
+			dstData := types.GetTensorData[[]float32](dst)
+			shapeSlice := result.Shape().ToSlice()
+			generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(), result.Shape().Strides())
 			return dst
 		}
 		return result
@@ -239,9 +249,9 @@ func (t Tensor) MatMulTransposed(other types.Tensor, transposeA, transposeB bool
 				}
 			}
 		}
-		tData := types.GetTensorData[[]float32](&t)
+		tData := types.GetTensorData[[]float32](t)
 		otherData := types.GetTensorData[[]float32](other)
-		resultData := types.GetTensorData[[]float32](&result)
+		resultData := types.GetTensorData[[]float32](result)
 
 		for b := 0; b < batchSize; b++ {
 			tOffset := b * tStride
@@ -294,7 +304,10 @@ func (t Tensor) MatMulTransposed(other types.Tensor, transposeA, transposeB bool
 				return dst
 			}
 			// Need to copy result to dst
-			copyTensorData(&result, dst)
+			resultData := types.GetTensorData[[]float32](result)
+			dstData := types.GetTensorData[[]float32](dst)
+			shapeSlice := result.Shape().ToSlice()
+			generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(), result.Shape().Strides())
 			return dst
 		}
 		return &result
@@ -307,21 +320,36 @@ func (t Tensor) MatMulTransposed(other types.Tensor, transposeA, transposeB bool
 // Uses fp32 primitive.Axpy internally.
 // Returns the tensor itself for method chaining.
 // Converts float64 alpha to float32 for internal computation.
-func (t Tensor) AddScaled(other types.Tensor, alpha float64) types.Tensor {
-	if t.shape == nil || other == nil || other.Shape() == nil {
+// AddScaled computes dst = t + alpha * other (scaled addition).
+// If dst is nil, operation is in-place (modifies t) and returns t.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) AddScaled(dst types.Tensor, other types.Tensor, alpha float64) types.Tensor {
+	if t.shape == nil {
 		return t
 	}
-
-	tVal := t
-	if !tVal.Shape().Equal(other.Shape()) {
+	if IsNil(other) {
+		return t
+	}
+	if !t.Shape().Equal(other.Shape()) {
 		panic(fmt.Sprintf("tensor.AddScaled: shape mismatch: %v vs %v", t.Shape(), other.Shape()))
 	}
 
-	tData := types.GetTensorData[[]float32](&t)
-	otherData := types.GetTensorData[[]float32](other)
 	alpha32 := float32(alpha)
 
-	if !t.isContiguous() || !isTensorContiguous(other) {
+	// In-place operation (dst is nil)
+	if IsNil(dst) {
+		tData := types.GetTensorData[[]float32](t)
+		otherData := types.GetTensorData[[]float32](other)
+		otherStrides := other.Shape().Strides()
+		tShapeSlice := t.Shape().ToSlice()
+
+		if t.isContiguous() && IsContiguous(otherStrides, tShapeSlice) {
+			// Use primitive.Axpy for contiguous case
+			size := t.Size()
+			fp32.Axpy(tData, otherData, 1, 1, size, alpha32)
+			return &t
+		}
+
 		// Handle strided case manually
 		size := t.Size()
 		for i := 0; i < size; i++ {
@@ -330,34 +358,30 @@ func (t Tensor) AddScaled(other types.Tensor, alpha float64) types.Tensor {
 		return &t
 	}
 
-	// Use primitive.Axpy for contiguous case
-	size := t.Size()
-	fp32.Axpy(tData, otherData, 1, 1, size, alpha32)
-	return &t
-}
-
-// AddScaledTo computes dst = t + alpha * other and stores result in dst.
-func (t Tensor) AddScaledTo(dst types.Tensor, other types.Tensor, alpha float64) types.Tensor {
-	if t.shape == nil || other == nil || other.Shape() == nil {
-		return nil
-	}
-
-	if !t.Shape().Equal(other.Shape()) {
-		panic(fmt.Sprintf("tensor.AddScaledTo: shape mismatch: %v vs %v", t.Shape(), other.Shape()))
-	}
-
-	if dst == nil {
-		result := t.Clone()
-		result.AddScaled(other, alpha)
-		return result
-	}
-
+	// Destination-based operation
 	if !t.Shape().Equal(dst.Shape()) {
-		panic(fmt.Sprintf("tensor.AddScaledTo: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
+		panic(fmt.Sprintf("tensor.AddScaled: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
 	}
 
 	// Copy t to dst, then add scaled other
-	copyTensorData(t, dst)
-	dst.AddScaled(other, alpha)
+	tData := types.GetTensorData[[]float32](t)
+	dstData := types.GetTensorData[[]float32](dst)
+	shapeSlice := t.Shape().ToSlice()
+	generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dst.Shape().Strides(), t.Shape().Strides())
+	otherData := types.GetTensorData[[]float32](other)
+	dstStrides := dst.Shape().Strides()
+	otherStrides := other.Shape().Strides()
+
+	if IsContiguous(dstStrides, shapeSlice) && IsContiguous(otherStrides, shapeSlice) {
+		size := t.Size()
+		fp32.Axpy(dstData, otherData, 1, 1, size, alpha32)
+		return dst
+	}
+
+	// Handle strided case
+	size := t.Size()
+	for i := 0; i < size; i++ {
+		dstData[i] += alpha32 * otherData[i]
+	}
 	return dst
 }

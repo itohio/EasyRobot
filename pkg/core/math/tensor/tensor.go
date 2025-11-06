@@ -108,3 +108,79 @@ func XavierUniformLike(ref Tensor, fanIn, fanOut int, rng RNG) Tensor {
 func XavierNormalLike(ref Tensor, fanIn, fanOut int, rng RNG) Tensor {
 	return eager_tensor.XavierNormalLike(ref, fanIn, fanOut, rng)
 }
+
+// Package-level convenience wrappers for destination-based operations.
+// These functions create new tensors and call the destination-based interface methods.
+// For zero-allocation patterns, use the interface methods directly with a pre-allocated destination.
+
+// Add performs element-wise addition: result = t + other (matches tf.add).
+// Creates a new tensor and returns it.
+func Add(t, other Tensor) Tensor {
+	dst := NewAs(t)
+	t.Add(dst, other)
+	return dst
+}
+
+// Subtract performs element-wise subtraction: result = t - other (matches tf.subtract).
+// Creates a new tensor and returns it.
+func Subtract(t, other Tensor) Tensor {
+	dst := NewAs(t)
+	t.Subtract(dst, other)
+	return dst
+}
+
+// Multiply performs element-wise multiplication: result = t * other (matches tf.multiply).
+// Creates a new tensor and returns it.
+func Multiply(t, other Tensor) Tensor {
+	dst := NewAs(t)
+	t.Multiply(dst, other)
+	return dst
+}
+
+// Divide performs element-wise division: result = t / other (matches tf.divide).
+// Creates a new tensor and returns it.
+func Divide(t, other Tensor) Tensor {
+	dst := NewAs(t)
+	t.Divide(dst, other)
+	return dst
+}
+
+// ScalarMul multiplies the tensor by a scalar: result = scalar * t (matches tf.scalar_mul).
+// Creates a new tensor and returns it.
+func ScalarMul(t Tensor, scalar float64) Tensor {
+	dst := NewAs(t)
+	t.ScalarMul(dst, scalar)
+	return dst
+}
+
+// AddScalar adds a scalar value to all elements: result[i] = t[i] + scalar.
+// Creates a new tensor and returns it.
+func AddScalar(t Tensor, scalar float64) Tensor {
+	dst := NewAs(t)
+	t.AddScalar(dst, scalar)
+	return dst
+}
+
+// SubScalar subtracts a scalar value from all elements: result[i] = t[i] - scalar.
+// Creates a new tensor and returns it.
+func SubScalar(t Tensor, scalar float64) Tensor {
+	dst := NewAs(t)
+	t.SubScalar(dst, scalar)
+	return dst
+}
+
+// MulScalar multiplies all elements by a scalar: result[i] = t[i] * scalar.
+// Creates a new tensor and returns it.
+func MulScalar(t Tensor, scalar float64) Tensor {
+	dst := NewAs(t)
+	t.MulScalar(dst, scalar)
+	return dst
+}
+
+// DivScalar divides all elements by a scalar: result[i] = t[i] / scalar.
+// Creates a new tensor and returns it.
+func DivScalar(t Tensor, scalar float64) Tensor {
+	dst := NewAs(t)
+	t.DivScalar(dst, scalar)
+	return dst
+}

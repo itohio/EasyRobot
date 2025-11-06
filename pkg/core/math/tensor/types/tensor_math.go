@@ -6,85 +6,75 @@ type TensorMath interface {
 	// Reduction Operations
 	// Reduction operations reduce dimensions and return new tensors with reduced dimensions.
 
-	// Sum sums along specified dimensions. If no dimensions specified, sums all elements.
-	// Returns a new tensor with reduced dimensions. Panics if dimensions are out of range.
-	Sum(dims ...int) Tensor
+	// Sum sums along specified dimensions. If no dimensions specified, sums all elements (matches tf.reduce_sum).
+	// If dst is nil, creates a new tensor.
+	// If dst is provided, writes result to dst and returns dst.
+	// Panics if dimensions are out of range.
+	Sum(dst Tensor, dims []int) Tensor
 
 	// ReduceSum is an alias for Sum (matches TensorFlow naming: tf.reduce_sum).
-	ReduceSum(dims ...int) Tensor
+	ReduceSum(dst Tensor, dims []int) Tensor
 
-	// SumTo sums along specified dimensions and stores result in dst.
-	// If dst is nil, creates a new tensor. If dst is provided, uses it (must match output shape).
-	// Returns the destination tensor.
-	SumTo(dst Tensor, dims ...int) Tensor
-
-	// Mean computes mean along specified dimensions. If no dimensions specified, means all elements.
-	// Returns a new tensor with reduced dimensions. Panics if dimensions are out of range.
-	Mean(dims ...int) Tensor
+	// Mean computes mean along specified dimensions. If no dimensions specified, means all elements (matches tf.reduce_mean).
+	// If dst is nil, creates a new tensor.
+	// If dst is provided, writes result to dst and returns dst.
+	// Panics if dimensions are out of range.
+	Mean(dst Tensor, dims []int) Tensor
 
 	// ReduceMean is an alias for Mean (matches TensorFlow naming: tf.reduce_mean).
-	ReduceMean(dims ...int) Tensor
+	ReduceMean(dst Tensor, dims []int) Tensor
 
-	// MeanTo computes mean along specified dimensions and stores result in dst.
-	// If dst is nil, creates a new tensor. If dst is provided, uses it (must match output shape).
-	// Returns the destination tensor.
-	MeanTo(dst Tensor, dims ...int) Tensor
-
-	// Max computes maximum along specified dimensions. If no dimensions specified, finds global maximum.
-	// Returns a new tensor with reduced dimensions. Panics if dimensions are out of range.
-	Max(dims ...int) Tensor
+	// Max computes maximum along specified dimensions. If no dimensions specified, finds global maximum (matches tf.reduce_max).
+	// If dst is nil, creates a new tensor.
+	// If dst is provided, writes result to dst and returns dst.
+	// Panics if dimensions are out of range.
+	Max(dst Tensor, dims []int) Tensor
 
 	// ReduceMax is an alias for Max (matches TensorFlow naming: tf.reduce_max).
-	ReduceMax(dims ...int) Tensor
+	ReduceMax(dst Tensor, dims []int) Tensor
 
-	// MaxTo computes maximum along specified dimensions and stores result in dst.
-	// If dst is nil, creates a new tensor. If dst is provided, uses it (must match output shape).
-	// Returns the destination tensor.
-	MaxTo(dst Tensor, dims ...int) Tensor
-
-	// Min computes minimum along specified dimensions. If no dimensions specified, finds global minimum.
-	// Returns a new tensor with reduced dimensions. Panics if dimensions are out of range.
-	Min(dims ...int) Tensor
+	// Min computes minimum along specified dimensions. If no dimensions specified, finds global minimum (matches tf.reduce_min).
+	// If dst is nil, creates a new tensor.
+	// If dst is provided, writes result to dst and returns dst.
+	// Panics if dimensions are out of range.
+	Min(dst Tensor, dims []int) Tensor
 
 	// ReduceMin is an alias for Min (matches TensorFlow naming: tf.reduce_min).
-	ReduceMin(dims ...int) Tensor
+	ReduceMin(dst Tensor, dims []int) Tensor
 
-	// MinTo computes minimum along specified dimensions and stores result in dst.
-	// If dst is nil, creates a new tensor. If dst is provided, uses it (must match output shape).
-	// Returns the destination tensor.
-	MinTo(dst Tensor, dims ...int) Tensor
-
-	// ArgMax returns the index of the maximum element along the specified dimension.
-	// Returns a new tensor with reduced dimension. Panics if dimension is out of range.
-	ArgMax(dim int) Tensor
+	// ArgMax returns the index of the maximum element along the specified dimension (matches tf.argmax).
+	// If dst is nil, creates a new tensor.
+	// If dst is provided, writes result to dst and returns dst.
+	// Panics if dimension is out of range.
+	ArgMax(dst Tensor, dim int) Tensor
 
 	// ArgMin returns the index of the minimum element along the specified dimension (matches tf.argmin).
-	// Returns a new tensor with reduced dimension. Panics if dimension is out of range.
-	ArgMin(dim int) Tensor
+	// If dst is nil, creates a new tensor.
+	// If dst is provided, writes result to dst and returns dst.
+	// Panics if dimension is out of range.
+	ArgMin(dst Tensor, dim int) Tensor
 
 	// Linear Algebra Operations
 	// All linear algebra operations use optimized BLAS/LAPACK operations when possible.
 
-	// MatMul performs matrix multiplication.
+	// MatMul performs matrix multiplication (matches tf.matmul).
 	// For 2D: [M, K] × [K, N] = [M, N]
 	// For batched: [B, M, K] × [B, K, N] = [B, M, N]
 	// Supports broadcasting: [M, K] × [B, K, N] or [B, M, K] × [K, N]
-	// Panics if dimensions are incompatible. Returns a new tensor.
-	MatMul(other Tensor) Tensor
-
-	// MatMulTo performs matrix multiplication and stores result in dst.
-	// If dst is nil, creates a new tensor. If dst is provided, uses it (must match output shape).
-	// Returns the destination tensor.
-	MatMulTo(other Tensor, dst Tensor) Tensor
+	// If dst is nil, creates a new tensor.
+	// If dst is provided, writes result to dst and returns dst.
+	// Panics if dimensions are incompatible.
+	MatMul(dst Tensor, other Tensor) Tensor
 
 	// MatMulTransposed performs matrix multiplication with optional transposition.
 	// Computes: dst = (transposeA ? t^T : t) × (transposeB ? other^T : other)
 	// If dst is nil, creates a new tensor. Returns the destination tensor.
-	MatMulTransposed(other Tensor, transposeA, transposeB bool, dst Tensor) Tensor
+	MatMulTransposed(dst Tensor, other Tensor, transposeA, transposeB bool) Tensor
 
-	// MatVecMulTransposed performs matrix-vector multiplication with scaling: result = alpha * matrix^T × vector + beta * result.
-	// Returns a new tensor.
-	MatVecMulTransposed(matrix, vector Tensor, alpha, beta float64) Tensor
+	// MatVecMulTransposed performs matrix-vector multiplication with scaling: dst = alpha * matrix^T × vector + beta * dst.
+	// If dst is nil, creates a new tensor.
+	// If dst is provided, writes result to dst and returns dst.
+	MatVecMulTransposed(dst Tensor, matrix, vector Tensor, alpha, beta float64) Tensor
 
 	// Dot computes dot product (vector) or Frobenius inner product (matrix).
 	// For vectors: dot product of two 1D tensors.
@@ -100,27 +90,21 @@ type TensorMath interface {
 	// Panics if ord is invalid.
 	Norm(ord int) float64
 
-	// Normalize performs L2 normalization along the specified dimension.
+	// L2Normalize performs L2 normalization along the specified dimension (matches tf.nn.l2_normalize).
 	// For 1D: normalizes entire vector. For 2D: normalizes along rows (dim=0) or columns (dim=1).
-	// Returns a new tensor. Panics if dimension is out of range.
-	Normalize(dim int) Tensor
+	// If dst is nil, creates a new tensor.
+	// If dst is provided, writes result to dst and returns dst.
+	// Panics if dimension is out of range.
+	L2Normalize(dst Tensor, dim int) Tensor
 
-	// L2Normalize is an alias for Normalize (matches TensorFlow naming: tf.nn.l2_normalize).
-	L2Normalize(dim int) Tensor
+	// Normalize is an alias for L2Normalize (matches TensorFlow naming).
+	Normalize(dst Tensor, dim int) Tensor
 
-	// NormalizeTo performs L2 normalization along the specified dimension and stores result in dst.
-	// If dst is nil, creates a new tensor. If dst is provided, uses it (must match shape).
-	// Returns the destination tensor.
-	NormalizeTo(dst Tensor, dim int) Tensor
-
-	// AddScaled computes t = t + alpha * other (scaled addition).
-	// Panics if shapes don't match. Returns self for method chaining.
-	AddScaled(other Tensor, alpha float64) Tensor
-
-	// AddScaledTo computes dst = t + alpha * other (scaled addition) and stores result in dst.
-	// If dst is nil, creates a new tensor. If dst is provided, uses it (must match shape).
-	// Returns the destination tensor.
-	AddScaledTo(dst Tensor, other Tensor, alpha float64) Tensor
+	// AddScaled computes dst = t + alpha * other (scaled addition).
+	// If dst is nil, operation is in-place (modifies t) and returns t.
+	// If dst is provided, writes result to dst and returns dst.
+	// Panics if shapes don't match.
+	AddScaled(dst Tensor, other Tensor, alpha float64) Tensor
 
 	// Gradient Routing and Utility Operations
 	// ScatterAdd adds values to destination tensor at positions specified by indices.
@@ -132,4 +116,3 @@ type TensorMath interface {
 	// Returns the destination tensor.
 	ScatterAdd(dst, index, value Tensor) Tensor
 }
-

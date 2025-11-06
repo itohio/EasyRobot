@@ -5,55 +5,55 @@ import (
 
 	"github.com/chewxy/math32"
 	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/generics"
+	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
 )
 
-// MatMul performs matrix multiplication with another tensor.
+// MatMul performs matrix multiplication (matches tf.matmul).
 // For 2D tensors: [M, K] × [K, N] = [M, N]
 // For batched tensors: [B, M, K] × [B, K, N] = [B, M, N] or [M, K] × [B, K, N] = [B, M, N]
-// Uses fp32 primitive.Gemm_NN by default. Automatically handles leading dimensions.
-func (t Tensor) MatMul(other types.Tensor) types.Tensor {
-	if t.shape == nil || other == nil || other.Shape() == nil {
+// If dst is nil, creates a new tensor.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) MatMul(dst types.Tensor, other types.Tensor) types.Tensor {
+	if t.shape == nil {
+		return nil
+	}
+	if IsNil(other) {
 		return nil
 	}
 
 	tShape := t.Shape()
 	otherShape := other.Shape()
 
+	var result types.Tensor
 	// Handle 2D case: [M, K] × [K, N]
 	if len(tShape) == 2 && len(otherShape) == 2 {
-		return t.matMul2D(other)
+		result = t.matMul2D(other)
+	} else if len(tShape) >= 2 && len(otherShape) >= 2 {
+		// Handle batched case: [B, M, K] × [B, K, N] or [M, K] × [B, K, N]
+		result = t.matMulBatched(other)
+	} else {
+		panic(fmt.Sprintf("tensor.MatMul: unsupported tensor shapes: %v × %v", tShape, otherShape))
 	}
 
-	// Handle batched case: [B, M, K] × [B, K, N] or [M, K] × [B, K, N]
-	if len(tShape) >= 2 && len(otherShape) >= 2 {
-		return t.matMulBatched(other)
-	}
-
-	panic(fmt.Sprintf("tensor.MatMul: unsupported tensor shapes: %v × %v", tShape, otherShape))
-}
-
-// MatMulTo performs matrix multiplication and stores result in dst (or creates new tensor if dst is nil).
-func (t Tensor) MatMulTo(other types.Tensor, dst types.Tensor) types.Tensor {
-	if t.shape == nil || other == nil || other.Shape() == nil {
-		return nil
-	}
-
-	result := t.MatMul(other)
 	if result == nil {
 		return nil
 	}
 
-	if dst == nil {
+	if IsNil(dst) {
 		return result
 	}
 
 	if !result.Shape().Equal(dst.Shape()) {
-		panic(fmt.Sprintf("tensor.MatMulTo: destination shape mismatch: expected %v, got %v", result.Shape(), dst.Shape()))
+		panic(fmt.Sprintf("tensor.MatMul: destination shape mismatch: expected %v, got %v", result.Shape(), dst.Shape()))
 	}
 
-	// Copy result to dst
-	copyTensorData(result, dst)
+	// Copy result to dst using generics
+	resultData := types.GetTensorData[[]float32](result)
+	dstData := types.GetTensorData[[]float32](dst)
+	shapeSlice := result.Shape().ToSlice()
+	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(), result.Shape().Strides())
 	return dst
 }
 
@@ -77,7 +77,7 @@ func (t Tensor) matMul2D(other types.Tensor) types.Tensor {
 	result := New(t.DataType(), types.NewShape(M, N))
 	resultPtr := &result
 
-	tData := types.GetTensorData[[]float32](&t)
+	tData := types.GetTensorData[[]float32](t)
 	otherData := types.GetTensorData[[]float32](other)
 	resultData := types.GetTensorData[[]float32](resultPtr)
 
@@ -156,11 +156,13 @@ func (t Tensor) matMulSameBatch(other types.Tensor, batchSize, M, N, K int) type
 	result := New(t.DataType(), types.NewShape(resultShape...))
 	resultPtr := &result
 
-	tData := types.GetTensorData[[]float32](&t)
+	tData := types.GetTensorData[[]float32](t)
 	otherData := types.GetTensorData[[]float32](other)
 	resultData := types.GetTensorData[[]float32](resultPtr)
 
-	if t.isContiguous() && isTensorContiguous(other) {
+	otherStrides := other.Shape().Strides()
+	tShapeSlice := []int{M, K}
+	if t.isContiguous() && IsContiguous(otherStrides, tShapeSlice) {
 		fp32.GemmStrided(
 			resultData,
 			tData,
@@ -200,7 +202,7 @@ func (t Tensor) matMulBroadcastFirst(other types.Tensor, batchSize, M, N, K int)
 	sliceSize := K * N
 	dstSize := M * N
 
-	tData := types.GetTensorData[[]float32](&t)
+	tData := types.GetTensorData[[]float32](t)
 	otherData := types.GetTensorData[[]float32](other)
 	resultData := types.GetTensorData[[]float32](resultPtr)
 
@@ -234,7 +236,7 @@ func (t Tensor) matMulBroadcastSecond(other types.Tensor, batchSize, M, N, K int
 	tStride := M * K
 	resultStride := M * N
 
-	tData := types.GetTensorData[[]float32](&t)
+	tData := types.GetTensorData[[]float32](t)
 	otherData := types.GetTensorData[[]float32](other)
 	resultData := types.GetTensorData[[]float32](resultPtr)
 
@@ -256,11 +258,12 @@ func (t Tensor) matMulBroadcastSecond(other types.Tensor, batchSize, M, N, K int
 }
 
 // Transpose transposes tensor dimensions. Currently supports 2D transpose.
-// Transpose transposes dimensions using permutation.
-// For 2D: Transpose() or Transpose(0,1) swaps dimensions
-// For 4D+: Transpose(1,0,2,3) swaps first two dimensions
-// If no dims provided, defaults to swapping last two dimensions for 2D tensors
-func (t Tensor) Transpose(dims ...int) types.Tensor {
+// Transpose transposes dimensions (matches tf.transpose).
+// For 2D: [M, N] → [N, M] (swaps last two dimensions if no dims provided)
+// For 4D+: uses Permute to rearrange dimensions
+// If dst is nil, creates a new tensor.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) Transpose(dst types.Tensor, dims []int) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
@@ -268,26 +271,51 @@ func (t Tensor) Transpose(dims ...int) types.Tensor {
 	shape := t.Shape()
 	rank := shape.Rank()
 
-	if rank == 2 {
-		// Simple 2D transpose: [M, N] -> [N, M]
-		return t.transpose2D()
-	}
-
-	// For higher dimensions, use Permute
+	// Handle default dims for 2D
 	if len(dims) == 0 {
-		// Default: swap last two dimensions
-		if rank < 2 {
+		if rank == 2 {
+			// Default: swap last two dimensions
+			dims = []int{1, 0}
+		} else if rank >= 2 {
+			// Default: swap last two dimensions
+			dims = make([]int, rank)
+			for i := 0; i < rank-2; i++ {
+				dims[i] = i
+			}
+			dims[rank-2] = rank - 1
+			dims[rank-1] = rank - 2
+		} else {
 			panic(fmt.Sprintf("tensor.Transpose: need at least 2 dimensions, got %d", rank))
 		}
-		dims = make([]int, rank)
-		for i := 0; i < rank-2; i++ {
-			dims[i] = i
-		}
-		dims[rank-2] = rank - 1
-		dims[rank-1] = rank - 2
 	}
 
-	return t.Permute(dims)
+	var result types.Tensor
+	if rank == 2 && len(dims) == 2 && dims[0] == 1 && dims[1] == 0 {
+		// Simple 2D transpose: [M, N] -> [N, M]
+		result = t.transpose2D()
+	} else {
+		// For higher dimensions, use Permute
+		result = t.Permute(dims)
+	}
+
+	if result == nil {
+		return nil
+	}
+
+	if IsNil(dst) {
+		return result
+	}
+
+	if !result.Shape().Equal(dst.Shape()) {
+		panic(fmt.Sprintf("tensor.Transpose: destination shape mismatch: expected %v, got %v", result.Shape(), dst.Shape()))
+	}
+
+	// Copy result to dst using generics
+	resultData := types.GetTensorData[[]float32](result)
+	dstData := types.GetTensorData[[]float32](dst)
+	shapeSlice := result.Shape().ToSlice()
+	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(), result.Shape().Strides())
+	return dst
 }
 
 // Permute permutes dimensions according to the provided permutation
@@ -339,7 +367,7 @@ func (t Tensor) Permute(dims []int) types.Tensor {
 
 	// Use fp32.ElemCopy with permuted strides
 	resultData := types.GetTensorData[[]float32](resultPtr)
-	tData := types.GetTensorData[[]float32](&t)
+	tData := types.GetTensorData[[]float32](t)
 	fp32.ElemCopy(
 		resultData,
 		tData,
@@ -363,7 +391,7 @@ func (t Tensor) transpose2D() types.Tensor {
 
 	// Transpose: result[j][i] = t[i][j]
 	resultData := types.GetTensorData[[]float32](resultPtr)
-	tData := types.GetTensorData[[]float32](&t)
+	tData := types.GetTensorData[[]float32](t)
 	for i := 0; i < M; i++ {
 		for j := 0; j < N; j++ {
 			resultData[j*M+i] = tData[i*N+j]
@@ -371,30 +399,6 @@ func (t Tensor) transpose2D() types.Tensor {
 	}
 
 	return resultPtr
-}
-
-// TransposeTo transposes tensor and stores result in dst (or creates new tensor if dst is nil).
-func (t Tensor) TransposeTo(dst types.Tensor, dims ...int) types.Tensor {
-	if t.shape == nil {
-		return nil
-	}
-
-	result := t.Transpose(dims...)
-	if result == nil {
-		return nil
-	}
-
-	if dst == nil {
-		return result
-	}
-
-	if !result.Shape().Equal(dst.Shape()) {
-		panic(fmt.Sprintf("tensor.TransposeTo: destination shape mismatch: expected %v, got %v", result.Shape(), dst.Shape()))
-	}
-
-	// Copy result to dst
-	copyTensorData(result, dst)
-	return dst
 }
 
 // Dot computes dot product (vector) or Frobenius inner product (matrix).
@@ -416,9 +420,11 @@ func (t Tensor) Dot(other types.Tensor) float64 {
 			panic(fmt.Sprintf("tensor.Dot: vector size mismatch: %d vs %d", tShape[0], otherShape[0]))
 		}
 
-		tData := types.GetTensorData[[]float32](&t)
+		tData := types.GetTensorData[[]float32](t)
 		otherData := types.GetTensorData[[]float32](other)
-		if t.isContiguous() && isTensorContiguous(other) {
+		otherStrides := other.Shape().Strides()
+		tShapeSlice := []int{tShape[0]}
+		if t.isContiguous() && IsContiguous(otherStrides, tShapeSlice) {
 			return float64(fp32.Dot(tData, otherData, 1, 1, tShape[0]))
 		}
 
@@ -446,7 +452,7 @@ func (t Tensor) dotStrided(other types.Tensor, n int) float64 {
 	otherStrides := other.Shape().Strides()
 
 	var sum float32
-	tData := types.GetTensorData[[]float32](&t)
+	tData := types.GetTensorData[[]float32](t)
 	otherData := types.GetTensorData[[]float32](other)
 	for i := 0; i < n; i++ {
 		tIdx := i * tStrides[0]
@@ -460,7 +466,7 @@ func (t Tensor) dotStrided(other types.Tensor, n int) float64 {
 func (t Tensor) dotFrobenius(other types.Tensor) float64 {
 	var sum float32
 	size := t.Size()
-	tData := types.GetTensorData[[]float32](&t)
+	tData := types.GetTensorData[[]float32](t)
 	otherData := types.GetTensorData[[]float32](other)
 	for i := 0; i < size; i++ {
 		sum += tData[i] * otherData[i]
@@ -481,7 +487,7 @@ func (t Tensor) Norm(ord int) float64 {
 	case 0:
 		// L1 norm
 		if t.isContiguous() {
-			tData := types.GetTensorData[[]float32](&t)
+			tData := types.GetTensorData[[]float32](t)
 			return float64(fp32.Asum(tData, 1, t.Size()))
 		}
 		return t.norm1Strided()
@@ -489,7 +495,7 @@ func (t Tensor) Norm(ord int) float64 {
 	case 1:
 		// L2 norm (Euclidean norm)
 		if t.isContiguous() {
-			tData := types.GetTensorData[[]float32](&t)
+			tData := types.GetTensorData[[]float32](t)
 			return float64(fp32.Nrm2(tData, 1, t.Size()))
 		}
 		return t.norm2Strided()
@@ -497,7 +503,7 @@ func (t Tensor) Norm(ord int) float64 {
 	case 2:
 		// Frobenius norm for matrices (same as L2 norm on flattened matrix)
 		if t.isContiguous() {
-			tData := types.GetTensorData[[]float32](&t)
+			tData := types.GetTensorData[[]float32](t)
 			return float64(fp32.Nrm2(tData, 1, t.Size()))
 		}
 		return t.norm2Strided()
@@ -519,7 +525,7 @@ func (t Tensor) norm1Strided() float64 {
 func (t Tensor) norm1StridedRecursive(sum *float64, indices []int, strides []int, dim int) {
 	if dim == t.shape.Rank() {
 		idx := t.elementIndex(indices, strides)
-		tData := types.GetTensorData[[]float32](&t)
+		tData := types.GetTensorData[[]float32](t)
 		val := tData[idx]
 		if val < 0 {
 			*sum -= float64(val)
@@ -575,7 +581,7 @@ func (t Tensor) sqrtApprox(x float32) float64 {
 func (t Tensor) norm2StridedRecursive(sum *float64, indices []int, strides []int, dim int) {
 	if dim == t.shape.Rank() {
 		idx := t.elementIndex(indices, strides)
-		tData := types.GetTensorData[[]float32](&t)
+		tData := types.GetTensorData[[]float32](t)
 		val := tData[idx]
 		*sum += float64(val * val)
 		return
@@ -587,67 +593,65 @@ func (t Tensor) norm2StridedRecursive(sum *float64, indices []int, strides []int
 	}
 }
 
-// Normalize normalizes the tensor along a dimension (L2 normalization).
+// L2Normalize performs L2 normalization along the specified dimension (matches tf.nn.l2_normalize).
 // For vectors (1D): normalizes the entire vector
 // For matrices (2D): normalizes along specified dimension (0=rows, 1=columns)
-// Uses fp32 primitive.Nrm2 + fp32 primitive.Scal for efficient computation.
-func (t Tensor) Normalize(dim int) types.Tensor {
+// If dst is nil, creates a new tensor.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) L2Normalize(dst types.Tensor, dim int) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
 
 	shape := t.Shape()
+	var result types.Tensor
 	if shape.Rank() == 1 {
 		// Vector normalization
-		return t.normalizeVector()
-	}
-
-	if shape.Rank() == 2 {
+		result = t.normalizeVector()
+	} else if shape.Rank() == 2 {
 		// Matrix normalization along dimension
-		return t.normalizeMatrixDim(dim)
+		result = t.normalizeMatrixDim(dim)
+	} else {
+		panic(fmt.Sprintf("tensor.L2Normalize: unsupported tensor shape %v (use 1D or 2D)", shape))
 	}
 
-	panic(fmt.Sprintf("tensor.Normalize: unsupported tensor shape %v (use 1D or 2D)", shape))
-}
-
-// L2Normalize is an alias for Normalize (matches TensorFlow naming: tf.nn.l2_normalize).
-func (t Tensor) L2Normalize(dim int) types.Tensor {
-	return t.Normalize(dim)
-}
-
-// NormalizeTo performs L2 normalization along the specified dimension and stores result in dst.
-func (t Tensor) NormalizeTo(dst types.Tensor, dim int) types.Tensor {
-	if t.shape == nil {
-		return nil
-	}
-
-	result := t.Normalize(dim)
 	if result == nil {
 		return nil
 	}
 
-	if dst == nil {
+	if IsNil(dst) {
 		return result
 	}
 
 	if !result.Shape().Equal(dst.Shape()) {
-		panic(fmt.Sprintf("tensor.NormalizeTo: destination shape mismatch: expected %v, got %v", result.Shape(), dst.Shape()))
+		panic(fmt.Sprintf("tensor.L2Normalize: destination shape mismatch: expected %v, got %v", result.Shape(), dst.Shape()))
 	}
 
-	copyTensorData(result, dst)
+	// Copy result to dst using generics
+	resultData := types.GetTensorData[[]float32](result)
+	dstData := types.GetTensorData[[]float32](dst)
+	shapeSlice := result.Shape().ToSlice()
+	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(), result.Shape().Strides())
 	return dst
+}
+
+// Normalize is an alias for L2Normalize (matches TensorFlow naming).
+func (t Tensor) Normalize(dst types.Tensor, dim int) types.Tensor {
+	return t.L2Normalize(dst, dim)
 }
 
 // normalizeVector normalizes a 1D vector
 func (t Tensor) normalizeVector() types.Tensor {
 	result := t.Clone()
 
-	if !isTensorContiguous(result) {
+	resultStrides := result.Shape().Strides()
+	resultShape := result.Shape().ToSlice()
+	if !IsContiguous(resultStrides, resultShape) {
 		// Handle strided case
 		norm := result.Norm(1) // L2 norm
 		if norm > 0 {
 			scale := 1.0 / norm
-			result.Scale(scale)
+			result.ScalarMul(result, scale)
 		}
 		return result
 	}

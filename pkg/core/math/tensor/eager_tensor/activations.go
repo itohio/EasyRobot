@@ -2,6 +2,7 @@ package eager_tensor
 
 import (
 	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/generics"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
 )
 
@@ -126,7 +127,10 @@ func (t Tensor) Softmax(dim int, dst types.Tensor) types.Tensor {
 	} else if t.shape.Rank() == 2 {
 		// Softmax2D functions operate in-place on dst, so copy first if needed
 		if dst != nil && !dst.Empty() {
-			copyTensorData(t, dst)
+			tData := types.GetTensorData[[]float32](t)
+			dstData := types.GetTensorData[[]float32](dst)
+			shapeSlice := t.Shape().ToSlice()
+			generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dst.Shape().Strides(), t.Shape().Strides())
 		}
 		if dim == 0 {
 			fp32.Softmax2DRows(dstData, dstShape[0], dstShape[1])
@@ -142,23 +146,46 @@ func (t Tensor) Softmax(dim int, dst types.Tensor) types.Tensor {
 	return result
 }
 
-// DropoutForward applies dropout during training.
-// mask[i] should contain 0.0 for dropped elements, scale (1/(1-p)) for kept elements.
-// Modifies the tensor in-place: t[i] *= mask[i]
-func (t Tensor) DropoutForward(mask types.Tensor) types.Tensor {
-	if t.shape == nil || mask == nil || mask.Shape() == nil {
-		return t
+// DropoutForward applies dropout mask during forward pass: dst = t * mask.
+// If dst is nil, operation is in-place (modifies t) and returns t.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) DropoutForward(dst types.Tensor, mask types.Tensor) types.Tensor {
+	if t.shape == nil {
+		return nil
+	}
+	if IsNil(mask) {
+		return nil
 	}
 
 	if !t.Shape().Equal(mask.Shape()) {
 		panic("tensor.DropoutForward: mask shape mismatch")
 	}
 
+	var tData []float32
+	var dstData []float32
+	var result types.Tensor
+	if IsNil(dst) {
+		tData = types.GetTensorData[[]float32](t)
+		dstData = types.GetTensorData[[]float32](t)
+		result = t
+	} else {
+		if !t.Shape().Equal(dst.Shape()) {
+			panic("tensor.DropoutForward: destination shape mismatch")
+		}
+		// Copy t to dst first
+		tData = types.GetTensorData[[]float32](t)
+		dstData = types.GetTensorData[[]float32](dst)
+		shapeSlice := t.Shape().ToSlice()
+		generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dst.Shape().Strides(), t.Shape().Strides())
+		result = dst
+	}
+
 	maskData := types.GetTensorData[[]float32](mask)
-	size := t.Size()
-	tData := types.GetTensorData[[]float32](t)
-	fp32.ElemMul(tData, tData, maskData, []int{size}, []int{1}, []int{1}, []int{1})
-	return t
+	tStrides := t.shape.Strides()
+	dstStrides := result.Shape().Strides()
+	maskStrides := mask.Shape().Strides()
+	fp32.ElemMul(dstData, tData, maskData, []int(t.shape), dstStrides, tStrides, maskStrides)
+	return result
 }
 
 // DropoutMask generates a dropout mask tensor with the given dropout rate.
@@ -191,23 +218,13 @@ func (t Tensor) DropoutMask(p float64, scale float64, rng types.RNG) types.Tenso
 	return t
 }
 
-// DropoutBackward computes dropout backward pass: result = gradOutput * mask.
+// DropoutBackward computes dropout backward pass: dst = gradOutput * mask.
 // gradOutput: gradient from next layer
 // mask: dropout mask used in forward pass
-// Returns a new tensor with gradient after dropout.
-func (t Tensor) DropoutBackward(gradOutput, mask types.Tensor) types.Tensor {
-	return t.DropoutBackwardTo(nil, gradOutput, mask)
-}
-
-// DropoutBackwardTo computes dropout backward pass and stores result in dst.
-// gradOutput: gradient from next layer
-// mask: dropout mask used in forward pass
-// If dst is nil, creates a new tensor. If dst is provided, uses it (must match shape).
-func (t Tensor) DropoutBackwardTo(dst types.Tensor, gradOutput, mask types.Tensor) types.Tensor {
-	if gradOutput == nil || mask == nil {
-		return nil
-	}
-	if gradOutput.Shape() == nil || mask.Shape() == nil {
+// If dst is nil, creates a new tensor.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) DropoutBackward(dst types.Tensor, gradOutput, mask types.Tensor) types.Tensor {
+	if IsNil(gradOutput) || IsNil(mask) {
 		return nil
 	}
 
@@ -216,18 +233,21 @@ func (t Tensor) DropoutBackwardTo(dst types.Tensor, gradOutput, mask types.Tenso
 	}
 
 	var result types.Tensor
-	if dst == nil || dst.Empty() {
+	if IsNil(dst) {
 		result = gradOutput.Clone()
 	} else {
 		if !gradOutput.Shape().Equal(dst.Shape()) {
-			panic("tensor.DropoutBackwardTo: destination shape mismatch")
+			panic("tensor.DropoutBackward: destination shape mismatch")
 		}
-		copyTensorData(gradOutput, dst)
+		gradData := types.GetTensorData[[]float32](gradOutput)
+		dstData := types.GetTensorData[[]float32](dst)
+		shapeSlice := gradOutput.Shape().ToSlice()
+		generics.ElemCopyStrided[float32](dstData, gradData, shapeSlice, dst.Shape().Strides(), gradOutput.Shape().Strides())
 		result = dst
 	}
 
 	// Dropout backward: result = gradOutput * mask
-	result.Mul(mask)
+	result.Multiply(nil, mask)
 
 	return result
 }
@@ -246,7 +266,10 @@ func (t Tensor) ReLU6(dst types.Tensor) types.Tensor {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.ReLU6: destination shape mismatch")
 		}
-		copyTensorData(t, dst)
+		tData := types.GetTensorData[[]float32](t)
+		dstData := types.GetTensorData[[]float32](dst)
+		shapeSlice := t.Shape().ToSlice()
+		generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dst.Shape().Strides(), t.Shape().Strides())
 		result = dst
 	}
 
@@ -256,10 +279,10 @@ func (t Tensor) ReLU6(dst types.Tensor) types.Tensor {
 
 	// Then apply min(_, 6) by using Where with condition
 	// Create a tensor filled with 6.0 for comparison
-	sixTensor := result.Clone().Fill(6.0)
+	sixTensor := result.Clone().Fill(nil, 6.0)
 	// Use Where: result[i] = result[i] < 6 ? result[i] : 6
 	condition := result.Less(sixTensor)
-	result.Where(condition, result, sixTensor)
+	result.Where(result, condition, result, sixTensor)
 
 	if dst == nil || dst.Empty() {
 		return result
@@ -281,15 +304,18 @@ func (t Tensor) LeakyReLU(dst types.Tensor, alpha float64) types.Tensor {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.LeakyReLU: destination shape mismatch")
 		}
-		copyTensorData(t, dst)
+		tData := types.GetTensorData[[]float32](t)
+		dstData := types.GetTensorData[[]float32](dst)
+		shapeSlice := t.Shape().ToSlice()
+		generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dst.Shape().Strides(), t.Shape().Strides())
 		result = dst
 	}
 
 	// LeakyReLU: max(x, alpha * x) = x > 0 ? x : alpha * x
-	alphaTensor := result.Clone().Scale(alpha)
-	zeroTensor := result.Clone().Fill(0.0)
+	alphaTensor := result.Clone().ScalarMul(nil, alpha)
+	zeroTensor := result.Clone().Fill(nil, 0.0)
 	condition := result.GreaterThan(zeroTensor)
-	result.Where(condition, result, alphaTensor)
+	result.Where(result, condition, result, alphaTensor)
 
 	if dst == nil || dst.Empty() {
 		return result
@@ -311,21 +337,24 @@ func (t Tensor) ELU(dst types.Tensor, alpha float64) types.Tensor {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.ELU: destination shape mismatch")
 		}
-		copyTensorData(t, dst)
+		tData := types.GetTensorData[[]float32](t)
+		dstData := types.GetTensorData[[]float32](dst)
+		shapeSlice := t.Shape().ToSlice()
+		generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dst.Shape().Strides(), t.Shape().Strides())
 		result = dst
 	}
 
 	// ELU: x > 0 ? x : alpha * (exp(x) - 1)
-	zeroTensor := result.Clone().Fill(0.0)
+	zeroTensor := result.Clone().Fill(nil, 0.0)
 	condition := result.GreaterThan(zeroTensor)
 
 	// Compute exp(x) - 1 for negative values
 	expResult := result.Clone()
 	expResult.Exp(expResult)
-	expResult.SubScalar(1.0)
-	expResult.Scale(alpha)
+	expResult.SubScalar(expResult, 1.0)
+	expResult.ScalarMul(expResult, alpha)
 
-	result.Where(condition, result, expResult)
+	result.Where(result, condition, result, expResult)
 
 	if dst == nil || dst.Empty() {
 		return result
@@ -347,13 +376,16 @@ func (t Tensor) Softplus(dst types.Tensor) types.Tensor {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.Softplus: destination shape mismatch")
 		}
-		copyTensorData(t, dst)
+		tData := types.GetTensorData[[]float32](t)
+		dstData := types.GetTensorData[[]float32](dst)
+		shapeSlice := t.Shape().ToSlice()
+		generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dst.Shape().Strides(), t.Shape().Strides())
 		result = dst
 	}
 
 	// Softplus: log(1 + exp(x))
 	result.Exp(result)
-	result.AddScalar(1.0)
+	result.AddScalar(result, 1.0)
 	result.Log(result)
 
 	if dst == nil || dst.Empty() {
@@ -376,14 +408,17 @@ func (t Tensor) Swish(dst types.Tensor) types.Tensor {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.Swish: destination shape mismatch")
 		}
-		copyTensorData(t, dst)
+		tData := types.GetTensorData[[]float32](t)
+		dstData := types.GetTensorData[[]float32](dst)
+		shapeSlice := t.Shape().ToSlice()
+		generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dst.Shape().Strides(), t.Shape().Strides())
 		result = dst
 	}
 
 	// Swish: x * sigmoid(x)
 	sigmoidResult := result.Clone()
 	sigmoidResult.Sigmoid(sigmoidResult)
-	result.Mul(sigmoidResult)
+	result.Multiply(result, sigmoidResult)
 
 	if dst == nil || dst.Empty() {
 		return result
@@ -406,7 +441,10 @@ func (t Tensor) GELU(dst types.Tensor) types.Tensor {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.GELU: destination shape mismatch")
 		}
-		copyTensorData(t, dst)
+		tData := types.GetTensorData[[]float32](t)
+		dstData := types.GetTensorData[[]float32](dst)
+		shapeSlice := t.Shape().ToSlice()
+		generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dst.Shape().Strides(), t.Shape().Strides())
 		result = dst
 	}
 
@@ -415,24 +453,24 @@ func (t Tensor) GELU(dst types.Tensor) types.Tensor {
 	// 0.044715 * x^3
 	x3 := result.Clone()
 	x3.Pow(x3, 3.0)
-	x3.Scale(0.044715)
+	x3.ScalarMul(x3, 0.044715)
 
 	// x + 0.044715 * x^3
 	inner := result.Clone()
-	inner.Add(x3)
+	inner.Add(inner, x3)
 
 	// sqrt(2/π) * (x + 0.044715 * x^3)
-	inner.Scale(0.7978845608)
+	inner.ScalarMul(inner, 0.7978845608)
 
 	// tanh(...)
 	inner.Tanh(inner)
 
 	// 1 + tanh(...)
-	inner.AddScalar(1.0)
+	inner.AddScalar(inner, 1.0)
 
 	// 0.5 * x * (1 + tanh(...))
-	result.Mul(inner)
-	result.Scale(0.5)
+	result.Multiply(result, inner)
+	result.ScalarMul(result, 0.5)
 
 	if dst == nil || dst.Empty() {
 		return result

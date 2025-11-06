@@ -85,3 +85,299 @@ func ElemSwapStrided[T Numeric](dst, src []T, shape []int, stridesDst, stridesSr
 		}
 	}
 }
+
+// ElemCopyAny copies src into dst for contiguous arrays, accepting any numeric types.
+// If src and dst have the same type, uses ElemCopy for optimal performance.
+// If types differ, uses ElemConvert to perform type conversion.
+// This is a convenience wrapper when both src and dst are of type any.
+func ElemCopyAny(dst, src any, n int) {
+	if n == 0 {
+		return
+	}
+
+	// Type switch on source to determine types
+	switch s := src.(type) {
+	case []float32:
+		if d, ok := dst.([]float32); ok {
+			ElemCopy(d, s, n)
+			return
+		}
+		// Different types: use conversion
+		switch d := dst.(type) {
+		case []float64:
+			ElemConvert(d, s, n)
+		case []int64:
+			ElemConvert(d, s, n)
+		case []int:
+			ElemConvert(d, s, n)
+		case []int32:
+			ElemConvert(d, s, n)
+		case []int16:
+			ElemConvert(d, s, n)
+		case []int8:
+			ElemConvert(d, s, n)
+		}
+	case []float64:
+		if d, ok := dst.([]float64); ok {
+			ElemCopy(d, s, n)
+			return
+		}
+		switch d := dst.(type) {
+		case []float32:
+			ElemConvert(d, s, n)
+		case []int64:
+			ElemConvert(d, s, n)
+		case []int:
+			ElemConvert(d, s, n)
+		case []int32:
+			ElemConvert(d, s, n)
+		case []int16:
+			ElemConvert(d, s, n)
+		case []int8:
+			ElemConvert(d, s, n)
+		}
+	case []int64:
+		if d, ok := dst.([]int64); ok {
+			ElemCopy(d, s, n)
+			return
+		}
+		switch d := dst.(type) {
+		case []float32:
+			ElemConvert(d, s, n)
+		case []float64:
+			ElemConvert(d, s, n)
+		case []int:
+			ElemConvert(d, s, n)
+		case []int32:
+			ElemConvert(d, s, n)
+		case []int16:
+			ElemConvert(d, s, n)
+		case []int8:
+			ElemConvert(d, s, n)
+		}
+	case []int:
+		if d, ok := dst.([]int); ok {
+			ElemCopy(d, s, n)
+			return
+		}
+		switch d := dst.(type) {
+		case []float32:
+			ElemConvert(d, s, n)
+		case []float64:
+			ElemConvert(d, s, n)
+		case []int64:
+			ElemConvert(d, s, n)
+		case []int32:
+			ElemConvert(d, s, n)
+		case []int16:
+			ElemConvert(d, s, n)
+		case []int8:
+			ElemConvert(d, s, n)
+		}
+	case []int32:
+		if d, ok := dst.([]int32); ok {
+			ElemCopy(d, s, n)
+			return
+		}
+		switch d := dst.(type) {
+		case []float32:
+			ElemConvert(d, s, n)
+		case []float64:
+			ElemConvert(d, s, n)
+		case []int64:
+			ElemConvert(d, s, n)
+		case []int:
+			ElemConvert(d, s, n)
+		case []int16:
+			ElemConvert(d, s, n)
+		case []int8:
+			ElemConvert(d, s, n)
+		}
+	case []int16:
+		if d, ok := dst.([]int16); ok {
+			ElemCopy(d, s, n)
+			return
+		}
+		switch d := dst.(type) {
+		case []float32:
+			ElemConvert(d, s, n)
+		case []float64:
+			ElemConvert(d, s, n)
+		case []int64:
+			ElemConvert(d, s, n)
+		case []int:
+			ElemConvert(d, s, n)
+		case []int32:
+			ElemConvert(d, s, n)
+		case []int8:
+			ElemConvert(d, s, n)
+		}
+	case []int8:
+		if d, ok := dst.([]int8); ok {
+			ElemCopy(d, s, n)
+			return
+		}
+		switch d := dst.(type) {
+		case []float32:
+			ElemConvert(d, s, n)
+		case []float64:
+			ElemConvert(d, s, n)
+		case []int64:
+			ElemConvert(d, s, n)
+		case []int:
+			ElemConvert(d, s, n)
+		case []int32:
+			ElemConvert(d, s, n)
+		case []int16:
+			ElemConvert(d, s, n)
+		}
+	}
+}
+
+// ElemCopyStridedAny copies src into dst respecting the supplied shape/strides, accepting any numeric types.
+// If src and dst have the same type, uses ElemCopyStrided for optimal performance.
+// If types differ, uses ElemConvertStrided to perform type conversion.
+// This is a convenience wrapper when both src and dst are of type any.
+func ElemCopyStridedAny(dst, src any, shape []int, stridesDst, stridesSrc []int) {
+	if len(shape) == 0 {
+		return
+	}
+
+	// Type switch on source to determine types
+	switch s := src.(type) {
+	case []float32:
+		if d, ok := dst.([]float32); ok {
+			ElemCopyStrided(d, s, shape, stridesDst, stridesSrc)
+			return
+		}
+		// Different types: use conversion
+		switch d := dst.(type) {
+		case []float64:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int64:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int32:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int16:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int8:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		}
+	case []float64:
+		if d, ok := dst.([]float64); ok {
+			ElemCopyStrided(d, s, shape, stridesDst, stridesSrc)
+			return
+		}
+		switch d := dst.(type) {
+		case []float32:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int64:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int32:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int16:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int8:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		}
+	case []int64:
+		if d, ok := dst.([]int64); ok {
+			ElemCopyStrided(d, s, shape, stridesDst, stridesSrc)
+			return
+		}
+		switch d := dst.(type) {
+		case []float32:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []float64:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int32:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int16:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int8:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		}
+	case []int:
+		if d, ok := dst.([]int); ok {
+			ElemCopyStrided(d, s, shape, stridesDst, stridesSrc)
+			return
+		}
+		switch d := dst.(type) {
+		case []float32:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []float64:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int64:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int32:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int16:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int8:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		}
+	case []int32:
+		if d, ok := dst.([]int32); ok {
+			ElemCopyStrided(d, s, shape, stridesDst, stridesSrc)
+			return
+		}
+		switch d := dst.(type) {
+		case []float32:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []float64:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int64:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int16:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int8:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		}
+	case []int16:
+		if d, ok := dst.([]int16); ok {
+			ElemCopyStrided(d, s, shape, stridesDst, stridesSrc)
+			return
+		}
+		switch d := dst.(type) {
+		case []float32:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []float64:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int64:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int32:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int8:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		}
+	case []int8:
+		if d, ok := dst.([]int8); ok {
+			ElemCopyStrided(d, s, shape, stridesDst, stridesSrc)
+			return
+		}
+		switch d := dst.(type) {
+		case []float32:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []float64:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int64:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int32:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		case []int16:
+			ElemConvertStrided(d, s, shape, stridesDst, stridesSrc)
+		}
+	}
+}

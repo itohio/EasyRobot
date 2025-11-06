@@ -3,39 +3,37 @@ package types
 // TensorConvolutions defines convolution operations for neural networks.
 // This interface contains operations for performing convolutions on tensors.
 type TensorConvolutions interface {
-	// Conv1D performs 1D convolution (implemented via 2D conv with width=1).
+	// Conv1D performs 1D convolution (implemented via 2D conv with width=1) (matches tf.nn.conv1d).
 	// Input: [inChannels, length] or [batch, inChannels, length]
 	// Kernel: [outChannels, inChannels, kernelLen]
 	// Bias: [outChannels] (optional, can be nil)
 	// Output: [outChannels, outLen] or [batch, outChannels, outLen]
-	// Returns a new tensor. Panics if shapes are incompatible.
-	Conv1D(kernel, bias Tensor, stride, padding int) Tensor
+	// If dst is nil, creates a new tensor.
+	// If dst is provided, writes result to dst and returns dst.
+	// Panics if shapes are incompatible.
+	Conv1D(dst Tensor, kernel, bias Tensor, stride, padding int) Tensor
 
-	// Conv1DTo performs 1D convolution and stores result in dst.
-	// If dst is nil, creates a new tensor. Returns the destination tensor.
-	Conv1DTo(kernel, bias Tensor, dst Tensor, stride, padding int) Tensor
-
-	// Conv2D performs 2D convolution.
+	// Conv2D performs 2D convolution (matches tf.nn.conv2d).
 	// Input: [batch, inChannels, height, width]
 	// Kernel: [outChannels, inChannels, kernelH, kernelW]
 	// Bias: [outChannels] (optional, can be nil)
 	// Stride: [strideH, strideW]
 	// Padding: [padH, padW]
 	// Output: [batch, outChannels, outHeight, outWidth]
-	// Returns a new tensor. Panics if shapes are incompatible.
-	Conv2D(kernel, bias Tensor, stride, padding []int) Tensor
+	// If dst is nil, creates a new tensor.
+	// If dst is provided, writes result to dst and returns dst.
+	// Panics if shapes are incompatible.
+	Conv2D(dst Tensor, kernel, bias Tensor, stride, padding []int) Tensor
 
-	// Conv2DTo performs 2D convolution and stores result in dst.
-	// If dst is nil, creates a new tensor. Returns the destination tensor.
-	Conv2DTo(kernel, bias Tensor, dst Tensor, stride, padding []int) Tensor
-
-	// Conv2DTransposed performs transposed 2D convolution (deconvolution).
+	// Conv2DTransposed performs transposed 2D convolution (deconvolution) (matches tf.nn.conv2d_transpose).
 	// Input: [batch, inChannels, height, width]
 	// Kernel: [inChannels, outChannels, kernelH, kernelW] (transposed layout)
 	// Bias: [outChannels] (optional, can be nil)
 	// Output: [batch, outChannels, outHeight, outWidth]
-	// Returns a new tensor. Panics if shapes are incompatible.
-	Conv2DTransposed(kernel, bias Tensor, stride, padding []int) Tensor
+	// If dst is nil, creates a new tensor.
+	// If dst is provided, writes result to dst and returns dst.
+	// Panics if shapes are incompatible.
+	Conv2DTransposed(dst Tensor, kernel, bias Tensor, stride, padding []int) Tensor
 
 	// Conv2DKernelGrad computes the gradient of the convolution kernel.
 	// Used in backpropagation for training convolutional layers.

@@ -5,6 +5,7 @@ import (
 	"unsafe"
 
 	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/generics"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
 )
 
@@ -72,6 +73,12 @@ func (t Tensor) ID() uintptr {
 	case []int16:
 		return uintptr(unsafe.Pointer(&t[0]))
 	case []int8:
+		return uintptr(unsafe.Pointer(&t[0]))
+	case []int32:
+		return uintptr(unsafe.Pointer(&t[0]))
+	case []int:
+		return uintptr(unsafe.Pointer(&t[0]))
+	case []int64:
 		return uintptr(unsafe.Pointer(&t[0]))
 	default:
 		return 0
@@ -154,9 +161,11 @@ func (t Tensor) Copy(src types.Tensor) types.Tensor {
 		panic(fmt.Sprintf("tensor.Copy: shape mismatch: dst %v vs src %v", t.Shape(), src.Shape()))
 	}
 
-	// Use the existing optimized copyTensorData function
-	// Pass pointer to t so copyTensorData can modify it
-	copyTensorData(src, t)
+	// Copy src to t using generics (handles type conversion automatically)
+	srcData := src.Data()
+	tData := t.Data()
+	shapeSlice := src.Shape().ToSlice()
+	generics.ElemCopyStridedAny(tData, srcData, shapeSlice, t.Shape().Strides(), src.Shape().Strides())
 
 	return t
 }

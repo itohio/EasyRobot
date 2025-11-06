@@ -205,7 +205,7 @@ func TestDropoutForward(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.t.DropoutForward(tt.mask)
+			result := tt.t.DropoutForward(nil, tt.mask)
 
 			// Verify result is the same tensor for chaining
 			assert.NotNil(t, result, "DropoutForward should return non-nil result")

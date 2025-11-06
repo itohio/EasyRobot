@@ -38,7 +38,7 @@ func TestAdd(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			originalT2 := tt.t2.Clone()
-			result := tt.t1.Add(tt.t2)
+			result := tt.t1.Add(nil, tt.t2)
 
 			// Verify result is the same tensor (same data and shape) for chaining
 			assert.NotNil(t, result, "Add should return non-nil result for chaining")
@@ -91,7 +91,7 @@ func TestSub(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.t1.Sub(tt.t2)
+			result := tt.t1.Subtract(nil, tt.t2)
 
 			// Verify result is the same tensor (same data and shape) for chaining
 			assert.NotNil(t, result, "Sub should return non-nil result for chaining")
@@ -132,7 +132,7 @@ func TestMul(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.t1.Mul(tt.t2)
+			result := tt.t1.Multiply(nil, tt.t2)
 
 			// Verify result is the same tensor (same data and shape) for chaining
 			assert.NotNil(t, result, "Mul should return non-nil result for chaining")
@@ -167,7 +167,7 @@ func TestDiv(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.t1.Div(tt.t2)
+			result := tt.t1.Divide(nil, tt.t2)
 
 			// Verify result is the same tensor (same data and shape) for chaining
 			assert.NotNil(t, result, "Div should return non-nil result for chaining")
@@ -216,7 +216,7 @@ func TestScale(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.t.Scale(tt.scalar)
+			result := tt.t.ScalarMul(nil, tt.scalar)
 
 			// Verify result is the same tensor (same data and shape) for chaining
 			assert.NotNil(t, result, "Scale should return non-nil result for chaining")
@@ -237,19 +237,19 @@ func TestScale(t *testing.T) {
 }
 
 func TestAddTo(t *testing.T) {
-	t.Run("create new tensor", func(t *testing.T) {
+	t.Run("use destination tensor", func(t *testing.T) {
 		t1 := FromFloat32(types.NewShape(2, 2), []float32{1, 2, 3, 4})
 		t2 := FromFloat32(types.NewShape(2, 2), []float32{5, 6, 7, 8})
+		dst := New(types.FP32, types.NewShape(2, 2))
 
-		result := t1.AddTo(t2, nil)
+		result := t1.Add(&dst, t2)
 
-		assert.NotEqual(t, &t1, result, "AddTo should create new tensor when dst is nil")
-		assert.NotEqual(t, &t2, result, "AddTo should create new tensor when dst is nil")
+		assert.Equal(t, &dst, result, "Add should use dst when provided")
 
 		expected := []float32{6, 8, 10, 12}
-		resultData := result.Data().([]float32)
+		dstData := dst.Data().([]float32)
 		for i := range expected {
-			assert.InDelta(t, float64(expected[i]), float64(resultData[i]), 1e-6, "Data[%d] = %f, expected %f", i, resultData[i], expected[i])
+			assert.InDelta(t, float64(expected[i]), float64(dstData[i]), 1e-6)
 		}
 
 		// Original tensors should be unchanged
@@ -258,38 +258,22 @@ func TestAddTo(t *testing.T) {
 		assert.Equal(t, float32(1), t1Data[0], "Original t1 should be unchanged")
 		assert.Equal(t, float32(5), t2Data[0], "Original t2 should be unchanged")
 	})
-
-	t.Run("use destination tensor", func(t *testing.T) {
-		t1 := FromFloat32(types.NewShape(2, 2), []float32{1, 2, 3, 4})
-		t2 := FromFloat32(types.NewShape(2, 2), []float32{5, 6, 7, 8})
-		dst := New(types.FP32, types.NewShape(2, 2))
-
-		result := t1.AddTo(t2, &dst)
-
-		assert.Equal(t, &dst, result, "AddTo should use dst when provided")
-
-		expected := []float32{6, 8, 10, 12}
-		dstData := dst.Data().([]float32)
-		for i := range expected {
-			assert.InDelta(t, float64(expected[i]), float64(dstData[i]), 1e-6)
-		}
-	})
 }
 
 func TestMulTo(t *testing.T) {
-	t.Run("create new tensor", func(t *testing.T) {
+	t.Run("use destination tensor", func(t *testing.T) {
 		t1 := FromFloat32(types.NewShape(2, 2), []float32{1, 2, 3, 4})
 		t2 := FromFloat32(types.NewShape(2, 2), []float32{2, 3, 4, 5})
+		dst := New(types.FP32, types.NewShape(2, 2))
 
-		result := t1.MulTo(t2, nil)
+		result := t1.Multiply(&dst, t2)
 
-		assert.NotEqual(t, &t1, result, "MulTo should create new tensor when dst is nil")
-		assert.NotEqual(t, &t2, result, "MulTo should create new tensor when dst is nil")
+		assert.Equal(t, &dst, result, "Multiply should use dst when provided")
 
 		expected := []float32{2, 6, 12, 20}
-		resultData := result.Data().([]float32)
+		dstData := dst.Data().([]float32)
 		for i := range expected {
-			assert.InDelta(t, float64(expected[i]), float64(resultData[i]), 1e-6)
+			assert.InDelta(t, float64(expected[i]), float64(dstData[i]), 1e-6)
 		}
 
 		// Original tensors should be unchanged
@@ -297,22 +281,6 @@ func TestMulTo(t *testing.T) {
 		t2Data := t2.Data().([]float32)
 		assert.Equal(t, float32(1), t1Data[0], "Original t1 should be unchanged")
 		assert.Equal(t, float32(2), t2Data[0], "Original t2 should be unchanged")
-	})
-
-	t.Run("use destination tensor", func(t *testing.T) {
-		t1 := FromFloat32(types.NewShape(2, 2), []float32{1, 2, 3, 4})
-		t2 := FromFloat32(types.NewShape(2, 2), []float32{2, 3, 4, 5})
-		dst := New(types.FP32, types.NewShape(2, 2))
-
-		result := t1.MulTo(t2, &dst)
-
-		assert.Equal(t, &dst, result, "MulTo should use dst when provided")
-
-		expected := []float32{2, 6, 12, 20}
-		dstData := dst.Data().([]float32)
-		for i := range expected {
-			assert.InDelta(t, float64(expected[i]), float64(dstData[i]), 1e-6)
-		}
 	})
 }
 
@@ -349,7 +317,7 @@ func TestSum(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.t.Sum(tt.dims...)
+			result := tt.t.Sum(nil, tt.dims)
 
 			resultShape := result.Shape()
 			assert.Equal(t, len(tt.expShape), len(resultShape), "Shape length mismatch")
@@ -369,7 +337,7 @@ func TestSum(t *testing.T) {
 func TestMean(t *testing.T) {
 	t.Run("mean of all elements", func(t *testing.T) {
 		tensor := FromFloat32(types.NewShape(2, 2), []float32{1, 2, 3, 4})
-		result := tensor.Mean()
+		result := tensor.Mean(nil, nil)
 		expected := float32(10.0 / 4.0)
 
 		resultData := result.Data().([]float32)
@@ -382,7 +350,7 @@ func TestMean(t *testing.T) {
 
 	t.Run("mean along dimension", func(t *testing.T) {
 		tensor := FromFloat32(types.NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
-		result := tensor.Mean(0)
+		result := tensor.Mean(nil, []int{0})
 		expected := []float32{2.5, 3.5, 4.5} // (1+4)/2, (2+5)/2, (3+6)/2
 
 		for i := range expected {
@@ -415,7 +383,7 @@ func TestMax(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.t.Max(tt.dims...)
+			result := tt.t.Max(nil, tt.dims)
 
 			for i := range tt.expected {
 				resultData := result.Data().([]float32)
@@ -448,7 +416,7 @@ func TestMin(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.t.Min(tt.dims...)
+			result := tt.t.Min(nil, tt.dims)
 
 			for i := range tt.expected {
 				resultData := result.Data().([]float32)
@@ -461,7 +429,7 @@ func TestMin(t *testing.T) {
 func TestArgMax(t *testing.T) {
 	t.Run("1D tensor", func(t *testing.T) {
 		tensor := FromFloat32(types.NewShape(5), []float32{1, 5, 3, 2, 4})
-		result := tensor.ArgMax(0)
+		result := tensor.ArgMax(nil, 0)
 
 		resultData := result.Data().([]float32)
 		assert.Equal(t, 1, len(resultData), "Expected 1 element")
@@ -473,7 +441,7 @@ func TestArgMax(t *testing.T) {
 	t.Run("2D tensor along dimension", func(t *testing.T) {
 		// 2x3 tensor, argmax along dim 1
 		tensor := FromFloat32(types.NewShape(2, 3), []float32{1, 5, 3, 2, 4, 6})
-		result := tensor.ArgMax(1)
+		result := tensor.ArgMax(nil, 1)
 
 		// Expected: [1, 2] (indices of max in each row)
 		expected := []float32{1, 2}
@@ -1039,7 +1007,7 @@ func TestWhere(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.t.Where(tt.condition, tt.a, tt.b)
+			result := tt.t.Where(nil, tt.condition, tt.a, tt.b)
 
 			assert.NotNil(t, result, "Where should not return nil")
 			assert.True(t, result.Shape().Equal(tt.condition.Shape()), "Where result shape should match condition shape")
