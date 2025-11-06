@@ -1,4 +1,6 @@
-package generics
+package st
+
+import . "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 
 // ElemGreaterThan writes 1 where a > b, 0 otherwise for contiguous arrays.
 // Optimized for the common case of contiguous memory.

@@ -1,4 +1,6 @@
-package generics
+package st
+
+import . "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 
 // ElemApplyBinary applies a binary function element-wise to contiguous arrays: dst[i] = op(a[i], b[i]).
 // Optimized for the common case of contiguous memory.
@@ -271,4 +273,3 @@ func ElemApplyTernaryScalarStrided[T Numeric](dst, condition, a []T, scalar T, s
 		}
 	}
 }
-

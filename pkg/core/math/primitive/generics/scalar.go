@@ -1,5 +1,7 @@
 package generics
 
+import . "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+
 // ElemFill writes constant value to dst for contiguous arrays.
 // Optimized for the common case of contiguous memory.
 func ElemFill[T Numeric](dst []T, value T, n int) {

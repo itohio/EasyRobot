@@ -1,5 +1,7 @@
 package generics
 
+import . "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+
 // Copy copies x into y for contiguous arrays.
 // This is BLAS COPY operation optimized for the common case of contiguous memory.
 func Copy[T Numeric](y, x []T, n int) {

@@ -2,6 +2,8 @@ package generics
 
 import (
 	"testing"
+
+	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 )
 
 var (
@@ -389,4 +391,3 @@ func matApplyNonGeneric(dst, src []float32, rows, cols int, ldDst, ldSrc int, op
 		}
 	}
 }
-

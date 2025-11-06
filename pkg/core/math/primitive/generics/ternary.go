@@ -1,5 +1,7 @@
 package generics
 
+import . "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+
 // ElemWhere writes elements from a where condition is true, otherwise from b.
 // condition, a, b must have compatible shapes/strides.
 // condition > 0 means true, otherwise false.

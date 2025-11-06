@@ -1,6 +1,4 @@
-//go:build use_mt
-
-package generics
+package mt
 
 import (
 	"runtime"
@@ -276,4 +274,3 @@ func parallelIteratorChunks(totalSize int, fn func(startIdx, endIdx int)) {
 	}
 	wg.Wait()
 }
-

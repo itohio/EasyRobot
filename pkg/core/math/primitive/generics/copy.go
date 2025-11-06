@@ -1,9 +1,6 @@
 package generics
 
-// Numeric types that can be used with generic operations
-type Numeric interface {
-	~float64 | ~int64 | ~float32 | ~int | ~int32 | ~int16 | ~int8
-}
+import . "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 
 // ElemCopy copies src into dst for contiguous arrays.
 // This is a simple, optimized version for the common case of contiguous memory.

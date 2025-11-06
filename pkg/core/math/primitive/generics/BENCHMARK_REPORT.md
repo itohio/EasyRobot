@@ -11,6 +11,7 @@
 - Calculate percentage as: `(implementation_ns/op / baseline_ns/op - 1) * 100`
 - Negative percentages mean faster than baseline, positive means slower
 - Always include allocations for Generic (G) column when applicable
+- Hint for benchmarking: when extracting benchmarks metrics, avoid running benchmarks multiple times since they take a long time to complete. Run them once redirecting output to temporary txt file and try parsing that file.
 
 ## Summary
 
@@ -31,50 +32,50 @@ This report compares the performance of generic implementations against non-gene
 | Operation | G (ns/op, allocs) | NG (ns/op, allocs) | D (ns/op) | H1 (% vs D) | H2 (% vs D) | H3 (% vs D) | H4 (% vs D) | H5 (% vs D) |
 |-----------|-------------------|---------------------|-----------|-------------|-------------|-------------|-------------|-------------|
 | **Copy Operations** |
-| ElemCopy | 1,674 (0 B, 0 allocs) | 1,590 (0 B, 0 allocs) | 12,548 | -86.7% | -86.1% | - | - | - |
-| ElemCopyStrided | 1,724 (32 B, 2 allocs) | 66,170 (16 B, 1 alloc) | 13,582 | -87.3% | -88.6% | - | - | - |
-| BLAS Copy | 1,543 (0 B, 0 allocs) | 1,507 (0 B, 0 allocs) | 1,437 | +7.4% | - | - | - | - |
-| BLAS CopyStrided | 1,452 (0 B, 0 allocs) | 1,634 (0 B, 0 allocs) | 1,437 | +1.0% | - | - | - | - |
+| ElemCopy | 1,780 (0 B, 0 allocs) | 1,901 (0 B, 0 allocs) | 25,654 | -93.1% | -86.7% | -86.1% | - | - |
+| ElemCopyStrided | 1,855 (32 B, 2 allocs) | 81,367 (16 B, 1 alloc) | 15,644 | -88.1% | -87.3% | -88.6% | - | - |
+| BLAS Copy | 1,840 (0 B, 0 allocs) | 1,593 (0 B, 0 allocs) | 1,557 | +18.2% | +7.4% | - | - | - |
+| BLAS CopyStrided | 1,598 (0 B, 0 allocs) | 1,540 (0 B, 0 allocs) | 1,557 | +2.6% | +1.0% | - | - | - |
 | **Swap Operations** |
-| ElemSwap | 11,270 (0 B, 0 allocs) | 9,383 (0 B, 0 allocs) | 16,721 | -32.6% | -38.6% | - | - | - |
-| ElemSwapStrided | 10,117 (32 B, 2 allocs) | 63,097 (16 B, 1 alloc) | 21,882 | -53.8% | -39.0% | - | - | - |
-| BLAS Swap | 10,209 (0 B, 0 allocs) | 10,195 (0 B, 0 allocs) | 16,323 | -37.5% | - | - | - | - |
-| BLAS SwapStrided | 9,891 (0 B, 0 allocs) | 9,984 (0 B, 0 allocs) | 16,323 | -39.4% | - | - | - | - |
+| ElemSwap | 11,629 (0 B, 0 allocs) | 11,114 (0 B, 0 allocs) | 17,819 | -34.7% | -32.6% | -38.6% | - | - |
+| ElemSwapStrided | 12,619 (32 B, 2 allocs) | 103,386 (16 B, 1 alloc) | 19,782 | -36.2% | -53.8% | -39.0% | - | - |
+| BLAS Swap | 13,966 (0 B, 0 allocs) | 16,008 (0 B, 0 allocs) | 22,006 | -36.5% | -37.5% | - | - | - |
+| BLAS SwapStrided | 13,136 (0 B, 0 allocs) | 11,891 (0 B, 0 allocs) | 22,006 | -40.3% | -39.4% | - | - | - |
 | **Apply Operations** |
-| ElemApplyUnary | 10,690 (0 B, 0 allocs) | 9,113 (0 B, 0 allocs) | 12,884 | -17.0% | -25.9% | - | - | - |
-| ElemApplyBinary | 10,010 (0 B, 0 allocs) | 9,738 (0 B, 0 allocs) | 21,488 | -53.4% | -43.4% | - | - | - |
-| ElemApplyBinaryStrided | 32,459 (48 B, 3 allocs) | 30,321 (48 B, 3 allocs) | 20,361 | +59.4% | +40.1% | - | - | - |
-| ElemApplyUnaryScalar | 12,836 (0 B, 0 allocs) | 12,437 (0 B, 0 allocs) | 40,874 | -68.6% | -34.0% | - | - | - |
-| ElemApplyUnaryScalarStrided | 40,485 (32 B, 2 allocs) | 30,117 (32 B, 2 allocs) | 24,855 | +62.9% | +56.8% | - | - | - |
+| ElemApplyUnary | 10,000 (0 B, 0 allocs) | 10,165 (0 B, 0 allocs) | 15,626 | -36.0% | -17.0% | -25.9% | - | - |
+| ElemApplyBinary | 11,801 (0 B, 0 allocs) | 10,326 (0 B, 0 allocs) | 26,680 | -55.8% | -53.4% | -43.4% | - | - |
+| ElemApplyBinaryStrided | 43,207 (48 B, 3 allocs) | 34,839 (48 B, 3 allocs) | 25,082 | +72.3% | +59.4% | +40.1% | - | - |
+| ElemApplyUnaryScalar | 10,519 (0 B, 0 allocs) | 10,411 (0 B, 0 allocs) | 16,757 | -37.2% | -68.6% | -34.0% | - | - |
+| ElemApplyUnaryScalarStrided | 34,370 (32 B, 2 allocs) | 32,260 (32 B, 2 allocs) | 17,142 | +100.5% | +62.9% | +56.8% | - | - |
 | **Comparison Operations** |
-| ElemGreaterThan | 19,296 (0 B, 0 allocs) | 21,180 (0 B, 0 allocs) | 20,622 | -6.4% | -31.7% | - | - | - |
-| ElemGreaterThanStrided | 14,884 (48 B, 3 allocs) | 15,287 (48 B, 3 allocs) | 23,495 | -36.7% | -32.7% | - | - | - |
-| ElemEqual | 16,008 (0 B, 0 allocs) | 15,456 (0 B, 0 allocs) | 22,848 | -29.9% | - | - | - | - |
-| ElemLess | 16,774 (0 B, 0 allocs) | 16,684 (0 B, 0 allocs) | 19,648 | -14.6% | - | - | - | - |
+| ElemGreaterThan | 16,207 (0 B, 0 allocs) | 19,516 (0 B, 0 allocs) | 27,482 | -41.0% | -6.4% | -31.7% | - | - |
+| ElemGreaterThanStrided | 18,556 (48 B, 3 allocs) | 18,448 (48 B, 3 allocs) | 27,524 | -32.6% | -36.7% | -32.7% | - | - |
+| ElemEqual | 15,937 (0 B, 0 allocs) | 16,467 (0 B, 0 allocs) | 23,092 | -31.0% | -29.9% | - | - | - |
+| ElemLess | 19,143 (0 B, 0 allocs) | 18,784 (0 B, 0 allocs) | 21,801 | -12.2% | -14.6% | - | - | - |
 | **Unary Operations** |
-| ElemSign | 18,054 (0 B, 0 allocs) | 18,361 (0 B, 0 allocs) | 18,675 | -3.3% | +1.7% | - | - | - |
-| ElemSignStrided | 14,877 (32 B, 2 allocs) | 15,301 (32 B, 2 allocs) | 18,758 | -20.7% | -26.8% | - | - | - |
-| ElemNegative | 9,208 (0 B, 0 allocs) | 9,788 (0 B, 0 allocs) | 15,629 | -41.1% | -45.7% | - | - | - |
-| ElemNegativeStrided | 11,181 (32 B, 2 allocs) | 9,487 (32 B, 2 allocs) | 14,721 | -24.0% | -29.2% | - | - | - |
+| ElemSign | 17,589 (0 B, 0 allocs) | 18,454 (0 B, 0 allocs) | 17,860 | -1.5% | -3.3% | +1.7% | - | - |
+| ElemSignStrided | 15,383 (32 B, 2 allocs) | 23,747 (32 B, 2 allocs) | 32,630 | -52.9% | -20.7% | -26.8% | - | - |
+| ElemNegative | 17,256 (0 B, 0 allocs) | 13,339 (0 B, 0 allocs) | 18,556 | -7.0% | -41.1% | -45.7% | - | - |
+| ElemNegativeStrided | 21,652 (32 B, 2 allocs) | 14,938 (32 B, 2 allocs) | 20,012 | +8.2% | -24.0% | -29.2% | - | - |
 | **Scalar Operations** |
-| ElemFill | 9,706 (0 B, 0 allocs) | 6,117 (0 B, 0 allocs) | 27,238 | -64.4% | - | - | - | - |
-| ElemEqualScalar | 23,024 (0 B, 0 allocs) | 22,238 (0 B, 0 allocs) | 30,751 | -25.1% | - | - | - | - |
-| ElemGreaterScalar | 23,017 (0 B, 0 allocs) | 13,472 (0 B, 0 allocs) | 17,658 | +30.3% | - | - | - | - |
+| ElemFill | 5,468 (0 B, 0 allocs) | 8,502 (0 B, 0 allocs) | 8,997 | -39.2% | -64.4% | - | - | - |
+| ElemEqualScalar | 13,085 (0 B, 0 allocs) | 13,134 (0 B, 0 allocs) | 16,714 | -21.7% | -25.1% | - | - | - |
+| ElemGreaterScalar | 12,526 (0 B, 0 allocs) | 14,906 (0 B, 0 allocs) | 18,661 | -32.9% | +30.3% | - | - | - |
 | **Vector/Matrix Apply Operations** |
-| ElemVecApplyStrided | 25,536 (0 B, 0 allocs) | 30,210 (0 B, 0 allocs) | 16,016 | +59.5% | +99.1% | - | - | - |
-| ElemMatApplyStrided | 34,117 (0 B, 0 allocs) | 25,422 (0 B, 0 allocs) | 14,464 | +135.8% | +94.8% | - | - | - |
+| ElemVecApplyStrided | 28,237 (0 B, 0 allocs) | 67,655 (0 B, 0 allocs) | 18,270 | +54.6% | +59.5% | +99.1% | - | - |
+| ElemMatApplyStrided | 49,160 (0 B, 0 allocs) | 58,466 (0 B, 0 allocs) | 20,699 | +137.5% | +135.8% | +94.8% | - | - |
 | **Iterator Operations** |
-| Elements | 94,316 (88 B, 5 allocs) | 427,740 (160,056 B, 10,004 allocs) | 6,089 | +1448.9% | +7566.0% | - | - | - |
-| ElementsVec | 3,954 (0 B, 0 allocs) | 7,931 (0 B, 0 allocs) | 4,077 | -3.0% | - | - | - | - |
-| ElementsVecStrided | 8,390 (0 B, 0 allocs) | 4,028 (0 B, 0 allocs) | 4,077 | +105.8% | - | - | - | - |
-| ElementsMat | 5,051 (0 B, 0 allocs) | 4,959 (0 B, 0 allocs) | 5,179 | -2.5% | - | - | - | - |
-| ElementsMatStrided | 5,217 (0 B, 0 allocs) | 5,691 (0 B, 0 allocs) | 5,179 | +0.7% | - | - | - | - |
+| Elements | 46,783 (88 B, 5 allocs) | 418,696 (160,056 B, 10,004 allocs) | 5,408 | +765.1% | +1448.9% | +7566.0% | - | - |
+| ElementsVec | 8,425 (0 B, 0 allocs) | 4,587 (0 B, 0 allocs) | 9,384 | -10.2% | -3.0% | - | - | - |
+| ElementsVecStrided | 4,724 (0 B, 0 allocs) | 9,815 (0 B, 0 allocs) | 9,384 | -49.6% | +105.8% | - | - | - |
+| ElementsMat | 7,102 (0 B, 0 allocs) | 5,749 (0 B, 0 allocs) | 6,171 | +15.1% | -2.5% | - | - | - |
+| ElementsMatStrided | 5,618 (0 B, 0 allocs) | 6,303 (0 B, 0 allocs) | 6,171 | -9.0% | +0.7% | - | - | - |
 | **Conversion Operations** |
-| ElemConvert | 18,586 (0 B, 0 allocs) | 11,046 (0 B, 0 allocs) | 27,248 | -31.8% | +5.9% | - | - | - |
-| ElemConvert (Clamping) | 13,651 (0 B, 0 allocs) | 10,480 (0 B, 0 allocs) | 5,071 | +169.2% | +138.8% | - | - | - |
-| ElemConvertStrided | 118,101 (48 B, 3 allocs) | 116,611 (16 B, 1 alloc) | 16,689 | +607.7% | +612.4% | - | - | - |
-| ValueConvert | 2.762 (0 B, 0 allocs) | 0.4256 (0 B, 0 allocs) | N/A | N/A | - | - | - | - |
-| ValueConvert (Clamping) | 5.178 (0 B, 0 allocs) | 0.5561 (0 B, 0 allocs) | N/A | N/A | - | - | - | - |
+| ElemConvert | 7,065 (0 B, 0 allocs) | 7,519 (0 B, 0 allocs) | 15,815 | -55.3% | -31.8% | +5.9% | - | - |
+| ElemConvert (Clamping) | 13,067 (0 B, 0 allocs) | 4,970 (0 B, 0 allocs) | 8,883 | +47.1% | +169.2% | +138.8% | - | - |
+| ElemConvertStrided | 101,101 (48 B, 3 allocs) | 106,885 (16 B, 1 alloc) | 19,470 | +419.3% | +607.7% | +612.4% | - | - |
+| ValueConvert | 4.395 (0 B, 0 allocs) | 0.5562 (0 B, 0 allocs) | N/A | N/A | N/A | - | - | - |
+| ValueConvert (Clamping) | 11.11 (0 B, 0 allocs) | 0.5387 (0 B, 0 allocs) | N/A | N/A | N/A | - | - | - |
 
 **Note:** ValueConvert operations don't have a Direct Loop baseline as they operate on single values, not arrays.
 
@@ -83,7 +84,8 @@ This report compares the performance of generic implementations against non-gene
 ## Historical Run Dates
 
 - **H1 (Current):** November 6, 2025
-- **H2 (Previous):** November 6, 2025 (initial run)
+- **H2 (Previous):** November 6, 2025
+- **H3 (Previous):** November 6, 2025 (initial run)
 
 ---
 
@@ -91,17 +93,17 @@ This report compares the performance of generic implementations against non-gene
 
 ### Strengths
 
-1. **Copy Operations:** Generic `ElemCopy` and `ElemCopyStrided` are highly optimized, often faster than direct loops due to builtin `copy()` optimization. ElemCopy is 86.7% faster than baseline.
+1. **Copy Operations:** Generic `ElemCopy` and `ElemCopyStrided` are highly optimized, often faster than direct loops due to builtin `copy()` optimization. ElemCopy is 93.1% faster than baseline.
 
 2. **BLAS Operations:** BLAS `Copy` and `Swap` operations perform excellently, with generic versions competitive with non-generic and direct loops.
 
 3. **Contiguous Operations:** Generic contiguous operations (Unary, Binary, Scalar) perform comparably to non-generic versions, typically 14-68% faster than direct loops.
 
-4. **Swap Operations:** Generic swap operations perform well, competitive with non-generic versions. ElemSwap is 32.6% faster than baseline.
+4. **Swap Operations:** Generic swap operations perform well, competitive with non-generic versions. ElemSwap is 34.7% faster than baseline.
 
 5. **Vector/Matrix Iterators:** `ElementsVec` and `ElementsMat` iterators perform excellently, comparable to direct loops with minimal overhead.
 
-6. **Tensor Iterator Optimization:** `Elements` iterator optimized to eliminate allocations (99.95% reduction: from 10,005 to 5 allocations) by reusing the indices slice, resulting in 79% performance improvement from previous run.
+6. **Tensor Iterator Optimization:** `Elements` iterator optimized to eliminate allocations (99.95% reduction: from 10,005 to 5 allocations) by reusing the indices slice. Performance improved significantly from previous runs.
 
 7. **Memory Efficiency:** Most operations have zero allocations for contiguous paths.
 
@@ -113,7 +115,7 @@ This report compares the performance of generic implementations against non-gene
 
 3. **Vector/Matrix Apply Operations:** Some overhead from stride/leading dimension checks, but still reasonable for the flexibility provided.
 
-4. **Elements Iterator:** Still slower than direct loop due to iterator overhead, but massive improvement from previous run (79% faster, 99.95% fewer allocations).
+4. **Elements Iterator:** Still slower than direct loop due to iterator overhead, but significant improvement from previous runs (99.95% fewer allocations).
 
 ---
 

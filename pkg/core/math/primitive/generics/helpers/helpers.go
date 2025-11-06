@@ -1,4 +1,75 @@
-package generics
+package helpers
+
+import "math"
+
+// Numeric types that can be used with generic operations
+type Numeric interface {
+	~float64 | ~int64 | ~float32 | ~int | ~int32 | ~int16 | ~int8
+}
+
+// Types that need clamping when converting to int8 (sorted by type size)
+type ClampableToInt8 interface {
+	~float64 | ~int64 | ~float32 | ~int | ~int32 | ~int16
+}
+
+// Types that need clamping when converting to int16 (sorted by type size)
+type ClampableToInt16 interface {
+	~float64 | ~int64 | ~float32 | ~int | ~int32
+}
+
+// Types that need clamping when converting to int32 (sorted by type size)
+type ClampableToInt32 interface {
+	~float64 | ~int64 | ~float32 | ~int
+}
+
+// Types that need clamping when converting to int64 (sorted by type size)
+type ClampableToInt64 interface {
+	~float64 | ~float32
+}
+
+// ClampToInt8Value clamps a single value to int8 range [-128, 127].
+func ClampToInt8Value[U ClampableToInt8](v U) int8 {
+	if v > U(math.MaxInt8) {
+		return math.MaxInt8
+	}
+	if v < U(math.MinInt8) {
+		return math.MinInt8
+	}
+	return int8(v)
+}
+
+// ClampToInt16Value clamps a single value to int16 range [-32768, 32767].
+func ClampToInt16Value[U ClampableToInt16](v U) int16 {
+	if v > U(math.MaxInt16) {
+		return math.MaxInt16
+	}
+	if v < U(math.MinInt16) {
+		return math.MinInt16
+	}
+	return int16(v)
+}
+
+// ClampToInt32Value clamps a single value to int32 range.
+func ClampToInt32Value[U ClampableToInt32](v U) int32 {
+	if v > U(math.MaxInt32) {
+		return math.MaxInt32
+	}
+	if v < U(math.MinInt32) {
+		return math.MinInt32
+	}
+	return int32(v)
+}
+
+// ClampToInt64Value clamps a single value to int64 range.
+func ClampToInt64Value[U ClampableToInt64](v U) int64 {
+	if v > U(int64(math.MaxInt64)) {
+		return math.MaxInt64
+	}
+	if v < U(int64(math.MinInt64)) {
+		return math.MinInt64
+	}
+	return int64(v)
+}
 
 // ComputeStridesRank returns the rank (number of dimensions) of the shape.
 // This is a lightweight function that avoids computing full strides when only the rank is needed.

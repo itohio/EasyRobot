@@ -2,6 +2,8 @@ package generics
 
 import (
 	"testing"
+
+	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 )
 
 func TestElemApplyUnary(t *testing.T) {
@@ -160,12 +162,12 @@ func TestElemApplyTernary(t *testing.T) {
 
 func TestElemApplyUnaryScalar(t *testing.T) {
 	tests := []struct {
-		name     string
-		src      []float32
-		scalar   float32
-		shape    []int
-		op       func(float32, float32) float32
-		want     []float32
+		name   string
+		src    []float32
+		scalar float32
+		shape  []int
+		op     func(float32, float32) float32
+		want   []float32
 	}{
 		{
 			name:   "add scalar",
@@ -202,13 +204,13 @@ func TestElemApplyUnaryScalar(t *testing.T) {
 
 func TestElemVecApply(t *testing.T) {
 	tests := []struct {
-		name     string
-		src      []float32
-		n        int
-		strideD  int
-		strideS  int
-		op       func(float32) float32
-		want     []float32
+		name    string
+		src     []float32
+		n       int
+		strideD int
+		strideS int
+		op      func(float32) float32
+		want    []float32
 	}{
 		{
 			name:    "contiguous",
@@ -377,13 +379,13 @@ func TestElemApplyTernaryScalar(t *testing.T) {
 
 func TestElemVecApplyUnary(t *testing.T) {
 	tests := []struct {
-		name     string
-		src      []float32
-		n        int
-		strideD  int
-		strideS  int
-		op       func(float32) float32
-		want     []float32
+		name    string
+		src     []float32
+		n       int
+		strideD int
+		strideS int
+		op      func(float32) float32
+		want    []float32
 	}{
 		{
 			name:    "contiguous",
@@ -421,15 +423,15 @@ func TestElemVecApplyUnary(t *testing.T) {
 
 func TestElemVecApplyBinary(t *testing.T) {
 	tests := []struct {
-		name     string
-		a        []float32
-		b        []float32
-		n        int
-		strideD  int
-		strideA  int
-		strideB  int
-		op       func(float32, float32) float32
-		want     []float32
+		name    string
+		a       []float32
+		b       []float32
+		n       int
+		strideD int
+		strideA int
+		strideB int
+		op      func(float32, float32) float32
+		want    []float32
 	}{
 		{
 			name:    "add contiguous",
@@ -519,14 +521,14 @@ func TestElemVecApplyTernary(t *testing.T) {
 
 func TestElemVecApplyUnaryScalar(t *testing.T) {
 	tests := []struct {
-		name     string
-		src      []float32
-		scalar   float32
-		n        int
-		strideD  int
-		strideS  int
-		op       func(float32, float32) float32
-		want     []float32
+		name    string
+		src     []float32
+		scalar  float32
+		n       int
+		strideD int
+		strideS int
+		op      func(float32, float32) float32
+		want    []float32
 	}{
 		{
 			name:    "add scalar contiguous",
@@ -556,14 +558,14 @@ func TestElemVecApplyUnaryScalar(t *testing.T) {
 
 func TestElemVecApplyBinaryScalar(t *testing.T) {
 	tests := []struct {
-		name     string
-		a        []float32
-		scalar   float32
-		n        int
-		strideD  int
-		strideA  int
-		op       func(float32, float32) float32
-		want     []float32
+		name    string
+		a       []float32
+		scalar  float32
+		n       int
+		strideD int
+		strideA int
+		op      func(float32, float32) float32
+		want    []float32
 	}{
 		{
 			name:    "multiply scalar contiguous",
@@ -896,4 +898,3 @@ func TestElemMatApplyTernaryScalar(t *testing.T) {
 		})
 	}
 }
-

@@ -1,5 +1,7 @@
 package generics
 
+import . "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+
 // ElemVecApply applies a unary function to a vector: dst[i] = op(src[i]).
 // Optimized for 1D vector operations with stride support.
 // Deprecated: Use ElemVecApplyUnaryStrided instead. This function is kept for backward compatibility.

@@ -2,6 +2,8 @@ package generics
 
 import (
 	"testing"
+
+	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 )
 
 func TestElemWhere(t *testing.T) {

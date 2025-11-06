@@ -1,4 +1,6 @@
-package generics
+package st
+
+import . "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 
 // ElemVecConvertStrided converts src into dst for a vector with stride support.
 // Optimized for 1D vector operations.
@@ -9,16 +11,18 @@ func ElemVecConvertStrided[T, U Numeric](dst []T, src []U, n int, strideDst, str
 	}
 
 	if strideDst == 1 && strideSrc == 1 {
-		// Fast path: contiguous vectors
-		ElemConvert(dst, src, n)
+		// Fast path: contiguous vectors - use elemConvertNumeric directly
+		_ = elemConvertNumeric(dst[:n], src[:n])
 		return
 	}
 
-	// Strided path: use ValueConvert for each element to handle clamping correctly
+	// Strided path: convert each element individually
 	dIdx := 0
 	sIdx := 0
 	for i := 0; i < n; i++ {
-		dst[dIdx] = ValueConvert[U, T](src[sIdx])
+		// Convert single element using the same logic as ElemConvert
+		val := src[sIdx]
+		dst[dIdx] = T(val)
 		dIdx += strideDst
 		sIdx += strideSrc
 	}
@@ -33,19 +37,18 @@ func ElemMatConvertStrided[T, U Numeric](dst []T, src []U, rows, cols int, ldDst
 	}
 
 	if ldDst == cols && ldSrc == cols {
-		// Fast path: contiguous matrices
+		// Fast path: contiguous matrices - use elemConvertNumeric directly
 		size := rows * cols
-		ElemConvert(dst, src, size)
+		_ = elemConvertNumeric(dst[:size], src[:size])
 		return
 	}
 
-	// Strided path: iterate row by row, use ValueConvert for each element to handle clamping correctly
+	// Strided path: iterate row by row, convert each element
 	for i := 0; i < rows; i++ {
 		dstRow := dst[i*ldDst:]
 		srcRow := src[i*ldSrc:]
-		for j := 0; j < cols; j++ {
-			dstRow[j] = ValueConvert[U, T](srcRow[j])
-		}
+		// Convert row using elemConvertNumeric
+		_ = elemConvertNumeric(dstRow[:cols], srcRow[:cols])
 	}
 }
 

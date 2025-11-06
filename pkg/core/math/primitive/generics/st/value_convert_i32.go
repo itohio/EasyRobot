@@ -1,6 +1,8 @@
 //go:build 386 || arm || mips || mipsle
 
-package generics
+package st
+
+import . "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 
 // valueConvertToInt handles conversion to int with clamping (32-bit platform).
 // On 32-bit platforms, int64 also needs clamping when converting to int.

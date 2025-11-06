@@ -1,6 +1,10 @@
-package generics
+package st
 
-import "math"
+import (
+	"math"
+
+	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+)
 
 // Types that need clamping when converting to int8 (sorted by type size)
 type clampableToInt8 interface {
@@ -163,15 +167,6 @@ func elemConvertGeneric[T, U Numeric](dst []T, src []U) []T {
 	return dst
 }
 
-// Helper to compute linear offset from multi-dimensional indices
-func computeStrideOffset(indices []int, strides []int) int {
-	offset := 0
-	for i := range indices {
-		offset += indices[i] * strides[i]
-	}
-	return offset
-}
-
 // ElemConvertStrided converts src to dst respecting the supplied shape/strides.
 // This function handles both contiguous and strided cases with optimized paths.
 // Supports conversion between float32, float64, int64, int32, int16, and int8.
@@ -301,8 +296,8 @@ func elemConvertStridedGeneric[T, U Numeric](dst []T, src []U, shape []int, srcS
 	for {
 		// Process current element if we've reached the leaf
 		if dim == ndims {
-			sIdx := computeStrideOffset(indices, srcStrides)
-			dIdx := computeStrideOffset(indices, dstStrides)
+			sIdx := ComputeStrideOffset(indices, srcStrides)
+			dIdx := ComputeStrideOffset(indices, dstStrides)
 			// Hot path: direct conversion, no type switches
 			dst[dIdx] = T(src[sIdx])
 
@@ -604,8 +599,8 @@ func clampToInt8Strided[U clampableToInt8](dst []int8, src []U, shape []int, src
 		// Process current element if we've reached the leaf
 		if dim == ndims {
 			// Hot path: compute offsets and clamp
-			sIdx := computeStrideOffset(indices, srcStrides)
-			dIdx := computeStrideOffset(indices, dstStrides)
+			sIdx := ComputeStrideOffset(indices, srcStrides)
+			dIdx := ComputeStrideOffset(indices, dstStrides)
 			val := src[sIdx]
 			if val > U(math.MaxInt8) {
 				dst[dIdx] = math.MaxInt8
@@ -657,8 +652,8 @@ func clampToInt16Strided[U clampableToInt16](dst []int16, src []U, shape []int, 
 		// Process current element if we've reached the leaf
 		if dim == ndims {
 			// Hot path: compute offsets and clamp
-			sIdx := computeStrideOffset(indices, srcStrides)
-			dIdx := computeStrideOffset(indices, dstStrides)
+			sIdx := ComputeStrideOffset(indices, srcStrides)
+			dIdx := ComputeStrideOffset(indices, dstStrides)
 			val := src[sIdx]
 			if val > U(math.MaxInt16) {
 				dst[dIdx] = math.MaxInt16
@@ -706,8 +701,8 @@ func clampToInt64Strided[U clampableToInt64](dst []int64, src []U, shape []int, 
 
 	for {
 		if dim == ndims {
-			sIdx := computeStrideOffset(indices, srcStrides)
-			dIdx := computeStrideOffset(indices, dstStrides)
+			sIdx := ComputeStrideOffset(indices, srcStrides)
+			dIdx := ComputeStrideOffset(indices, dstStrides)
 			val := src[sIdx]
 			if val > U(int64(math.MaxInt64)) {
 				dst[dIdx] = math.MaxInt64
@@ -752,8 +747,8 @@ func clampToInt32Strided[U clampableToInt32](dst []int32, src []U, shape []int, 
 
 	for {
 		if dim == ndims {
-			sIdx := computeStrideOffset(indices, srcStrides)
-			dIdx := computeStrideOffset(indices, dstStrides)
+			sIdx := ComputeStrideOffset(indices, srcStrides)
+			dIdx := ComputeStrideOffset(indices, dstStrides)
 			val := src[sIdx]
 			if val > U(math.MaxInt32) {
 				dst[dIdx] = math.MaxInt32
@@ -783,52 +778,4 @@ func clampToInt32Strided[U clampableToInt32](dst []int32, src []U, shape []int, 
 
 		dim++
 	}
-}
-
-// clampToInt8Value clamps a single value to int8 range [-128, 127].
-// Used by ValueConvert for single value conversion.
-func clampToInt8Value[U clampableToInt8](v U) int8 {
-	if v > U(math.MaxInt8) {
-		return math.MaxInt8
-	}
-	if v < U(math.MinInt8) {
-		return math.MinInt8
-	}
-	return int8(v)
-}
-
-// clampToInt16Value clamps a single value to int16 range [-32768, 32767].
-// Used by ValueConvert for single value conversion.
-func clampToInt16Value[U clampableToInt16](v U) int16 {
-	if v > U(math.MaxInt16) {
-		return math.MaxInt16
-	}
-	if v < U(math.MinInt16) {
-		return math.MinInt16
-	}
-	return int16(v)
-}
-
-// clampToInt32Value clamps a single value to int32 range.
-// Used by ValueConvert for single value conversion.
-func clampToInt32Value[U clampableToInt32](v U) int32 {
-	if v > U(math.MaxInt32) {
-		return math.MaxInt32
-	}
-	if v < U(math.MinInt32) {
-		return math.MinInt32
-	}
-	return int32(v)
-}
-
-// clampToInt64Value clamps a single value to int64 range.
-// Used by ValueConvert for single value conversion.
-func clampToInt64Value[U clampableToInt64](v U) int64 {
-	if v > U(int64(math.MaxInt64)) {
-		return math.MaxInt64
-	}
-	if v < U(int64(math.MinInt64)) {
-		return math.MinInt64
-	}
-	return int64(v)
 }

@@ -1,5 +1,7 @@
 package generics
 
+import . "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+
 // ElemSign writes the sign of src into dst: -1 if src < 0, 0 if src == 0, 1 if src > 0 for contiguous arrays.
 // Optimized for the common case of contiguous memory.
 func ElemSign[T Numeric](dst, src []T, n int) {

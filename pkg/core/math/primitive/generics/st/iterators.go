@@ -1,4 +1,6 @@
-package generics
+package st
+
+import . "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 
 // Elements returns an iterator over multi-dimensional indices for the given shape.
 // Yields []int representing the indices for each element.

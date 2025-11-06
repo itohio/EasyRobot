@@ -1,6 +1,8 @@
 //go:build amd64 || arm64 || ppc64 || ppc64le || mips64 || mips64le || riscv64 || s390x
 
-package generics
+package st
+
+import . "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 
 // valueConvertToInt handles conversion to int with clamping (64-bit platform).
 // On 64-bit platforms, only float32/float64 need clamping when converting to int.

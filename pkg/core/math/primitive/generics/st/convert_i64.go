@@ -1,8 +1,12 @@
 //go:build amd64 || arm64 || ppc64 || ppc64le || mips64 || mips64le || riscv64 || s390x
 
-package generics
+package st
 
-import "math"
+import (
+	"math"
+
+	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+)
 
 // Types that need clamping when converting to int (sorted by type size)
 type clampableToInt interface {
@@ -75,8 +79,8 @@ func clampToIntStrided[U clampableToInt](dst []int, src []U, shape []int, srcStr
 
 	for {
 		if dim == ndims {
-			sIdx := computeStrideOffset(indices, srcStrides)
-			dIdx := computeStrideOffset(indices, dstStrides)
+			sIdx := ComputeStrideOffset(indices, srcStrides)
+			dIdx := ComputeStrideOffset(indices, dstStrides)
 			val := src[sIdx]
 			if val > U(math.MaxInt) {
 				dst[dIdx] = math.MaxInt

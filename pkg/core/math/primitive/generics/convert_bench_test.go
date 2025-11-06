@@ -3,6 +3,8 @@ package generics
 import (
 	"math"
 	"testing"
+
+	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 )
 
 var (
@@ -179,8 +181,8 @@ func convertStridedNonGeneric(dst []float64, src []float32, shape []int, strides
 	dim := 0
 	for {
 		if dim == ndims {
-			sIdx := computeStrideOffset(indices, stridesSrc)
-			dIdx := computeStrideOffset(indices, stridesDst)
+			sIdx := ComputeStrideOffset(indices, stridesSrc)
+			dIdx := ComputeStrideOffset(indices, stridesDst)
 			dst[dIdx] = float64(src[sIdx])
 			dim--
 			if dim < 0 {
@@ -245,4 +247,3 @@ func BenchmarkValueConvert_Clamping_NonGeneric(b *testing.B) {
 		_ = result
 	}
 }
-
