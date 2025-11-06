@@ -272,3 +272,120 @@ func Softmax2DColsGrad(dst, gradOutput, output []float32, rows, cols int) {
 		}
 	}
 }
+
+// ReLUGradStride computes ReLU gradient with stride support: dst[i] = gradOutput[i] * (input[i] > 0 ? 1 : 0)
+// Supports non-contiguous tensors via stride-based access.
+func ReLUGradStride(dst, gradOutput, input []float32, shape []int, stridesDst, stridesGrad, stridesInput []int) {
+	size := SizeFromShape(shape)
+	if len(shape) == 0 || size == 0 {
+		return
+	}
+
+	stridesDst = EnsureStrides(stridesDst, shape)
+	stridesGrad = EnsureStrides(stridesGrad, shape)
+	stridesInput = EnsureStrides(stridesInput, shape)
+
+	if IsContiguous(stridesDst, shape) && IsContiguous(stridesGrad, shape) && IsContiguous(stridesInput, shape) {
+		// Fast path for contiguous tensors
+		for i := 0; i < size; i++ {
+			if input[i] > 0 {
+				dst[i] = gradOutput[i]
+			} else {
+				dst[i] = 0
+			}
+		}
+		return
+	}
+
+	// Stride-based path for non-contiguous tensors
+	indices := make([]int, len(shape))
+	offsets := make([]int, 3)
+	strideSet := [][]int{stridesDst, stridesGrad, stridesInput}
+	for {
+		dIdx := offsets[0]
+		gIdx := offsets[1]
+		iIdx := offsets[2]
+		if input[iIdx] > 0 {
+			dst[dIdx] = gradOutput[gIdx]
+		} else {
+			dst[dIdx] = 0
+		}
+		if !advanceOffsets(shape, indices, offsets, strideSet) {
+			break
+		}
+	}
+}
+
+// SigmoidGradStride computes sigmoid gradient with stride support: dst[i] = gradOutput[i] * output[i] * (1 - output[i])
+// Supports non-contiguous tensors via stride-based access.
+func SigmoidGradStride(dst, gradOutput, output []float32, shape []int, stridesDst, stridesGrad, stridesOutput []int) {
+	size := SizeFromShape(shape)
+	if len(shape) == 0 || size == 0 {
+		return
+	}
+
+	stridesDst = EnsureStrides(stridesDst, shape)
+	stridesGrad = EnsureStrides(stridesGrad, shape)
+	stridesOutput = EnsureStrides(stridesOutput, shape)
+
+	if IsContiguous(stridesDst, shape) && IsContiguous(stridesGrad, shape) && IsContiguous(stridesOutput, shape) {
+		// Fast path for contiguous tensors
+		for i := 0; i < size; i++ {
+			out := output[i]
+			dst[i] = gradOutput[i] * out * (1 - out)
+		}
+		return
+	}
+
+	// Stride-based path for non-contiguous tensors
+	indices := make([]int, len(shape))
+	offsets := make([]int, 3)
+	strideSet := [][]int{stridesDst, stridesGrad, stridesOutput}
+	for {
+		dIdx := offsets[0]
+		gIdx := offsets[1]
+		oIdx := offsets[2]
+		out := output[oIdx]
+		dst[dIdx] = gradOutput[gIdx] * out * (1 - out)
+		if !advanceOffsets(shape, indices, offsets, strideSet) {
+			break
+		}
+	}
+}
+
+// TanhGradStride computes tanh gradient with stride support: dst[i] = gradOutput[i] * (1 - output[i]^2)
+// Supports non-contiguous tensors via stride-based access.
+func TanhGradStride(dst, gradOutput, output []float32, shape []int, stridesDst, stridesGrad, stridesOutput []int) {
+	size := SizeFromShape(shape)
+	if len(shape) == 0 || size == 0 {
+		return
+	}
+
+	stridesDst = EnsureStrides(stridesDst, shape)
+	stridesGrad = EnsureStrides(stridesGrad, shape)
+	stridesOutput = EnsureStrides(stridesOutput, shape)
+
+	if IsContiguous(stridesDst, shape) && IsContiguous(stridesGrad, shape) && IsContiguous(stridesOutput, shape) {
+		// Fast path for contiguous tensors
+		for i := 0; i < size; i++ {
+			out := output[i]
+			dst[i] = gradOutput[i] * (1 - out*out)
+		}
+		return
+	}
+
+	// Stride-based path for non-contiguous tensors
+	indices := make([]int, len(shape))
+	offsets := make([]int, 3)
+	strideSet := [][]int{stridesDst, stridesGrad, stridesOutput}
+	for {
+		dIdx := offsets[0]
+		gIdx := offsets[1]
+		oIdx := offsets[2]
+		out := output[oIdx]
+		dst[dIdx] = gradOutput[gIdx] * (1 - out*out)
+		if !advanceOffsets(shape, indices, offsets, strideSet) {
+			break
+		}
+	}
+}

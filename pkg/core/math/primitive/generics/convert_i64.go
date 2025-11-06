@@ -1,0 +1,122 @@
+//go:build amd64 || arm64 || ppc64 || ppc64le || mips64 || mips64le || riscv64 || s390x
+
+package generics
+
+import "math"
+
+// Types that need clamping when converting to int (sorted by type size)
+type clampableToInt interface {
+	~float64 | ~float32
+}
+
+// elemConvertToInt handles conversions to int with clamping.
+// Handles: float32/float64 -> int (needs clamping)
+func elemConvertToInt[U Numeric](dst []int, src []U) {
+	n := len(dst)
+	if len(src) < n {
+		n = len(src)
+	}
+	if n > 0 {
+		switch s := any(src).(type) {
+		case []float32:
+			clampToInt(dst, s, n)
+		case []float64:
+			clampToInt(dst, s, n)
+		default:
+			// Up-conversion: direct conversion
+			for i := 0; i < n; i++ {
+				dst[i] = int(src[i])
+			}
+		}
+	}
+}
+
+// clampToInt implements the hot path inner loop for clamping to int range.
+// Generic over source types that need clamping (float32, float64).
+func clampToInt[U clampableToInt](dst []int, src []U, n int) {
+	if n == 0 {
+		return
+	}
+	_ = dst[n-1]
+	_ = src[n-1]
+	for i := 0; i < n; i++ {
+		val := src[i]
+		// Direct assignment to avoid type conversion issues and improve performance
+		if val > U(math.MaxInt) {
+			dst[i] = math.MaxInt
+		} else if val < U(math.MinInt) {
+			dst[i] = math.MinInt
+		} else {
+			dst[i] = int(val)
+		}
+	}
+}
+
+// elemConvertToIntStrided handles conversions to int with clamping.
+func elemConvertToIntStrided[U Numeric](dst []int, src []U, shape []int, srcStrides, dstStrides []int) {
+	switch s := any(src).(type) {
+	case []float32:
+		clampToIntStrided(dst, s, shape, srcStrides, dstStrides)
+	case []float64:
+		clampToIntStrided(dst, s, shape, srcStrides, dstStrides)
+	}
+}
+
+// clampToIntStrided implements the hot path for strided copying with clamping to int.
+// Generic over source types that need clamping (float32, float64).
+func clampToIntStrided[U clampableToInt](dst []int, src []U, shape []int, srcStrides, dstStrides []int) {
+	ndims := len(shape)
+	if ndims == 0 {
+		return
+	}
+
+	indices := make([]int, ndims)
+	dim := 0
+
+	for {
+		if dim == ndims {
+			sIdx := computeStrideOffset(indices, srcStrides)
+			dIdx := computeStrideOffset(indices, dstStrides)
+			val := src[sIdx]
+			if val > U(math.MaxInt) {
+				dst[dIdx] = math.MaxInt
+			} else if val < U(math.MinInt) {
+				dst[dIdx] = math.MinInt
+			} else {
+				dst[dIdx] = int(val)
+			}
+
+			dim--
+			if dim < 0 {
+				break
+			}
+			indices[dim]++
+			continue
+		}
+
+		if indices[dim] >= shape[dim] {
+			indices[dim] = 0
+			dim--
+			if dim < 0 {
+				break
+			}
+			indices[dim]++
+			continue
+		}
+
+		dim++
+	}
+}
+
+// clampToIntValue clamps a single value to int range.
+// Used by stride-based copying where we process one element at a time.
+func clampToIntValue[U clampableToInt](v U) int {
+	if v > U(math.MaxInt) {
+		return math.MaxInt
+	}
+	if v < U(math.MinInt) {
+		return math.MinInt
+	}
+	return int(v)
+}
+

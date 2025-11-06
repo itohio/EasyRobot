@@ -1,0 +1,52 @@
+goos: linux
+goarch: amd64
+pkg: github.com/itohio/EasyRobot/pkg/core/math/primitive/generics
+cpu: Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz
+BenchmarkElemApplyUnary_Generic-10                    	  137026	     10923 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemApplyUnary_NonGeneric-10                 	  112576	     10610 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemApplyUnary_DirectLoop-10                 	   85845	     14731 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemApplyBinary_Generic-10                   	  112402	     10258 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemApplyBinary_NonGeneric-10                	  127195	      9882 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemApplyBinary_DirectLoop-10                	   64383	     18134 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemApplyBinaryStrided_Generic-10            	   33714	     30108 ns/op	      48 B/op	       3 allocs/op
+BenchmarkElemApplyBinaryStrided_NonGeneric-10         	   34210	     32797 ns/op	      48 B/op	       3 allocs/op
+BenchmarkElemApplyBinaryStrided_DirectLoop-10         	   52440	     21495 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemApplyUnaryScalar_Generic-10              	  107017	      9916 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemApplyUnaryScalar_NonGeneric-10           	  151508	      8320 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemApplyUnaryScalar_DirectLoop-10           	   75516	     15031 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemApplyUnaryScalarStrided_Generic-10       	   41965	     26990 ns/op	      32 B/op	       2 allocs/op
+BenchmarkElemApplyUnaryScalarStrided_NonGeneric-10    	   36157	     27877 ns/op	      32 B/op	       2 allocs/op
+BenchmarkElemApplyUnaryScalarStrided_DirectLoop-10    	   67344	     17213 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemVecApply_Generic-10                      	   42020	     26444 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemVecApply_NonGeneric-10                   	   47866	     24916 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemVecApply_DirectLoop-10                   	   85066	     13276 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemMatApply_Generic-10                      	   37143	     34980 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemMatApply_NonGeneric-10                   	   41102	     28103 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemMatApply_DirectLoop-10                   	   68280	     17958 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemConvert_Generic-10                       	   98080	     14630 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemConvert_NonGeneric-10                    	  135942	      8951 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemConvert_DirectLoop-10                    	   75277	     13809 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemConvert_Clamping-10                      	  112794	     10575 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemConvert_Clamping_NonGeneric-10           	  141271	      8015 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemConvert_Clamping_DirectLoop-10           	  313210	      4429 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemConvertStrided_Generic-10                	    8985	    125199 ns/op	      48 B/op	       3 allocs/op
+BenchmarkElemConvertStrided_NonGeneric-10             	    9932	    116957 ns/op	      16 B/op	       1 allocs/op
+BenchmarkElemConvertStrided_DirectLoop-10             	   60712	     17574 ns/op	       0 B/op	       0 allocs/op
+BenchmarkValueConvert_Generic-10                      	381874864	         2.812 ns/op	       0 B/op	       0 allocs/op
+BenchmarkValueConvert_NonGeneric-10                   	1000000000	         0.5131 ns/op	       0 B/op	       0 allocs/op
+BenchmarkValueConvert_Clamping-10                     	237475021	         5.187 ns/op	       0 B/op	       0 allocs/op
+BenchmarkValueConvert_Clamping_NonGeneric-10          	1000000000	         0.4322 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemCopy_Generic-10                          	  788338	      2440 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemCopy_NonGeneric-10                       	  504831	      2059 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemCopy_DirectLoop-10                       	   85304	     17555 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemCopyStrided_Generic-10                   	  312624	      3326 ns/op	      32 B/op	       2 allocs/op
+BenchmarkElemCopyStrided_NonGeneric-10                	   12166	     82682 ns/op	      16 B/op	       1 allocs/op
+BenchmarkElemCopyStrided_DirectLoop-10                	   69450	     29110 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemSwap_Generic-10                          	   87415	     12214 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemSwap_NonGeneric-10                       	   95217	     12849 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemSwapStrided_Generic-10                   	   97831	     11434 ns/op	      32 B/op	       2 allocs/op
+BenchmarkElemSwapStrided_NonGeneric-10                	   15235	     69400 ns/op	      16 B/op	       1 allocs/op
+BenchmarkElemSwapStrided_DirectLoop-10                	   60342	     18742 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemSwap_DirectLoop-10                       	   55700	     19886 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/itohio/EasyRobot/pkg/core/math/primitive/generics	67.341s

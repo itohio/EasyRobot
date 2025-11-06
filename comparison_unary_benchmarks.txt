@@ -1,0 +1,30 @@
+goos: linux
+goarch: amd64
+pkg: github.com/itohio/EasyRobot/pkg/core/math/primitive/generics
+cpu: Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz
+BenchmarkElemGreaterThan_Generic-10              	   71109	     19044 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemGreaterThan_NonGeneric-10           	   70724	     27449 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemGreaterThan_DirectLoop-10           	   42108	     27882 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemGreaterThanStrided_Generic-10       	   66801	     16380 ns/op	      48 B/op	       3 allocs/op
+BenchmarkElemGreaterThanStrided_NonGeneric-10    	   59953	     16986 ns/op	      48 B/op	       3 allocs/op
+BenchmarkElemGreaterThanStrided_DirectLoop-10    	   47946	     24330 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemEqual_Generic-10                    	   69150	     18119 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemEqual_NonGeneric-10                 	   70226	     15690 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemEqual_DirectLoop-10                 	   51938	     20941 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemLess_Generic-10                     	   63228	     17852 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemLess_NonGeneric-10                  	   60433	     17657 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemLess_DirectLoop-10                  	   58312	     19391 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemSign_Generic-10                     	   75261	     18287 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemSign_NonGeneric-10                  	   77413	     14915 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemSign_DirectLoop-10                  	   71050	     17976 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemSignStrided_Generic-10              	   75289	     16520 ns/op	      32 B/op	       2 allocs/op
+BenchmarkElemSignStrided_NonGeneric-10           	   53862	     28199 ns/op	      32 B/op	       2 allocs/op
+BenchmarkElemSignStrided_DirectLoop-10           	   54183	     22566 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemNegative_Generic-10                 	  107415	      9758 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemNegative_NonGeneric-10              	  112612	     10398 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemNegative_DirectLoop-10              	   65124	     17970 ns/op	       0 B/op	       0 allocs/op
+BenchmarkElemNegativeStrided_Generic-10          	   88500	     11768 ns/op	      32 B/op	       2 allocs/op
+BenchmarkElemNegativeStrided_NonGeneric-10       	  112738	     10444 ns/op	      32 B/op	       2 allocs/op
+BenchmarkElemNegativeStrided_DirectLoop-10       	   70794	     16631 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/itohio/EasyRobot/pkg/core/math/primitive/generics	36.600s

@@ -25,6 +25,34 @@ This document outlines the transition plan for improving the Tensor interface AP
    - Accept only specific DataType for `dst` (e.g., INT for indices operations)
    - Return the created or reused tensor (not `self`)
 
+## Scope
+
+### In Scope
+
+This transition plan covers:
+- Core tensor operations (element-wise, reductions, broadcasting)
+- Neural network operations (convolutions, pooling, activations)
+- Basic linear algebra (matrix multiplication, transpose, dot product, norms)
+- Shape manipulation (reshape, slice, copy)
+- Comparison and conditional operations
+- Gradient operations for neural networks
+
+### Out of Scope
+
+The following operation categories are **explicitly out of scope** for this transition plan:
+
+1. **Image Operations**: Image-specific transformations (resize, rotate, translate, shear, affine transform, flip, color space conversion, crop)
+   - These are domain-specific and may be better suited for a separate image processing package
+
+2. **Utility Operations**: General-purpose utility functions (unique, sort, argsort, topk, meshgrid, linspace, logspace, range, cumsum, cumprod, diff)
+   - These can be implemented using existing tensor operations or belong in a separate utilities package
+
+3. **Advanced Linear Algebra Operations**: Advanced matrix decompositions and solvers (einsum, determinant, inverse, Cholesky, QR, SVD, eigenvalue decomposition, solve, triangular solve, matrix exponential/logarithm, trace, cross product, outer product)
+   - Basic linear algebra (MatMul, Transpose, Dot, Norm) is in scope
+   - Advanced operations require specialized algorithms and may belong in a separate linear algebra package
+
+**Note**: Operations marked as "out of scope" may be added in the future but are not part of this API transition plan. The focus is on core tensor operations needed for neural network training and inference.
+
 ## Target API Pattern
 
 ### Core Pattern
@@ -275,10 +303,14 @@ TransposeTo(dst Tensor, dims ...int) Tensor
 **Target**:
 ```go
 // Unified: dst is first parameter
+// Note: Only basic linear algebra operations are in scope
+// Advanced operations (einsum, inverse, SVD, etc.) are out of scope
 MatMul(dst Tensor, other Tensor) Tensor
 Transpose(dst Tensor, dims ...int) Tensor
 Permute(dst Tensor, dims []int) Tensor
 ```
+
+**Scope Note**: This transition plan covers basic linear algebra operations (matrix multiplication, transpose, dot product, norms). Advanced linear algebra operations (einsum, matrix decompositions, solvers) are out of scope.
 
 ### 7. Convolution Operations
 

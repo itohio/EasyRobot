@@ -183,7 +183,7 @@ func (t Tensor) Scale(scalar float64) types.Tensor {
 		return t
 	}
 
-	fp32.ElemScale(types.GetTensorData[[]float32](t), scalar32, []int(t.shape), strides)
+	fp32.ElemScaleInPlace(types.GetTensorData[[]float32](t), scalar32, []int(t.shape), strides)
 	return t
 }
 

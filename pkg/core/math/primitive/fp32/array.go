@@ -169,3 +169,20 @@ func DiffArrInPlace(dst []float32, c float32, num int) {
 		dst[i] -= c
 	}
 }
+
+// DiffArrScalar computes dst[i] = src[i] - c (dst-based version)
+// Utility function for scalar subtraction
+func DiffArrScalar(dst, src []float32, c float32, num int, strideDst, strideSrc int) {
+	if num == 0 {
+		return
+	}
+
+	ps := 0
+	pd := 0
+
+	for i := 0; i < num; i++ {
+		dst[pd] = src[ps] - c
+		ps += strideSrc
+		pd += strideDst
+	}
+}

@@ -87,8 +87,10 @@ Convolution operations are implemented in `conv.go` (legacy, to be merged).
 
 | Function | Our Function | Implementation | Status |
 |----------|--------------|----------------|--------|
-| **Convolve1D** | `Convolve1DAdd(dst, mat, kernel, N, M, K, stride, transposed)` | `conv.go` | ⏳ |
-| **Convolve2D** | `Convolve2DAdd(dst, mat, kernel, N, M, K, L, stride, transposed)` | `conv.go` | ⏳ |
+| **Convolve1D** | `Convolve1DAdd(dst, vec, kernel, N, M, stride, transposed)` | `conv.go` | ✅ |
+| **Convolve2D** | `Convolve2DAdd(dst, mat, kernel, N, M, K, L, stride, transposed)` | `conv.go` | ❌ **NOT IMPLEMENTED** |
+
+**Note**: `Convolve1DAdd` performs accumulation: `dst += conv(vec, kernel)`. For tensor API consistency, a dst-based version `Convolve1D(dst, vec, kernel, ...)` is planned (see `ALIGN_WITH_TF_PLAN.md` Phase 6).
 
 ## Non-BLAS Utility Functions
 
@@ -99,7 +101,8 @@ These functions exist in `array.go` and `vector.go` for tensor operations and st
 - `Sum`, `SqrSum` - Utility reductions for statistics
 - `StatsArr` - Computes min, max, mean, and standard deviation in one pass
 - `PercentileArr` - Computes percentile value and sum of values above percentile
-- `SumArrInPlace` - In-place scalar addition (utility)
+- `DiffArrInPlace(dst, c, num)` - In-place scalar subtraction: `dst[i] -= c`
+  - **Note**: For tensor API consistency, a dst-based version `DiffArrScalar(dst, src, c, ...)` is planned (see `ALIGN_WITH_TF_PLAN.md` Phase 6)
 - `MulArrInPlace` - **DEPRECATED**: Use `Scal` from level1.go instead, kept for backward compatibility
 
 **Removed (replaced by BLAS operations):**
@@ -108,11 +111,14 @@ These functions exist in `array.go` and `vector.go` for tensor operations and st
 - `WeightedMomentsArr` → Removed (not needed)
 
 ### From `vector.go`:
-- `HadamardProduct` - Element-wise product (for tensor ops)
-- `HadamardProductAdd` - Element-wise product and add (for tensor ops)
+- `HadamardProductAdd(dst, a, b, num, strideA, strideB)` - Element-wise product and add: `dst[i] += a[i] * b[i]` (accumulation pattern)
+  - **Note**: For tensor API consistency, a dst-based version `HadamardProduct(dst, a, b, ...)` is planned (see `ALIGN_WITH_TF_PLAN.md` Phase 6)
+- `DotProduct2D(a, b, N, M, K, L)` - 2D matrix dot product (specialized, not BLAS)
+- `NormalizeVec(dst, num, stride)` - Vector normalization in-place: `dst = dst / ||dst||` (uses `Nrm2` from level1.go)
+  - **Note**: For tensor API consistency, a dst-based version `NormalizeVecTo(dst, src, ...)` is planned (see `ALIGN_WITH_TF_PLAN.md` Phase 6)
+- `SumArrInPlace(dst, c, num)` - In-place scalar addition: `dst[i] += c`
+  - **Note**: For tensor API consistency, a dst-based version `SumArrScalar(dst, src, c, ...)` is planned (see `ALIGN_WITH_TF_PLAN.md` Phase 6)
 - `DotProduct` - **DEPRECATED**: Use `Dot` from level1.go, kept for backward compatibility
-- `DotProduct2D` - 2D matrix dot product (specialized, not BLAS)
-- `NormalizeVec` - Vector normalization (uses `Nrm2` from level1.go)
 
 **Removed (replaced by BLAS operations):**
 - `OuterProduct`, `OuterProductConst`, `OuterProductAddConst` → Use `Ger` from level2.go
@@ -122,6 +128,17 @@ These functions exist in `array.go` and `vector.go` for tensor operations and st
 - ✅ **Implemented**: Function is complete and tested
 - ⏳ **In Progress**: Function is being implemented
 - 🔮 **Planned**: Function is planned but not yet started
+- ❌ **Not Implemented**: Function is not implemented (may be mentioned but doesn't exist)
+
+## Operation Patterns
+
+**BLAS Operations**: Maintain standard in-place patterns for BLAS compatibility:
+- `Axpy(y, x, ...)` - `y = alpha*x + y` (modifies y in-place) ✅ **KEEP AS-IS**
+- `Scal(x, ...)` - `x = alpha*x` (modifies x in-place) ✅ **KEEP AS-IS**
+
+**Tensor Operations**: Should follow `Operation(dst, src, ...)` pattern (see `ALIGN_WITH_TF_PLAN.md` for details):
+- Most tensor operations already follow this pattern
+- Some operations (e.g., `HadamardProductAdd`, `Convolve1DAdd`) use accumulation pattern and need dst-based alternatives
 
 ## Migration Path
 

@@ -134,3 +134,99 @@ func TestSumArrInPlace(t *testing.T) {
 	SumArrInPlace(dst, 10, 4)
 	assert.Equal(t, []float32{11, 12, 13, 14}, dst)
 }
+
+func TestSumArrScalar(t *testing.T) {
+	tests := []struct {
+		name     string
+		src      []float32
+		c        float32
+		num      int
+		strideDst int
+		strideSrc int
+		wantDst  []float32
+	}{
+		{
+			name:      "simple addition",
+			src:       []float32{1, 2, 3, 4},
+			c:         10,
+			num:       4,
+			strideDst: 1,
+			strideSrc: 1,
+			wantDst:   []float32{11, 12, 13, 14},
+		},
+		{
+			name:      "with stride",
+			src:       []float32{1, 0, 2, 0, 3, 0, 4},
+			c:         5,
+			num:       4,
+			strideDst: 1,
+			strideSrc: 2,
+			wantDst:   []float32{6, 7, 8, 9},
+		},
+		{
+			name:      "zero scalar",
+			src:       []float32{1, 2, 3, 4},
+			c:         0,
+			num:       4,
+			strideDst: 1,
+			strideSrc: 1,
+			wantDst:   []float32{1, 2, 3, 4},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dst := make([]float32, len(tt.wantDst))
+			SumArrScalar(dst, tt.src, tt.c, tt.num, tt.strideDst, tt.strideSrc)
+			assert.InDeltaSlice(t, tt.wantDst, dst, 1e-5)
+		})
+	}
+}
+
+func TestDiffArrScalar(t *testing.T) {
+	tests := []struct {
+		name      string
+		src       []float32
+		c         float32
+		num       int
+		strideDst int
+		strideSrc int
+		wantDst   []float32
+	}{
+		{
+			name:      "simple subtraction",
+			src:       []float32{11, 12, 13, 14},
+			c:         10,
+			num:       4,
+			strideDst: 1,
+			strideSrc: 1,
+			wantDst:   []float32{1, 2, 3, 4},
+		},
+		{
+			name:      "with stride",
+			src:       []float32{6, 0, 7, 0, 8, 0, 9},
+			c:         5,
+			num:       4,
+			strideDst: 1,
+			strideSrc: 2,
+			wantDst:   []float32{1, 2, 3, 4},
+		},
+		{
+			name:      "zero scalar",
+			src:       []float32{1, 2, 3, 4},
+			c:         0,
+			num:       4,
+			strideDst: 1,
+			strideSrc: 1,
+			wantDst:   []float32{1, 2, 3, 4},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dst := make([]float32, len(tt.wantDst))
+			DiffArrScalar(dst, tt.src, tt.c, tt.num, tt.strideDst, tt.strideSrc)
+			assert.InDeltaSlice(t, tt.wantDst, dst, 1e-5)
+		})
+	}
+}

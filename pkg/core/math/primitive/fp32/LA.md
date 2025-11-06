@@ -19,21 +19,32 @@ Computes the inverse of a matrix using LU decomposition with partial pivoting.
 
 | LAPACK Function | Our Function | Implementation | Status |
 |----------------|--------------|----------------|--------|
-| **GETRF** | `Getrf(a, ldA, ipiv, M, N)` | `la.go` | ✅ |
-| **GETRI** | `Getri(aInv, a, ldA, ipiv, N)` | `la.go` | ✅ |
+| **GETRF_IP** | `Getrf_IP(a, ipiv, ldA, M, N)` | `la.go` | ✅ |
+| **GETRF** | `Getrf(a, l, u, ipiv, ldA, ldL, ldU, M, N)` | `la.go` | ✅ |
+| **GETRI** | `Getri(aInv, a, ldA, ldInv, N, ipiv)` | `la.go` | ✅ |
 
 **Function Signatures:**
 ```go
-// GETRF: Compute LU decomposition with partial pivoting
+// GETRF_IP: Compute LU decomposition with partial pivoting (in-place)
 // A = P * L * U
-// Returns pivot indices in ipiv (length min(M,N))
-func Getrf(a []float32, ldA, M, N int, ipiv []int) error
+// On input: a contains M × N matrix
+// On output: a contains L (below diagonal) and U (on/above diagonal)
+//           ipiv contains pivot indices (length min(M,N))
+func Getrf_IP(a []float32, ipiv []int, ldA, M, N int) error
+
+// GETRF: Compute LU decomposition with partial pivoting (separate outputs)
+// A = P * L * U
+// On input: a contains M × N matrix
+// On output: l contains M × min(M,N) lower triangular matrix (unit diagonal)
+//           u contains min(M,N) × N upper triangular matrix
+//           ipiv contains pivot indices (length min(M,N))
+func Getrf(a, l, u []float32, ipiv []int, ldA, ldL, ldU, M, N int) error
 
 // GETRI: Compute inverse using LU decomposition
 // A^(-1) = U^(-1) * L^(-1) * P^T
 // Input: a contains LU decomposition from GETRF, ipiv contains pivots
 // Output: aInv contains the inverse
-func Getri(aInv, a []float32, ldA, N int, ipiv []int) error
+func Getri(aInv, a []float32, ldA, ldInv, N int, ipiv []int) error
 ```
 
 **Dimensions:**
@@ -51,24 +62,25 @@ Computes LU decomposition with partial pivoting: A = P * L * U.
 
 | LAPACK Function | Our Function | Implementation | Status |
 |----------------|--------------|----------------|--------|
-| **GETRF** | `Getrf(a, l, u, ipiv, ldA, M, N)` | `la.go` | ✅ |
+| **GETRF_IP** | `Getrf_IP(a, ipiv, ldA, M, N)` | `la.go` | ✅ |
+| **GETRF** | `Getrf(a, l, u, ipiv, ldA, ldL, ldU, M, N)` | `la.go` | ✅ |
 
 **Function Signatures:**
 ```go
-// GETRF: Compute LU decomposition with partial pivoting
+// GETRF_IP: Compute LU decomposition with partial pivoting (in-place)
+// A = P * L * U
+// On input: a contains M × N matrix (row-major, ldA ≥ N)
+// On output: a contains L (below diagonal) and U (on/above diagonal)
+//           ipiv contains pivot indices (length min(M,N))
+func Getrf_IP(a []float32, ipiv []int, ldA, M, N int) error
+
+// GETRF: Compute LU decomposition with partial pivoting (separate outputs)
 // A = P * L * U
 // On input: a contains M × N matrix (row-major, ldA ≥ N)
 // On output: l contains M × min(M,N) lower triangular matrix (unit diagonal)
 //           u contains min(M,N) × N upper triangular matrix
 //           ipiv contains pivot indices (length min(M,N))
 func Getrf(a, l, u []float32, ipiv []int, ldA, ldL, ldU, M, N int) error
-
-// Alternative in-place version (stores LU in A):
-// GETRF_IP: Compute LU decomposition with partial pivoting (in-place)
-// On input: a contains M × N matrix
-// On output: a contains L (below diagonal) and U (on/above diagonal)
-//           ipiv contains pivot indices
-func Getrf_IP(a []float32, ipiv []int, ldA, M, N int) error
 ```
 
 **Dimensions:**
@@ -270,13 +282,13 @@ These are internal functions used by the main LAPACK-style functions.
 
 | Function | Description | Status |
 |----------|-------------|--------|
+| `H1` | Construct Householder transformation | ✅ |
+| `H2` | Apply Householder transformation to vector | ✅ |
+| `H3` | Apply Householder transformation to matrix column | ✅ |
 | `Trsm_L` | Solve triangular system L * X = B (lower triangular) | 🔮 |
 | `Trsm_U` | Solve triangular system U * X = B (upper triangular) | 🔮 |
-| `H1` | Construct Householder transformation | 🔮 |
-| `H2` | Apply Householder transformation to vector | 🔮 |
-| `H3` | Apply Householder transformation to matrix column | 🔮 |
-| `HouseholderQR` | Householder QR factorization (helper for GEQRF) | 🔮 |
-| `BidiagonalSVD` | Bidiagonal SVD (helper for GESVD) | 🔮 |
+| `HouseholderQR` | Householder QR factorization (helper for GEQRF) | ✅ (internal to GEQRF) |
+| `BidiagonalSVD` | Bidiagonal SVD (helper for GESVD) | ✅ (internal to GESVD) |
 
 ## Status Legend
 

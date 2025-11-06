@@ -66,8 +66,8 @@ func ElemDiv(dst, a, b []float32, shape []int, stridesDst, stridesA, stridesB []
 	}
 }
 
-// ElemScale multiplies dst by the given scalar (in-place) for the provided shape/strides.
-func ElemScale(dst []float32, scalar float32, shape []int, stridesDst []int) {
+// ElemScaleInPlace multiplies dst by the given scalar (in-place) for the provided shape/strides.
+func ElemScaleInPlace(dst []float32, scalar float32, shape []int, stridesDst []int) {
 	if scalar == 1.0 {
 		return
 	}
@@ -261,6 +261,134 @@ func ElemTanh(dst, src []float32, shape []int, stridesDst, stridesSrc []int) {
 func ElemNegative(dst, src []float32, shape []int, stridesDst, stridesSrc []int) {
 	applyElemUnary(dst, src, shape, stridesDst, stridesSrc, func(v float32) float32 {
 		return -v
+	})
+}
+
+// ElemFill writes constant value to dst: dst[i] = value
+func ElemFill(dst []float32, value float32, shape []int, stridesDst []int) {
+	size := SizeFromShape(shape)
+	if len(shape) == 0 || size == 0 {
+		return
+	}
+
+	stridesDst = EnsureStrides(stridesDst, shape)
+
+	if IsContiguous(stridesDst, shape) {
+		for i := 0; i < size; i++ {
+			dst[i] = value
+		}
+		return
+	}
+
+	indices := make([]int, len(shape))
+	offsets := make([]int, 1)
+	strideSet := [][]int{stridesDst}
+	for {
+		dIdx := offsets[0]
+		dst[dIdx] = value
+		if !advanceOffsets(shape, indices, offsets, strideSet) {
+			break
+		}
+	}
+}
+
+// ElemAddScalar writes src + scalar to dst: dst[i] = src[i] + scalar
+func ElemAddScalar(dst, src []float32, scalar float32, shape []int, stridesDst, stridesSrc []int) {
+	applyElemUnaryScalar(dst, src, scalar, shape, stridesDst, stridesSrc, func(v, s float32) float32 {
+		return v + s
+	})
+}
+
+// ElemSubScalar writes src - scalar to dst: dst[i] = src[i] - scalar
+func ElemSubScalar(dst, src []float32, scalar float32, shape []int, stridesDst, stridesSrc []int) {
+	applyElemUnaryScalar(dst, src, scalar, shape, stridesDst, stridesSrc, func(v, s float32) float32 {
+		return v - s
+	})
+}
+
+// ElemScale multiplies each element of src by scalar and writes to dst: dst[i] = src[i] * scalar
+func ElemScale(dst, src []float32, scalar float32, shape []int, stridesDst, stridesSrc []int) {
+	applyElemUnaryScalar(dst, src, scalar, shape, stridesDst, stridesSrc, func(v, s float32) float32 {
+		return v * s
+	})
+}
+
+// ElemDivScalar writes src / scalar to dst: dst[i] = src[i] / scalar
+// When scalar is zero, the destination retains its previous value to match existing tensor semantics.
+func ElemDivScalar(dst, src []float32, scalar float32, shape []int, stridesDst, stridesSrc []int) {
+	size := SizeFromShape(shape)
+	if len(shape) == 0 || size == 0 {
+		return
+	}
+
+	if scalar == 0 {
+		return // Skip division by zero
+	}
+
+	stridesDst = EnsureStrides(stridesDst, shape)
+	stridesSrc = EnsureStrides(stridesSrc, shape)
+
+	if IsContiguous(stridesDst, shape) && IsContiguous(stridesSrc, shape) {
+		for i := 0; i < size; i++ {
+			dst[i] = src[i] / scalar
+		}
+		return
+	}
+
+	indices := make([]int, len(shape))
+	offsets := make([]int, 2)
+	strideSet := [][]int{stridesDst, stridesSrc}
+	for {
+		dIdx := offsets[0]
+		sIdx := offsets[1]
+		dst[dIdx] = src[sIdx] / scalar
+		if !advanceOffsets(shape, indices, offsets, strideSet) {
+			break
+		}
+	}
+}
+
+// ElemNotEqual writes 1.0 where a != b, 0.0 otherwise
+func ElemNotEqual(dst, a, b []float32, shape []int, stridesDst, stridesA, stridesB []int) {
+	applyElemBinary(dst, a, b, shape, stridesDst, stridesA, stridesB, func(av, bv float32) float32 {
+		if av != bv {
+			return 1.0
+		}
+		return 0.0
+	})
+}
+
+// ElemLessEqual writes 1.0 where a <= b, 0.0 otherwise
+func ElemLessEqual(dst, a, b []float32, shape []int, stridesDst, stridesA, stridesB []int) {
+	applyElemBinary(dst, a, b, shape, stridesDst, stridesA, stridesB, func(av, bv float32) float32 {
+		if av <= bv {
+			return 1.0
+		}
+		return 0.0
+	})
+}
+
+// ElemGreaterEqual writes 1.0 where a >= b, 0.0 otherwise
+func ElemGreaterEqual(dst, a, b []float32, shape []int, stridesDst, stridesA, stridesB []int) {
+	applyElemBinary(dst, a, b, shape, stridesDst, stridesA, stridesB, func(av, bv float32) float32 {
+		if av >= bv {
+			return 1.0
+		}
+		return 0.0
+	})
+}
+
+// ElemAddScaledMul computes dst = (1 + scalar) * other
+func ElemAddScaledMul(dst, other []float32, scalar float32, shape []int, stridesDst, stridesOther []int) {
+	applyElemUnaryScalar(dst, other, scalar, shape, stridesDst, stridesOther, func(v, s float32) float32 {
+		return (1.0 + s) * v
+	})
+}
+
+// ElemAddScaledSquareMul computes dst = (1 + scalar * other^2) * other
+func ElemAddScaledSquareMul(dst, other []float32, scalar float32, shape []int, stridesDst, stridesOther []int) {
+	applyElemUnaryScalar(dst, other, scalar, shape, stridesDst, stridesOther, func(v, s float32) float32 {
+		return (1.0 + s*v*v) * v
 	})
 }
 

@@ -143,6 +143,40 @@ func Argmax(dst []float32, dstShape []int, dstStrides []int, src []float32, srcS
 	}
 }
 
+// Argmin finds index of minimum element along specified axis.
+// dst stores the indices as float32 values (can be cast to int32 if needed).
+func Argmin(dst []int32, dstShape, dstStrides []int, src []float32, srcShape, srcStrides []int, axis int) {
+	sizeDst := SizeFromShape(dstShape)
+	if len(srcShape) == 0 || len(src) == 0 || sizeDst == 0 {
+		return
+	}
+
+	dstStrides = EnsureStrides(dstStrides, dstShape)
+	srcStrides = EnsureStrides(srcStrides, srcShape)
+	reduceMask := makeReduceMask(len(srcShape), []int{axis})
+	mapped := mapStridesToSource(srcShape, reduceMask, dstStrides)
+	minVals := make([]float32, sizeDst)
+	for i := range minVals {
+		minVals[i] = math32.MaxFloat32
+		dst[i] = 0
+	}
+
+	indices := make([]int, len(srcShape))
+	offsets := make([]int, 2)
+	strideSet := [][]int{srcStrides, mapped}
+	for {
+		dstOffset := offsets[1]
+		val := src[offsets[0]]
+		if val < minVals[dstOffset] {
+			minVals[dstOffset] = val
+			dst[dstOffset] = int32(indices[axis])
+		}
+		if !advanceOffsets(srcShape, indices, offsets, strideSet) {
+			break
+		}
+	}
+}
+
 func makeReduceMask(rank int, axes []int) []bool {
 	mask := make([]bool, rank)
 	for _, axis := range axes {
