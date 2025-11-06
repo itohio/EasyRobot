@@ -1,6 +1,7 @@
 package generics
 
 import (
+	"math"
 	"testing"
 
 	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
@@ -14,14 +15,18 @@ var (
 
 func init() {
 	for i := range applyBenchSrcA {
-		applyBenchSrcA[i] = float32(i)
-		applyBenchSrcB[i] = float32(i * 2)
+		// Use values in a range that works well with math functions
+		applyBenchSrcA[i] = float32(i)/100.0 + 0.1 // Range: 0.1 to 100.1
+		applyBenchSrcB[i] = float32(i)/50.0 + 0.1  // Range: 0.1 to 200.1
 	}
 }
 
 // BenchmarkElemApplyUnary_Generic benchmarks generic unary apply (contiguous)
+// Uses complex math: exp(x) * sin(x) for CPU-intensive computation
 func BenchmarkElemApplyUnary_Generic(b *testing.B) {
-	op := func(x float32) float32 { return x * 2 }
+	op := func(x float32) float32 {
+		return float32(math.Exp(float64(x)) * math.Sin(float64(x)))
+	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		ElemApplyUnary(applyBenchDst, applyBenchSrcA, 10000, op)
@@ -30,7 +35,9 @@ func BenchmarkElemApplyUnary_Generic(b *testing.B) {
 
 // BenchmarkElemApplyUnary_NonGeneric benchmarks non-generic unary apply
 func BenchmarkElemApplyUnary_NonGeneric(b *testing.B) {
-	op := func(x float32) float32 { return x * 2 }
+	op := func(x float32) float32 {
+		return float32(math.Exp(float64(x)) * math.Sin(float64(x)))
+	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		applyUnaryNonGeneric(applyBenchDst, applyBenchSrcA, 10000, op)
@@ -42,7 +49,8 @@ func BenchmarkElemApplyUnary_DirectLoop(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < 10000; j++ {
-			applyBenchDst[j] = applyBenchSrcA[j] * 2
+			x := float64(applyBenchSrcA[j])
+			applyBenchDst[j] = float32(math.Exp(x) * math.Sin(x))
 		}
 	}
 }
@@ -85,8 +93,11 @@ func applyUnaryStridedNonGeneric(dst, src []float32, shape []int, stridesDst, st
 }
 
 // BenchmarkElemApplyBinary_Generic benchmarks generic binary apply (contiguous)
+// Uses complex math: sqrt(x*x + y*y) for CPU-intensive computation
 func BenchmarkElemApplyBinary_Generic(b *testing.B) {
-	op := func(x, y float32) float32 { return x + y }
+	op := func(x, y float32) float32 {
+		return float32(math.Sqrt(float64(x*x + y*y)))
+	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		ElemApplyBinary(applyBenchDst, applyBenchSrcA, applyBenchSrcB, 10000, op)
@@ -95,7 +106,9 @@ func BenchmarkElemApplyBinary_Generic(b *testing.B) {
 
 // BenchmarkElemApplyBinary_NonGeneric benchmarks non-generic binary apply
 func BenchmarkElemApplyBinary_NonGeneric(b *testing.B) {
-	op := func(x, y float32) float32 { return x + y }
+	op := func(x, y float32) float32 {
+		return float32(math.Sqrt(float64(x*x + y*y)))
+	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		applyBinaryNonGeneric(applyBenchDst, applyBenchSrcA, applyBenchSrcB, 10000, op)
@@ -107,7 +120,8 @@ func BenchmarkElemApplyBinary_DirectLoop(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < 10000; j++ {
-			applyBenchDst[j] = applyBenchSrcA[j] + applyBenchSrcB[j]
+			x, y := float64(applyBenchSrcA[j]), float64(applyBenchSrcB[j])
+			applyBenchDst[j] = float32(math.Sqrt(x*x + y*y))
 		}
 	}
 }
@@ -116,7 +130,9 @@ func BenchmarkElemApplyBinary_DirectLoop(b *testing.B) {
 func BenchmarkElemApplyBinaryStrided_Generic(b *testing.B) {
 	shape := []int{100, 100}
 	strides := []int{100, 1}
-	op := func(x, y float32) float32 { return x + y }
+	op := func(x, y float32) float32 {
+		return float32(math.Sqrt(float64(x*x + y*y)))
+	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		ElemApplyBinaryStrided(applyBenchDst, applyBenchSrcA, applyBenchSrcB, shape, strides, strides, strides, op)
@@ -127,7 +143,9 @@ func BenchmarkElemApplyBinaryStrided_Generic(b *testing.B) {
 func BenchmarkElemApplyBinaryStrided_NonGeneric(b *testing.B) {
 	shape := []int{100, 100}
 	strides := []int{100, 1}
-	op := func(x, y float32) float32 { return x + y }
+	op := func(x, y float32) float32 {
+		return float32(math.Sqrt(float64(x*x + y*y)))
+	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		applyBinaryStridedNonGeneric(applyBenchDst, applyBenchSrcA, applyBenchSrcB, shape, strides, strides, strides, op)
@@ -141,7 +159,8 @@ func BenchmarkElemApplyBinaryStrided_DirectLoop(b *testing.B) {
 		for row := 0; row < 100; row++ {
 			for col := 0; col < 100; col++ {
 				idx := row*100 + col
-				applyBenchDst[idx] = applyBenchSrcA[idx] + applyBenchSrcB[idx]
+				x, y := float64(applyBenchSrcA[idx]), float64(applyBenchSrcB[idx])
+				applyBenchDst[idx] = float32(math.Sqrt(x*x + y*y))
 			}
 		}
 	}
@@ -187,9 +206,12 @@ func applyBinaryStridedNonGeneric(dst, a, b []float32, shape []int, stridesDst, 
 }
 
 // BenchmarkElemApplyUnaryScalar_Generic benchmarks generic unary scalar apply (contiguous)
+// Uses complex math: pow(x, scalar) for CPU-intensive computation
 func BenchmarkElemApplyUnaryScalar_Generic(b *testing.B) {
-	scalar := float32(5.0)
-	op := func(x, s float32) float32 { return x * s }
+	scalar := float32(2.5)
+	op := func(x, s float32) float32 {
+		return float32(math.Pow(float64(x), float64(s)))
+	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		ElemApplyUnaryScalar(applyBenchDst, applyBenchSrcA, scalar, 10000, op)
@@ -198,8 +220,10 @@ func BenchmarkElemApplyUnaryScalar_Generic(b *testing.B) {
 
 // BenchmarkElemApplyUnaryScalar_NonGeneric benchmarks non-generic unary scalar apply
 func BenchmarkElemApplyUnaryScalar_NonGeneric(b *testing.B) {
-	scalar := float32(5.0)
-	op := func(x, s float32) float32 { return x * s }
+	scalar := float32(2.5)
+	op := func(x, s float32) float32 {
+		return float32(math.Pow(float64(x), float64(s)))
+	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		applyUnaryScalarNonGeneric(applyBenchDst, applyBenchSrcA, scalar, 10000, op)
@@ -208,11 +232,11 @@ func BenchmarkElemApplyUnaryScalar_NonGeneric(b *testing.B) {
 
 // BenchmarkElemApplyUnaryScalar_DirectLoop benchmarks direct loop without closure
 func BenchmarkElemApplyUnaryScalar_DirectLoop(b *testing.B) {
-	scalar := float32(5.0)
+	scalar := float32(2.5)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < 10000; j++ {
-			applyBenchDst[j] = applyBenchSrcA[j] * scalar
+			applyBenchDst[j] = float32(math.Pow(float64(applyBenchSrcA[j]), float64(scalar)))
 		}
 	}
 }
@@ -221,8 +245,10 @@ func BenchmarkElemApplyUnaryScalar_DirectLoop(b *testing.B) {
 func BenchmarkElemApplyUnaryScalarStrided_Generic(b *testing.B) {
 	shape := []int{100, 100}
 	strides := []int{100, 1}
-	scalar := float32(5.0)
-	op := func(x, s float32) float32 { return x * s }
+	scalar := float32(2.5)
+	op := func(x, s float32) float32 {
+		return float32(math.Pow(float64(x), float64(s)))
+	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		ElemApplyUnaryScalarStrided(applyBenchDst, applyBenchSrcA, scalar, shape, strides, strides, op)
@@ -233,8 +259,10 @@ func BenchmarkElemApplyUnaryScalarStrided_Generic(b *testing.B) {
 func BenchmarkElemApplyUnaryScalarStrided_NonGeneric(b *testing.B) {
 	shape := []int{100, 100}
 	strides := []int{100, 1}
-	scalar := float32(5.0)
-	op := func(x, s float32) float32 { return x * s }
+	scalar := float32(2.5)
+	op := func(x, s float32) float32 {
+		return float32(math.Pow(float64(x), float64(s)))
+	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		applyUnaryScalarStridedNonGeneric(applyBenchDst, applyBenchSrcA, scalar, shape, strides, strides, op)
@@ -243,13 +271,13 @@ func BenchmarkElemApplyUnaryScalarStrided_NonGeneric(b *testing.B) {
 
 // BenchmarkElemApplyUnaryScalarStrided_DirectLoop benchmarks direct strided scalar loop
 func BenchmarkElemApplyUnaryScalarStrided_DirectLoop(b *testing.B) {
-	scalar := float32(5.0)
+	scalar := float32(2.5)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for row := 0; row < 100; row++ {
 			for col := 0; col < 100; col++ {
 				idx := row*100 + col
-				applyBenchDst[idx] = applyBenchSrcA[idx] * scalar
+				applyBenchDst[idx] = float32(math.Pow(float64(applyBenchSrcA[idx]), float64(scalar)))
 			}
 		}
 	}
@@ -294,7 +322,9 @@ func applyUnaryScalarStridedNonGeneric(dst, src []float32, scalar float32, shape
 
 // BenchmarkElemVecApply_Generic benchmarks generic vector apply
 func BenchmarkElemVecApply_Generic(b *testing.B) {
-	op := func(x float32) float32 { return x * 2 }
+	op := func(x float32) float32 {
+		return float32(math.Exp(float64(x)) * math.Sin(float64(x)))
+	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		ElemVecApply(applyBenchDst, applyBenchSrcA, 10000, 1, 1, op)
@@ -303,7 +333,9 @@ func BenchmarkElemVecApply_Generic(b *testing.B) {
 
 // BenchmarkElemVecApply_NonGeneric benchmarks non-generic vector apply
 func BenchmarkElemVecApply_NonGeneric(b *testing.B) {
-	op := func(x float32) float32 { return x * 2 }
+	op := func(x float32) float32 {
+		return float32(math.Exp(float64(x)) * math.Sin(float64(x)))
+	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		vecApplyNonGeneric(applyBenchDst, applyBenchSrcA, 10000, 1, 1, op)
@@ -315,7 +347,8 @@ func BenchmarkElemVecApply_DirectLoop(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < 10000; j++ {
-			applyBenchDst[j] = applyBenchSrcA[j] * 2
+			x := float64(applyBenchSrcA[j])
+			applyBenchDst[j] = float32(math.Exp(x) * math.Sin(x))
 		}
 	}
 }
@@ -342,7 +375,9 @@ func vecApplyNonGeneric(dst, src []float32, n int, strideDst, strideSrc int, op 
 
 // BenchmarkElemMatApply_Generic benchmarks generic matrix apply
 func BenchmarkElemMatApply_Generic(b *testing.B) {
-	op := func(x float32) float32 { return x * 2 }
+	op := func(x float32) float32 {
+		return float32(math.Exp(float64(x)) * math.Sin(float64(x)))
+	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		ElemMatApply(applyBenchDst, applyBenchSrcA, 100, 100, 100, 100, op)
@@ -351,7 +386,9 @@ func BenchmarkElemMatApply_Generic(b *testing.B) {
 
 // BenchmarkElemMatApply_NonGeneric benchmarks non-generic matrix apply
 func BenchmarkElemMatApply_NonGeneric(b *testing.B) {
-	op := func(x float32) float32 { return x * 2 }
+	op := func(x float32) float32 {
+		return float32(math.Exp(float64(x)) * math.Sin(float64(x)))
+	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		matApplyNonGeneric(applyBenchDst, applyBenchSrcA, 100, 100, 100, 100, op)
@@ -365,7 +402,8 @@ func BenchmarkElemMatApply_DirectLoop(b *testing.B) {
 		for row := 0; row < 100; row++ {
 			for col := 0; col < 100; col++ {
 				idx := row*100 + col
-				applyBenchDst[idx] = applyBenchSrcA[idx] * 2
+				x := float64(applyBenchSrcA[idx])
+				applyBenchDst[idx] = float32(math.Exp(x) * math.Sin(x))
 			}
 		}
 	}

@@ -90,50 +90,50 @@ This table shows benchmark results when building with the `use_mt` build tag, wh
 | Operation | G (ns/op, allocs) | NG (ns/op, allocs) | D (ns/op) | % vs D |
 |-----------|-------------------|---------------------|-----------|--------|
 | **Copy Operations** |
-| ElemCopy | 1,685 (0 B, 0 allocs) | 1,588 (0 B, 0 allocs) | 12,928 | -87.0% |
-| ElemCopyStrided | 2,044 (32 B, 2 allocs) | 71,846 (16 B, 1 alloc) | 17,337 | -88.2% |
+| ElemCopy | 1,683 (0 B, 0 allocs) | 1,685 (0 B, 0 allocs) | 16,052 | -89.5% |
+| ElemCopyStrided | 1,782 (32 B, 2 allocs) | 101,599 (16 B, 1 alloc) | 21,341 | -91.6% |
 | BLAS Copy | N/A | N/A | N/A | N/A |
 | BLAS CopyStrided | N/A | N/A | N/A | N/A |
 | **Swap Operations** |
-| ElemSwap | 12,582 (0 B, 0 allocs) | 9,584 (0 B, 0 allocs) | 21,695 | -42.0% |
-| ElemSwapStrided | 10,608 (32 B, 2 allocs) | 89,949 (16 B, 1 alloc) | 22,138 | -52.1% |
+| ElemSwap | 12,527 (0 B, 0 allocs) | 11,647 (0 B, 0 allocs) | 20,812 | -39.8% |
+| ElemSwapStrided | 13,617 (32 B, 2 allocs) | 89,579 (16 B, 1 alloc) | 23,817 | -42.8% |
 | BLAS Swap | N/A | N/A | N/A | N/A |
 | BLAS SwapStrided | N/A | N/A | N/A | N/A |
 | **Apply Operations** |
-| ElemApplyUnary | 66,855 (576 B, 12 allocs) | 8,540 (0 B, 0 allocs) | 13,470 | +396.3% |
-| ElemApplyBinary | 45,895 (592 B, 12 allocs) | 8,929 (0 B, 0 allocs) | 21,014 | +118.4% |
-| ElemApplyBinaryStrided | 44,981 (640 B, 15 allocs) | 32,169 (48 B, 3 allocs) | 22,091 | +103.6% |
-| ElemApplyUnaryScalar | 58,360 (576 B, 12 allocs) | 10,020 (0 B, 0 allocs) | 24,026 | +142.9% |
-| ElemApplyUnaryScalarStrided | 53,633 (608 B, 14 allocs) | 29,898 (32 B, 2 allocs) | 19,163 | +179.9% |
+| ElemApplyUnary | 38,290 (576 B, 12 allocs) | 6,910 (0 B, 0 allocs) | 16,264 | +135.4% |
+| ElemApplyBinary | 53,003 (592 B, 12 allocs) | 7,724 (0 B, 0 allocs) | 15,124 | +250.5% |
+| ElemApplyBinaryStrided | 47,607 (640 B, 15 allocs) | 31,489 (48 B, 3 allocs) | 25,738 | +85.0% |
+| ElemApplyUnaryScalar | 71,724 (576 B, 12 allocs) | 9,330 (0 B, 0 allocs) | 13,151 | +445.4% |
+| ElemApplyUnaryScalarStrided | 39,179 (608 B, 14 allocs) | 24,961 (32 B, 2 allocs) | 20,015 | +95.7% |
 | **Comparison Operations** |
-| ElemGreaterThan | 29,346 (592 B, 12 allocs) | 14,757 (0 B, 0 allocs) | 19,699 | +49.0% |
-| ElemGreaterThanStrided | 44,083 (640 B, 15 allocs) | 16,303 (48 B, 3 allocs) | 33,458 | +31.8% |
-| ElemEqual | 74,120 (592 B, 12 allocs) | 18,547 (0 B, 0 allocs) | 22,800 | +225.1% |
-| ElemLess | 32,324 (592 B, 12 allocs) | 18,315 (0 B, 0 allocs) | 23,334 | +38.5% |
+| ElemGreaterThan | 67,741 (592 B, 12 allocs) | 27,122 (0 B, 0 allocs) | 23,804 | +184.6% |
+| ElemGreaterThanStrided | 42,238 (640 B, 15 allocs) | 19,141 (48 B, 3 allocs) | 28,144 | +50.1% |
+| ElemEqual | 40,914 (592 B, 12 allocs) | 17,939 (0 B, 0 allocs) | 24,550 | +66.7% |
+| ElemLess | 29,691 (592 B, 12 allocs) | 19,970 (0 B, 0 allocs) | 25,738 | +15.4% |
 | **Unary Operations** |
-| ElemSign | 16,097 (0 B, 0 allocs) | 18,782 (0 B, 0 allocs) | 25,234 | -36.2% |
-| ElemSignStrided | 19,350 (32 B, 2 allocs) | 24,499 (32 B, 2 allocs) | 30,701 | -37.0% |
-| ElemNegative | 12,273 (0 B, 0 allocs) | 9,271 (0 B, 0 allocs) | 15,322 | -19.9% |
-| ElemNegativeStrided | 12,520 (32 B, 2 allocs) | 10,127 (32 B, 2 allocs) | 19,134 | -34.6% |
+| ElemSign | 24,152 (0 B, 0 allocs) | 26,838 (0 B, 0 allocs) | 23,656 | +2.1% |
+| ElemSignStrided | 19,409 (32 B, 2 allocs) | 18,790 (32 B, 2 allocs) | 21,088 | -8.0% |
+| ElemNegative | 11,817 (0 B, 0 allocs) | 10,575 (0 B, 0 allocs) | 18,064 | -34.6% |
+| ElemNegativeStrided | 16,487 (32 B, 2 allocs) | 24,029 (32 B, 2 allocs) | 22,674 | -27.3% |
 | **Scalar Operations** |
-| ElemFill | 9,498 (0 B, 0 allocs) | 8,082 (0 B, 0 allocs) | 8,457 | +12.3% |
-| ElemEqualScalar | 19,063 (0 B, 0 allocs) | 14,859 (0 B, 0 allocs) | 23,091 | -17.4% |
-| ElemGreaterScalar | 14,511 (0 B, 0 allocs) | 17,192 (0 B, 0 allocs) | 22,443 | -35.3% |
+| ElemFill | 4,425 (0 B, 0 allocs) | 6,992 (0 B, 0 allocs) | 8,380 | -47.2% |
+| ElemEqualScalar | 15,156 (0 B, 0 allocs) | 12,409 (0 B, 0 allocs) | 17,646 | -14.1% |
+| ElemGreaterScalar | 13,085 (0 B, 0 allocs) | 10,534 (0 B, 0 allocs) | 16,375 | -20.1% |
 | **Vector/Matrix Apply Operations** |
-| ElemVecApplyStrided | 49,551 (576 B, 12 allocs) | 28,387 (0 B, 0 allocs) | 11,202 | +342.3% |
-| ElemMatApplyStrided | 48,864 (576 B, 12 allocs) | 38,903 (0 B, 0 allocs) | 16,584 | +194.6% |
+| ElemVecApplyStrided | 66,210 (576 B, 12 allocs) | 35,469 (0 B, 0 allocs) | 15,732 | +320.9% |
+| ElemMatApplyStrided | 77,388 (576 B, 12 allocs) | 35,279 (0 B, 0 allocs) | 18,620 | +315.6% |
 | **Iterator Operations** |
-| Elements | 55,832 (88 B, 5 allocs) | 398,002 (160056 B, 10004 allocs) | 5,897 | +846.8% |
-| ElementsVec | 4,227 (0 B, 0 allocs) | 8,216 (0 B, 0 allocs) | 4,159 | +1.6% |
-| ElementsVecStrided | 8,446 (0 B, 0 allocs) | 5,037 (0 B, 0 allocs) | N/A | N/A |
-| ElementsMat | 6,223 (0 B, 0 allocs) | 5,295 (0 B, 0 allocs) | 5,365 | +16.0% |
-| ElementsMatStrided | 6,592 (0 B, 0 allocs) | 7,415 (0 B, 0 allocs) | N/A | N/A |
+| Elements | 116,711 (88 B, 5 allocs) | 843,624 (160056 B, 10004 allocs) | 8,578 | +1260.6% |
+| ElementsVec | 19,383 (0 B, 0 allocs) | 4,405 (0 B, 0 allocs) | 8,294 | +133.7% |
+| ElementsVecStrided | 7,775 (0 B, 0 allocs) | 9,585 (0 B, 0 allocs) | N/A | N/A |
+| ElementsMat | 7,235 (0 B, 0 allocs) | 5,848 (0 B, 0 allocs) | 5,129 | +41.1% |
+| ElementsMatStrided | 5,215 (0 B, 0 allocs) | 4,781 (0 B, 0 allocs) | N/A | N/A |
 | **Conversion Operations** |
-| ElemConvert | 29,808 (560 B, 12 allocs) | 12,305 (0 B, 0 allocs) | 15,634 | +90.7% |
-| ElemConvert (Clamping) | 37,891 (560 B, 12 allocs) | 7,164 (0 B, 0 allocs) | 10,077 | +276.0% |
-| ElemConvertStrided | 126,438 (240 B, 7 allocs) | 140,484 (16 B, 1 alloc) | 20,851 | +506.4% |
+| ElemConvert | 41,969 (560 B, 12 allocs) | 15,247 (0 B, 0 allocs) | 21,524 | +95.0% |
+| ElemConvert (Clamping) | 34,853 (560 B, 12 allocs) | 9,871 (0 B, 0 allocs) | 5,081 | +585.9% |
+| ElemConvertStrided | 133,038 (1312 B, 54 allocs) | 109,990 (16 B, 1 alloc) | 18,754 | +609.4% |
 
-**Note:** Multi-threaded implementations show higher overhead for small arrays (10,000 elements) due to goroutine pool management and synchronization costs. Performance improvements are expected for larger arrays where parallelization overhead is amortized. The allocations shown are primarily from goroutine pool management and chunk coordination.
+**Note:** Multi-threaded implementations show higher overhead for small arrays (10,000 elements) due to goroutine pool management and synchronization costs. Performance improvements are expected for larger arrays where parallelization overhead is amortized. The allocations shown are primarily from goroutine pool management and chunk coordination. Note that `ElemConvertStrided` shows significantly higher allocations (54 allocs) in this run, likely due to chunk coordination overhead in the multi-threaded implementation. Performance varies significantly between runs due to system load, CPU scheduling, and cache effects, especially at the threshold boundary (10,000 elements with 10 CPUs).
 
 ---
 

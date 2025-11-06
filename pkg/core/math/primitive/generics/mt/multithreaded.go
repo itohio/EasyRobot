@@ -8,7 +8,7 @@ import (
 var (
 	// minParallelSize is the minimum number of elements required to enable parallelization.
 	// Operations with fewer elements will use single-threaded execution to avoid overhead.
-	minParallelSize = 1000 * runtime.NumCPU()
+	minParallelSize = 128 * runtime.NumCPU()
 	numWorkers      = runtime.NumCPU()
 )
 
@@ -83,11 +83,11 @@ func (p *workerPool) submit(t task) bool {
 	select {
 	case p.taskQueue <- t:
 		return true
-	default:
-		// If queue is full, execute synchronously to avoid blocking
-		// This is a fallback for high contention scenarios
-		t()
-		return true
+		// default:
+		// 	// If queue is full, execute synchronously to avoid blocking
+		// 	// This is a fallback for high contention scenarios
+		// 	t()
+		// 	return true
 	}
 }
 
@@ -135,7 +135,7 @@ func (p *workerPool) stop() {
 
 // shouldParallelize determines if parallelization should be used based on size and CPU count.
 func shouldParallelize(n int) bool {
-	return n >= minParallelSize && runtime.NumCPU() > 1
+	return n >= minParallelSize && numWorkers > 1
 }
 
 // parallelChunks splits work into chunks and processes them in parallel.

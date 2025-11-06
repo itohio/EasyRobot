@@ -312,9 +312,9 @@ These functions pass operation functions to generics, so they are NOT thin wrapp
 
 ### 9. `activations.go` - Activation Functions
 
-**Status**: 🔄 **PARTIAL MIGRATION** (Some can use generics for stride versions)
+**Status**: 🔄 **PARTIAL MIGRATION** (Stride versions can use generics)
 
-#### Functions to Migrate:
+#### Functions to Keep As-Is:
 
 **`ReLU`** (lines 9-23)
 - **Current**: Simple loop for contiguous arrays
@@ -356,28 +356,86 @@ These functions pass operation functions to generics, so they are NOT thin wrapp
 - **Generic Op**: Not applicable (complex multi-step algorithms)
 - **Recommendation**: ✅ **KEEP AS-IS** - Specialized algorithms
 
-**`ReLUGradStride`**, **`SigmoidGradStride`**, **`TanhGradStride`** (lines 276-391)
-- **Current**: Stride-aware versions with contiguous fast path
-- **Generic Op**: Could use `generics.ElemVecApplyTernaryStrided` but that's `ElemApply` (avoid)
-- **Recommendation**: ✅ **KEEP AS-IS** - Already optimized with contiguous fast path, avoid `ElemApply` overhead
+#### Functions to Migrate (Stride Versions):
 
-**Recommendation**: Keep all functions as-is. They are either simple loops (avoid `ElemApply` overhead) or complex specialized algorithms.
+**`ReLUGradStride`** (lines 276-317)
+- **Current**: Manual stride iteration with contiguous fast path
+- **Generic Op**: ✅ **MIGRATE** to `generics.ElemWhere[float32]` (conditional selection: `input > 0 ? gradOutput : 0`)
+- **Rationale**: Has manual stride iteration similar to `applyElem*` helpers. Generics are highly optimized and will improve performance over manual stride iteration. `ElemWhere` is designed for conditional selection patterns.
+- **Note**: Requires a zero-filled array for the "else" value. Could be optimized to reuse a zero array or use a more efficient pattern.
+- **Recommendation**: Migrate implementation, keep function (provides convenient API)
+
+**`SigmoidGradStride`** (lines 319-354)
+- **Current**: Manual stride iteration with contiguous fast path
+- **Generic Op**: ✅ **MIGRATE** to `generics.ElemApplyBinaryStrided[float32]` with sigmoid gradient operation
+- **Rationale**: Has manual stride iteration similar to `applyElem*` helpers. Generics are highly optimized and will improve performance over manual stride iteration.
+- **Operation**: `func(grad, output float32) float32 { return grad * output * (1 - output) }`
+- **Recommendation**: Migrate implementation, keep function (provides convenient API with operation function)
+
+**`TanhGradStride`** (lines 356-391)
+- **Current**: Manual stride iteration with contiguous fast path
+- **Generic Op**: ✅ **MIGRATE** to `generics.ElemApplyBinaryStrided[float32]` with tanh gradient operation
+- **Rationale**: Has manual stride iteration similar to `applyElem*` helpers. Generics are highly optimized and will improve performance over manual stride iteration.
+- **Operation**: `func(grad, output float32) float32 { return grad * (1 - output*output) }`
+- **Recommendation**: Migrate implementation, keep function (provides convenient API with operation function)
+
+**Recommendation Summary for `activations.go`**:
+- ✅ **MIGRATE & KEEP** (have operation functions): `ReLUGradStride`, `SigmoidGradStride`, `TanhGradStride` (3 functions)
+- ✅ **KEEP AS-IS**: All other activation functions (simple loops or complex algorithms)
 
 ---
 
-### 10. `tensor.go` - Tensor Operations
+### 10. `tensor.go` - Tensor Operations (Convolutions, Pooling)
 
-**Status**: ✅ **KEEP AS-IS** (Complex tensor operations)
+**Status**: ✅ **KEEP AS-IS** (Complex specialized algorithms)
 
-**Functions**:
-- `Im2Col`, `Col2Im`, `Conv2D`, and other convolution operations
+#### Convolution Operations:
 
-**Rationale**:
-- Complex tensor transformations and convolution operations
-- Specialized algorithms for neural network operations
-- Not suitable for generic element-wise operations
+**`Convolve1D`**, **`Convolve1DAdd`** (conv.go)
+- **Current**: Specialized 1D convolution algorithms with windowing
+- **Generic Op**: Not applicable (specialized convolution algorithms)
+- **Recommendation**: ✅ **KEEP AS-IS** - Specialized algorithms
 
-**Recommendation**: No changes needed.
+**`Im2Col`**, **`Col2Im`** (tensor.go)
+- **Current**: Data layout transformations for GEMM-based convolution
+- **Generic Op**: Not applicable (specialized data layout transformations)
+- **Recommendation**: ✅ **KEEP AS-IS** - Specialized algorithms
+
+#### Pooling Operations:
+
+**`MaxPool2D`**, **`MaxPool2DWithIndices`**, **`MaxPool1D`**, **`MaxPool3D`** (tensor.go)
+- **Current**: Window-based max pooling with specialized windowing logic
+- **Generic Op**: Not applicable (window-based operations, not element-wise)
+- **Recommendation**: ✅ **KEEP AS-IS** - Specialized window-based algorithms
+
+**`MaxPool2DBackward`** (tensor.go)
+- **Current**: Backward pass with gradient routing and tie-breaking logic
+- **Generic Op**: Not applicable (complex gradient routing algorithm)
+- **Recommendation**: ✅ **KEEP AS-IS** - Specialized algorithm
+
+**`AvgPool2D`**, **`AvgPool1D`**, **`AvgPool3D`** (tensor.go)
+- **Current**: Window-based average pooling with specialized windowing logic
+- **Generic Op**: Not applicable (window-based operations, not element-wise)
+- **Recommendation**: ✅ **KEEP AS-IS** - Specialized window-based algorithms
+
+**`AvgPool2DBackward`** (tensor.go)
+- **Current**: Backward pass with gradient distribution (`gradInput[idx] += gradPerPosition`)
+- **Generic Op**: Could potentially use `generics.ElemAddScalar` for the accumulation, but this is within a complex windowing loop
+- **Recommendation**: ✅ **KEEP AS-IS** - The accumulation is part of a complex windowing algorithm, not a standalone element-wise operation
+
+**`GlobalAvgPool2D`**, **`GlobalMaxPool2D`**, **`GlobalMaxPool3D`** (tensor.go)
+- **Current**: Global pooling over spatial dimensions (reduction operations)
+- **Generic Op**: Not applicable (reduction operations, not element-wise)
+- **Recommendation**: ✅ **KEEP AS-IS** - Specialized reduction algorithms
+
+**`AdaptiveAvgPool2D`**, **`AdaptiveMaxPool1D`**, **`AdaptiveMaxPool2D`**, **`AdaptiveMaxPool3D`** (tensor.go)
+- **Current**: Adaptive pooling with variable window sizes
+- **Generic Op**: Not applicable (complex adaptive windowing algorithms)
+- **Recommendation**: ✅ **KEEP AS-IS** - Specialized algorithms
+
+**Recommendation Summary for `tensor.go`**:
+- ✅ **KEEP AS-IS**: All convolution and pooling operations (specialized window-based or reduction algorithms)
+- **Rationale**: These are complex specialized algorithms with windowing logic, data layout transformations, or reduction operations. They are not suitable for generic element-wise operations.
 
 ---
 
@@ -417,14 +475,15 @@ These are direct generic ops that replace manual implementations. Since they are
 
 ### Priority 2: Migrate Helper-Based Functions - Keep (Have Operation Functions)
 
-These already use `applyElem*` helpers and should be migrated to generics for better performance. They are NOT thin wrappers (they pass operation functions), so they should be kept:
+These already use `applyElem*` helpers or have manual stride iteration similar to helpers, and should be migrated to generics for better performance. They are NOT thin wrappers (they pass operation functions), so they should be kept:
 
 1. ✅ **`ElemAdd`**, **`ElemSub`**, **`ElemMul`** → `generics.ElemApplyBinaryStrided[float32]` → **KEEP**
 2. ✅ **Unary math ops** (`ElemSquare`, `ElemSqrt`, `ElemExp`, `ElemLog`, `ElemPow`, `ElemAbs`, `ElemCos`, `ElemSin`, `ElemTanh`) → `generics.ElemApplyUnaryStrided[float32]` → **KEEP**
 3. ✅ **Scalar ops** (`ElemAddScalar`, `ElemSubScalar`, `ElemScale`, `ElemAddScaledMul`, `ElemAddScaledSquareMul`) → `generics.ElemApplyUnaryScalarStrided[float32]` → **KEEP**
+4. ✅ **Activation gradient strides** (`ReLUGradStride`, `SigmoidGradStride`, `TanhGradStride`) → `generics.ElemWhere[float32]` / `generics.ElemApplyBinaryStrided[float32]` → **KEEP**
 
 **Expected Impact**: 
-- Better performance than current helper-based approach (generics are highly optimized)
+- Better performance than current helper-based approach or manual stride iteration (generics are highly optimized)
 - Functions provide convenient API with operation functions, so they should be kept
 
 ### Priority 3: No Migration Needed
@@ -501,6 +560,45 @@ func ElemAddScalar(dst, src []float32, scalar float32, shape []int, stridesDst, 
         return v + s
     })
 }
+
+// Example for activation gradient strides
+// Note: ReLUGradStride uses conditional selection (input > 0 ? gradOutput : 0)
+// This could use ElemWhere, but ElemWhere requires a zero array for the "else" value.
+// Using ElemApplyTernaryStrided with a zero-filled array is more efficient.
+func ReLUGradStride(dst, gradOutput, input []float32, shape []int, stridesDst, stridesGrad, stridesInput []int) {
+    size := SizeFromShape(shape)
+    if size == 0 {
+        return
+    }
+    
+    // Create zero array for the "else" value (could be optimized to reuse)
+    zeros := make([]float32, size)
+    
+    // Use ElemWhere pattern: dst = input > 0 ? gradOutput : 0
+    generics.ElemWhere[float32](dst, input, gradOutput, zeros, shape, stridesDst, stridesInput, stridesGrad, ComputeStrides(shape))
+    
+    // Alternative: Use ElemApplyTernaryStrided (more flexible but requires zero array)
+    // generics.ElemApplyTernaryStrided[float32](dst, input, gradOutput, zeros, shape, 
+    //     stridesDst, stridesInput, stridesGrad, ComputeStrides(shape), 
+    //     func(cond, grad, zero float32) float32 {
+    //         if cond > 0 {
+    //             return grad
+    //         }
+    //         return zero
+    //     })
+}
+
+func SigmoidGradStride(dst, gradOutput, output []float32, shape []int, stridesDst, stridesGrad, stridesOutput []int) {
+    generics.ElemApplyBinaryStrided[float32](dst, gradOutput, output, shape, stridesDst, stridesGrad, stridesOutput, func(grad, out float32) float32 {
+        return grad * out * (1 - out)
+    })
+}
+
+func TanhGradStride(dst, gradOutput, output []float32, shape []int, stridesDst, stridesGrad, stridesOutput []int) {
+    generics.ElemApplyBinaryStrided[float32](dst, gradOutput, output, shape, stridesDst, stridesGrad, stridesOutput, func(grad, out float32) float32 {
+        return grad * (1 - out*out)
+    })
+}
 ```
 
 ---
@@ -535,8 +633,8 @@ These are thin wrappers that just pass all parameters to generics. They should b
 10. ⚠️ `ElemLessEqual` → `generics.ElemLessEqualStrided[float32]` → **DEPRECATE**
 11. ⚠️ `ElemGreaterEqual` → `generics.ElemGreaterEqualStrided[float32]` → **DEPRECATE**
 
-#### Helper-Based Functions - Migrate and Keep (Priority 2, ~17 functions):
-These have operation functions, so they are NOT thin wrappers and should be kept:
+#### Helper-Based Functions - Migrate and Keep (Priority 2, ~20 functions):
+These have operation functions or manual stride iteration similar to helpers, so they are NOT thin wrappers and should be kept:
 
 12. ✅ `ElemAdd` → `generics.ElemApplyBinaryStrided[float32]` → **KEEP**
 13. ✅ `ElemSub` → `generics.ElemApplyBinaryStrided[float32]` → **KEEP**
@@ -555,15 +653,19 @@ These have operation functions, so they are NOT thin wrappers and should be kept
 26. ✅ `ElemScale` → `generics.ElemApplyUnaryScalarStrided[float32]` → **KEEP**
 27. ✅ `ElemAddScaledMul` → `generics.ElemApplyUnaryScalarStrided[float32]` → **KEEP**
 28. ✅ `ElemAddScaledSquareMul` → `generics.ElemApplyUnaryScalarStrided[float32]` → **KEEP**
+29. ✅ `ReLUGradStride` → `generics.ElemWhere[float32]` → **KEEP**
+30. ✅ `SigmoidGradStride` → `generics.ElemApplyBinaryStrided[float32]` → **KEEP**
+31. ✅ `TanhGradStride` → `generics.ElemApplyBinaryStrided[float32]` → **KEEP**
 
-**Total**: ~28 functions to migrate
+**Total**: ~31 functions to migrate
 - **~11 functions to deprecate** (thin wrappers: 5 direct ops + 6 comparison ops)
-- **~17 functions to keep** (have operation functions: 3 binary + 9 unary math + 5 scalar)
+- **~20 functions to keep** (have operation functions: 3 binary + 9 unary math + 5 scalar + 3 activation gradients)
 
 ### Functions to Keep As-Is
 
 - All BLAS operations (Level 1, 2, 3)
-- All specialized algorithms (reductions, activations, convolutions)
+- All specialized algorithms (reductions, softmax, convolutions, pooling)
+- Simple activation functions without stride support (`ReLU`, `Sigmoid`, `Tanh`, `ReLUGrad`, `SigmoidGrad`, `TanhGrad`) - simple loops, avoid `ElemApply` overhead
 - Functions with special handling (`ElemDiv`, `ElemDivScalar` - zero-division checks)
 - Functions already using optimized BLAS (`ElemScaleInPlace`)
 - All utility/helper functions
@@ -573,9 +675,9 @@ These have operation functions, so they are NOT thin wrappers and should be kept
 ## Next Steps
 
 1. **Phase 1**: Migrate Priority 1 functions (thin wrappers: `ElemCopy`, `ElemFill`, `ElemSign`, `ElemNegative`, `ElemWhere`, comparison ops) and mark as deprecated
-2. **Phase 2**: Migrate Priority 2 functions (helper-based: `ElemAdd`, `ElemSub`, `ElemMul`, unary math ops, scalar ops) and keep them (not thin wrappers)
+2. **Phase 2**: Migrate Priority 2 functions (helper-based: `ElemAdd`, `ElemSub`, `ElemMul`, unary math ops, scalar ops, activation gradient strides) and keep them (not thin wrappers)
 3. **Phase 3**: Update all callers of deprecated functions to use generics directly
-4. **Phase 4**: Benchmark and validate improvements (should see performance gains for helper-based functions)
+4. **Phase 4**: Benchmark and validate improvements (should see performance gains for helper-based functions and stride-based activation gradients)
 5. **Phase 5**: Remove deprecated functions in next major version
 6. **Phase 6**: Address `HOT_PATH_INEFFICIENCIES.md` optimizations separately (allocations in `IsContiguous`, `EnsureStrides`, etc.)
 

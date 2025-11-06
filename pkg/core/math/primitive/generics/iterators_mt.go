@@ -29,3 +29,10 @@ func ElementsMatStrided(rows, cols int, ld int) func(func([2]int) bool) {
 	return mt.ElementsMatStrided(rows, cols, ld)
 }
 
+func ElementsWindow(windowOffset, windowShape, parentShape []int) func(func([]int, bool) bool) {
+	return mt.ElementsWindow(windowOffset, windowShape, parentShape)
+}
+
+func ElementsWindows(outputShape, kernelShape, inputShape []int, stride, padding []int) func(func([]int, []int, bool) bool) {
+	return mt.ElementsWindows(outputShape, kernelShape, inputShape, stride, padding)
+}
