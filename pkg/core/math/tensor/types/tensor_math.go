@@ -10,21 +10,57 @@ type TensorMath interface {
 	// Returns a new tensor with reduced dimensions. Panics if dimensions are out of range.
 	Sum(dims ...int) Tensor
 
+	// ReduceSum is an alias for Sum (matches TensorFlow naming: tf.reduce_sum).
+	ReduceSum(dims ...int) Tensor
+
+	// SumTo sums along specified dimensions and stores result in dst.
+	// If dst is nil, creates a new tensor. If dst is provided, uses it (must match output shape).
+	// Returns the destination tensor.
+	SumTo(dst Tensor, dims ...int) Tensor
+
 	// Mean computes mean along specified dimensions. If no dimensions specified, means all elements.
 	// Returns a new tensor with reduced dimensions. Panics if dimensions are out of range.
 	Mean(dims ...int) Tensor
+
+	// ReduceMean is an alias for Mean (matches TensorFlow naming: tf.reduce_mean).
+	ReduceMean(dims ...int) Tensor
+
+	// MeanTo computes mean along specified dimensions and stores result in dst.
+	// If dst is nil, creates a new tensor. If dst is provided, uses it (must match output shape).
+	// Returns the destination tensor.
+	MeanTo(dst Tensor, dims ...int) Tensor
 
 	// Max computes maximum along specified dimensions. If no dimensions specified, finds global maximum.
 	// Returns a new tensor with reduced dimensions. Panics if dimensions are out of range.
 	Max(dims ...int) Tensor
 
+	// ReduceMax is an alias for Max (matches TensorFlow naming: tf.reduce_max).
+	ReduceMax(dims ...int) Tensor
+
+	// MaxTo computes maximum along specified dimensions and stores result in dst.
+	// If dst is nil, creates a new tensor. If dst is provided, uses it (must match output shape).
+	// Returns the destination tensor.
+	MaxTo(dst Tensor, dims ...int) Tensor
+
 	// Min computes minimum along specified dimensions. If no dimensions specified, finds global minimum.
 	// Returns a new tensor with reduced dimensions. Panics if dimensions are out of range.
 	Min(dims ...int) Tensor
 
+	// ReduceMin is an alias for Min (matches TensorFlow naming: tf.reduce_min).
+	ReduceMin(dims ...int) Tensor
+
+	// MinTo computes minimum along specified dimensions and stores result in dst.
+	// If dst is nil, creates a new tensor. If dst is provided, uses it (must match output shape).
+	// Returns the destination tensor.
+	MinTo(dst Tensor, dims ...int) Tensor
+
 	// ArgMax returns the index of the maximum element along the specified dimension.
 	// Returns a new tensor with reduced dimension. Panics if dimension is out of range.
 	ArgMax(dim int) Tensor
+
+	// ArgMin returns the index of the minimum element along the specified dimension (matches tf.argmin).
+	// Returns a new tensor with reduced dimension. Panics if dimension is out of range.
+	ArgMin(dim int) Tensor
 
 	// Linear Algebra Operations
 	// All linear algebra operations use optimized BLAS/LAPACK operations when possible.
@@ -56,6 +92,9 @@ type TensorMath interface {
 	// Panics if shapes are incompatible.
 	Dot(other Tensor) float64
 
+	// Tensordot is an alias for Dot (matches TensorFlow naming: tf.tensordot).
+	Tensordot(other Tensor) float64
+
 	// Norm computes vector/matrix norm.
 	// ord: 0 = L1 norm, 1 = L2 norm, 2 = Frobenius norm (same as L2 for matrices).
 	// Panics if ord is invalid.
@@ -66,9 +105,22 @@ type TensorMath interface {
 	// Returns a new tensor. Panics if dimension is out of range.
 	Normalize(dim int) Tensor
 
+	// L2Normalize is an alias for Normalize (matches TensorFlow naming: tf.nn.l2_normalize).
+	L2Normalize(dim int) Tensor
+
+	// NormalizeTo performs L2 normalization along the specified dimension and stores result in dst.
+	// If dst is nil, creates a new tensor. If dst is provided, uses it (must match shape).
+	// Returns the destination tensor.
+	NormalizeTo(dst Tensor, dim int) Tensor
+
 	// AddScaled computes t = t + alpha * other (scaled addition).
 	// Panics if shapes don't match. Returns self for method chaining.
 	AddScaled(other Tensor, alpha float64) Tensor
+
+	// AddScaledTo computes dst = t + alpha * other (scaled addition) and stores result in dst.
+	// If dst is nil, creates a new tensor. If dst is provided, uses it (must match shape).
+	// Returns the destination tensor.
+	AddScaledTo(dst Tensor, other Tensor, alpha float64) Tensor
 
 	// Gradient Routing and Utility Operations
 	// ScatterAdd adds values to destination tensor at positions specified by indices.

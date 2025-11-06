@@ -335,3 +335,29 @@ func (t Tensor) AddScaled(other types.Tensor, alpha float64) types.Tensor {
 	fp32.Axpy(tData, otherData, 1, 1, size, alpha32)
 	return &t
 }
+
+// AddScaledTo computes dst = t + alpha * other and stores result in dst.
+func (t Tensor) AddScaledTo(dst types.Tensor, other types.Tensor, alpha float64) types.Tensor {
+	if t.shape == nil || other == nil || other.Shape() == nil {
+		return nil
+	}
+
+	if !t.Shape().Equal(other.Shape()) {
+		panic(fmt.Sprintf("tensor.AddScaledTo: shape mismatch: %v vs %v", t.Shape(), other.Shape()))
+	}
+
+	if dst == nil {
+		result := t.Clone()
+		result.AddScaled(other, alpha)
+		return result
+	}
+
+	if !t.Shape().Equal(dst.Shape()) {
+		panic(fmt.Sprintf("tensor.AddScaledTo: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
+	}
+
+	// Copy t to dst, then add scaled other
+	copyTensorData(t, dst)
+	dst.AddScaled(other, alpha)
+	return dst
+}

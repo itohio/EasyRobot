@@ -397,9 +397,9 @@ func (t Tensor) TransposeTo(dst types.Tensor, dims ...int) types.Tensor {
 	return dst
 }
 
-// Dot computes the dot product of two tensors.
-// For vectors: dot product of two 1D tensors
-// For matrices: Frobenius inner product (sum of element-wise products)
+// Dot computes dot product (vector) or Frobenius inner product (matrix).
+// For vectors: dot product of two 1D tensors.
+// For matrices: Frobenius inner product (sum of element-wise products).
 // Uses fp32 primitive.Dot for vector case.
 // Returns float64 result converted from internal float32 computation.
 func (t Tensor) Dot(other types.Tensor) float64 {
@@ -433,6 +433,11 @@ func (t Tensor) Dot(other types.Tensor) float64 {
 
 	// Flatten and compute dot product
 	return t.dotFrobenius(other)
+}
+
+// Tensordot is an alias for Dot (matches TensorFlow naming: tf.tensordot).
+func (t Tensor) Tensordot(other types.Tensor) float64 {
+	return t.Dot(other)
 }
 
 // dotStrided computes dot product for strided vectors
@@ -603,6 +608,34 @@ func (t Tensor) Normalize(dim int) types.Tensor {
 	}
 
 	panic(fmt.Sprintf("tensor.Normalize: unsupported tensor shape %v (use 1D or 2D)", shape))
+}
+
+// L2Normalize is an alias for Normalize (matches TensorFlow naming: tf.nn.l2_normalize).
+func (t Tensor) L2Normalize(dim int) types.Tensor {
+	return t.Normalize(dim)
+}
+
+// NormalizeTo performs L2 normalization along the specified dimension and stores result in dst.
+func (t Tensor) NormalizeTo(dst types.Tensor, dim int) types.Tensor {
+	if t.shape == nil {
+		return nil
+	}
+
+	result := t.Normalize(dim)
+	if result == nil {
+		return nil
+	}
+
+	if dst == nil {
+		return result
+	}
+
+	if !result.Shape().Equal(dst.Shape()) {
+		panic(fmt.Sprintf("tensor.NormalizeTo: destination shape mismatch: expected %v, got %v", result.Shape(), dst.Shape()))
+	}
+
+	copyTensorData(result, dst)
+	return dst
 }
 
 // normalizeVector normalizes a 1D vector

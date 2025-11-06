@@ -56,6 +56,11 @@ type TensorManipulation interface {
 	// Returns self for method chaining.
 	Fill(value float64) Tensor
 
+	// FillTo fills the tensor with a constant value and stores result in dst.
+	// If dst is nil, creates a new tensor. If dst is provided, uses it (must match shape).
+	// Returns the destination tensor.
+	FillTo(dst Tensor, value float64) Tensor
+
 	// Unpad removes padding from tensor.
 	// padding: [padBeforeDim0, padAfterDim0, padBeforeDim1, padAfterDim1, ...]
 	// Each dimension has two padding values: before and after.
