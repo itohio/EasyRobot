@@ -293,8 +293,18 @@ Conv2DTo(kernel, bias Tensor, dst Tensor, stride, padding []int) Tensor
 // dst is first parameter
 Conv2D(dst Tensor, kernel, bias Tensor, stride, padding []int) Tensor
 Conv1D(dst Tensor, kernel, bias Tensor, stride, padding int) Tensor
-Conv2DTransposed(dst Tensor, kernel, bias Tensor, stride, padding []int) Tensor
+Conv2DTransposed(dst Tensor, kernel, bias Tensor, stride, padding, paddingOutput []int) Tensor
 ```
+
+**Conv2DTransposed Behavior**:
+- `stride`: 2-element slice [strideH, strideW] - stride for height and width dimensions
+- `padding`: 2-element slice [padH, padW] - input padding for height and width dimensions
+- `paddingOutput`: 2-element slice [outputPadH, outputPadW] - additional output padding to control exact output size
+  - Used to fine-tune output dimensions when transposed convolution formula doesn't produce exact desired size
+  - Typically values are 0 or 1 for each dimension
+  - Output size formula: `outHeight = (inHeight - 1) * strideH - 2*padH + kernelH + outputPadH`
+  - If `dst == nil`: creates new tensor with calculated output shape, returns new tensor
+  - If `dst != nil`: writes result to `dst`, returns `dst` (enables chaining)
 
 ### 8. Pooling Operations
 
@@ -489,6 +499,20 @@ RandomFill(dst Tensor, rng RNG) Tensor
 // Returns self if dst is nil, returns dst if dst is provided (enables chaining).
 // Panics if callback is nil.
 FillWithCallback(dst Tensor, callback func() float64) Tensor
+
+// Conv2DTransposed performs 2D transposed convolution (deconvolution).
+// Input shape: [batch, inChannels, height, width]
+// Kernel shape: [inChannels, outChannels, kernelH, kernelW]
+// Bias shape: [outChannels] (optional, can be nil)
+// stride: [strideH, strideW] - stride for height and width
+// padding: [padH, padW] - input padding for height and width
+// paddingOutput: [outputPadH, outputPadW] - additional output padding to control exact output size
+// Output shape: [batch, outChannels, outHeight, outWidth]
+//   where outHeight = (inHeight - 1) * strideH - 2*padH + kernelH + outputPadH
+//   and outWidth = (inWidth - 1) * strideW - 2*padW + kernelW + outputPadW
+// If dst is nil, creates new tensor with calculated output shape, returns new tensor.
+// If dst is provided, writes result to dst, returns dst (enables chaining).
+Conv2DTransposed(dst Tensor, kernel, bias Tensor, stride, padding, paddingOutput []int) Tensor
 ```
 
 ### Phase 2: Test Update
