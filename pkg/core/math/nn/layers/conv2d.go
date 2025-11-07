@@ -20,6 +20,9 @@ type Conv2D struct {
 	padH        int
 	padW        int
 	hasBias     bool
+	// Pre-allocated scratch tensors for backward pass optimization
+	gradOutputT      tensorTypes.Tensor // Scratch tensor for gradOutput transpose [outChannels, batch*outHeight*outWidth]
+	kernelGradMatrix tensorTypes.Tensor // Scratch tensor for kernel gradient matrix [outChannels, inChannels*kernelH*kernelW]
 }
 
 // NewConv2D creates a new Conv2D layer.
@@ -137,6 +140,16 @@ func (c *Conv2D) Init(inputShape tensor.Shape) error {
 	outputShape := tensor.NewShape(batchSize, c.outChannels, outHeight, outWidth)
 	outputSize := batchSize * c.outChannels * outHeight * outWidth
 	c.Base.AllocOutput(outputShape, outputSize)
+
+	// Pre-allocate scratch tensors for backward pass to avoid allocations
+	// These tensors will be reused across backward passes
+	dtype := c.Base.DataType()
+	// gradOutputT shape: [outChannels, batch*outHeight*outWidth]
+	gradOutputTShape := tensor.NewShape(c.outChannels, batchSize*outHeight*outWidth)
+	c.gradOutputT = tensor.New(dtype, gradOutputTShape)
+	// kernelGradMatrix shape: [outChannels, inChannels*kernelH*kernelW]
+	kernelGradMatrixShape := tensor.NewShape(c.outChannels, c.inChannels*c.kernelH*c.kernelW)
+	c.kernelGradMatrix = tensor.New(dtype, kernelGradMatrixShape)
 
 	return nil
 }
@@ -285,12 +298,14 @@ func (c *Conv2D) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tensor, er
 		// gradOutputReshaped^T shape: [outChannels, batch*outHeight*outWidth]
 		// inputCols shape: [batch*outHeight*outWidth, inChannels*kernelH*kernelW]
 		// Result: [outChannels, inChannels*kernelH*kernelW]
-		gradOutputTShape := tensor.NewShape(c.outChannels, batchSize*outHeight*outWidth)
-		gradOutputTTmp := tensor.New(gradOutputReshaped.DataType(), gradOutputTShape)
-		gradOutputT := gradOutputReshaped.Transpose(gradOutputTTmp, []int{1, 0})
-		kernelGradMatrixShape := tensor.NewShape(c.outChannels, c.inChannels*c.kernelH*c.kernelW)
-		kernelGradMatrixTmp := tensor.New(gradOutputT.DataType(), kernelGradMatrixShape)
-		kernelGradMatrix := gradOutputT.MatMul(kernelGradMatrixTmp, inputCols)
+		// Use pre-allocated scratch tensors
+		// Check if gradOutputT needs resizing (batch size might change)
+		expectedGradOutputTShape := tensor.NewShape(c.outChannels, batchSize*outHeight*outWidth)
+		if tensor.IsNil(c.gradOutputT) || !c.gradOutputT.Shape().Equal(expectedGradOutputTShape) {
+			c.gradOutputT = tensor.New(gradOutputReshaped.DataType(), expectedGradOutputTShape)
+		}
+		gradOutputT := gradOutputReshaped.Transpose(c.gradOutputT, []int{1, 0})
+		kernelGradMatrix := gradOutputT.MatMul(c.kernelGradMatrix, inputCols)
 
 		// Reshape result to kernel shape: [outChannels, inChannels, kernelH, kernelW]
 		kernelGradReshaped := kernelGradMatrix.Reshape(nil, tensor.NewShape(c.outChannels, c.inChannels, c.kernelH, c.kernelW))

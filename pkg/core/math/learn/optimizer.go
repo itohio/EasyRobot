@@ -49,13 +49,9 @@ func (s *SGD) Update(param types.Parameter) error {
 	}
 
 	// SGD update: data = data - lr * grad
-	// Use tensor operations: scale gradient by learning rate, then subtract from data
-	// Since param is by value but Data is a reference, we modify the underlying tensor
-	// Note: Sub() modifies in place and returns self, so we can just call it
-	scaledGrad := param.Grad.Clone()
-	scaledGrad = scaledGrad.MulScalar(nil, s.lr)
-	// Sub() modifies param.Data in place, so the tensor data is updated
-	param.Data.Subtract(nil, scaledGrad)
+	// Use AddScaled with negative learning rate for efficient combined operation
+	// This eliminates the need for Clone and intermediate tensor
+	param.Data.AddScaled(nil, param.Grad, -s.lr)
 
 	return nil
 }
@@ -78,6 +74,15 @@ type adamState struct {
 	m    tensor.Tensor // First moment estimate
 	v    tensor.Tensor // Second moment estimate
 	step int           // Step counter for bias correction
+	// Pre-allocated scratch tensors to avoid allocations during updates
+	scaledGrad1   tensor.Tensor // For (1-beta1) * grad
+	scaledGrad2   tensor.Tensor // For (1-beta2) * grad^2
+	gradSquared   tensor.Tensor // For grad^2
+	mHat          tensor.Tensor // Bias-corrected first moment
+	vHat          tensor.Tensor // Bias-corrected second moment
+	sqrtVHat      tensor.Tensor // sqrt(vHat)
+	epsilonTensor tensor.Tensor // Epsilon tensor
+	update        tensor.Tensor // Final update term
 }
 
 // NewAdam creates a new Adam optimizer with the given hyperparameters.
@@ -144,12 +149,20 @@ func (a *Adam) Update(param types.Parameter) error {
 	// Get or create state for this parameter
 	state, exists := a.state[key]
 	if !exists {
-		// Initialize state with zero tensors
+		// Initialize state with zero tensors and pre-allocated scratch tensors
 		shape := param.Data.Shape()
 		state = &adamState{
-			m:    tensor.New(tensor.DTFP32, shape),
-			v:    tensor.New(tensor.DTFP32, shape),
-			step: 0,
+			m:             tensor.New(tensor.DTFP32, shape),
+			v:             tensor.New(tensor.DTFP32, shape),
+			step:          0,
+			scaledGrad1:   tensor.New(tensor.DTFP32, shape),
+			scaledGrad2:   tensor.New(tensor.DTFP32, shape),
+			gradSquared:   tensor.New(tensor.DTFP32, shape),
+			mHat:          tensor.New(tensor.DTFP32, shape),
+			vHat:          tensor.New(tensor.DTFP32, shape),
+			sqrtVHat:      tensor.New(tensor.DTFP32, shape),
+			epsilonTensor: tensor.New(tensor.DTFP32, shape),
+			update:        tensor.New(tensor.DTFP32, shape),
 		}
 		a.state[key] = state
 	}
@@ -164,42 +177,33 @@ func (a *Adam) Update(param types.Parameter) error {
 	biasCorrection2 := 1 - beta2Power
 
 	// Update first moment estimate: m = beta1 * m + (1-beta1) * g
-	state.m = state.m.MulScalar(nil, a.beta1)
-	scaledGrad1 := param.Grad.Clone()
-	scaledGrad1 = scaledGrad1.MulScalar(nil, 1-a.beta1)
-	state.m = state.m.Add(nil, scaledGrad1)
+	// Use in-place MulScalar followed by AddScaled for efficiency
+	state.m.MulScalar(nil, a.beta1)
+	state.m.AddScaled(nil, param.Grad, 1-a.beta1)
 
 	// Update second moment estimate: v = beta2 * v + (1-beta2) * g^2
-	gradSquared := param.Grad.Clone()
-	gradSquared = gradSquared.Multiply(nil, param.Grad)
-	state.v = state.v.MulScalar(nil, a.beta2)
-	scaledGrad2 := gradSquared.Clone()
-	scaledGrad2 = scaledGrad2.MulScalar(nil, 1-a.beta2)
-	state.v = state.v.Add(nil, scaledGrad2)
+	// Compute grad^2 using pre-allocated scratch tensor
+	param.Grad.Multiply(state.gradSquared, param.Grad)
+	state.v.MulScalar(nil, a.beta2)
+	state.v.AddScaled(nil, state.gradSquared, 1-a.beta2)
 
 	// Compute bias-corrected estimates: mHat = m / (1 - beta1^t), vHat = v / (1 - beta2^t)
-	mHat := state.m.Clone()
-	mHat = mHat.MulScalar(nil, 1.0/biasCorrection1)
-	vHat := state.v.Clone()
-	vHat = vHat.MulScalar(nil, 1.0/biasCorrection2)
+	// Use pre-allocated scratch tensors with destination parameters
+	state.m.MulScalar(state.mHat, 1.0/biasCorrection1)
+	state.v.MulScalar(state.vHat, 1.0/biasCorrection2)
 
-	// Compute sqrt(vHat) + epsilon
-	sqrtVHat := vHat.Clone()
-	sqrtVHat = sqrtVHat.Sqrt(nil)
-
-	// Create epsilon tensor using Elements() to set all values
-	epsilonTensor := sqrtVHat.Clone()
-	for elem := range epsilonTensor.Elements() {
-		elem.Set(a.epsilon)
-	}
-	sqrtVHat = sqrtVHat.Add(nil, epsilonTensor)
+	// Compute sqrt(vHat) + epsilon using pre-allocated scratch tensors
+	state.vHat.Sqrt(state.sqrtVHat)
+	// Use Fill instead of Elements() loop for efficiency
+	state.epsilonTensor.Fill(nil, a.epsilon)
+	state.sqrtVHat.Add(nil, state.epsilonTensor)
 
 	// Compute update: param = param - lr * mHat / (sqrt(vHat) + epsilon)
-	update := mHat.Clone()
-	update = update.Divide(nil, sqrtVHat)
-	update = update.MulScalar(nil, a.lr)
-	// Sub() modifies param.Data in place, so the tensor data is updated
-	param.Data.Subtract(nil, update)
+	// Use pre-allocated scratch tensor with destination parameters
+	state.mHat.Divide(state.update, state.sqrtVHat)
+	state.update.MulScalar(nil, a.lr)
+	// Use AddScaled with negative learning rate for final update
+	param.Data.AddScaled(nil, state.update, -1.0)
 
 	return nil
 }

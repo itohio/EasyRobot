@@ -21,6 +21,11 @@ type LSTM struct {
 	// Internal state
 	hiddenState tensorTypes.Tensor // [hidden_size] or [batch_size, hidden_size]
 	cellState   tensorTypes.Tensor // [hidden_size] or [batch_size, hidden_size]
+	// Pre-allocated gate activation tensors for optimization
+	iGateSigmoid tensorTypes.Tensor // Input gate activation [hidden_size] or [batch_size, hidden_size]
+	fGateSigmoid tensorTypes.Tensor // Forget gate activation [hidden_size] or [batch_size, hidden_size]
+	gGateTanh    tensorTypes.Tensor // Cell gate activation [hidden_size] or [batch_size, hidden_size]
+	oGateSigmoid tensorTypes.Tensor // Output gate activation [hidden_size] or [batch_size, hidden_size]
 }
 
 // NewLSTM creates a new LSTM layer with the given input and hidden sizes.
@@ -112,6 +117,15 @@ func (l *LSTM) Init(inputShape tensor.Shape) error {
 	l.hiddenState = tensor.New(l.Base.DataType(), outputShape)
 	l.cellState = tensor.New(l.Base.DataType(), outputShape)
 
+	// Pre-allocate gate activation tensors to avoid Clone() operations
+	// These tensors will be reused across forward passes
+	// Gate slices have the same shape as output (since they're slices along the gates dimension)
+	dtype := l.Base.DataType()
+	l.iGateSigmoid = tensor.New(dtype, outputShape)
+	l.fGateSigmoid = tensor.New(dtype, outputShape)
+	l.gGateTanh = tensor.New(dtype, outputShape)
+	l.oGateSigmoid = tensor.New(dtype, outputShape)
+
 	return nil
 }
 
@@ -167,9 +181,12 @@ func (l *LSTM) Forward(input tensorTypes.Tensor) (tensorTypes.Tensor, error) {
 		return nil, fmt.Errorf("LSTM.Forward: computation failed: %w", err)
 	}
 
-	// Update internal state
-	l.hiddenState = output.Clone()
-	l.cellState = l.cellState.Clone() // cellState is updated in computeForward
+	// Update internal state using Copy instead of Clone (more efficient)
+	// Note: cellState is already updated in-place in computeForward via Copy
+	if tensor.IsNil(l.hiddenState) || !l.hiddenState.Shape().Equal(output.Shape()) {
+		l.hiddenState = tensor.New(output.DataType(), output.Shape())
+	}
+	l.hiddenState.Copy(output)
 
 	// Store output
 	l.Base.StoreOutput(output)
@@ -250,22 +267,23 @@ func (l *LSTM) computeForward(input, weightIH, weightHH, bias,
 	gGate := gates.Slice(nil, sliceDim, 2*l.hiddenSize, l.hiddenSize)
 	oGate := gates.Slice(nil, sliceDim, 3*l.hiddenSize, l.hiddenSize)
 
-	// Apply activations
+	// Apply activations using pre-allocated tensors (eliminates Clone() operations)
+	// Gate slices have the same shape as the pre-allocated tensors (outputShape)
 	// iGate = sigmoid(iGate)
-	iGateSigmoid := iGate.Clone().Sigmoid(nil)
-	iGate = iGateSigmoid
+	iGate.Sigmoid(l.iGateSigmoid)
+	iGate = l.iGateSigmoid
 
 	// fGate = sigmoid(fGate)
-	fGateSigmoid := fGate.Clone().Sigmoid(nil)
-	fGate = fGateSigmoid
+	fGate.Sigmoid(l.fGateSigmoid)
+	fGate = l.fGateSigmoid
 
 	// gGate = tanh(gGate)
-	gGateTanh := gGate.Clone().Tanh(nil)
-	gGate = gGateTanh
+	gGate.Tanh(l.gGateTanh)
+	gGate = l.gGateTanh
 
 	// oGate = sigmoid(oGate)
-	oGateSigmoid := oGate.Clone().Sigmoid(nil)
-	oGate = oGateSigmoid
+	oGate.Sigmoid(l.oGateSigmoid)
+	oGate = l.oGateSigmoid
 
 	// Update cell state: cell = fGate * cellState + iGate * gGate
 	cellNew := tensor.New(cellState.DataType(), cellState.Shape())

@@ -170,15 +170,21 @@ oGateSigmoid := oGate.Clone().Sigmoid(nil)  // Clone 6 + in-place sigmoid
 - Activation functions already support in-place operations (when dst is nil)
 
 **Optimization Using Existing API**:
+According to SPEC.md:
+- `Sigmoid(dst Tensor)` and `Tanh(dst Tensor)` accept dst (line 202: "All operations support destination tensor parameter")
+- `Reshape(dst Tensor, newShape Shape) Tensor` (line 106) - "If dst is provided, copies reshaped data to dst and returns dst"
+- `Copy(src Tensor)` (line 103) - Copies into existing tensor, avoids allocation
+
+**Action**:
 - **Gate activations**: Pre-allocate gate activation tensors in `Init()` and reuse them
-  - Use `Sigmoid(dst Tensor)` and `Tanh(dst Tensor)` with pre-allocated dst (per SPEC.md line 202: "All operations support destination tensor parameter")
-  - This eliminates the Clone() calls before activation
-- **State storage**: Consider if we need to clone or can store references
-  - If output/cellState are modified in-place in computeForward, cloning may be necessary
-  - However, if computeForward writes to separate tensors, we can store references
-- **Use Copy instead of Clone**: If we need copies, `Copy` may be more efficient when destination exists
-  - Per SPEC.md line 103: `Copy(src Tensor)` "Copies data from src tensor into this tensor" and "Returns self for method chaining"
-  - This avoids allocation if the destination tensor already exists
+  - Pre-allocate `iGateSigmoid`, `fGateSigmoid`, `gGateTanh`, `oGateSigmoid` tensors
+  - Use `iGate.Sigmoid(iGateSigmoid)`, `fGate.Sigmoid(fGateSigmoid)`, etc. with pre-allocated dst
+  - This eliminates all Clone() calls before activation
+- **State storage**: Use `Copy` instead of `Clone` for state updates
+  - Use `l.hiddenState.Copy(output)` instead of `output.Clone()` (if hiddenState is pre-allocated)
+  - Or store references if computeForward doesn't modify output in-place
+- **MatMul operations**: Pre-allocate intermediate tensors and use dst parameters
+  - `MatMulTransposed(dst Tensor, other Tensor, ...)` (line 186) accepts dst
 
 **Files Affected**:
 - `lstm.go`: Lines 171-172, 258-270, 320-321, 333 - Pre-allocate gate tensors, use dst parameters
@@ -202,9 +208,15 @@ output.Copy(inputReshaped)               // Copies from view
 - This pattern is acceptable and efficient
 
 **Note**: 
-- `Reshape` is zero-copy (creates a view), so intermediate Reshape operations don't cause allocations
-- The Copy operations are necessary when data needs to be in a different tensor
-- No optimization needed for Reshape usage - it's already optimal
+According to SPEC.md line 106, `Reshape(dst Tensor, newShape Shape)`:
+- If dst is nil: "creates a new tensor view (zero-copy when possible)"
+- If dst is provided: "copies reshaped data to dst and returns dst"
+
+**Optimization Opportunity**:
+- When using Reshape followed by Copy, consider using `Reshape` with dst parameter directly
+- Example: Instead of `inputReshaped := input.Reshape(nil, newShape); output.Copy(inputReshaped)`
+- Use: `input.Reshape(output, newShape)` (if output shape matches newShape)
+- This eliminates the intermediate view tensor and the Copy operation
 
 **Files Affected**:
 - `utility.go`: Lines 91, 239, 395, 555 - Acceptable pattern
@@ -234,13 +246,21 @@ kernelGradReshaped := kernelGradMatrix.Reshape(...) // View (zero-copy)
 - `Reshape` operations are zero-copy views (acceptable)
 
 **Optimization Using Existing API**:
-- **Pre-allocate intermediate tensors**: Allocate `gradOutputT`, `kernelGradMatrix` in `Init()` as scratch tensors
-- **Use destination parameters**: 
-  - `Transpose(dst Tensor, dims []int)` accepts dst (per SPEC.md line 110: "If dst is provided, writes result to dst and returns dst")
-  - `MatMul(dst Tensor, other Tensor)` accepts dst (per SPEC.md line 185: "If dst is provided, writes result to dst and returns dst")
-  - Pre-allocate these tensors and pass them as dst parameters
-- **Reuse tensors**: These intermediate tensors can be reused across backward passes
-- **Note**: `Im2Col` returns a new tensor (per SPEC.md line 233) and has no dst parameter, so this allocation cannot be avoided
+According to SPEC.md, operations now support destination parameters:
+- `Transpose(dst Tensor, dims []int)` (line 110) - "If dst is provided, writes result to dst and returns dst"
+- `MatMul(dst Tensor, other Tensor)` (line 185) - "If dst is provided, writes result to dst and returns dst"
+- `Reshape(dst Tensor, newShape Shape)` (line 106) - "If dst is provided, copies reshaped data to dst and returns dst"
+- `Permute(dst Tensor, dims []int)` (line 111) - "If dst is provided, writes permuted result to dst and returns dst"
+
+**Action**:
+- **Pre-allocate intermediate tensors**: Allocate all intermediate tensors in `Init()` as scratch tensors
+  - `gradOutputReshaped` - can reuse gradOutput or use separate tensor
+  - `gradOutputT` - for transpose result
+  - `kernelGradMatrix` - for matrix multiplication result
+  - `kernelGradReshaped` - can be a view or separate tensor
+- **Use destination parameters**: Pass pre-allocated tensors as `dst` to all operations
+- **Reuse tensors**: All intermediate tensors can be reused across backward passes
+- **Note**: `Im2Col` returns a new tensor (line 233) and has no dst parameter, so this allocation cannot be avoided
 
 **Files Affected**:
 - `conv2d.go`: Lines 273-299 - Pre-allocate intermediate tensors, use dst parameters
@@ -252,44 +272,49 @@ kernelGradReshaped := kernelGradMatrix.Reshape(...) // View (zero-copy)
 
 ### High Priority (High Impact, Low-Medium Effort)
 
-1. **Optimize Dense layer bias addition**
-   - **Action**: Remove BroadcastTo path, always use slice-based approach
-   - **Rationale**: `Slice` creates zero-copy views, `AddScaled` writes directly to slices
-   - **Impact**: Eliminates 1 intermediate tensor allocation per forward pass
+1. **Optimize Pooling operations**
+   - **Action**: Pass pre-allocated output tensor as `dst` parameter to pooling operations
+   - **Rationale**: All pooling operations now support destination parameters (SPEC.md lines 241-251)
+   - **Impact**: Eliminates temporary tensor allocation and Copy() operation per forward pass
+   - **Files**: `pooling.go` lines 114-121 (MaxPool2D), 282-289 (AvgPool2D), 393-400 (GlobalAvgPool2D)
+
+2. **Optimize Dense layer bias addition**
+   - **Action**: Use slice-based approach or BroadcastTo with pre-allocated dst
+   - **Rationale**: `BroadcastTo` and `Slice` now support dst parameters (SPEC.md lines 112, 107)
+   - **Impact**: Eliminates intermediate tensor allocation per forward pass
    - **Files**: `dense.go` lines 167-189
 
-2. **Reduce LSTM cloning**
+3. **Pre-allocate scratch tensors for Softmax backward**
+   - **Action**: Allocate all intermediate tensors in `Init()`, use dst parameters for all operations
+   - **Rationale**: All operations (`Sum`, `BroadcastTo`, `Multiply`, `Subtract`) support dst parameters
+   - **Impact**: Reduces 5 tensor allocations to 0 per backward pass
+   - **Files**: `activations.go` lines 337-380
+
+4. **Reduce LSTM cloning**
    - **Action**: Pre-allocate gate activation tensors in `Init()`, use `Sigmoid(dst)` and `Tanh(dst)` with pre-allocated dst
-   - **Rationale**: Activation functions already support destination parameters
+   - **Rationale**: Activation functions support destination parameters (SPEC.md line 202)
    - **Impact**: Eliminates 4 clone operations for gate activations per forward pass
    - **Files**: `lstm.go` lines 258-270
 
-3. **Pre-allocate scratch tensors for Softmax backward**
-   - **Action**: Allocate intermediate tensors in `Init()`, use `Sum(dst, dims)` with pre-allocated dst
-   - **Rationale**: `Sum` accepts destination parameter, can reuse tensors
-   - **Impact**: Reduces 5 tensor allocations to 0 (reuse existing) per backward pass
-   - **Files**: `activations.go` lines 337-380
-
 ### Medium Priority (Medium Impact, Low Effort)
 
-4. **Optimize Dropout cloning**
+5. **Optimize Dropout cloning**
    - **Action**: Use `output.Copy(input)` instead of `input.Clone()` for training mode
-   - **Rationale**: `Copy` may be more efficient when destination exists, `DropoutForward` already accepts dst
-   - **Impact**: Potentially more efficient copy operation
+   - **Rationale**: `Copy` avoids allocation when destination exists, `DropoutForward` accepts dst
+   - **Impact**: More efficient copy operation
    - **Files**: `activations.go` lines 498-502
 
-5. **Pre-allocate intermediate tensors in Conv backward**
-   - **Action**: Pre-allocate `gradOutputT`, `kernelGradMatrix` in `Init()`, use `Transpose(dst, ...)` and `MatMul(dst, ...)` with pre-allocated dst
-   - **Rationale**: These operations already support destination parameters
+6. **Pre-allocate intermediate tensors in Conv backward**
+   - **Action**: Pre-allocate all intermediate tensors in `Init()`, use `Transpose(dst, ...)`, `MatMul(dst, ...)`, `Reshape(dst, ...)` with pre-allocated dst
+   - **Rationale**: All operations support destination parameters (SPEC.md lines 110, 185, 106)
    - **Impact**: Reduces intermediate tensor allocations in backward pass
    - **Files**: `conv2d.go` lines 273-299, `conv1d.go` lines 231-244
 
-### Cannot Optimize (Requires API Changes)
-
-6. **Pooling operations**
-   - **Issue**: `MaxPool2D`, `AvgPool2D`, `GlobalAvgPool2D` don't support destination parameters per SPEC.md
-   - **Current**: Must use `Copy()` to write to pre-allocated output
-   - **Note**: This requires API changes to SPEC.md to optimize
+7. **Optimize Reshape usage**
+   - **Action**: Use `Reshape(dst, newShape)` directly instead of `Reshape(nil, newShape)` followed by `Copy`
+   - **Rationale**: `Reshape` supports dst parameter (SPEC.md line 106), eliminates intermediate view
+   - **Impact**: Eliminates intermediate view tensor and Copy operation
+   - **Files**: Multiple files using Reshape + Copy pattern
 
 ---
 
@@ -313,18 +338,16 @@ According to SPEC.md, these operations follow the pattern: "If dst is nil, creat
 - **Dropout**: `DropoutForward(dst, mask)`, `DropoutBackward(dst, gradOutput, mask)`
 - **Conditional**: `Where(dst, condition, a, b)`
 
-**Operations that return new tensors** (require Copy to write to destination):
-- **Pooling**: `MaxPool2D(...)`, `MaxPool2DWithIndices(...)`, `AvgPool2D(...)`, `GlobalAvgPool2D()`, `AdaptiveAvgPool2D(...)` - All return new tensors, no dst parameter
-- **Gradient operations**: `MaxPool2DBackward(...)`, `AvgPool2DBackward(...)`, `Conv2DKernelGrad(...)`, `Conv1DKernelGrad(...)` - All return new tensors
-- **Image/Column conversion**: `Im2Col(...)`, `Col2Im(...)` - Return new tensors
-- **Broadcasting**: `BroadcastTo(shape)` - Returns new tensor (or error). "Currently creates a clone if shapes match exactly."
-- **Permutation**: `Permute(dims)` - Returns new tensor (no dst parameter)
-- **Unpadding**: `Unpad(padding)` - Returns new tensor
-- **Comparison operations**: `Equal(other)`, `GreaterThan(other)`, `Less(other)`, etc. - All return new tensors (no dst parameter)
+**Operations that now support destination parameters** (can write to pre-allocated tensors):
+- **Pooling**: `MaxPool2D(dst, ...)`, `MaxPool2DWithIndices(dst, indicesDst, ...)`, `AvgPool2D(dst, ...)`, `GlobalAvgPool2D(dst)`, `AdaptiveAvgPool2D(dst, ...)` - All support dst (SPEC.md lines 241-251)
+- **Backward pooling**: `MaxPool2DBackward(dst, ...)`, `AvgPool2DBackward(dst, ...)` - Support dst (lines 243, 247)
+- **Shape manipulation**: `Reshape(dst, newShape)`, `Slice(dst, dim, start, length)`, `BroadcastTo(dst, shape)`, `Permute(dst, dims)`, `Unpad(dst, padding)` - All support dst (lines 106-112, 117)
 
-**Zero-Copy View Operations**:
-- `Reshape(newShape)` - "Returns a new tensor with the same data but different shape (zero-copy when possible)"
-- `Slice(dim, start, length)` - "Returns a new tensor view (zero-copy when possible)"
+**Operations that return new tensors** (no dst parameter):
+- **Gradient operations**: `Conv2DKernelGrad(...)`, `Conv1DKernelGrad(...)` - Return new tensors (no dst parameter, lines 227-228)
+- **Image/Column conversion**: `Im2Col(...)`, `Col2Im(...)` - Return new tensors (no dst parameter, lines 233-234)
+- **Comparison operations**: `Equal(other)`, `GreaterThan(other)`, `Less(other)`, etc. - All return new tensors (no dst parameter, lines 155-161)
+- **Mask creation**: `DropoutMask(...)` - Returns new tensor (no dst parameter, line 258)
 
 **In-Place Operations**:
 - When `dst` is `nil`, many operations are in-place (modify the receiver tensor)
@@ -333,10 +356,14 @@ According to SPEC.md, these operations follow the pattern: "If dst is nil, creat
 
 **Important Notes from SPEC.md**:
 - `AddScaled(dst, other, alpha)` requires exact shape matching - "Panics if shapes don't match" (line 195)
-- `BroadcastTo` "Currently creates a clone if shapes match exactly" (line 112)
+- `Reshape(dst, newShape)` - When dst is nil, creates zero-copy view; when dst is provided, copies data to dst (line 106)
+- `Slice(dst, dim, start, length)` - When dst is nil, creates new tensor with copied data; when dst is provided, copies to dst (line 107)
+- `BroadcastTo(dst, shape)` - Now supports dst parameter (line 112)
+- All pooling operations support dst parameter (lines 241-251)
 - All reduction operations support dst parameter (line 169)
 - All activation functions support dst parameter (line 202)
 - All forward convolution operations support dst parameter (line 218)
+- Gradient convolution operations (`Conv2DKernelGrad`, `Conv1DKernelGrad`) do NOT support dst parameter (lines 227-228)
 
 ### Key Optimization Patterns
 
@@ -352,25 +379,28 @@ According to SPEC.md, these operations follow the pattern: "If dst is nil, creat
    - `Copy(src Tensor)` copies into existing tensor (SPEC.md line 103)
    - `Clone()` always creates new tensor (SPEC.md line 102)
 
-4. **Use zero-copy views** - `Reshape` and `Slice` create views when possible
-   - `Reshape`: "zero-copy when possible" (SPEC.md line 106)
-   - `Slice`: "zero-copy when possible" (SPEC.md line 107)
+4. **Use destination parameters for shape operations** - `Reshape`, `Slice`, `BroadcastTo` now support dst
+   - `Reshape(dst, newShape)`: When dst provided, copies directly to dst (SPEC.md line 106)
+   - `Slice(dst, dim, start, length)`: When dst provided, copies to dst (line 107)
+   - `BroadcastTo(dst, shape)`: When dst provided, writes to dst (line 112)
+   - Use dst parameters to avoid intermediate tensors
 
-5. **Avoid BroadcastTo when possible** - Creates new tensor; use slice-based approaches instead
-   - `BroadcastTo` "Returns a new tensor" (SPEC.md line 112)
-   - For bias addition, use `Slice` + `AddScaled` instead
+5. **Use pooling operations with dst** - All pooling operations now support destination parameters
+   - `MaxPool2D(dst, ...)`, `AvgPool2D(dst, ...)`, `GlobalAvgPool2D(dst)` all accept dst (lines 241-251)
+   - Pass pre-allocated output tensor directly to eliminate Copy() operations
 
-6. **Understand operation semantics** - Some operations always create new tensors
-   - Pooling operations: Always return new tensors (no dst parameter)
-   - Comparison operations: Always return new tensors (no dst parameter)
-   - Gradient operations: Always return new tensors (no dst parameter)
+6. **Understand operation limitations** - Some operations still don't support dst
+   - Gradient convolution: `Conv2DKernelGrad`, `Conv1DKernelGrad` return new tensors (no dst, lines 227-228)
+   - Image/Column conversion: `Im2Col`, `Col2Im` return new tensors (no dst, lines 233-234)
+   - Comparison operations: Always return new tensors (no dst, lines 155-161)
 
 ---
 
 ## Next Steps
 
-1. **Implement high-priority optimizations** - Start with Dense bias, LSTM gates, and Softmax backward
+1. **Implement high-priority optimizations** - Start with Pooling operations (highest impact, easiest fix)
 2. **Add scratch tensor allocation to Base** - Extend layer Base to support pre-allocated scratch tensors
-3. **Benchmark improvements** - Measure memory allocations and performance gains
-4. **Consider API extensions** - For pooling operations, consider adding destination parameters to SPEC.md (future work)
+3. **Optimize remaining operations** - Dense bias, LSTM gates, Softmax backward, Conv backward
+4. **Benchmark improvements** - Measure memory allocations and performance gains
+5. **Update layer implementations** - Ensure all layers use dst parameters where available
 

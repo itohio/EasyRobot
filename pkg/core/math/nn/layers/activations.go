@@ -282,7 +282,11 @@ func (t *Tanh) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
 // Softmax layer implements softmax activation as a Layer.
 type Softmax struct {
 	Base
-	dim int // Dimension along which to apply softmax
+	dim          int          // Dimension along which to apply softmax
+	prod         types.Tensor // Scratch tensor for gradOutput * output
+	sumTerm      types.Tensor // Scratch tensor for Sum result
+	sumBroadcast types.Tensor // Scratch tensor for broadcast result
+	diff         types.Tensor // Scratch tensor for gradOutput - sumBroadcast
 }
 
 // NewSoftmax creates a new Softmax layer for the given dimension.
@@ -300,12 +304,38 @@ func (s *Softmax) Init(inputShape tensor.Shape) error {
 	if len(inputShape) == 0 {
 		return fmt.Errorf("Softmax.Init: empty input shape")
 	}
+	// Validate dimension
+	if s.dim < 0 || s.dim >= len(inputShape) {
+		return fmt.Errorf("Softmax.Init: invalid dimension %d for input shape %v", s.dim, inputShape)
+	}
 	// Output shape is same as input for Softmax
 	outputSize := 1
 	for _, dim := range inputShape {
 		outputSize *= dim
 	}
 	s.Base.AllocOutput(inputShape, outputSize)
+
+	// Pre-allocate scratch tensors for backward pass to avoid allocations
+	// These tensors will be reused across backward passes
+	dtype := s.Base.DataType()
+	s.prod = tensor.New(dtype, inputShape)
+
+	// Compute shape for sumTerm after reduction along dim
+	// Sum removes the reduced dimension, so we need to reshape for broadcasting
+	// Example: [32, 128] reduced along dim 1 -> [32], but we need [32, 1] to broadcast to [32, 128]
+	sumTermShapeReduced := make([]int, 0, len(inputShape))
+	for i, d := range inputShape {
+		if i != s.dim {
+			sumTermShapeReduced = append(sumTermShapeReduced, d)
+		}
+	}
+	if len(sumTermShapeReduced) == 0 {
+		sumTermShapeReduced = []int{1}
+	}
+	s.sumTerm = tensor.New(dtype, tensor.NewShape(sumTermShapeReduced...))
+	s.sumBroadcast = tensor.New(dtype, inputShape)
+	s.diff = tensor.New(dtype, inputShape)
+
 	return nil
 }
 
@@ -354,24 +384,34 @@ func (s *Softmax) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 	}
 
 	// Softmax gradient using primitives: gradInput = output * (gradOutput - sum(gradOutput * output))
+	// Use pre-allocated scratch tensors to avoid allocations
 	// Step 1: Compute element-wise product: gradOutput * output
-	prod := tensor.New(gradOutput.DataType(), gradOutput.Shape())
-	gradOutput.Multiply(prod, output)
+	gradOutput.Multiply(s.prod, output)
 
-	// Step 2: Sum along the softmax dimension
-	// Sum with nil dst will create a new tensor with appropriate shape
-	sumTerm := prod.Sum(nil, []int{s.dim})
+	// Step 2: Sum along the softmax dimension (use pre-allocated sumTerm)
+	// Sum removes the reduced dimension, so sumTerm has shape without dim
+	summed := s.prod.Sum(s.sumTerm, []int{s.dim})
 
-	// Step 3: Broadcast sum back to original shape
-	sumBroadcast := sumTerm.BroadcastTo(nil, output.Shape())
+	// Step 3: Reshape sumTerm to add dimension back (for broadcasting)
+	// Create shape with dimension set to 1 for broadcasting: [32] -> [32, 1]
+	sumTermShapeForBroadcast := make([]int, len(output.Shape()))
+	copy(sumTermShapeForBroadcast, output.Shape())
+	sumTermShapeForBroadcast[s.dim] = 1
+	sumTermReshaped := summed.Reshape(nil, tensor.NewShape(sumTermShapeForBroadcast...))
 
-	// Step 4: Compute: gradOutput - sumTerm
-	diff := tensor.New(gradOutput.DataType(), gradOutput.Shape())
-	gradOutput.Subtract(diff, sumBroadcast)
+	// Step 4: Broadcast sum back to original shape (use pre-allocated sumBroadcast)
+	sumTermReshaped.BroadcastTo(s.sumBroadcast, output.Shape())
+
+	// Step 4: Compute: gradOutput - sumBroadcast (use pre-allocated diff)
+	gradOutput.Subtract(s.diff, s.sumBroadcast)
 
 	// Step 5: Compute final gradient: output * (gradOutput - sumTerm)
-	gradInput := tensor.New(output.DataType(), output.Shape())
-	output.Multiply(gradInput, diff)
+	// Use pre-allocated grad tensor if available, otherwise create new one
+	gradInput := s.Base.Grad()
+	if tensor.IsNil(gradInput) {
+		gradInput = tensor.New(output.DataType(), output.Shape())
+	}
+	output.Multiply(gradInput, s.diff)
 
 	s.Base.StoreGrad(gradInput)
 	return gradInput, nil
@@ -491,12 +531,13 @@ func (d *Dropout) Forward(input types.Tensor) (types.Tensor, error) {
 		d.mask = d.mask.DropoutMask(float64(d.p), float64(scale), d.rng)
 
 		// Copy input to output and apply dropout using tensor method
-		// Use Clone to copy input to output, then apply dropout
-		output = input.Clone()
+		// Use Copy instead of Clone (more efficient when destination exists)
+		output.Copy(input)
 		output = output.DropoutForward(output, d.mask)
 	} else {
 		// Inference mode: pass through unchanged
-		output = input.Clone()
+		// Use Copy instead of Clone (more efficient when destination exists)
+		output.Copy(input)
 		// Clear mask (not needed in inference)
 		d.mask = nil
 	}
@@ -522,11 +563,22 @@ func (d *Dropout) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 	var gradInput types.Tensor
 	if d.isTraining && d.p > 0 && !tensor.IsNil(d.mask) {
 		// Training mode: gradInput = gradOutput * mask
-		gradInput = tensor.New(gradOutput.DataType(), gradOutput.Shape())
+		// Use pre-allocated grad tensor if available, otherwise create new one
+		gradInput = d.Base.Grad()
+		if tensor.IsNil(gradInput) {
+			gradInput = tensor.New(gradOutput.DataType(), gradOutput.Shape())
+		}
 		gradOutput.Multiply(gradInput, d.mask)
 	} else {
 		// Inference mode or no dropout: pass gradient through unchanged
-		gradInput = gradOutput.Clone()
+		// Use pre-allocated grad tensor if available, otherwise use Copy
+		gradInput = d.Base.Grad()
+		if tensor.IsNil(gradInput) {
+			gradInput = tensor.New(gradOutput.DataType(), gradOutput.Shape())
+			gradInput.Copy(gradOutput)
+		} else {
+			gradInput.Copy(gradOutput)
+		}
 	}
 
 	d.Base.StoreGrad(gradInput)

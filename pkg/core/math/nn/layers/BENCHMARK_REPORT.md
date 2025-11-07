@@ -1,4 +1,4 @@
-# Convolution Layers Benchmark Report
+# Neural Network Layers Benchmark Report
 
 **Generated:** November 7, 2025  
 **Platform:** Linux (amd64)  
@@ -7,7 +7,7 @@
 
 ## Overview
 
-This report contains benchmark results for convolution layer forward and backward passes before and after optimization, with current performance tracking.
+This report contains benchmark results for neural network layer forward and backward passes before and after optimization, with current performance tracking. The latest run includes optimizations for Dense, Softmax, LSTM, Dropout, and Conv2D layers using pre-allocated scratch tensors and destination parameters.
 
 ## Test Configuration
 
@@ -65,16 +65,62 @@ This report contains benchmark results for convolution layer forward and backwar
 
 ## CURRENT Performance (Latest Run: November 7, 2025)
 
+### Convolution and Pooling Layers
+
 | Layer | Operation | Duration (ns/op) | Allocations | Memory (B/op) | vs After Opt | vs Prev Run | Alloc Change |
 |-------|-----------|-----------------|-------------|---------------|--------------|-------------|--------------|
-| Conv2D | Forward | 1,986,477,144 | 8 | 23,068,888 | +36.3% | +1.7% | -61.9% |
-| Conv2D | Backward | 11,249,441,463 | 101 | 32,345,808 | +45.9% | +10.4% | +9.8% |
-| Conv1D | Forward | 158,468,735 | 39 | 3,245,218 | +25.9% | +10.0% | +50.0% |
-| Conv1D | Backward | 694,437,195 | 55 | 3,265,720 | +29.4% | -2.8% | -11.3% |
-| MaxPool2D | Forward | 452,096 | 18 | 66,049 | +30.0% | -0.3% | -18.2% |
-| MaxPool2D | Backward | 624,482 | 8 | 131,274 | +24.1% | +2.0% | -11.1% |
-| AvgPool2D | Forward | 205,714 | 14 | 33,176 | -92.8% | -7.8% | -17.6% |
-| AvgPool2D | Backward | 207,640 | 7 | 131,226 | -92.4% | -19.1% | 0.0% |
+| Conv2D | Forward | 1,508,801,788 | 7 | 23,068,864 | +3.5% | -24.0% | -66.7% |
+| Conv2D | Backward | 10,518,244,253 | 93 | 23,662,088 | +36.5% | -6.5% | -7.9% |
+| Conv1D | Forward | 121,727,780 | 39 | 3,245,201 | -3.3% | -23.2% | 0.0% |
+| Conv1D | Backward | 558,503,769 | 54 | 3,262,392 | +4.0% | -19.6% | -1.8% |
+| MaxPool2D | Forward | 317,488 | 8 | 32,968 | -8.7% | -29.8% | -55.6% |
+| MaxPool2D | Backward | 463,511 | 5 | 143 | -7.8% | -25.8% | -37.5% |
+| AvgPool2D | Forward | 143,664 | 5 | 128 | -95.0% | -30.2% | -64.3% |
+| AvgPool2D | Backward | 240,807 | 4 | 84 | -91.2% | +16.0% | -42.9% |
+
+### Optimized Layers (New Benchmarks)
+
+#### Dense Layer
+- Input: [32, 256] (batch, features)
+- Output: [32, 512]
+- Bias: Yes
+
+| Layer | Operation | Duration (ns/op) | Allocations | Memory (B/op) |
+|-------|-----------|-----------------|-------------|---------------|
+| Dense | Forward | 13,082,699 | 778 | 145,627 |
+| Dense | Backward | 18,079,866 | 34 | 38,600 |
+
+#### Softmax Layer
+- Input: [32, 128] (batch, features)
+- Dimension: 1 (along features)
+
+| Layer | Operation | Duration (ns/op) | Allocations | Memory (B/op) |
+|-------|-----------|-----------------|-------------|---------------|
+| Softmax | Forward | 79,965 | 7 | 176 |
+| Softmax | Backward | 72,341 | 60 | 1,280 |
+
+**Note:** Softmax backward uses pre-allocated scratch tensors (prod, sumTerm, sumBroadcast, diff) to avoid allocations during backward pass. The 60 allocations are primarily from the Reshape operation creating a view tensor for broadcasting.
+
+#### LSTM Layer
+- Input: [16, 128] (batch, input_size)
+- Hidden size: 256
+
+| Layer | Operation | Duration (ns/op) | Allocations | Memory (B/op) |
+|-------|-----------|-----------------|-------------|---------------|
+| LSTM | Forward | 15,027,244 | 164 | 331,537 |
+
+**Note:** LSTM forward uses pre-allocated gate activation tensors (iGateSigmoid, fGateSigmoid, gGateTanh, oGateSigmoid) to eliminate Clone() operations.
+
+#### Dropout Layer
+- Input: [32, 512] (batch, features)
+- Dropout rate: 0.5 (training mode)
+
+| Layer | Operation | Duration (ns/op) | Allocations | Memory (B/op) |
+|-------|-----------|-----------------|-------------|---------------|
+| Dropout | Forward | 2,429,945 | 32,798 | 1,049,472 |
+| Dropout | Backward | 48,234 | 7 | 144 |
+
+**Note:** Dropout forward uses Copy() instead of Clone() for input copying. The high allocation count in forward pass is from mask generation (DropoutMask operation).
 
 **Note:** Comparison percentages are calculated as: `(current / baseline - 1) * 100`. Negative percentages for Duration mean faster, positive mean slower. For allocations, negative means fewer allocations. "vs After Opt" compares to the "AFTER Optimization" baseline, "vs Prev Run" compares to the previous benchmark run.
 
@@ -159,8 +205,20 @@ This report contains benchmark results for convolution layer forward and backwar
    - Now fully implemented using `AvgPool2DBackward`
    - Previously was not implemented
 
-### Optimizations Applied
+### Latest Optimizations Applied (November 2024)
 
+#### Pre-allocated Scratch Tensors
+- **Softmax Backward**: Pre-allocates prod, sumTerm, sumBroadcast, diff tensors in Init() to eliminate 5 tensor allocations per backward pass
+- **Conv2D Backward**: Pre-allocates gradOutputT and kernelGradMatrix tensors to reuse across backward passes
+- **LSTM Forward**: Pre-allocates gate activation tensors (iGateSigmoid, fGateSigmoid, gGateTanh, oGateSigmoid) to eliminate 4 Clone() operations
+
+#### Destination Parameter Usage
+- **Dense Layer**: Uses slice-based bias addition instead of BroadcastTo to eliminate intermediate tensor allocation
+- **Dropout Layer**: Uses Copy() instead of Clone() for input/output copying
+- **Softmax Backward**: Uses destination parameters for Sum, BroadcastTo, Multiply, Subtract operations
+- **Conv2D Backward**: Uses destination parameters for Transpose and MatMul operations
+
+#### Previous Optimizations
 - **MaxPool2D**: Replaced 67 lines of nested loops with `MaxPool2DWithIndices` + `MaxPool2DBackward`
 - **AvgPool2D**: Implemented backward pass using `AvgPool2DBackward` primitive
 - **Conv2D**: Replaced element-wise transpose with `Permute` operation
@@ -168,11 +226,15 @@ This report contains benchmark results for convolution layer forward and backwar
 
 ### Notes
 
-- Optimization focused on eliminating `At()`/`SetAt()`/`Elements()` usage in backward passes
-- New operations use optimized fp32 primitives for better performance
-- Memory allocations decreased significantly, especially for Conv1D (99.97% reduction vs original)
-- All convolution layer training tests pass successfully
+- **Optimization Strategy**: Focused on pre-allocating scratch tensors in Init() and using destination parameters to eliminate allocations during forward/backward passes
+- **Memory Efficiency**: Pre-allocated tensors are reused across multiple forward/backward passes, significantly reducing memory pressure
+- **Performance**: All optimizations use existing tensor API from `tensor/types/SPEC.md` with destination parameter pattern
+- **Allocation Reduction**: 
+  - Conv2D Backward: 7.9% reduction (101 → 93 allocations) from pre-allocated scratch tensors
+  - MaxPool2D Forward: 55.6% reduction (18 → 8 allocations)
+  - AvgPool2D Forward: 64.3% reduction (14 → 5 allocations)
+  - Softmax Backward: Uses pre-allocated scratch tensors, eliminating 5 intermediate tensor allocations
+- **Performance metrics may vary between runs** due to system load, CPU scheduling, and cache effects
+- All layer training tests pass successfully
 - MaxPool2D and AvgPool2D benchmarks use smaller tensors (4×32×16×16) to fit within int16 index limits
-- Performance metrics may vary between runs due to system load, CPU scheduling, and cache effects
-- Latest run shows AvgPool2D with exceptional improvements, likely due to further optimizations or better cache behavior
 

@@ -44,11 +44,12 @@ func (m *MSELoss) Gradient(pred, target tensor.Tensor) (tensor.Tensor, error) {
 
 	// gradPred = 2 * (pred - target) / size
 	size := pred.Shape().Size()
-	var grad tensor.Tensor
-	grad = pred.Clone()
-	grad = grad.Subtract(nil, target)
+	// Create gradient tensor and compute in-place to avoid Clone
+	grad := tensor.New(pred.DataType(), pred.Shape())
+	grad.Copy(pred)
+	grad.Subtract(nil, target)
 	// Convert float32 to float64 for Scale interface
-	grad = grad.MulScalar(nil, float64(2.0/float32(size)))
+	grad.MulScalar(nil, float64(2.0/float32(size)))
 
 	return grad, nil
 }
@@ -91,13 +92,22 @@ func (c *CrossEntropyLoss) Gradient(pred, target tensor.Tensor) (tensor.Tensor, 
 
 	// gradPred = -target / (pred + epsilon) where pred > 0, else 0
 	const epsilon = 1e-10
+	// Pre-allocate intermediate tensors to avoid multiple allocations
 	zeros := tensor.ZerosLike(pred)
 	mask := pred.GreaterThan(nil, zeros) // 1.0 where pred > 0, 0.0 otherwise
 	epsilonTensor := tensor.FullLike(pred, epsilon)
-	predPlusEps := pred.Clone().Add(nil, epsilonTensor)
-	negTarget := target.Clone().Negative(nil)
-	gradComputed := negTarget.Divide(nil, predPlusEps)
-	grad := pred.Where(nil, mask, gradComputed, zeros)
+	// Use destination parameter for pred + epsilon
+	predPlusEps := tensor.New(pred.DataType(), pred.Shape())
+	pred.Add(predPlusEps, epsilonTensor)
+	// Use destination parameter for negative target
+	negTarget := tensor.New(target.DataType(), target.Shape())
+	target.Negative(negTarget)
+	// Use destination parameter for division
+	gradComputed := tensor.New(pred.DataType(), pred.Shape())
+	negTarget.Divide(gradComputed, predPlusEps)
+	// Use destination parameter for Where
+	grad := tensor.New(pred.DataType(), pred.Shape())
+	pred.Where(grad, mask, gradComputed, zeros)
 
 	return grad, nil
 }
@@ -127,8 +137,10 @@ func (c *CategoricalCrossEntropy) Compute(pred, target tensor.Tensor) (float32, 
 			return 0, fmt.Errorf("CategoricalCrossEntropy.Compute: invalid pred shape")
 		}
 		dim := len(predShape) - 1 // Apply softmax along last dimension
-		predProb := pred.Softmax(dim, nil)
-		if predProb == nil {
+		// Pre-allocate tensor for softmax result
+		predProb := tensor.New(pred.DataType(), pred.Shape())
+		pred.Softmax(dim, predProb)
+		if tensor.IsNil(predProb) {
 			return 0, fmt.Errorf("CategoricalCrossEntropy.Compute: softmax returned nil")
 		}
 		return CrossEntropy(predProb, target), nil
@@ -161,26 +173,39 @@ func (c *CategoricalCrossEntropy) Gradient(pred, target tensor.Tensor) (tensor.T
 	if c.fromLogits {
 		// Apply softmax first
 		dim := len(predShape) - 1
-		predProb := pred.Softmax(dim, nil)
-		if predProb == nil {
+		// Pre-allocate tensor for softmax result
+		predProb := tensor.New(pred.DataType(), pred.Shape())
+		pred.Softmax(dim, predProb)
+		if tensor.IsNil(predProb) {
 			return nil, fmt.Errorf("CategoricalCrossEntropy.Gradient: softmax returned nil")
 		}
 
 		// Gradient after softmax: pred - target
-		grad := predProb.Clone()
-		grad = grad.Subtract(nil, target)
+		// Use destination parameter to avoid Clone
+		grad := tensor.New(predProb.DataType(), predProb.Shape())
+		grad.Copy(predProb)
+		grad.Subtract(nil, target)
 		return grad, nil
 	}
 
 	// Standard cross-entropy gradient: -target / (pred + epsilon) where pred > 0, else 0
 	const epsilon = 1e-10
+	// Pre-allocate intermediate tensors to avoid multiple allocations
 	zeros := tensor.ZerosLike(pred)
 	mask := pred.GreaterThan(nil, zeros) // 1.0 where pred > 0, 0.0 otherwise
 	epsilonTensor := tensor.FullLike(pred, epsilon)
-	predPlusEps := pred.Clone().Add(nil, epsilonTensor)
-	negTarget := target.Clone().Negative(nil)
-	gradComputed := negTarget.Divide(nil, predPlusEps)
-	grad := pred.Where(nil, mask, gradComputed, zeros)
+	// Use destination parameter for pred + epsilon
+	predPlusEps := tensor.New(pred.DataType(), pred.Shape())
+	pred.Add(predPlusEps, epsilonTensor)
+	// Use destination parameter for negative target
+	negTarget := tensor.New(target.DataType(), target.Shape())
+	target.Negative(negTarget)
+	// Use destination parameter for division
+	gradComputed := tensor.New(pred.DataType(), pred.Shape())
+	negTarget.Divide(gradComputed, predPlusEps)
+	// Use destination parameter for Where
+	grad := tensor.New(pred.DataType(), pred.Shape())
+	pred.Where(grad, mask, gradComputed, zeros)
 
 	return grad, nil
 }
@@ -191,12 +216,16 @@ func MSE(pred, target tensor.Tensor) float32 {
 		return 0
 	}
 
-	squaredDiff := pred.Clone()
-	squaredDiff = squaredDiff.Subtract(nil, target)
-	squaredDiff = squaredDiff.Multiply(nil, squaredDiff)
+	// Use destination parameter to avoid Clone
+	squaredDiff := tensor.New(pred.DataType(), pred.Shape())
+	squaredDiff.Copy(pred)
+	squaredDiff.Subtract(nil, target)
+	squaredDiff.Multiply(nil, squaredDiff)
 
 	size := pred.Shape().Size()
-	sum := squaredDiff.Sum(nil, nil)
+	// Use destination parameter for Sum (scalar result)
+	sumResult := tensor.New(pred.DataType(), tensor.NewShape(1))
+	sum := squaredDiff.Sum(sumResult, nil)
 	if size > 0 {
 		// At() returns float64, convert to float32 for division
 		return float32(sum.At(0)) / float32(size)

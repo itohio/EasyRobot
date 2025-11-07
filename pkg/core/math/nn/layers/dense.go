@@ -167,21 +167,14 @@ func computeLinear(input tensorTypes.Tensor, weight tensorTypes.Tensor, bias ten
 		if bias.Shape().Rank() > 0 {
 			biasShape := bias.Shape()
 			if len(biasShape) == 1 && biasShape[0] == outFeatures {
-				// Add bias using tensor operations - broadcast and add
-				// Reshape bias to [1, outFeatures] for broadcasting
-				biasBroadcast := bias.Reshape(nil, tensor.NewShape(1, outFeatures))
-				// Broadcast bias to match output shape [batch, outFeatures]
-				biasBroadcastFull := biasBroadcast.BroadcastTo(nil, output.Shape())
-				output.Add(output, biasBroadcastFull)
-			} else {
-				// Fallback: Add bias element-wise using iteration
-				// For each batch element, add the bias
+				// Add bias using slice-based approach (more efficient than broadcasting)
+				// For each batch element, add the bias using AddScaled
 				batchSize := inputShape[0]
 				for b := 0; b < batchSize; b++ {
-					// Get output slice for this batch
+					// Get output slice for this batch (creates view, zero-copy)
 					outputBatch := output.Slice(nil, 0, b, 1)
 					outputBatchReshaped := outputBatch.Reshape(nil, tensor.NewShape(outFeatures))
-					// Add scaled bias to this batch slice
+					// Add scaled bias to this batch slice (in-place)
 					outputBatchReshaped.AddScaled(outputBatchReshaped, bias, 1.0)
 				}
 			}

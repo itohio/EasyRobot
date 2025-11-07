@@ -421,6 +421,213 @@ func BenchmarkAvgPool2D_Backward(b *testing.B) {
 	benchmarkResults = append(benchmarkResults, report)
 }
 
+// Benchmark Dense Forward Pass
+func BenchmarkDense_Forward(b *testing.B) {
+	batchSize := 32
+	inFeatures := 256
+	outFeatures := 512
+
+	layer, err := NewDense(inFeatures, outFeatures)
+	if err != nil {
+		b.Fatalf("Failed to create Dense layer: %v", err)
+	}
+
+	inputShape := tensor.NewShape(batchSize, inFeatures)
+	if err := layer.Init(inputShape); err != nil {
+		b.Fatalf("Failed to init Dense layer: %v", err)
+	}
+
+	input := createRandomInput(inputShape)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		_, err := layer.Forward(input)
+		if err != nil {
+			b.Fatalf("Forward pass failed: %v", err)
+		}
+	}
+}
+
+// Benchmark Dense Backward Pass
+func BenchmarkDense_Backward(b *testing.B) {
+	batchSize := 32
+	inFeatures := 256
+	outFeatures := 512
+
+	layer, err := NewDense(inFeatures, outFeatures, WithCanLearn(true))
+	if err != nil {
+		b.Fatalf("Failed to create Dense layer: %v", err)
+	}
+
+	inputShape := tensor.NewShape(batchSize, inFeatures)
+	if err := layer.Init(inputShape); err != nil {
+		b.Fatalf("Failed to init Dense layer: %v", err)
+	}
+
+	input := createRandomInput(inputShape)
+	output, err := layer.Forward(input)
+	if err != nil {
+		b.Fatalf("Forward pass failed: %v", err)
+	}
+
+	gradOutput := createRandomInput(output.Shape())
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		_, err := layer.Backward(gradOutput)
+		if err != nil {
+			b.Fatalf("Backward pass failed: %v", err)
+		}
+	}
+}
+
+// Benchmark Softmax Forward Pass
+func BenchmarkSoftmax_Forward(b *testing.B) {
+	batchSize := 32
+	features := 128
+	dim := 1 // Apply softmax along feature dimension
+
+	layer := NewSoftmax("softmax", dim)
+
+	inputShape := tensor.NewShape(batchSize, features)
+	if err := layer.Init(inputShape); err != nil {
+		b.Fatalf("Failed to init Softmax layer: %v", err)
+	}
+
+	input := createRandomInput(inputShape)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		_, err := layer.Forward(input)
+		if err != nil {
+			b.Fatalf("Forward pass failed: %v", err)
+		}
+	}
+}
+
+// Benchmark Softmax Backward Pass
+func BenchmarkSoftmax_Backward(b *testing.B) {
+	batchSize := 32
+	features := 128
+	dim := 1
+
+	layer := NewSoftmax("softmax", dim)
+
+	inputShape := tensor.NewShape(batchSize, features)
+	if err := layer.Init(inputShape); err != nil {
+		b.Fatalf("Failed to init Softmax layer: %v", err)
+	}
+
+	input := createRandomInput(inputShape)
+	output, err := layer.Forward(input)
+	if err != nil {
+		b.Fatalf("Forward pass failed: %v", err)
+	}
+
+	gradOutput := createRandomInput(output.Shape())
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		_, err := layer.Backward(gradOutput)
+		if err != nil {
+			b.Fatalf("Backward pass failed: %v", err)
+		}
+	}
+}
+
+// Benchmark LSTM Forward Pass
+func BenchmarkLSTM_Forward(b *testing.B) {
+	batchSize := 16
+	inputSize := 128
+	hiddenSize := 256
+
+	layer, err := NewLSTM(inputSize, hiddenSize, WithCanLearn(false))
+	if err != nil {
+		b.Fatalf("Failed to create LSTM layer: %v", err)
+	}
+
+	inputShape := tensor.NewShape(batchSize, inputSize)
+	if err := layer.Init(inputShape); err != nil {
+		b.Fatalf("Failed to init LSTM layer: %v", err)
+	}
+
+	input := createRandomInput(inputShape)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		_, err := layer.Forward(input)
+		if err != nil {
+			b.Fatalf("Forward pass failed: %v", err)
+		}
+	}
+}
+
+// Benchmark Dropout Forward Pass (Training Mode)
+func BenchmarkDropout_Forward(b *testing.B) {
+	batchSize := 32
+	features := 512
+
+	layer := NewDropout("dropout", WithDropoutRate(0.5), WithTrainingMode(true))
+
+	inputShape := tensor.NewShape(batchSize, features)
+	if err := layer.Init(inputShape); err != nil {
+		b.Fatalf("Failed to init Dropout layer: %v", err)
+	}
+
+	input := createRandomInput(inputShape)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		_, err := layer.Forward(input)
+		if err != nil {
+			b.Fatalf("Forward pass failed: %v", err)
+		}
+	}
+}
+
+// Benchmark Dropout Backward Pass
+func BenchmarkDropout_Backward(b *testing.B) {
+	batchSize := 32
+	features := 512
+
+	layer := NewDropout("dropout", WithDropoutRate(0.5), WithTrainingMode(true))
+
+	inputShape := tensor.NewShape(batchSize, features)
+	if err := layer.Init(inputShape); err != nil {
+		b.Fatalf("Failed to init Dropout layer: %v", err)
+	}
+
+	input := createRandomInput(inputShape)
+	output, err := layer.Forward(input)
+	if err != nil {
+		b.Fatalf("Forward pass failed: %v", err)
+	}
+
+	gradOutput := createRandomInput(output.Shape())
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		_, err := layer.Backward(gradOutput)
+		if err != nil {
+			b.Fatalf("Backward pass failed: %v", err)
+		}
+	}
+}
+
 // GenerateBenchmarkReport generates a markdown report from benchmark results
 func GenerateBenchmarkReport() string {
 	report := "# Convolution Layers Benchmark Report\n\n"
