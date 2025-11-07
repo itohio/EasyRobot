@@ -321,3 +321,59 @@ func TestNormalize(t *testing.T) {
 		assert.InDelta(t, 1.0, firstColNorm, 1e-5, "First column norm = %f, expected 1.0", firstColNorm)
 	})
 }
+
+func TestPermute(t *testing.T) {
+	t.Run("4D permutation", func(t *testing.T) {
+		// Create 2x3x4x5 tensor and permute [0,1,2,3] -> [1,0,3,2]
+		tensor := FromFloat32(types.NewShape(2, 3, 4, 5), make([]float32, 2*3*4*5))
+		for i := range tensor.Data().([]float32) {
+			tensor.Data().([]float32)[i] = float32(i)
+		}
+
+		result := tensor.Permute(nil, []int{1, 0, 3, 2})
+
+		expectedShape := []int{3, 2, 5, 4}
+		resultShape := result.Shape()
+		assert.Equal(t, len(expectedShape), len(resultShape), "Shape length mismatch")
+		for i := range expectedShape {
+			assert.Equal(t, expectedShape[i], resultShape[i], "Shape dimension %d mismatch", i)
+		}
+	})
+
+	t.Run("with dst parameter", func(t *testing.T) {
+		tensor := FromFloat32(types.NewShape(2, 3, 4), []float32{
+			1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+			13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+		})
+		expectedShape := types.NewShape(3, 2, 4)
+
+		dst := New(types.FP32, expectedShape)
+		result := tensor.Permute(dst, []int{1, 0, 2})
+
+		if result.ID() != dst.ID() {
+			t.Errorf("Permute() with dst should return dst")
+		}
+
+		// Verify data was copied correctly
+		resultData := result.Data().([]float32)
+		// After permuting [2,3,4] with [1,0,2], element [0,0,0] should be element [0,0,0] from original
+		assert.InDelta(t, 1.0, resultData[0], 1e-5, "result[0] = %f, expected 1.0", resultData[0])
+	})
+
+	t.Run("dst shape mismatch", func(t *testing.T) {
+		tensor := FromFloat32(types.NewShape(2, 3, 4), []float32{
+			1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+			13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+		})
+		dst := New(types.FP32, types.NewShape(3, 1, 4))
+
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Errorf("Permute() with mismatched dst shape should panic")
+			}
+		}()
+
+		tensor.Permute(dst, []int{1, 0, 2})
+	})
+}

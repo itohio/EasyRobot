@@ -45,10 +45,10 @@ func EmptyLike(t types.Tensor) Tensor {
 
 func FromArray[T types.DataElementType](shape types.Shape, data []T) Tensor {
 	size := shape.Size()
-	if len(data) != size {
-		panic(fmt.Sprintf("tensor.FromArray: data length %d does not match shape size %d", len(data), size))
+	if len(data) < size {
+		panic(fmt.Sprintf("tensor.FromArray: data length %d is less than shape size %d", len(data), size))
 	}
-	return Tensor{shape: shape, data: data}
+	return Tensor{shape: shape, data: data[:size]}
 }
 
 // FromFloat32 constructs an FP32 tensor from an existing backing slice.
@@ -338,9 +338,11 @@ func (t Tensor) SetAt(value float64, indices ...int) {
 	t.setElementAtIndex(linearIdx, value)
 }
 
-// Reshape returns a new tensor with the same data but different shape (zero-copy when possible).
+// Reshape returns a tensor with the same data but different shape (zero-copy when possible).
 // The total number of elements must remain the same.
-func (t Tensor) Reshape(newShape types.Shape) types.Tensor {
+// If dst is nil, creates a new tensor view (zero-copy when possible).
+// If dst is provided, copies reshaped data to dst and returns dst.
+func (t Tensor) Reshape(dst types.Tensor, newShape types.Shape) types.Tensor {
 	if t.shape == nil && t.data == nil {
 		return nil
 	}
@@ -352,12 +354,32 @@ func (t Tensor) Reshape(newShape types.Shape) types.Tensor {
 	if shape.Size() != len(tData) {
 		panic("tensor.Reshape: cannot reshape tensor with different total size")
 	}
-	return Tensor{shape: shape, data: t.data}
+
+	if IsNil(dst) {
+		// Create zero-copy view
+		return Tensor{shape: shape, data: t.data}
+	}
+
+	// Validate dst shape matches newShape
+	if !shape.Equal(dst.Shape()) {
+		panic(fmt.Sprintf("tensor.Reshape: destination shape mismatch: expected %v, got %v", shape, dst.Shape()))
+	}
+
+	// Copy data to dst (data layout is same, just shape metadata changes)
+	tDataSlice := tData
+	dstData := types.GetTensorData[[]float32](dst)
+	if len(tDataSlice) != len(dstData) {
+		panic(fmt.Sprintf("tensor.Reshape: data size mismatch: expected %d, got %d", len(tDataSlice), len(dstData)))
+	}
+	copy(dstData, tDataSlice)
+	return dst
 }
 
 // Slice extracts a contiguous slice along the specified dimension.
-// Returns a new tensor view (zero-copy when possible) with the sliced data.
-func (t Tensor) Slice(dim int, start int, length int) types.Tensor {
+// Returns a tensor with the sliced data.
+// If dst is nil, creates a new tensor with copied data.
+// If dst is provided, copies sliced data to dst and returns dst.
+func (t Tensor) Slice(dst types.Tensor, dim int, start int, length int) types.Tensor {
 	if t.shape == nil && t.data == nil {
 		return nil
 	}
@@ -391,23 +413,27 @@ func (t Tensor) Slice(dim int, start int, length int) types.Tensor {
 	copy(newShape, shape)
 	newShape[dim] = length
 
-	// Create destination buffer with same type as source
-	newSize := newShape.Size()
-	slicedBuf := types.MakeTensorData(t.DataType(), newSize)
+	// Handle destination
+	var result types.Tensor
+	var slicedBuf any
+	if IsNil(dst) {
+		// Create new tensor
+		result = New(t.DataType(), newShape)
+		slicedBuf = result.Data()
+	} else {
+		// Validate dst shape matches newShape
+		if !newShape.Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.Slice: destination shape mismatch: expected %v, got %v", newShape, dst.Shape()))
+		}
+		result = dst
+		slicedBuf = dst.Data()
+	}
 
-	// For CopyWithStrides, we need to map destination indices to source indices
-	// with offset in the sliced dimension. We can do this by:
-	// 1. Using original data and strides
-	// 2. Creating a custom source stride that accounts for offset
-	// Actually, simpler: adjust source data pointer by base offset for the sliced dimension
-	// and use original strides - but this won't work because strides are absolute.
-
-	// The correct approach: use CopyWithStrides with adjusted source data pointer
-	// that starts at the base offset, and the strides will correctly map indices
+	// Compute source offset and create source view
 	srcOffset := start * strides[dim]
-	srcView := t.data
+	var srcView any
 
-	// Adjust source view by offset (type-agnostic via MakeTensorData pattern)
+	// Adjust source view by offset (type-agnostic)
 	switch data := t.data.(type) {
 	case []float32:
 		srcView = data[srcOffset:]
@@ -417,16 +443,15 @@ func (t Tensor) Slice(dim int, start int, length int) types.Tensor {
 		srcView = data[srcOffset:]
 	case []int8:
 		srcView = data[srcOffset:]
+	default:
+		panic(fmt.Sprintf("tensor.Slice: unsupported data type: %T", t.data))
 	}
 
 	// Use primitive.CopyWithStrides - it handles all types automatically!
-	// The strides work correctly because CopyWithStrides computes indices relative to the data pointer
 	dstStrides := newShape.Strides()
 	primitive.CopyWithStrides(srcView, slicedBuf, newShape.ToSlice(), strides, dstStrides)
 
-	slicedData := slicedBuf
-
-	return Tensor{shape: newShape, data: slicedData}
+	return result
 }
 
 // Element represents a single tensor element with Get and Set methods.

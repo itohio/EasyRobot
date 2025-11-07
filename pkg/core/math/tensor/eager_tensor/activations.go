@@ -281,7 +281,7 @@ func (t Tensor) ReLU6(dst types.Tensor) types.Tensor {
 	// Create a tensor filled with 6.0 for comparison
 	sixTensor := result.Clone().Fill(nil, 6.0)
 	// Use Where: result[i] = result[i] < 6 ? result[i] : 6
-	condition := result.Less(sixTensor)
+	condition := result.Less(nil, sixTensor)
 	result.Where(result, condition, result, sixTensor)
 
 	if dst == nil || dst.Empty() {
@@ -314,7 +314,7 @@ func (t Tensor) LeakyReLU(dst types.Tensor, alpha float64) types.Tensor {
 	// LeakyReLU: max(x, alpha * x) = x > 0 ? x : alpha * x
 	alphaTensor := result.Clone().ScalarMul(nil, alpha)
 	zeroTensor := result.Clone().Fill(nil, 0.0)
-	condition := result.GreaterThan(zeroTensor)
+	condition := result.GreaterThan(nil, zeroTensor)
 	result.Where(result, condition, result, alphaTensor)
 
 	if dst == nil || dst.Empty() {
@@ -346,7 +346,7 @@ func (t Tensor) ELU(dst types.Tensor, alpha float64) types.Tensor {
 
 	// ELU: x > 0 ? x : alpha * (exp(x) - 1)
 	zeroTensor := result.Clone().Fill(nil, 0.0)
-	condition := result.GreaterThan(zeroTensor)
+	condition := result.GreaterThan(nil, zeroTensor)
 
 	// Compute exp(x) - 1 for negative values
 	expResult := result.Clone()

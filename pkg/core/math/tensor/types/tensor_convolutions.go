@@ -37,13 +37,15 @@ type TensorConvolutions interface {
 
 	// Conv2DKernelGrad computes the gradient of the convolution kernel.
 	// Used in backpropagation for training convolutional layers.
-	// Returns a new tensor with kernel gradient.
-	Conv2DKernelGrad(outputGrad, kernel Tensor, stride, padding []int) Tensor
+	// If dst is nil, creates a new tensor with kernel gradient.
+	// If dst is provided, writes kernel gradient to dst and returns dst.
+	Conv2DKernelGrad(dst Tensor, outputGrad, kernel Tensor, stride, padding []int) Tensor
 
 	// Conv1DKernelGrad computes the gradient of the 1D convolution kernel.
 	// Used in backpropagation for training 1D convolutional layers.
-	// Returns a new tensor with kernel gradient.
-	Conv1DKernelGrad(outputGrad, kernel Tensor, stride, padding int) Tensor
+	// If dst is nil, creates a new tensor with kernel gradient.
+	// If dst is provided, writes kernel gradient to dst and returns dst.
+	Conv1DKernelGrad(dst Tensor, outputGrad, kernel Tensor, stride, padding int) Tensor
 
 	// Image/Column Conversion
 	// These operations convert between image patches and column format for efficient convolution computation.
@@ -51,13 +53,15 @@ type TensorConvolutions interface {
 	// Im2Col converts image patches to columns for GEMM-based convolution.
 	// Input: [batch, channels, height, width]
 	// Output: [batch*outHeight*outWidth, channels*kernelH*kernelW]
-	// Returns a new tensor. Used internally for optimized convolution computation.
-	Im2Col(kernelSize, stride, padding []int) Tensor
+	// If dst is nil, creates a new tensor. Used internally for optimized convolution computation.
+	// If dst is provided, writes result to dst and returns dst.
+	Im2Col(dst Tensor, kernelSize, stride, padding []int) Tensor
 
 	// Col2Im converts columns back to image (inverse of Im2Col).
 	// Input: [batch*outHeight*outWidth, channels*kernelH*kernelW]
 	// Output: [batch, channels, height, width]
-	// Returns a new tensor. Used in backpropagation for convolution gradients.
-	Col2Im(outputShape, kernelSize, stride, padding []int) Tensor
+	// If dst is nil, creates a new tensor. Used in backpropagation for convolution gradients.
+	// If dst is provided, writes result to dst and returns dst.
+	Col2Im(dst Tensor, outputShape, kernelSize, stride, padding []int) Tensor
 }
 

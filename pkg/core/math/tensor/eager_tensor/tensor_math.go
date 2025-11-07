@@ -1,7 +1,6 @@
 package eager_tensor
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
@@ -340,40 +339,67 @@ func (t Tensor) DivScalar(dst types.Tensor, scalar float64) types.Tensor {
 
 // BroadcastTo broadcasts the tensor to a new shape.
 // Currently creates a view-like operation (future: implement efficient broadcasting).
-func (t Tensor) BroadcastTo(shape types.Shape) (types.Tensor, error) {
+func (t Tensor) BroadcastTo(dst types.Tensor, shape types.Shape) types.Tensor {
 	if t.shape == nil {
-		return nil, errors.New("tensor.BroadcastTo: nil tensor")
+		panic("tensor.BroadcastTo: nil tensor")
 	}
 
 	targetShape := types.NewShape(shape...)
 	if len(shape) < t.shape.Rank() {
-		return nil, fmt.Errorf("tensor.BroadcastTo: target shape %v has fewer dimensions than %v", shape, t.shape)
+		panic(fmt.Sprintf("tensor.BroadcastTo: target shape %v has fewer dimensions than %v", shape, t.shape))
 	}
 
-	if shape.Equal(t.Shape()) {
-		return t.Clone(), nil
+	// Handle destination
+	var result types.Tensor
+	var resultData []float32
+	if IsNil(dst) {
+		// If shapes match exactly, we can create a copy or use Clone semantics
+		if shape.Equal(t.Shape()) {
+			result = t.Clone()
+			return result
+		}
+
+		// Validate broadcasting is possible
+		if _, err := fp32.BroadcastStrides(t.shape.ToSlice(), t.shape.Strides(), shape); err != nil {
+			panic(fmt.Sprintf("tensor.BroadcastTo: %v", err))
+		}
+
+		result = New(t.DataType(), targetShape)
+		resultData = types.GetTensorData[[]float32](result)
+	} else {
+		// Validate dst shape matches target shape
+		if !targetShape.Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.BroadcastTo: destination shape mismatch: expected %v, got %v", targetShape, dst.Shape()))
+		}
+
+		// If shapes match exactly, copy t to dst
+		if shape.Equal(t.Shape()) {
+			dst.Copy(t)
+			return dst
+		}
+
+		// Validate broadcasting is possible
+		if _, err := fp32.BroadcastStrides(t.shape.ToSlice(), t.shape.Strides(), shape); err != nil {
+			panic(fmt.Sprintf("tensor.BroadcastTo: %v", err))
+		}
+
+		result = dst
+		resultData = types.GetTensorData[[]float32](dst)
 	}
 
-	if _, err := fp32.BroadcastStrides(t.shape.ToSlice(), t.shape.Strides(), shape); err != nil {
-		return nil, fmt.Errorf("tensor.BroadcastTo: %w", err)
-	}
-
-	result := New(t.DataType(), targetShape)
-	resultPtr := &result
-	resultData := types.GetTensorData[[]float32](resultPtr)
 	tData := types.GetTensorData[[]float32](t)
 	if err := fp32.ExpandTo(
 		resultData,
 		tData,
-		resultPtr.shape.ToSlice(),
+		result.Shape().ToSlice(),
 		t.shape.ToSlice(),
-		resultPtr.shape.Strides(),
+		result.Shape().Strides(),
 		t.shape.Strides(),
 	); err != nil {
-		return nil, fmt.Errorf("tensor.BroadcastTo: %w", err)
+		panic(fmt.Sprintf("tensor.BroadcastTo: %v", err))
 	}
 
-	return resultPtr, nil
+	return result
 }
 
 // Sum computes sum along specified dimensions.
@@ -699,34 +725,6 @@ func (t Tensor) prepareArgmax(dim int) ([]int, int) {
 	return shape, dim
 }
 
-func (t Tensor) copyTo(dst Tensor) {
-	if dst.Shape() == nil {
-		return
-	}
-
-	if t.shape == nil {
-		return
-	}
-
-	if dst.shape.Rank() != t.shape.Rank() {
-		panic(fmt.Sprintf("tensor.copyTo: destination shape mismatch: %v vs %v", dst.shape, t.shape))
-	}
-
-	size := t.Size()
-	if size == 0 {
-		return
-	}
-
-	dstData := types.GetTensorData[[]float32](dst)
-	tData := types.GetTensorData[[]float32](t)
-	shapeSlice := []int(t.shape)
-	stridesSrc := t.shape.Strides()
-	stridesDst := dst.shape.Strides()
-
-	// Use generics.ElemCopyStrided which handles both contiguous and strided cases
-	generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, stridesDst, stridesSrc)
-}
-
 // Where creates a new tensor by selecting elements from a where condition is true, otherwise from b.
 // condition, a, b must have compatible shapes.
 // If dst is nil, creates a new tensor.
@@ -771,7 +769,7 @@ func (t Tensor) Where(dst types.Tensor, condition, a, b types.Tensor) types.Tens
 
 // GreaterThan creates a tensor with 1.0 where t > other, 0.0 otherwise.
 // t and other must have compatible shapes.
-func (t Tensor) GreaterThan(other types.Tensor) types.Tensor {
+func (t Tensor) GreaterThan(dst types.Tensor, other types.Tensor) types.Tensor {
 	if t.shape == nil || other == nil || other.Shape() == nil {
 		return nil
 	}
@@ -780,19 +778,29 @@ func (t Tensor) GreaterThan(other types.Tensor) types.Tensor {
 		panic("tensor.GreaterThan: shape mismatch")
 	}
 
-	result := New(t.DataType(), t.shape)
-	resultPtr := &result
 	shape := t.Shape().ToSlice()
 	strides := fp32.ComputeStrides(shape)
 	tData := types.GetTensorData[[]float32](t)
 	otherData := types.GetTensorData[[]float32](other)
-	resultData := types.GetTensorData[[]float32](resultPtr)
+
+	var result types.Tensor
+	var resultData []float32
+	if IsNil(dst) {
+		result = New(t.DataType(), t.shape)
+		resultData = types.GetTensorData[[]float32](result)
+	} else {
+		if !t.Shape().Equal(dst.Shape()) {
+			panic("tensor.GreaterThan: destination shape mismatch")
+		}
+		result = dst
+		resultData = types.GetTensorData[[]float32](dst)
+	}
 
 	generics.ElemGreaterThanStrided[float32](
 		resultData, tData, otherData,
 		shape, strides, strides, strides,
 	)
-	return resultPtr
+	return result
 }
 
 // ZerosLike creates a new tensor with the same shape as t, filled with zeros.
@@ -1000,7 +1008,7 @@ func (t Tensor) Pow(dst types.Tensor, power float64) types.Tensor {
 
 // Equal creates a tensor with 1.0 where t == other, 0.0 otherwise.
 // t and other must have compatible shapes.
-func (t Tensor) Equal(other types.Tensor) types.Tensor {
+func (t Tensor) Equal(dst types.Tensor, other types.Tensor) types.Tensor {
 	if t.shape == nil || other == nil || other.Shape() == nil {
 		return nil
 	}
@@ -1009,31 +1017,41 @@ func (t Tensor) Equal(other types.Tensor) types.Tensor {
 		panic("tensor.Equal: shape mismatch")
 	}
 
-	result := New(t.DataType(), t.shape)
-	resultPtr := &result
 	shape := t.Shape().ToSlice()
 	strides := fp32.ComputeStrides(shape)
 	tData := types.GetTensorData[[]float32](t)
 	otherData := types.GetTensorData[[]float32](other)
-	resultData := types.GetTensorData[[]float32](resultPtr)
+
+	var result types.Tensor
+	var resultData []float32
+	if IsNil(dst) {
+		result = New(t.DataType(), t.shape)
+		resultData = types.GetTensorData[[]float32](result)
+	} else {
+		if !t.Shape().Equal(dst.Shape()) {
+			panic("tensor.Equal: destination shape mismatch")
+		}
+		result = dst
+		resultData = types.GetTensorData[[]float32](dst)
+	}
 
 	generics.ElemEqualStrided[float32](
 		resultData, tData, otherData,
 		shape, strides, strides, strides,
 	)
-	return resultPtr
+	return result
 }
 
 // Greater creates a tensor with 1.0 where t > other, 0.0 otherwise.
 // t and other must have compatible shapes.
 // Note: This is an alias for GreaterThan to match TensorFlow naming.
-func (t Tensor) Greater(other types.Tensor) types.Tensor {
-	return t.GreaterThan(other)
+func (t Tensor) Greater(dst types.Tensor, other types.Tensor) types.Tensor {
+	return t.GreaterThan(dst, other)
 }
 
 // Less creates a tensor with 1.0 where t < other, 0.0 otherwise.
 // t and other must have compatible shapes.
-func (t Tensor) Less(other types.Tensor) types.Tensor {
+func (t Tensor) Less(dst types.Tensor, other types.Tensor) types.Tensor {
 	if t.shape == nil || other == nil || other.Shape() == nil {
 		return nil
 	}
@@ -1042,23 +1060,33 @@ func (t Tensor) Less(other types.Tensor) types.Tensor {
 		panic("tensor.Less: shape mismatch")
 	}
 
-	result := New(t.DataType(), t.shape)
-	resultPtr := &result
 	shape := t.Shape().ToSlice()
 	strides := fp32.ComputeStrides(shape)
 	tData := types.GetTensorData[[]float32](t)
 	otherData := types.GetTensorData[[]float32](other)
-	resultData := types.GetTensorData[[]float32](resultPtr)
+
+	var result types.Tensor
+	var resultData []float32
+	if IsNil(dst) {
+		result = New(t.DataType(), t.shape)
+		resultData = types.GetTensorData[[]float32](result)
+	} else {
+		if !t.Shape().Equal(dst.Shape()) {
+			panic("tensor.Less: destination shape mismatch")
+		}
+		result = dst
+		resultData = types.GetTensorData[[]float32](dst)
+	}
 
 	generics.ElemLessStrided[float32](
 		resultData, tData, otherData,
 		shape, strides, strides, strides,
 	)
-	return resultPtr
+	return result
 }
 
 // NotEqual creates a tensor with 1.0 where t != other, 0.0 otherwise (matches tf.not_equal).
-func (t Tensor) NotEqual(other types.Tensor) types.Tensor {
+func (t Tensor) NotEqual(dst types.Tensor, other types.Tensor) types.Tensor {
 	if t.shape == nil || other == nil || other.Shape() == nil {
 		return nil
 	}
@@ -1067,23 +1095,33 @@ func (t Tensor) NotEqual(other types.Tensor) types.Tensor {
 		panic("tensor.NotEqual: shape mismatch")
 	}
 
-	result := New(t.DataType(), t.shape)
-	resultPtr := &result
 	shape := t.Shape().ToSlice()
 	strides := fp32.ComputeStrides(shape)
 	tData := types.GetTensorData[[]float32](t)
 	otherData := types.GetTensorData[[]float32](other)
-	resultData := types.GetTensorData[[]float32](resultPtr)
+
+	var result types.Tensor
+	var resultData []float32
+	if IsNil(dst) {
+		result = New(t.DataType(), t.shape)
+		resultData = types.GetTensorData[[]float32](result)
+	} else {
+		if !t.Shape().Equal(dst.Shape()) {
+			panic("tensor.NotEqual: destination shape mismatch")
+		}
+		result = dst
+		resultData = types.GetTensorData[[]float32](dst)
+	}
 
 	generics.ElemNotEqualStrided[float32](
 		resultData, tData, otherData,
 		shape, strides, strides, strides,
 	)
-	return resultPtr
+	return result
 }
 
 // GreaterEqual creates a tensor with 1.0 where t >= other, 0.0 otherwise (matches tf.greater_equal).
-func (t Tensor) GreaterEqual(other types.Tensor) types.Tensor {
+func (t Tensor) GreaterEqual(dst types.Tensor, other types.Tensor) types.Tensor {
 	if t.shape == nil || other == nil || other.Shape() == nil {
 		return nil
 	}
@@ -1092,23 +1130,33 @@ func (t Tensor) GreaterEqual(other types.Tensor) types.Tensor {
 		panic("tensor.GreaterEqual: shape mismatch")
 	}
 
-	result := New(t.DataType(), t.shape)
-	resultPtr := &result
 	shape := t.Shape().ToSlice()
 	strides := fp32.ComputeStrides(shape)
 	tData := types.GetTensorData[[]float32](t)
 	otherData := types.GetTensorData[[]float32](other)
-	resultData := types.GetTensorData[[]float32](resultPtr)
+
+	var result types.Tensor
+	var resultData []float32
+	if IsNil(dst) {
+		result = New(t.DataType(), t.shape)
+		resultData = types.GetTensorData[[]float32](result)
+	} else {
+		if !t.Shape().Equal(dst.Shape()) {
+			panic("tensor.GreaterEqual: destination shape mismatch")
+		}
+		result = dst
+		resultData = types.GetTensorData[[]float32](dst)
+	}
 
 	generics.ElemGreaterEqualStrided[float32](
 		resultData, tData, otherData,
 		shape, strides, strides, strides,
 	)
-	return resultPtr
+	return result
 }
 
 // LessEqual creates a tensor with 1.0 where t <= other, 0.0 otherwise (matches tf.less_equal).
-func (t Tensor) LessEqual(other types.Tensor) types.Tensor {
+func (t Tensor) LessEqual(dst types.Tensor, other types.Tensor) types.Tensor {
 	if t.shape == nil || other == nil || other.Shape() == nil {
 		return nil
 	}
@@ -1117,19 +1165,29 @@ func (t Tensor) LessEqual(other types.Tensor) types.Tensor {
 		panic("tensor.LessEqual: shape mismatch")
 	}
 
-	result := New(t.DataType(), t.shape)
-	resultPtr := &result
 	shape := t.Shape().ToSlice()
 	strides := fp32.ComputeStrides(shape)
 	tData := types.GetTensorData[[]float32](t)
 	otherData := types.GetTensorData[[]float32](other)
-	resultData := types.GetTensorData[[]float32](resultPtr)
+
+	var result types.Tensor
+	var resultData []float32
+	if IsNil(dst) {
+		result = New(t.DataType(), t.shape)
+		resultData = types.GetTensorData[[]float32](result)
+	} else {
+		if !t.Shape().Equal(dst.Shape()) {
+			panic("tensor.LessEqual: destination shape mismatch")
+		}
+		result = dst
+		resultData = types.GetTensorData[[]float32](dst)
+	}
 
 	generics.ElemLessEqualStrided[float32](
 		resultData, tData, otherData,
 		shape, strides, strides, strides,
 	)
-	return resultPtr
+	return result
 }
 
 // Abs computes element-wise absolute value: dst[i] = |t[i]| (matches tf.abs).

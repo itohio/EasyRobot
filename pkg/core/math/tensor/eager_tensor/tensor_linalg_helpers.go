@@ -41,8 +41,7 @@ func (t Tensor) MatVecMulTransposed(dst types.Tensor, matrix types.Tensor, vecto
 	var result types.Tensor
 	if IsNil(dst) {
 		// Create new result tensor
-		resultTensor := New(t.DataType(), types.NewShape(N))
-		result = &resultTensor
+		result = New(t.DataType(), types.NewShape(N))
 	} else {
 		// Validate dst shape
 		dstShape := dst.Shape()

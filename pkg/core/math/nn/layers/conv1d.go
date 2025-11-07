@@ -215,7 +215,7 @@ func (c *Conv1D) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tensor, er
 
 		// Compute kernel gradient using Conv1DKernelGrad primitive
 		// This efficiently computes gradients without element-wise operations
-		kernelGrad := input.Conv1DKernelGrad(gradOutput, kernelParam.Data, c.stride, c.pad)
+		kernelGrad := input.Conv1DKernelGrad(nil, gradOutput, kernelParam.Data, c.stride, c.pad)
 		// Copy using optimized Tensor.Copy method
 		kernelParam.Grad.Copy(kernelGrad)
 		c.Base.SetParam(types.ParamKernels, kernelParam)
@@ -228,10 +228,10 @@ func (c *Conv1D) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tensor, er
 	batchSize := gradOutputShape[0]
 
 	// Reshape gradOutput from [batch, outChannels, outLength] to [batch, outChannels, outLength, 1]
-	gradOutput4D := gradOutput.Reshape(tensor.NewShape(batchSize, c.outChannels, gradOutputShape[2], 1))
+	gradOutput4D := gradOutput.Reshape(nil, tensor.NewShape(batchSize, c.outChannels, gradOutputShape[2], 1))
 
 	// Reshape kernel from [outChannels, inChannels, kernelLen] to [outChannels, inChannels, kernelLen, 1]
-	kernel4D := kernelParam.Data.Reshape(tensor.NewShape(c.outChannels, c.inChannels, c.kernelLen, 1))
+	kernel4D := kernelParam.Data.Reshape(nil, tensor.NewShape(c.outChannels, c.inChannels, c.kernelLen, 1))
 
 	// Use Conv2DTransposed with width=1
 	var emptyBias tensorTypes.Tensor
@@ -241,7 +241,7 @@ func (c *Conv1D) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tensor, er
 
 	// Reshape back to 3D: [batch, inChannels, inLength, 1] -> [batch, inChannels, inLength]
 	gradInputShape := gradInput4D.Shape()
-	gradInput := gradInput4D.Reshape(tensor.NewShape(gradInputShape[0], gradInputShape[1], gradInputShape[2]))
+	gradInput := gradInput4D.Reshape(nil, tensor.NewShape(gradInputShape[0], gradInputShape[1], gradInputShape[2]))
 
 	c.Base.StoreGrad(gradInput)
 	return gradInput, nil

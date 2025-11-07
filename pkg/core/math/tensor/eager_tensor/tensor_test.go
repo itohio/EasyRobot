@@ -324,7 +324,7 @@ func TestReshape(t *testing.T) {
 				}
 			}()
 
-			result := tt.tensor.Reshape(tt.shape)
+			result := tt.tensor.Reshape(nil, tt.shape)
 
 			if tt.shouldPanic {
 				return
@@ -369,6 +369,42 @@ func TestReshape(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestReshapeWithDst(t *testing.T) {
+	t.Run("with dst parameter", func(t *testing.T) {
+		tensor := FromFloat32(types.NewShape(2, 2), []float32{1, 2, 3, 4})
+		newShape := types.NewShape(4)
+
+		// Test with dst parameter
+		dst := New(types.FP32, newShape)
+		result := tensor.Reshape(dst, newShape)
+
+		if result.ID() != dst.ID() {
+			t.Errorf("Reshape() with dst should return dst (same ID), got different tensor")
+		}
+
+		resultData := result.Data().([]float32)
+		expected := []float32{1, 2, 3, 4}
+		for i := range expected {
+			assert.InDeltaf(t, expected[i], resultData[i], 1e-5, "Reshape() with dst Data[%d] = %f, expected %f", i, resultData[i], expected[i])
+		}
+	})
+
+	t.Run("dst shape mismatch", func(t *testing.T) {
+		tensor := FromFloat32(types.NewShape(2, 2), []float32{1, 2, 3, 4})
+		newShape := types.NewShape(4)
+		dst := New(types.FP32, types.NewShape(5)) // Wrong shape
+
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Errorf("Reshape() with mismatched dst shape should panic")
+			}
+		}()
+
+		tensor.Reshape(dst, newShape)
+	})
 }
 
 func TestTensorIterator(t *testing.T) {

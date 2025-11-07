@@ -88,7 +88,7 @@ func (f *Flatten) Forward(input types.Tensor) (types.Tensor, error) {
 			input.Size(), output.Size())
 	}
 	// Reshape input to match output shape, then copy
-	inputReshaped := input.Reshape(output.Shape())
+	inputReshaped := input.Reshape(nil, output.Shape())
 	output.Copy(inputReshaped)
 
 	// Store output
@@ -120,7 +120,7 @@ func (f *Flatten) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 			gradOutput.Size(), gradInput.Size())
 	}
 	// Reshape gradOutput to match input shape, then copy
-	gradOutputReshaped := gradOutput.Reshape(input.Shape())
+	gradOutputReshaped := gradOutput.Reshape(nil, input.Shape())
 	gradInput.Copy(gradOutputReshaped)
 
 	f.Base.StoreGrad(gradInput)
@@ -236,7 +236,7 @@ func (r *Reshape) Forward(input types.Tensor) (types.Tensor, error) {
 			input.Size(), output.Size())
 	}
 	// Reshape input to match output shape, then copy
-	inputReshaped := input.Reshape(output.Shape())
+	inputReshaped := input.Reshape(nil, output.Shape())
 	output.Copy(inputReshaped)
 
 	// Store output
@@ -268,7 +268,7 @@ func (r *Reshape) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 			gradOutput.Size(), gradInput.Size())
 	}
 	// Reshape gradOutput to match input shape, then copy
-	gradOutputReshaped := gradOutput.Reshape(input.Shape())
+	gradOutputReshaped := gradOutput.Reshape(nil, input.Shape())
 	gradInput.Copy(gradOutputReshaped)
 
 	r.Base.StoreGrad(gradInput)
@@ -392,7 +392,7 @@ func (u *Unsqueeze) Forward(input types.Tensor) (types.Tensor, error) {
 			input.Size(), output.Size())
 	}
 	// Copy data using optimized Tensor.Copy method
-	inputReshaped := input.Reshape(output.Shape())
+	inputReshaped := input.Reshape(nil, output.Shape())
 	output.Copy(inputReshaped)
 
 	u.Base.StoreOutput(output)
@@ -552,7 +552,7 @@ func (s *Squeeze) Forward(input types.Tensor) (types.Tensor, error) {
 			input.Size(), output.Size())
 	}
 	// Copy data using optimized Tensor.Copy method
-	inputReshaped := input.Reshape(output.Shape())
+	inputReshaped := input.Reshape(nil, output.Shape())
 	output.Copy(inputReshaped)
 
 	s.Base.StoreOutput(output)

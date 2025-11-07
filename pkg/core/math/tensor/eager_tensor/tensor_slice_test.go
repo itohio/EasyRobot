@@ -146,7 +146,7 @@ func TestSlice(t *testing.T) {
 				}
 			}()
 
-			result := tt.tensor.Slice(tt.dim, tt.start, tt.length)
+			result := tt.tensor.Slice(nil, tt.dim, tt.start, tt.length)
 
 			if tt.shouldPanic {
 				return
@@ -185,7 +185,7 @@ func TestSlice(t *testing.T) {
 func TestSliceZeroCopy(t *testing.T) {
 	// Test that slicing last dimension creates a zero-copy view
 	original := FromFloat32(types.NewShape(2, 4), []float32{1, 2, 3, 4, 5, 6, 7, 8})
-	sliced := original.Slice(1, 1, 2)
+	sliced := original.Slice(nil, 1, 1, 2)
 
 	// Verify it's a view (zero-copy when slicing last dimension)
 	originalData := original.Data().([]float32)
@@ -217,17 +217,17 @@ func TestSliceMultipleDimensions(t *testing.T) {
 	}
 
 	// Slice dimension 0
-	result0 := tensor.Slice(0, 1, 2)
+	result0 := tensor.Slice(nil, 0, 1, 2)
 	assert.Equal(t, []int{2, 4, 5}, result0.Shape().ToSlice())
 	assert.Equal(t, 40, result0.Size())
 
 	// Slice dimension 1
-	result1 := tensor.Slice(1, 1, 2)
+	result1 := tensor.Slice(nil, 1, 1, 2)
 	assert.Equal(t, []int{3, 2, 5}, result1.Shape().ToSlice())
 	assert.Equal(t, 30, result1.Size())
 
 	// Slice dimension 2 (last dimension - should be contiguous)
-	result2 := tensor.Slice(2, 1, 3)
+	result2 := tensor.Slice(nil, 2, 1, 3)
 	assert.Equal(t, []int{3, 4, 3}, result2.Shape().ToSlice())
 	assert.Equal(t, 36, result2.Size())
 }
@@ -243,7 +243,7 @@ func TestSliceLSTMGates(t *testing.T) {
 	})
 
 	// Extract input gate (i): [batch_size, hidden_size] = [2, 2]
-	iGate := gates.Slice(1, 0, hiddenSize)
+	iGate := gates.Slice(nil, 1, 0, hiddenSize)
 	assert.Equal(t, []int{2, 2}, iGate.Shape().ToSlice())
 	iGateData := iGate.Data().([]float32)
 	assert.InDelta(t, 1.0, iGateData[0], 1e-5)
@@ -252,7 +252,7 @@ func TestSliceLSTMGates(t *testing.T) {
 	assert.InDelta(t, 10.0, iGateData[3], 1e-5)
 
 	// Extract forget gate (f): [batch_size, hidden_size] = [2, 2]
-	fGate := gates.Slice(1, hiddenSize, hiddenSize)
+	fGate := gates.Slice(nil, 1, hiddenSize, hiddenSize)
 	assert.Equal(t, []int{2, 2}, fGate.Shape().ToSlice())
 	fGateData := fGate.Data().([]float32)
 	assert.InDelta(t, 3.0, fGateData[0], 1e-5)
@@ -261,7 +261,7 @@ func TestSliceLSTMGates(t *testing.T) {
 	assert.InDelta(t, 12.0, fGateData[3], 1e-5)
 
 	// Extract cell gate (g): [batch_size, hidden_size] = [2, 2]
-	gGate := gates.Slice(1, 2*hiddenSize, hiddenSize)
+	gGate := gates.Slice(nil, 1, 2*hiddenSize, hiddenSize)
 	assert.Equal(t, []int{2, 2}, gGate.Shape().ToSlice())
 	gGateData := gGate.Data().([]float32)
 	assert.InDelta(t, 5.0, gGateData[0], 1e-5)
@@ -270,11 +270,46 @@ func TestSliceLSTMGates(t *testing.T) {
 	assert.InDelta(t, 14.0, gGateData[3], 1e-5)
 
 	// Extract output gate (o): [batch_size, hidden_size] = [2, 2]
-	oGate := gates.Slice(1, 3*hiddenSize, hiddenSize)
+	oGate := gates.Slice(nil, 1, 3*hiddenSize, hiddenSize)
 	assert.Equal(t, []int{2, 2}, oGate.Shape().ToSlice())
 	oGateData := oGate.Data().([]float32)
 	assert.InDelta(t, 7.0, oGateData[0], 1e-5)
 	assert.InDelta(t, 8.0, oGateData[1], 1e-5)
 	assert.InDelta(t, 15.0, oGateData[2], 1e-5)
 	assert.InDelta(t, 16.0, oGateData[3], 1e-5)
+}
+
+func TestSliceWithDst(t *testing.T) {
+	t.Run("with dst parameter", func(t *testing.T) {
+		tensor := FromFloat32(types.NewShape(2, 4), []float32{1, 2, 3, 4, 5, 6, 7, 8})
+		expectedShape := types.NewShape(2, 2)
+
+		// Test with dst parameter
+		dst := New(types.FP32, expectedShape)
+		result := tensor.Slice(dst, 1, 1, 2)
+
+		if result.ID() != dst.ID() {
+			t.Errorf("Slice() with dst should return dst (same ID), got different tensor")
+		}
+
+		resultData := result.Data().([]float32)
+		expected := []float32{2, 3, 6, 7} // Slice dimension 1 from index 1, length 2
+		for i := range expected {
+			assert.InDeltaf(t, expected[i], resultData[i], 1e-5, "Slice() with dst Data[%d] = %f, expected %f", i, resultData[i], expected[i])
+		}
+	})
+
+	t.Run("dst shape mismatch", func(t *testing.T) {
+		tensor := FromFloat32(types.NewShape(2, 4), []float32{1, 2, 3, 4, 5, 6, 7, 8})
+		dst := New(types.FP32, types.NewShape(3, 3)) // Wrong shape
+
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Errorf("Slice() with mismatched dst shape should panic")
+			}
+		}()
+
+		tensor.Slice(dst, 1, 1, 2)
+	})
 }

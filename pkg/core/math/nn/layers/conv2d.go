@@ -229,13 +229,13 @@ func (c *Conv2D) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tensor, er
 	inputGrad := tensor.New(input.DataType(), inputShape)
 	if inputGradTmp.Size() == inputGrad.Size() {
 		// Reshape and copy if sizes match
-		inputGradTmpReshaped := inputGradTmp.Reshape(inputShape)
+		inputGradTmpReshaped := inputGradTmp.Reshape(nil, inputShape)
 		inputGrad.Copy(inputGradTmpReshaped)
 	} else {
 		// If sizes don't match, reshape and copy what we can
 		// This handles cases where transposed conv output is slightly different
 		// Use Reshape to match input shape, then copy
-		inputGradTmpReshaped := inputGradTmp.Reshape(inputShape)
+		inputGradTmpReshaped := inputGradTmp.Reshape(nil, inputShape)
 		inputGrad.Copy(inputGradTmpReshaped)
 	}
 
@@ -271,7 +271,7 @@ func (c *Conv2D) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tensor, er
 		// where gradOutput_reshaped: [batch*outHeight*outWidth, outChannels]
 
 		// Convert input to column format
-		inputCols := input.Im2Col([]int{c.kernelH, c.kernelW}, []int{c.strideH, c.strideW}, []int{c.padH, c.padW})
+		inputCols := input.Im2Col(nil, []int{c.kernelH, c.kernelW}, []int{c.strideH, c.strideW}, []int{c.padH, c.padW})
 		// inputCols shape: [batch*outHeight*outWidth, inChannels*kernelH*kernelW]
 
 		// Reshape gradOutput from [batch, outChannels, outHeight, outWidth] to [batch*outHeight*outWidth, outChannels]
@@ -279,7 +279,7 @@ func (c *Conv2D) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tensor, er
 		batchSize := gradOutputShape[0]
 		outHeight := gradOutputShape[2]
 		outWidth := gradOutputShape[3]
-		gradOutputReshaped := gradOutput.Reshape(tensor.NewShape(batchSize*outHeight*outWidth, c.outChannels))
+		gradOutputReshaped := gradOutput.Reshape(nil, tensor.NewShape(batchSize*outHeight*outWidth, c.outChannels))
 
 		// Compute: kernelGrad = gradOutputReshaped^T @ inputCols
 		// gradOutputReshaped^T shape: [outChannels, batch*outHeight*outWidth]
@@ -293,7 +293,7 @@ func (c *Conv2D) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tensor, er
 		kernelGradMatrix := gradOutputT.MatMul(kernelGradMatrixTmp, inputCols)
 
 		// Reshape result to kernel shape: [outChannels, inChannels, kernelH, kernelW]
-		kernelGradReshaped := kernelGradMatrix.Reshape(tensor.NewShape(c.outChannels, c.inChannels, c.kernelH, c.kernelW))
+		kernelGradReshaped := kernelGradMatrix.Reshape(nil, tensor.NewShape(c.outChannels, c.inChannels, c.kernelH, c.kernelW))
 
 		// Copy using optimized Tensor.Copy method
 		kernelParam.Grad.Copy(kernelGradReshaped)

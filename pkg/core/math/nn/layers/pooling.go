@@ -110,15 +110,8 @@ func (m *MaxPool2D) Forward(input types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("MaxPool2D.Forward: output not allocated, must call Init first")
 	}
 
-	// Compute max pooling with indices using tensor.MaxPool2DWithIndices
-	result, indices := input.MaxPool2DWithIndices([]int{m.kernelH, m.kernelW}, []int{m.strideH, m.strideW}, []int{m.padH, m.padW})
-
-	// Copy result to pre-allocated output using optimized Tensor.Copy method
-	if result.Size() != output.Size() {
-		return nil, fmt.Errorf("MaxPool2D.Forward: result size %d doesn't match output size %d",
-			result.Size(), output.Size())
-	}
-	output.Copy(result)
+	// Compute max pooling with indices using tensor.MaxPool2DWithIndices, writing directly to output
+	_, indices := input.MaxPool2DWithIndices(output, nil, []int{m.kernelH, m.kernelW}, []int{m.strideH, m.strideW}, []int{m.padH, m.padW})
 
 	// Store indices for backward pass
 	m.indices = indices
@@ -148,8 +141,15 @@ func (m *MaxPool2D) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("MaxPool2D.Backward: indices not stored, must call Forward first")
 	}
 
-	// Use MaxPool2DBackward with stored indices
-	gradInput := input.MaxPool2DBackward(gradOutput, m.indices, []int{m.kernelH, m.kernelW}, []int{m.strideH, m.strideW}, []int{m.padH, m.padW})
+	// Get pre-allocated grad input tensor if available, otherwise create new
+	gradInput := m.Base.Grad()
+	if tensor.IsNil(gradInput) {
+		// No pre-allocated grad input, create new one
+		gradInput = input.MaxPool2DBackward(nil, gradOutput, m.indices, []int{m.kernelH, m.kernelW}, []int{m.strideH, m.strideW}, []int{m.padH, m.padW})
+	} else {
+		// Use pre-allocated grad input
+		gradInput = input.MaxPool2DBackward(gradInput, gradOutput, m.indices, []int{m.kernelH, m.kernelW}, []int{m.strideH, m.strideW}, []int{m.padH, m.padW})
+	}
 
 	m.Base.StoreGrad(gradInput)
 	return gradInput, nil
@@ -278,15 +278,8 @@ func (a *AvgPool2D) Forward(input types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("AvgPool2D.Forward: output not allocated, must call Init first")
 	}
 
-	// Compute average pooling using tensor.AvgPool2D
-	result := input.AvgPool2D([]int{a.kernelH, a.kernelW}, []int{a.strideH, a.strideW}, []int{a.padH, a.padW})
-
-	// Copy result to pre-allocated output using optimized Tensor.Copy method
-	if result.Size() != output.Size() {
-		return nil, fmt.Errorf("AvgPool2D.Forward: result size %d doesn't match output size %d",
-			result.Size(), output.Size())
-	}
-	output.Copy(result)
+	// Compute average pooling using tensor.AvgPool2D, writing directly to output
+	_ = input.AvgPool2D(output, []int{a.kernelH, a.kernelW}, []int{a.strideH, a.strideW}, []int{a.padH, a.padW})
 
 	// Store output
 	a.Base.StoreOutput(output)
@@ -308,8 +301,15 @@ func (a *AvgPool2D) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("AvgPool2D.Backward: input not stored, must call Forward first")
 	}
 
-	// Use AvgPool2DBackward for efficient gradient computation
-	gradInput := input.AvgPool2DBackward(gradOutput, []int{a.kernelH, a.kernelW}, []int{a.strideH, a.strideW}, []int{a.padH, a.padW})
+	// Get pre-allocated grad input tensor if available, otherwise create new
+	gradInput := a.Base.Grad()
+	if tensor.IsNil(gradInput) {
+		// No pre-allocated grad input, create new one
+		gradInput = input.AvgPool2DBackward(nil, gradOutput, []int{a.kernelH, a.kernelW}, []int{a.strideH, a.strideW}, []int{a.padH, a.padW})
+	} else {
+		// Use pre-allocated grad input
+		gradInput = input.AvgPool2DBackward(gradInput, gradOutput, []int{a.kernelH, a.kernelW}, []int{a.strideH, a.strideW}, []int{a.padH, a.padW})
+	}
 
 	a.Base.StoreGrad(gradInput)
 	return gradInput, nil
@@ -389,15 +389,8 @@ func (g *GlobalAvgPool2D) Forward(input types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("GlobalAvgPool2D.Forward: output not allocated, must call Init first")
 	}
 
-	// Compute global average pooling using tensor.GlobalAvgPool2D
-	result := input.GlobalAvgPool2D()
-
-	// Copy result to pre-allocated output using optimized Tensor.Copy method
-	if result.Size() != output.Size() {
-		return nil, fmt.Errorf("GlobalAvgPool2D.Forward: result size %d doesn't match output size %d",
-			result.Size(), output.Size())
-	}
-	output.Copy(result)
+	// Compute global average pooling using tensor.GlobalAvgPool2D, writing directly to output
+	_ = input.GlobalAvgPool2D(output)
 
 	// Store output
 	g.Base.StoreOutput(output)

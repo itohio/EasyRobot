@@ -169,22 +169,20 @@ func computeLinear(input tensorTypes.Tensor, weight tensorTypes.Tensor, bias ten
 			if len(biasShape) == 1 && biasShape[0] == outFeatures {
 				// Add bias using tensor operations - broadcast and add
 				// Reshape bias to [1, outFeatures] for broadcasting
-				biasBroadcast := bias.Reshape(tensor.NewShape(1, outFeatures))
+				biasBroadcast := bias.Reshape(nil, tensor.NewShape(1, outFeatures))
 				// Broadcast bias to match output shape [batch, outFeatures]
-				biasBroadcastFull, err := biasBroadcast.BroadcastTo(output.Shape())
-				if err == nil {
-					output.Add(output, biasBroadcastFull)
-				} else {
-					// Fallback: Add bias element-wise using iteration
-					// For each batch element, add the bias
-					batchSize := inputShape[0]
-					for b := 0; b < batchSize; b++ {
-						// Get output slice for this batch
-						outputBatch := output.Slice(0, b, 1)
-						outputBatchReshaped := outputBatch.Reshape(tensor.NewShape(outFeatures))
-						// Add scaled bias to this batch slice
-						outputBatchReshaped.AddScaled(outputBatchReshaped, bias, 1.0)
-					}
+				biasBroadcastFull := biasBroadcast.BroadcastTo(nil, output.Shape())
+				output.Add(output, biasBroadcastFull)
+			} else {
+				// Fallback: Add bias element-wise using iteration
+				// For each batch element, add the bias
+				batchSize := inputShape[0]
+				for b := 0; b < batchSize; b++ {
+					// Get output slice for this batch
+					outputBatch := output.Slice(nil, 0, b, 1)
+					outputBatchReshaped := outputBatch.Reshape(nil, tensor.NewShape(outFeatures))
+					// Add scaled bias to this batch slice
+					outputBatchReshaped.AddScaled(outputBatchReshaped, bias, 1.0)
 				}
 			}
 		}
@@ -236,8 +234,8 @@ func (d *Dense) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tensor, err
 			}
 			// Use MatMulTransposed: gradWeight = input^T @ gradOutput
 			// Reshape input and gradOutput to 2D for matrix operations
-			inputReshaped := input.Reshape(tensor.NewShape(1, d.inFeatures))
-			gradReshaped := gradOutput.Reshape(tensor.NewShape(1, d.outFeatures))
+			inputReshaped := input.Reshape(nil, tensor.NewShape(1, d.inFeatures))
+			gradReshaped := gradOutput.Reshape(nil, tensor.NewShape(1, d.outFeatures))
 			inputReshaped.MatMulTransposed(weightParam.Grad, gradReshaped, true, false)
 			d.Base.SetParam(types.ParamWeights, weightParam)
 		}
@@ -259,12 +257,12 @@ func (d *Dense) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tensor, err
 		// Compute gradient w.r.t. input: gradInput = gradOutput @ weight^T
 		// Use gradOutput's data type to match incoming gradient
 		// Reshape gradOutput to [1, outFeatures] for matrix multiplication
-		gradReshaped := gradOutput.Reshape(tensor.NewShape(1, d.outFeatures))
+		gradReshaped := gradOutput.Reshape(nil, tensor.NewShape(1, d.outFeatures))
 		// Result will be [1, inFeatures], need to reshape to [inFeatures]
 		gradInput2D := tensor.New(gradOutput.DataType(), tensor.NewShape(1, d.inFeatures))
 		gradReshaped.MatMulTransposed(gradInput2D, weightParam.Data, false, true)
 		// Reshape back to 1D
-		gradInput := gradInput2D.Reshape(tensor.NewShape(d.inFeatures))
+		gradInput := gradInput2D.Reshape(nil, tensor.NewShape(d.inFeatures))
 		if d.Base.CanLearn() {
 			d.Base.SetParam(types.ParamWeights, weightParam)
 		}

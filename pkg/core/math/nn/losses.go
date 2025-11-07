@@ -92,7 +92,7 @@ func (c *CrossEntropyLoss) Gradient(pred, target tensor.Tensor) (tensor.Tensor, 
 	// gradPred = -target / (pred + epsilon) where pred > 0, else 0
 	const epsilon = 1e-10
 	zeros := tensor.ZerosLike(pred)
-	mask := pred.GreaterThan(zeros) // 1.0 where pred > 0, 0.0 otherwise
+	mask := pred.GreaterThan(nil, zeros) // 1.0 where pred > 0, 0.0 otherwise
 	epsilonTensor := tensor.FullLike(pred, epsilon)
 	predPlusEps := pred.Clone().Add(nil, epsilonTensor)
 	negTarget := target.Clone().Negative(nil)
@@ -175,7 +175,7 @@ func (c *CategoricalCrossEntropy) Gradient(pred, target tensor.Tensor) (tensor.T
 	// Standard cross-entropy gradient: -target / (pred + epsilon) where pred > 0, else 0
 	const epsilon = 1e-10
 	zeros := tensor.ZerosLike(pred)
-	mask := pred.GreaterThan(zeros) // 1.0 where pred > 0, 0.0 otherwise
+	mask := pred.GreaterThan(nil, zeros) // 1.0 where pred > 0, 0.0 otherwise
 	epsilonTensor := tensor.FullLike(pred, epsilon)
 	predPlusEps := pred.Clone().Add(nil, epsilonTensor)
 	negTarget := target.Clone().Negative(nil)
@@ -214,8 +214,8 @@ func CrossEntropy(pred, target tensor.Tensor) float32 {
 	// Create masks: target != 0 && pred > 0
 	zeros := tensor.ZerosLike(pred)
 	targetAbs := target.Clone().Abs(nil)
-	targetNonZero := targetAbs.GreaterThan(zeros)             // mask for target != 0
-	predPositive := pred.GreaterThan(zeros)                   // mask for pred > 0
+	targetNonZero := targetAbs.GreaterThan(nil, zeros)        // mask for target != 0
+	predPositive := pred.GreaterThan(nil, zeros)              // mask for pred > 0
 	combinedMask := targetNonZero.Multiply(nil, predPositive) // combined condition mask
 
 	// Compute: -target * log(pred + epsilon) where condition is true

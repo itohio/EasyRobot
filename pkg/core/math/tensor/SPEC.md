@@ -326,16 +326,19 @@ func (t Tensor) SetAt(value float64, indices ...int)
 // Returns Element objects with Get() and Set() methods
 func (t *Tensor) Elements(fixedAxisValuePairs ...int) func(func(Element) bool)
 
-// Reshape returns a new tensor with the same data but different shape (zero-copy when possible)
-func (t Tensor) Reshape(newShape Shape) Tensor
+// Reshape returns a tensor with the same data but different shape (zero-copy when possible)
+// If dst is nil, creates a new tensor view (zero-copy when possible)
+// If dst is provided, copies reshaped data to dst and returns dst
+func (t Tensor) Reshape(dst Tensor, newShape Shape) Tensor
 
 // Copy copies data from src tensor into this tensor (supports type conversion)
 // Both tensors must have the same shape
 func (t Tensor) Copy(src Tensor) Tensor
 
 // Slice extracts a contiguous slice along the specified dimension
-// Returns a new tensor view (zero-copy when possible)
-func (t Tensor) Slice(dim int, start int, length int) Tensor
+// If dst is nil, creates a new tensor with copied data
+// If dst is provided, copies sliced data to dst and returns dst
+func (t Tensor) Slice(dst Tensor, dim int, start int, length int) Tensor
 
 // Data returns the underlying data storage as any (part of types.Tensor interface)
 // Returns []float32 for FP32 tensors, []int8 for INT8 tensors, etc.
@@ -399,10 +402,11 @@ func (s Shape) Iterator(fixedAxisValuePairs ...int) func(func([]int) bool)
 - **Recommendation**: For element iteration, prefer `Elements()` iterator; for low-level data access (e.g., integration with external libraries), use `Data()` with proper type checking
 
 **Reshaping:**
-- `Reshape(newShape []int) Tensor`: Creates a new tensor view with different shape but same data
+- `Reshape(dst Tensor, newShape Shape) Tensor`: Creates a tensor view with different shape but same data
 - Returns `Tensor` interface (part of `types.Tensor` interface)
 - The total number of elements must remain the same
-- Returns a zero-copy view when possible
+- If dst is nil, returns a zero-copy view when possible
+- If dst is provided, copies reshaped data to dst and returns dst
 
 ## Tensor Operations
 
@@ -590,14 +594,16 @@ sum := t.Sum(0, 2) // Reduces dimensions 0 and 2
 
 | Function | Description | Status |
 |----------|-------------|--------|
-| `BroadcastTo(shape []int) (*Tensor, error)` | Broadcast tensor to new shape | ✅ |
+| `BroadcastTo(dst Tensor, shape Shape) Tensor` | Broadcast tensor to new shape | ✅ |
 
 **Function Signature:**
 
 ```go
 // BroadcastTo: Broadcast tensor to target shape
-// Returns error if broadcasting is not possible
-func (t Tensor) BroadcastTo(shape Shape) (Tensor, error)
+// If dst is nil, creates a new tensor
+// If dst is provided, writes result to dst and returns dst
+// Panics if broadcasting is not possible or if dst shape doesn't match target shape
+func (t Tensor) BroadcastTo(dst Tensor, shape Shape) Tensor
 ```
 
 **Notes:**
@@ -617,9 +623,8 @@ All linear algebra operations use `math/primitive/fp32` functions for optimal pe
 | `MatMulTo(other Tensor, dst Tensor) Tensor` | Matrix multiply to destination | - | ✅ |
 | `MatMulTransposed(other, transposeA, transposeB bool, dst Tensor) Tensor` | Matrix multiply with optional transposition | `fp32.Gemm_NN`, `Gemm_NT`, `Gemm_TN`, `Gemm_TT` | ✅ |
 | `MatVecMulTransposed(matrix, vector, alpha, beta float64) Tensor` | Matrix-vector multiplication (transposed) | `fp32.Gemv_T` | ✅ |
-| `Transpose(dims ...int) Tensor` | Transpose dimensions | Manual implementation | ✅ (supports 2D+ via Permute) |
-| `TransposeTo(dst Tensor, dims ...int) Tensor` | Transpose to destination | - | ✅ |
-| `Permute(dims []int) Tensor` | Permute dimensions | `fp32.ElemCopy` | ✅ |
+| `Transpose(dst Tensor, dims []int) Tensor` | Transpose dimensions | Uses Permute with `fp32.ElemCopy` | ✅ |
+| `Permute(dst Tensor, dims []int) Tensor` | Permute dimensions | `fp32.ElemCopy` with stride-based copying | ✅ |
 
 **Function Signatures:**
 
@@ -642,15 +647,15 @@ func (t Tensor) MatVecMulTransposed(matrix, vector Tensor, alpha, beta float64) 
 
 // Transpose: Transpose dimensions
 // For 2D: [M, N] → [N, M] (swaps last two dimensions if no dims provided)
-// For 4D+: uses Permute to rearrange dimensions
-func (t Tensor) Transpose(dims ...int) Tensor
-
-// TransposeTo: Transpose to destination
-func (t Tensor) TransposeTo(dst Tensor, dims ...int) Tensor
+// Uses Permute internally with optimized fp32.ElemCopy for all cases
+// If dst is nil, creates a new tensor. If dst is provided, writes result to dst and returns dst
+func (t Tensor) Transpose(dst Tensor, dims []int) Tensor
 
 // Permute: Permute dimensions according to permutation
 // dims: permutation of [0, 1, 2, ..., rank-1]
-func (t Tensor) Permute(dims []int) Tensor
+// Uses optimized fp32.ElemCopy with stride-based copying
+// If dst is nil, creates a new tensor. If dst is provided, writes permuted result to dst and returns dst
+func (t Tensor) Permute(dst Tensor, dims []int) Tensor
 ```
 
 **MatMul Details:**
@@ -873,13 +878,13 @@ All pooling operations use `math/primitive/fp32` functions for optimized computa
 
 | Function | Description | Primitive Used | Status |
 |----------|-------------|----------------|--------|
-| `MaxPool2D(kernelSize, stride, padding []int) Tensor` | Max pooling | `fp32.MaxPool2D` | ✅ |
-| `MaxPool2DWithIndices(kernelSize, stride, padding []int) (Tensor, Tensor)` | Max pooling with indices | `fp32.MaxPool2DWithIndices` | ✅ |
-| `MaxPool2DBackward(gradOutput, indices, kernelSize, stride, padding []int) Tensor` | Max pooling backward pass | `fp32.MaxPool2DBackward` | ✅ |
-| `AvgPool2D(kernelSize, stride, padding []int) Tensor` | Average pooling | `fp32.AvgPool2D` | ✅ |
-| `AvgPool2DBackward(gradOutput, kernelSize, stride, padding []int) Tensor` | Average pooling backward pass | `fp32.AvgPool2DBackward` | ✅ |
-| `GlobalAvgPool2D() Tensor` | Global average pooling | `fp32.GlobalAvgPool2D` | ✅ |
-| `AdaptiveAvgPool2D(outputSize []int) Tensor` | Adaptive average pooling | `fp32.AdaptiveAvgPool2D` | ✅ |
+| `MaxPool2D(dst Tensor, kernelSize, stride, padding []int) Tensor` | Max pooling | `fp32.MaxPool2D` | ✅ |
+| `MaxPool2DWithIndices(dst Tensor, indicesDst Tensor, kernelSize, stride, padding []int) (Tensor, Tensor)` | Max pooling with indices | `fp32.MaxPool2DWithIndices` | ✅ |
+| `MaxPool2DBackward(dst Tensor, gradOutput, indices Tensor, kernelSize, stride, padding []int) Tensor` | Max pooling backward pass | `fp32.MaxPool2DBackward` | ✅ |
+| `AvgPool2D(dst Tensor, kernelSize, stride, padding []int) Tensor` | Average pooling | `fp32.AvgPool2D` | ✅ |
+| `AvgPool2DBackward(dst Tensor, gradOutput Tensor, kernelSize, stride, padding []int) Tensor` | Average pooling backward pass | `fp32.AvgPool2DBackward` | ✅ |
+| `GlobalAvgPool2D(dst Tensor) Tensor` | Global average pooling | `fp32.GlobalAvgPool2D` | ✅ |
+| `AdaptiveAvgPool2D(dst Tensor, outputSize []int) Tensor` | Adaptive average pooling | `fp32.AdaptiveAvgPool2D` | ✅ |
 
 **Function Signatures:**
 
@@ -890,40 +895,48 @@ All pooling operations use `math/primitive/fp32` functions for optimized computa
 // Stride: [strideH, strideW]
 // Padding: [padH, padW]
 // Output: [batch, channels, outHeight, outWidth]
-func (t Tensor) MaxPool2D(kernelSize, stride, padding []int) Tensor
+// If dst is nil, creates a new tensor. If dst is provided, writes result to dst and returns dst
+func (t Tensor) MaxPool2D(dst Tensor, kernelSize, stride, padding []int) Tensor
 
 // MaxPool2DWithIndices: Max pooling with indices
 // Returns: (output Tensor, indices Tensor)
-// Indices tensor is [batch, channels, outHeight, outWidth] as int16 (linear indices into input)
-func (t Tensor) MaxPool2DWithIndices(kernelSize, stride, padding []int) (Tensor, Tensor)
+// Indices tensor is [batch, channels, outHeight, outWidth] as int32 (linear indices into input)
+// If dst is nil, creates a new output tensor. If dst is provided, writes result to dst
+// If indicesDst is nil, creates a new indices tensor. If indicesDst is provided, writes indices to indicesDst
+func (t Tensor) MaxPool2DWithIndices(dst Tensor, indicesDst Tensor, kernelSize, stride, padding []int) (Tensor, Tensor)
 
 // MaxPool2DBackward: Backward pass for max pooling using stored indices
 // gradOutput: [batch, channels, outHeight, outWidth]
-// indices: [batch, channels, outHeight, outWidth] (as int16)
+// indices: [batch, channels, outHeight, outWidth] (as int32)
 // Returns: gradient w.r.t. input [batch, channels, inHeight, inWidth]
-func (t Tensor) MaxPool2DBackward(gradOutput, indices Tensor, kernelSize, stride, padding []int) Tensor
+// If dst is nil, creates a new tensor. If dst is provided, writes gradient to dst and returns dst
+func (t Tensor) MaxPool2DBackward(dst Tensor, gradOutput, indices Tensor, kernelSize, stride, padding []int) Tensor
 
 // AvgPool2D: Average pooling operation
 // Same signature as MaxPool2D
-func (t Tensor) AvgPool2D(kernelSize, stride, padding []int) Tensor
+// If dst is nil, creates a new tensor. If dst is provided, writes result to dst and returns dst
+func (t Tensor) AvgPool2D(dst Tensor, kernelSize, stride, padding []int) Tensor
 
 // AvgPool2DBackward: Backward pass for average pooling
 // gradOutput: [batch, channels, outHeight, outWidth]
 // Returns: gradient w.r.t. input [batch, channels, inHeight, inWidth]
-func (t Tensor) AvgPool2DBackward(gradOutput Tensor, kernelSize, stride, padding []int) Tensor
+// If dst is nil, creates a new tensor. If dst is provided, writes gradient to dst and returns dst
+func (t Tensor) AvgPool2DBackward(dst Tensor, gradOutput Tensor, kernelSize, stride, padding []int) Tensor
 
 // GlobalAvgPool2D: Global average pooling
 // Input: [batch, channels, height, width]
 // Output: [batch, channels]
 // Computes mean over spatial dimensions (height, width)
-func (t Tensor) GlobalAvgPool2D() Tensor
+// If dst is nil, creates a new tensor. If dst is provided, writes result to dst and returns dst
+func (t Tensor) GlobalAvgPool2D(dst Tensor) Tensor
 
 // AdaptiveAvgPool2D: Adaptive average pooling to fixed output size
 // Input: [batch, channels, height, width]
 // outputSize: [outHeight, outWidth] - target output spatial dimensions
 // Output: [batch, channels, outHeight, outWidth]
 // Divides input into approximately equal regions and averages each region
-func (t Tensor) AdaptiveAvgPool2D(outputSize []int) Tensor
+// If dst is nil, creates a new tensor. If dst is provided, writes result to dst and returns dst
+func (t Tensor) AdaptiveAvgPool2D(dst Tensor, outputSize []int) Tensor
 ```
 
 **Output Dimension Calculation:**
@@ -965,7 +978,7 @@ func (t Tensor) Col2Im(outputShape, kernelSize, stride, padding []int) Tensor
 | Function | Description | Primitive Used | Status |
 |----------|-------------|----------------|--------|
 | `ScatterAdd(dst, index, value Tensor) Tensor` | Scatter-add operation for gradient routing | `fp32.ScatterAdd` | ✅ |
-| `Unpad(padding []int) Tensor` | Remove padding from tensor | `fp32.ElemCopy` | ✅ |
+| `Unpad(dst Tensor, padding []int) Tensor` | Remove padding from tensor | `fp32.ElemCopy` | ✅ |
 
 **Function Signatures:**
 
@@ -980,8 +993,9 @@ func (t Tensor) ScatterAdd(dst, index, value Tensor) Tensor
 // Unpad: Removes padding from tensor
 // padding: [padBeforeDim0, padAfterDim0, padBeforeDim1, padAfterDim1, ...]
 // Each dimension has two padding values: before and after
-// Returns a new tensor with padding removed
-func (t Tensor) Unpad(padding []int) Tensor
+// If dst is nil, creates a new tensor with padding removed
+// If dst is provided, copies unpadded data to dst and returns dst
+func (t Tensor) Unpad(dst Tensor, padding []int) Tensor
 ```
 
 **Use Case:**
@@ -1141,7 +1155,7 @@ c := a.MatMul(b) // Result: [8, 32, 128]
 
 // Transpose
 a := tensor.FromFloat32(tensor.NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
-aT := a.Transpose() // Result: [3, 2]
+aT := a.Transpose(nil, nil) // Result: [3, 2] (default: swaps last two dimensions)
 ```
 
 ### Convolution Operations
@@ -1162,17 +1176,17 @@ output := input.Conv2D(kernel, bias, []int{1, 1}, []int{1, 1})
 input := tensor.New(tensor.DTFP32, tensor.NewShape(1, 64, 112, 112))
 
 // Max pooling: 2x2 kernel, stride 2, no padding
-output := input.MaxPool2D([]int{2, 2}, []int{2, 2}, []int{0, 0})
+output := input.MaxPool2D(nil, []int{2, 2}, []int{2, 2}, []int{0, 0})
 // Result: [1, 64, 56, 56]
 
 // Max pooling with indices (for backward pass)
-output, indices := input.MaxPool2DWithIndices([]int{2, 2}, []int{2, 2}, []int{0, 0})
+output, indices := input.MaxPool2DWithIndices(nil, nil, []int{2, 2}, []int{2, 2}, []int{0, 0})
 
 // Backward pass
-gradInput := input.MaxPool2DBackward(gradOutput, indices, []int{2, 2}, []int{2, 2}, []int{0, 0})
+gradInput := input.MaxPool2DBackward(nil, gradOutput, indices, []int{2, 2}, []int{2, 2}, []int{0, 0})
 
 // Global average pooling
-output := input.GlobalAvgPool2D()
+output := input.GlobalAvgPool2D(nil)
 // Result: [1, 64]
 ```
 
@@ -1348,7 +1362,9 @@ All tensor operations delegate to `math/primitive/fp32` when possible:
 | `Conv1DKernelGrad` | `fp32.Conv1DKernelGrad` | 1D convolution kernel gradient |
 | `MatMulTransposed` | `fp32.Gemm_NN`, `Gemm_NT`, `Gemm_TN`, `Gemm_TT` | Matrix multiplication with transposition |
 | `MatVecMulTransposed` | `fp32.Gemv_T` | Matrix-vector multiplication (transposed) |
-| `Permute` | `fp32.ElemCopy` | Dimension permutation |
+| `Permute` | `fp32.ElemCopy` | Dimension permutation (destination-based) |
+| `Transpose` | `fp32.ElemCopy` (via Permute) | Matrix/tensor transpose (destination-based) |
+| `Unpad` | `fp32.ElemCopy` | Remove padding (destination-based) |
 | `Fill` | `fp32.Fill` | Fill tensor with constant value |
 | `Copy` | `primitive.CopyWithConversion`, `fp32.Copy` | Copy with type conversion support |
 | `Slice` | `primitive.CopyWithStrides` | Slice tensor along dimension |

@@ -78,7 +78,7 @@ func (r *ReLU) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 	// ReLU gradient using primitives: gradInput = gradOutput * (input > 0 ? 1 : 0)
 	// Create mask: 1.0 where input > 0, 0.0 otherwise
 	zeros := tensor.ZerosLike(input)
-	mask := input.GreaterThan(zeros)
+	mask := input.GreaterThan(nil, zeros)
 
 	// Element-wise multiply: gradInput = gradOutput * mask
 	gradInput := tensor.New(gradOutput.DataType(), gradOutput.Shape())
@@ -363,10 +363,7 @@ func (s *Softmax) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 	sumTerm := prod.Sum(nil, []int{s.dim})
 
 	// Step 3: Broadcast sum back to original shape
-	sumBroadcast, err := sumTerm.BroadcastTo(output.Shape())
-	if err != nil {
-		return nil, fmt.Errorf("Softmax.Backward: broadcast failed: %w", err)
-	}
+	sumBroadcast := sumTerm.BroadcastTo(nil, output.Shape())
 
 	// Step 4: Compute: gradOutput - sumTerm
 	diff := tensor.New(gradOutput.DataType(), gradOutput.Shape())

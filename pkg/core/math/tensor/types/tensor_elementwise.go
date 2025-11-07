@@ -108,35 +108,36 @@ type TensorElementWise interface {
 	Negative(dst Tensor) Tensor
 
 	// Comparison Operations
-	// Comparison operations return new tensors with 1.0 where condition is true, 0.0 otherwise (matching TensorFlow behavior).
+	// Comparison operations return tensors with 1.0 where condition is true, 0.0 otherwise (matching TensorFlow behavior).
+	// All operations accept a dst parameter. If dst is nil, creates a new tensor. If dst is provided, writes result to dst and returns dst.
 
 	// Equal returns a tensor with 1.0 where t == other, 0.0 otherwise.
-	// Panics if shapes don't match. Returns a new tensor.
-	Equal(other Tensor) Tensor
+	// Panics if shapes don't match.
+	Equal(dst Tensor, other Tensor) Tensor
 
 	// GreaterThan returns a tensor with 1.0 where t > other, 0.0 otherwise.
-	// Panics if shapes don't match. Returns a new tensor.
-	GreaterThan(other Tensor) Tensor
+	// Panics if shapes don't match.
+	GreaterThan(dst Tensor, other Tensor) Tensor
 
 	// Greater is an alias for GreaterThan (matches TensorFlow naming).
 	// Returns a tensor with 1.0 where t > other, 0.0 otherwise.
-	Greater(other Tensor) Tensor
+	Greater(dst Tensor, other Tensor) Tensor
 
 	// Less returns a tensor with 1.0 where t < other, 0.0 otherwise.
-	// Panics if shapes don't match. Returns a new tensor.
-	Less(other Tensor) Tensor
+	// Panics if shapes don't match.
+	Less(dst Tensor, other Tensor) Tensor
 
 	// NotEqual returns a tensor with 1.0 where t != other, 0.0 otherwise (matches tf.not_equal).
-	// Panics if shapes don't match. Returns a new tensor.
-	NotEqual(other Tensor) Tensor
+	// Panics if shapes don't match.
+	NotEqual(dst Tensor, other Tensor) Tensor
 
 	// GreaterEqual returns a tensor with 1.0 where t >= other, 0.0 otherwise (matches tf.greater_equal).
-	// Panics if shapes don't match. Returns a new tensor.
-	GreaterEqual(other Tensor) Tensor
+	// Panics if shapes don't match.
+	GreaterEqual(dst Tensor, other Tensor) Tensor
 
 	// LessEqual returns a tensor with 1.0 where t <= other, 0.0 otherwise (matches tf.less_equal).
-	// Panics if shapes don't match. Returns a new tensor.
-	LessEqual(other Tensor) Tensor
+	// Panics if shapes don't match.
+	LessEqual(dst Tensor, other Tensor) Tensor
 
 	// Conditional Operations
 	// Where performs element-wise selection: dst[i] = condition[i] ? a[i] : b[i] (matches tf.where).

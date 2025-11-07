@@ -289,39 +289,15 @@ func (t Tensor) Transpose(dst types.Tensor, dims []int) types.Tensor {
 		}
 	}
 
-	var result types.Tensor
-	if rank == 2 && len(dims) == 2 && dims[0] == 1 && dims[1] == 0 {
-		// Simple 2D transpose: [M, N] -> [N, M]
-		result = t.transpose2D()
-	} else {
-		// For higher dimensions, use Permute
-		result = t.Permute(dims)
-	}
-
-	if result == nil {
-		return nil
-	}
-
-	if IsNil(dst) {
-		return result
-	}
-
-	if !result.Shape().Equal(dst.Shape()) {
-		panic(fmt.Sprintf("tensor.Transpose: destination shape mismatch: expected %v, got %v", result.Shape(), dst.Shape()))
-	}
-
-	// Copy result to dst using generics
-	resultData := types.GetTensorData[[]float32](result)
-	dstData := types.GetTensorData[[]float32](dst)
-	shapeSlice := result.Shape().ToSlice()
-	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(), result.Shape().Strides())
-	return dst
+	// Use Permute for all cases - it uses optimized fp32.ElemCopy with stride-based copying
+	// Permute already handles dst parameter efficiently, so pass it directly
+	return t.Permute(dst, dims)
 }
 
 // Permute permutes dimensions according to the provided permutation
 // dims: permutation of [0, 1, 2, ..., rank-1]
 // Example: Permute([]int{1, 0, 2, 3}) swaps dimensions 0 and 1 in a 4D tensor
-func (t Tensor) Permute(dims []int) types.Tensor {
+func (t Tensor) Permute(dst types.Tensor, dims []int) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
@@ -334,15 +310,31 @@ func (t Tensor) Permute(dims []int) types.Tensor {
 	}
 
 	// Validate permutation
-	used := make(map[int]bool)
-	for i, d := range dims {
-		if d < 0 || d >= rank {
-			panic(fmt.Sprintf("tensor.Permute: invalid dimension %d at position %d (rank %d)", d, i, rank))
+	// Use slice instead of map for better performance on small ranks (common case)
+	if rank <= 32 {
+		// Fast path: use slice for ranks <= 32 (avoids map allocation overhead)
+		used := make([]bool, rank)
+		for i, d := range dims {
+			if d < 0 || d >= rank {
+				panic(fmt.Sprintf("tensor.Permute: invalid dimension %d at position %d (rank %d)", d, i, rank))
+			}
+			if used[d] {
+				panic(fmt.Sprintf("tensor.Permute: duplicate dimension %d in permutation", d))
+			}
+			used[d] = true
 		}
-		if used[d] {
-			panic(fmt.Sprintf("tensor.Permute: duplicate dimension %d in permutation", d))
+	} else {
+		// Fallback to map for large ranks (rare case)
+		used := make(map[int]bool, rank)
+		for i, d := range dims {
+			if d < 0 || d >= rank {
+				panic(fmt.Sprintf("tensor.Permute: invalid dimension %d at position %d (rank %d)", d, i, rank))
+			}
+			if used[d] {
+				panic(fmt.Sprintf("tensor.Permute: duplicate dimension %d in permutation", d))
+			}
+			used[d] = true
 		}
-		used[d] = true
 	}
 
 	// Compute permuted shape
@@ -351,13 +343,25 @@ func (t Tensor) Permute(dims []int) types.Tensor {
 		newShape[i] = shape[d]
 	}
 
+	// Handle destination
+	var result types.Tensor
+	var resultData []float32
+	if IsNil(dst) {
+		// Create new tensor
+		result = New(t.DataType(), types.NewShape(newShape...))
+		resultData = types.GetTensorData[[]float32](result)
+	} else {
+		// Validate dst shape matches permuted shape
+		if !newShape.Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.Permute: destination shape mismatch: expected %v, got %v", newShape, dst.Shape()))
+		}
+		result = dst
+		resultData = types.GetTensorData[[]float32](dst)
+	}
+
 	// Compute source and destination strides
 	srcStrides := shape.Strides()
-	dstStrides := types.NewShape(newShape...).Strides()
-
-	// Create result tensor
-	result := New(t.DataType(), types.NewShape(newShape...))
-	resultPtr := &result
+	dstStrides := newShape.Strides()
 
 	// Compute permuted source strides (map through permutation)
 	permutedSrcStrides := make([]int, rank)
@@ -366,39 +370,17 @@ func (t Tensor) Permute(dims []int) types.Tensor {
 	}
 
 	// Use fp32.ElemCopy with permuted strides
-	resultData := types.GetTensorData[[]float32](resultPtr)
+	// newShape is already []int (Shape is []int), no need for ToSlice()
 	tData := types.GetTensorData[[]float32](t)
 	fp32.ElemCopy(
 		resultData,
 		tData,
-		newShape.ToSlice(),
+		[]int(newShape),
 		dstStrides,
 		permutedSrcStrides,
 	)
 
-	return resultPtr
-}
-
-// transpose2D transposes a 2D tensor: [M, N] -> [N, M]
-func (t Tensor) transpose2D() types.Tensor {
-	if t.shape.Rank() != 2 {
-		panic("tensor.transpose2D: tensor must be 2D")
-	}
-
-	M, N := t.shape[0], t.shape[1]
-	result := New(t.DataType(), types.NewShape(N, M))
-	resultPtr := &result
-
-	// Transpose: result[j][i] = t[i][j]
-	resultData := types.GetTensorData[[]float32](resultPtr)
-	tData := types.GetTensorData[[]float32](t)
-	for i := 0; i < M; i++ {
-		for j := 0; j < N; j++ {
-			resultData[j*M+i] = tData[i*N+j]
-		}
-	}
-
-	return resultPtr
+	return result
 }
 
 // Dot computes dot product (vector) or Frobenius inner product (matrix).

@@ -170,7 +170,7 @@ func TestMaxPool2D(t *testing.T) {
 			13, 14, 15, 16,
 		})
 
-		result := input.MaxPool2D([]int{2, 2}, []int{2, 2}, []int{0, 0})
+		result := input.MaxPool2D(nil, []int{2, 2}, []int{2, 2}, []int{0, 0})
 
 		// outHeight = (4+0-2)/2+1 = 2, outWidth = 2
 		expectedShape := []int{1, 1, 2, 2}
@@ -194,7 +194,7 @@ func TestMaxPool2D(t *testing.T) {
 			7, 8, 9,
 		})
 
-		result := input.MaxPool2D([]int{2, 2}, []int{1, 1}, []int{1, 1})
+		result := input.MaxPool2D(nil, []int{2, 2}, []int{1, 1}, []int{1, 1})
 
 		// outHeight = (3+2*1-2)/1+1 = 4, outWidth = 4
 		expectedShape := []int{1, 1, 4, 4}
@@ -215,7 +215,7 @@ func TestAvgPool2D(t *testing.T) {
 			13, 14, 15, 16,
 		})
 
-		result := input.AvgPool2D([]int{2, 2}, []int{2, 2}, []int{0, 0})
+		result := input.AvgPool2D(nil, []int{2, 2}, []int{2, 2}, []int{0, 0})
 
 		// outHeight = (4+0-2)/2+1 = 2, outWidth = 2
 		expectedShape := []int{1, 1, 2, 2}
@@ -241,7 +241,7 @@ func TestGlobalAvgPool2D(t *testing.T) {
 			7, 8, // channel 1, row 1
 		})
 
-		result := input.GlobalAvgPool2D()
+		result := input.GlobalAvgPool2D(nil)
 
 		// Output: [batch, channels] = [1, 2]
 		expectedShape := []int{1, 2}
@@ -271,7 +271,7 @@ func TestIm2Col(t *testing.T) {
 			7, 8, 9,
 		})
 
-		result := input.Im2Col([]int{2, 2}, []int{1, 1}, []int{0, 0})
+		result := input.Im2Col(nil, []int{2, 2}, []int{1, 1}, []int{0, 0})
 
 		// Output: [batch*outHeight*outWidth, channels*kernelH*kernelW]
 		// outHeight = (3+0-2)/1+1 = 2, outWidth = 2
@@ -295,7 +295,7 @@ func TestCol2Im(t *testing.T) {
 		}
 
 		// Output shape: [1, 1, 3, 3]
-		result := col.Col2Im([]int{1, 1, 3, 3}, []int{2, 2}, []int{1, 1}, []int{0, 0})
+		result := col.Col2Im(nil, []int{1, 1, 3, 3}, []int{2, 2}, []int{1, 1}, []int{0, 0})
 
 		expectedShape := []int{1, 1, 3, 3}
 		resultShape := result.Shape()
@@ -470,7 +470,7 @@ func TestAdaptiveAvgPool2D(t *testing.T) {
 		})
 
 		// Output size: [2, 2]
-		result := input.AdaptiveAvgPool2D([]int{2, 2})
+		result := input.AdaptiveAvgPool2D(nil, []int{2, 2})
 
 		// Output: [1, 1, 2, 2]
 		expectedShape := []int{1, 1, 2, 2}
@@ -504,7 +504,7 @@ func TestAdaptiveAvgPool2D(t *testing.T) {
 			70, 80, 90,
 		})
 
-		result := input.AdaptiveAvgPool2D([]int{1, 1})
+		result := input.AdaptiveAvgPool2D(nil, []int{1, 1})
 
 		// Output: [1, 2, 1, 1]
 		expectedShape := []int{1, 2, 1, 1}
@@ -526,7 +526,7 @@ func TestAdaptiveAvgPool2D(t *testing.T) {
 	t.Run("adaptive average pooling to larger size", func(t *testing.T) {
 		input := FromFloat32(types.NewShape(1, 1, 2, 2), []float32{1, 2, 3, 4})
 
-		result := input.AdaptiveAvgPool2D([]int{4, 4})
+		result := input.AdaptiveAvgPool2D(nil, []int{4, 4})
 
 		// Output: [1, 1, 4, 4]
 		expectedShape := []int{1, 1, 4, 4}

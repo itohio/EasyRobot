@@ -201,10 +201,10 @@ func (l *LSTM) computeForward(input, weightIH, weightHH, bias,
 	} else {
 		// input: [input_size], weight_ih: [4*hidden_size, input_size]
 		// Reshape input to [1, input_size] for matrix multiplication
-		inputReshaped := input.Reshape(tensor.NewShape(1, l.inputSize))
+		inputReshaped := input.Reshape(nil, tensor.NewShape(1, l.inputSize))
 		gatesTemp := inputReshaped.MatMulTransposed(nil, weightIH, false, true)
 		// Reshape back to [4*hidden_size]
-		gates = gatesTemp.Reshape(tensor.NewShape(4 * l.hiddenSize))
+		gates = gatesTemp.Reshape(nil, tensor.NewShape(4*l.hiddenSize))
 	}
 
 	// Add hidden contribution: hidden @ weight_hh.T
@@ -217,9 +217,9 @@ func (l *LSTM) computeForward(input, weightIH, weightHH, bias,
 		hiddenContribution = hiddenState.MatMulTransposed(hiddenContributionTmp, weightHH, false, true)
 	} else {
 		// hiddenState: [hidden_size], weight_hh: [4*hidden_size, hidden_size]
-		hiddenStateReshaped := hiddenState.Reshape(tensor.NewShape(1, l.hiddenSize))
+		hiddenStateReshaped := hiddenState.Reshape(nil, tensor.NewShape(1, l.hiddenSize))
 		hiddenContributionTemp := hiddenStateReshaped.MatMulTransposed(nil, weightHH, false, true)
-		hiddenContribution = hiddenContributionTemp.Reshape(tensor.NewShape(4 * l.hiddenSize))
+		hiddenContribution = hiddenContributionTemp.Reshape(nil, tensor.NewShape(4*l.hiddenSize))
 	}
 
 	// Add contributions: gates = gates + hiddenContribution
@@ -229,11 +229,8 @@ func (l *LSTM) computeForward(input, weightIH, weightHH, bias,
 	if isBatch {
 		// gates: [batch_size, 4*hidden_size], bias: [4*hidden_size]
 		// Broadcast bias to [batch_size, 4*hidden_size]
-		biasBroadcast := bias.Reshape(tensor.NewShape(1, 4*l.hiddenSize))
-		biasFull, err := biasBroadcast.BroadcastTo(gates.Shape())
-		if err != nil {
-			return fmt.Errorf("LSTM.computeForward: bias broadcast failed: %w", err)
-		}
+		biasBroadcast := bias.Reshape(nil, tensor.NewShape(1, 4*l.hiddenSize))
+		biasFull := biasBroadcast.BroadcastTo(nil, gates.Shape())
 		gates = gates.Add(gates, biasFull)
 	} else {
 		// gates: [4*hidden_size], bias: [4*hidden_size]
@@ -248,10 +245,10 @@ func (l *LSTM) computeForward(input, weightIH, weightHH, bias,
 		sliceDim = 0
 	}
 
-	iGate := gates.Slice(sliceDim, 0, l.hiddenSize)
-	fGate := gates.Slice(sliceDim, l.hiddenSize, l.hiddenSize)
-	gGate := gates.Slice(sliceDim, 2*l.hiddenSize, l.hiddenSize)
-	oGate := gates.Slice(sliceDim, 3*l.hiddenSize, l.hiddenSize)
+	iGate := gates.Slice(nil, sliceDim, 0, l.hiddenSize)
+	fGate := gates.Slice(nil, sliceDim, l.hiddenSize, l.hiddenSize)
+	gGate := gates.Slice(nil, sliceDim, 2*l.hiddenSize, l.hiddenSize)
+	oGate := gates.Slice(nil, sliceDim, 3*l.hiddenSize, l.hiddenSize)
 
 	// Apply activations
 	// iGate = sigmoid(iGate)

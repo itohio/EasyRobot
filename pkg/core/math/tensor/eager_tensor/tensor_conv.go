@@ -91,8 +91,7 @@ func (t Tensor) Conv2D(dst types.Tensor, kernel, bias types.Tensor, stride, padd
 	var result types.Tensor
 	outputShape := types.NewShape(batchSize, outChannels, outHeight, outWidth)
 	if IsNil(dst) {
-		resultTensor := New(t.DataType(), outputShape)
-		result = &resultTensor
+		result = New(t.DataType(), outputShape)
 	} else {
 		if !dst.Shape().Equal(outputShape) {
 			panic(fmt.Sprintf("tensor.Conv2D: destination shape mismatch: expected %v, got %v", outputShape, dst.Shape()))
@@ -200,8 +199,7 @@ func (t Tensor) Conv2DTransposed(dst types.Tensor, kernel, bias types.Tensor, st
 	var result types.Tensor
 	if IsNil(dst) {
 		// Create output tensor
-		resultTensor := New(t.DataType(), expectedShape)
-		result = &resultTensor
+		result = New(t.DataType(), expectedShape)
 	} else {
 		// Validate dst shape
 		if !dst.Shape().Equal(expectedShape) {
@@ -288,10 +286,10 @@ func (t Tensor) Conv1D(dst types.Tensor, kernel, bias types.Tensor, stride, padd
 
 	// Reshape to 4D for Conv2D: add width=1 dimension
 	// Input: [batch, inChannels, length] -> [batch, inChannels, length, 1]
-	input4D := t.Clone().Reshape([]int{batchSize, inChannels, length, 1})
+	input4D := t.Clone().Reshape(nil, types.NewShape(batchSize, inChannels, length, 1))
 
 	// Kernel: [outChannels, inChannels, kernelLen] -> [outChannels, inChannels, kernelLen, 1]
-	kernel4D := kernel.Clone().Reshape([]int{outChannels, inChannels, kernelLen, 1})
+	kernel4D := kernel.Clone().Reshape(nil, types.NewShape(outChannels, inChannels, kernelLen, 1))
 
 	// Use Conv2D with width=1
 	var result4D types.Tensor
@@ -308,17 +306,17 @@ func (t Tensor) Conv1D(dst types.Tensor, kernel, bias types.Tensor, stride, padd
 		if !dst.Shape().Equal(expectedShape) {
 			panic(fmt.Sprintf("tensor.Conv1D: destination shape mismatch: expected %v, got %v", expectedShape, dst.Shape()))
 		}
-		// Reshape dst to 4D for Conv2D
-		dst4D := dst.Reshape([]int{batchSize, outChannels, outLen, 1})
+		// Reshape dst to 4D for Conv2D (create view)
+		dst4D := dst.Reshape(nil, types.NewShape(batchSize, outChannels, outLen, 1))
 		result4D = input4D.Conv2D(dst4D, kernel4D, bias, []int{stride, 1}, []int{padding, 0})
 	}
 
 	// Reshape back to 3D: [batch, outChannels, outLen, 1] -> [batch, outChannels, outLen]
-	result := result4D.Reshape([]int{batchSize, outChannels, outLen})
+	result := result4D.Reshape(nil, types.NewShape(batchSize, outChannels, outLen))
 
 	// If original was 2D, remove batch dimension
 	if len(tShape) == 2 {
-		result = result.Reshape([]int{outChannels, outLen})
+		result = result.Reshape(nil, types.NewShape(outChannels, outLen))
 	}
 
 	if IsNil(dst) {
@@ -424,8 +422,9 @@ func (t Tensor) Conv1DTo(kernel, bias types.Tensor, dst types.Tensor, stride, pa
 }
 
 // Conv2DKernelGrad computes kernel gradients for 2D convolution
-// Returns the kernel gradient tensor with the same shape as the kernel
-func (t Tensor) Conv2DKernelGrad(outputGrad types.Tensor, kernel types.Tensor, stride, padding []int) types.Tensor {
+// If dst is nil, creates a new kernel gradient tensor with the same shape as the kernel.
+// If dst is provided, writes kernel gradient to dst and returns dst.
+func (t Tensor) Conv2DKernelGrad(dst types.Tensor, outputGrad types.Tensor, kernel types.Tensor, stride, padding []int) types.Tensor {
 	if t.shape == nil || outputGrad == nil || outputGrad.Shape() == nil || kernel == nil || kernel.Shape() == nil {
 		return nil
 	}
@@ -482,13 +481,25 @@ func (t Tensor) Conv2DKernelGrad(outputGrad types.Tensor, kernel types.Tensor, s
 	padH := padding[0]
 	padW := padding[1]
 
-	// Create kernel gradient tensor
-	kernelGrad := New(t.DataType(), kernelShape)
+	// Handle destination
+	var result types.Tensor
+	var kernelGradData []float32
+	if IsNil(dst) {
+		// Create kernel gradient tensor
+		result = New(t.DataType(), kernelShape)
+		kernelGradData = types.GetTensorData[[]float32](result)
+	} else {
+		// Validate dst shape matches kernel shape
+		if !kernelShape.Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.Conv2DKernelGrad: destination shape mismatch: expected %v, got %v", kernelShape, dst.Shape()))
+		}
+		result = dst
+		kernelGradData = types.GetTensorData[[]float32](dst)
+	}
 
 	// Call fp32.Conv2DKernelGrad
 	tData := types.GetTensorData[[]float32](t)
 	outputGradData := types.GetTensorData[[]float32](outputGrad)
-	kernelGradData := types.GetTensorData[[]float32](kernelGrad)
 	fp32.Conv2DKernelGrad(
 		kernelGradData,
 		tData,
@@ -508,12 +519,13 @@ func (t Tensor) Conv2DKernelGrad(outputGrad types.Tensor, kernel types.Tensor, s
 		padW,
 	)
 
-	return &kernelGrad
+	return result
 }
 
 // Conv1DKernelGrad computes kernel gradients for 1D convolution
-// Returns the kernel gradient tensor with the same shape as the kernel
-func (t Tensor) Conv1DKernelGrad(outputGrad types.Tensor, kernel types.Tensor, stride, padding int) types.Tensor {
+// If dst is nil, creates a new kernel gradient tensor with the same shape as the kernel.
+// If dst is provided, writes kernel gradient to dst and returns dst.
+func (t Tensor) Conv1DKernelGrad(dst types.Tensor, outputGrad types.Tensor, kernel types.Tensor, stride, padding int) types.Tensor {
 	if t.shape == nil || outputGrad == nil || outputGrad.Shape() == nil || kernel == nil || kernel.Shape() == nil {
 		return nil
 	}
@@ -574,13 +586,25 @@ func (t Tensor) Conv1DKernelGrad(outputGrad types.Tensor, kernel types.Tensor, s
 
 	kernelLen := kernelShape[2]
 
-	// Create kernel gradient tensor
-	kernelGrad := New(t.DataType(), kernelShape)
+	// Handle destination
+	var result types.Tensor
+	var kernelGradData []float32
+	if IsNil(dst) {
+		// Create kernel gradient tensor
+		result = New(t.DataType(), kernelShape)
+		kernelGradData = types.GetTensorData[[]float32](result)
+	} else {
+		// Validate dst shape matches kernel shape
+		if !kernelShape.Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.Conv1DKernelGrad: destination shape mismatch: expected %v, got %v", kernelShape, dst.Shape()))
+		}
+		result = dst
+		kernelGradData = types.GetTensorData[[]float32](dst)
+	}
 
 	// Call fp32.Conv1DKernelGrad
 	tData := types.GetTensorData[[]float32](t)
 	outputGradData := types.GetTensorData[[]float32](outputGrad)
-	kernelGradData := types.GetTensorData[[]float32](kernelGrad)
 	fp32.Conv1DKernelGrad(
 		kernelGradData,
 		tData,
@@ -595,7 +619,7 @@ func (t Tensor) Conv1DKernelGrad(outputGrad types.Tensor, kernel types.Tensor, s
 		padding,
 	)
 
-	return &kernelGrad
+	return result
 }
 
 // Conv1DTransposed performs transposed 1D convolution (deconvolution)
@@ -652,18 +676,18 @@ func (t Tensor) Conv1DTransposed(kernel types.Tensor, bias types.Tensor, stride,
 	// Reshape to 4D for Conv2DTransposed: add width=1 dimension
 	// Input: [batch, inChannels, length] -> [batch, inChannels, length, 1]
 	// Kernel: [inChannels, outChannels, kernelLen] -> [inChannels, outChannels, kernelLen, 1]
-	input4D := t.Clone().Reshape([]int{batchSize, inChannels, inLength, 1})
-	kernel4D := kernel.Clone().Reshape([]int{inChannels, inChannelsKernel, kernelLen, 1})
+	input4D := t.Clone().Reshape(nil, types.NewShape(batchSize, inChannels, inLength, 1))
+	kernel4D := kernel.Clone().Reshape(nil, types.NewShape(inChannels, inChannelsKernel, kernelLen, 1))
 
 	// Use Conv2DTransposed with width=1
 	result4D := input4D.Conv2DTransposed(nil, kernel4D, bias, []int{stride, 1}, []int{padding, 0})
 
 	// Reshape back to 3D: [batch, inChannelsKernel, outLength, 1] -> [batch, inChannelsKernel, outLength]
-	result := result4D.Reshape([]int{batchSize, inChannelsKernel, result4D.Shape()[2]})
+	result := result4D.Reshape(nil, types.NewShape(batchSize, inChannelsKernel, result4D.Shape()[2]))
 
 	// If original was 2D, remove batch dimension
 	if len(tShape) == 2 {
-		result = result.Reshape([]int{inChannelsKernel, result.Shape()[2]})
+		result = result.Reshape(nil, types.NewShape(inChannelsKernel, result.Shape()[2]))
 	}
 
 	return result
@@ -672,7 +696,7 @@ func (t Tensor) Conv1DTransposed(kernel types.Tensor, bias types.Tensor, stride,
 // MaxPool2D performs max pooling operation
 // Input shape: [batch, channels, height, width]
 // Output shape: [batch, channels, outHeight, outWidth]
-func (t Tensor) MaxPool2D(kernelSize, stride, padding []int) types.Tensor {
+func (t Tensor) MaxPool2D(dst types.Tensor, kernelSize, stride, padding []int) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
@@ -707,12 +731,23 @@ func (t Tensor) MaxPool2D(kernelSize, stride, padding []int) types.Tensor {
 	// Calculate output dimensions
 	outHeight := (inHeight+2*padH-kernelH)/strideH + 1
 	outWidth := (inWidth+2*padW-kernelW)/strideW + 1
+	outputShape := types.NewShape(batchSize, channels, outHeight, outWidth)
 
-	result := New(t.DataType(), types.NewShape(batchSize, channels, outHeight, outWidth))
-	resultPtr := &result
+	// Handle destination
+	var result types.Tensor
+	var resultData []float32
+	if IsNil(dst) {
+		result = New(t.DataType(), outputShape)
+		resultData = types.GetTensorData[[]float32](result)
+	} else {
+		if !outputShape.Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.MaxPool2D: destination shape mismatch: expected %v, got %v", outputShape, dst.Shape()))
+		}
+		result = dst
+		resultData = types.GetTensorData[[]float32](dst)
+	}
 
 	// Perform max pooling using fp32
-	resultData := types.GetTensorData[[]float32](resultPtr)
 	tData := types.GetTensorData[[]float32](t)
 	fp32.MaxPool2D(
 		resultData,
@@ -721,7 +756,7 @@ func (t Tensor) MaxPool2D(kernelSize, stride, padding []int) types.Tensor {
 		kernelH, kernelW, strideH, strideW, padH, padW,
 	)
 
-	return resultPtr
+	return result
 }
 
 // MaxPool2DWithIndices performs max pooling and returns both output and indices
@@ -729,7 +764,7 @@ func (t Tensor) MaxPool2D(kernelSize, stride, padding []int) types.Tensor {
 // Output shape: [batch, channels, outHeight, outWidth]
 // Indices shape: [batch, channels, outHeight, outWidth] as int32 (linear indices into input)
 // Returns: (output Tensor, indices Tensor)
-func (t Tensor) MaxPool2DWithIndices(kernelSize, stride, padding []int) (types.Tensor, types.Tensor) {
+func (t Tensor) MaxPool2DWithIndices(dst types.Tensor, indicesDst types.Tensor, kernelSize, stride, padding []int) (types.Tensor, types.Tensor) {
 	if t.shape == nil {
 		return nil, nil
 	}
@@ -764,15 +799,39 @@ func (t Tensor) MaxPool2DWithIndices(kernelSize, stride, padding []int) (types.T
 	// Calculate output dimensions
 	outHeight := (inHeight+2*padH-kernelH)/strideH + 1
 	outWidth := (inWidth+2*padW-kernelW)/strideW + 1
+	outputShape := types.NewShape(batchSize, channels, outHeight, outWidth)
+	indicesShape := outputShape
 
-	result := New(t.DataType(), types.NewShape(batchSize, channels, outHeight, outWidth))
-	resultPtr := &result
+	// Handle destination for output
+	var result types.Tensor
+	var resultData []float32
+	if IsNil(dst) {
+		result = New(t.DataType(), outputShape)
+		resultData = types.GetTensorData[[]float32](result)
+	} else {
+		if !outputShape.Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.MaxPool2DWithIndices: destination shape mismatch: expected %v, got %v", outputShape, dst.Shape()))
+		}
+		result = dst
+		resultData = types.GetTensorData[[]float32](dst)
+	}
 
-	indicesSize := batchSize * channels * outHeight * outWidth
-	indicesDataInt32 := make([]int32, indicesSize)
+	// Handle destination for indices
+	var indices types.Tensor
+	var indicesDataInt32 []int32
+	if IsNil(indicesDst) {
+		indicesSize := batchSize * channels * outHeight * outWidth
+		indicesDataInt32 = make([]int32, indicesSize)
+		indices = FromArray(indicesShape, indicesDataInt32)
+	} else {
+		if !indicesShape.Equal(indicesDst.Shape()) {
+			panic(fmt.Sprintf("tensor.MaxPool2DWithIndices: indices destination shape mismatch: expected %v, got %v", indicesShape, indicesDst.Shape()))
+		}
+		indices = indicesDst
+		indicesDataInt32 = types.GetTensorData[[]int32](indicesDst)
+	}
 
 	// Perform max pooling with indices using fp32
-	resultData := types.GetTensorData[[]float32](resultPtr)
 	tData := types.GetTensorData[[]float32](t)
 	fp32.MaxPool2DWithIndices(
 		resultData,
@@ -782,8 +841,7 @@ func (t Tensor) MaxPool2DWithIndices(kernelSize, stride, padding []int) (types.T
 		kernelH, kernelW, strideH, strideW, padH, padW,
 	)
 
-	indices := FromArray(types.NewShape(batchSize, channels, outHeight, outWidth), indicesDataInt32)
-	return resultPtr, &indices
+	return result, indices
 }
 
 // MaxPool2DBackward performs backward pass for max pooling using stored indices
@@ -791,7 +849,7 @@ func (t Tensor) MaxPool2DWithIndices(kernelSize, stride, padding []int) (types.T
 // indices: indices from forward pass [batch, channels, outHeight, outWidth] as int32
 // kernelSize, stride, padding: pooling parameters
 // Returns: gradient w.r.t. input [batch, channels, inHeight, inWidth]
-func (t Tensor) MaxPool2DBackward(gradOutput types.Tensor, indices types.Tensor, kernelSize, stride, padding []int) types.Tensor {
+func (t Tensor) MaxPool2DBackward(dst types.Tensor, gradOutput types.Tensor, indices types.Tensor, kernelSize, stride, padding []int) types.Tensor {
 	if t.shape == nil || gradOutput == nil || gradOutput.Shape() == nil || indices == nil || indices.Shape() == nil {
 		return nil
 	}
@@ -827,6 +885,7 @@ func (t Tensor) MaxPool2DBackward(gradOutput types.Tensor, indices types.Tensor,
 
 	outHeight := gradOutputShape[2]
 	outWidth := gradOutputShape[3]
+	expectedShape := types.NewShape(batchSize, channels, inHeight, inWidth)
 
 	kernelH := kernelSize[0]
 	kernelW := kernelSize[1]
@@ -835,12 +894,21 @@ func (t Tensor) MaxPool2DBackward(gradOutput types.Tensor, indices types.Tensor,
 	padH := padding[0]
 	padW := padding[1]
 
-	// Create gradient input tensor (zero-initialized)
-	gradInput := New(t.DataType(), types.NewShape(batchSize, channels, inHeight, inWidth))
-	gradInputPtr := &gradInput
+	// Handle destination
+	var result types.Tensor
+	var gradInputData []float32
+	if IsNil(dst) {
+		result = New(t.DataType(), expectedShape)
+		gradInputData = types.GetTensorData[[]float32](result)
+	} else {
+		if !expectedShape.Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.MaxPool2DBackward: destination shape mismatch: expected %v, got %v", expectedShape, dst.Shape()))
+		}
+		result = dst
+		gradInputData = types.GetTensorData[[]float32](dst)
+	}
 
 	// Get data
-	gradInputData := types.GetTensorData[[]float32](gradInputPtr)
 	gradOutputData := types.GetTensorData[[]float32](gradOutput)
 	indicesDataInt32 := types.GetTensorData[[]int32](indices)
 	tData := types.GetTensorData[[]float32](t)
@@ -856,13 +924,13 @@ func (t Tensor) MaxPool2DBackward(gradOutput types.Tensor, indices types.Tensor,
 		kernelH, kernelW, strideH, strideW, padH, padW,
 	)
 
-	return gradInputPtr
+	return result
 }
 
 // AvgPool2D performs average pooling operation
 // Input shape: [batch, channels, height, width]
 // Output shape: [batch, channels, outHeight, outWidth]
-func (t Tensor) AvgPool2D(kernelSize, stride, padding []int) types.Tensor {
+func (t Tensor) AvgPool2D(dst types.Tensor, kernelSize, stride, padding []int) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
@@ -886,12 +954,23 @@ func (t Tensor) AvgPool2D(kernelSize, stride, padding []int) types.Tensor {
 
 	outHeight := (inHeight+2*padH-kernelH)/strideH + 1
 	outWidth := (inWidth+2*padW-kernelW)/strideW + 1
+	outputShape := types.NewShape(batchSize, channels, outHeight, outWidth)
 
-	result := New(t.DataType(), types.NewShape(batchSize, channels, outHeight, outWidth))
-	resultPtr := &result
+	// Handle destination
+	var result types.Tensor
+	var resultData []float32
+	if IsNil(dst) {
+		result = New(t.DataType(), outputShape)
+		resultData = types.GetTensorData[[]float32](result)
+	} else {
+		if !outputShape.Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.AvgPool2D: destination shape mismatch: expected %v, got %v", outputShape, dst.Shape()))
+		}
+		result = dst
+		resultData = types.GetTensorData[[]float32](dst)
+	}
 
 	// Perform average pooling using fp32
-	resultData := types.GetTensorData[[]float32](resultPtr)
 	tData := types.GetTensorData[[]float32](t)
 	fp32.AvgPool2D(
 		resultData,
@@ -900,14 +979,14 @@ func (t Tensor) AvgPool2D(kernelSize, stride, padding []int) types.Tensor {
 		kernelH, kernelW, strideH, strideW, padH, padW,
 	)
 
-	return resultPtr
+	return result
 }
 
 // AvgPool2DBackward performs backward pass for average pooling
 // gradOutput: input gradient [batch, channels, outHeight, outWidth]
 // kernelSize, stride, padding: pooling parameters
 // Returns: gradient w.r.t. input [batch, channels, inHeight, inWidth]
-func (t Tensor) AvgPool2DBackward(gradOutput types.Tensor, kernelSize, stride, padding []int) types.Tensor {
+func (t Tensor) AvgPool2DBackward(dst types.Tensor, gradOutput types.Tensor, kernelSize, stride, padding []int) types.Tensor {
 	if t.shape == nil || gradOutput == nil || gradOutput.Shape() == nil {
 		return nil
 	}
@@ -939,6 +1018,7 @@ func (t Tensor) AvgPool2DBackward(gradOutput types.Tensor, kernelSize, stride, p
 
 	outHeight := gradOutputShape[2]
 	outWidth := gradOutputShape[3]
+	expectedShape := types.NewShape(batchSize, channels, inHeight, inWidth)
 
 	kernelH := kernelSize[0]
 	kernelW := kernelSize[1]
@@ -947,12 +1027,21 @@ func (t Tensor) AvgPool2DBackward(gradOutput types.Tensor, kernelSize, stride, p
 	padH := padding[0]
 	padW := padding[1]
 
-	// Create gradient input tensor (zero-initialized)
-	gradInput := New(t.DataType(), types.NewShape(batchSize, channels, inHeight, inWidth))
-	gradInputPtr := &gradInput
+	// Handle destination
+	var result types.Tensor
+	var gradInputData []float32
+	if IsNil(dst) {
+		result = New(t.DataType(), expectedShape)
+		gradInputData = types.GetTensorData[[]float32](result)
+	} else {
+		if !expectedShape.Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.AvgPool2DBackward: destination shape mismatch: expected %v, got %v", expectedShape, dst.Shape()))
+		}
+		result = dst
+		gradInputData = types.GetTensorData[[]float32](dst)
+	}
 
 	// Get data
-	gradInputData := types.GetTensorData[[]float32](gradInputPtr)
 	gradOutputData := types.GetTensorData[[]float32](gradOutput)
 
 	// Call fp32.AvgPool2DBackward
@@ -964,13 +1053,13 @@ func (t Tensor) AvgPool2DBackward(gradOutput types.Tensor, kernelSize, stride, p
 		kernelH, kernelW, strideH, strideW, padH, padW,
 	)
 
-	return gradInputPtr
+	return result
 }
 
 // GlobalAvgPool2D performs global average pooling
 // Input shape: [batch, channels, height, width]
 // Output shape: [batch, channels]
-func (t Tensor) GlobalAvgPool2D() types.Tensor {
+func (t Tensor) GlobalAvgPool2D(dst types.Tensor) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
@@ -984,12 +1073,23 @@ func (t Tensor) GlobalAvgPool2D() types.Tensor {
 	channels := tShape[1]
 	height := tShape[2]
 	width := tShape[3]
+	outputShape := types.NewShape(batchSize, channels)
 
-	result := New(t.DataType(), types.NewShape(batchSize, channels))
-	resultPtr := &result
+	// Handle destination
+	var result types.Tensor
+	var resultData []float32
+	if IsNil(dst) {
+		result = New(t.DataType(), outputShape)
+		resultData = types.GetTensorData[[]float32](result)
+	} else {
+		if !outputShape.Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.GlobalAvgPool2D: destination shape mismatch: expected %v, got %v", outputShape, dst.Shape()))
+		}
+		result = dst
+		resultData = types.GetTensorData[[]float32](dst)
+	}
 
 	// Perform global average pooling using fp32
-	resultData := types.GetTensorData[[]float32](resultPtr)
 	tData := types.GetTensorData[[]float32](t)
 	fp32.GlobalAvgPool2D(
 		resultData,
@@ -997,7 +1097,7 @@ func (t Tensor) GlobalAvgPool2D() types.Tensor {
 		batchSize, channels, height, width,
 	)
 
-	return resultPtr
+	return result
 }
 
 // DepthwiseConv2D performs depthwise separable 2D convolution
@@ -1362,7 +1462,7 @@ func (t Tensor) Conv3D(kernel, bias types.Tensor, stride, padding []int) types.T
 // Input shape: [batch, channels, height, width]
 // outputSize: [outHeight, outWidth] - target output spatial dimensions
 // Output shape: [batch, channels, outHeight, outWidth]
-func (t Tensor) AdaptiveAvgPool2D(outputSize []int) types.Tensor {
+func (t Tensor) AdaptiveAvgPool2D(dst types.Tensor, outputSize []int) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
@@ -1388,11 +1488,23 @@ func (t Tensor) AdaptiveAvgPool2D(outputSize []int) types.Tensor {
 		panic(fmt.Sprintf("tensor.AdaptiveAvgPool2D: outputSize must be positive, got %v", outputSize))
 	}
 
-	result := New(t.DataType(), types.NewShape(batchSize, channels, outHeight, outWidth))
-	resultPtr := &result
+	outputShape := types.NewShape(batchSize, channels, outHeight, outWidth)
+
+	// Handle destination
+	var result types.Tensor
+	var resultData []float32
+	if IsNil(dst) {
+		result = New(t.DataType(), outputShape)
+		resultData = types.GetTensorData[[]float32](result)
+	} else {
+		if !outputShape.Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.AdaptiveAvgPool2D: destination shape mismatch: expected %v, got %v", outputShape, dst.Shape()))
+		}
+		result = dst
+		resultData = types.GetTensorData[[]float32](dst)
+	}
 
 	// Perform adaptive average pooling using fp32
-	resultData := types.GetTensorData[[]float32](resultPtr)
 	tData := types.GetTensorData[[]float32](t)
 	fp32.AdaptiveAvgPool2D(
 		resultData,
@@ -1400,14 +1512,16 @@ func (t Tensor) AdaptiveAvgPool2D(outputSize []int) types.Tensor {
 		batchSize, channels, height, width, outHeight, outWidth,
 	)
 
-	return resultPtr
+	return result
 }
 
 // Im2Col converts image patches to columns (for convolution)
 // Input shape: [batch, channels, height, width]
 // Output shape: [batch*outHeight*outWidth, channels*kernelH*kernelW]
 // Uses fp32.Im2Col for optimized computation
-func (t Tensor) Im2Col(kernelSize, stride, padding []int) types.Tensor {
+// If dst is nil, creates a new tensor.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) Im2Col(dst types.Tensor, kernelSize, stride, padding []int) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
@@ -1446,12 +1560,24 @@ func (t Tensor) Im2Col(kernelSize, stride, padding []int) types.Tensor {
 	// Output shape: [batch*outHeight*outWidth, channels*kernelH*kernelW]
 	colHeight := batchSize * outHeight * outWidth
 	colWidth := channels * kernelH * kernelW
+	outputShape := types.NewShape(colHeight, colWidth)
 
-	result := New(t.DataType(), types.NewShape(colHeight, colWidth))
-	resultPtr := &result
+	// Handle destination
+	var result types.Tensor
+	var resultData []float32
+	if IsNil(dst) {
+		result = New(t.DataType(), outputShape)
+		resultData = types.GetTensorData[[]float32](result)
+	} else {
+		// Validate dst shape matches output shape
+		if !outputShape.Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.Im2Col: destination shape mismatch: expected %v, got %v", outputShape, dst.Shape()))
+		}
+		result = dst
+		resultData = types.GetTensorData[[]float32](dst)
+	}
 
 	// Call fp32.Im2Col
-	resultData := types.GetTensorData[[]float32](resultPtr)
 	tData := types.GetTensorData[[]float32](t)
 	fp32.Im2Col(
 		resultData,
@@ -1468,14 +1594,16 @@ func (t Tensor) Im2Col(kernelSize, stride, padding []int) types.Tensor {
 		strideW,
 	)
 
-	return resultPtr
+	return result
 }
 
 // Col2Im converts columns back to image (inverse of Im2Col)
 // Input shape: [batch*outHeight*outWidth, channels*kernelH*kernelW]
 // Output shape: [batch, channels, height, width]
 // Uses fp32.Col2Im for optimized computation
-func (t Tensor) Col2Im(outputShape, kernelSize, stride, padding []int) types.Tensor {
+// If dst is nil, creates a new tensor.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) Col2Im(dst types.Tensor, outputShape, kernelSize, stride, padding []int) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
@@ -1520,11 +1648,24 @@ func (t Tensor) Col2Im(outputShape, kernelSize, stride, padding []int) types.Ten
 		panic(fmt.Sprintf("tensor.Col2Im: col height %d doesn't match expected %d", colHeight, batchSize*outHeight*outWidth))
 	}
 
-	result := New(t.DataType(), types.NewShape(batchSize, channels, height, width))
-	resultPtr := &result
+	expectedOutputShape := types.NewShape(batchSize, channels, height, width)
+
+	// Handle destination
+	var result types.Tensor
+	var resultData []float32
+	if IsNil(dst) {
+		result = New(t.DataType(), expectedOutputShape)
+		resultData = types.GetTensorData[[]float32](result)
+	} else {
+		// Validate dst shape matches expected output shape
+		if !expectedOutputShape.Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.Col2Im: destination shape mismatch: expected %v, got %v", expectedOutputShape, dst.Shape()))
+		}
+		result = dst
+		resultData = types.GetTensorData[[]float32](dst)
+	}
 
 	// Call fp32.Col2Im
-	resultData := types.GetTensorData[[]float32](resultPtr)
 	tData := types.GetTensorData[[]float32](t)
 	fp32.Col2Im(
 		resultData,
@@ -1541,7 +1682,7 @@ func (t Tensor) Col2Im(outputShape, kernelSize, stride, padding []int) types.Ten
 		strideW,
 	)
 
-	return resultPtr
+	return result
 }
 
 // ScatterAdd adds values to destination tensor at positions specified by indices
@@ -1600,8 +1741,9 @@ func (t Tensor) ScatterAdd(dst types.Tensor, index types.Tensor, value types.Ten
 
 // Unpad removes padding from tensor
 // padding: [padBeforeDim0, padAfterDim0, padBeforeDim1, padAfterDim1, ...]
-// Returns: tensor with padding removed
-func (t Tensor) Unpad(padding []int) types.Tensor {
+// If dst is nil, creates a new tensor with padding removed.
+// If dst is provided, copies unpadded data to dst and returns dst.
+func (t Tensor) Unpad(dst types.Tensor, padding []int) types.Tensor {
 	if t.shape == nil {
 		return nil
 	}
@@ -1627,13 +1769,36 @@ func (t Tensor) Unpad(padding []int) types.Tensor {
 		}
 	}
 
-	// Create result tensor
-	result := New(t.DataType(), types.NewShape(newShape...))
-	resultPtr := &result
+	if len(newShape) == 0 {
+		if IsNil(dst) {
+			result := New(t.DataType(), types.NewShape(newShape...))
+			return &result
+		}
+		if !newShape.Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.Unpad: destination shape mismatch: expected %v, got %v", newShape, dst.Shape()))
+		}
+		return dst
+	}
+
+	// Handle destination
+	var result types.Tensor
+	var resultData []float32
+	if IsNil(dst) {
+		// Create new tensor
+		result = New(t.DataType(), types.NewShape(newShape...))
+		resultData = types.GetTensorData[[]float32](result)
+	} else {
+		// Validate dst shape matches unpadded shape
+		if !newShape.Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.Unpad: destination shape mismatch: expected %v, got %v", newShape, dst.Shape()))
+		}
+		result = dst
+		resultData = types.GetTensorData[[]float32](dst)
+	}
 
 	// Compute strides
 	srcStrides := shape.Strides()
-	dstStrides := types.NewShape(newShape...).Strides()
+	dstStrides := newShape.Strides()
 
 	// Calculate source offset (skip padding at the beginning of each dimension)
 	srcOffset := 0
@@ -1643,14 +1808,7 @@ func (t Tensor) Unpad(padding []int) types.Tensor {
 	}
 
 	// Get data slices starting from offset
-	resultData := types.GetTensorData[[]float32](resultPtr)
 	tData := types.GetTensorData[[]float32](t)
-
-	// Use ElemCopy with source offset handled by adjusting the source data pointer
-	// We'll create a view by copying with stride adjustment
-	if len(newShape) == 0 {
-		return resultPtr
-	}
 
 	// Create source view starting at offset
 	srcView := tData[srcOffset:]
@@ -1662,7 +1820,7 @@ func (t Tensor) Unpad(padding []int) types.Tensor {
 		srcStrides, // Use original strides (offset is handled by srcView)
 	)
 
-	return resultPtr
+	return result
 }
 
 // Pad adds padding to tensor with constant value (matches tf.pad).

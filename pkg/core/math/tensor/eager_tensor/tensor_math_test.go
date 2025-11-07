@@ -455,9 +455,8 @@ func TestArgMax(t *testing.T) {
 func TestBroadcastTo(t *testing.T) {
 	t.Run("already correct shape", func(t *testing.T) {
 		tensor := FromFloat32(types.NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
-		result, err := tensor.BroadcastTo([]int{2, 3})
+		result := tensor.BroadcastTo(nil, []int{2, 3})
 
-		assert.NoError(t, err, "Unexpected error")
 		assert.True(t, result.Shape().Equal(types.NewShape(2, 3)), "Shape should be [2, 3]")
 
 		resultData := result.Data().([]float32)
@@ -477,9 +476,7 @@ func TestBroadcastTo(t *testing.T) {
 
 	t.Run("broadcast expand", func(t *testing.T) {
 		tensor := FromFloat32(types.NewShape(1, 3), []float32{1, 2, 3})
-		result, err := tensor.BroadcastTo([]int{2, 3})
-
-		assert.NoError(t, err, "Unexpected error")
+		result := tensor.BroadcastTo(nil, []int{2, 3})
 
 		expected := []float32{1, 2, 3, 1, 2, 3}
 		assert.True(t, result.Shape().Equal(types.NewShape(2, 3)), "Shape should be [2,3]")
@@ -491,9 +488,40 @@ func TestBroadcastTo(t *testing.T) {
 
 	t.Run("error: incompatible shapes", func(t *testing.T) {
 		tensor := FromFloat32(types.NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
-		_, err := tensor.BroadcastTo([]int{3, 4})
 
-		assert.Error(t, err, "Expected error for incompatible shapes")
+		assert.Panics(t, func() {
+			tensor.BroadcastTo(nil, []int{3, 4})
+		}, "Expected panic for incompatible shapes")
+	})
+
+	t.Run("with destination", func(t *testing.T) {
+		tensor := FromFloat32(types.NewShape(1, 3), []float32{1, 2, 3})
+		dst := New(types.FP32, types.NewShape(2, 3))
+		originalData := tensor.Clone()
+
+		result := tensor.BroadcastTo(dst, []int{2, 3})
+
+		assert.Equal(t, dst.ID(), result.ID(), "BroadcastTo should return dst when provided")
+		expected := []float32{1, 2, 3, 1, 2, 3}
+		dstData := dst.Data().([]float32)
+		for i := range expected {
+			assert.InDeltaf(t, float64(expected[i]), float64(dstData[i]), 1e-6, "Data[%d] = %f, expected %f", i, dstData[i], expected[i])
+		}
+		// Verify original unchanged
+		originalDataSlice := originalData.Data().([]float32)
+		tData := tensor.Data().([]float32)
+		for i := range originalDataSlice {
+			assert.InDelta(t, float64(originalDataSlice[i]), float64(tData[i]), 1e-6, "Original tensor should be unchanged at %d", i)
+		}
+	})
+
+	t.Run("destination shape mismatch", func(t *testing.T) {
+		tensor := FromFloat32(types.NewShape(1, 3), []float32{1, 2, 3})
+		dst := New(types.FP32, types.NewShape(3, 3)) // Wrong shape
+
+		assert.Panics(t, func() {
+			tensor.BroadcastTo(dst, []int{2, 3})
+		}, "Expected panic for destination shape mismatch")
 	})
 }
 
@@ -872,7 +900,7 @@ func TestEqual(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.t1.Equal(tt.t2)
+			result := tt.t1.Equal(nil, tt.t2)
 
 			assert.NotNil(t, result, "Equal should not return nil")
 			assert.True(t, result.Shape().Equal(tt.t1.Shape()), "Equal result shape should match input shape")
@@ -883,6 +911,24 @@ func TestEqual(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("with dst parameter", func(t *testing.T) {
+		t1 := FromFloat32(types.NewShape(2, 2), []float32{1, 2, 3, 4})
+		t2 := FromFloat32(types.NewShape(2, 2), []float32{1, 2, 5, 4})
+		dst := New(types.FP32, types.NewShape(2, 2))
+
+		result := t1.Equal(dst, t2)
+
+		if result.ID() != dst.ID() {
+			t.Errorf("Equal() with dst should return dst")
+		}
+
+		resultData := result.Data().([]float32)
+		expected := []float32{1, 1, 0, 1}
+		for i := range expected {
+			assert.InDeltaf(t, float64(expected[i]), float64(resultData[i]), 1e-5, "Data[%d] = %f, expected %f", i, resultData[i], expected[i])
+		}
+	})
 }
 
 func TestGreaterThan(t *testing.T) {
@@ -908,7 +954,7 @@ func TestGreaterThan(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.t1.GreaterThan(tt.t2)
+			result := tt.t1.GreaterThan(nil, tt.t2)
 
 			assert.NotNil(t, result, "GreaterThan should not return nil")
 			assert.True(t, result.Shape().Equal(tt.t1.Shape()), "GreaterThan result shape should match input shape")
@@ -927,8 +973,8 @@ func TestGreater(t *testing.T) {
 		t1 := FromFloat32(types.NewShape(2, 2), []float32{5, 2, 3, 4})
 		t2 := FromFloat32(types.NewShape(2, 2), []float32{3, 2, 5, 4})
 
-		result1 := t1.GreaterThan(t2)
-		result2 := t1.Greater(t2)
+		result1 := t1.GreaterThan(nil, t2)
+		result2 := t1.Greater(nil, t2)
 
 		assert.NotNil(t, result1, "GreaterThan result should not be nil")
 		assert.NotNil(t, result2, "Greater result should not be nil")
@@ -965,7 +1011,7 @@ func TestLess(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.t1.Less(tt.t2)
+			result := tt.t1.Less(nil, tt.t2)
 
 			assert.NotNil(t, result, "Less should not return nil")
 			assert.True(t, result.Shape().Equal(tt.t1.Shape()), "Less result shape should match input shape")
