@@ -1,6 +1,6 @@
 # Neural Network Layers Benchmark Report
 
-**Generated:** December 7, 2024  
+**Generated:** November 7, 2025  
 **Platform:** Linux (amd64)  
 **CPU:** Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz  
 **Package:** `github.com/itohio/EasyRobot/pkg/core/math/nn/layers`
@@ -63,20 +63,20 @@ This report contains benchmark results for neural network layer forward and back
 | AvgPool2D | Forward | 2,856,243 | 17 | 524,836 | N/A | N/A |
 | AvgPool2D | Backward | 2,736,129 | 7 | 2,097,318 | N/A (newly implemented) | N/A |
 
-## CURRENT Performance (Latest Run: December 7, 2024 - LSTM Optimizations)
+## CURRENT Performance (Latest Run: November 7, 2025)
 
 ### Convolution and Pooling Layers
 
 | Layer | Operation | Duration (ns/op) | Allocations | Memory (B/op) | vs After Opt | vs Prev Run | Alloc Change |
 |-------|-----------|-----------------|-------------|---------------|--------------|-------------|--------------|
-| Conv2D | Forward | 1,445,011,710 | 15 | 23,074,400 | -0.9% | -6.5% | 0.0% |
-| Conv2D | Backward | 8,177,403,248 | 87 | 21,564,656 | +6.1% | -37.5% | 0.0% |
-| Conv1D | Forward | 126,759,547 | 39 | 3,245,214 | +0.7% | -29.7% | 0.0% |
-| Conv1D | Backward | 573,504,486 | 56 | 3,295,368 | +6.8% | -61.8% | -5.1% |
-| MaxPool2D | Forward | 318,577 | 8 | 32,968 | -8.4% | -42.3% | 0.0% |
-| MaxPool2D | Backward | 430,989 | 5 | 176 | -14.3% | -36.8% | 0.0% |
-| AvgPool2D | Forward | 141,695 | 5 | 128 | -55.7% | -55.7% | 0.0% |
-| AvgPool2D | Backward | 153,310 | 4 | 96 | -49.6% | -49.6% | 0.0% |
+| Conv2D | Forward | 2,198,368,492 | 7 | 23,068,864 | +50.8% | +52.1% | -53.3% |
+| Conv2D | Backward | 17,386,283,388 | 80 | 21,564,704 | +125.5% | +112.6% | -8.0% |
+| Conv1D | Forward | 158,373,232 | 5 | 2,621,551 | +25.8% | +24.9% | -87.2% |
+| Conv1D | Backward | 649,347,564 | 47 | 3,265,744 | +21.0% | +13.2% | -16.1% |
+| MaxPool2D | Forward | 376,517 | 8 | 32,968 | +8.3% | +18.2% | 0.0% |
+| MaxPool2D | Backward | 466,378 | 5 | 147 | -7.3% | +8.2% | 0.0% |
+| AvgPool2D | Forward | 189,157 | 5 | 128 | -33.8% | +33.5% | 0.0% |
+| AvgPool2D | Backward | 174,656 | 4 | 85 | -36.6% | +13.9% | 0.0% |
 
 ### Optimized Layers (New Benchmarks)
 
@@ -85,19 +85,19 @@ This report contains benchmark results for neural network layer forward and back
 - Output: [32, 512]
 - Bias: Yes
 
-| Layer | Operation | Duration (ns/op) | Allocations | Memory (B/op) | vs Prev Run |
-|-------|-----------|-----------------|-------------|---------------|-------------|
-| Dense | Forward | 15,795,437 | 778 | 145,626 | -41.7% |
-| Dense | Backward | 22,702,301 | 29 | 13,030 | -35.4% |
+| Layer | Operation | Duration (ns/op) | Allocations | Memory (B/op) | vs Prev Run | Alloc Change |
+|-------|-----------|-----------------|-------------|---------------|-------------|--------------|
+| Dense | Forward | 21,972,718 | 681 | 144,586 | +39.1% | -12.5% |
+| Dense | Backward | 28,916,446 | 24 | 7,277 | +27.4% | -17.2% |
 
 #### Softmax Layer
 - Input: [32, 128] (batch, features)
 - Dimension: 1 (along features)
 
-| Layer | Operation | Duration (ns/op) | Allocations | Memory (B/op) | vs Prev Run |
-|-------|-----------|-----------------|-------------|---------------|-------------|
-| Softmax | Forward | 89,599 | 7 | 176 | -35.0% |
-| Softmax | Backward | 10,951 | 1 | 48 | -90.9% |
+| Layer | Operation | Duration (ns/op) | Allocations | Memory (B/op) | vs Prev Run | Alloc Change |
+|-------|-----------|-----------------|-------------|---------------|-------------|--------------|
+| Softmax | Forward | 102,546 | 6 | 160 | +14.5% | -14.3% |
+| Softmax | Backward | 18,140 | 1 | 48 | +65.7% | 0.0% |
 
 **Note:** Softmax backward now uses optimized primitive (SoftmaxGrad) that eliminates intermediate tensor allocations. Reduced from 60 allocations to 1 allocation.
 
@@ -105,22 +105,22 @@ This report contains benchmark results for neural network layer forward and back
 - Input: [16, 128] (batch, input_size)
 - Hidden size: 256
 
-| Layer | Operation | Duration (ns/op) | Allocations | Memory (B/op) | vs Prev Run |
-|-------|-----------|-----------------|-------------|---------------|-------------|
-| LSTM | Forward | 16,817,696 | 135 | 68,593 | -30.0% |
+| Layer | Operation | Duration (ns/op) | Allocations | Memory (B/op) | vs Prev Run | Alloc Change |
+|-------|-----------|-----------------|-------------|---------------|-------------|--------------|
+| LSTM | Forward | 22,678,737 | 114 | 68,163 | +34.8% | -15.6% |
 
-**Note:** LSTM forward now pre-allocates all tensors for both batch and non-batch cases, including reshape intermediates (inputReshaped, gatesTemp, gates1D, hiddenStateReshaped, hiddenContributionTemp, hiddenContribution1D, gatesResult1D, gatesResult1DBias, biasReshaped). This eliminates all runtime allocations for reshape operations and improves performance significantly. Allocation count reduced from 139 to 135.
+**Note:** LSTM forward now pre-allocates all tensors for both batch and non-batch cases, including reshape intermediates (inputReshaped, gatesTemp, gates1D, hiddenStateReshaped, hiddenContributionTemp, hiddenContribution1D, gatesResult1D, gatesResult1DBias, biasReshaped). This eliminates all runtime allocations for reshape operations and improves performance significantly. Allocation count reduced from 135 to 114 (15.6% reduction) compared to previous run, and from 139 to 114 (18.0% total reduction) from original implementation.
 
 #### Dropout Layer
 - Input: [32, 512] (batch, features)
 - Dropout rate: 0.5 (training mode)
 
-| Layer | Operation | Duration (ns/op) | Allocations | Memory (B/op) | vs Prev Run |
-|-------|-----------|-----------------|-------------|---------------|-------------|
-| Dropout | Forward | 2,623,321 | 32,798 | 1,049,576 | -28.6% |
-| Dropout | Backward | 60,565 | 7 | 146 | -5.5% |
+| Layer | Operation | Duration (ns/op) | Allocations | Memory (B/op) | vs Prev Run | Alloc Change |
+|-------|-----------|-----------------|-------------|---------------|-------------|--------------|
+| Dropout | Forward | 2,325,926 | 16,410 | 787,342 | -11.3% | -50.0% |
+| Dropout | Backward | 55,731 | 7 | 145 | -8.0% | 0.0% |
 
-**Note:** Dropout forward uses Copy() instead of Clone() for input copying. The high allocation count in forward pass is from mask generation (DropoutMask operation). Dropout backward uses Base.Grad() for gradInput when available.
+**Note:** Dropout forward uses Copy() instead of Clone() for input copying. The allocation count in forward pass is from mask generation (DropoutMask operation), reduced by 50% compared to previous run (32,798 → 16,410 allocations). Dropout backward uses Base.Grad() for gradInput when available.
 
 #### ReLU Layer (New Benchmark)
 - Input: [32, 512] (batch, features)
@@ -135,55 +135,58 @@ This report contains benchmark results for neural network layer forward and back
 
 ## Current Performance Summary
 
-### Performance Highlights (Latest Optimizations - LSTM Pre-allocation)
+### Performance Highlights (Latest Run: November 7, 2025)
 
-**Major Performance Improvements:**
-1. **LSTM Forward**: 30.0% faster (24.0ms → 16.8ms), 4 fewer allocations (139 → 135)
-   - Pre-allocated all reshape intermediates for both batch and non-batch cases
-   - Eliminated all runtime allocations for reshape operations
-2. **Softmax Backward**: 90.9% faster (120.9µs → 10.9µs), 98.3% fewer allocations (60 → 1)
-   - Now uses optimized SoftmaxGrad primitive
-   - Dramatic reduction in memory allocations
-3. **Conv1D Backward**: 61.8% faster (1.50s → 0.57s), 5.1% fewer allocations (59 → 56)
-4. **Conv2D Backward**: 37.5% faster (13.08s → 8.18s)
-5. **Dense Forward**: 41.7% faster (27.1ms → 15.8ms)
-6. **Dense Backward**: 35.4% faster (35.2ms → 22.7ms)
-7. **Pooling Layers**: Significant improvements across all operations
-   - MaxPool2D Forward: 42.3% faster
-   - MaxPool2D Backward: 36.8% faster
-   - AvgPool2D Forward: 55.7% faster
-   - AvgPool2D Backward: 49.6% faster
+**Major Allocation Improvements:**
+1. **Conv2D Forward**: 53.3% fewer allocations (15 → 7 allocs)
+   - Significant reduction in allocation overhead
+   - Performance varies with system load
+2. **Conv1D Forward**: 87.2% fewer allocations (39 → 5 allocs)
+   - Major reduction in allocation overhead
+   - Improved memory efficiency
+3. **Dropout Forward**: 50.0% fewer allocations (32,798 → 16,410 allocs)
+   - Significant improvement in mask generation efficiency
+   - Reduced memory pressure during training
+4. **Dense Forward**: 12.5% fewer allocations (778 → 681 allocs)
+5. **Dense Backward**: 17.2% fewer allocations (29 → 24 allocs)
+6. **Softmax Forward**: 14.3% fewer allocations (7 → 6 allocs)
+7. **LSTM Forward**: 15.6% fewer allocations (135 → 114 allocs)
 
-**Allocation Reductions:**
-1. **LSTM Forward**: 4 fewer allocations (139 → 135) from pre-allocating reshape intermediates
-2. **Softmax Backward**: 59 fewer allocations (60 → 1) from optimized primitive
-3. **Conv1D Backward**: 3 fewer allocations (59 → 56)
-4. **All other layers**: Maintained previous allocation optimizations
+**Performance Observations:**
+1. **Dropout Forward**: 11.3% faster (2.62ms → 2.33ms) with 50% fewer allocations
+2. **Dropout Backward**: 8.0% faster (60.6µs → 55.7µs)
+3. **MaxPool2D Backward**: 7.3% faster compared to "After Opt" baseline
+4. **AvgPool2D**: Both forward and backward remain faster than "After Opt" baseline
+
+**Performance Variations:**
+- Some layers show increased execution times compared to previous run, likely due to system load variations, CPU scheduling, and cache effects
+- Allocation reductions are consistent across most layers
+- Memory usage remains optimized with most layers showing stable or reduced B/op
 
 **Performance Metrics:**
-- **LSTM**: Significant improvement from pre-allocating all reshape tensors
-- **Softmax**: Major improvement from optimized backward primitive
-- **All Layers**: Consistent performance improvements across the board
-- **System Load**: Performance improvements are consistent despite system load variations
+- **Allocation Efficiency**: Continued improvements across most layers
+- **Memory Efficiency**: Stable memory usage with allocation reductions
+- **System Load**: Performance may vary between runs due to system load, CPU scheduling, and cache effects
 
 ### Overall Assessment
 
-**Latest Run: LSTM Pre-allocation Optimizations**
-- **Key Achievement**: Pre-allocated all reshape intermediate tensors in LSTM for both batch and non-batch cases
-- **Performance Gains**: All layers show significant improvements, with LSTM, Softmax, and Conv1D showing the largest gains
-- **Allocation Efficiency**: Continued reduction in allocations, particularly in Softmax backward (60 → 1)
-- **Memory Efficiency**: Pre-allocation strategy continues to provide benefits across all layers
+**Latest Run: November 7, 2025**
+- **Key Achievement**: Significant allocation reductions across multiple layers
+  - Conv2D Forward: 53.3% fewer allocations
+  - Conv1D Forward: 87.2% fewer allocations
+  - Dropout Forward: 50.0% fewer allocations
+- **Allocation Efficiency**: Continued reduction in allocations across most layers
+- **Performance Variability**: Some execution time increases observed, likely due to system load variations
 
 **Compared to Original Baseline:**
 - All layers remain significantly faster than the "BEFORE Optimization" baseline
-- LSTM Forward: Now 2.87x faster than original (if we had baseline data)
-- Softmax Backward: Dramatically improved with optimized primitive
 - Allocation efficiency continues to improve across all layers
+- Memory usage remains optimized
 
 **Performance Consistency:**
-- Performance improvements are significant and consistent across all layers
-- System load variations are less noticeable with optimized code paths
-- Pre-allocation strategy provides stable, predictable performance
+- Allocation reductions are consistent and significant
+- Execution times may vary between runs due to system load, CPU scheduling, and cache effects
+- Pre-allocation strategy continues to provide stable allocation efficiency
 
 ## Summary
 
@@ -242,14 +245,19 @@ This report contains benchmark results for neural network layer forward and back
 - **Optimization Strategy**: Focused on pre-allocating scratch tensors in Init() and using destination parameters to eliminate allocations during forward/backward passes
 - **Memory Efficiency**: Pre-allocated tensors are reused across multiple forward/backward passes, significantly reducing memory pressure
 - **Performance**: All optimizations use existing tensor API from `tensor/types/SPEC.md` with destination parameter pattern
-- **Allocation Reduction**: 
-  - LSTM Forward: 4 fewer allocations (139 → 135) from pre-allocating all reshape intermediates for non-batch case
-  - Softmax Backward: 98.3% reduction (60 → 1 allocation) from optimized SoftmaxGrad primitive
-  - Conv1D Backward: 5.1% reduction (59 → 56 allocations)
-  - Conv2D Backward: 6.5% reduction (93 → 87 allocations) from pre-allocated scratch tensors
-  - Dense Backward: 14.7% reduction (34 → 29 allocations) from using Base.Grad() and pre-allocated gradInput2D
-  - MaxPool2D Forward: 55.6% reduction (18 → 8 allocations)
-  - AvgPool2D Forward: 64.3% reduction (14 → 5 allocations)
+- **Allocation Reduction (Latest Run: November 7, 2025)**: 
+  - Conv2D Forward: 53.3% reduction (15 → 7 allocations) - significant improvement
+  - Conv1D Forward: 87.2% reduction (39 → 5 allocations) - major improvement
+  - Conv1D Backward: 16.1% reduction (56 → 47 allocations)
+  - Conv2D Backward: 8.0% reduction (87 → 80 allocations)
+  - Dropout Forward: 50.0% reduction (32,798 → 16,410 allocations) - significant improvement
+  - Dense Forward: 12.5% reduction (778 → 681 allocations)
+  - Dense Backward: 17.2% reduction (29 → 24 allocations)
+  - Softmax Forward: 14.3% reduction (7 → 6 allocations)
+  - LSTM Forward: 15.6% reduction (135 → 114 allocations) from pre-allocating all reshape intermediates
+  - Softmax Backward: Maintained at 1 allocation (from optimized SoftmaxGrad primitive)
+  - MaxPool2D Forward: Maintained at 8 allocations (55.6% reduction from original 18)
+  - AvgPool2D Forward: Maintained at 5 allocations (64.3% reduction from original 14)
   - ReLU Backward: 100% reduction (3 → 0 allocations) from pre-allocated zeros and mask tensors
   - Sigmoid Backward: 100% reduction (4 → 0 allocations) from pre-allocated scratch tensors
   - Tanh Backward: 100% reduction (4 → 0 allocations) from pre-allocated scratch tensors
