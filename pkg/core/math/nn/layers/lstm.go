@@ -26,6 +26,14 @@ type LSTM struct {
 	fGateSigmoid tensorTypes.Tensor // Forget gate activation [hidden_size] or [batch_size, hidden_size]
 	gGateTanh    tensorTypes.Tensor // Cell gate activation [hidden_size] or [batch_size, hidden_size]
 	oGateSigmoid tensorTypes.Tensor // Output gate activation [hidden_size] or [batch_size, hidden_size]
+	// Pre-allocated intermediate computation tensors for optimization
+	gatesTmp              tensorTypes.Tensor // For input @ weight_ih.T result [batch_size, 4*hidden_size] or [4*hidden_size]
+	hiddenContributionTmp tensorTypes.Tensor // For hiddenState @ weight_hh.T result [batch_size, 4*hidden_size] or [4*hidden_size]
+	biasFull              tensorTypes.Tensor // For broadcast bias result [batch_size, 4*hidden_size]
+	cellNew               tensorTypes.Tensor // For updated cell state [hidden_size] or [batch_size, hidden_size]
+	iGateG                tensorTypes.Tensor // For iGate * gGate [hidden_size] or [batch_size, hidden_size]
+	cellNewTanhTmp        tensorTypes.Tensor // For tanh(cellNew) [hidden_size] or [batch_size, hidden_size]
+	outputNew             tensorTypes.Tensor // For oGate * tanh(cellNew) [hidden_size] or [batch_size, hidden_size]
 }
 
 // NewLSTM creates a new LSTM layer with the given input and hidden sizes.
@@ -126,6 +134,24 @@ func (l *LSTM) Init(inputShape tensor.Shape) error {
 	l.gGateTanh = tensor.New(dtype, outputShape)
 	l.oGateSigmoid = tensor.New(dtype, outputShape)
 
+	// Pre-allocate intermediate computation tensors to avoid allocations in computeForward
+	// Handle both batch and non-batch cases
+	if len(inputShape) == 2 {
+		// Batch case: gates have shape [batch_size, 4*hidden_size]
+		gatesShape := tensor.NewShape(inputShape[0], 4*l.hiddenSize)
+		l.gatesTmp = tensor.New(dtype, gatesShape)
+		l.hiddenContributionTmp = tensor.New(dtype, gatesShape)
+		l.biasFull = tensor.New(dtype, gatesShape)
+	}
+	// For non-batch case, gates have shape [4*hidden_size], but we'll allocate on-demand
+	// since the shape is different and single sample is less common
+
+	// Pre-allocate state update tensors (same shape as output)
+	l.cellNew = tensor.New(dtype, outputShape)
+	l.iGateG = tensor.New(dtype, outputShape)
+	l.cellNewTanhTmp = tensor.New(dtype, outputShape)
+	l.outputNew = tensor.New(dtype, outputShape)
+
 	return nil
 }
 
@@ -212,9 +238,12 @@ func (l *LSTM) computeForward(input, weightIH, weightHH, bias,
 	if isBatch {
 		// input: [batch_size, input_size], weight_ih: [4*hidden_size, input_size]
 		// input @ weight_ih.T = [batch_size, 4*hidden_size]
-		gatesShape := tensor.NewShape(inputShape[0], 4*l.hiddenSize)
-		gatesTmp := tensor.New(input.DataType(), gatesShape)
-		gates = input.MatMulTransposed(gatesTmp, weightIH, false, true)
+		// Use pre-allocated gatesTmp if available and shape matches
+		expectedGatesShape := tensor.NewShape(inputShape[0], 4*l.hiddenSize)
+		if tensor.IsNil(l.gatesTmp) || !l.gatesTmp.Shape().Equal(expectedGatesShape) {
+			l.gatesTmp = tensor.New(input.DataType(), expectedGatesShape)
+		}
+		gates = input.MatMulTransposed(l.gatesTmp, weightIH, false, true)
 	} else {
 		// input: [input_size], weight_ih: [4*hidden_size, input_size]
 		// Reshape input to [1, input_size] for matrix multiplication
@@ -229,9 +258,12 @@ func (l *LSTM) computeForward(input, weightIH, weightHH, bias,
 	if isBatch {
 		// hiddenState: [batch_size, hidden_size], weight_hh: [4*hidden_size, hidden_size]
 		// hiddenState @ weight_hh.T = [batch_size, 4*hidden_size]
-		hiddenContributionShape := tensor.NewShape(inputShape[0], 4*l.hiddenSize)
-		hiddenContributionTmp := tensor.New(hiddenState.DataType(), hiddenContributionShape)
-		hiddenContribution = hiddenState.MatMulTransposed(hiddenContributionTmp, weightHH, false, true)
+		// Use pre-allocated hiddenContributionTmp if available and shape matches
+		expectedHiddenContributionShape := tensor.NewShape(inputShape[0], 4*l.hiddenSize)
+		if tensor.IsNil(l.hiddenContributionTmp) || !l.hiddenContributionTmp.Shape().Equal(expectedHiddenContributionShape) {
+			l.hiddenContributionTmp = tensor.New(hiddenState.DataType(), expectedHiddenContributionShape)
+		}
+		hiddenContribution = hiddenState.MatMulTransposed(l.hiddenContributionTmp, weightHH, false, true)
 	} else {
 		// hiddenState: [hidden_size], weight_hh: [4*hidden_size, hidden_size]
 		hiddenStateReshaped := hiddenState.Reshape(nil, tensor.NewShape(1, l.hiddenSize))
@@ -246,9 +278,13 @@ func (l *LSTM) computeForward(input, weightIH, weightHH, bias,
 	if isBatch {
 		// gates: [batch_size, 4*hidden_size], bias: [4*hidden_size]
 		// Broadcast bias to [batch_size, 4*hidden_size]
+		// Use pre-allocated biasFull if available and shape matches
+		if tensor.IsNil(l.biasFull) || !l.biasFull.Shape().Equal(gates.Shape()) {
+			l.biasFull = tensor.New(gates.DataType(), gates.Shape())
+		}
 		biasBroadcast := bias.Reshape(nil, tensor.NewShape(1, 4*l.hiddenSize))
-		biasFull := biasBroadcast.BroadcastTo(nil, gates.Shape())
-		gates = gates.Add(gates, biasFull)
+		biasBroadcast.BroadcastTo(l.biasFull, gates.Shape())
+		gates = gates.Add(gates, l.biasFull)
 	} else {
 		// gates: [4*hidden_size], bias: [4*hidden_size]
 		gates = gates.Add(gates, bias)
@@ -286,21 +322,19 @@ func (l *LSTM) computeForward(input, weightIH, weightHH, bias,
 	oGate = l.oGateSigmoid
 
 	// Update cell state: cell = fGate * cellState + iGate * gGate
-	cellNew := tensor.New(cellState.DataType(), cellState.Shape())
-	cellState.Multiply(cellNew, fGate) // cellNew = cellState * fGate
-	iGateG := tensor.New(iGate.DataType(), iGate.Shape())
-	iGate.Multiply(iGateG, gGate) // iGateG = iGate * gGate
-	cellNew.Add(cellNew, iGateG)  // cellNew = cellNew + iGateG (in-place)
+	// Use pre-allocated tensors (cellNew and iGateG)
+	cellState.Multiply(l.cellNew, fGate) // cellNew = cellState * fGate
+	iGate.Multiply(l.iGateG, gGate)      // iGateG = iGate * gGate
+	l.cellNew.Add(l.cellNew, l.iGateG)   // cellNew = cellNew + iGateG (in-place)
 
 	// Update hidden state: hidden = oGate * tanh(cellNew)
-	cellNewTanhTmp := tensor.New(cellNew.DataType(), cellNew.Shape())
-	cellNewTanh := cellNew.Tanh(cellNewTanhTmp)
-	outputNew := tensor.New(oGate.DataType(), oGate.Shape())
-	oGate.Multiply(outputNew, cellNewTanh) // outputNew = oGate * cellNewTanh
+	// Use pre-allocated tensors (cellNewTanhTmp and outputNew)
+	cellNewTanh := l.cellNew.Tanh(l.cellNewTanhTmp)
+	oGate.Multiply(l.outputNew, cellNewTanh) // outputNew = oGate * cellNewTanh
 
 	// Copy to output and cellState
-	output.Copy(outputNew)
-	cellState.Copy(cellNew)
+	output.Copy(l.outputNew)
+	cellState.Copy(l.cellNew)
 
 	return nil
 }

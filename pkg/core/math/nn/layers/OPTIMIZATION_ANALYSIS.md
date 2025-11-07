@@ -396,11 +396,359 @@ According to SPEC.md, these operations follow the pattern: "If dst is nil, creat
 
 ---
 
+### 8. LSTM Layer - Additional Intermediate Tensor Allocations
+
+**Issue**: LSTM `computeForward` creates multiple intermediate tensors for gates computation and state updates that could be pre-allocated.
+
+**Current Pattern** (Inefficient):
+```go
+// lstm.go lines 216, 233
+gatesTmp := tensor.New(input.DataType(), gatesShape)  // Intermediate 1
+hiddenContributionTmp := tensor.New(hiddenState.DataType(), hiddenContributionShape)  // Intermediate 2
+
+// lstm.go line 250
+biasFull := biasBroadcast.BroadcastTo(nil, gates.Shape())  // Intermediate 3 (allocates new tensor)
+
+// lstm.go lines 289-298
+cellNew := tensor.New(cellState.DataType(), cellState.Shape())  // Intermediate 4
+iGateG := tensor.New(iGate.DataType(), iGate.Shape())  // Intermediate 5
+cellNewTanhTmp := tensor.New(cellNew.DataType(), cellNew.Shape())  // Intermediate 6
+outputNew := tensor.New(oGate.DataType(), oGate.Shape())  // Intermediate 7
+```
+
+**Impact**:
+- 7+ tensor allocations per forward pass (in addition to gate activation tensors already optimized)
+- High memory pressure for LSTM layers
+- `BroadcastTo` creates new tensor even though it supports `dst` parameter
+
+**Optimization Using Existing API**:
+According to SPEC.md:
+- `MatMulTransposed(dst Tensor, ...)` accepts dst parameter (line 186)
+- `BroadcastTo(dst Tensor, shape Shape)` accepts dst parameter (line 112)
+- `Multiply(dst Tensor, other Tensor)` accepts dst parameter (line 126)
+- `Add(dst Tensor, other Tensor)` accepts dst parameter (line 124)
+- `Tanh(dst Tensor)` accepts dst parameter (line 206)
+
+**Action**:
+- **Pre-allocate scratch tensors**: Store all intermediate tensors in `LSTM` struct during `Init()`
+  - `gatesTmp` tensor (for input @ weight_ih.T result)
+  - `hiddenContributionTmp` tensor (for hiddenState @ weight_hh.T result)
+  - `biasFull` tensor (for broadcast bias result, shape: [batch_size, 4*hidden_size])
+  - `cellNew` tensor (for updated cell state)
+  - `iGateG` tensor (for iGate * gGate)
+  - `cellNewTanhTmp` tensor (for tanh(cellNew))
+  - `outputNew` tensor (for oGate * tanh(cellNew))
+- **Use destination parameters**: Pass pre-allocated tensors as `dst` to all operations
+- **Reuse tensors**: All intermediate tensors can be reused across forward passes
+- **Handle dynamic shapes**: For non-batch case, some tensors have different shapes (need conditional allocation or separate tensors)
+
+This reduces 7 tensor allocations to 0 per forward pass (after initial allocation in `Init()`).
+
+**Files Affected**:
+- `lstm.go`: Lines 209-298 - Pre-allocate intermediate tensors in `Init()`, use dst parameters
+
+---
+
+### 9. Dense Layer Backward - Unnecessary Tensor Allocations
+
+**Issue**: Dense backward pass creates new tensors for gradInput that could use pre-allocated grad tensor from Base.
+
+**Current Pattern** (Inefficient):
+```go
+// dense.go line 255 (single sample case)
+gradInput2D := tensor.New(gradOutput.DataType(), tensor.NewShape(1, d.inFeatures))  // Intermediate
+gradInput := gradInput2D.Reshape(nil, tensor.NewShape(d.inFeatures))  // View (zero-copy)
+
+// dense.go line 303 (batch case)
+gradInput := tensor.New(gradOutput.DataType(), tensor.NewShape(batchSize, d.inFeatures))  // New allocation
+```
+
+**Impact**:
+- 1-2 tensor allocations per backward pass
+- Base.Grad() is pre-allocated but not used for gradInput
+
+**Optimization Using Existing API**:
+- `Base.Grad()` returns pre-allocated grad tensor (if available)
+- `Reshape(dst Tensor, newShape Shape)` accepts dst parameter (line 106)
+- `MatMulTransposed(dst Tensor, ...)` accepts dst parameter (line 186)
+
+**Action**:
+- **Use Base.Grad()**: Check if Base.Grad() exists and has correct shape, use it instead of creating new tensor
+- **Pre-allocate gradInput2D**: For single sample case, pre-allocate 2D intermediate tensor in `Init()` if needed
+- **Reshape with dst**: Use `Reshape(dst, newShape)` to write directly to final gradInput tensor
+
+**Files Affected**:
+- `dense.go`: Lines 250-307 - Use Base.Grad() and pre-allocated intermediate tensors
+
+---
+
+### 10. ReLU Backward - Mask and Intermediate Tensor Allocations
+
+**Issue**: ReLU backward pass creates multiple intermediate tensors including zeros tensor and mask tensor.
+
+**Current Pattern** (Inefficient):
+```go
+// activations.go lines 80-84
+zeros := tensor.ZerosLike(input)  // Creates new tensor
+mask := input.GreaterThan(nil, zeros)  // Creates new tensor (comparison always returns new)
+gradInput := tensor.New(gradOutput.DataType(), gradOutput.Shape())  // New allocation
+```
+
+**Impact**:
+- 3 tensor allocations per backward pass
+- `ZerosLike` creates new tensor every time
+- Comparison operations always return new tensors (no dst parameter)
+
+**Optimization Using Existing API**:
+According to SPEC.md:
+- `ZerosLike(t Tensor)` creates new tensor (no alternative, but can be pre-allocated)
+- `GreaterThan(other Tensor)` always returns new tensor (line 156 - no dst parameter)
+- `Multiply(dst Tensor, other Tensor)` accepts dst parameter (line 126)
+
+**Action**:
+- **Pre-allocate scratch tensors**: Store in `ReLU` struct during `Init()`
+  - `zeros` tensor (same shape as input/output, can be reused)
+  - `mask` tensor (same shape as input/output, created by comparison operation)
+  - `gradInput` tensor (use Base.Grad() if available, otherwise pre-allocate)
+- **Use ZerosLike once**: Fill zeros tensor once in `Init()`, reuse across backward passes
+- **Handle mask allocation**: Since `GreaterThan` always returns new tensor, we need to allocate it each time, but can reuse the zeros tensor
+- **Note**: Comparison operations don't support dst, so mask tensor must be allocated. However, we can still pre-allocate zeros tensor and use Base.Grad() for gradInput.
+
+This reduces 3 allocations to 1 per backward pass (mask allocation cannot be avoided due to comparison operation limitation).
+
+**Files Affected**:
+- `activations.go`: Lines 64-89 - Pre-allocate zeros tensor, use Base.Grad()
+
+---
+
+### 11. Sigmoid Backward - Multiple Intermediate Tensor Allocations
+
+**Issue**: Sigmoid backward pass creates 4 intermediate tensors for gradient computation.
+
+**Current Pattern** (Inefficient):
+```go
+// activations.go lines 171-177
+ones := tensor.OnesLike(output)  // Creates new tensor
+term1 := tensor.New(output.DataType(), output.Shape())  // Intermediate 1
+term2 := tensor.New(output.DataType(), output.Shape())  // Intermediate 2
+gradInput := tensor.New(gradOutput.DataType(), gradOutput.Shape())  // Intermediate 3
+```
+
+**Impact**:
+- 4 tensor allocations per backward pass
+- `OnesLike` creates new tensor every time
+- All intermediate computations allocate new tensors
+
+**Optimization Using Existing API**:
+According to SPEC.md:
+- `OnesLike(t Tensor)` creates new tensor (no alternative, but can be pre-allocated)
+- `Subtract(dst Tensor, other Tensor)` accepts dst parameter (line 125)
+- `Multiply(dst Tensor, other Tensor)` accepts dst parameter (line 126)
+
+**Action**:
+- **Pre-allocate scratch tensors**: Store in `Sigmoid` struct during `Init()`
+  - `ones` tensor (same shape as output, fill once in `Init()`, reuse across backward passes)
+  - `term1` tensor (for ones - output)
+  - `term2` tensor (for output * term1)
+  - `gradInput` tensor (use Base.Grad() if available, otherwise pre-allocate)
+- **Use destination parameters**: Pass pre-allocated tensors as `dst` to `Subtract` and `Multiply`
+- **Reuse tensors**: All intermediate tensors can be reused across backward passes
+
+This reduces 4 tensor allocations to 0 per backward pass (after initial allocation in `Init()`).
+
+**Files Affected**:
+- `activations.go`: Lines 151-181 - Pre-allocate scratch tensors in `Init()`, use dst parameters
+
+---
+
+### 12. Tanh Backward - Multiple Intermediate Tensor Allocations
+
+**Issue**: Tanh backward pass creates 4 intermediate tensors for gradient computation.
+
+**Current Pattern** (Inefficient):
+```go
+// activations.go lines 263-269
+squared := tensor.New(output.DataType(), output.Shape())  // Intermediate 1
+ones := tensor.OnesLike(output)  // Creates new tensor
+term := tensor.New(ones.DataType(), ones.Shape())  // Intermediate 2
+gradInput := tensor.New(gradOutput.DataType(), gradOutput.Shape())  // Intermediate 3
+```
+
+**Impact**:
+- 4 tensor allocations per backward pass
+- Similar pattern to Sigmoid backward
+
+**Optimization Using Existing API**:
+According to SPEC.md:
+- `OnesLike(t Tensor)` creates new tensor (can be pre-allocated)
+- `Multiply(dst Tensor, other Tensor)` accepts dst parameter (line 126)
+- `Subtract(dst Tensor, other Tensor)` accepts dst parameter (line 125)
+
+**Action**:
+- **Pre-allocate scratch tensors**: Store in `Tanh` struct during `Init()`
+  - `ones` tensor (same shape as output, fill once in `Init()`, reuse)
+  - `squared` tensor (for output * output)
+  - `term` tensor (for ones - squared)
+  - `gradInput` tensor (use Base.Grad() if available, otherwise pre-allocate)
+- **Use destination parameters**: Pass pre-allocated tensors as `dst` to all operations
+- **Reuse tensors**: All intermediate tensors can be reused across backward passes
+
+This reduces 4 tensor allocations to 0 per backward pass (after initial allocation in `Init()`).
+
+**Files Affected**:
+- `activations.go`: Lines 243-273 - Pre-allocate scratch tensors in `Init()`, use dst parameters
+
+---
+
+### 13. Reshape Layer - Reshape + Copy Pattern
+
+**Issue**: Reshape layer uses `Reshape(nil, ...)` followed by `Copy()`, which could use `Reshape(dst, ...)` directly.
+
+**Current Pattern** (Acceptable but can be optimized):
+```go
+// utility.go lines 239, 271
+inputReshaped := input.Reshape(nil, output.Shape())  // Creates view (zero-copy)
+output.Copy(inputReshaped)  // Copies from view
+```
+
+**Impact**:
+- Creates intermediate view tensor (zero-copy, minimal overhead)
+- Extra Copy operation
+
+**Optimization Using Existing API**:
+According to SPEC.md line 106, `Reshape(dst Tensor, newShape Shape)`:
+- If dst is nil: "creates a new tensor view (zero-copy when possible)"
+- If dst is provided: "copies reshaped data to dst and returns dst"
+
+**Action**:
+- **Use Reshape with dst**: Replace `input.Reshaped := input.Reshape(nil, output.Shape()); output.Copy(inputReshaped)` with `input.Reshape(output, output.Shape())`
+- This eliminates the intermediate view tensor and the Copy operation
+- **Backward pass**: Similarly, use `gradOutput.Reshape(gradInput, input.Shape())` instead of Reshape + Copy
+
+**Files Affected**:
+- `utility.go`: Lines 238-240 (Forward), 271-272 (Backward) - Use Reshape with dst parameter
+
+---
+
+### 14. Conv2D Backward - Input Gradient Tensor Allocation
+
+**Issue**: Conv2D backward pass creates `inputGradTmpTensor` and `inputGrad` tensors that could potentially reuse Base.Grad().
+
+**Current Pattern** (Partially optimized):
+```go
+// conv2d.go lines 237-242
+inputGradTmpTensor := tensor.New(gradOutput.DataType(), inputShape)  // Intermediate
+inputGradTmp := gradOutput.Conv2DTransposed(inputGradTmpTensor, ...)
+inputGrad := tensor.New(input.DataType(), inputShape)  // Final gradInput
+```
+
+**Impact**:
+- 2 tensor allocations per backward pass
+- Base.Grad() might be available but not used
+
+**Optimization Using Existing API**:
+- `Conv2DTransposed(dst Tensor, ...)` accepts dst parameter (line 222)
+- Base.Grad() returns pre-allocated grad tensor (if available)
+
+**Action**:
+- **Pre-allocate inputGradTmpTensor**: Store in `Conv2D` struct during `Init()`
+- **Use Base.Grad()**: Check if Base.Grad() exists and has correct shape/type, use it for `inputGrad` if possible
+- **Note**: `inputGradTmpTensor` needs to match `gradOutput.DataType()`, while `inputGrad` needs to match `input.DataType()`, so they might need to be separate tensors
+
+This reduces 2 allocations to 0 per backward pass (after initial allocation in `Init()`).
+
+**Files Affected**:
+- `conv2d.go`: Lines 227-251 - Pre-allocate inputGradTmpTensor, use Base.Grad() for inputGrad
+
+---
+
+## Summary of Additional Recommendations
+
+### High Priority (High Impact, Medium Effort)
+
+8. **Pre-allocate LSTM intermediate tensors**
+   - **Action**: Pre-allocate gatesTmp, hiddenContributionTmp, biasFull, cellNew, iGateG, cellNewTanhTmp, outputNew in `Init()`
+   - **Rationale**: All operations support destination parameters
+   - **Impact**: Eliminates 7 tensor allocations per forward pass
+   - **Files**: `lstm.go` lines 209-298
+
+9. **Use Base.Grad() in Dense backward**
+   - **Action**: Use Base.Grad() for gradInput, pre-allocate gradInput2D for single sample case
+   - **Rationale**: Base.Grad() is pre-allocated, Reshape supports dst
+   - **Impact**: Eliminates 1-2 tensor allocations per backward pass
+   - **Files**: `dense.go` lines 250-307
+
+10. **Pre-allocate Sigmoid backward scratch tensors**
+    - **Action**: Pre-allocate ones, term1, term2, gradInput in `Init()`
+    - **Rationale**: All operations support destination parameters
+    - **Impact**: Eliminates 4 tensor allocations per backward pass
+    - **Files**: `activations.go` lines 151-181
+
+11. **Pre-allocate Tanh backward scratch tensors**
+    - **Action**: Pre-allocate ones, squared, term, gradInput in `Init()`
+    - **Rationale**: All operations support destination parameters
+    - **Impact**: Eliminates 4 tensor allocations per backward pass
+    - **Files**: `activations.go` lines 243-273
+
+### Medium Priority (Medium Impact, Low Effort)
+
+12. **Optimize ReLU backward**
+    - **Action**: Pre-allocate zeros tensor, use Base.Grad() for gradInput
+    - **Rationale**: ZerosLike can be pre-allocated and filled once, comparison operations don't support dst (limitation)
+    - **Impact**: Reduces 3 allocations to 1 per backward pass (mask allocation cannot be avoided)
+    - **Files**: `activations.go` lines 64-89
+
+13. **Optimize Reshape layer**
+    - **Action**: Use `Reshape(dst, newShape)` directly instead of Reshape + Copy
+    - **Rationale**: Reshape supports dst parameter, eliminates intermediate view
+    - **Impact**: Eliminates intermediate view tensor and Copy operation
+    - **Files**: `utility.go` lines 238-240, 271-272
+
+14. **Pre-allocate Conv2D backward input gradient tensors**
+    - **Action**: Pre-allocate inputGradTmpTensor in `Init()`, use Base.Grad() for inputGrad
+    - **Rationale**: Conv2DTransposed supports dst, Base.Grad() is pre-allocated
+    - **Impact**: Eliminates 2 tensor allocations per backward pass
+    - **Files**: `conv2d.go` lines 227-251
+
+---
+
+## Additional Implementation Notes
+
+### Operations That Always Allocate (No dst Parameter)
+Some operations in the tensor API always return new tensors and don't support destination parameters:
+- **Comparison operations**: `Equal`, `GreaterThan`, `Less`, `NotEqual`, `GreaterEqual`, `LessEqual` (SPEC.md lines 155-161)
+  - These always return new tensors (no dst parameter)
+  - Workaround: Pre-allocate result tensor and copy, or accept the allocation
+- **Helper functions**: `ZerosLike`, `OnesLike`, `FullLike` (create new tensors)
+  - Workaround: Pre-allocate tensors in `Init()` and fill them once, reuse across passes
+- **Gradient operations**: `Conv2DKernelGrad`, `Conv1DKernelGrad` (SPEC.md lines 227-228)
+  - These return new tensors (no dst parameter)
+- **Image/Column conversion**: `Im2Col`, `Col2Im` (SPEC.md lines 233-234)
+  - These return new tensors (no dst parameter)
+
+### Base.Grad() Usage Pattern
+Many layers create new tensors for `gradInput` even though `Base.Grad()` provides a pre-allocated grad tensor:
+- **Pattern**: Check if `Base.Grad()` exists and has correct shape/type
+- **Use**: If available and compatible, use `Base.Grad()` instead of `tensor.New()`
+- **Fallback**: If not available or incompatible, create new tensor and store it with `Base.StoreGrad()`
+- **Layers to optimize**: Dense, Conv2D, ReLU, Sigmoid, Tanh, Reshape, Flatten, and other utility layers
+
+### Pre-allocation Strategy
+When pre-allocating scratch tensors:
+1. **Allocate in Init()**: All scratch tensors should be allocated in `Init()` based on input/output shapes
+2. **Store in struct**: Add scratch tensor fields to layer struct (similar to Softmax, LSTM patterns)
+3. **Handle dynamic shapes**: Some layers may have variable batch sizes - check if tensors need resizing
+4. **Reuse across passes**: All scratch tensors are reused across forward/backward passes
+5. **Zero-initialization**: Some tensors (like zeros, ones) can be filled once in `Init()` and reused
+
+---
+
 ## Next Steps
 
 1. **Implement high-priority optimizations** - Start with Pooling operations (highest impact, easiest fix)
 2. **Add scratch tensor allocation to Base** - Extend layer Base to support pre-allocated scratch tensors
 3. **Optimize remaining operations** - Dense bias, LSTM gates, Softmax backward, Conv backward
-4. **Benchmark improvements** - Measure memory allocations and performance gains
-5. **Update layer implementations** - Ensure all layers use dst parameters where available
+4. **Implement additional optimizations** - LSTM intermediate tensors, activation backward passes, Reshape layer
+5. **Benchmark improvements** - Measure memory allocations and performance gains
+6. **Update layer implementations** - Ensure all layers use dst parameters where available and Base.Grad() where possible
 

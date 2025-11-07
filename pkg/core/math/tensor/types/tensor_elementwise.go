@@ -115,12 +115,8 @@ type TensorElementWise interface {
 	// Panics if shapes don't match.
 	Equal(dst Tensor, other Tensor) Tensor
 
-	// GreaterThan returns a tensor with 1.0 where t > other, 0.0 otherwise.
+	// Greater returns a tensor with 1.0 where t > other, 0.0 otherwise (matches tf.greater).
 	// Panics if shapes don't match.
-	GreaterThan(dst Tensor, other Tensor) Tensor
-
-	// Greater is an alias for GreaterThan (matches TensorFlow naming).
-	// Returns a tensor with 1.0 where t > other, 0.0 otherwise.
 	Greater(dst Tensor, other Tensor) Tensor
 
 	// Less returns a tensor with 1.0 where t < other, 0.0 otherwise.
@@ -138,6 +134,37 @@ type TensorElementWise interface {
 	// LessEqual returns a tensor with 1.0 where t <= other, 0.0 otherwise (matches tf.less_equal).
 	// Panics if shapes don't match.
 	LessEqual(dst Tensor, other Tensor) Tensor
+
+	// Comparison operations (tensor-scalar, destination-based)
+	// EqualScalar returns a tensor with 1.0 where t == scalar, 0.0 otherwise (matches tf.equal with scalar).
+	// If dst is nil, creates a new tensor.
+	// If dst is provided, writes result to dst and returns dst.
+	EqualScalar(dst Tensor, scalar float64) Tensor
+
+	// NotEqualScalar returns a tensor with 1.0 where t != scalar, 0.0 otherwise (matches tf.not_equal with scalar).
+	// If dst is nil, creates a new tensor.
+	// If dst is provided, writes result to dst and returns dst.
+	NotEqualScalar(dst Tensor, scalar float64) Tensor
+
+	// GreaterScalar returns a tensor with 1.0 where t > scalar, 0.0 otherwise (matches tf.greater with scalar).
+	// If dst is nil, creates a new tensor.
+	// If dst is provided, writes result to dst and returns dst.
+	GreaterScalar(dst Tensor, scalar float64) Tensor
+
+	// LessScalar returns a tensor with 1.0 where t < scalar, 0.0 otherwise (matches tf.less with scalar).
+	// If dst is nil, creates a new tensor.
+	// If dst is provided, writes result to dst and returns dst.
+	LessScalar(dst Tensor, scalar float64) Tensor
+
+	// GreaterEqualScalar returns a tensor with 1.0 where t >= scalar, 0.0 otherwise (matches tf.greater_equal with scalar).
+	// If dst is nil, creates a new tensor.
+	// If dst is provided, writes result to dst and returns dst.
+	GreaterEqualScalar(dst Tensor, scalar float64) Tensor
+
+	// LessEqualScalar returns a tensor with 1.0 where t <= scalar, 0.0 otherwise (matches tf.less_equal with scalar).
+	// If dst is nil, creates a new tensor.
+	// If dst is provided, writes result to dst and returns dst.
+	LessEqualScalar(dst Tensor, scalar float64) Tensor
 
 	// Conditional Operations
 	// Where performs element-wise selection: dst[i] = condition[i] ? a[i] : b[i] (matches tf.where).

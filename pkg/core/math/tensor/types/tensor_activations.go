@@ -44,4 +44,25 @@ type TensorActivations interface {
 	// GELU applies GELU activation: result[i] = t[i] * 0.5 * (1 + erf(t[i]/sqrt(2))) (matches tf.nn.gelu).
 	// If dst is nil, creates a new tensor. Returns the destination tensor.
 	GELU(dst Tensor) Tensor
+
+	// ReLUGrad computes the ReLU gradient: dst[i] = gradOutput[i] * (input[i] > 0 ? 1 : 0)
+	// If dst is nil, creates a new tensor. Otherwise writes to dst.
+	// This is an optimized gradient computation that directly uses fp32.ReLUGrad primitive.
+	ReLUGrad(dst Tensor, gradOutput Tensor) Tensor
+
+	// SigmoidGrad computes the sigmoid gradient: dst[i] = gradOutput[i] * output[i] * (1 - output[i])
+	// If dst is nil, creates a new tensor. Otherwise writes to dst.
+	// This is an optimized gradient computation that directly uses fp32.SigmoidGrad primitive.
+	SigmoidGrad(dst Tensor, gradOutput Tensor) Tensor
+
+	// TanhGrad computes the tanh gradient: dst[i] = gradOutput[i] * (1 - output[i]^2)
+	// If dst is nil, creates a new tensor. Otherwise writes to dst.
+	// This is an optimized gradient computation that directly uses fp32.TanhGrad primitive.
+	TanhGrad(dst Tensor, gradOutput Tensor) Tensor
+
+	// SoftmaxGrad computes the softmax gradient along the specified dimension.
+	// Currently supports 1D tensors and 2D tensors with dim=0 (rows) or dim=1 (columns).
+	// If dst is nil, creates a new tensor. Otherwise writes to dst.
+	// This is an optimized gradient computation that directly uses fp32.Softmax*Grad primitives.
+	SoftmaxGrad(dst Tensor, gradOutput Tensor, dim int) Tensor
 }

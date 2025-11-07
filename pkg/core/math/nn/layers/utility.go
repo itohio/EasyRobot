@@ -235,9 +235,8 @@ func (r *Reshape) Forward(input types.Tensor) (types.Tensor, error) {
 		return nil, fmt.Errorf("Reshape.Forward: input size %d doesn't match output size %d",
 			input.Size(), output.Size())
 	}
-	// Reshape input to match output shape, then copy
-	inputReshaped := input.Reshape(nil, output.Shape())
-	output.Copy(inputReshaped)
+	// Use Reshape with dst parameter directly to eliminate intermediate view and Copy
+	input.Reshape(output, output.Shape())
 
 	// Store output
 	r.Base.StoreOutput(output)
@@ -261,15 +260,17 @@ func (r *Reshape) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 
 	// Gradient is just reshaping back to input shape
 	// Use input's data type for input gradient (for correctness in backward pass)
-	gradInput := tensor.New(input.DataType(), input.Shape())
-
-	if gradOutput.Size() != gradInput.Size() {
+	if gradOutput.Size() != input.Size() {
 		return nil, fmt.Errorf("Reshape.Backward: gradOutput size %d doesn't match input size %d",
-			gradOutput.Size(), gradInput.Size())
+			gradOutput.Size(), input.Size())
 	}
-	// Reshape gradOutput to match input shape, then copy
-	gradOutputReshaped := gradOutput.Reshape(nil, input.Shape())
-	gradInput.Copy(gradOutputReshaped)
+	// Use Base.Grad() if available, otherwise create new
+	gradInput := r.Base.Grad()
+	if tensor.IsNil(gradInput) || !gradInput.Shape().Equal(input.Shape()) {
+		gradInput = tensor.New(input.DataType(), input.Shape())
+	}
+	// Use Reshape with dst parameter directly to eliminate intermediate view and Copy
+	gradOutput.Reshape(gradInput, input.Shape())
 
 	r.Base.StoreGrad(gradInput)
 	return gradInput, nil

@@ -931,7 +931,7 @@ func TestEqual(t *testing.T) {
 	})
 }
 
-func TestGreaterThan(t *testing.T) {
+func TestGreater(t *testing.T) {
 	tests := []struct {
 		name     string
 		t1       Tensor
@@ -954,10 +954,10 @@ func TestGreaterThan(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.t1.GreaterThan(nil, tt.t2)
+			result := tt.t1.Greater(nil, tt.t2)
 
-			assert.NotNil(t, result, "GreaterThan should not return nil")
-			assert.True(t, result.Shape().Equal(tt.t1.Shape()), "GreaterThan result shape should match input shape")
+			assert.NotNil(t, result, "Greater should not return nil")
+			assert.True(t, result.Shape().Equal(tt.t1.Shape()), "Greater result shape should match input shape")
 
 			resultData := result.Data().([]float32)
 			for i := range tt.expected {
@@ -965,27 +965,6 @@ func TestGreaterThan(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestGreater(t *testing.T) {
-	// Greater is an alias for GreaterThan, so test that it works the same
-	t.Run("greater alias", func(t *testing.T) {
-		t1 := FromFloat32(types.NewShape(2, 2), []float32{5, 2, 3, 4})
-		t2 := FromFloat32(types.NewShape(2, 2), []float32{3, 2, 5, 4})
-
-		result1 := t1.GreaterThan(nil, t2)
-		result2 := t1.Greater(nil, t2)
-
-		assert.NotNil(t, result1, "GreaterThan result should not be nil")
-		assert.NotNil(t, result2, "Greater result should not be nil")
-
-		result1Data := result1.Data().([]float32)
-		result2Data := result2.Data().([]float32)
-
-		for i := range result1Data {
-			assert.InDeltaf(t, float64(result1Data[i]), float64(result2Data[i]), 1e-5, "Greater should match GreaterThan at index %d", i)
-		}
-	})
 }
 
 func TestLess(t *testing.T) {

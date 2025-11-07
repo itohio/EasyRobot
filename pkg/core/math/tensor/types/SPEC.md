@@ -153,8 +153,7 @@ All unary operations support in-place operations when dst is nil. If dst is prov
 Comparison operations return new tensors with 1.0 where condition is true, 0.0 otherwise (matching TensorFlow behavior). All operations panic if shapes don't match.
 
 - `Equal(other Tensor) Tensor` - Returns a tensor with 1.0 where t == other, 0.0 otherwise. Returns a new tensor.
-- `GreaterThan(other Tensor) Tensor` - Returns a tensor with 1.0 where t > other, 0.0 otherwise. Returns a new tensor.
-- `Greater(other Tensor) Tensor` - Alias for GreaterThan (matches TensorFlow naming). Returns a tensor with 1.0 where t > other, 0.0 otherwise.
+- `Greater(other Tensor) Tensor` - Returns a tensor with 1.0 where t > other, 0.0 otherwise (matches tf.greater). Returns a new tensor.
 - `Less(other Tensor) Tensor` - Returns a tensor with 1.0 where t < other, 0.0 otherwise. Returns a new tensor.
 - `NotEqual(other Tensor) Tensor` - Returns a tensor with 1.0 where t != other, 0.0 otherwise (matches tf.not_equal). Returns a new tensor.
 - `GreaterEqual(other Tensor) Tensor` - Returns a tensor with 1.0 where t >= other, 0.0 otherwise (matches tf.greater_equal). Returns a new tensor.

@@ -16,6 +16,8 @@ type Dense struct {
 	inFeatures  int
 	outFeatures int
 	hasBias     bool
+	// Pre-allocated scratch tensor for backward pass optimization (single sample case)
+	gradInput2D tensorTypes.Tensor // For [1, inFeatures] intermediate in backward pass
 }
 
 // NewDense creates a new Dense layer with the given input and output features.
@@ -252,13 +254,22 @@ func (d *Dense) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tensor, err
 		// Reshape gradOutput to [1, outFeatures] for matrix multiplication
 		gradReshaped := gradOutput.Reshape(nil, tensor.NewShape(1, d.outFeatures))
 		// Result will be [1, inFeatures], need to reshape to [inFeatures]
-		gradInput2D := tensor.New(gradOutput.DataType(), tensor.NewShape(1, d.inFeatures))
-		gradReshaped.MatMulTransposed(gradInput2D, weightParam.Data, false, true)
-		// Reshape back to 1D
-		gradInput := gradInput2D.Reshape(nil, tensor.NewShape(d.inFeatures))
+		// Use pre-allocated gradInput2D if available
+		if tensor.IsNil(d.gradInput2D) || !d.gradInput2D.Shape().Equal(tensor.NewShape(1, d.inFeatures)) {
+			d.gradInput2D = tensor.New(gradOutput.DataType(), tensor.NewShape(1, d.inFeatures))
+		}
+		gradReshaped.MatMulTransposed(d.gradInput2D, weightParam.Data, false, true)
+		// Use Base.Grad() for final gradInput if available, otherwise create new
+		gradInput := d.Base.Grad()
+		if tensor.IsNil(gradInput) {
+			gradInput = tensor.New(gradOutput.DataType(), tensor.NewShape(d.inFeatures))
+		}
+		// Reshape back to 1D using Reshape with dst
+		d.gradInput2D.Reshape(gradInput, tensor.NewShape(d.inFeatures))
 		if d.Base.CanLearn() {
 			d.Base.SetParam(types.ParamWeights, weightParam)
 		}
+		d.Base.StoreGrad(gradInput)
 		return gradInput, nil
 	} else if len(inputShape) == 2 {
 		// Batch case: [batch, inFeatures]
@@ -300,7 +311,11 @@ func (d *Dense) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tensor, err
 
 		// Compute gradient w.r.t. input: gradInput = gradOutput @ weight^T
 		// Use gradOutput's data type to match incoming gradient
-		gradInput := tensor.New(gradOutput.DataType(), tensor.NewShape(batchSize, d.inFeatures))
+		// Use Base.Grad() if available, otherwise create new
+		gradInput := d.Base.Grad()
+		if tensor.IsNil(gradInput) || !gradInput.Shape().Equal(tensor.NewShape(batchSize, d.inFeatures)) {
+			gradInput = tensor.New(gradOutput.DataType(), tensor.NewShape(batchSize, d.inFeatures))
+		}
 		// gradOutput @ weight^T: no transpose on gradOutput, transpose weight
 		gradOutput.MatMulTransposed(gradInput, weightParam.Data, false, true)
 		d.Base.StoreGrad(gradInput)

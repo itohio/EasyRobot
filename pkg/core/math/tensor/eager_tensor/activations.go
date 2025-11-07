@@ -3,6 +3,7 @@ package eager_tensor
 import (
 	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
 	"github.com/itohio/EasyRobot/pkg/core/math/primitive/generics"
+	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
 )
 
@@ -85,6 +86,200 @@ func (t Tensor) Tanh(dst types.Tensor) types.Tensor {
 
 	fp32.Tanh(dstData, tData, size)
 	return dst
+}
+
+// ReLUGrad computes the ReLU gradient: dst[i] = gradOutput[i] * (input[i] > 0 ? 1 : 0)
+// If dst is nil, creates a new tensor. Otherwise writes to dst.
+func (input Tensor) ReLUGrad(dst types.Tensor, gradOutput types.Tensor) types.Tensor {
+	if input.shape == nil {
+		return nil
+	}
+	if IsNil(gradOutput) {
+		return nil
+	}
+	if !input.Shape().Equal(gradOutput.Shape()) {
+		panic("tensor.ReLUGrad: input and gradOutput shape mismatch")
+	}
+
+	var dstData []float32
+	var result types.Tensor
+	if IsNil(dst) {
+		result = New(gradOutput.DataType(), gradOutput.Shape())
+		dstData = types.GetTensorData[[]float32](result)
+	} else {
+		if !gradOutput.Shape().Equal(dst.Shape()) {
+			panic("tensor.ReLUGrad: destination shape mismatch")
+		}
+		result = dst
+		dstData = types.GetTensorData[[]float32](dst)
+	}
+
+	inputData := types.GetTensorData[[]float32](input)
+	gradOutputData := types.GetTensorData[[]float32](gradOutput)
+
+	// Check if all tensors are contiguous for fast path
+	shapeSlice := input.Shape().ToSlice()
+	inputStrides := input.Shape().Strides()
+	dstStrides := result.Shape().Strides()
+	gradStrides := gradOutput.Shape().Strides()
+	if input.isContiguous() && IsContiguous(dstStrides, shapeSlice) && IsContiguous(gradStrides, shapeSlice) {
+		// Fast path for contiguous tensors
+		size := input.Size()
+		fp32.ReLUGrad(dstData, gradOutputData, inputData, size)
+	} else {
+		// General path with stride support
+		fp32.ReLUGradStride(dstData, gradOutputData, inputData, shapeSlice, dstStrides, gradStrides, inputStrides)
+	}
+
+	return result
+}
+
+// SigmoidGrad computes the sigmoid gradient: dst[i] = gradOutput[i] * output[i] * (1 - output[i])
+// If dst is nil, creates a new tensor. Otherwise writes to dst.
+func (output Tensor) SigmoidGrad(dst types.Tensor, gradOutput types.Tensor) types.Tensor {
+	if output.shape == nil {
+		return nil
+	}
+	if IsNil(gradOutput) {
+		return nil
+	}
+	if !output.Shape().Equal(gradOutput.Shape()) {
+		panic("tensor.SigmoidGrad: output and gradOutput shape mismatch")
+	}
+
+	var dstData []float32
+	var result types.Tensor
+	if IsNil(dst) {
+		result = New(gradOutput.DataType(), gradOutput.Shape())
+		dstData = types.GetTensorData[[]float32](result)
+	} else {
+		if !gradOutput.Shape().Equal(dst.Shape()) {
+			panic("tensor.SigmoidGrad: destination shape mismatch")
+		}
+		result = dst
+		dstData = types.GetTensorData[[]float32](dst)
+	}
+
+	outputData := types.GetTensorData[[]float32](output)
+	gradOutputData := types.GetTensorData[[]float32](gradOutput)
+
+	// Check if all tensors are contiguous for fast path
+	shapeSlice := output.Shape().ToSlice()
+	outputStrides := output.Shape().Strides()
+	dstStrides := result.Shape().Strides()
+	gradStrides := gradOutput.Shape().Strides()
+	if output.isContiguous() && IsContiguous(dstStrides, shapeSlice) && IsContiguous(gradStrides, shapeSlice) {
+		// Fast path for contiguous tensors
+		size := output.Size()
+		fp32.SigmoidGrad(dstData, gradOutputData, outputData, size)
+	} else {
+		// General path with stride support
+		fp32.SigmoidGradStride(dstData, gradOutputData, outputData, shapeSlice, dstStrides, gradStrides, outputStrides)
+	}
+
+	return result
+}
+
+// TanhGrad computes the tanh gradient: dst[i] = gradOutput[i] * (1 - output[i]^2)
+// If dst is nil, creates a new tensor. Otherwise writes to dst.
+func (output Tensor) TanhGrad(dst types.Tensor, gradOutput types.Tensor) types.Tensor {
+	if output.shape == nil {
+		return nil
+	}
+	if IsNil(gradOutput) {
+		return nil
+	}
+	if !output.Shape().Equal(gradOutput.Shape()) {
+		panic("tensor.TanhGrad: output and gradOutput shape mismatch")
+	}
+
+	var dstData []float32
+	var result types.Tensor
+	if IsNil(dst) {
+		result = New(gradOutput.DataType(), gradOutput.Shape())
+		dstData = types.GetTensorData[[]float32](result)
+	} else {
+		if !gradOutput.Shape().Equal(dst.Shape()) {
+			panic("tensor.TanhGrad: destination shape mismatch")
+		}
+		result = dst
+		dstData = types.GetTensorData[[]float32](dst)
+	}
+
+	outputData := types.GetTensorData[[]float32](output)
+	gradOutputData := types.GetTensorData[[]float32](gradOutput)
+
+	// Check if all tensors are contiguous for fast path
+	shapeSlice := output.Shape().ToSlice()
+	outputStrides := output.Shape().Strides()
+	dstStrides := result.Shape().Strides()
+	gradStrides := gradOutput.Shape().Strides()
+	if output.isContiguous() && IsContiguous(dstStrides, shapeSlice) && IsContiguous(gradStrides, shapeSlice) {
+		// Fast path for contiguous tensors
+		size := output.Size()
+		fp32.TanhGrad(dstData, gradOutputData, outputData, size)
+	} else {
+		// General path with stride support
+		fp32.TanhGradStride(dstData, gradOutputData, outputData, shapeSlice, dstStrides, gradStrides, outputStrides)
+	}
+
+	return result
+}
+
+// SoftmaxGrad computes the softmax gradient along the specified dimension.
+// Currently supports 1D tensors and 2D tensors with dim=0 (rows) or dim=1 (columns).
+// If dst is nil, creates a new tensor. Otherwise writes to dst.
+func (output Tensor) SoftmaxGrad(dst types.Tensor, gradOutput types.Tensor, dim int) types.Tensor {
+	if output.shape == nil {
+		return nil
+	}
+	if IsNil(gradOutput) {
+		return nil
+	}
+	if !output.Shape().Equal(gradOutput.Shape()) {
+		panic("tensor.SoftmaxGrad: output and gradOutput shape mismatch")
+	}
+	if dim < 0 || dim >= output.shape.Rank() {
+		panic("tensor.SoftmaxGrad: dimension out of range")
+	}
+
+	var dstData []float32
+	var result types.Tensor
+	if IsNil(dst) {
+		result = New(gradOutput.DataType(), gradOutput.Shape())
+		dstData = types.GetTensorData[[]float32](result)
+	} else {
+		if !gradOutput.Shape().Equal(dst.Shape()) {
+			panic("tensor.SoftmaxGrad: destination shape mismatch")
+		}
+		result = dst
+		dstData = types.GetTensorData[[]float32](dst)
+	}
+
+	outputData := types.GetTensorData[[]float32](output)
+	gradOutputData := types.GetTensorData[[]float32](gradOutput)
+
+	if output.shape.Rank() == 1 {
+		// Softmax1DGrad
+		size := output.Size()
+		fp32.Softmax1DGrad(dstData, gradOutputData, outputData, size)
+	} else if output.shape.Rank() == 2 {
+		rows := output.shape[0]
+		cols := output.shape[1]
+		if dim == 0 {
+			// Softmax2DRowsGrad
+			fp32.Softmax2DRowsGrad(dstData, gradOutputData, outputData, rows, cols)
+		} else if dim == 1 {
+			// Softmax2DColsGrad
+			fp32.Softmax2DColsGrad(dstData, gradOutputData, outputData, rows, cols)
+		} else {
+			panic("tensor.SoftmaxGrad: invalid dimension for 2D tensor")
+		}
+	} else {
+		panic("tensor.SoftmaxGrad: only 1D and 2D tensors supported")
+	}
+
+	return result
 }
 
 // Softmax applies softmax along the specified dimension.
@@ -314,7 +509,7 @@ func (t Tensor) LeakyReLU(dst types.Tensor, alpha float64) types.Tensor {
 	// LeakyReLU: max(x, alpha * x) = x > 0 ? x : alpha * x
 	alphaTensor := result.Clone().ScalarMul(nil, alpha)
 	zeroTensor := result.Clone().Fill(nil, 0.0)
-	condition := result.GreaterThan(nil, zeroTensor)
+	condition := result.Greater(nil, zeroTensor)
 	result.Where(result, condition, result, alphaTensor)
 
 	if dst == nil || dst.Empty() {
@@ -346,7 +541,7 @@ func (t Tensor) ELU(dst types.Tensor, alpha float64) types.Tensor {
 
 	// ELU: x > 0 ? x : alpha * (exp(x) - 1)
 	zeroTensor := result.Clone().Fill(nil, 0.0)
-	condition := result.GreaterThan(nil, zeroTensor)
+	condition := result.Greater(nil, zeroTensor)
 
 	// Compute exp(x) - 1 for negative values
 	expResult := result.Clone()

@@ -21,8 +21,9 @@ type Conv2D struct {
 	padW        int
 	hasBias     bool
 	// Pre-allocated scratch tensors for backward pass optimization
-	gradOutputT      tensorTypes.Tensor // Scratch tensor for gradOutput transpose [outChannels, batch*outHeight*outWidth]
-	kernelGradMatrix tensorTypes.Tensor // Scratch tensor for kernel gradient matrix [outChannels, inChannels*kernelH*kernelW]
+	gradOutputT        tensorTypes.Tensor // Scratch tensor for gradOutput transpose [outChannels, batch*outHeight*outWidth]
+	kernelGradMatrix   tensorTypes.Tensor // Scratch tensor for kernel gradient matrix [outChannels, inChannels*kernelH*kernelW]
+	inputGradTmpTensor tensorTypes.Tensor // Scratch tensor for input gradient temporary [batch, inChannels, inHeight, inWidth]
 }
 
 // NewConv2D creates a new Conv2D layer.
@@ -151,6 +152,9 @@ func (c *Conv2D) Init(inputShape tensor.Shape) error {
 	kernelGradMatrixShape := tensor.NewShape(c.outChannels, c.inChannels*c.kernelH*c.kernelW)
 	c.kernelGradMatrix = tensor.New(dtype, kernelGradMatrixShape)
 
+	// Pre-allocate inputGradTmpTensor for backward pass (matches input shape)
+	c.inputGradTmpTensor = tensor.New(dtype, inputShape)
+
 	return nil
 }
 
@@ -234,12 +238,19 @@ func (c *Conv2D) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tensor, er
 	kernelTransposed := kernelParam.Data
 
 	var emptyBias tensorTypes.Tensor
-	inputGradTmpTensor := tensor.New(gradOutput.DataType(), inputShape)
-	inputGradTmp := gradOutput.Conv2DTransposed(inputGradTmpTensor, kernelTransposed, emptyBias, []int{c.strideH, c.strideW}, []int{c.padH, c.padW})
+	// Use pre-allocated inputGradTmpTensor if available and shape matches
+	if tensor.IsNil(c.inputGradTmpTensor) || !c.inputGradTmpTensor.Shape().Equal(inputShape) {
+		c.inputGradTmpTensor = tensor.New(gradOutput.DataType(), inputShape)
+	}
+	inputGradTmp := gradOutput.Conv2DTransposed(c.inputGradTmpTensor, kernelTransposed, emptyBias, []int{c.strideH, c.strideW}, []int{c.padH, c.padW})
 
 	// Reshape to match input shape (transposed conv might not perfectly restore size)
 	// Use input's data type for input gradient (for correctness in backward pass)
-	inputGrad := tensor.New(input.DataType(), inputShape)
+	// Use Base.Grad() if available, otherwise create new
+	inputGrad := c.Base.Grad()
+	if tensor.IsNil(inputGrad) || !inputGrad.Shape().Equal(inputShape) {
+		inputGrad = tensor.New(input.DataType(), inputShape)
+	}
 	if inputGradTmp.Size() == inputGrad.Size() {
 		// Reshape and copy if sizes match
 		inputGradTmpReshaped := inputGradTmp.Reshape(nil, inputShape)

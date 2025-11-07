@@ -767,15 +767,15 @@ func (t Tensor) Where(dst types.Tensor, condition, a, b types.Tensor) types.Tens
 	return result
 }
 
-// GreaterThan creates a tensor with 1.0 where t > other, 0.0 otherwise.
+// Greater creates a tensor with 1.0 where t > other, 0.0 otherwise (matches tf.greater).
 // t and other must have compatible shapes.
-func (t Tensor) GreaterThan(dst types.Tensor, other types.Tensor) types.Tensor {
+func (t Tensor) Greater(dst types.Tensor, other types.Tensor) types.Tensor {
 	if t.shape == nil || other == nil || other.Shape() == nil {
 		return nil
 	}
 
 	if !t.Shape().Equal(other.Shape()) {
-		panic("tensor.GreaterThan: shape mismatch")
+		panic("tensor.Greater: shape mismatch")
 	}
 
 	shape := t.Shape().ToSlice()
@@ -790,7 +790,7 @@ func (t Tensor) GreaterThan(dst types.Tensor, other types.Tensor) types.Tensor {
 		resultData = types.GetTensorData[[]float32](result)
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
-			panic("tensor.GreaterThan: destination shape mismatch")
+			panic("tensor.Greater: destination shape mismatch")
 		}
 		result = dst
 		resultData = types.GetTensorData[[]float32](dst)
@@ -1042,11 +1042,514 @@ func (t Tensor) Equal(dst types.Tensor, other types.Tensor) types.Tensor {
 	return result
 }
 
-// Greater creates a tensor with 1.0 where t > other, 0.0 otherwise.
-// t and other must have compatible shapes.
-// Note: This is an alias for GreaterThan to match TensorFlow naming.
-func (t Tensor) Greater(dst types.Tensor, other types.Tensor) types.Tensor {
-	return t.GreaterThan(dst, other)
+// EqualScalar returns a tensor with 1.0 where t == scalar, 0.0 otherwise (matches tf.equal with scalar).
+// If dst is nil, creates a new tensor.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) EqualScalar(dst types.Tensor, scalar float64) types.Tensor {
+	if t.shape == nil {
+		return nil
+	}
+
+	shape := t.Shape().ToSlice()
+	strides := t.shape.Strides()
+
+	var result types.Tensor
+	if IsNil(dst) {
+		result = New(t.DataType(), t.shape)
+	} else {
+		if !t.Shape().Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.EqualScalar: destination shape mismatch: expected %v, got %v", t.Shape(), dst.Shape()))
+		}
+		result = dst
+	}
+
+	// Type switch to support all data types
+	switch t.DataType() {
+	case types.FP32:
+		tData := types.GetTensorData[[]float32](t)
+		resultData := types.GetTensorData[[]float32](result)
+		scalar32 := float32(scalar)
+		generics.ElemEqualScalarStrided[float32](
+			resultData, tData, scalar32,
+			shape, strides, strides,
+		)
+	case types.FP64:
+		tData := types.GetTensorData[[]float64](t)
+		resultData := types.GetTensorData[[]float64](result)
+		generics.ElemEqualScalarStrided[float64](
+			resultData, tData, scalar,
+			shape, strides, strides,
+		)
+	case types.INT32:
+		tData := types.GetTensorData[[]int32](t)
+		resultData := types.GetTensorData[[]int32](result)
+		scalar32 := int32(scalar)
+		generics.ElemEqualScalarStrided[int32](
+			resultData, tData, scalar32,
+			shape, strides, strides,
+		)
+	case types.INT64:
+		tData := types.GetTensorData[[]int64](t)
+		resultData := types.GetTensorData[[]int64](result)
+		scalar64 := int64(scalar)
+		generics.ElemEqualScalarStrided[int64](
+			resultData, tData, scalar64,
+			shape, strides, strides,
+		)
+	case types.INT:
+		tData := types.GetTensorData[[]int](t)
+		resultData := types.GetTensorData[[]int](result)
+		scalarInt := int(scalar)
+		generics.ElemEqualScalarStrided[int](
+			resultData, tData, scalarInt,
+			shape, strides, strides,
+		)
+	case types.INT16:
+		tData := types.GetTensorData[[]int16](t)
+		resultData := types.GetTensorData[[]int16](result)
+		scalar16 := int16(scalar)
+		generics.ElemEqualScalarStrided[int16](
+			resultData, tData, scalar16,
+			shape, strides, strides,
+		)
+	case types.INT8:
+		tData := types.GetTensorData[[]int8](t)
+		resultData := types.GetTensorData[[]int8](result)
+		scalar8 := int8(scalar)
+		generics.ElemEqualScalarStrided[int8](
+			resultData, tData, scalar8,
+			shape, strides, strides,
+		)
+	default:
+		panic(fmt.Sprintf("tensor.EqualScalar: unsupported data type: %v", t.DataType()))
+	}
+
+	return result
+}
+
+// NotEqualScalar returns a tensor with 1.0 where t != scalar, 0.0 otherwise (matches tf.not_equal with scalar).
+// If dst is nil, creates a new tensor.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) NotEqualScalar(dst types.Tensor, scalar float64) types.Tensor {
+	if t.shape == nil {
+		return nil
+	}
+
+	shape := t.Shape().ToSlice()
+	strides := t.shape.Strides()
+
+	var result types.Tensor
+	if IsNil(dst) {
+		result = New(t.DataType(), t.shape)
+	} else {
+		if !t.Shape().Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.NotEqualScalar: destination shape mismatch: expected %v, got %v", t.Shape(), dst.Shape()))
+		}
+		result = dst
+	}
+
+	// Type switch to support all data types
+	switch t.DataType() {
+	case types.FP32:
+		tData := types.GetTensorData[[]float32](t)
+		resultData := types.GetTensorData[[]float32](result)
+		scalar32 := float32(scalar)
+		generics.ElemNotEqualScalarStrided[float32](
+			resultData, tData, scalar32,
+			shape, strides, strides,
+		)
+	case types.FP64:
+		tData := types.GetTensorData[[]float64](t)
+		resultData := types.GetTensorData[[]float64](result)
+		generics.ElemNotEqualScalarStrided[float64](
+			resultData, tData, scalar,
+			shape, strides, strides,
+		)
+	case types.INT32:
+		tData := types.GetTensorData[[]int32](t)
+		resultData := types.GetTensorData[[]int32](result)
+		scalar32 := int32(scalar)
+		generics.ElemNotEqualScalarStrided[int32](
+			resultData, tData, scalar32,
+			shape, strides, strides,
+		)
+	case types.INT64:
+		tData := types.GetTensorData[[]int64](t)
+		resultData := types.GetTensorData[[]int64](result)
+		scalar64 := int64(scalar)
+		generics.ElemNotEqualScalarStrided[int64](
+			resultData, tData, scalar64,
+			shape, strides, strides,
+		)
+	case types.INT:
+		tData := types.GetTensorData[[]int](t)
+		resultData := types.GetTensorData[[]int](result)
+		scalarInt := int(scalar)
+		generics.ElemNotEqualScalarStrided[int](
+			resultData, tData, scalarInt,
+			shape, strides, strides,
+		)
+	case types.INT16:
+		tData := types.GetTensorData[[]int16](t)
+		resultData := types.GetTensorData[[]int16](result)
+		scalar16 := int16(scalar)
+		generics.ElemNotEqualScalarStrided[int16](
+			resultData, tData, scalar16,
+			shape, strides, strides,
+		)
+	case types.INT8:
+		tData := types.GetTensorData[[]int8](t)
+		resultData := types.GetTensorData[[]int8](result)
+		scalar8 := int8(scalar)
+		generics.ElemNotEqualScalarStrided[int8](
+			resultData, tData, scalar8,
+			shape, strides, strides,
+		)
+	default:
+		panic(fmt.Sprintf("tensor.NotEqualScalar: unsupported data type: %v", t.DataType()))
+	}
+
+	return result
+}
+
+// GreaterScalar returns a tensor with 1.0 where t > scalar, 0.0 otherwise (matches tf.greater with scalar).
+// If dst is nil, creates a new tensor.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) GreaterScalar(dst types.Tensor, scalar float64) types.Tensor {
+	if t.shape == nil {
+		return nil
+	}
+
+	shape := t.Shape().ToSlice()
+	strides := t.shape.Strides()
+
+	var result types.Tensor
+	if IsNil(dst) {
+		result = New(t.DataType(), t.shape)
+	} else {
+		if !t.Shape().Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.GreaterScalar: destination shape mismatch: expected %v, got %v", t.Shape(), dst.Shape()))
+		}
+		result = dst
+	}
+
+	// Type switch to support all data types
+	switch t.DataType() {
+	case types.FP32:
+		tData := types.GetTensorData[[]float32](t)
+		resultData := types.GetTensorData[[]float32](result)
+		scalar32 := float32(scalar)
+		generics.ElemGreaterScalarStrided[float32](
+			resultData, tData, scalar32,
+			shape, strides, strides,
+		)
+	case types.FP64:
+		tData := types.GetTensorData[[]float64](t)
+		resultData := types.GetTensorData[[]float64](result)
+		generics.ElemGreaterScalarStrided[float64](
+			resultData, tData, scalar,
+			shape, strides, strides,
+		)
+	case types.INT32:
+		tData := types.GetTensorData[[]int32](t)
+		resultData := types.GetTensorData[[]int32](result)
+		scalar32 := int32(scalar)
+		generics.ElemGreaterScalarStrided[int32](
+			resultData, tData, scalar32,
+			shape, strides, strides,
+		)
+	case types.INT64:
+		tData := types.GetTensorData[[]int64](t)
+		resultData := types.GetTensorData[[]int64](result)
+		scalar64 := int64(scalar)
+		generics.ElemGreaterScalarStrided[int64](
+			resultData, tData, scalar64,
+			shape, strides, strides,
+		)
+	case types.INT:
+		tData := types.GetTensorData[[]int](t)
+		resultData := types.GetTensorData[[]int](result)
+		scalarInt := int(scalar)
+		generics.ElemGreaterScalarStrided[int](
+			resultData, tData, scalarInt,
+			shape, strides, strides,
+		)
+	case types.INT16:
+		tData := types.GetTensorData[[]int16](t)
+		resultData := types.GetTensorData[[]int16](result)
+		scalar16 := int16(scalar)
+		generics.ElemGreaterScalarStrided[int16](
+			resultData, tData, scalar16,
+			shape, strides, strides,
+		)
+	case types.INT8:
+		tData := types.GetTensorData[[]int8](t)
+		resultData := types.GetTensorData[[]int8](result)
+		scalar8 := int8(scalar)
+		generics.ElemGreaterScalarStrided[int8](
+			resultData, tData, scalar8,
+			shape, strides, strides,
+		)
+	default:
+		panic(fmt.Sprintf("tensor.GreaterScalar: unsupported data type: %v", t.DataType()))
+	}
+
+	return result
+}
+
+// LessScalar returns a tensor with 1.0 where t < scalar, 0.0 otherwise (matches tf.less with scalar).
+// If dst is nil, creates a new tensor.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) LessScalar(dst types.Tensor, scalar float64) types.Tensor {
+	if t.shape == nil {
+		return nil
+	}
+
+	shape := t.Shape().ToSlice()
+	strides := t.shape.Strides()
+
+	var result types.Tensor
+	if IsNil(dst) {
+		result = New(t.DataType(), t.shape)
+	} else {
+		if !t.Shape().Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.LessScalar: destination shape mismatch: expected %v, got %v", t.Shape(), dst.Shape()))
+		}
+		result = dst
+	}
+
+	// Type switch to support all data types
+	switch t.DataType() {
+	case types.FP32:
+		tData := types.GetTensorData[[]float32](t)
+		resultData := types.GetTensorData[[]float32](result)
+		scalar32 := float32(scalar)
+		generics.ElemLessScalarStrided[float32](
+			resultData, tData, scalar32,
+			shape, strides, strides,
+		)
+	case types.FP64:
+		tData := types.GetTensorData[[]float64](t)
+		resultData := types.GetTensorData[[]float64](result)
+		generics.ElemLessScalarStrided[float64](
+			resultData, tData, scalar,
+			shape, strides, strides,
+		)
+	case types.INT32:
+		tData := types.GetTensorData[[]int32](t)
+		resultData := types.GetTensorData[[]int32](result)
+		scalar32 := int32(scalar)
+		generics.ElemLessScalarStrided[int32](
+			resultData, tData, scalar32,
+			shape, strides, strides,
+		)
+	case types.INT64:
+		tData := types.GetTensorData[[]int64](t)
+		resultData := types.GetTensorData[[]int64](result)
+		scalar64 := int64(scalar)
+		generics.ElemLessScalarStrided[int64](
+			resultData, tData, scalar64,
+			shape, strides, strides,
+		)
+	case types.INT:
+		tData := types.GetTensorData[[]int](t)
+		resultData := types.GetTensorData[[]int](result)
+		scalarInt := int(scalar)
+		generics.ElemLessScalarStrided[int](
+			resultData, tData, scalarInt,
+			shape, strides, strides,
+		)
+	case types.INT16:
+		tData := types.GetTensorData[[]int16](t)
+		resultData := types.GetTensorData[[]int16](result)
+		scalar16 := int16(scalar)
+		generics.ElemLessScalarStrided[int16](
+			resultData, tData, scalar16,
+			shape, strides, strides,
+		)
+	case types.INT8:
+		tData := types.GetTensorData[[]int8](t)
+		resultData := types.GetTensorData[[]int8](result)
+		scalar8 := int8(scalar)
+		generics.ElemLessScalarStrided[int8](
+			resultData, tData, scalar8,
+			shape, strides, strides,
+		)
+	default:
+		panic(fmt.Sprintf("tensor.LessScalar: unsupported data type: %v", t.DataType()))
+	}
+
+	return result
+}
+
+// GreaterEqualScalar returns a tensor with 1.0 where t >= scalar, 0.0 otherwise (matches tf.greater_equal with scalar).
+// If dst is nil, creates a new tensor.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) GreaterEqualScalar(dst types.Tensor, scalar float64) types.Tensor {
+	if t.shape == nil {
+		return nil
+	}
+
+	shape := t.Shape().ToSlice()
+	strides := t.shape.Strides()
+
+	var result types.Tensor
+	if IsNil(dst) {
+		result = New(t.DataType(), t.shape)
+	} else {
+		if !t.Shape().Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.GreaterEqualScalar: destination shape mismatch: expected %v, got %v", t.Shape(), dst.Shape()))
+		}
+		result = dst
+	}
+
+	// Type switch to support all data types
+	switch t.DataType() {
+	case types.FP32:
+		tData := types.GetTensorData[[]float32](t)
+		resultData := types.GetTensorData[[]float32](result)
+		scalar32 := float32(scalar)
+		generics.ElemGreaterEqualScalarStrided[float32](
+			resultData, tData, scalar32,
+			shape, strides, strides,
+		)
+	case types.FP64:
+		tData := types.GetTensorData[[]float64](t)
+		resultData := types.GetTensorData[[]float64](result)
+		generics.ElemGreaterEqualScalarStrided[float64](
+			resultData, tData, scalar,
+			shape, strides, strides,
+		)
+	case types.INT32:
+		tData := types.GetTensorData[[]int32](t)
+		resultData := types.GetTensorData[[]int32](result)
+		scalar32 := int32(scalar)
+		generics.ElemGreaterEqualScalarStrided[int32](
+			resultData, tData, scalar32,
+			shape, strides, strides,
+		)
+	case types.INT64:
+		tData := types.GetTensorData[[]int64](t)
+		resultData := types.GetTensorData[[]int64](result)
+		scalar64 := int64(scalar)
+		generics.ElemGreaterEqualScalarStrided[int64](
+			resultData, tData, scalar64,
+			shape, strides, strides,
+		)
+	case types.INT:
+		tData := types.GetTensorData[[]int](t)
+		resultData := types.GetTensorData[[]int](result)
+		scalarInt := int(scalar)
+		generics.ElemGreaterEqualScalarStrided[int](
+			resultData, tData, scalarInt,
+			shape, strides, strides,
+		)
+	case types.INT16:
+		tData := types.GetTensorData[[]int16](t)
+		resultData := types.GetTensorData[[]int16](result)
+		scalar16 := int16(scalar)
+		generics.ElemGreaterEqualScalarStrided[int16](
+			resultData, tData, scalar16,
+			shape, strides, strides,
+		)
+	case types.INT8:
+		tData := types.GetTensorData[[]int8](t)
+		resultData := types.GetTensorData[[]int8](result)
+		scalar8 := int8(scalar)
+		generics.ElemGreaterEqualScalarStrided[int8](
+			resultData, tData, scalar8,
+			shape, strides, strides,
+		)
+	default:
+		panic(fmt.Sprintf("tensor.GreaterEqualScalar: unsupported data type: %v", t.DataType()))
+	}
+
+	return result
+}
+
+// LessEqualScalar returns a tensor with 1.0 where t <= scalar, 0.0 otherwise (matches tf.less_equal with scalar).
+// If dst is nil, creates a new tensor.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) LessEqualScalar(dst types.Tensor, scalar float64) types.Tensor {
+	if t.shape == nil {
+		return nil
+	}
+
+	shape := t.Shape().ToSlice()
+	strides := t.shape.Strides()
+
+	var result types.Tensor
+	if IsNil(dst) {
+		result = New(t.DataType(), t.shape)
+	} else {
+		if !t.Shape().Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.LessEqualScalar: destination shape mismatch: expected %v, got %v", t.Shape(), dst.Shape()))
+		}
+		result = dst
+	}
+
+	// Type switch to support all data types
+	switch t.DataType() {
+	case types.FP32:
+		tData := types.GetTensorData[[]float32](t)
+		resultData := types.GetTensorData[[]float32](result)
+		scalar32 := float32(scalar)
+		generics.ElemLessEqualScalarStrided[float32](
+			resultData, tData, scalar32,
+			shape, strides, strides,
+		)
+	case types.FP64:
+		tData := types.GetTensorData[[]float64](t)
+		resultData := types.GetTensorData[[]float64](result)
+		generics.ElemLessEqualScalarStrided[float64](
+			resultData, tData, scalar,
+			shape, strides, strides,
+		)
+	case types.INT32:
+		tData := types.GetTensorData[[]int32](t)
+		resultData := types.GetTensorData[[]int32](result)
+		scalar32 := int32(scalar)
+		generics.ElemLessEqualScalarStrided[int32](
+			resultData, tData, scalar32,
+			shape, strides, strides,
+		)
+	case types.INT64:
+		tData := types.GetTensorData[[]int64](t)
+		resultData := types.GetTensorData[[]int64](result)
+		scalar64 := int64(scalar)
+		generics.ElemLessEqualScalarStrided[int64](
+			resultData, tData, scalar64,
+			shape, strides, strides,
+		)
+	case types.INT:
+		tData := types.GetTensorData[[]int](t)
+		resultData := types.GetTensorData[[]int](result)
+		scalarInt := int(scalar)
+		generics.ElemLessEqualScalarStrided[int](
+			resultData, tData, scalarInt,
+			shape, strides, strides,
+		)
+	case types.INT16:
+		tData := types.GetTensorData[[]int16](t)
+		resultData := types.GetTensorData[[]int16](result)
+		scalar16 := int16(scalar)
+		generics.ElemLessEqualScalarStrided[int16](
+			resultData, tData, scalar16,
+			shape, strides, strides,
+		)
+	case types.INT8:
+		tData := types.GetTensorData[[]int8](t)
+		resultData := types.GetTensorData[[]int8](result)
+		scalar8 := int8(scalar)
+		generics.ElemLessEqualScalarStrided[int8](
+			resultData, tData, scalar8,
+			shape, strides, strides,
+		)
+	default:
+		panic(fmt.Sprintf("tensor.LessEqualScalar: unsupported data type: %v", t.DataType()))
+	}
+
+	return result
 }
 
 // Less creates a tensor with 1.0 where t < other, 0.0 otherwise.

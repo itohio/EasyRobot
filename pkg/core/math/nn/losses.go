@@ -55,7 +55,16 @@ func (m *MSELoss) Gradient(pred, target tensor.Tensor) (tensor.Tensor, error) {
 }
 
 // CrossEntropyLoss implements cross-entropy loss function.
-type CrossEntropyLoss struct{}
+type CrossEntropyLoss struct {
+	// Pre-allocated scratch tensors for gradient computation
+	mask          tensor.Tensor // Mask for pred > 0
+	zeros         tensor.Tensor // Zeros tensor for Where operation
+	epsilonTensor tensor.Tensor // Epsilon tensor for numerical stability
+	predPlusEps   tensor.Tensor // Scratch tensor for pred + epsilon
+	negTarget     tensor.Tensor // Scratch tensor for negative target
+	gradComputed  tensor.Tensor // Scratch tensor for computed gradient
+	grad          tensor.Tensor // Scratch tensor for final gradient
+}
 
 // NewCrossEntropy creates a new CrossEntropy loss function.
 func NewCrossEntropy() *CrossEntropyLoss {
@@ -90,31 +99,77 @@ func (c *CrossEntropyLoss) Gradient(pred, target tensor.Tensor) (tensor.Tensor, 
 		}
 	}
 
+	// Reallocate scratch tensors if shape changed
+	c.ensureScratchTensors(pred, target)
+
 	// gradPred = -target / (pred + epsilon) where pred > 0, else 0
 	const epsilon = 1e-10
-	// Pre-allocate intermediate tensors to avoid multiple allocations
-	zeros := tensor.ZerosLike(pred)
-	mask := pred.GreaterThan(nil, zeros) // 1.0 where pred > 0, 0.0 otherwise
-	epsilonTensor := tensor.FullLike(pred, epsilon)
-	// Use destination parameter for pred + epsilon
-	predPlusEps := tensor.New(pred.DataType(), pred.Shape())
-	pred.Add(predPlusEps, epsilonTensor)
-	// Use destination parameter for negative target
-	negTarget := tensor.New(target.DataType(), target.Shape())
-	target.Negative(negTarget)
-	// Use destination parameter for division
-	gradComputed := tensor.New(pred.DataType(), pred.Shape())
-	negTarget.Divide(gradComputed, predPlusEps)
-	// Use destination parameter for Where
-	grad := tensor.New(pred.DataType(), pred.Shape())
-	pred.Where(grad, mask, gradComputed, zeros)
+	// Use pre-allocated mask
+	pred.GreaterScalar(c.mask, 0) // 1.0 where pred > 0, 0.0 otherwise
+	// Use pre-allocated epsilon tensor (constant value, reused if same shape)
+	if tensor.IsNil(c.epsilonTensor) || !c.epsilonTensor.Shape().Equal(pred.Shape()) {
+		c.epsilonTensor = tensor.FullLike(pred, epsilon)
+	}
+	// Use pre-allocated scratch tensors
+	pred.Add(c.predPlusEps, c.epsilonTensor)
+	target.Negative(c.negTarget)
+	c.negTarget.Divide(c.gradComputed, c.predPlusEps)
+	// Use pre-allocated mask and zeros
+	pred.Where(c.grad, c.mask, c.gradComputed, c.zeros)
 
-	return grad, nil
+	return c.grad, nil
+}
+
+// ensureScratchTensors allocates or reallocates scratch tensors if shape changed
+func (c *CrossEntropyLoss) ensureScratchTensors(pred, target tensor.Tensor) {
+	predShape := pred.Shape()
+	dtype := pred.DataType()
+
+	// Allocate or reallocate mask if needed
+	if tensor.IsNil(c.mask) || !c.mask.Shape().Equal(predShape) {
+		c.mask = tensor.New(dtype, predShape)
+	}
+
+	// Allocate or reallocate zeros if needed
+	if tensor.IsNil(c.zeros) || !c.zeros.Shape().Equal(predShape) {
+		c.zeros = tensor.ZerosLike(pred)
+	}
+
+	// Epsilon tensor is handled separately in Gradient method since it needs epsilon constant
+
+	// Allocate or reallocate predPlusEps if needed
+	if tensor.IsNil(c.predPlusEps) || !c.predPlusEps.Shape().Equal(predShape) {
+		c.predPlusEps = tensor.New(dtype, predShape)
+	}
+
+	// Allocate or reallocate negTarget if needed
+	if tensor.IsNil(c.negTarget) || !c.negTarget.Shape().Equal(target.Shape()) {
+		c.negTarget = tensor.New(dtype, target.Shape())
+	}
+
+	// Allocate or reallocate gradComputed if needed
+	if tensor.IsNil(c.gradComputed) || !c.gradComputed.Shape().Equal(predShape) {
+		c.gradComputed = tensor.New(dtype, predShape)
+	}
+
+	// Allocate or reallocate grad if needed
+	if tensor.IsNil(c.grad) || !c.grad.Shape().Equal(predShape) {
+		c.grad = tensor.New(dtype, predShape)
+	}
 }
 
 // CategoricalCrossEntropy implements categorical cross-entropy loss with optional softmax.
 type CategoricalCrossEntropy struct {
 	fromLogits bool // If true, apply softmax internally
+	// Pre-allocated scratch tensors for gradient computation
+	predProb      tensor.Tensor // Tensor for softmax result (when fromLogits is true)
+	grad          tensor.Tensor // Scratch tensor for final gradient
+	mask          tensor.Tensor // Mask for pred > 0 (when fromLogits is false)
+	zeros         tensor.Tensor // Zeros tensor for Where operation
+	epsilonTensor tensor.Tensor // Epsilon tensor for numerical stability
+	predPlusEps   tensor.Tensor // Scratch tensor for pred + epsilon
+	negTarget     tensor.Tensor // Scratch tensor for negative target
+	gradComputed  tensor.Tensor // Scratch tensor for computed gradient
 }
 
 // NewCategoricalCrossEntropy creates a new CategoricalCrossEntropy loss function.
@@ -173,41 +228,83 @@ func (c *CategoricalCrossEntropy) Gradient(pred, target tensor.Tensor) (tensor.T
 	if c.fromLogits {
 		// Apply softmax first
 		dim := len(predShape) - 1
-		// Pre-allocate tensor for softmax result
-		predProb := tensor.New(pred.DataType(), pred.Shape())
-		pred.Softmax(dim, predProb)
-		if tensor.IsNil(predProb) {
+		// Reallocate predProb if shape changed
+		if tensor.IsNil(c.predProb) || !c.predProb.Shape().Equal(pred.Shape()) {
+			c.predProb = tensor.New(pred.DataType(), pred.Shape())
+		}
+		pred.Softmax(dim, c.predProb)
+		if tensor.IsNil(c.predProb) {
 			return nil, fmt.Errorf("CategoricalCrossEntropy.Gradient: softmax returned nil")
 		}
 
+		// Reallocate grad if shape changed
+		if tensor.IsNil(c.grad) || !c.grad.Shape().Equal(c.predProb.Shape()) {
+			c.grad = tensor.New(c.predProb.DataType(), c.predProb.Shape())
+		}
+
 		// Gradient after softmax: pred - target
-		// Use destination parameter to avoid Clone
-		grad := tensor.New(predProb.DataType(), predProb.Shape())
-		grad.Copy(predProb)
-		grad.Subtract(nil, target)
-		return grad, nil
+		c.grad.Copy(c.predProb)
+		c.grad.Subtract(nil, target)
+		return c.grad, nil
 	}
 
 	// Standard cross-entropy gradient: -target / (pred + epsilon) where pred > 0, else 0
 	const epsilon = 1e-10
-	// Pre-allocate intermediate tensors to avoid multiple allocations
-	zeros := tensor.ZerosLike(pred)
-	mask := pred.GreaterThan(nil, zeros) // 1.0 where pred > 0, 0.0 otherwise
-	epsilonTensor := tensor.FullLike(pred, epsilon)
-	// Use destination parameter for pred + epsilon
-	predPlusEps := tensor.New(pred.DataType(), pred.Shape())
-	pred.Add(predPlusEps, epsilonTensor)
-	// Use destination parameter for negative target
-	negTarget := tensor.New(target.DataType(), target.Shape())
-	target.Negative(negTarget)
-	// Use destination parameter for division
-	gradComputed := tensor.New(pred.DataType(), pred.Shape())
-	negTarget.Divide(gradComputed, predPlusEps)
-	// Use destination parameter for Where
-	grad := tensor.New(pred.DataType(), pred.Shape())
-	pred.Where(grad, mask, gradComputed, zeros)
+	// Reallocate scratch tensors if shape changed
+	c.ensureScratchTensors(pred, target)
 
-	return grad, nil
+	// Use pre-allocated mask
+	pred.GreaterScalar(c.mask, 0) // 1.0 where pred > 0, 0.0 otherwise
+	// Use pre-allocated epsilon tensor (constant value, reused if same shape)
+	if tensor.IsNil(c.epsilonTensor) || !c.epsilonTensor.Shape().Equal(pred.Shape()) {
+		c.epsilonTensor = tensor.FullLike(pred, epsilon)
+	}
+	// Use pre-allocated scratch tensors
+	pred.Add(c.predPlusEps, c.epsilonTensor)
+	target.Negative(c.negTarget)
+	c.negTarget.Divide(c.gradComputed, c.predPlusEps)
+	// Use pre-allocated mask and zeros
+	pred.Where(c.grad, c.mask, c.gradComputed, c.zeros)
+
+	return c.grad, nil
+}
+
+// ensureScratchTensors allocates or reallocates scratch tensors if shape changed
+func (c *CategoricalCrossEntropy) ensureScratchTensors(pred, target tensor.Tensor) {
+	predShape := pred.Shape()
+	dtype := pred.DataType()
+
+	// Allocate or reallocate mask if needed
+	if tensor.IsNil(c.mask) || !c.mask.Shape().Equal(predShape) {
+		c.mask = tensor.New(dtype, predShape)
+	}
+
+	// Allocate or reallocate zeros if needed
+	if tensor.IsNil(c.zeros) || !c.zeros.Shape().Equal(predShape) {
+		c.zeros = tensor.ZerosLike(pred)
+	}
+
+	// Epsilon tensor is handled separately in Gradient method since it needs epsilon constant
+
+	// Allocate or reallocate predPlusEps if needed
+	if tensor.IsNil(c.predPlusEps) || !c.predPlusEps.Shape().Equal(predShape) {
+		c.predPlusEps = tensor.New(dtype, predShape)
+	}
+
+	// Allocate or reallocate negTarget if needed
+	if tensor.IsNil(c.negTarget) || !c.negTarget.Shape().Equal(target.Shape()) {
+		c.negTarget = tensor.New(dtype, target.Shape())
+	}
+
+	// Allocate or reallocate gradComputed if needed
+	if tensor.IsNil(c.gradComputed) || !c.gradComputed.Shape().Equal(predShape) {
+		c.gradComputed = tensor.New(dtype, predShape)
+	}
+
+	// Allocate or reallocate grad if needed
+	if tensor.IsNil(c.grad) || !c.grad.Shape().Equal(predShape) {
+		c.grad = tensor.New(dtype, predShape)
+	}
 }
 
 // MSE computes Mean Squared Error between tensor and target
@@ -241,10 +338,9 @@ func CrossEntropy(pred, target tensor.Tensor) float32 {
 	}
 
 	// Create masks: target != 0 && pred > 0
-	zeros := tensor.ZerosLike(pred)
 	targetAbs := target.Clone().Abs(nil)
-	targetNonZero := targetAbs.GreaterThan(nil, zeros)        // mask for target != 0
-	predPositive := pred.GreaterThan(nil, zeros)              // mask for pred > 0
+	targetNonZero := targetAbs.GreaterScalar(nil, 0)          // mask for target != 0
+	predPositive := pred.GreaterScalar(nil, 0)                // mask for pred > 0
 	combinedMask := targetNonZero.Multiply(nil, predPositive) // combined condition mask
 
 	// Compute: -target * log(pred + epsilon) where condition is true

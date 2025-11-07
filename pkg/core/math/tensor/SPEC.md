@@ -111,8 +111,8 @@ The `types.Tensor` interface includes the following method categories:
 3. **Element-wise Operations (Non-Mutating)** (2 methods)
    - `AddTo()`, `MulTo()`
 
-4. **Comparison Operations** (4 methods)
-   - `Equal()`, `GreaterThan()`, `Greater()`, `Less()`
+4. **Comparison Operations** (3 methods)
+   - `Equal()`, `Greater()`, `Less()`
 
 5. **Conditional Operations** (1 method)
    - `Where()`
@@ -501,29 +501,73 @@ Comparison operations return new tensors with 1.0 where the condition is true, 0
 
 | Function | Description | Primitive Used | Status |
 |----------|-------------|----------------|--------|
-| `Equal(other Tensor) *Tensor` | Element-wise equality (1.0 if equal, 0.0 otherwise) | `fp32.ElemEqual` | ✅ |
-| `Greater(other Tensor) *Tensor` | Element-wise greater than (1.0 if t > other, 0.0 otherwise) | `fp32.ElemGreaterThan` | ✅ |
-| `GreaterThan(other Tensor) *Tensor` | Alias for Greater (matches TensorFlow naming) | `fp32.ElemGreaterThan` | ✅ |
-| `Less(other Tensor) *Tensor` | Element-wise less than (1.0 if t < other, 0.0 otherwise) | `fp32.ElemLess` | ✅ |
+| `Equal(other Tensor) Tensor` | Element-wise equality (1.0 if equal, 0.0 otherwise) | `generics.ElemEqualStrided` | ✅ |
+| `Greater(other Tensor) Tensor` | Element-wise greater than (1.0 if t > other, 0.0 otherwise) (matches tf.greater) | `generics.ElemGreaterThanStrided` | ✅ |
+| `Less(other Tensor) Tensor` | Element-wise less than (1.0 if t < other, 0.0 otherwise) | `generics.ElemLessStrided` | ✅ |
+| `NotEqual(other Tensor) Tensor` | Element-wise not equal (1.0 if not equal, 0.0 otherwise) | `generics.ElemNotEqualStrided` | ✅ |
+| `GreaterEqual(other Tensor) Tensor` | Element-wise greater than or equal (1.0 if t >= other, 0.0 otherwise) | `generics.ElemGreaterEqualStrided` | ✅ |
+| `LessEqual(other Tensor) Tensor` | Element-wise less than or equal (1.0 if t <= other, 0.0 otherwise) | `generics.ElemLessEqualStrided` | ✅ |
 
 **Function Signatures:**
 
 ```go
 // Equal: Returns tensor with 1.0 where t == other, 0.0 otherwise
-func (t Tensor) Equal(other Tensor) Tensor
+func (t Tensor) Equal(dst Tensor, other Tensor) Tensor
 
-// Greater: Returns tensor with 1.0 where t > other, 0.0 otherwise
-// Note: This is an alias for GreaterThan to match TensorFlow naming
-func (t Tensor) Greater(other Tensor) Tensor
-
-// GreaterThan: Returns tensor with 1.0 where t > other, 0.0 otherwise
-func (t Tensor) GreaterThan(other Tensor) Tensor
+// Greater: Returns tensor with 1.0 where t > other, 0.0 otherwise (matches tf.greater)
+func (t Tensor) Greater(dst Tensor, other Tensor) Tensor
 
 // Less: Returns tensor with 1.0 where t < other, 0.0 otherwise
-func (t Tensor) Less(other Tensor) Tensor
+func (t Tensor) Less(dst Tensor, other Tensor) Tensor
+
+// NotEqual: Returns tensor with 1.0 where t != other, 0.0 otherwise
+func (t Tensor) NotEqual(dst Tensor, other Tensor) Tensor
+
+// GreaterEqual: Returns tensor with 1.0 where t >= other, 0.0 otherwise
+func (t Tensor) GreaterEqual(dst Tensor, other Tensor) Tensor
+
+// LessEqual: Returns tensor with 1.0 where t <= other, 0.0 otherwise
+func (t Tensor) LessEqual(dst Tensor, other Tensor) Tensor
 ```
 
-**Note**: Comparison operations create new tensors (non-mutating) to match TensorFlow's behavior. They return boolean-like tensors where 1.0 represents true and 0.0 represents false.
+#### Scalar Comparison Operations
+
+Scalar comparison operations compare each element of a tensor with a scalar value, returning tensors with 1.0 where the condition is true, 0.0 otherwise (matching TensorFlow behavior).
+
+| Function | Description | Primitive Used | Status |
+|----------|-------------|----------------|--------|
+| `EqualScalar(scalar float64) Tensor` | Element-wise equality with scalar (1.0 if t == scalar, 0.0 otherwise) | `generics.ElemEqualScalarStrided` | ✅ |
+| `NotEqualScalar(scalar float64) Tensor` | Element-wise not equal with scalar (1.0 if t != scalar, 0.0 otherwise) | `generics.ElemNotEqualScalarStrided` | ✅ |
+| `GreaterScalar(scalar float64) Tensor` | Element-wise greater than with scalar (1.0 if t > scalar, 0.0 otherwise) (matches tf.greater with scalar) | `generics.ElemGreaterScalarStrided` | ✅ |
+| `LessScalar(scalar float64) Tensor` | Element-wise less than with scalar (1.0 if t < scalar, 0.0 otherwise) | `generics.ElemLessScalarStrided` | ✅ |
+| `GreaterEqualScalar(scalar float64) Tensor` | Element-wise greater than or equal with scalar (1.0 if t >= scalar, 0.0 otherwise) | `generics.ElemGreaterEqualScalarStrided` | ✅ |
+| `LessEqualScalar(scalar float64) Tensor` | Element-wise less than or equal with scalar (1.0 if t <= scalar, 0.0 otherwise) | `generics.ElemLessEqualScalarStrided` | ✅ |
+
+**Function Signatures:**
+
+```go
+// EqualScalar: Returns tensor with 1.0 where t == scalar, 0.0 otherwise
+// If dst is nil, creates a new tensor.
+// If dst is provided, writes result to dst and returns dst.
+func (t Tensor) EqualScalar(dst Tensor, scalar float64) Tensor
+
+// NotEqualScalar: Returns tensor with 1.0 where t != scalar, 0.0 otherwise
+func (t Tensor) NotEqualScalar(dst Tensor, scalar float64) Tensor
+
+// GreaterScalar: Returns tensor with 1.0 where t > scalar, 0.0 otherwise (matches tf.greater with scalar)
+func (t Tensor) GreaterScalar(dst Tensor, scalar float64) Tensor
+
+// LessScalar: Returns tensor with 1.0 where t < scalar, 0.0 otherwise
+func (t Tensor) LessScalar(dst Tensor, scalar float64) Tensor
+
+// GreaterEqualScalar: Returns tensor with 1.0 where t >= scalar, 0.0 otherwise
+func (t Tensor) GreaterEqualScalar(dst Tensor, scalar float64) Tensor
+
+// LessEqualScalar: Returns tensor with 1.0 where t <= scalar, 0.0 otherwise
+func (t Tensor) LessEqualScalar(dst Tensor, scalar float64) Tensor
+```
+
+**Note**: Comparison operations create new tensors (non-mutating) to match TensorFlow's behavior. They return boolean-like tensors where 1.0 represents true and 0.0 represents false. All scalar comparison operations support type switching for all data types (FP32, FP64, INT32, INT64, INT, INT16, INT8).
 
 ### Operations Creating New Tensors
 
@@ -1259,7 +1303,7 @@ func XavierNormalLike(ref Tensor, fanIn, fanOut int, rng RNG) Tensor
 - **Core Operations**: ID, DataType, Data, Shape, Rank, Size, Empty, At, SetAt, Elements, Clone, Copy, Reshape, Slice
 - **Iteration**: Elements() (Go 1.22+ range-over-function), Shape.Iterator()
 - **Element-wise Operations**: Add, Sub, Mul, Div, Scale, Fill, Square, Sqrt, Exp, Log, Pow, Abs, Sign, Cos, Sin, Negative
-- **Comparison Operations**: Equal, Greater, GreaterThan, Less (return boolean-like tensors)
+- **Comparison Operations**: Equal, Greater, Less (return boolean-like tensors)
 - **Conditional Operations**: Where
 - **Reduction Operations**: Sum, Mean, Max, Min, ArgMax
 - **Broadcasting**: BroadcastTo
@@ -1339,7 +1383,7 @@ All tensor operations delegate to `math/primitive/fp32` when possible:
 | `ZerosLike` | `tensor.New()` | Create zero tensor with same shape |
 | `OnesLike` | Direct fill | Create ones tensor with same shape |
 | `FullLike` | Direct fill | Create tensor filled with value |
-| `GreaterThan`, `Greater` | `fp32.ElemGreaterThan` | Element-wise greater than comparison |
+| `Greater` | `fp32.ElemGreaterThan` | Element-wise greater than comparison |
 | `Less` | `fp32.ElemLess` | Element-wise less than comparison |
 | `Equal` | `fp32.ElemEqual` | Element-wise equality comparison |
 | `Where` | `fp32.ElemWhere` | Conditional element selection |
@@ -1353,6 +1397,8 @@ All tensor operations delegate to `math/primitive/fp32` when possible:
 | `Cos` | `fp32.ElemCos` | Element-wise cosine |
 | `Sin` | `fp32.ElemSin` | Element-wise sine |
 | `Negative` | `fp32.ElemNegative` | Element-wise negation |
+| `ReLU` | `fp32.ReLU` | Rectified Linear Unit activation |
+| `Sigmoid` | `fp32.Sigmoid` | Sigmoid activation |
 | `Tanh` | `fp32.Tanh` | Hyperbolic tangent |
 | `Softmax` | `fp32.Softmax1D`, `fp32.Softmax2DRows`, `fp32.Softmax2DCols` | Softmax activation |
 | `MaxPool2DWithIndices` | `fp32.MaxPool2DWithIndices` | Max pooling with indices |
@@ -1379,7 +1425,7 @@ The following tensor-level gradient functions are **DEPRECATED** and will be rem
 
 | Function | Replacement |
 |----------|-------------|
-| `tensor.ReLUGrad(gradOutput, dst)` | `gradOutput.Mul(input.GreaterThan(ZerosLike(input)))` |
+| `tensor.ReLUGrad(gradOutput, dst)` | `gradOutput.Mul(input.Greater(ZerosLike(input)))` |
 | `tensor.SigmoidGrad(gradOutput, dst)` | `gradOutput.Mul(output).Mul(OnesLike(output).Sub(output))` |
 | `tensor.TanhGrad(gradOutput, dst)` | `gradOutput.Mul(OnesLike(output).Sub(output.Mul(output)))` |
 | `tensor.SoftmaxGrad(gradOutput, dim, dst)` | Complex composition using `Sum()`, `BroadcastTo()`, `Mul()`, `Sub()` |
@@ -1404,7 +1450,7 @@ Replace direct gradient function calls in layer `Backward()` methods with compos
 gradInput := input.ReLUGrad(&gradOutput, nil)
 
 // NEW: Compose from primitives using utility functions
-mask := input.GreaterThan(ZerosLike(input))
+mask := input.Greater(ZerosLike(input))
 gradInput := gradOutput.Mul(mask)
 ```
 

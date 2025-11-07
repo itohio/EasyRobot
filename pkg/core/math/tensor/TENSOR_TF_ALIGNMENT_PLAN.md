@@ -198,13 +198,21 @@ type TensorElementWise interface {
     SinTo(dst Tensor) Tensor
     NegativeTo(dst Tensor) Tensor
     
-    // Comparison operations
+    // Comparison operations (tensor-tensor)
     Equal(other Tensor) Tensor
     NotEqual(other Tensor) Tensor
-    GreaterThan(other Tensor) Tensor
+    Greater(other Tensor) Tensor
     GreaterEqual(other Tensor) Tensor
     Less(other Tensor) Tensor
     LessEqual(other Tensor) Tensor
+    
+    // Comparison operations (tensor-scalar, destination-based)
+    EqualScalar(dst Tensor, scalar float64) Tensor
+    NotEqualScalar(dst Tensor, scalar float64) Tensor
+    GreaterScalar(dst Tensor, scalar float64) Tensor
+    LessScalar(dst Tensor, scalar float64) Tensor
+    GreaterEqualScalar(dst Tensor, scalar float64) Tensor
+    LessEqualScalar(dst Tensor, scalar float64) Tensor
     
     // Conditional operations
     Where(condition, a, b Tensor) Tensor
@@ -212,11 +220,12 @@ type TensorElementWise interface {
 }
 ```
 
-**Operations**: 50+ methods
+**Operations**: 57+ methods
 - Binary: Add, Sub, Mul, Div (in-place and destination-based)
 - Scalar: Scale, AddScalar, SubScalar, MulScalar, DivScalar (in-place and destination-based)
 - Unary: Square, Sqrt, Exp, Log, Pow, Abs, Sign, Cos, Sin, Negative (in-place and destination-based)
-- Comparison: Equal, NotEqual, GreaterThan, GreaterEqual, Less, LessEqual
+- Comparison (tensor-tensor): Equal, NotEqual, GreaterThan, GreaterEqual, Less, LessEqual
+- Comparison (tensor-scalar): EqualScalar, NotEqualScalar, GreaterThanScalar, GreaterScalar, LessScalar, GreaterEqualScalar, LessEqualScalar
 - Conditional: Where, WhereTo
 
 **TensorFlow Alignment**:
@@ -241,6 +250,13 @@ type TensorElementWise interface {
 - `GreaterEqual` → `tf.greater_equal`
 - `Less` → `tf.less`
 - `LessEqual` → `tf.less_equal`
+- `EqualScalar` → `tf.equal` (with scalar)
+- `NotEqualScalar` → `tf.not_equal` (with scalar)
+- `GreaterThanScalar` → `tf.greater` (with scalar)
+- `GreaterScalar` → `tf.greater` (with scalar, alias)
+- `LessScalar` → `tf.less` (with scalar)
+- `GreaterEqualScalar` → `tf.greater_equal` (with scalar)
+- `LessEqualScalar` → `tf.less_equal` (with scalar)
 - `Where` → `tf.where`
 
 ### 4. TensorMath Interface
@@ -907,62 +923,71 @@ type Tensor interface {
 2. ✅ `GreaterEqual(other Tensor) Tensor` - Element-wise greater than or equal (matches `tf.greater_equal`)
 3. ✅ `LessEqual(other Tensor) Tensor` - Element-wise less than or equal (matches `tf.less_equal`)
 
+**Comparison scalar operations**: ⏳ **PENDING**
+4. `EqualScalar(dst Tensor, scalar float64) Tensor` - Element-wise equal with scalar (matches `tf.equal` with scalar)
+5. `NotEqualScalar(dst Tensor, scalar float64) Tensor` - Element-wise not equal with scalar (matches `tf.not_equal` with scalar)
+6. `GreaterThanScalar(dst Tensor, scalar float64) Tensor` - Element-wise greater than with scalar (matches `tf.greater` with scalar)
+7. `GreaterScalar(dst Tensor, scalar float64) Tensor` - Alias for GreaterThanScalar (matches `tf.greater` with scalar)
+8. `LessScalar(dst Tensor, scalar float64) Tensor` - Element-wise less than with scalar (matches `tf.less` with scalar)
+9. `GreaterEqualScalar(dst Tensor, scalar float64) Tensor` - Element-wise greater than or equal with scalar (matches `tf.greater_equal` with scalar)
+10. `LessEqualScalar(dst Tensor, scalar float64) Tensor` - Element-wise less than or equal with scalar (matches `tf.less_equal` with scalar)
+
 **Reduction operations**: ✅ **COMPLETED**
-4. ✅ `ArgMin(dim int) Tensor` - Index of minimum element (matches `tf.argmin`)
+11. ✅ `ArgMin(dim int) Tensor` - Index of minimum element (matches `tf.argmin`)
 
 **Activation functions**: ✅ **COMPLETED**
-5. ✅ `ReLU6(dst Tensor) Tensor` - ReLU6 activation (matches `tf.nn.relu6`)
-6. ✅ `LeakyReLU(dst Tensor, alpha float64) Tensor` - Leaky ReLU (matches `tf.nn.leaky_relu`)
-7. ✅ `ELU(dst Tensor, alpha float64) Tensor` - ELU activation (matches `tf.nn.elu`)
-8. ✅ `Softplus(dst Tensor) Tensor` - Softplus activation (matches `tf.nn.softplus`)
-9. ✅ `Swish(dst Tensor) Tensor` - Swish activation (matches `tf.nn.swish`)
-10. ✅ `GELU(dst Tensor) Tensor` - GELU activation (matches `tf.nn.gelu`)
+12. ✅ `ReLU6(dst Tensor) Tensor` - ReLU6 activation (matches `tf.nn.relu6`)
+13. ✅ `LeakyReLU(dst Tensor, alpha float64) Tensor` - Leaky ReLU (matches `tf.nn.leaky_relu`)
+14. ✅ `ELU(dst Tensor, alpha float64) Tensor` - ELU activation (matches `tf.nn.elu`)
+15. ✅ `Softplus(dst Tensor) Tensor` - Softplus activation (matches `tf.nn.softplus`)
+16. ✅ `Swish(dst Tensor) Tensor` - Swish activation (matches `tf.nn.swish`)
+17. ✅ `GELU(dst Tensor) Tensor` - GELU activation (matches `tf.nn.gelu`)
 
 **Manipulation operations**: ✅ **COMPLETED**
-11. ✅ `Pad(padding []int, value float64) Tensor` - Pad tensor (matches `tf.pad`)
-12. ✅ `PadTo(dst Tensor, padding []int, value float64) Tensor` - Pad to destination
+18. ✅ `Pad(padding []int, value float64) Tensor` - Pad tensor (matches `tf.pad`)
+19. ✅ `PadTo(dst Tensor, padding []int, value float64) Tensor` - Pad to destination
 
 **Dropout operations**: ✅ **COMPLETED**
 - ✅ `DropoutBackward(gradOutput, mask Tensor) Tensor` - Dropout backward pass
 - ✅ `DropoutBackwardTo(dst Tensor, gradOutput, mask Tensor) Tensor` - Dropout backward to destination
 
 **Pooling operations** (if missing):
-13. `MaxPool1D(kernelSize, stride, padding []int) Tensor` - 1D max pooling
-14. `MaxPool3D(kernelSize, stride, padding []int) Tensor` - 3D max pooling
-15. `AvgPool1D(kernelSize, stride, padding []int) Tensor` - 1D average pooling
-16. `AvgPool3D(kernelSize, stride, padding []int) Tensor` - 3D average pooling
-17. `GlobalMaxPool1D() Tensor` - Global max pooling 1D
-18. `GlobalMaxPool2D() Tensor` - Global max pooling 2D
-19. `GlobalMaxPool3D() Tensor` - Global max pooling 3D
-20. `AdaptiveMaxPool1D(outputSize []int) Tensor` - Adaptive max pooling 1D
-21. `AdaptiveMaxPool2D(outputSize []int) Tensor` - Adaptive max pooling 2D
-22. `AdaptiveMaxPool3D(outputSize []int) Tensor` - Adaptive max pooling 3D
+20. `MaxPool1D(kernelSize, stride, padding []int) Tensor` - 1D max pooling
+21. `MaxPool3D(kernelSize, stride, padding []int) Tensor` - 3D max pooling
+22. `AvgPool1D(kernelSize, stride, padding []int) Tensor` - 1D average pooling
+23. `AvgPool3D(kernelSize, stride, padding []int) Tensor` - 3D average pooling
+24. `GlobalMaxPool1D() Tensor` - Global max pooling 1D
+25. `GlobalMaxPool2D() Tensor` - Global max pooling 2D
+26. `GlobalMaxPool3D() Tensor` - Global max pooling 3D
+27. `AdaptiveMaxPool1D(outputSize []int) Tensor` - Adaptive max pooling 1D
+28. `AdaptiveMaxPool2D(outputSize []int) Tensor` - Adaptive max pooling 2D
+29. `AdaptiveMaxPool3D(outputSize []int) Tensor` - Adaptive max pooling 3D
 
 **Gradient operations** (for new activations):
-23. `ReLU6Grad(gradOutput Tensor) Tensor` - ReLU6 gradient
-24. `ReLU6GradTo(dst Tensor, gradOutput Tensor) Tensor` - ReLU6 gradient to destination
-25. `LeakyReLUGrad(gradOutput Tensor, alpha float64) Tensor` - Leaky ReLU gradient
-26. `LeakyReLUGradTo(dst Tensor, gradOutput Tensor, alpha float64) Tensor` - Leaky ReLU gradient to destination
-27. `ELUGrad(gradOutput Tensor, alpha float64) Tensor` - ELU gradient
-28. `ELUGradTo(dst Tensor, gradOutput Tensor, alpha float64) Tensor` - ELU gradient to destination
-29. `SoftmaxGrad(gradOutput Tensor, dim int) Tensor` - Softmax gradient (if missing)
-30. `SoftmaxGradTo(dst Tensor, gradOutput Tensor, dim int) Tensor` - Softmax gradient to destination
-31. `SoftplusGrad(gradOutput Tensor) Tensor` - Softplus gradient
-32. `SoftplusGradTo(dst Tensor, gradOutput Tensor) Tensor` - Softplus gradient to destination
-33. `SwishGrad(gradOutput Tensor) Tensor` - Swish gradient
-34. `SwishGradTo(dst Tensor, gradOutput Tensor) Tensor` - Swish gradient to destination
-35. `GELUGrad(gradOutput Tensor) Tensor` - GELU gradient
-36. `GELUGradTo(dst Tensor, gradOutput Tensor) Tensor` - GELU gradient to destination
+30. `ReLU6Grad(gradOutput Tensor) Tensor` - ReLU6 gradient
+31. `ReLU6GradTo(dst Tensor, gradOutput Tensor) Tensor` - ReLU6 gradient to destination
+32. `LeakyReLUGrad(gradOutput Tensor, alpha float64) Tensor` - Leaky ReLU gradient
+33. `LeakyReLUGradTo(dst Tensor, gradOutput Tensor, alpha float64) Tensor` - Leaky ReLU gradient to destination
+34. `ELUGrad(gradOutput Tensor, alpha float64) Tensor` - ELU gradient
+35. `ELUGradTo(dst Tensor, gradOutput Tensor, alpha float64) Tensor` - ELU gradient to destination
+36. `SoftmaxGrad(gradOutput Tensor, dim int) Tensor` - Softmax gradient (if missing)
+37. `SoftmaxGradTo(dst Tensor, gradOutput Tensor, dim int) Tensor` - Softmax gradient to destination
+38. `SoftplusGrad(gradOutput Tensor) Tensor` - Softplus gradient
+39. `SoftplusGradTo(dst Tensor, gradOutput Tensor) Tensor` - Softplus gradient to destination
+40. `SwishGrad(gradOutput Tensor) Tensor` - Swish gradient
+41. `SwishGradTo(dst Tensor, gradOutput Tensor) Tensor` - Swish gradient to destination
+42. `GELUGrad(gradOutput Tensor) Tensor` - GELU gradient
+43. `GELUGradTo(dst Tensor, gradOutput Tensor) Tensor` - GELU gradient to destination
 
 **Convolution gradient operations** (if missing):
-37-60+. All convolution gradient operations (input, kernel, bias gradients for all convolution types)
+44-67+. All convolution gradient operations (input, kernel, bias gradients for all convolution types)
 
 **Pooling gradient operations** (if missing):
-61-72+. All pooling gradient operations (1D, 2D, 3D max/avg pooling gradients)
+68-79+. All pooling gradient operations (1D, 2D, 3D max/avg pooling gradients)
 
 **Dropout gradient operations**: ✅ **COMPLETED**
-73. ✅ `DropoutBackward(gradOutput, mask Tensor) Tensor` - Dropout backward pass
-74. ✅ `DropoutBackwardTo(dst Tensor, gradOutput, mask Tensor) Tensor` - Dropout backward to destination
+80. ✅ `DropoutBackward(gradOutput, mask Tensor) Tensor` - Dropout backward pass
+81. ✅ `DropoutBackwardTo(dst Tensor, gradOutput, mask Tensor) Tensor` - Dropout backward to destination
 
 **Workflow per operation**:
 1. Add operation signature to appropriate category interface
@@ -1160,7 +1185,7 @@ Each operation must have:
 - **Phase 1**: ✅ **COMPLETED** (Split interface into multiple interfaces) - Completed in single session
 - **Phase 2**: ✅ **COMPLETED** (Migrate existing operations to support destination) - Core operations completed in single session
 - **Phase 3**: ✅ **COMPLETED** (Align existing operation names with TensorFlow) - Core aliases completed in single session
-- **Phase 4**: ⏳ **IN PROGRESS** (Add missing operations) - Core comparison and reduction operations completed, remaining operations pending
+- **Phase 4**: ⏳ **IN PROGRESS** (Add missing operations) - Core comparison and reduction operations completed, scalar comparison operations and remaining operations pending
 - **Phase 5**: ⏳ **PENDING** (Add unit tests and benchmarks) - Estimated 10-15 days
 
 **Total Remaining**: ~20-35 days (reduced from 38-55 days due to completed phases)
@@ -1171,7 +1196,7 @@ Each operation must have:
 - ✅ Phase 1: COMPLETED (Interface splitting)
 - ✅ Phase 2: COMPLETED (Core destination-based variants)
 - ✅ Phase 3: COMPLETED (Core TensorFlow aliases)
-- ⏳ Phase 4: IN PROGRESS (Comparison, reduction, activation functions, manipulation, and dropout operations completed; pooling and gradient operations pending)
+- ⏳ Phase 4: IN PROGRESS (Comparison, reduction, activation functions, manipulation, and dropout operations completed; scalar comparison operations, pooling and gradient operations pending)
 - ⏳ Phase 5: PENDING (Tests and benchmarks)
 
 ## Progress Tracking
@@ -1234,7 +1259,7 @@ Each operation must have:
 - ✅ Manipulation: Pad, PadTo
 - ✅ Dropout: DropoutBackward, DropoutBackwardTo
 
-**Operations remaining**: Pooling operations, activation gradient operations, convolution gradient operations (see Phase 4 section for full list)
+**Operations remaining**: Comparison scalar operations (EqualScalar, NotEqualScalar, GreaterThanScalar, GreaterScalar, LessScalar, GreaterEqualScalar, LessEqualScalar), pooling operations, activation gradient operations, convolution gradient operations (see Phase 4 section for full list)
 
 ## Notes
 
