@@ -171,8 +171,11 @@ func elemConvertGeneric[T, U Numeric](dst []T, src []U) []T {
 // This function handles both contiguous and strided cases with optimized paths.
 // Supports conversion between float32, float64, int64, int32, int16, and int8.
 func ElemConvertStrided[T, U Numeric](dst []T, src []U, shape []int, stridesDst, stridesSrc []int) {
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesSrc = EnsureStrides(stridesSrc, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var srcStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesSrc = EnsureStrides(srcStridesStatic[:len(shape)], stridesSrc, shape)
 	size := SizeFromShape(shape)
 	if size == 0 {
 		return
@@ -290,39 +293,17 @@ func elemConvertStridedGeneric[T, U Numeric](dst []T, src []U, shape []int, srcS
 		return
 	}
 
-	indices := make([]int, ndims)
-	dim := 0
-
+	// Use stack-allocated arrays and AdvanceOffsets pattern
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [2]int
+	indices := indicesStatic[:ndims]
+	offsets := offsetsStatic[:2]
 	for {
-		// Process current element if we've reached the leaf
-		if dim == ndims {
-			sIdx := ComputeStrideOffset(indices, srcStrides)
-			dIdx := ComputeStrideOffset(indices, dstStrides)
-			// Hot path: direct conversion, no type switches
-			dst[dIdx] = T(src[sIdx])
-
-			// Backtrack to previous dimension
-			dim--
-			if dim < 0 {
-				break
-			}
-			indices[dim]++
-			continue
+		// Hot path: direct conversion, no type switches
+		dst[offsets[0]] = T(src[offsets[1]])
+		if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+			break
 		}
-
-		// Check if we've exhausted current dimension
-		if indices[dim] >= shape[dim] {
-			indices[dim] = 0
-			dim--
-			if dim < 0 {
-				break
-			}
-			indices[dim]++
-			continue
-		}
-
-		// Move to next dimension
-		dim++
 	}
 }
 
@@ -592,46 +573,24 @@ func clampToInt8Strided[U clampableToInt8](dst []int8, src []U, shape []int, src
 		return
 	}
 
-	indices := make([]int, ndims)
-	dim := 0
-
+	// Use stack-allocated arrays and AdvanceOffsets pattern
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [2]int
+	indices := indicesStatic[:ndims]
+	offsets := offsetsStatic[:2]
 	for {
-		// Process current element if we've reached the leaf
-		if dim == ndims {
-			// Hot path: compute offsets and clamp
-			sIdx := ComputeStrideOffset(indices, srcStrides)
-			dIdx := ComputeStrideOffset(indices, dstStrides)
-			val := src[sIdx]
-			if val > U(math.MaxInt8) {
-				dst[dIdx] = math.MaxInt8
-			} else if val < U(math.MinInt8) {
-				dst[dIdx] = math.MinInt8
-			} else {
-				dst[dIdx] = int8(val)
-			}
-
-			// Backtrack to previous dimension
-			dim--
-			if dim < 0 {
-				break
-			}
-			indices[dim]++
-			continue
+		// Hot path: use AdvanceOffsets pattern
+		val := src[offsets[1]]
+		if val > U(math.MaxInt8) {
+			dst[offsets[0]] = math.MaxInt8
+		} else if val < U(math.MinInt8) {
+			dst[offsets[0]] = math.MinInt8
+		} else {
+			dst[offsets[0]] = int8(val)
 		}
-
-		// Check if we've exhausted current dimension
-		if indices[dim] >= shape[dim] {
-			indices[dim] = 0
-			dim--
-			if dim < 0 {
-				break
-			}
-			indices[dim]++
-			continue
+		if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+			break
 		}
-
-		// Move to next dimension
-		dim++
 	}
 }
 
@@ -645,46 +604,24 @@ func clampToInt16Strided[U clampableToInt16](dst []int16, src []U, shape []int, 
 		return
 	}
 
-	indices := make([]int, ndims)
-	dim := 0
-
+	// Use stack-allocated arrays and AdvanceOffsets pattern
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [2]int
+	indices := indicesStatic[:ndims]
+	offsets := offsetsStatic[:2]
 	for {
-		// Process current element if we've reached the leaf
-		if dim == ndims {
-			// Hot path: compute offsets and clamp
-			sIdx := ComputeStrideOffset(indices, srcStrides)
-			dIdx := ComputeStrideOffset(indices, dstStrides)
-			val := src[sIdx]
-			if val > U(math.MaxInt16) {
-				dst[dIdx] = math.MaxInt16
-			} else if val < U(math.MinInt16) {
-				dst[dIdx] = math.MinInt16
-			} else {
-				dst[dIdx] = int16(val)
-			}
-
-			// Backtrack to previous dimension
-			dim--
-			if dim < 0 {
-				break
-			}
-			indices[dim]++
-			continue
+		// Hot path: use AdvanceOffsets pattern
+		val := src[offsets[1]]
+		if val > U(math.MaxInt16) {
+			dst[offsets[0]] = math.MaxInt16
+		} else if val < U(math.MinInt16) {
+			dst[offsets[0]] = math.MinInt16
+		} else {
+			dst[offsets[0]] = int16(val)
 		}
-
-		// Check if we've exhausted current dimension
-		if indices[dim] >= shape[dim] {
-			indices[dim] = 0
-			dim--
-			if dim < 0 {
-				break
-			}
-			indices[dim]++
-			continue
+		if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+			break
 		}
-
-		// Move to next dimension
-		dim++
 	}
 }
 
@@ -696,41 +633,24 @@ func clampToInt64Strided[U clampableToInt64](dst []int64, src []U, shape []int, 
 		return
 	}
 
-	indices := make([]int, ndims)
-	dim := 0
-
+	// Use stack-allocated arrays and AdvanceOffsets pattern
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [2]int
+	indices := indicesStatic[:ndims]
+	offsets := offsetsStatic[:2]
 	for {
-		if dim == ndims {
-			sIdx := ComputeStrideOffset(indices, srcStrides)
-			dIdx := ComputeStrideOffset(indices, dstStrides)
-			val := src[sIdx]
-			if val > U(int64(math.MaxInt64)) {
-				dst[dIdx] = math.MaxInt64
-			} else if val < U(int64(math.MinInt64)) {
-				dst[dIdx] = math.MinInt64
-			} else {
-				dst[dIdx] = int64(val)
-			}
-
-			dim--
-			if dim < 0 {
-				break
-			}
-			indices[dim]++
-			continue
+		// Hot path: use AdvanceOffsets pattern
+		val := src[offsets[1]]
+		if val > U(int64(math.MaxInt64)) {
+			dst[offsets[0]] = math.MaxInt64
+		} else if val < U(int64(math.MinInt64)) {
+			dst[offsets[0]] = math.MinInt64
+		} else {
+			dst[offsets[0]] = int64(val)
 		}
-
-		if indices[dim] >= shape[dim] {
-			indices[dim] = 0
-			dim--
-			if dim < 0 {
-				break
-			}
-			indices[dim]++
-			continue
+		if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+			break
 		}
-
-		dim++
 	}
 }
 
@@ -742,40 +662,23 @@ func clampToInt32Strided[U clampableToInt32](dst []int32, src []U, shape []int, 
 		return
 	}
 
-	indices := make([]int, ndims)
-	dim := 0
-
+	// Use stack-allocated arrays and AdvanceOffsets pattern
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [2]int
+	indices := indicesStatic[:ndims]
+	offsets := offsetsStatic[:2]
 	for {
-		if dim == ndims {
-			sIdx := ComputeStrideOffset(indices, srcStrides)
-			dIdx := ComputeStrideOffset(indices, dstStrides)
-			val := src[sIdx]
-			if val > U(math.MaxInt32) {
-				dst[dIdx] = math.MaxInt32
-			} else if val < U(math.MinInt32) {
-				dst[dIdx] = math.MinInt32
-			} else {
-				dst[dIdx] = int32(val)
-			}
-
-			dim--
-			if dim < 0 {
-				break
-			}
-			indices[dim]++
-			continue
+		// Hot path: use AdvanceOffsets pattern
+		val := src[offsets[1]]
+		if val > U(math.MaxInt32) {
+			dst[offsets[0]] = math.MaxInt32
+		} else if val < U(math.MinInt32) {
+			dst[offsets[0]] = math.MinInt32
+		} else {
+			dst[offsets[0]] = int32(val)
 		}
-
-		if indices[dim] >= shape[dim] {
-			indices[dim] = 0
-			dim--
-			if dim < 0 {
-				break
-			}
-			indices[dim]++
-			continue
+		if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+			break
 		}
-
-		dim++
 	}
 }

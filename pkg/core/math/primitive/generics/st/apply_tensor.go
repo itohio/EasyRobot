@@ -21,28 +21,40 @@ func ElemApplyBinaryStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, s
 		return
 	}
 
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesA = EnsureStrides(stridesA, shape)
-	stridesB = EnsureStrides(stridesB, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var aStridesStatic [MAX_DIMS]int
+	var bStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesA = EnsureStrides(aStridesStatic[:len(shape)], stridesA, shape)
+	stridesB = EnsureStrides(bStridesStatic[:len(shape)], stridesB, shape)
 
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesA, shape) && IsContiguous(stridesB, shape) {
 		// Fast path: contiguous arrays
+		// Boundary check elimination hint
+		if size > 0 {
+			_ = dst[size-1]
+			_ = a[size-1]
+			_ = b[size-1]
+		}
 		for i := 0; i < size; i++ {
 			dst[i] = op(a[i], b[i])
 		}
 		return
 	}
 
-	// Strided path: iterate with strides
-	indices := make([]int, len(shape))
-	offsets := make([]int, 3)
-	strideSet := [][]int{stridesDst, stridesA, stridesB}
+	// Strided path: iterate with strides using stack-allocated arrays
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [3]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:3]
 	for {
 		dIdx := offsets[0]
 		aIdx := offsets[1]
 		bIdx := offsets[2]
 		dst[dIdx] = op(a[aIdx], b[bIdx])
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		if !AdvanceOffsets3(shape, indices, offsets, stridesDst, stridesA, stridesB) {
 			break
 		}
 	}
@@ -67,26 +79,36 @@ func ElemApplyUnaryStrided[T Numeric](dst, src []T, shape []int, stridesDst, str
 		return
 	}
 
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesSrc = EnsureStrides(stridesSrc, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var srcStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesSrc = EnsureStrides(srcStridesStatic[:len(shape)], stridesSrc, shape)
 
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesSrc, shape) {
 		// Fast path: contiguous arrays
+		// Boundary check elimination hint
+		if size > 0 {
+			_ = dst[size-1]
+			_ = src[size-1]
+		}
 		for i := 0; i < size; i++ {
 			dst[i] = op(src[i])
 		}
 		return
 	}
 
-	// Strided path: iterate with strides
-	indices := make([]int, len(shape))
-	offsets := make([]int, 2)
-	strideSet := [][]int{stridesDst, stridesSrc}
+	// Strided path: iterate with strides using stack-allocated arrays
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [2]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:2]
 	for {
 		dIdx := offsets[0]
 		sIdx := offsets[1]
 		dst[dIdx] = op(src[sIdx])
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		if !AdvanceOffsets(shape, indices, offsets, stridesDst, stridesSrc) {
 			break
 		}
 	}
@@ -111,30 +133,44 @@ func ElemApplyTernaryStrided[T Numeric](dst, condition, a, b []T, shape []int, s
 		return
 	}
 
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesCond = EnsureStrides(stridesCond, shape)
-	stridesA = EnsureStrides(stridesA, shape)
-	stridesB = EnsureStrides(stridesB, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var condStridesStatic [MAX_DIMS]int
+	var aStridesStatic [MAX_DIMS]int
+	var bStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesCond = EnsureStrides(condStridesStatic[:len(shape)], stridesCond, shape)
+	stridesA = EnsureStrides(aStridesStatic[:len(shape)], stridesA, shape)
+	stridesB = EnsureStrides(bStridesStatic[:len(shape)], stridesB, shape)
 
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesCond, shape) && IsContiguous(stridesA, shape) && IsContiguous(stridesB, shape) {
 		// Fast path: contiguous arrays
+		// Boundary check elimination hint
+		if size > 0 {
+			_ = dst[size-1]
+			_ = condition[size-1]
+			_ = a[size-1]
+			_ = b[size-1]
+		}
 		for i := 0; i < size; i++ {
 			dst[i] = op(condition[i], a[i], b[i])
 		}
 		return
 	}
 
-	// Strided path: iterate with strides
-	indices := make([]int, len(shape))
-	offsets := make([]int, 4)
-	strideSet := [][]int{stridesDst, stridesCond, stridesA, stridesB}
+	// Strided path: iterate with strides using stack-allocated arrays
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [4]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:4]
 	for {
 		dIdx := offsets[0]
 		cIdx := offsets[1]
 		aIdx := offsets[2]
 		bIdx := offsets[3]
 		dst[dIdx] = op(condition[cIdx], a[aIdx], b[bIdx])
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		if !AdvanceOffsets4(shape, indices, offsets, stridesDst, stridesCond, stridesA, stridesB) {
 			break
 		}
 	}
@@ -159,26 +195,36 @@ func ElemApplyUnaryScalarStrided[T Numeric](dst, src []T, scalar T, shape []int,
 		return
 	}
 
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesSrc = EnsureStrides(stridesSrc, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var srcStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesSrc = EnsureStrides(srcStridesStatic[:len(shape)], stridesSrc, shape)
 
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesSrc, shape) {
 		// Fast path: contiguous arrays
+		// Boundary check elimination hint
+		if size > 0 {
+			_ = dst[size-1]
+			_ = src[size-1]
+		}
 		for i := 0; i < size; i++ {
 			dst[i] = op(src[i], scalar)
 		}
 		return
 	}
 
-	// Strided path: iterate with strides
-	indices := make([]int, len(shape))
-	offsets := make([]int, 2)
-	strideSet := [][]int{stridesDst, stridesSrc}
+	// Strided path: iterate with strides using stack-allocated arrays
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [2]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:2]
 	for {
 		dIdx := offsets[0]
 		sIdx := offsets[1]
 		dst[dIdx] = op(src[sIdx], scalar)
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		if !AdvanceOffsets(shape, indices, offsets, stridesDst, stridesSrc) {
 			break
 		}
 	}
@@ -203,26 +249,36 @@ func ElemApplyBinaryScalarStrided[T Numeric](dst, a []T, scalar T, shape []int, 
 		return
 	}
 
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesA = EnsureStrides(stridesA, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var aStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesA = EnsureStrides(aStridesStatic[:len(shape)], stridesA, shape)
 
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesA, shape) {
 		// Fast path: contiguous arrays
+		// Boundary check elimination hint
+		if size > 0 {
+			_ = dst[size-1]
+			_ = a[size-1]
+		}
 		for i := 0; i < size; i++ {
 			dst[i] = op(a[i], scalar)
 		}
 		return
 	}
 
-	// Strided path: iterate with strides
-	indices := make([]int, len(shape))
-	offsets := make([]int, 2)
-	strideSet := [][]int{stridesDst, stridesA}
+	// Strided path: iterate with strides using stack-allocated arrays
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [2]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:2]
 	for {
 		dIdx := offsets[0]
 		aIdx := offsets[1]
 		dst[dIdx] = op(a[aIdx], scalar)
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		if !AdvanceOffsets(shape, indices, offsets, stridesDst, stridesA) {
 			break
 		}
 	}
@@ -247,28 +303,40 @@ func ElemApplyTernaryScalarStrided[T Numeric](dst, condition, a []T, scalar T, s
 		return
 	}
 
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesCond = EnsureStrides(stridesCond, shape)
-	stridesA = EnsureStrides(stridesA, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var condStridesStatic [MAX_DIMS]int
+	var aStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesCond = EnsureStrides(condStridesStatic[:len(shape)], stridesCond, shape)
+	stridesA = EnsureStrides(aStridesStatic[:len(shape)], stridesA, shape)
 
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesCond, shape) && IsContiguous(stridesA, shape) {
 		// Fast path: contiguous arrays
+		// Boundary check elimination hint
+		if size > 0 {
+			_ = dst[size-1]
+			_ = condition[size-1]
+			_ = a[size-1]
+		}
 		for i := 0; i < size; i++ {
 			dst[i] = op(condition[i], a[i], scalar)
 		}
 		return
 	}
 
-	// Strided path: iterate with strides
-	indices := make([]int, len(shape))
-	offsets := make([]int, 3)
-	strideSet := [][]int{stridesDst, stridesCond, stridesA}
+	// Strided path: iterate with strides using stack-allocated arrays
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [3]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:3]
 	for {
 		dIdx := offsets[0]
 		cIdx := offsets[1]
 		aIdx := offsets[2]
 		dst[dIdx] = op(condition[cIdx], a[aIdx], scalar)
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		if !AdvanceOffsets3(shape, indices, offsets, stridesDst, stridesCond, stridesA) {
 			break
 		}
 	}

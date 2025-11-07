@@ -34,9 +34,13 @@ func ElemApplyBinaryStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, s
 		return
 	}
 
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesA = EnsureStrides(stridesA, shape)
-	stridesB = EnsureStrides(stridesB, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var aStridesStatic [MAX_DIMS]int
+	var bStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesA = EnsureStrides(aStridesStatic[:len(shape)], stridesA, shape)
+	stridesB = EnsureStrides(bStridesStatic[:len(shape)], stridesB, shape)
 
 	// For small arrays, fallback to single-threaded implementation
 	if !shouldParallelize(size) {
@@ -54,8 +58,9 @@ func ElemApplyBinaryStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, s
 
 	// Parallelize along first dimension - reuse st function for each chunk
 	parallelTensorChunks(shape, func(startDim0, endDim0 int) {
-		// Create adjusted shape for this chunk
-		chunkShape := make([]int, len(shape))
+		// Create adjusted shape for this chunk using stack-allocated array
+		var chunkShapeStatic [MAX_DIMS]int
+		chunkShape := chunkShapeStatic[:len(shape)]
 		copy(chunkShape, shape)
 		chunkShape[0] = endDim0 - startDim0
 
@@ -98,8 +103,11 @@ func ElemApplyUnaryStrided[T Numeric](dst, src []T, shape []int, stridesDst, str
 		return
 	}
 
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesSrc = EnsureStrides(stridesSrc, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var srcStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesSrc = EnsureStrides(srcStridesStatic[:len(shape)], stridesSrc, shape)
 
 	// For small arrays, fallback to single-threaded implementation
 	if !shouldParallelize(size) {
@@ -117,8 +125,9 @@ func ElemApplyUnaryStrided[T Numeric](dst, src []T, shape []int, stridesDst, str
 
 	// Parallelize along first dimension - reuse st function for each chunk
 	parallelTensorChunks(shape, func(startDim0, endDim0 int) {
-		// Create adjusted shape for this chunk
-		chunkShape := make([]int, len(shape))
+		// Create adjusted shape for this chunk using stack-allocated array
+		var chunkShapeStatic [MAX_DIMS]int
+		chunkShape := chunkShapeStatic[:len(shape)]
 		copy(chunkShape, shape)
 		chunkShape[0] = endDim0 - startDim0
 
@@ -160,10 +169,15 @@ func ElemApplyTernaryStrided[T Numeric](dst, condition, a, b []T, shape []int, s
 		return
 	}
 
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesCond = EnsureStrides(stridesCond, shape)
-	stridesA = EnsureStrides(stridesA, shape)
-	stridesB = EnsureStrides(stridesB, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var condStridesStatic [MAX_DIMS]int
+	var aStridesStatic [MAX_DIMS]int
+	var bStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesCond = EnsureStrides(condStridesStatic[:len(shape)], stridesCond, shape)
+	stridesA = EnsureStrides(aStridesStatic[:len(shape)], stridesA, shape)
+	stridesB = EnsureStrides(bStridesStatic[:len(shape)], stridesB, shape)
 
 	// For small arrays, fallback to single-threaded implementation
 	if !shouldParallelize(size) {
@@ -181,8 +195,9 @@ func ElemApplyTernaryStrided[T Numeric](dst, condition, a, b []T, shape []int, s
 
 	// Parallelize along first dimension - reuse st function for each chunk
 	parallelTensorChunks(shape, func(startDim0, endDim0 int) {
-		// Create adjusted shape for this chunk
-		chunkShape := make([]int, len(shape))
+		// Create adjusted shape for this chunk using stack-allocated array
+		var chunkShapeStatic [MAX_DIMS]int
+		chunkShape := chunkShapeStatic[:len(shape)]
 		copy(chunkShape, shape)
 		chunkShape[0] = endDim0 - startDim0
 
@@ -226,8 +241,11 @@ func ElemApplyUnaryScalarStrided[T Numeric](dst, src []T, scalar T, shape []int,
 		return
 	}
 
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesSrc = EnsureStrides(stridesSrc, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var srcStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesSrc = EnsureStrides(srcStridesStatic[:len(shape)], stridesSrc, shape)
 
 	// For small arrays, fallback to single-threaded implementation
 	if !shouldParallelize(size) {
@@ -245,8 +263,9 @@ func ElemApplyUnaryScalarStrided[T Numeric](dst, src []T, scalar T, shape []int,
 
 	// Parallelize along first dimension - reuse st function for each chunk
 	parallelTensorChunks(shape, func(startDim0, endDim0 int) {
-		// Create adjusted shape for this chunk
-		chunkShape := make([]int, len(shape))
+		// Create adjusted shape for this chunk using stack-allocated array
+		var chunkShapeStatic [MAX_DIMS]int
+		chunkShape := chunkShapeStatic[:len(shape)]
 		copy(chunkShape, shape)
 		chunkShape[0] = endDim0 - startDim0
 
@@ -288,8 +307,11 @@ func ElemApplyBinaryScalarStrided[T Numeric](dst, a []T, scalar T, shape []int, 
 		return
 	}
 
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesA = EnsureStrides(stridesA, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var aStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesA = EnsureStrides(aStridesStatic[:len(shape)], stridesA, shape)
 
 	// For small arrays, fallback to single-threaded implementation
 	if !shouldParallelize(size) {
@@ -307,8 +329,9 @@ func ElemApplyBinaryScalarStrided[T Numeric](dst, a []T, scalar T, shape []int, 
 
 	// Parallelize along first dimension - reuse st function for each chunk
 	parallelTensorChunks(shape, func(startDim0, endDim0 int) {
-		// Create adjusted shape for this chunk
-		chunkShape := make([]int, len(shape))
+		// Create adjusted shape for this chunk using stack-allocated array
+		var chunkShapeStatic [MAX_DIMS]int
+		chunkShape := chunkShapeStatic[:len(shape)]
 		copy(chunkShape, shape)
 		chunkShape[0] = endDim0 - startDim0
 
@@ -350,9 +373,13 @@ func ElemApplyTernaryScalarStrided[T Numeric](dst, condition, a []T, scalar T, s
 		return
 	}
 
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesCond = EnsureStrides(stridesCond, shape)
-	stridesA = EnsureStrides(stridesA, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var condStridesStatic [MAX_DIMS]int
+	var aStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesCond = EnsureStrides(condStridesStatic[:len(shape)], stridesCond, shape)
+	stridesA = EnsureStrides(aStridesStatic[:len(shape)], stridesA, shape)
 
 	// For small arrays, fallback to single-threaded implementation
 	if !shouldParallelize(size) {
@@ -370,8 +397,9 @@ func ElemApplyTernaryScalarStrided[T Numeric](dst, condition, a []T, scalar T, s
 
 	// Parallelize along first dimension - reuse st function for each chunk
 	parallelTensorChunks(shape, func(startDim0, endDim0 int) {
-		// Create adjusted shape for this chunk
-		chunkShape := make([]int, len(shape))
+		// Create adjusted shape for this chunk using stack-allocated array
+		var chunkShapeStatic [MAX_DIMS]int
+		chunkShape := chunkShapeStatic[:len(shape)]
 		copy(chunkShape, shape)
 		chunkShape[0] = endDim0 - startDim0
 

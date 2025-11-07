@@ -11,13 +11,25 @@ func ElemWhere[T Numeric](dst, condition, a, b []T, shape []int, stridesDst, str
 		return
 	}
 
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesCond = EnsureStrides(stridesCond, shape)
-	stridesA = EnsureStrides(stridesA, shape)
-	stridesB = EnsureStrides(stridesB, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var condStridesStatic [MAX_DIMS]int
+	var aStridesStatic [MAX_DIMS]int
+	var bStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesCond = EnsureStrides(condStridesStatic[:len(shape)], stridesCond, shape)
+	stridesA = EnsureStrides(aStridesStatic[:len(shape)], stridesA, shape)
+	stridesB = EnsureStrides(bStridesStatic[:len(shape)], stridesB, shape)
 
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesCond, shape) && IsContiguous(stridesA, shape) && IsContiguous(stridesB, shape) {
 		// Fast path: contiguous arrays
+		// Boundary check elimination hint
+		if size > 0 {
+			_ = dst[size-1]
+			_ = condition[size-1]
+			_ = a[size-1]
+			_ = b[size-1]
+		}
 		for i := 0; i < size; i++ {
 			if condition[i] > 0 {
 				dst[i] = a[i]
@@ -28,10 +40,13 @@ func ElemWhere[T Numeric](dst, condition, a, b []T, shape []int, stridesDst, str
 		return
 	}
 
-	// Strided path: iterate with strides
-	indices := make([]int, len(shape))
-	offsets := make([]int, 4)
-	strideSet := [][]int{stridesDst, stridesCond, stridesA, stridesB}
+	// Strided path: iterate with strides using stack-allocated arrays
+	// Maintain offsets incrementally (like AdvanceOffsets but for 4 arrays)
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [4]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:4]
 	for {
 		dIdx := offsets[0]
 		cIdx := offsets[1]
@@ -42,9 +57,9 @@ func ElemWhere[T Numeric](dst, condition, a, b []T, shape []int, stridesDst, str
 		} else {
 			dst[dIdx] = b[bIdx]
 		}
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		// Advance offsets incrementally for 4 arrays
+		if !AdvanceOffsets4(shape, indices, offsets, stridesDst, stridesCond, stridesA, stridesB) {
 			break
 		}
 	}
 }
-

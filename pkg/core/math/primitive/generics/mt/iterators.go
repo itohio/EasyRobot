@@ -31,7 +31,9 @@ func Elements(shape []int) func(func([]int) bool) {
 	}
 
 	return func(yield func([]int) bool) {
-		indices := make([]int, len(shape))
+		// Use stack-allocated array for indices
+		var indicesStatic [MAX_DIMS]int
+		indices := indicesStatic[:len(shape)]
 		for {
 			// Yield current indices directly (reused slice - caller must not modify)
 			// This avoids allocations at the cost of requiring caller to copy if needed
@@ -83,10 +85,14 @@ func ElementsStrided(shape []int, strides []int) func(func([]int) bool) {
 	}
 
 	// Ensure strides are valid
-	strides = EnsureStrides(strides, shape)
+	// Use stack-allocated array for stride computation
+	var stridesStatic [MAX_DIMS]int
+	strides = EnsureStrides(stridesStatic[:len(shape)], strides, shape)
 
 	return func(yield func([]int) bool) {
-		indices := make([]int, len(shape))
+		// Use stack-allocated array for indices
+		var indicesStatic [MAX_DIMS]int
+		indices := indicesStatic[:len(shape)]
 		for {
 			// Yield current indices directly (reused slice - caller must not modify)
 			// This avoids allocations at the cost of requiring caller to copy if needed
@@ -284,7 +290,8 @@ func ElementsWindows(
 
 	// For parallelization, we split output positions across workers
 	// We need to flatten output positions to linear indices for chunking
-	outputStrides := ComputeStrides(outputShape)
+	var outputStridesStatic [MAX_DIMS]int
+	outputStrides := ComputeStrides(outputStridesStatic[:len(outputShape)], outputShape)
 
 	return func(yield func([]int, []int, bool) bool) {
 		// Parallelize over output positions
@@ -394,7 +401,8 @@ func ElementsIndices(shape []int, fixedAxisValuePairs ...int) func(func([]int) b
 			}
 
 			// Compute strides for the full shape
-			fullStrides := ComputeStrides(shapeVals)
+			var fullStridesStatic [MAX_DIMS]int
+			fullStrides := ComputeStrides(fullStridesStatic[:len(shapeVals)], shapeVals)
 			if len(fullStrides) != len(shapeVals) {
 				return
 			}
@@ -402,7 +410,9 @@ func ElementsIndices(shape []int, fixedAxisValuePairs ...int) func(func([]int) b
 			parallelIteratorChunks(totalSize, func(startIdx, endIdx int) {
 				for linearIdx := startIdx; linearIdx < endIdx; linearIdx++ {
 					// Build indices array - each goroutine needs its own slice
-					indices := make([]int, len(shapeVals))
+					// Use stack-allocated array for indices
+					var indicesStatic [MAX_DIMS]int
+					indices := indicesStatic[:len(shapeVals)]
 					remaining := linearIdx
 					for i := 0; i < len(shapeVals); i++ {
 						indices[i] = remaining / fullStrides[i]
@@ -483,7 +493,8 @@ func ElementsIndices(shape []int, fixedAxisValuePairs ...int) func(func([]int) b
 		}
 
 		// Compute strides for the selected shape to convert linear indices to multi-dimensional indices
-		selectedStrides := ComputeStrides(selectedShape)
+		var selectedStridesStatic [MAX_DIMS]int
+		selectedStrides := ComputeStrides(selectedStridesStatic[:remainingCount], selectedShape)
 		if len(selectedStrides) != remainingCount {
 			return
 		}
@@ -547,7 +558,9 @@ func ElementsIndicesStrided(shape []int, strides []int, dims ...int) func(func([
 	}
 
 	// Ensure strides are valid
-	strides = EnsureStrides(strides, shape)
+	// Use stack-allocated array for stride computation
+	var stridesStatic [MAX_DIMS]int
+	strides = EnsureStrides(stridesStatic[:len(shape)], strides, shape)
 
 	// If no dims specified, use all dimensions (0, 1, 2, ..., rank-1)
 	var dimsArr [MAX_DIMS]int
@@ -606,7 +619,8 @@ func ElementsIndicesStrided(shape []int, strides []int, dims ...int) func(func([
 	}
 
 	// Compute strides for the selected shape to convert linear indices to multi-dimensional indices
-	selectedStrides := ComputeStrides(selectedShape)
+	var selectedStridesStatic [MAX_DIMS]int
+	selectedStrides := ComputeStrides(selectedStridesStatic[:numDims], selectedShape)
 	if len(selectedStrides) != numDims {
 		return func(yield func([]int) bool) {
 			// Stride calculation failed
@@ -620,7 +634,9 @@ func ElementsIndicesStrided(shape []int, strides []int, dims ...int) func(func([
 			for linearIdx := startIdx; linearIdx < endIdx; linearIdx++ {
 				// Calculate indices for selected dimensions from linear index
 				// Each goroutine needs its own indices slice to avoid data races
-				indices := make([]int, numDims)
+				// Use stack-allocated array for indices
+				var indicesStatic [MAX_DIMS]int
+				indices := indicesStatic[:numDims]
 				remaining := linearIdx
 				for i := 0; i < numDims; i++ {
 					indices[i] = remaining / selectedStrides[i]

@@ -8,7 +8,7 @@ import (
 
 var (
 	unaryBenchSrc = make([]float32, 10000)
-	unaryBenchDst  = make([]float32, 10000)
+	unaryBenchDst = make([]float32, 10000)
 )
 
 func init() {
@@ -171,8 +171,11 @@ func signStridedNonGeneric(dst, src []float32, shape []int, stridesDst, stridesS
 	if size == 0 {
 		return
 	}
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesSrc = EnsureStrides(stridesSrc, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var srcStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesSrc = EnsureStrides(srcStridesStatic[:len(shape)], stridesSrc, shape)
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesSrc, shape) {
 		for i := 0; i < size; i++ {
 			v := src[i]
@@ -186,9 +189,11 @@ func signStridedNonGeneric(dst, src []float32, shape []int, stridesDst, stridesS
 		}
 		return
 	}
-	indices := make([]int, len(shape))
-	offsets := make([]int, 2)
-	strideSet := [][]int{stridesDst, stridesSrc}
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [2]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:2]
 	for {
 		dIdx := offsets[0]
 		sIdx := offsets[1]
@@ -200,7 +205,7 @@ func signStridedNonGeneric(dst, src []float32, shape []int, stridesDst, stridesS
 		} else {
 			dst[dIdx] = 0
 		}
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		if !AdvanceOffsets(shape, indices, offsets, stridesDst, stridesSrc) {
 			break
 		}
 	}
@@ -220,24 +225,28 @@ func negativeStridedNonGeneric(dst, src []float32, shape []int, stridesDst, stri
 	if size == 0 {
 		return
 	}
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesSrc = EnsureStrides(stridesSrc, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var srcStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesSrc = EnsureStrides(srcStridesStatic[:len(shape)], stridesSrc, shape)
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesSrc, shape) {
 		for i := 0; i < size; i++ {
 			dst[i] = -src[i]
 		}
 		return
 	}
-	indices := make([]int, len(shape))
-	offsets := make([]int, 2)
-	strideSet := [][]int{stridesDst, stridesSrc}
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [2]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:2]
 	for {
 		dIdx := offsets[0]
 		sIdx := offsets[1]
 		dst[dIdx] = -src[sIdx]
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		if !AdvanceOffsets(shape, indices, offsets, stridesDst, stridesSrc) {
 			break
 		}
 	}
 }
-

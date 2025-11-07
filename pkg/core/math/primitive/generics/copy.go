@@ -15,8 +15,11 @@ func ElemCopy[T Numeric](dst, src []T, n int) {
 // ElemCopyStrided copies src into dst respecting the supplied shape/strides.
 // This function handles both contiguous and strided cases with optimized paths.
 func ElemCopyStrided[T Numeric](dst, src []T, shape []int, stridesDst, stridesSrc []int) {
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesSrc = EnsureStrides(stridesSrc, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var srcStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesSrc = EnsureStrides(srcStridesStatic[:len(shape)], stridesSrc, shape)
 	size := SizeFromShape(shape)
 	if size == 0 {
 		return
@@ -28,15 +31,17 @@ func ElemCopyStrided[T Numeric](dst, src []T, shape []int, stridesDst, stridesSr
 		return
 	}
 
-	// Strided path: iterate with strides
-	indices := make([]int, len(shape))
-	offsets := make([]int, 2)
-	strideSet := [][]int{stridesDst, stridesSrc}
+	// Strided path: iterate with strides using stack-allocated arrays
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [2]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:2]
 	for {
 		dIdx := offsets[0]
 		sIdx := offsets[1]
 		dst[dIdx] = src[sIdx]
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		if !AdvanceOffsets(shape, indices, offsets, stridesDst, stridesSrc) {
 			break
 		}
 	}
@@ -57,8 +62,11 @@ func ElemSwap[T Numeric](dst, src []T, n int) {
 // ElemSwapStrided swaps elements between dst and src respecting the supplied shape/strides.
 // This function handles both contiguous and strided cases with optimized paths.
 func ElemSwapStrided[T Numeric](dst, src []T, shape []int, stridesDst, stridesSrc []int) {
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesSrc = EnsureStrides(stridesSrc, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var srcStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesSrc = EnsureStrides(srcStridesStatic[:len(shape)], stridesSrc, shape)
 	size := SizeFromShape(shape)
 	if size == 0 {
 		return
@@ -72,15 +80,17 @@ func ElemSwapStrided[T Numeric](dst, src []T, shape []int, stridesDst, stridesSr
 		return
 	}
 
-	// Strided path: iterate with strides
-	indices := make([]int, len(shape))
-	offsets := make([]int, 2)
-	strideSet := [][]int{stridesDst, stridesSrc}
+	// Strided path: iterate with strides using stack-allocated arrays
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [2]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:2]
 	for {
 		dIdx := offsets[0]
 		sIdx := offsets[1]
 		dst[dIdx], src[sIdx] = src[sIdx], dst[dIdx]
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		if !AdvanceOffsets(shape, indices, offsets, stridesDst, stridesSrc) {
 			break
 		}
 	}

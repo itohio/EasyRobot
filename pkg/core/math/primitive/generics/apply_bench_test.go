@@ -71,22 +71,27 @@ func applyUnaryStridedNonGeneric(dst, src []float32, shape []int, stridesDst, st
 	if size == 0 {
 		return
 	}
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesSrc = EnsureStrides(stridesSrc, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var srcStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesSrc = EnsureStrides(srcStridesStatic[:len(shape)], stridesSrc, shape)
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesSrc, shape) {
 		for i := 0; i < size; i++ {
 			dst[i] = op(src[i])
 		}
 		return
 	}
-	indices := make([]int, len(shape))
-	offsets := make([]int, 2)
-	strideSet := [][]int{stridesDst, stridesSrc}
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [2]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:2]
 	for {
 		dIdx := offsets[0]
 		sIdx := offsets[1]
 		dst[dIdx] = op(src[sIdx])
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		if !AdvanceOffsets(shape, indices, offsets, stridesDst, stridesSrc) {
 			break
 		}
 	}
@@ -182,24 +187,30 @@ func applyBinaryStridedNonGeneric(dst, a, b []float32, shape []int, stridesDst, 
 	if size == 0 {
 		return
 	}
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesA = EnsureStrides(stridesA, shape)
-	stridesB = EnsureStrides(stridesB, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var aStridesStatic [MAX_DIMS]int
+	var bStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesA = EnsureStrides(aStridesStatic[:len(shape)], stridesA, shape)
+	stridesB = EnsureStrides(bStridesStatic[:len(shape)], stridesB, shape)
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesA, shape) && IsContiguous(stridesB, shape) {
 		for i := 0; i < size; i++ {
 			dst[i] = op(a[i], b[i])
 		}
 		return
 	}
-	indices := make([]int, len(shape))
-	offsets := make([]int, 3)
-	strideSet := [][]int{stridesDst, stridesA, stridesB}
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [3]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:3]
 	for {
 		dIdx := offsets[0]
 		aIdx := offsets[1]
 		bIdx := offsets[2]
 		dst[dIdx] = op(a[aIdx], b[bIdx])
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		if !AdvanceOffsets3(shape, indices, offsets, stridesDst, stridesA, stridesB) {
 			break
 		}
 	}
@@ -299,22 +310,27 @@ func applyUnaryScalarStridedNonGeneric(dst, src []float32, scalar float32, shape
 	if size == 0 {
 		return
 	}
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesSrc = EnsureStrides(stridesSrc, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var srcStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesSrc = EnsureStrides(srcStridesStatic[:len(shape)], stridesSrc, shape)
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesSrc, shape) {
 		for i := 0; i < size; i++ {
 			dst[i] = op(src[i], scalar)
 		}
 		return
 	}
-	indices := make([]int, len(shape))
-	offsets := make([]int, 2)
-	strideSet := [][]int{stridesDst, stridesSrc}
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [2]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:2]
 	for {
 		dIdx := offsets[0]
 		sIdx := offsets[1]
 		dst[dIdx] = op(src[sIdx], scalar)
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		if !AdvanceOffsets(shape, indices, offsets, stridesDst, stridesSrc) {
 			break
 		}
 	}

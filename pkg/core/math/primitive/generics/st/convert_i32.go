@@ -75,41 +75,24 @@ func clampToIntStrided[U ClampableToInt](dst []int, src []U, shape []int, srcStr
 		return
 	}
 
-	indices := make([]int, ndims)
-	dim := 0
-
+	// Use stack-allocated arrays and AdvanceOffsets pattern
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [2]int
+	indices := indicesStatic[:ndims]
+	offsets := offsetsStatic[:2]
 	for {
-		if dim == ndims {
-			sIdx := ComputeStrideOffset(indices, srcStrides)
-			dIdx := ComputeStrideOffset(indices, dstStrides)
-			val := src[sIdx]
-			if val > U(math.MaxInt) {
-				dst[dIdx] = math.MaxInt
-			} else if val < U(math.MinInt) {
-				dst[dIdx] = math.MinInt
-			} else {
-				dst[dIdx] = int(val)
-			}
-
-			dim--
-			if dim < 0 {
-				break
-			}
-			indices[dim]++
-			continue
+		// Hot path: use AdvanceOffsets pattern
+		val := src[offsets[1]]
+		if val > U(math.MaxInt) {
+			dst[offsets[0]] = math.MaxInt
+		} else if val < U(math.MinInt) {
+			dst[offsets[0]] = math.MinInt
+		} else {
+			dst[offsets[0]] = int(val)
 		}
-
-		if indices[dim] >= shape[dim] {
-			indices[dim] = 0
-			dim--
-			if dim < 0 {
-				break
-			}
-			indices[dim]++
-			continue
+		if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+			break
 		}
-
-		dim++
 	}
 }
 

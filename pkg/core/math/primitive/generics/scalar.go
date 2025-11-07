@@ -8,6 +8,10 @@ func ElemFill[T Numeric](dst []T, value T, n int) {
 	if n == 0 {
 		return
 	}
+	// Boundary check elimination hint
+	if n > 0 {
+		_ = dst[n-1]
+	}
 	for i := 0; i < n; i++ {
 		dst[i] = value
 	}
@@ -21,24 +25,33 @@ func ElemFillStrided[T Numeric](dst []T, value T, shape []int, stridesDst []int)
 		return
 	}
 
-	stridesDst = EnsureStrides(stridesDst, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
 
 	if IsContiguous(stridesDst, shape) {
 		// Fast path: contiguous arrays
+		// Boundary check elimination hint
+		if size > 0 {
+			_ = dst[size-1]
+		}
 		for i := 0; i < size; i++ {
 			dst[i] = value
 		}
 		return
 	}
 
-	// Strided path: iterate with strides
-	indices := make([]int, len(shape))
-	offsets := make([]int, 1)
-	strideSet := [][]int{stridesDst}
+	// Strided path: iterate with strides using stack-allocated arrays
+	// Use AdvanceOffsets pattern with same stride for both (we only use offsets[0])
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [2]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:2]
 	for {
-		dIdx := offsets[0]
-		dst[dIdx] = value
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		dst[offsets[0]] = value
+		// Use AdvanceOffsets with same stride for both (we only use offsets[0])
+		if !AdvanceOffsets(shape, indices, offsets, stridesDst, stridesDst) {
 			break
 		}
 	}
@@ -49,6 +62,11 @@ func ElemFillStrided[T Numeric](dst []T, value T, shape []int, stridesDst []int)
 func ElemEqualScalar[T Numeric](dst, src []T, scalar T, n int) {
 	if n == 0 {
 		return
+	}
+	// Boundary check elimination hint
+	if n > 0 {
+		_ = dst[n-1]
+		_ = src[n-1]
 	}
 	for i := 0; i < n; i++ {
 		if src[i] == scalar {
@@ -67,11 +85,19 @@ func ElemEqualScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, stri
 		return
 	}
 
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesSrc = EnsureStrides(stridesSrc, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var srcStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesSrc = EnsureStrides(srcStridesStatic[:len(shape)], stridesSrc, shape)
 
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesSrc, shape) {
 		// Fast path: contiguous arrays
+		// Boundary check elimination hint
+		if size > 0 {
+			_ = dst[size-1]
+			_ = src[size-1]
+		}
 		for i := 0; i < size; i++ {
 			if src[i] == scalar {
 				dst[i] = 1
@@ -82,10 +108,12 @@ func ElemEqualScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, stri
 		return
 	}
 
-	// Strided path: iterate with strides
-	indices := make([]int, len(shape))
-	offsets := make([]int, 2)
-	strideSet := [][]int{stridesDst, stridesSrc}
+	// Strided path: iterate with strides using stack-allocated arrays
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [2]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:2]
 	for {
 		dIdx := offsets[0]
 		sIdx := offsets[1]
@@ -94,7 +122,7 @@ func ElemEqualScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, stri
 		} else {
 			dst[dIdx] = 0
 		}
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		if !AdvanceOffsets(shape, indices, offsets, stridesDst, stridesSrc) {
 			break
 		}
 	}
@@ -104,6 +132,11 @@ func ElemEqualScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, stri
 func ElemGreaterScalar[T Numeric](dst, src []T, scalar T, n int) {
 	if n == 0 {
 		return
+	}
+	// Boundary check elimination hint
+	if n > 0 {
+		_ = dst[n-1]
+		_ = src[n-1]
 	}
 	for i := 0; i < n; i++ {
 		if src[i] > scalar {
@@ -121,10 +154,18 @@ func ElemGreaterScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, st
 		return
 	}
 
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesSrc = EnsureStrides(stridesSrc, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var srcStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesSrc = EnsureStrides(srcStridesStatic[:len(shape)], stridesSrc, shape)
 
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesSrc, shape) {
+		// Boundary check elimination hint
+		if size > 0 {
+			_ = dst[size-1]
+			_ = src[size-1]
+		}
 		for i := 0; i < size; i++ {
 			if src[i] > scalar {
 				dst[i] = 1
@@ -135,9 +176,12 @@ func ElemGreaterScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, st
 		return
 	}
 
-	indices := make([]int, len(shape))
-	offsets := make([]int, 2)
-	strideSet := [][]int{stridesDst, stridesSrc}
+	// Strided path: iterate with strides using stack-allocated arrays
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [2]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:2]
 	for {
 		dIdx := offsets[0]
 		sIdx := offsets[1]
@@ -146,7 +190,7 @@ func ElemGreaterScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, st
 		} else {
 			dst[dIdx] = 0
 		}
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		if !AdvanceOffsets(shape, indices, offsets, stridesDst, stridesSrc) {
 			break
 		}
 	}
@@ -156,6 +200,11 @@ func ElemGreaterScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, st
 func ElemLessScalar[T Numeric](dst, src []T, scalar T, n int) {
 	if n == 0 {
 		return
+	}
+	// Boundary check elimination hint
+	if n > 0 {
+		_ = dst[n-1]
+		_ = src[n-1]
 	}
 	for i := 0; i < n; i++ {
 		if src[i] < scalar {
@@ -173,10 +222,18 @@ func ElemLessScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, strid
 		return
 	}
 
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesSrc = EnsureStrides(stridesSrc, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var srcStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesSrc = EnsureStrides(srcStridesStatic[:len(shape)], stridesSrc, shape)
 
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesSrc, shape) {
+		// Boundary check elimination hint
+		if size > 0 {
+			_ = dst[size-1]
+			_ = src[size-1]
+		}
 		for i := 0; i < size; i++ {
 			if src[i] < scalar {
 				dst[i] = 1
@@ -187,9 +244,12 @@ func ElemLessScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, strid
 		return
 	}
 
-	indices := make([]int, len(shape))
-	offsets := make([]int, 2)
-	strideSet := [][]int{stridesDst, stridesSrc}
+	// Strided path: iterate with strides using stack-allocated arrays
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [2]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:2]
 	for {
 		dIdx := offsets[0]
 		sIdx := offsets[1]
@@ -198,7 +258,7 @@ func ElemLessScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, strid
 		} else {
 			dst[dIdx] = 0
 		}
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		if !AdvanceOffsets(shape, indices, offsets, stridesDst, stridesSrc) {
 			break
 		}
 	}
@@ -208,6 +268,11 @@ func ElemLessScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, strid
 func ElemNotEqualScalar[T Numeric](dst, src []T, scalar T, n int) {
 	if n == 0 {
 		return
+	}
+	// Boundary check elimination hint
+	if n > 0 {
+		_ = dst[n-1]
+		_ = src[n-1]
 	}
 	for i := 0; i < n; i++ {
 		if src[i] != scalar {
@@ -225,10 +290,18 @@ func ElemNotEqualScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, s
 		return
 	}
 
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesSrc = EnsureStrides(stridesSrc, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var srcStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesSrc = EnsureStrides(srcStridesStatic[:len(shape)], stridesSrc, shape)
 
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesSrc, shape) {
+		// Boundary check elimination hint
+		if size > 0 {
+			_ = dst[size-1]
+			_ = src[size-1]
+		}
 		for i := 0; i < size; i++ {
 			if src[i] != scalar {
 				dst[i] = 1
@@ -239,9 +312,12 @@ func ElemNotEqualScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, s
 		return
 	}
 
-	indices := make([]int, len(shape))
-	offsets := make([]int, 2)
-	strideSet := [][]int{stridesDst, stridesSrc}
+	// Strided path: iterate with strides using stack-allocated arrays
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [2]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:2]
 	for {
 		dIdx := offsets[0]
 		sIdx := offsets[1]
@@ -250,7 +326,7 @@ func ElemNotEqualScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, s
 		} else {
 			dst[dIdx] = 0
 		}
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		if !AdvanceOffsets(shape, indices, offsets, stridesDst, stridesSrc) {
 			break
 		}
 	}
@@ -260,6 +336,11 @@ func ElemNotEqualScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, s
 func ElemLessEqualScalar[T Numeric](dst, src []T, scalar T, n int) {
 	if n == 0 {
 		return
+	}
+	// Boundary check elimination hint
+	if n > 0 {
+		_ = dst[n-1]
+		_ = src[n-1]
 	}
 	for i := 0; i < n; i++ {
 		if src[i] <= scalar {
@@ -277,10 +358,18 @@ func ElemLessEqualScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, 
 		return
 	}
 
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesSrc = EnsureStrides(stridesSrc, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var srcStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesSrc = EnsureStrides(srcStridesStatic[:len(shape)], stridesSrc, shape)
 
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesSrc, shape) {
+		// Boundary check elimination hint
+		if size > 0 {
+			_ = dst[size-1]
+			_ = src[size-1]
+		}
 		for i := 0; i < size; i++ {
 			if src[i] <= scalar {
 				dst[i] = 1
@@ -291,9 +380,12 @@ func ElemLessEqualScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, 
 		return
 	}
 
-	indices := make([]int, len(shape))
-	offsets := make([]int, 2)
-	strideSet := [][]int{stridesDst, stridesSrc}
+	// Strided path: iterate with strides using stack-allocated arrays
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [2]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:2]
 	for {
 		dIdx := offsets[0]
 		sIdx := offsets[1]
@@ -302,7 +394,7 @@ func ElemLessEqualScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, 
 		} else {
 			dst[dIdx] = 0
 		}
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		if !AdvanceOffsets(shape, indices, offsets, stridesDst, stridesSrc) {
 			break
 		}
 	}
@@ -312,6 +404,11 @@ func ElemLessEqualScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, 
 func ElemGreaterEqualScalar[T Numeric](dst, src []T, scalar T, n int) {
 	if n == 0 {
 		return
+	}
+	// Boundary check elimination hint
+	if n > 0 {
+		_ = dst[n-1]
+		_ = src[n-1]
 	}
 	for i := 0; i < n; i++ {
 		if src[i] >= scalar {
@@ -329,10 +426,18 @@ func ElemGreaterEqualScalarStrided[T Numeric](dst, src []T, scalar T, shape []in
 		return
 	}
 
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesSrc = EnsureStrides(stridesSrc, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var srcStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesSrc = EnsureStrides(srcStridesStatic[:len(shape)], stridesSrc, shape)
 
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesSrc, shape) {
+		// Boundary check elimination hint
+		if size > 0 {
+			_ = dst[size-1]
+			_ = src[size-1]
+		}
 		for i := 0; i < size; i++ {
 			if src[i] >= scalar {
 				dst[i] = 1
@@ -343,9 +448,12 @@ func ElemGreaterEqualScalarStrided[T Numeric](dst, src []T, scalar T, shape []in
 		return
 	}
 
-	indices := make([]int, len(shape))
-	offsets := make([]int, 2)
-	strideSet := [][]int{stridesDst, stridesSrc}
+	// Strided path: iterate with strides using stack-allocated arrays
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [2]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:2]
 	for {
 		dIdx := offsets[0]
 		sIdx := offsets[1]
@@ -354,9 +462,8 @@ func ElemGreaterEqualScalarStrided[T Numeric](dst, src []T, scalar T, shape []in
 		} else {
 			dst[dIdx] = 0
 		}
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		if !AdvanceOffsets(shape, indices, offsets, stridesDst, stridesSrc) {
 			break
 		}
 	}
 }
-

@@ -31,7 +31,9 @@ func Elements(shape []int) func(func([]int) bool) {
 	}
 
 	return func(yield func([]int) bool) {
-		indices := make([]int, len(shape))
+		// Use stack-allocated array for indices
+		var indicesStatic [MAX_DIMS]int
+		indices := indicesStatic[:len(shape)]
 		for {
 			// Yield current indices directly (reused slice - caller must not modify)
 			// This avoids allocations at the cost of requiring caller to copy if needed
@@ -83,10 +85,14 @@ func ElementsStrided(shape []int, strides []int) func(func([]int) bool) {
 	}
 
 	// Ensure strides are valid
-	strides = EnsureStrides(strides, shape)
+	// Use stack-allocated array for stride computation
+	var stridesStatic [MAX_DIMS]int
+	strides = EnsureStrides(stridesStatic[:len(shape)], strides, shape)
 
 	return func(yield func([]int) bool) {
-		indices := make([]int, len(shape))
+		// Use stack-allocated array for indices
+		var indicesStatic [MAX_DIMS]int
+		indices := indicesStatic[:len(shape)]
 		for {
 			// Yield current indices directly (reused slice - caller must not modify)
 			// This avoids allocations at the cost of requiring caller to copy if needed
@@ -508,7 +514,9 @@ func ElementsIndicesStrided(shape []int, strides []int, dims ...int) func(func([
 	}
 
 	// Ensure strides are valid
-	strides = EnsureStrides(strides, shape)
+	// Use stack-allocated array for stride computation
+	var stridesStatic [MAX_DIMS]int
+	strides = EnsureStrides(stridesStatic[:len(shape)], strides, shape)
 
 	// If no dims specified, use all dimensions (0, 1, 2, ..., rank-1)
 	var dimsArr [MAX_DIMS]int

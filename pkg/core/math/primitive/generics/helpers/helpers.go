@@ -79,21 +79,32 @@ func ComputeStridesRank(shape []int) int {
 	return len(shape)
 }
 
-// ComputeStrides returns the canonical row-major strides for the given shape.
+// ComputeStrides computes the canonical row-major strides for the given shape into dst.
+// If dst is nil or has insufficient capacity, a stack-allocated array is used.
 // Example: shape [2,3,4] -> strides [12,4,1].
-func ComputeStrides(shape []int) []int {
+// Returns the slice containing the computed strides.
+// Note: Shapes are constrained to MAX_DIMS (16) dimensions, so stack allocation is always used.
+func ComputeStrides(dst []int, shape []int) []int {
 	if len(shape) == 0 {
 		return nil
 	}
 
-	strides := make([]int, len(shape))
+	rank := len(shape)
+	if dst == nil || len(dst) < rank {
+		// Always use stack-allocated array (shapes are constrained to MAX_DIMS)
+		var static [MAX_DIMS]int
+		dst = static[:rank]
+	} else {
+		dst = dst[:rank]
+	}
+
 	stride := 1
-	for i := len(shape) - 1; i >= 0; i-- {
-		strides[i] = stride
+	for i := rank - 1; i >= 0; i-- {
+		dst[i] = stride
 		stride *= shape[i]
 	}
 
-	return strides
+	return dst
 }
 
 // SizeFromShape computes the total number of elements described by the shape.
@@ -111,19 +122,24 @@ func SizeFromShape(shape []int) int {
 	return size
 }
 
-// EnsureStrides returns the provided strides if they match the shape; otherwise it falls back to canonical row-major strides.
-func EnsureStrides(strides []int, shape []int) []int {
+// EnsureStrides ensures strides are valid for the shape, computing canonical strides into dst if needed.
+// If the provided strides match the shape rank, they are returned as-is.
+// Otherwise, canonical row-major strides are computed into dst (or stack-allocated if dst is nil).
+// Returns the slice containing the valid strides.
+func EnsureStrides(dst []int, strides []int, shape []int) []int {
 	rank := ComputeStridesRank(shape)
 	if rank == 0 {
 		return nil
 	}
 	if len(strides) != rank {
-		return ComputeStrides(shape)
+		return ComputeStrides(dst, shape)
 	}
 	return strides
 }
 
 // IsContiguous reports whether the strides describe a dense row-major layout for the shape.
+// Uses stack-allocated array for comparison to avoid heap allocation.
+// Note: Shapes are constrained to MAX_DIMS (16) dimensions.
 func IsContiguous(strides []int, shape []int) bool {
 	rank := ComputeStridesRank(shape)
 	if rank == 0 {
@@ -133,8 +149,9 @@ func IsContiguous(strides []int, shape []int) bool {
 	if len(strides) != rank {
 		return false
 	}
-	// Only compute full strides if rank matches
-	canonical := ComputeStrides(shape)
+	// Always use stack-allocated array (shapes are constrained to MAX_DIMS)
+	var static [MAX_DIMS]int
+	canonical := ComputeStrides(static[:rank], shape)
 	for i := range canonical {
 		if strides[i] != canonical[i] {
 			return false
@@ -144,26 +161,97 @@ func IsContiguous(strides []int, shape []int) bool {
 }
 
 // AdvanceOffsets advances the multi-dimensional indices/offsets tuple.
+// Accepts two stride slices (stridesDst and stridesSrc) instead of a slice of slices
+// to avoid allocation and reduce bounds checks.
 // Returns true if the iteration should continue, false when the final
 // element has been processed.
-func AdvanceOffsets(shape []int, indices []int, offsets []int, strides [][]int) bool {
+func AdvanceOffsets(shape []int, indices []int, offsets []int, stridesDst, stridesSrc []int) bool {
 	if len(shape) == 0 {
 		return false
 	}
 
 	for dim := len(shape) - 1; dim >= 0; dim-- {
 		indices[dim]++
-		for buf := range offsets {
-			offsets[buf] += strides[buf][dim]
-		}
+		// Pre-compute stride values to reduce nested array access
+		strideDst := stridesDst[dim]
+		strideSrc := stridesSrc[dim]
+		offsets[0] += strideDst
+		offsets[1] += strideSrc
 
 		if indices[dim] < shape[dim] {
 			return true
 		}
 
-		for buf := range offsets {
-			offsets[buf] -= strides[buf][dim] * shape[dim]
+		// Reset offsets when dimension wraps
+		offsets[0] -= strideDst * shape[dim]
+		offsets[1] -= strideSrc * shape[dim]
+		indices[dim] = 0
+	}
+
+	return false
+}
+
+// AdvanceOffsets3 advances offsets for 3 arrays incrementally (like AdvanceOffsets but for 3 strides).
+// Updates offsets[0] using stridesDst, offsets[1] using stridesA, and offsets[2] using stridesB.
+// Returns true if the iteration should continue, false when the final element has been processed.
+func AdvanceOffsets3(shape []int, indices []int, offsets []int, stridesDst, stridesA, stridesB []int) bool {
+	if len(shape) == 0 {
+		return false
+	}
+
+	for dim := len(shape) - 1; dim >= 0; dim-- {
+		indices[dim]++
+		// Pre-compute stride values to reduce nested array access
+		strideDst := stridesDst[dim]
+		strideA := stridesA[dim]
+		strideB := stridesB[dim]
+		offsets[0] += strideDst
+		offsets[1] += strideA
+		offsets[2] += strideB
+
+		if indices[dim] < shape[dim] {
+			return true
 		}
+
+		// Reset offsets when dimension wraps
+		offsets[0] -= strideDst * shape[dim]
+		offsets[1] -= strideA * shape[dim]
+		offsets[2] -= strideB * shape[dim]
+		indices[dim] = 0
+	}
+
+	return false
+}
+
+// AdvanceOffsets4 advances offsets for 4 arrays incrementally (like AdvanceOffsets but for 4 strides).
+// Updates offsets[0] using stridesDst, offsets[1] using stridesCond, offsets[2] using stridesA, and offsets[3] using stridesB.
+// Returns true if the iteration should continue, false when the final element has been processed.
+func AdvanceOffsets4(shape []int, indices []int, offsets []int, stridesDst, stridesCond, stridesA, stridesB []int) bool {
+	if len(shape) == 0 {
+		return false
+	}
+
+	for dim := len(shape) - 1; dim >= 0; dim-- {
+		indices[dim]++
+		// Pre-compute stride values to reduce nested array access
+		strideDst := stridesDst[dim]
+		strideCond := stridesCond[dim]
+		strideA := stridesA[dim]
+		strideB := stridesB[dim]
+		offsets[0] += strideDst
+		offsets[1] += strideCond
+		offsets[2] += strideA
+		offsets[3] += strideB
+
+		if indices[dim] < shape[dim] {
+			return true
+		}
+
+		// Reset offsets when dimension wraps
+		offsets[0] -= strideDst * shape[dim]
+		offsets[1] -= strideCond * shape[dim]
+		offsets[2] -= strideA * shape[dim]
+		offsets[3] -= strideB * shape[dim]
 		indices[dim] = 0
 	}
 
@@ -173,17 +261,22 @@ func AdvanceOffsets(shape []int, indices []int, offsets []int, strides [][]int) 
 // IterateOffsets iterates over all multi-dimensional indices in the given shape,
 // computing linear offsets for each set of strides, and calls the callback with offsets.
 // This is a convenience wrapper around AdvanceOffsets.
-func IterateOffsets(shape []int, strides [][]int, callback func(offsets []int)) {
+// Uses stack-allocated arrays for indices and offsets (shapes are constrained to MAX_DIMS).
+func IterateOffsets(shape []int, stridesDst, stridesSrc []int, callback func(offsets []int)) {
 	if len(shape) == 0 {
 		return
 	}
 
-	indices := make([]int, len(shape))
-	offsets := make([]int, len(strides))
+	rank := len(shape)
+	// Always use stack allocation (shapes are constrained to MAX_DIMS)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [2]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:2]
 
 	for {
 		callback(offsets)
-		if !AdvanceOffsets(shape, indices, offsets, strides) {
+		if !AdvanceOffsets(shape, indices, offsets, stridesDst, stridesSrc) {
 			break
 		}
 	}
@@ -192,26 +285,37 @@ func IterateOffsets(shape []int, strides [][]int, callback func(offsets []int)) 
 // IterateOffsetsWithIndices iterates over all multi-dimensional indices in the given shape,
 // computing linear offsets for each set of strides, and calls the callback with both indices and offsets.
 // This is a convenience wrapper around AdvanceOffsets.
-func IterateOffsetsWithIndices(shape []int, strides [][]int, callback func(indices []int, offsets []int)) {
+// Uses stack-allocated arrays for indices and offsets (shapes are constrained to MAX_DIMS).
+func IterateOffsetsWithIndices(shape []int, stridesDst, stridesSrc []int, callback func(indices []int, offsets []int)) {
 	if len(shape) == 0 {
 		return
 	}
 
-	indices := make([]int, len(shape))
-	offsets := make([]int, len(strides))
+	rank := len(shape)
+	// Always use stack allocation (shapes are constrained to MAX_DIMS)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [2]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:2]
 
 	for {
 		callback(indices, offsets)
-		if !AdvanceOffsets(shape, indices, offsets, strides) {
+		if !AdvanceOffsets(shape, indices, offsets, stridesDst, stridesSrc) {
 			break
 		}
 	}
 }
 
 // ComputeStrideOffset computes the linear offset from multi-dimensional indices and strides.
+// Uses bound check elimination trick to improve performance for short, critical loops.
 func ComputeStrideOffset(indices []int, strides []int) int {
 	offset := 0
-	for i := range indices {
+	n := len(indices)
+	if n > 0 {
+		_ = indices[n-1]
+		_ = strides[n-1]
+	}
+	for i := range n {
 		offset += indices[i] * strides[i]
 	}
 	return offset

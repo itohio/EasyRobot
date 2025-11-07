@@ -8,6 +8,12 @@ func ElemGreaterThan[T Numeric](dst, a, b []T, n int) {
 	if n == 0 {
 		return
 	}
+	// Boundary check elimination hint
+	if n > 0 {
+		_ = dst[n-1]
+		_ = a[n-1]
+		_ = b[n-1]
+	}
 	for i := 0; i < n; i++ {
 		if a[i] > b[i] {
 			dst[i] = 1
@@ -25,12 +31,22 @@ func ElemGreaterThanStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, s
 		return
 	}
 
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesA = EnsureStrides(stridesA, shape)
-	stridesB = EnsureStrides(stridesB, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var aStridesStatic [MAX_DIMS]int
+	var bStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesA = EnsureStrides(aStridesStatic[:len(shape)], stridesA, shape)
+	stridesB = EnsureStrides(bStridesStatic[:len(shape)], stridesB, shape)
 
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesA, shape) && IsContiguous(stridesB, shape) {
 		// Fast path: contiguous arrays
+		// Boundary check elimination hint
+		if size > 0 {
+			_ = dst[size-1]
+			_ = a[size-1]
+			_ = b[size-1]
+		}
 		for i := 0; i < size; i++ {
 			if a[i] > b[i] {
 				dst[i] = 1
@@ -41,10 +57,13 @@ func ElemGreaterThanStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, s
 		return
 	}
 
-	// Strided path: iterate with strides
-	indices := make([]int, len(shape))
-	offsets := make([]int, 3)
-	strideSet := [][]int{stridesDst, stridesA, stridesB}
+	// Strided path: iterate with strides using stack-allocated arrays
+	// Maintain offsets incrementally (like AdvanceOffsets but for 3 arrays)
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [3]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:3]
 	for {
 		dIdx := offsets[0]
 		aIdx := offsets[1]
@@ -54,7 +73,8 @@ func ElemGreaterThanStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, s
 		} else {
 			dst[dIdx] = 0
 		}
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		// Advance offsets incrementally for 3 arrays
+		if !AdvanceOffsets3(shape, indices, offsets, stridesDst, stridesA, stridesB) {
 			break
 		}
 	}
@@ -65,6 +85,12 @@ func ElemGreaterThanStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, s
 func ElemEqual[T Numeric](dst, a, b []T, n int) {
 	if n == 0 {
 		return
+	}
+	// Boundary check elimination hint
+	if n > 0 {
+		_ = dst[n-1]
+		_ = a[n-1]
+		_ = b[n-1]
 	}
 	for i := 0; i < n; i++ {
 		if a[i] == b[i] {
@@ -83,12 +109,22 @@ func ElemEqualStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, strides
 		return
 	}
 
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesA = EnsureStrides(stridesA, shape)
-	stridesB = EnsureStrides(stridesB, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var aStridesStatic [MAX_DIMS]int
+	var bStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesA = EnsureStrides(aStridesStatic[:len(shape)], stridesA, shape)
+	stridesB = EnsureStrides(bStridesStatic[:len(shape)], stridesB, shape)
 
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesA, shape) && IsContiguous(stridesB, shape) {
 		// Fast path: contiguous arrays
+		// Boundary check elimination hint
+		if size > 0 {
+			_ = dst[size-1]
+			_ = a[size-1]
+			_ = b[size-1]
+		}
 		for i := 0; i < size; i++ {
 			if a[i] == b[i] {
 				dst[i] = 1
@@ -99,10 +135,13 @@ func ElemEqualStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, strides
 		return
 	}
 
-	// Strided path: iterate with strides
-	indices := make([]int, len(shape))
-	offsets := make([]int, 3)
-	strideSet := [][]int{stridesDst, stridesA, stridesB}
+	// Strided path: iterate with strides using stack-allocated arrays
+	// Maintain offsets incrementally (like AdvanceOffsets but for 3 arrays)
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [3]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:3]
 	for {
 		dIdx := offsets[0]
 		aIdx := offsets[1]
@@ -112,7 +151,8 @@ func ElemEqualStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, strides
 		} else {
 			dst[dIdx] = 0
 		}
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		// Advance offsets incrementally for 3 arrays
+		if !AdvanceOffsets3(shape, indices, offsets, stridesDst, stridesA, stridesB) {
 			break
 		}
 	}
@@ -123,6 +163,12 @@ func ElemEqualStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, strides
 func ElemLess[T Numeric](dst, a, b []T, n int) {
 	if n == 0 {
 		return
+	}
+	// Boundary check elimination hint
+	if n > 0 {
+		_ = dst[n-1]
+		_ = a[n-1]
+		_ = b[n-1]
 	}
 	for i := 0; i < n; i++ {
 		if a[i] < b[i] {
@@ -141,12 +187,22 @@ func ElemLessStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, stridesA
 		return
 	}
 
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesA = EnsureStrides(stridesA, shape)
-	stridesB = EnsureStrides(stridesB, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var aStridesStatic [MAX_DIMS]int
+	var bStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesA = EnsureStrides(aStridesStatic[:len(shape)], stridesA, shape)
+	stridesB = EnsureStrides(bStridesStatic[:len(shape)], stridesB, shape)
 
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesA, shape) && IsContiguous(stridesB, shape) {
 		// Fast path: contiguous arrays
+		// Boundary check elimination hint
+		if size > 0 {
+			_ = dst[size-1]
+			_ = a[size-1]
+			_ = b[size-1]
+		}
 		for i := 0; i < size; i++ {
 			if a[i] < b[i] {
 				dst[i] = 1
@@ -157,10 +213,13 @@ func ElemLessStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, stridesA
 		return
 	}
 
-	// Strided path: iterate with strides
-	indices := make([]int, len(shape))
-	offsets := make([]int, 3)
-	strideSet := [][]int{stridesDst, stridesA, stridesB}
+	// Strided path: iterate with strides using stack-allocated arrays
+	// Maintain offsets incrementally (like AdvanceOffsets but for 3 arrays)
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [3]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:3]
 	for {
 		dIdx := offsets[0]
 		aIdx := offsets[1]
@@ -170,7 +229,8 @@ func ElemLessStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, stridesA
 		} else {
 			dst[dIdx] = 0
 		}
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		// Advance offsets incrementally for 3 arrays
+		if !AdvanceOffsets3(shape, indices, offsets, stridesDst, stridesA, stridesB) {
 			break
 		}
 	}
@@ -181,6 +241,12 @@ func ElemLessStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, stridesA
 func ElemNotEqual[T Numeric](dst, a, b []T, n int) {
 	if n == 0 {
 		return
+	}
+	// Boundary check elimination hint
+	if n > 0 {
+		_ = dst[n-1]
+		_ = a[n-1]
+		_ = b[n-1]
 	}
 	for i := 0; i < n; i++ {
 		if a[i] != b[i] {
@@ -199,12 +265,22 @@ func ElemNotEqualStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, stri
 		return
 	}
 
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesA = EnsureStrides(stridesA, shape)
-	stridesB = EnsureStrides(stridesB, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var aStridesStatic [MAX_DIMS]int
+	var bStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesA = EnsureStrides(aStridesStatic[:len(shape)], stridesA, shape)
+	stridesB = EnsureStrides(bStridesStatic[:len(shape)], stridesB, shape)
 
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesA, shape) && IsContiguous(stridesB, shape) {
 		// Fast path: contiguous arrays
+		// Boundary check elimination hint
+		if size > 0 {
+			_ = dst[size-1]
+			_ = a[size-1]
+			_ = b[size-1]
+		}
 		for i := 0; i < size; i++ {
 			if a[i] != b[i] {
 				dst[i] = 1
@@ -215,10 +291,13 @@ func ElemNotEqualStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, stri
 		return
 	}
 
-	// Strided path: iterate with strides
-	indices := make([]int, len(shape))
-	offsets := make([]int, 3)
-	strideSet := [][]int{stridesDst, stridesA, stridesB}
+	// Strided path: iterate with strides using stack-allocated arrays
+	// Maintain offsets incrementally (like AdvanceOffsets but for 3 arrays)
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [3]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:3]
 	for {
 		dIdx := offsets[0]
 		aIdx := offsets[1]
@@ -228,7 +307,8 @@ func ElemNotEqualStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, stri
 		} else {
 			dst[dIdx] = 0
 		}
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		// Advance offsets incrementally for 3 arrays
+		if !AdvanceOffsets3(shape, indices, offsets, stridesDst, stridesA, stridesB) {
 			break
 		}
 	}
@@ -239,6 +319,12 @@ func ElemNotEqualStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, stri
 func ElemLessEqual[T Numeric](dst, a, b []T, n int) {
 	if n == 0 {
 		return
+	}
+	// Boundary check elimination hint
+	if n > 0 {
+		_ = dst[n-1]
+		_ = a[n-1]
+		_ = b[n-1]
 	}
 	for i := 0; i < n; i++ {
 		if a[i] <= b[i] {
@@ -257,12 +343,22 @@ func ElemLessEqualStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, str
 		return
 	}
 
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesA = EnsureStrides(stridesA, shape)
-	stridesB = EnsureStrides(stridesB, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var aStridesStatic [MAX_DIMS]int
+	var bStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesA = EnsureStrides(aStridesStatic[:len(shape)], stridesA, shape)
+	stridesB = EnsureStrides(bStridesStatic[:len(shape)], stridesB, shape)
 
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesA, shape) && IsContiguous(stridesB, shape) {
 		// Fast path: contiguous arrays
+		// Boundary check elimination hint
+		if size > 0 {
+			_ = dst[size-1]
+			_ = a[size-1]
+			_ = b[size-1]
+		}
 		for i := 0; i < size; i++ {
 			if a[i] <= b[i] {
 				dst[i] = 1
@@ -273,10 +369,13 @@ func ElemLessEqualStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, str
 		return
 	}
 
-	// Strided path: iterate with strides
-	indices := make([]int, len(shape))
-	offsets := make([]int, 3)
-	strideSet := [][]int{stridesDst, stridesA, stridesB}
+	// Strided path: iterate with strides using stack-allocated arrays
+	// Maintain offsets incrementally (like AdvanceOffsets but for 3 arrays)
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [3]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:3]
 	for {
 		dIdx := offsets[0]
 		aIdx := offsets[1]
@@ -286,7 +385,8 @@ func ElemLessEqualStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, str
 		} else {
 			dst[dIdx] = 0
 		}
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		// Advance offsets incrementally for 3 arrays
+		if !AdvanceOffsets3(shape, indices, offsets, stridesDst, stridesA, stridesB) {
 			break
 		}
 	}
@@ -297,6 +397,12 @@ func ElemLessEqualStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, str
 func ElemGreaterEqual[T Numeric](dst, a, b []T, n int) {
 	if n == 0 {
 		return
+	}
+	// Boundary check elimination hint
+	if n > 0 {
+		_ = dst[n-1]
+		_ = a[n-1]
+		_ = b[n-1]
 	}
 	for i := 0; i < n; i++ {
 		if a[i] >= b[i] {
@@ -315,12 +421,22 @@ func ElemGreaterEqualStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, 
 		return
 	}
 
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesA = EnsureStrides(stridesA, shape)
-	stridesB = EnsureStrides(stridesB, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var aStridesStatic [MAX_DIMS]int
+	var bStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesA = EnsureStrides(aStridesStatic[:len(shape)], stridesA, shape)
+	stridesB = EnsureStrides(bStridesStatic[:len(shape)], stridesB, shape)
 
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesA, shape) && IsContiguous(stridesB, shape) {
 		// Fast path: contiguous arrays
+		// Boundary check elimination hint
+		if size > 0 {
+			_ = dst[size-1]
+			_ = a[size-1]
+			_ = b[size-1]
+		}
 		for i := 0; i < size; i++ {
 			if a[i] >= b[i] {
 				dst[i] = 1
@@ -331,10 +447,13 @@ func ElemGreaterEqualStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, 
 		return
 	}
 
-	// Strided path: iterate with strides
-	indices := make([]int, len(shape))
-	offsets := make([]int, 3)
-	strideSet := [][]int{stridesDst, stridesA, stridesB}
+	// Strided path: iterate with strides using stack-allocated arrays
+	// Maintain offsets incrementally (like AdvanceOffsets but for 3 arrays)
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [3]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:3]
 	for {
 		dIdx := offsets[0]
 		aIdx := offsets[1]
@@ -344,9 +463,9 @@ func ElemGreaterEqualStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, 
 		} else {
 			dst[dIdx] = 0
 		}
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		// Advance offsets incrementally for 3 arrays
+		if !AdvanceOffsets3(shape, indices, offsets, stridesDst, stridesA, stridesB) {
 			break
 		}
 	}
 }
-

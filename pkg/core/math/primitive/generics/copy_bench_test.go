@@ -87,14 +87,16 @@ func BenchmarkElemCopyStrided_DirectLoop(b *testing.B) {
 
 // copyStridedNonGeneric is a non-generic strided copy for comparison
 func copyStridedNonGeneric(dst, src []float32, shape []int, stridesDst, stridesSrc []int) {
-	indices := make([]int, len(shape))
-	offsets := make([]int, 2)
-	strideSet := [][]int{stridesDst, stridesSrc}
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [2]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:2]
 	for {
 		dIdx := offsets[0]
 		sIdx := offsets[1]
 		dst[dIdx] = src[sIdx]
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		if !AdvanceOffsets(shape, indices, offsets, stridesDst, stridesSrc) {
 			break
 		}
 	}
@@ -151,14 +153,16 @@ func BenchmarkElemSwapStrided_DirectLoop(b *testing.B) {
 
 // swapStridedNonGeneric is a non-generic strided swap for comparison
 func swapStridedNonGeneric(dst, src []float32, shape []int, stridesDst, stridesSrc []int) {
-	indices := make([]int, len(shape))
-	offsets := make([]int, 2)
-	strideSet := [][]int{stridesDst, stridesSrc}
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [2]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:2]
 	for {
 		dIdx := offsets[0]
 		sIdx := offsets[1]
 		dst[dIdx], src[sIdx] = src[sIdx], dst[dIdx]
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		if !AdvanceOffsets(shape, indices, offsets, stridesDst, stridesSrc) {
 			break
 		}
 	}

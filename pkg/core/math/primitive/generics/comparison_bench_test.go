@@ -165,9 +165,13 @@ func greaterThanStridedNonGeneric(dst, a, b []float32, shape []int, stridesDst, 
 	if size == 0 {
 		return
 	}
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesA = EnsureStrides(stridesA, shape)
-	stridesB = EnsureStrides(stridesB, shape)
+	// Use stack-allocated arrays for stride computation
+	var dstStridesStatic [MAX_DIMS]int
+	var aStridesStatic [MAX_DIMS]int
+	var bStridesStatic [MAX_DIMS]int
+	stridesDst = EnsureStrides(dstStridesStatic[:len(shape)], stridesDst, shape)
+	stridesA = EnsureStrides(aStridesStatic[:len(shape)], stridesA, shape)
+	stridesB = EnsureStrides(bStridesStatic[:len(shape)], stridesB, shape)
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesA, shape) && IsContiguous(stridesB, shape) {
 		for i := 0; i < size; i++ {
 			if a[i] > b[i] {
@@ -178,9 +182,11 @@ func greaterThanStridedNonGeneric(dst, a, b []float32, shape []int, stridesDst, 
 		}
 		return
 	}
-	indices := make([]int, len(shape))
-	offsets := make([]int, 3)
-	strideSet := [][]int{stridesDst, stridesA, stridesB}
+	rank := len(shape)
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [3]int
+	indices := indicesStatic[:rank]
+	offsets := offsetsStatic[:3]
 	for {
 		dIdx := offsets[0]
 		aIdx := offsets[1]
@@ -190,7 +196,7 @@ func greaterThanStridedNonGeneric(dst, a, b []float32, shape []int, stridesDst, 
 		} else {
 			dst[dIdx] = 0
 		}
-		if !AdvanceOffsets(shape, indices, offsets, strideSet) {
+		if !AdvanceOffsets3(shape, indices, offsets, stridesDst, stridesA, stridesB) {
 			break
 		}
 	}

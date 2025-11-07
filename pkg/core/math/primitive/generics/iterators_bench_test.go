@@ -788,7 +788,7 @@ func BenchmarkElementsIndices_SingleDim(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		count := 0
-		for indices := range ElementsIndices(shape, 0) {
+		for indices := range ElementsIndices(shape, 0, 0) {
 			_ = indices
 			count++
 		}
@@ -810,13 +810,13 @@ func BenchmarkElementsIndices_TwoDims(b *testing.B) {
 	}
 }
 
-// BenchmarkElementsIndices_ThreeDims benchmarks ElementsIndices with three dimensions
+// BenchmarkElementsIndices_ThreeDims benchmarks ElementsIndices with three dimensions fixed
 func BenchmarkElementsIndices_ThreeDims(b *testing.B) {
 	shape := []int{50, 50, 50}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		count := 0
-		for indices := range ElementsIndices(shape, 0, 1, 2) {
+		for indices := range ElementsIndices(shape, 0, 1, 2, 2) {
 			_ = indices
 			count++
 		}
