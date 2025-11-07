@@ -192,6 +192,14 @@ func Benchmark_Strided_RowSlices_Reslice_Range(b *testing.B) {
 	}
 }
 
+func Benchmark_Strided_RowSlices_Reslice_Range_Unrolled(b *testing.B) {
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		offset := GetCacheOffset(i, hugeArraySize)
+		Strided_RowSlices_Reslice_Range_Unrolled(hugeDst[offset:offset+size], hugeSrc[offset:offset+size], rows, cols, ldDst, ldSrc)
+	}
+}
+
 func Benchmark_Strided_PrecomputeOffsets(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

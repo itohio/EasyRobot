@@ -90,12 +90,12 @@ func MatMulFlattened(C, A, B []float32, m, k, n int) {
 	C = C[:sizeC]
 	A = A[:sizeA]
 	B = B[:sizeB]
-	
+
 	// Initialize C to zero
 	for i := range sizeC {
 		C[i] = 0
 	}
-	
+
 	// Multiply using flattened indices
 	for i := range m {
 		for l := range k {
@@ -118,12 +118,12 @@ func MatMulExp1(C, A, B []float32, m, k, n int) {
 		cRow = cRow[:n] // BCE hint
 		aRow := A[i*k : i*k+k]
 		aRow = aRow[:k] // BCE hint
-		
+
 		// Initialize
 		for j := range n {
 			cRow[j] = 0
 		}
-		
+
 		for l := range k {
 			aVal := aRow[l]
 			bCol := B[l*n : l*n+n]
@@ -144,12 +144,12 @@ func MatMulExp2(C, A, B []float32, m, k, n int) {
 		cRow = cRow[:n]
 		aRow := A[baseA : baseA+k]
 		aRow = aRow[:k]
-		
+
 		// Initialize
 		for j := range n {
 			cRow[j] = 0
 		}
-		
+
 		for l := range k {
 			aVal := aRow[l]
 			baseB := l * n
@@ -170,14 +170,14 @@ func MatMulExp3(C, A, B []float32, m, k, n int) {
 	for i := range sizeC {
 		C[i] = 0
 	}
-	
+
 	// Multiply using row slices
 	for i := range m {
 		cRow := C[i*n : i*n+n]
 		cRow = cRow[:n]
 		aRow := A[i*k : i*k+k]
 		aRow = aRow[:k]
-		
+
 		for l := range k {
 			aVal := aRow[l]
 			bCol := B[l*n : l*n+n]
@@ -196,7 +196,7 @@ func MatMulExp4(C, A, B []float32, m, k, n int) {
 		_ = A[(m-1)*k+(k-1)]
 		_ = B[(k-1)*n+(n-1)]
 	}
-	
+
 	for i := range m {
 		for j := range n {
 			var sum float32
@@ -219,12 +219,12 @@ func MatMulExp5(C, A, B []float32, m, k, n int) {
 		if k > 0 {
 			_ = aRow[k-1]
 		}
-		
+
 		// Initialize
 		for j := range n {
 			cRow[j] = 0
 		}
-		
+
 		for l := range k {
 			aVal := aRow[l]
 			bCol := B[l*n : l*n+n]
@@ -245,17 +245,17 @@ func MatMulExp6(C, A, B []float32, m, k, n int) {
 		cRow = cRow[:n]
 		aRow := A[i*k : i*k+k]
 		aRow = aRow[:k]
-		
+
 		// Initialize
 		for j := range n {
 			cRow[j] = 0
 		}
-		
+
 		for l := range k {
 			aVal := aRow[l]
 			bCol := B[l*n : l*n+n]
 			bCol = bCol[:n]
-			
+
 			// Unroll j loop by 4
 			j := 0
 			for j < n-3 {
@@ -281,12 +281,12 @@ func MatMulExp7(C, A, B []float32, m, k, n int) {
 		cRow = cRow[:n]
 		aRow := A[i*k : i*k+k]
 		aRow = aRow[:k]
-		
+
 		// Initialize
 		for j := range n {
 			cRow[j] = 0
 		}
-		
+
 		l := 0
 		for l < k-3 {
 			aVal0 := aRow[l]
@@ -301,7 +301,7 @@ func MatMulExp7(C, A, B []float32, m, k, n int) {
 			bCol1 = bCol1[:n]
 			bCol2 = bCol2[:n]
 			bCol3 = bCol3[:n]
-			
+
 			for j := range n {
 				cRow[j] += aVal0*bCol0[j] + aVal1*bCol1[j] + aVal2*bCol2[j] + aVal3*bCol3[j]
 			}
@@ -367,12 +367,12 @@ func MatMulExp9(C, A, B []float32, m, k, n int) {
 		cRow = cRow[:n]
 		aRow := A[i*k : i*k+k]
 		aRow = aRow[:k]
-		
+
 		// Initialize
 		for j := range n {
 			cRow[j] = 0
 		}
-		
+
 		// Access B column-wise (better cache locality for B)
 		for j := range n {
 			sum := cRow[j]
@@ -391,17 +391,17 @@ func MatMulExp10(C, A, B []float32, m, k, n int) {
 		cRow = cRow[:n]
 		aRow := A[i*k : i*k+k]
 		aRow = aRow[:k]
-		
+
 		// Initialize
 		for j := range n {
 			cRow[j] = 0
 		}
-		
+
 		for l := range k {
 			aVal := aRow[l]
 			bCol := B[l*n : l*n+n]
 			bCol = bCol[:n]
-			
+
 			// Process 4 elements at a time
 			j := 0
 			for j < n-3 {
@@ -459,7 +459,7 @@ func MatMulExp12(C, A, B []float32, m, k, n int) {
 		cRow = cRow[:n]
 		aRow := A[i*k : i*k+k]
 		aRow = aRow[:k]
-		
+
 		// Initialize and first multiply in one pass
 		l := 0
 		if l < k {

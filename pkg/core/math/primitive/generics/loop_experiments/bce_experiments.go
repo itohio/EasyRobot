@@ -255,6 +255,31 @@ func Strided_RowSlices_Reslice_Range(dst, src []float32, rows, cols int, ldDst, 
 	}
 }
 
+// Strided Variant 4 Unrolled: Row slices + reslice + range + unroll inner loop by 4
+func Strided_RowSlices_Reslice_Range_Unrolled(dst, src []float32, rows, cols int, ldDst, ldSrc int) {
+	for i := range rows {
+		dstRow := dst[i*ldDst : i*ldDst+cols]
+		srcRow := src[i*ldSrc : i*ldSrc+cols]
+		dstRow = dstRow[:cols]
+		srcRow = srcRow[:cols]
+
+		// Unroll inner loop by 4
+		j := 0
+		for j < cols-3 {
+			dstRow[j] = op(srcRow[j])
+			dstRow[j+1] = op(srcRow[j+1])
+			dstRow[j+2] = op(srcRow[j+2])
+			dstRow[j+3] = op(srcRow[j+3])
+			j += 4
+		}
+		// Handle remainder (0-3 elements)
+		for j < cols {
+			dstRow[j] = op(srcRow[j])
+			j++
+		}
+	}
+}
+
 // Strided Variant 5: Pre-compute base offsets
 func Strided_PrecomputeOffsets(dst, src []float32, rows, cols int, ldDst, ldSrc int) {
 	for i := 0; i < rows; i++ {

@@ -7,51 +7,48 @@
 - **Cache Elimination**: 200MB arrays with different offsets per iteration
 - **Baseline**: Nested loops without optimizations
 
-## Results Summary (Latest Run - 3s per benchmark)
+## Results Summary (Latest Run - 5s per benchmark, November 7, 2025)
 
 ### Contiguous Operations (Best to Worst)
 
 | Strategy | ns/op | vs Baseline | Notes |
 |----------|-------|------------|-------|
-| **BCE_Flatten_Reslice** | 2,400,949 | **-26%** | ✅ **BEST** - Flatten to 1D + reslice |
-| **Contiguous_FlatLoop_Reslice** | 3,049,741 | -6% | Flat Loop + Reslice |
-| **BCE_AccessLastPerRow** | 3,051,574 | -6% | Access Last Per Row |
-| **Contiguous_Assembly_Unrolled** | 3,083,030 | -5% | Assembly Unrolled (calls op) |
-| **Contiguous_Assembly** | 3,253,065 | +0% | Assembly Direct (calls op) |
+| **Contiguous_Assembly_Unrolled_Direct** | 936,097 | **-57%** | ✅✅ **FASTEST** - Assembly with inlined op (platform-specific) |
+| **Contiguous_Assembly_Direct** | 1,119,095 | **-49%** | ✅✅ **VERY FAST** - Assembly with inlined op (platform-specific) |
+| **Contiguous_FlatLoop_Reslice** | 2,055,864 | **-38%** | ✅ **BEST GO** - Flat Loop + Reslice |
+| **BCE_Flatten_Reslice** | 2,197,219 | **-33%** | ✅ **EXCELLENT** - Flatten to 1D + reslice |
+| **Contiguous_FlatLoop** | 2,110,953 | **-35%** | ✅ **EXCELLENT** - Flat Loop (no reslice) |
+| **BCE_Reslice_RangeBoth** | 2,814,521 | **-14%** | ✅ **GOOD** - Reslice + Range Both |
+| **BCE_RangeBoth** | 2,850,979 | **-13%** | ✅ **GOOD** - Range Both |
+| **BCE_RowSlices_Reslice_Range** | 2,848,555 | **-13%** | ✅ **GOOD** - Row Slices + Reslice + Range |
+| **BCE_AccessLastPerRow** | 2,779,713 | **-15%** | ✅ **GOOD** - Access Last Per Row |
+| **BCE_RangeRows** | 2,892,602 | **-11%** | ✅ **GOOD** - Range Rows |
+| **BCE_Reslice_ExactSize** | 2,915,418 | **-11%** | ✅ **GOOD** - Reslice Exact Size |
+| **BCE_Hint_AccessLast** | 2,926,644 | **-10%** | ✅ **GOOD** - Hint Access Last |
+| **BCE_RowSlices_RangeCols** | 2,985,566 | **-8%** | ✅ **GOOD** - Row Slices + Range Cols |
+| **Contiguous_Assembly_Unrolled_Inline** | 2,547,217 | **-22%** | Assembly Unrolled (calls opInline) |
+| **Contiguous_Assembly_Unrolled** | 2,440,661 | **-25%** | Assembly Unrolled (calls op) |
+| **Contiguous_Assembly_Inline** | 2,455,399 | **-25%** | Assembly (calls opInline) |
+| **Contiguous_Assembly** | 2,476,510 | **-24%** | Assembly Direct (calls op) |
+| **BCE_RowSlices_Reslice** | 2,678,289 | **-18%** | Row Slices + Reslice |
+| **BCE_PrecomputeOffsets_Range** | 3,182,095 | **+2%** | Precompute Offsets + Range |
+| **BCE_RowSlices_AccessLast** | 3,135,696 | **+4%** | Row Slices + Access Last |
+| **BCE_PrecomputeOffsets** | 3,313,429 | **+10%** | Precompute Offsets |
+| **BCE_RowSlices** | 3,476,113 | **+15%** | Row Slices |
 | **BaselineNestedLoops** | 3,261,648 | 0% | Baseline (no optimizations) |
-| **BCE_Hint_AccessLast** | 3,274,534 | +0% | Hint Access Last |
-| **BCE_RowSlices_Reslice** | 3,287,323 | +1% | Row Slices + Reslice |
-| **BCE_PrecomputeOffsets** | 3,300,772 | +1% | Precompute Offsets |
-| **BCE_RowSlices_AccessLast** | 3,308,590 | +1% | Row Slices + Access Last |
-| **Contiguous_FlatLoop** | 3,401,791 | +4% | Flat Loop (no reslice) |
-| **Strided_RowSlices_Reslice_Range** | 3,431,694 | +5% | Strided Row Slices |
-| **BCE_RangeBoth** | 3,452,211 | +6% | Range Both |
-| **BCE_RowSlices** | 3,475,057 | +7% | Row Slices |
-| **Contiguous_Assembly_Unrolled_Inline** | 3,500,471 | +7% | Assembly Unrolled (calls opInline) |
-| **BCE_RowSlices_Reslice_Range** | 3,527,493 | +8% | Row Slices + Reslice + Range |
-| **BCE_Reslice_ExactSize** | 3,593,844 | +10% | Reslice Exact Size |
-| **BCE_RangeRows** | 3,798,264 | +16% | Range Rows |
-| **StridedBaseline** | 3,973,317 | +22% | Strided Baseline |
-| **Strided_RowSlices** | 4,115,751 | +26% | Strided Row Slices |
-| **Strided_RowSlices_Reslice** | 4,053,457 | +24% | Strided Row Slices + Reslice |
-| **Contiguous_Assembly_Inline** | 4,070,130 | +25% | Assembly (calls opInline) |
-| **BCE_RowSlices_RangeCols** | 4,941,207 | +51% | Row Slices + Range Cols |
-| **BCE_Reslice_RangeBoth** | 4,758,767 | +46% | Reslice + Range Both |
-| **Strided_PrecomputeOffsets** | 5,128,638 | +57% | Strided Precompute |
-| **Strided_RowSlices_Range** | 3,587,204 | +10% | Strided Row Slices + Range |
-| **Strided_PrecomputeOffsets_Range** | 6,749,091 | +107% | ❌ Strided Precompute + Range |
 
 ### Strided Operations (Best to Worst)
 
 | Strategy | ns/op | vs Baseline | Notes |
 |----------|-------|------------|-------|
-| **Strided_RowSlices_Range** | 3,587,204 | **-10%** | ✅ **BEST** - Row slices + range |
-| **Strided_RowSlices_Reslice_Range** | 3,431,694 | -14% | Row slices + reslice + range |
-| **StridedBaseline** | 3,973,317 | 0% | Baseline (nested loops with strides) |
-| **Strided_RowSlices** | 4,115,751 | +4% | Row slices |
-| **Strided_RowSlices_Reslice** | 4,053,457 | +2% | Row slices + reslice hint |
-| **Strided_PrecomputeOffsets** | 5,128,638 | +29% | Pre-compute without range |
-| **Strided_PrecomputeOffsets_Range** | 6,749,091 | +70% | ❌ Pre-compute + range |
+| **Strided_RowSlices_Reslice_Range_Unrolled** | 2,113,318 | **-37%** | ✅✅ **BEST** - Row slices + reslice + range + unroll inner loop by 4 |
+| **Strided_RowSlices_Reslice** | 2,933,407 | **-12%** | ✅ **GOOD** - Row slices + reslice hint |
+| **Strided_RowSlices_Reslice_Range** | 3,003,528 | **-10%** | ✅ **GOOD** - Row slices + reslice + range |
+| **Strided_RowSlices_Range** | 3,106,502 | **-7%** | ✅ **GOOD** - Row slices + range |
+| **Strided_RowSlices** | 3,181,813 | **-5%** | ✅ **GOOD** - Row slices |
+| **StridedBaseline** | 3,353,263 | 0% | Baseline (nested loops with strides) |
+| **Strided_PrecomputeOffsets** | 3,621,357 | **+8%** | Pre-compute without range |
+| **Strided_PrecomputeOffsets_Range** | 3,963,645 | **+18%** | ❌ Pre-compute + range |
 
 ### Overhead Measurement
 
@@ -68,31 +65,33 @@
 
 ### ✅ Best Strategies
 
-1. **Flatten to 1D + Reslice** (Contiguous) ⭐ **BEST**
-   - Flatten 2D to 1D and use single loop with reslice
-   - **26% faster** than baseline
-   - Eliminates nested loop overhead and index calculation
-   - Best Go-only strategy
+1. **Assembly Unrolled Direct** (Contiguous) ⭐⭐ **FASTEST**
+   - Platform-specific assembly with inlined operations
+   - **57% faster** than baseline
+   - Uses SSE SIMD, processes 4 elements at a time
+   - Best for performance-critical code
 
-2. **Flat Loop + Reslice** (Contiguous)
+2. **Flat Loop + Reslice** (Contiguous) ⭐ **BEST GO**
    - Single flat loop with reslicing
-   - **6% faster** than baseline
+   - **38% faster** than baseline
    - Simple and effective
+   - Best Go-only strategy for contiguous operations
 
-3. **Access Last Per Row** (Contiguous)
-   - Accesses last element of each row as BCE hint
-   - **6% faster** than baseline
-   - Better than single hint
+3. **Flatten to 1D + Reslice** (Contiguous) ⭐ **EXCELLENT**
+   - Flatten 2D to 1D and use single loop with reslice
+   - **33% faster** than baseline
+   - Eliminates nested loop overhead and index calculation
+   - Very good Go-only strategy
 
-4. **Assembly Unrolled** (Contiguous)
-   - Hand-written assembly with 4-element unrolling
-   - Calls `op` function from assembly
-   - **5% faster** than baseline
-   - Architecture-specific, more complex
+4. **Strided Row Slices + Reslice + Range + Unrolled** (Strided) ⭐⭐ **BEST STRIDED**
+   - Row slices with reslice hints, range loops, and inner loop unrolled by 4
+   - **37% faster** than strided baseline
+   - Combines all effective BCE techniques
+   - Best for strided operations
 
-5. **Row Slices + Range** (Strided)
-   - Create row slices and use `for range` on columns
-   - **10% faster** than strided baseline
+5. **Row Slices + Reslice** (Strided)
+   - Create row slices with reslice hints
+   - **12% faster** than strided baseline
    - Natural BCE for 2D strided operations
 
 ### ❌ Worst Strategies
@@ -484,35 +483,249 @@ func MatMulOptimized(C, A, B []float32, m, k, n int) {
 
 The **best BCE strategy** depends on the use case:
 
-1. **For Contiguous 2D (Element-wise)**: **Flatten to 1D + Reslice** (26% faster) ⭐
-2. **For Strided 2D (Element-wise)**: **Row Slices + Range** (10% faster)
-3. **For Matrix Multiplication (Go)**: **Row Slices + BCE Hints** (60% faster) ⭐
+1. **For Contiguous 2D (Element-wise)**: **Flatten to 1D + Reslice** (33-38% faster) ⭐
+2. **For Strided 2D (Element-wise)**: **Row Slices + Reslice + Range + Unroll** (37% faster) ⭐⭐
+3. **For Matrix Multiplication (Go)**: **Unroll Middle Loop by 4** (74% faster) ⭐⭐
 4. **For Matrix Multiplication (Assembly)**: **SIMD with 4-element unrolling** (80% faster) ⭐⭐
 5. **For Higher Dimensions (3D+)**: **Recursive Decomposition** to leverage optimized 1D/2D operations
-6. **For Platform-Specific Code**: **Assembly with inlined operations** (72-84% faster, 3.6-6.2× speedup)
+6. **For Platform-Specific Code**: **Assembly with inlined operations** (57% faster for element-wise)
 
 ### Performance Targets
 
 **Element-wise Operations (1M elements):**
 - **Theoretical minimum**: ~1.78 ms (read + write + inlined operation)
-- **Best Go**: ~2.40 ms (35% overhead from function calls)
-- **Best Assembly (Direct)**: ~1.47 ms (36% better than theoretical!)
-- **Typical nested loops**: ~3.26 ms (83% overhead)
+- **Best Assembly (Direct)**: ~0.94 ms (57% faster than baseline, 47% better than theoretical!)
+- **Best Go (FlatLoop+Reslice)**: ~2.06 ms (38% faster than baseline)
+- **Best Go (Flatten+Reslice)**: ~2.20 ms (33% faster than baseline)
+- **Baseline**: ~3.26 ms (nested loops, no optimizations)
 
 **Matrix Multiplication (100×100):**
 - **Best Assembly**: ~473μs (80% faster than naive)
 - **Best Go**: ~973μs (60% faster than naive)
 - **Naive**: ~2.41ms (baseline)
 
+## Optimized Implementation Recommendations
+
+### Memory Allocation Best Practices
+
+#### 1. **Avoid `make([]T, n)` for Temporary Arrays**
+
+**❌ BAD:**
+```go
+indices := make([]int, ndims)  // Heap allocation!
+strides := make([]int, len(shape))  // Heap allocation!
+```
+
+**✅ GOOD:**
+```go
+const MAX_DIMS = 16  // Maximum dimensions supported
+
+var indicesStatic [MAX_DIMS]int
+indices := indicesStatic[:ndims]  // Stack allocation!
+
+var stridesStatic [MAX_DIMS]int
+strides := stridesStatic[:len(shape)]  // Stack allocation!
+```
+
+**Why:**
+- Stack allocation is **much faster** than heap allocation
+- No GC pressure
+- Better cache locality
+- Zero allocations in benchmarks
+
+#### 2. **Use Stack Arrays for Small Scratch Space**
+
+**✅ GOOD for small arrays (< 1KB):**
+```go
+// For shape/stride arrays (always ≤ MAX_DIMS = 16)
+var shapeStatic [MAX_DIMS]int
+shape := shapeStatic[:rank]
+
+// For temporary indices
+var indicesStatic [MAX_DIMS]int
+indices := indicesStatic[:ndims]
+
+// For small temporary buffers (e.g., 4-8 elements)
+var tmp [8]float32
+```
+
+**❌ BAD for small arrays:**
+```go
+shape := make([]int, rank)  // Unnecessary heap allocation
+indices := make([]int, ndims)  // Unnecessary heap allocation
+tmp := make([]float32, 8)  // Unnecessary heap allocation
+```
+
+**When to use `make()`:**
+- Only for **large arrays** (> 1KB) that would overflow the stack
+- Only when size is **dynamically determined** and **too large** for stack
+- For arrays that need to **escape** the function scope
+
+#### 3. **Destination-Based Functions**
+
+**✅ GOOD:**
+```go
+// Function accepts dst slice, uses stack array if nil
+func ComputeStrides(dst []int, shape []int) []int {
+    if dst == nil || len(dst) < len(shape) {
+        var dstStatic [MAX_DIMS]int
+        dst = dstStatic[:len(shape)]
+    }
+    // ... compute strides into dst ...
+    return dst
+}
+```
+
+**Benefits:**
+- Caller can provide pre-allocated buffer (reuse)
+- Falls back to stack allocation if not provided
+- Zero allocations in hot paths
+
+### BCE Optimization Techniques
+
+#### 1. **Slice Reslicing for BCE**
+
+**✅ BEST:**
+```go
+size := rows * cols
+dst = dst[:size]  // BCE hint: compiler knows exact bounds
+src = src[:size]  // BCE hint: compiler knows exact bounds
+
+for i := range size {
+    dst[i] = op(src[i])
+}
+```
+
+**Why it works:**
+- `dst = dst[:size]` tells compiler the exact length
+- Eliminates bounds checks in loop
+- Works with `for range n` loops
+
+#### 2. **Row Slices for 2D Operations**
+
+**✅ BEST for strided 2D:**
+```go
+for i := range rows {
+    dstRow := dst[i*ldDst : i*ldDst+cols]
+    dstRow = dstRow[:cols]  // BCE hint
+    srcRow := src[i*ldSrc : i*ldSrc+cols]
+    srcRow = srcRow[:cols]  // BCE hint
+    
+    for j := range cols {
+        dstRow[j] = op(srcRow[j])  // No bounds checks!
+    }
+}
+```
+
+**Why it works:**
+- Row slices create new slice headers (cheap)
+- Reslicing provides BCE hints
+- `for range` loops are optimized by compiler
+
+#### 3. **Loop Unrolling for Hot Paths**
+
+**✅ BEST for inner loops:**
+```go
+// Unroll inner loop by 4
+j := 0
+for j < cols-3 {
+    dstRow[j] = op(srcRow[j])
+    dstRow[j+1] = op(srcRow[j+1])
+    dstRow[j+2] = op(srcRow[j+2])
+    dstRow[j+3] = op(srcRow[j+3])
+    j += 4
+}
+// Handle remainder (0-3 elements)
+for j < cols {
+    dstRow[j] = op(srcRow[j])
+    j++
+}
+```
+
+**Why it works:**
+- Reduces loop overhead (4 iterations → 1)
+- Better instruction-level parallelism
+- Compiler can optimize better
+- **37% improvement** for strided operations
+
+#### 4. **Use `for range n` Instead of `for i := 0; i < n; i++`**
+
+**✅ GOOD:**
+```go
+for i := range rows {  // Go 1.22+ feature
+    // ...
+}
+```
+
+**❌ BAD:**
+```go
+for i := 0; i < rows; i++ {  // More overhead
+    // ...
+}
+```
+
+**Why:**
+- `for range n` is optimized by compiler
+- Better BCE opportunities
+- Slightly faster
+
+### Complete Optimization Checklist
+
+#### For Contiguous Operations:
+1. ✅ **Flatten to 1D** if possible (`size := rows * cols`)
+2. ✅ **Reslice** all slices (`dst = dst[:size]`)
+3. ✅ **Use `for range size`** for single loop
+4. ✅ **Avoid nested loops** when possible
+5. ✅ **Use stack arrays** for temporary data
+
+#### For Strided Operations:
+1. ✅ **Use row slices** (`dstRow := dst[i*ldDst : i*ldDst+cols]`)
+2. ✅ **Reslice row slices** (`dstRow = dstRow[:cols]`)
+3. ✅ **Use `for range`** loops
+4. ✅ **Unroll inner loop** by 4 for hot paths
+5. ✅ **Use stack arrays** for temporary data
+
+#### For Higher Dimensions (3D+):
+1. ✅ **Recursive decomposition** to 1D/2D operations
+2. ✅ **Use optimized Vec/Mat functions** for innermost dimensions
+3. ✅ **Use stack arrays** for shape/stride/indices
+4. ✅ **Avoid deep nesting** - decompose early
+
+#### Memory Management:
+1. ✅ **Never use `make([]int, n)`** for shape/stride/indices (use `[MAX_DIMS]int`)
+2. ✅ **Use stack arrays** for small scratch space (< 1KB)
+3. ✅ **Destination-based functions** for reusability
+4. ✅ **Zero allocations** in hot paths
+
 ### Recommendations Summary
 
-1. **Flatten contiguous 2D to 1D** for element-wise operations (26% improvement)
-2. **Use row slices + BCE hints** for matrix operations (60% improvement)
+1. **Flatten contiguous 2D to 1D** for element-wise operations (33-38% improvement)
+2. **Use row slices + reslice + range + unroll** for strided operations (37% improvement)
 3. **Always reslice** when possible (`dst = dst[:size]`)
 4. **Use `for range n`** instead of `for i := 0; i < n; i++`
-5. **Use recursive decomposition** for higher dimensions (3D+)
-6. **Avoid over-optimization** - simpler is often better
-7. **Function call overhead** is significant (~1.9ns/element) - consider inlining for hot paths
-8. **Platform-specific assembly** provides massive gains (72-84%) when operations can be inlined
+5. **Unroll inner loops by 4** for hot paths (37% improvement for strided)
+6. **Use recursive decomposition** for higher dimensions (3D+)
+7. **Avoid `make([]T, n)`** - use stack arrays with `[MAX_DIMS]int` pattern
+8. **Use destination-based functions** for helper functions
+9. **Function call overhead** is significant (~1.9ns/element) - consider inlining for hot paths
+10. **Platform-specific assembly** provides massive gains (57% improvement) when operations can be inlined
 
-The combination of **flattening + reslicing** provides the best performance for element-wise operations (26% improvement), while **row slices + BCE hints** work best for matrix operations (60% improvement). **Platform-specific assembly with inlined operations** provides the ultimate performance (72-84% improvement, 3.6-6.2× speedup) for performance-critical code.
+### Performance Targets
+
+**Element-wise Operations (1M elements):**
+- **Best Assembly (Direct)**: ~936μs (57% faster than baseline)
+- **Best Go (FlatLoop+Reslice)**: ~2.06ms (38% faster than baseline)
+- **Best Go (Flatten+Reslice)**: ~2.20ms (33% faster than baseline)
+- **Baseline**: ~3.26ms (nested loops, no optimizations)
+
+**Strided Operations (1M elements):**
+- **Best (Unrolled)**: ~2.11ms (37% faster than strided baseline)
+- **Good (Reslice+Range)**: ~3.00ms (10% faster than strided baseline)
+- **Strided Baseline**: ~3.35ms (nested loops with strides)
+
+**Matrix Multiplication (100×100):**
+- **Best Assembly**: ~473μs (80% faster than naive)
+- **Best Go (Exp7)**: ~626μs (74% faster than naive)
+- **Naive**: ~2.41ms (baseline)
+
+The combination of **stack allocation**, **BCE techniques**, and **loop unrolling** provides the best performance for both contiguous and strided operations. **Platform-specific assembly with inlined operations** provides the ultimate performance (57% improvement) for performance-critical code.
