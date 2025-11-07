@@ -40,13 +40,13 @@ func (t Tensor) Add(dst types.Tensor, other types.Tensor) types.Tensor {
 	}
 
 	otherData := types.GetTensorData[[]float32](other)
-	tStrides := t.shape.Strides()
-	dstStrides := result.Shape().Strides()
-	otherStrides := other.Shape().Strides()
+	tStrides := t.shape.Strides(nil)
+	dstStrides := result.Shape().Strides(nil)
+	otherStrides := other.Shape().Strides(nil)
 
 	// Fast path for contiguous tensors
 	shapeSlice := []int(t.shape)
-	if t.isContiguous() && IsContiguous(otherStrides, shapeSlice) && IsContiguous(dstStrides, shapeSlice) {
+	if t.shape.IsContiguous(nil) && IsContiguous(otherStrides, shapeSlice) && IsContiguous(dstStrides, shapeSlice) {
 		if !IsNil(dst) {
 			// Copy t to dst using generics
 			generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dstStrides, tStrides)
@@ -92,13 +92,13 @@ func (t Tensor) Subtract(dst types.Tensor, other types.Tensor) types.Tensor {
 	}
 
 	otherData := types.GetTensorData[[]float32](other)
-	tStrides := t.shape.Strides()
-	dstStrides := result.Shape().Strides()
-	otherStrides := other.Shape().Strides()
+	tStrides := t.shape.Strides(nil)
+	dstStrides := result.Shape().Strides(nil)
+	otherStrides := other.Shape().Strides(nil)
 
 	// Fast path for contiguous tensors
 	shapeSlice := []int(t.shape)
-	if t.isContiguous() && IsContiguous(otherStrides, shapeSlice) && IsContiguous(dstStrides, shapeSlice) {
+	if t.shape.IsContiguous(nil) && IsContiguous(otherStrides, shapeSlice) && IsContiguous(dstStrides, shapeSlice) {
 		if !IsNil(dst) {
 			// Copy t to dst using generics
 			generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dstStrides, tStrides)
@@ -144,9 +144,9 @@ func (t Tensor) Multiply(dst types.Tensor, other types.Tensor) types.Tensor {
 	}
 
 	otherData := types.GetTensorData[[]float32](other)
-	tStrides := t.shape.Strides()
-	dstStrides := result.Shape().Strides()
-	otherStrides := other.Shape().Strides()
+	tStrides := t.shape.Strides(nil)
+	dstStrides := result.Shape().Strides(nil)
+	otherStrides := other.Shape().Strides(nil)
 
 	fp32.ElemMul(dstData, tData, otherData, []int(t.shape), dstStrides, tStrides, otherStrides)
 	return result
@@ -183,9 +183,9 @@ func (t Tensor) Divide(dst types.Tensor, other types.Tensor) types.Tensor {
 	}
 
 	otherData := types.GetTensorData[[]float32](other)
-	tStrides := t.shape.Strides()
-	dstStrides := result.Shape().Strides()
-	otherStrides := other.Shape().Strides()
+	tStrides := t.shape.Strides(nil)
+	dstStrides := result.Shape().Strides(nil)
+	otherStrides := other.Shape().Strides(nil)
 
 	fp32.ElemDiv(dstData, tData, otherData, []int(t.shape), dstStrides, tStrides, otherStrides)
 	return result
@@ -218,14 +218,14 @@ func (t Tensor) ScalarMul(dst types.Tensor, scalar float64) types.Tensor {
 	}
 
 	// Fast path for contiguous tensors (in-place only)
-	if IsNil(dst) && t.isContiguous() {
+	if IsNil(dst) && t.shape.IsContiguous(nil) {
 		size := t.Size()
 		fp32.Scal(dstData, 1, size, scalar32)
 		return result
 	}
 
-	tStrides := t.shape.Strides()
-	dstStrides := result.Shape().Strides()
+	tStrides := t.shape.Strides(nil)
+	dstStrides := result.Shape().Strides(nil)
 	if IsNil(dst) {
 		fp32.ElemScaleInPlace(dstData, scalar32, []int(t.shape), tStrides)
 	} else {
@@ -260,8 +260,8 @@ func (t Tensor) AddScalar(dst types.Tensor, scalar float64) types.Tensor {
 		result = dst
 	}
 
-	tStrides := t.shape.Strides()
-	dstStrides := result.Shape().Strides()
+	tStrides := t.shape.Strides(nil)
+	dstStrides := result.Shape().Strides(nil)
 	fp32.ElemAddScalar(dstData, tData, scalar32, []int(t.shape), dstStrides, tStrides)
 	return result
 }
@@ -292,8 +292,8 @@ func (t Tensor) SubScalar(dst types.Tensor, scalar float64) types.Tensor {
 		result = dst
 	}
 
-	tStrides := t.shape.Strides()
-	dstStrides := result.Shape().Strides()
+	tStrides := t.shape.Strides(nil)
+	dstStrides := result.Shape().Strides(nil)
 	fp32.ElemSubScalar(dstData, tData, scalar32, []int(t.shape), dstStrides, tStrides)
 	return result
 }
@@ -331,8 +331,8 @@ func (t Tensor) DivScalar(dst types.Tensor, scalar float64) types.Tensor {
 		result = dst
 	}
 
-	tStrides := t.shape.Strides()
-	dstStrides := result.Shape().Strides()
+	tStrides := t.shape.Strides(nil)
+	dstStrides := result.Shape().Strides(nil)
 	fp32.ElemDivScalar(dstData, tData, scalar32, []int(t.shape), dstStrides, tStrides)
 	return result
 }
@@ -360,7 +360,7 @@ func (t Tensor) BroadcastTo(dst types.Tensor, shape types.Shape) types.Tensor {
 		}
 
 		// Validate broadcasting is possible
-		if _, err := fp32.BroadcastStrides(t.shape.ToSlice(), t.shape.Strides(), shape); err != nil {
+		if _, err := fp32.BroadcastStrides(t.shape.ToSlice(), t.shape.Strides(nil), shape); err != nil {
 			panic(fmt.Sprintf("tensor.BroadcastTo: %v", err))
 		}
 
@@ -379,7 +379,7 @@ func (t Tensor) BroadcastTo(dst types.Tensor, shape types.Shape) types.Tensor {
 		}
 
 		// Validate broadcasting is possible
-		if _, err := fp32.BroadcastStrides(t.shape.ToSlice(), t.shape.Strides(), shape); err != nil {
+		if _, err := fp32.BroadcastStrides(t.shape.ToSlice(), t.shape.Strides(nil), shape); err != nil {
 			panic(fmt.Sprintf("tensor.BroadcastTo: %v", err))
 		}
 
@@ -393,8 +393,8 @@ func (t Tensor) BroadcastTo(dst types.Tensor, shape types.Shape) types.Tensor {
 		tData,
 		result.Shape().ToSlice(),
 		t.shape.ToSlice(),
-		result.Shape().Strides(),
-		t.shape.Strides(),
+		result.Shape().Strides(nil),
+		t.shape.Strides(nil),
 	); err != nil {
 		panic(fmt.Sprintf("tensor.BroadcastTo: %v", err))
 	}
@@ -429,7 +429,7 @@ func (t Tensor) Sum(dst types.Tensor, dims []int) types.Tensor {
 	resultData := types.GetTensorData[[]float32](result)
 	dstData := types.GetTensorData[[]float32](dst)
 	shapeSlice := result.Shape().ToSlice()
-	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(), result.Shape().Strides())
+	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(nil), result.Shape().Strides(nil))
 	return dst
 }
 
@@ -463,7 +463,7 @@ func (t Tensor) Mean(dst types.Tensor, dims []int) types.Tensor {
 	resultData := types.GetTensorData[[]float32](result)
 	dstData := types.GetTensorData[[]float32](dst)
 	shapeSlice := result.Shape().ToSlice()
-	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(), result.Shape().Strides())
+	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(nil), result.Shape().Strides(nil))
 	return dst
 }
 
@@ -497,7 +497,7 @@ func (t Tensor) Max(dst types.Tensor, dims []int) types.Tensor {
 	resultData := types.GetTensorData[[]float32](result)
 	dstData := types.GetTensorData[[]float32](dst)
 	shapeSlice := result.Shape().ToSlice()
-	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(), result.Shape().Strides())
+	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(nil), result.Shape().Strides(nil))
 	return dst
 }
 
@@ -531,7 +531,7 @@ func (t Tensor) Min(dst types.Tensor, dims []int) types.Tensor {
 	resultData := types.GetTensorData[[]float32](result)
 	dstData := types.GetTensorData[[]float32](dst)
 	shapeSlice := result.Shape().ToSlice()
-	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(), result.Shape().Strides())
+	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(nil), result.Shape().Strides(nil))
 	return dst
 }
 
@@ -553,7 +553,7 @@ func (t Tensor) ArgMax(dst types.Tensor, dim int) types.Tensor {
 	}
 
 	var resultPtr types.Tensor
-	if t.shape.Rank() == 1 && t.isContiguous() {
+	if t.shape.Rank() == 1 && t.shape.IsContiguous(nil) {
 		idx := fp32.Iamax(types.GetTensorData[[]float32](t), 1, t.Size())
 		result := FromFloat32(types.NewShape(1), []float32{float32(idx)})
 		resultPtr = &result
@@ -566,10 +566,10 @@ func (t Tensor) ArgMax(dst types.Tensor, dim int) types.Tensor {
 		fp32.Argmax(
 			resultData,
 			resultPtr.Shape().ToSlice(),
-			resultPtr.Shape().Strides(),
+			resultPtr.Shape().Strides(nil),
 			tData,
 			t.shape.ToSlice(),
-			t.shape.Strides(),
+			t.shape.Strides(nil),
 			axis,
 		)
 	}
@@ -586,7 +586,7 @@ func (t Tensor) ArgMax(dst types.Tensor, dim int) types.Tensor {
 	resultData := types.GetTensorData[[]float32](resultPtr)
 	dstData := types.GetTensorData[[]float32](dst)
 	shapeSlice := resultPtr.Shape().ToSlice()
-	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(), resultPtr.Shape().Strides())
+	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(nil), resultPtr.Shape().Strides(nil))
 	return dst
 }
 
@@ -613,10 +613,10 @@ func (t Tensor) ArgMin(dst types.Tensor, dim int) types.Tensor {
 	fp32.Argmin(
 		resultDataInt32,
 		resultPtr.shape.ToSlice(),
-		resultPtr.shape.Strides(),
+		resultPtr.shape.Strides(nil),
 		tData,
 		t.shape.ToSlice(),
-		t.shape.Strides(),
+		t.shape.Strides(nil),
 		axis,
 	)
 
@@ -637,7 +637,7 @@ func (t Tensor) ArgMin(dst types.Tensor, dim int) types.Tensor {
 	// Copy result to dst using generics
 	dstData := types.GetTensorData[[]float32](dst)
 	shapeSlice := resultPtr.Shape().ToSlice()
-	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(), resultPtr.Shape().Strides())
+	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(nil), resultPtr.Shape().Strides(nil))
 	return dst
 }
 
@@ -674,10 +674,10 @@ func (t Tensor) reduceTensor(dims []int, scalarWhenEmpty bool, reducer reduceFun
 	reducer(
 		resData,
 		resPtr.shape.ToSlice(),
-		resPtr.shape.Strides(),
+		resPtr.shape.Strides(nil),
 		tData,
 		t.shape.ToSlice(),
-		t.shape.Strides(),
+		t.shape.Strides(nil),
 		axes,
 	)
 
@@ -878,8 +878,8 @@ func (t Tensor) Square(dst types.Tensor) types.Tensor {
 		result = dst
 	}
 
-	tStrides := t.shape.Strides()
-	dstStrides := result.Shape().Strides()
+	tStrides := t.shape.Strides(nil)
+	dstStrides := result.Shape().Strides(nil)
 	fp32.ElemSquare(dstData, tData, []int(t.shape), dstStrides, tStrides)
 	return result
 }
@@ -908,8 +908,8 @@ func (t Tensor) Sqrt(dst types.Tensor) types.Tensor {
 		result = dst
 	}
 
-	tStrides := t.shape.Strides()
-	dstStrides := result.Shape().Strides()
+	tStrides := t.shape.Strides(nil)
+	dstStrides := result.Shape().Strides(nil)
 	fp32.ElemSqrt(dstData, tData, []int(t.shape), dstStrides, tStrides)
 	return result
 }
@@ -938,8 +938,8 @@ func (t Tensor) Exp(dst types.Tensor) types.Tensor {
 		result = dst
 	}
 
-	tStrides := t.shape.Strides()
-	dstStrides := result.Shape().Strides()
+	tStrides := t.shape.Strides(nil)
+	dstStrides := result.Shape().Strides(nil)
 	fp32.ElemExp(dstData, tData, []int(t.shape), dstStrides, tStrides)
 	return result
 }
@@ -968,8 +968,8 @@ func (t Tensor) Log(dst types.Tensor) types.Tensor {
 		result = dst
 	}
 
-	tStrides := t.shape.Strides()
-	dstStrides := result.Shape().Strides()
+	tStrides := t.shape.Strides(nil)
+	dstStrides := result.Shape().Strides(nil)
 	fp32.ElemLog(dstData, tData, []int(t.shape), dstStrides, tStrides)
 	return result
 }
@@ -1000,8 +1000,8 @@ func (t Tensor) Pow(dst types.Tensor, power float64) types.Tensor {
 		result = dst
 	}
 
-	tStrides := t.shape.Strides()
-	dstStrides := result.Shape().Strides()
+	tStrides := t.shape.Strides(nil)
+	dstStrides := result.Shape().Strides(nil)
 	fp32.ElemPow(dstData, tData, power32, []int(t.shape), dstStrides, tStrides)
 	return result
 }
@@ -1051,7 +1051,7 @@ func (t Tensor) EqualScalar(dst types.Tensor, scalar float64) types.Tensor {
 	}
 
 	shape := t.Shape().ToSlice()
-	strides := t.shape.Strides()
+	strides := t.shape.Strides(nil)
 
 	var result types.Tensor
 	if IsNil(dst) {
@@ -1136,7 +1136,7 @@ func (t Tensor) NotEqualScalar(dst types.Tensor, scalar float64) types.Tensor {
 	}
 
 	shape := t.Shape().ToSlice()
-	strides := t.shape.Strides()
+	strides := t.shape.Strides(nil)
 
 	var result types.Tensor
 	if IsNil(dst) {
@@ -1221,7 +1221,7 @@ func (t Tensor) GreaterScalar(dst types.Tensor, scalar float64) types.Tensor {
 	}
 
 	shape := t.Shape().ToSlice()
-	strides := t.shape.Strides()
+	strides := t.shape.Strides(nil)
 
 	var result types.Tensor
 	if IsNil(dst) {
@@ -1306,7 +1306,7 @@ func (t Tensor) LessScalar(dst types.Tensor, scalar float64) types.Tensor {
 	}
 
 	shape := t.Shape().ToSlice()
-	strides := t.shape.Strides()
+	strides := t.shape.Strides(nil)
 
 	var result types.Tensor
 	if IsNil(dst) {
@@ -1391,7 +1391,7 @@ func (t Tensor) GreaterEqualScalar(dst types.Tensor, scalar float64) types.Tenso
 	}
 
 	shape := t.Shape().ToSlice()
-	strides := t.shape.Strides()
+	strides := t.shape.Strides(nil)
 
 	var result types.Tensor
 	if IsNil(dst) {
@@ -1476,7 +1476,7 @@ func (t Tensor) LessEqualScalar(dst types.Tensor, scalar float64) types.Tensor {
 	}
 
 	shape := t.Shape().ToSlice()
-	strides := t.shape.Strides()
+	strides := t.shape.Strides(nil)
 
 	var result types.Tensor
 	if IsNil(dst) {
@@ -1717,8 +1717,8 @@ func (t Tensor) Abs(dst types.Tensor) types.Tensor {
 		result = dst
 	}
 
-	tStrides := t.shape.Strides()
-	dstStrides := result.Shape().Strides()
+	tStrides := t.shape.Strides(nil)
+	dstStrides := result.Shape().Strides(nil)
 	fp32.ElemAbs(dstData, tData, []int(t.shape), dstStrides, tStrides)
 	return result
 }
@@ -1747,8 +1747,8 @@ func (t Tensor) Sign(dst types.Tensor) types.Tensor {
 		result = dst
 	}
 
-	tStrides := t.shape.Strides()
-	dstStrides := result.Shape().Strides()
+	tStrides := t.shape.Strides(nil)
+	dstStrides := result.Shape().Strides(nil)
 	generics.ElemSignStrided[float32](dstData, tData, []int(t.shape), dstStrides, tStrides)
 	return result
 }
@@ -1777,8 +1777,8 @@ func (t Tensor) Cos(dst types.Tensor) types.Tensor {
 		result = dst
 	}
 
-	tStrides := t.shape.Strides()
-	dstStrides := result.Shape().Strides()
+	tStrides := t.shape.Strides(nil)
+	dstStrides := result.Shape().Strides(nil)
 	fp32.ElemCos(dstData, tData, []int(t.shape), dstStrides, tStrides)
 	return result
 }
@@ -1807,8 +1807,8 @@ func (t Tensor) Sin(dst types.Tensor) types.Tensor {
 		result = dst
 	}
 
-	tStrides := t.shape.Strides()
-	dstStrides := result.Shape().Strides()
+	tStrides := t.shape.Strides(nil)
+	dstStrides := result.Shape().Strides(nil)
 	fp32.ElemSin(dstData, tData, []int(t.shape), dstStrides, tStrides)
 	return result
 }
@@ -1837,8 +1837,8 @@ func (t Tensor) Negative(dst types.Tensor) types.Tensor {
 		result = dst
 	}
 
-	tStrides := t.shape.Strides()
-	dstStrides := result.Shape().Strides()
+	tStrides := t.shape.Strides(nil)
+	dstStrides := result.Shape().Strides(nil)
 	generics.ElemNegativeStrided[float32](dstData, tData, []int(t.shape), dstStrides, tStrides)
 	return result
 }
@@ -1867,7 +1867,7 @@ func (t Tensor) Fill(dst types.Tensor, value float64) types.Tensor {
 	}
 
 	shapeSlice := []int(t.shape)
-	strides := result.Shape().Strides()
+	strides := result.Shape().Strides(nil)
 	if IsContiguous(strides, shapeSlice) {
 		// Fast path: contiguous - use ElemFill
 		size := t.Size()

@@ -684,3 +684,593 @@ func TestElementsWindowsEarlyExit(t *testing.T) {
 		t.Errorf("ElementsWindows() early exit: count = %d, want 10", count)
 	}
 }
+
+func TestElementsIndices(t *testing.T) {
+	t.Run("no fixed dimensions - iterate all", func(t *testing.T) {
+		shape := []int{2, 3}
+
+		expected := [][]int{
+			{0, 0}, {0, 1}, {0, 2},
+			{1, 0}, {1, 1}, {1, 2},
+		}
+
+		var got [][]int
+		for indices := range ElementsIndices(shape) {
+			// Copy indices since Iterator reuses the same slice
+			indicesCopy := make([]int, len(indices))
+			copy(indicesCopy, indices)
+			got = append(got, indicesCopy)
+		}
+
+		if len(got) != len(expected) {
+			t.Errorf("ElementsIndices() count = %d, want %d", len(got), len(expected))
+			return
+		}
+		for i := range got {
+			if len(got[i]) != len(expected[i]) {
+				t.Errorf("ElementsIndices() got[%d] length = %d, want %d", i, len(got[i]), len(expected[i]))
+				continue
+			}
+			for j := range got[i] {
+				if got[i][j] != expected[i][j] {
+					t.Errorf("ElementsIndices() got[%d][%d] = %d, want %d", i, j, got[i][j], expected[i][j])
+				}
+			}
+		}
+	})
+
+	t.Run("fix first dimension", func(t *testing.T) {
+		shape := []int{2, 3, 4}
+
+		// Should iterate over dimensions 1 and 2 (12 combinations)
+		expectedCount := 3 * 4
+		count := 0
+
+		for indices := range ElementsIndices(shape, 0, 1) {
+			if len(indices) != 3 { // All dimensions
+				t.Errorf("ElementsIndices() indices length = %d, want 3", len(indices))
+			}
+			if indices[0] != 1 { // Fixed dimension 0
+				t.Errorf("ElementsIndices() indices[0] = %d, want 1", indices[0])
+			}
+			count++
+		}
+
+		if count != expectedCount {
+			t.Errorf("ElementsIndices() count = %d, want %d", count, expectedCount)
+		}
+
+		// Verify first and last indices
+		var first, last []int
+		for indices := range ElementsIndices(shape, 0, 1) {
+			if first == nil {
+				// Copy indices since Iterator reuses the same slice
+				first = make([]int, len(indices))
+				copy(first, indices)
+			}
+			// Copy indices since Iterator reuses the same slice
+			last = make([]int, len(indices))
+			copy(last, indices)
+		}
+		expectedFirst := []int{1, 0, 0} // Fixed dim 0 = 1, remaining dims start at 0
+		expectedLast := []int{1, 2, 3}  // Last combination
+		if len(first) != len(expectedFirst) {
+			t.Errorf("ElementsIndices() first length = %d, want %d", len(first), len(expectedFirst))
+		} else {
+			for i := range first {
+				if first[i] != expectedFirst[i] {
+					t.Errorf("ElementsIndices() first[%d] = %d, want %d", i, first[i], expectedFirst[i])
+				}
+			}
+		}
+		if len(last) != len(expectedLast) {
+			t.Errorf("ElementsIndices() last length = %d, want %d", len(last), len(expectedLast))
+		} else {
+			for i := range last {
+				if last[i] != expectedLast[i] {
+					t.Errorf("ElementsIndices() last[%d] = %d, want %d", i, last[i], expectedLast[i])
+				}
+			}
+		}
+	})
+
+	t.Run("fix middle dimension", func(t *testing.T) {
+		shape := []int{2, 3, 4}
+
+		// Should iterate over dimensions 0 and 2 (8 combinations)
+		expectedCount := 2 * 4
+		count := 0
+
+		for indices := range ElementsIndices(shape, 1, 2) {
+			if len(indices) != 3 { // All dimensions
+				t.Errorf("ElementsIndices() indices length = %d, want 3", len(indices))
+			}
+			if indices[1] != 2 { // Fixed dimension 1
+				t.Errorf("ElementsIndices() indices[1] = %d, want 2", indices[1])
+			}
+			count++
+		}
+
+		if count != expectedCount {
+			t.Errorf("ElementsIndices() count = %d, want %d", count, expectedCount)
+		}
+
+		// Verify first indices
+		var first []int
+		for indices := range ElementsIndices(shape, 1, 2) {
+			if first == nil {
+				// Copy indices since Iterator reuses the same slice
+				first = make([]int, len(indices))
+				copy(first, indices)
+			}
+			break
+		}
+		expectedFirst := []int{0, 2, 0} // Fixed dim 1 = 2, remaining dims start at 0
+		if len(first) != len(expectedFirst) {
+			t.Errorf("ElementsIndices() first length = %d, want %d", len(first), len(expectedFirst))
+		} else {
+			for i := range first {
+				if first[i] != expectedFirst[i] {
+					t.Errorf("ElementsIndices() first[%d] = %d, want %d", i, first[i], expectedFirst[i])
+				}
+			}
+		}
+	})
+
+	t.Run("fix multiple dimensions", func(t *testing.T) {
+		shape := []int{2, 3, 4, 5}
+
+		// Should iterate over dimensions 1 and 3 (15 combinations)
+		expectedCount := 3 * 5
+		count := 0
+
+		for indices := range ElementsIndices(shape, 0, 1, 2, 3) {
+			if len(indices) != 4 { // All dimensions
+				t.Errorf("ElementsIndices() indices length = %d, want 4", len(indices))
+			}
+			if indices[0] != 1 { // Fixed dimension 0
+				t.Errorf("ElementsIndices() indices[0] = %d, want 1", indices[0])
+			}
+			if indices[2] != 3 { // Fixed dimension 2
+				t.Errorf("ElementsIndices() indices[2] = %d, want 3", indices[2])
+			}
+			count++
+		}
+
+		if count != expectedCount {
+			t.Errorf("ElementsIndices() count = %d, want %d", count, expectedCount)
+		}
+
+		// Verify first indices
+		var first []int
+		for indices := range ElementsIndices(shape, 0, 1, 2, 3) {
+			if first == nil {
+				// Copy indices since Iterator reuses the same slice
+				first = make([]int, len(indices))
+				copy(first, indices)
+			}
+			break
+		}
+		expectedFirst := []int{1, 0, 3, 0}
+		if len(first) != len(expectedFirst) {
+			t.Errorf("ElementsIndices() first length = %d, want %d", len(first), len(expectedFirst))
+		} else {
+			for i := range first {
+				if first[i] != expectedFirst[i] {
+					t.Errorf("ElementsIndices() first[%d] = %d, want %d", i, first[i], expectedFirst[i])
+				}
+			}
+		}
+	})
+
+	t.Run("fix all dimensions", func(t *testing.T) {
+		shape := []int{2, 3, 4}
+
+		// Should iterate once (single combination)
+		count := 0
+		var indices []int
+
+		for idx := range ElementsIndices(shape, 0, 1, 1, 2, 2, 3) {
+			// Copy indices since Iterator reuses the same slice
+			indices = make([]int, len(idx))
+			copy(indices, idx)
+			count++
+		}
+
+		if count != 1 {
+			t.Errorf("ElementsIndices() count = %d, want 1", count)
+		}
+		expected := []int{1, 2, 3}
+		if len(indices) != len(expected) {
+			t.Errorf("ElementsIndices() indices length = %d, want %d", len(indices), len(expected))
+		} else {
+			for i := range indices {
+				if indices[i] != expected[i] {
+					t.Errorf("ElementsIndices() indices[%d] = %d, want %d", i, indices[i], expected[i])
+				}
+			}
+		}
+	})
+
+	t.Run("empty shape", func(t *testing.T) {
+		shape := []int{}
+
+		count := 0
+		var indices []int
+		for idx := range ElementsIndices(shape) {
+			// Copy indices since Iterator reuses the same slice
+			indices = make([]int, len(idx))
+			copy(indices, idx)
+			count++
+		}
+
+		if count != 1 { // Should yield once with empty indices
+			t.Errorf("ElementsIndices() count = %d, want 1", count)
+		}
+		if len(indices) != 0 {
+			t.Errorf("ElementsIndices() indices length = %d, want 0", len(indices))
+		}
+	})
+
+	t.Run("single dimension", func(t *testing.T) {
+		shape := []int{3}
+
+		expected := [][]int{{0}, {1}, {2}}
+		var got [][]int
+
+		for indices := range ElementsIndices(shape) {
+			// Copy indices since Iterator reuses the same slice
+			indicesCopy := make([]int, len(indices))
+			copy(indicesCopy, indices)
+			got = append(got, indicesCopy)
+		}
+
+		if len(got) != len(expected) {
+			t.Errorf("ElementsIndices() count = %d, want %d", len(got), len(expected))
+			return
+		}
+		for i := range got {
+			if len(got[i]) != len(expected[i]) {
+				t.Errorf("ElementsIndices() got[%d] length = %d, want %d", i, len(got[i]), len(expected[i]))
+				continue
+			}
+			for j := range got[i] {
+				if got[i][j] != expected[i][j] {
+					t.Errorf("ElementsIndices() got[%d][%d] = %d, want %d", i, j, got[i][j], expected[i][j])
+				}
+			}
+		}
+	})
+
+	t.Run("row-major order", func(t *testing.T) {
+		shape := []int{2, 3}
+
+		// Row-major: last dimension changes fastest
+		expected := [][]int{
+			{0, 0}, {0, 1}, {0, 2}, // First row
+			{1, 0}, {1, 1}, {1, 2}, // Second row
+		}
+
+		var got [][]int
+		for indices := range ElementsIndices(shape) {
+			// Copy indices since Iterator reuses the same slice
+			indicesCopy := make([]int, len(indices))
+			copy(indicesCopy, indices)
+			got = append(got, indicesCopy)
+		}
+
+		if len(got) != len(expected) {
+			t.Errorf("ElementsIndices() count = %d, want %d", len(got), len(expected))
+			return
+		}
+		for i := range got {
+			if len(got[i]) != len(expected[i]) {
+				t.Errorf("ElementsIndices() got[%d] length = %d, want %d", i, len(got[i]), len(expected[i]))
+				continue
+			}
+			for j := range got[i] {
+				if got[i][j] != expected[i][j] {
+					t.Errorf("ElementsIndices() got[%d][%d] = %d, want %d", i, j, got[i][j], expected[i][j])
+				}
+			}
+		}
+	})
+}
+
+func TestElementsIndices_InvalidInputs(t *testing.T) {
+	t.Run("odd number of arguments", func(t *testing.T) {
+		shape := []int{2, 3}
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("ElementsIndices() should panic on odd number of arguments")
+			}
+			if s, ok := r.(string); !ok || !contains(s, "even number") {
+				t.Errorf("ElementsIndices() panic message = %v, want containing 'even number'", r)
+			}
+		}()
+		ElementsIndices(shape, 0, 1, 2) // Odd number of arguments
+	})
+
+	t.Run("invalid dimension index", func(t *testing.T) {
+		shape := []int{2, 3}
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("ElementsIndices() should panic on invalid dimension index")
+			}
+			if s, ok := r.(string); !ok || !contains(s, "out of range") {
+				t.Errorf("ElementsIndices() panic message = %v, want containing 'out of range'", r)
+			}
+		}()
+		ElementsIndices(shape, 5, 0) // Dimension 5 doesn't exist
+	})
+
+	t.Run("invalid fixed value", func(t *testing.T) {
+		shape := []int{2, 3}
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("ElementsIndices() should panic on invalid fixed value")
+			}
+			if s, ok := r.(string); !ok || !contains(s, "out of range") {
+				t.Errorf("ElementsIndices() panic message = %v, want containing 'out of range'", r)
+			}
+		}()
+		ElementsIndices(shape, 0, 5) // Value 5 out of range for dimension 0 (size 2)
+	})
+
+	t.Run("negative dimension index", func(t *testing.T) {
+		shape := []int{2, 3}
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("ElementsIndices() should panic on negative dimension index")
+			}
+			if s, ok := r.(string); !ok || !contains(s, "out of range") {
+				t.Errorf("ElementsIndices() panic message = %v, want containing 'out of range'", r)
+			}
+		}()
+		ElementsIndices(shape, -1, 0)
+	})
+
+	t.Run("negative fixed value", func(t *testing.T) {
+		shape := []int{2, 3}
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("ElementsIndices() should panic on negative fixed value")
+			}
+			if s, ok := r.(string); !ok || !contains(s, "out of range") {
+				t.Errorf("ElementsIndices() panic message = %v, want containing 'out of range'", r)
+			}
+		}()
+		ElementsIndices(shape, 0, -1)
+	})
+
+	t.Run("duplicate axis", func(t *testing.T) {
+		shape := []int{2, 3, 4}
+		defer func() {
+			r := recover()
+			if r == nil {
+				t.Error("ElementsIndices() should panic on duplicate axis")
+			}
+			if s, ok := r.(string); !ok || !contains(s, "duplicate axis") {
+				t.Errorf("ElementsIndices() panic message = %v, want containing 'duplicate axis'", r)
+			}
+		}()
+		ElementsIndices(shape, 0, 1, 0, 2) // Duplicate axis 0
+	})
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 || indexOfSubstring(s, substr) >= 0)
+}
+
+func indexOfSubstring(s, substr string) int {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return i
+		}
+	}
+	return -1
+}
+
+func TestElementsIndices_EarlyExit(t *testing.T) {
+	// Test that early exit works
+	count := 0
+	for indices := range ElementsIndices([]int{10, 10}) {
+		if indices[0] >= 5 {
+			break
+		}
+		count++
+	}
+	// With shape [10, 10], indices go: [0,0], [0,1], ..., [0,9], [1,0], ...
+	// So when indices[0] >= 5, we've seen 5 * 10 = 50 combinations
+	if count != 50 {
+		t.Errorf("ElementsIndices() early exit: count = %d, want 50", count)
+	}
+}
+
+func TestElementsIndices_EquivalenceToElements(t *testing.T) {
+	// Test that ElementsIndices with no dims is equivalent to Elements
+	shapes := [][]int{
+		{2, 3},
+		{2, 2, 2},
+		{3, 4, 5},
+		{10},
+	}
+
+	for _, shape := range shapes {
+		t.Run("", func(t *testing.T) {
+			var elementsIndices [][]int
+			for indices := range Elements(shape) {
+				indicesCopy := make([]int, len(indices))
+				copy(indicesCopy, indices)
+				elementsIndices = append(elementsIndices, indicesCopy)
+			}
+
+			var elementsIndicesResult [][]int
+			for indices := range ElementsIndices(shape) {
+				indicesCopy := make([]int, len(indices))
+				copy(indicesCopy, indices)
+				elementsIndicesResult = append(elementsIndicesResult, indicesCopy)
+			}
+
+			if len(elementsIndices) != len(elementsIndicesResult) {
+				t.Errorf("ElementsIndices() count = %d, Elements() count = %d", len(elementsIndicesResult), len(elementsIndices))
+				return
+			}
+
+			for i := range elementsIndices {
+				if len(elementsIndices[i]) != len(elementsIndicesResult[i]) {
+					t.Errorf("ElementsIndices() got[%d] length = %d, Elements() length = %d", i, len(elementsIndicesResult[i]), len(elementsIndices[i]))
+					continue
+				}
+				for j := range elementsIndices[i] {
+					if elementsIndices[i][j] != elementsIndicesResult[i][j] {
+						t.Errorf("ElementsIndices() got[%d][%d] = %d, Elements() = %d", i, j, elementsIndicesResult[i][j], elementsIndices[i][j])
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestElementsIndicesStrided(t *testing.T) {
+	tests := []struct {
+		name    string
+		shape   []int
+		strides []int
+		dims    []int
+		want    [][]int
+	}{
+		{
+			name:    "all dimensions (no dims specified)",
+			shape:   []int{2, 3},
+			strides: nil,
+			dims:    nil,
+			want: [][]int{
+				{0, 0}, {0, 1}, {0, 2},
+				{1, 0}, {1, 1}, {1, 2},
+			},
+		},
+		{
+			name:    "all dimensions with strides",
+			shape:   []int{2, 3},
+			strides: []int{6, 2}, // Non-contiguous strides
+			dims:    nil,
+			want: [][]int{
+				{0, 0}, {0, 1}, {0, 2},
+				{1, 0}, {1, 1}, {1, 2},
+			},
+		},
+		{
+			name:    "single dimension 0",
+			shape:   []int{2, 3, 4},
+			strides: nil,
+			dims:    []int{0},
+			want: [][]int{
+				{0}, {1},
+			},
+		},
+		{
+			name:    "two dimensions 0 and 2",
+			shape:   []int{2, 3, 4},
+			strides: nil,
+			dims:    []int{0, 2},
+			want: [][]int{
+				{0, 0}, {0, 1}, {0, 2}, {0, 3},
+				{1, 0}, {1, 1}, {1, 2}, {1, 3},
+			},
+		},
+		{
+			name:    "two dimensions with non-contiguous strides",
+			shape:   []int{2, 3, 4},
+			strides: []int{24, 8, 2}, // Non-contiguous
+			dims:    []int{0, 2},
+			want: [][]int{
+				{0, 0}, {0, 1}, {0, 2}, {0, 3},
+				{1, 0}, {1, 1}, {1, 2}, {1, 3},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got [][]int
+			for indices := range ElementsIndicesStrided(tt.shape, tt.strides, tt.dims...) {
+				// Copy indices since the slice is reused
+				indicesCopy := make([]int, len(indices))
+				copy(indicesCopy, indices)
+				got = append(got, indicesCopy)
+			}
+			if len(got) != len(tt.want) {
+				t.Errorf("ElementsIndicesStrided() count = %d, want %d", len(got), len(tt.want))
+				return
+			}
+			for i := range got {
+				if len(got[i]) != len(tt.want[i]) {
+					t.Errorf("ElementsIndicesStrided() got[%d] length = %d, want %d", i, len(got[i]), len(tt.want[i]))
+					continue
+				}
+				for j := range got[i] {
+					if got[i][j] != tt.want[i][j] {
+						t.Errorf("ElementsIndicesStrided() got[%d][%d] = %d, want %d", i, j, got[i][j], tt.want[i][j])
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestElementsIndicesStrided_EquivalenceToElementsStrided(t *testing.T) {
+	// Test that ElementsIndicesStrided with no dims is equivalent to ElementsStrided
+	shapes := [][]int{
+		{2, 3},
+		{2, 2, 2},
+		{3, 4, 5},
+	}
+	stridesList := [][]int{
+		nil,
+		[]int{6, 2},
+		[]int{12, 4, 1},
+	}
+
+	for _, shape := range shapes {
+		for _, strides := range stridesList {
+			t.Run("", func(t *testing.T) {
+				var elementsStridedIndices [][]int
+				for indices := range ElementsStrided(shape, strides) {
+					indicesCopy := make([]int, len(indices))
+					copy(indicesCopy, indices)
+					elementsStridedIndices = append(elementsStridedIndices, indicesCopy)
+				}
+
+				var elementsIndicesStridedResult [][]int
+				for indices := range ElementsIndicesStrided(shape, strides) {
+					indicesCopy := make([]int, len(indices))
+					copy(indicesCopy, indices)
+					elementsIndicesStridedResult = append(elementsIndicesStridedResult, indicesCopy)
+				}
+
+				if len(elementsStridedIndices) != len(elementsIndicesStridedResult) {
+					t.Errorf("ElementsIndicesStrided() count = %d, ElementsStrided() count = %d", len(elementsIndicesStridedResult), len(elementsStridedIndices))
+					return
+				}
+
+				for i := range elementsStridedIndices {
+					if len(elementsStridedIndices[i]) != len(elementsIndicesStridedResult[i]) {
+						t.Errorf("ElementsIndicesStrided() got[%d] length = %d, ElementsStrided() length = %d", i, len(elementsIndicesStridedResult[i]), len(elementsStridedIndices[i]))
+						continue
+					}
+					for j := range elementsStridedIndices[i] {
+						if elementsStridedIndices[i][j] != elementsIndicesStridedResult[i][j] {
+							t.Errorf("ElementsIndicesStrided() got[%d][%d] = %d, ElementsStrided() = %d", i, j, elementsIndicesStridedResult[i][j], elementsStridedIndices[i][j])
+						}
+					}
+				}
+			})
+		}
+	}
+}

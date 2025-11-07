@@ -2,6 +2,8 @@ package helpers
 
 import "math"
 
+const MAX_DIMS = 16
+
 // Numeric types that can be used with generic operations
 type Numeric interface {
 	~float64 | ~int64 | ~float32 | ~int | ~int32 | ~int16 | ~int8

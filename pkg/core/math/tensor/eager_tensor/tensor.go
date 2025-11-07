@@ -165,26 +165,9 @@ func (t Tensor) Copy(src types.Tensor) types.Tensor {
 	srcData := src.Data()
 	tData := t.Data()
 	shapeSlice := src.Shape().ToSlice()
-	generics.ElemCopyStridedAny(tData, srcData, shapeSlice, t.Shape().Strides(), src.Shape().Strides())
+	generics.ElemCopyStridedAny(tData, srcData, shapeSlice, t.Shape().Strides(nil), src.Shape().Strides(nil))
 
 	return t
-}
-
-// isContiguous checks if the tensor data is contiguous (no gaps).
-func (t Tensor) isContiguous() bool {
-	if t.shape == nil {
-		return true
-	}
-	if t.shape.Rank() == 0 {
-		return true
-	}
-	strides := t.shape.Strides()
-	expectedSize := strides[0] * t.shape[0]
-	tData := types.GetTensorData[[]float32](t)
-	if tData == nil {
-		return false
-	}
-	return len(tData) == expectedSize
 }
 
 // elementIndex computes the linear index for given indices using strides.
@@ -293,7 +276,7 @@ func (t Tensor) At(indices ...int) float64 {
 		}
 	}
 
-	strides := t.shape.Strides()
+	strides := t.shape.Strides(nil)
 	linearIdx := t.elementIndex(indices, strides)
 	return t.getElementAtIndex(linearIdx)
 }
@@ -333,7 +316,7 @@ func (t Tensor) SetAt(value float64, indices ...int) {
 		}
 	}
 
-	strides := t.shape.Strides()
+	strides := t.shape.Strides(nil)
 	linearIdx := t.elementIndex(indices, strides)
 	t.setElementAtIndex(linearIdx, value)
 }
@@ -406,7 +389,7 @@ func (t Tensor) Slice(dst types.Tensor, dim int, start int, length int) types.Te
 	}
 
 	// Compute strides for the original tensor
-	strides := shape.Strides()
+	strides := shape.Strides(nil)
 
 	// Create new shape with reduced dimension
 	newShape := make(types.Shape, len(shape))
@@ -448,7 +431,7 @@ func (t Tensor) Slice(dst types.Tensor, dim int, start int, length int) types.Te
 	}
 
 	// Use primitive.CopyWithStrides - it handles all types automatically!
-	dstStrides := newShape.Strides()
+	dstStrides := newShape.Strides(nil)
 	primitive.CopyWithStrides(srcView, slicedBuf, newShape.ToSlice(), strides, dstStrides)
 
 	return result
@@ -504,8 +487,8 @@ func (t Tensor) Elements(fixedAxisValuePairs ...int) func(func(types.Element) bo
 	}
 
 	// Use shape iterator to get index combinations
-	shapeIter := t.shape.Iterator(fixedAxisValuePairs...)
-	strides := t.shape.Strides()
+	shapeIter := generics.ElementsIndices(t.shape, fixedAxisValuePairs...)
+	strides := t.shape.Strides(nil)
 
 	return func(yield func(types.Element) bool) {
 		for indices := range shapeIter {

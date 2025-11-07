@@ -208,7 +208,7 @@ func (t Tensor) MatMulTransposed(dst types.Tensor, other types.Tensor, transpose
 			resultData := types.GetTensorData[[]float32](result)
 			dstData := types.GetTensorData[[]float32](dst)
 			shapeSlice := result.Shape().ToSlice()
-			generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(), result.Shape().Strides())
+			generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(nil), result.Shape().Strides(nil))
 			return dst
 		}
 		return result
@@ -306,7 +306,7 @@ func (t Tensor) MatMulTransposed(dst types.Tensor, other types.Tensor, transpose
 			resultData := types.GetTensorData[[]float32](result)
 			dstData := types.GetTensorData[[]float32](dst)
 			shapeSlice := result.Shape().ToSlice()
-			generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(), result.Shape().Strides())
+			generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(nil), result.Shape().Strides(nil))
 			return dst
 		}
 		return &result
@@ -339,10 +339,10 @@ func (t Tensor) AddScaled(dst types.Tensor, other types.Tensor, alpha float64) t
 	if IsNil(dst) {
 		tData := types.GetTensorData[[]float32](t)
 		otherData := types.GetTensorData[[]float32](other)
-		otherStrides := other.Shape().Strides()
+		otherStrides := other.Shape().Strides(nil)
 		tShapeSlice := t.Shape().ToSlice()
 
-		if t.isContiguous() && IsContiguous(otherStrides, tShapeSlice) {
+		if t.shape.IsContiguous(nil) && IsContiguous(otherStrides, tShapeSlice) {
 			// Use primitive.Axpy for contiguous case
 			size := t.Size()
 			fp32.Axpy(tData, otherData, 1, 1, size, alpha32)
@@ -366,10 +366,10 @@ func (t Tensor) AddScaled(dst types.Tensor, other types.Tensor, alpha float64) t
 	tData := types.GetTensorData[[]float32](t)
 	dstData := types.GetTensorData[[]float32](dst)
 	shapeSlice := t.Shape().ToSlice()
-	generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dst.Shape().Strides(), t.Shape().Strides())
+	generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dst.Shape().Strides(nil), t.Shape().Strides(nil))
 	otherData := types.GetTensorData[[]float32](other)
-	dstStrides := dst.Shape().Strides()
-	otherStrides := other.Shape().Strides()
+	dstStrides := dst.Shape().Strides(nil)
+	otherStrides := other.Shape().Strides(nil)
 
 	if IsContiguous(dstStrides, shapeSlice) && IsContiguous(otherStrides, shapeSlice) {
 		size := t.Size()

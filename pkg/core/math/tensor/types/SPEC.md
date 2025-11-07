@@ -54,14 +54,13 @@ type Element interface {
 
 The `Shape` type provides:
 - `Rank() int` - Number of dimensions
-- `Size() int` - Total number of elements
+- `Size() int` - Total number of elements (returns 1 for scalars with len=0, 0 for invalid shapes)
 - `Equal(other Shape) bool` - Shape equality check
-- `Strides() []int` - Compute row-major strides
-- `IsContiguous(strides []int) bool` - Check if strides are contiguous
-- `ValidateAxes(axes []int) error` - Validate and normalize axes
-- `ToSlice() []int` - Convert to slice
-- `Clone() Shape` - Create a copy
-- `Iterator(fixedAxisValuePairs ...int) func(func([]int) bool)` - Create iterator with fixed dimensions
+- `Strides(dst []int) []int` - Compute row-major strides. If dst is nil, allocates a new slice. If dst is provided, reuses it (must have capacity >= rank). Returns the destination slice.
+- `IsContiguous(strides []int) bool` - Check if strides describe a dense row-major layout
+- `ValidateAxes(axes []int) error` - Validate and normalize axes (sorts axes in-place). Returns error if axes are out of range or duplicated.
+- `ToSlice() []int` - Convert to slice (returns a copy of the shape as []int). Returns nil for empty shapes.
+- `Clone() Shape` - Create a copy of the shape. Returns nil if the shape is nil.
 
 ### Helper Functions
 

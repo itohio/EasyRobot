@@ -119,10 +119,10 @@ func (input Tensor) ReLUGrad(dst types.Tensor, gradOutput types.Tensor) types.Te
 
 	// Check if all tensors are contiguous for fast path
 	shapeSlice := input.Shape().ToSlice()
-	inputStrides := input.Shape().Strides()
-	dstStrides := result.Shape().Strides()
-	gradStrides := gradOutput.Shape().Strides()
-	if input.isContiguous() && IsContiguous(dstStrides, shapeSlice) && IsContiguous(gradStrides, shapeSlice) {
+	inputStrides := input.Shape().Strides(nil)
+	dstStrides := result.Shape().Strides(nil)
+	gradStrides := gradOutput.Shape().Strides(nil)
+	if input.shape.IsContiguous(nil) && IsContiguous(dstStrides, shapeSlice) && IsContiguous(gradStrides, shapeSlice) {
 		// Fast path for contiguous tensors
 		size := input.Size()
 		fp32.ReLUGrad(dstData, gradOutputData, inputData, size)
@@ -165,10 +165,10 @@ func (output Tensor) SigmoidGrad(dst types.Tensor, gradOutput types.Tensor) type
 
 	// Check if all tensors are contiguous for fast path
 	shapeSlice := output.Shape().ToSlice()
-	outputStrides := output.Shape().Strides()
-	dstStrides := result.Shape().Strides()
-	gradStrides := gradOutput.Shape().Strides()
-	if output.isContiguous() && IsContiguous(dstStrides, shapeSlice) && IsContiguous(gradStrides, shapeSlice) {
+	outputStrides := output.Shape().Strides(nil)
+	dstStrides := result.Shape().Strides(nil)
+	gradStrides := gradOutput.Shape().Strides(nil)
+	if output.shape.IsContiguous(nil) && IsContiguous(dstStrides, shapeSlice) && IsContiguous(gradStrides, shapeSlice) {
 		// Fast path for contiguous tensors
 		size := output.Size()
 		fp32.SigmoidGrad(dstData, gradOutputData, outputData, size)
@@ -211,10 +211,10 @@ func (output Tensor) TanhGrad(dst types.Tensor, gradOutput types.Tensor) types.T
 
 	// Check if all tensors are contiguous for fast path
 	shapeSlice := output.Shape().ToSlice()
-	outputStrides := output.Shape().Strides()
-	dstStrides := result.Shape().Strides()
-	gradStrides := gradOutput.Shape().Strides()
-	if output.isContiguous() && IsContiguous(dstStrides, shapeSlice) && IsContiguous(gradStrides, shapeSlice) {
+	outputStrides := output.Shape().Strides(nil)
+	dstStrides := result.Shape().Strides(nil)
+	gradStrides := gradOutput.Shape().Strides(nil)
+	if output.shape.IsContiguous(nil) && IsContiguous(dstStrides, shapeSlice) && IsContiguous(gradStrides, shapeSlice) {
 		// Fast path for contiguous tensors
 		size := output.Size()
 		fp32.TanhGrad(dstData, gradOutputData, outputData, size)
@@ -325,7 +325,7 @@ func (t Tensor) Softmax(dim int, dst types.Tensor) types.Tensor {
 			tData := types.GetTensorData[[]float32](t)
 			dstData := types.GetTensorData[[]float32](dst)
 			shapeSlice := t.Shape().ToSlice()
-			generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dst.Shape().Strides(), t.Shape().Strides())
+			generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dst.Shape().Strides(nil), t.Shape().Strides(nil))
 		}
 		if dim == 0 {
 			fp32.Softmax2DRows(dstData, dstShape[0], dstShape[1])
@@ -371,14 +371,14 @@ func (t Tensor) DropoutForward(dst types.Tensor, mask types.Tensor) types.Tensor
 		tData = types.GetTensorData[[]float32](t)
 		dstData = types.GetTensorData[[]float32](dst)
 		shapeSlice := t.Shape().ToSlice()
-		generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dst.Shape().Strides(), t.Shape().Strides())
+		generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dst.Shape().Strides(nil), t.Shape().Strides(nil))
 		result = dst
 	}
 
 	maskData := types.GetTensorData[[]float32](mask)
-	tStrides := t.shape.Strides()
-	dstStrides := result.Shape().Strides()
-	maskStrides := mask.Shape().Strides()
+	tStrides := t.shape.Strides(nil)
+	dstStrides := result.Shape().Strides(nil)
+	maskStrides := mask.Shape().Strides(nil)
 	fp32.ElemMul(dstData, tData, maskData, []int(t.shape), dstStrides, tStrides, maskStrides)
 	return result
 }
@@ -437,7 +437,7 @@ func (t Tensor) DropoutBackward(dst types.Tensor, gradOutput, mask types.Tensor)
 		gradData := types.GetTensorData[[]float32](gradOutput)
 		dstData := types.GetTensorData[[]float32](dst)
 		shapeSlice := gradOutput.Shape().ToSlice()
-		generics.ElemCopyStrided[float32](dstData, gradData, shapeSlice, dst.Shape().Strides(), gradOutput.Shape().Strides())
+		generics.ElemCopyStrided[float32](dstData, gradData, shapeSlice, dst.Shape().Strides(nil), gradOutput.Shape().Strides(nil))
 		result = dst
 	}
 
@@ -464,7 +464,7 @@ func (t Tensor) ReLU6(dst types.Tensor) types.Tensor {
 		tData := types.GetTensorData[[]float32](t)
 		dstData := types.GetTensorData[[]float32](dst)
 		shapeSlice := t.Shape().ToSlice()
-		generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dst.Shape().Strides(), t.Shape().Strides())
+		generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dst.Shape().Strides(nil), t.Shape().Strides(nil))
 		result = dst
 	}
 
@@ -502,7 +502,7 @@ func (t Tensor) LeakyReLU(dst types.Tensor, alpha float64) types.Tensor {
 		tData := types.GetTensorData[[]float32](t)
 		dstData := types.GetTensorData[[]float32](dst)
 		shapeSlice := t.Shape().ToSlice()
-		generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dst.Shape().Strides(), t.Shape().Strides())
+		generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dst.Shape().Strides(nil), t.Shape().Strides(nil))
 		result = dst
 	}
 
@@ -535,7 +535,7 @@ func (t Tensor) ELU(dst types.Tensor, alpha float64) types.Tensor {
 		tData := types.GetTensorData[[]float32](t)
 		dstData := types.GetTensorData[[]float32](dst)
 		shapeSlice := t.Shape().ToSlice()
-		generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dst.Shape().Strides(), t.Shape().Strides())
+		generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dst.Shape().Strides(nil), t.Shape().Strides(nil))
 		result = dst
 	}
 
@@ -574,7 +574,7 @@ func (t Tensor) Softplus(dst types.Tensor) types.Tensor {
 		tData := types.GetTensorData[[]float32](t)
 		dstData := types.GetTensorData[[]float32](dst)
 		shapeSlice := t.Shape().ToSlice()
-		generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dst.Shape().Strides(), t.Shape().Strides())
+		generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dst.Shape().Strides(nil), t.Shape().Strides(nil))
 		result = dst
 	}
 
@@ -606,7 +606,7 @@ func (t Tensor) Swish(dst types.Tensor) types.Tensor {
 		tData := types.GetTensorData[[]float32](t)
 		dstData := types.GetTensorData[[]float32](dst)
 		shapeSlice := t.Shape().ToSlice()
-		generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dst.Shape().Strides(), t.Shape().Strides())
+		generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dst.Shape().Strides(nil), t.Shape().Strides(nil))
 		result = dst
 	}
 
@@ -639,7 +639,7 @@ func (t Tensor) GELU(dst types.Tensor) types.Tensor {
 		tData := types.GetTensorData[[]float32](t)
 		dstData := types.GetTensorData[[]float32](dst)
 		shapeSlice := t.Shape().ToSlice()
-		generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dst.Shape().Strides(), t.Shape().Strides())
+		generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dst.Shape().Strides(nil), t.Shape().Strides(nil))
 		result = dst
 	}
 

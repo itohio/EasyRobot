@@ -753,3 +753,359 @@ func BenchmarkElementsWindows_Stride2_Naive(b *testing.B) {
 		_ = count
 	}
 }
+
+// BenchmarkElementsIndices_AllDims benchmarks ElementsIndices with all dimensions
+func BenchmarkElementsIndices_AllDims(b *testing.B) {
+	shape := []int{100, 100}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		count := 0
+		for indices := range ElementsIndices(shape) {
+			_ = indices
+			count++
+		}
+		_ = count
+	}
+}
+
+// BenchmarkElementsIndices_AllDims_CompareElements benchmarks comparison with Elements
+func BenchmarkElementsIndices_AllDims_CompareElements(b *testing.B) {
+	shape := []int{100, 100}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		count := 0
+		for indices := range Elements(shape) {
+			_ = indices
+			count++
+		}
+		_ = count
+	}
+}
+
+// BenchmarkElementsIndices_SingleDim benchmarks ElementsIndices with single dimension
+func BenchmarkElementsIndices_SingleDim(b *testing.B) {
+	shape := []int{100, 100, 100}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		count := 0
+		for indices := range ElementsIndices(shape, 0) {
+			_ = indices
+			count++
+		}
+		_ = count
+	}
+}
+
+// BenchmarkElementsIndices_TwoDims benchmarks ElementsIndices with two dimensions
+func BenchmarkElementsIndices_TwoDims(b *testing.B) {
+	shape := []int{100, 100, 100}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		count := 0
+		for indices := range ElementsIndices(shape, 0, 1) {
+			_ = indices
+			count++
+		}
+		_ = count
+	}
+}
+
+// BenchmarkElementsIndices_ThreeDims benchmarks ElementsIndices with three dimensions
+func BenchmarkElementsIndices_ThreeDims(b *testing.B) {
+	shape := []int{50, 50, 50}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		count := 0
+		for indices := range ElementsIndices(shape, 0, 1, 2) {
+			_ = indices
+			count++
+		}
+		_ = count
+	}
+}
+
+// BenchmarkElementsIndices_OutOfOrder benchmarks ElementsIndices with dimensions out of order
+func BenchmarkElementsIndices_OutOfOrder(b *testing.B) {
+	shape := []int{100, 100, 100}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		count := 0
+		for indices := range ElementsIndices(shape, 2, 0) {
+			_ = indices
+			count++
+		}
+		_ = count
+	}
+}
+
+// BenchmarkElementsIndices_LargeShape benchmarks ElementsIndices with larger shape
+func BenchmarkElementsIndices_LargeShape(b *testing.B) {
+	shape := []int{200, 200}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		count := 0
+		for indices := range ElementsIndices(shape) {
+			_ = indices
+			count++
+		}
+		_ = count
+	}
+}
+
+// BenchmarkElementsIndices_HighRank benchmarks ElementsIndices with high rank
+func BenchmarkElementsIndices_HighRank(b *testing.B) {
+	shape := []int{10, 10, 10, 10}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		count := 0
+		for indices := range ElementsIndices(shape, 0, 2) {
+			_ = indices
+			count++
+		}
+		_ = count
+	}
+}
+
+// Naive implementation of ElementsIndices (baseline - allocates on each iteration)
+func elementsIndicesNaive(shape []int, dims ...int) func(func([]int) bool) {
+	rank := len(shape)
+	if rank == 0 {
+		return func(yield func([]int) bool) {
+			yield([]int{})
+		}
+	}
+
+	// If no dims specified, iterate over all dimensions
+	if len(dims) == 0 {
+		size := 1
+		for _, dim := range shape {
+			size *= dim
+		}
+		if size == 0 {
+			return func(yield func([]int) bool) {
+			}
+		}
+		return func(yield func([]int) bool) {
+			indices := make([]int, len(shape))
+			for {
+				// Allocate new slice on each iteration (naive approach)
+				indicesCopy := make([]int, len(indices))
+				copy(indicesCopy, indices)
+				if !yield(indicesCopy) {
+					return
+				}
+				advanced := false
+				for i := len(indices) - 1; i >= 0; i-- {
+					indices[i]++
+					if indices[i] < shape[i] {
+						advanced = true
+						break
+					}
+					indices[i] = 0
+				}
+				if !advanced {
+					break
+				}
+			}
+		}
+	}
+
+	// Validate dimensions
+	for _, dim := range dims {
+		if dim < 0 || dim >= rank {
+			return func(yield func([]int) bool) {
+			}
+		}
+	}
+
+	// Check for duplicates
+	for i := 0; i < len(dims); i++ {
+		for j := i + 1; j < len(dims); j++ {
+			if dims[i] == dims[j] {
+				return func(yield func([]int) bool) {
+				}
+			}
+		}
+	}
+
+	// Build selected shape
+	selectedShape := make([]int, len(dims))
+	selectedSize := 1
+	for i, dim := range dims {
+		dimSize := shape[dim]
+		if dimSize <= 0 {
+			return func(yield func([]int) bool) {
+			}
+		}
+		selectedShape[i] = dimSize
+		selectedSize *= dimSize
+	}
+
+	if selectedSize == 0 {
+		return func(yield func([]int) bool) {
+		}
+	}
+
+	return func(yield func([]int) bool) {
+		indices := make([]int, len(dims))
+		for {
+			// Allocate new slice on each iteration (naive approach)
+			indicesCopy := make([]int, len(indices))
+			copy(indicesCopy, indices)
+			if !yield(indicesCopy) {
+				return
+			}
+			advanced := false
+			for i := len(indices) - 1; i >= 0; i-- {
+				dim := dims[i]
+				indices[i]++
+				if indices[i] < shape[dim] {
+					advanced = true
+					break
+				}
+				indices[i] = 0
+			}
+			if !advanced {
+				break
+			}
+		}
+	}
+}
+
+// BenchmarkElementsIndices_Naive benchmarks naive implementation (baseline)
+func BenchmarkElementsIndices_Naive(b *testing.B) {
+	shape := []int{100, 100}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		count := 0
+		iter := elementsIndicesNaive(shape)
+		iter(func(indices []int) bool {
+			_ = indices
+			count++
+			return true
+		})
+		_ = count
+	}
+}
+
+// BenchmarkElementsIndices_SingleDim_Naive benchmarks naive with single dimension
+func BenchmarkElementsIndices_SingleDim_Naive(b *testing.B) {
+	shape := []int{100, 100, 100}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		count := 0
+		iter := elementsIndicesNaive(shape, 0)
+		iter(func(indices []int) bool {
+			_ = indices
+			count++
+			return true
+		})
+		_ = count
+	}
+}
+
+// BenchmarkElementsIndices_TwoDims_Naive benchmarks naive with two dimensions
+func BenchmarkElementsIndices_TwoDims_Naive(b *testing.B) {
+	shape := []int{100, 100, 100}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		count := 0
+		iter := elementsIndicesNaive(shape, 0, 1)
+		iter(func(indices []int) bool {
+			_ = indices
+			count++
+			return true
+		})
+		_ = count
+	}
+}
+
+// BenchmarkElementsIndicesStrided_AllDims benchmarks ElementsIndicesStrided with all dimensions
+func BenchmarkElementsIndicesStrided_AllDims(b *testing.B) {
+	shape := []int{100, 100}
+	strides := []int{100, 1}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		count := 0
+		for indices := range ElementsIndicesStrided(shape, strides) {
+			_ = indices
+			count++
+		}
+		_ = count
+	}
+}
+
+// BenchmarkElementsIndicesStrided_AllDims_CompareElementsStrided benchmarks comparison with ElementsStrided
+func BenchmarkElementsIndicesStrided_AllDims_CompareElementsStrided(b *testing.B) {
+	shape := []int{100, 100}
+	strides := []int{100, 1}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		count := 0
+		for indices := range ElementsStrided(shape, strides) {
+			_ = indices
+			count++
+		}
+		_ = count
+	}
+}
+
+// BenchmarkElementsIndicesStrided_SingleDim benchmarks ElementsIndicesStrided with single dimension
+func BenchmarkElementsIndicesStrided_SingleDim(b *testing.B) {
+	shape := []int{100, 100, 100}
+	strides := []int{10000, 100, 1}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		count := 0
+		for indices := range ElementsIndicesStrided(shape, strides, 0) {
+			_ = indices
+			count++
+		}
+		_ = count
+	}
+}
+
+// BenchmarkElementsIndicesStrided_TwoDims benchmarks ElementsIndicesStrided with two dimensions
+func BenchmarkElementsIndicesStrided_TwoDims(b *testing.B) {
+	shape := []int{100, 100, 100}
+	strides := []int{10000, 100, 1}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		count := 0
+		for indices := range ElementsIndicesStrided(shape, strides, 0, 1) {
+			_ = indices
+			count++
+		}
+		_ = count
+	}
+}
+
+// BenchmarkElementsIndicesStrided_NonContiguous benchmarks ElementsIndicesStrided with non-contiguous strides
+func BenchmarkElementsIndicesStrided_NonContiguous(b *testing.B) {
+	shape := []int{100, 100}
+	strides := []int{200, 2} // Non-contiguous
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		count := 0
+		for indices := range ElementsIndicesStrided(shape, strides) {
+			_ = indices
+			count++
+		}
+		_ = count
+	}
+}
+
+// BenchmarkElementsIndicesStrided_LargeShape benchmarks ElementsIndicesStrided with larger shape
+func BenchmarkElementsIndicesStrided_LargeShape(b *testing.B) {
+	shape := []int{200, 200}
+	strides := []int{400, 2} // Non-contiguous
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		count := 0
+		for indices := range ElementsIndicesStrided(shape, strides) {
+			_ = indices
+			count++
+		}
+		_ = count
+	}
+}

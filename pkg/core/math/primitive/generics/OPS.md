@@ -310,6 +310,8 @@ Iterator functions that can be used with Go's `range` keyword. These return iter
 |-----------|------------------|--------|-------------|-------|-----------|--------|
 | Elements | `Elements(shape []int) func(func([]int) bool)` | ✅ | ⚠️ **TOO SLOW** | Complete | 🔀 | New |
 | Elements Strided | `ElementsStrided(shape []int, strides []int) func(func([]int) bool)` | ✅ | ⚠️ **TOO SLOW** | Complete | 🔀 | New |
+| Elements Indices | `ElementsIndices(shape []int, dims ...int) func(func([]int) bool)` | ✅ | ⚠️ **TOO SLOW** | Complete | 🔀 | New |
+| Elements Indices Strided | `ElementsIndicesStrided(shape []int, strides []int, dims ...int) func(func([]int) bool)` | ✅ | ⚠️ **TOO SLOW** | Complete | 🔀 | New |
 | Elements Vec | `ElementsVec(n int) func(func(int) bool)` | ✅ | ⚠️ **TOO SLOW** | Complete | 🔀 | New |
 | Elements Vec Strided | `ElementsVecStrided(n int, stride int) func(func(int) bool)` | ✅ | ⚠️ **TOO SLOW** | Complete | 🔀 | New |
 | Elements Mat | `ElementsMat(rows, cols int) func(func([2]int) bool)` | ✅ | ⚠️ **TOO SLOW** | Complete | 🔀 | New |
@@ -320,6 +322,26 @@ Iterator functions that can be used with Go's `range` keyword. These return iter
 // Tensor: iterate over multi-dimensional indices
 for indices := range Elements(shape) {
     // indices is []int
+}
+
+// Tensor: iterate over selected dimensions only
+for indices := range ElementsIndices(shape, 0, 2) {
+    // indices is []int for dimensions 0 and 2 only
+}
+
+// Tensor: iterate over all dimensions (equivalent to Elements)
+for indices := range ElementsIndices(shape) {
+    // indices is []int for all dimensions
+}
+
+// Tensor: iterate over selected dimensions with strides
+for indices := range ElementsIndicesStrided(shape, strides, 0, 2) {
+    // indices is []int for dimensions 0 and 2 only
+}
+
+// Tensor: iterate over all dimensions with strides (equivalent to ElementsStrided)
+for indices := range ElementsIndicesStrided(shape, strides) {
+    // indices is []int for all dimensions
 }
 
 // Vector: iterate over linear indices
@@ -336,9 +358,11 @@ for idx := range ElementsMat(rows, cols) {
 **Note**: 
 - ⚠️ **These iterators are currently too slow for production use** - use direct nested loops in performance-critical code paths
 - `Elements` and `ElementsStrided` yield `[]int` representing multi-dimensional indices
+- `ElementsIndices` yields `[]int` representing indices for selected dimensions only. If `dims` is empty or nil, iterates over all dimensions (equivalent to `Elements`)
+- `ElementsIndicesStrided` yields `[]int` representing indices for selected dimensions only with stride support. If `dims` is empty or nil, iterates over all dimensions (equivalent to `ElementsStrided`)
 - `ElementsVec` and `ElementsVecStrided` yield `int` representing linear indices (scalar for vectors)
 - `ElementsMat` and `ElementsMatStrided` yield `[2]int` representing (row, col) tuples
-- All iterators support early exit when `yield` returns `false`
+- All iterators support early exit when `yield` returns `false` (note: early exit behavior may differ in multi-threaded mode)
 - `IterateOffsets` and `IterateOffsetsWithIndices` are callback-based convenience wrappers (these are fine to use, they're not iterator-based)
 
 ---
@@ -376,7 +400,7 @@ for idx := range ElementsMat(rows, cols) {
 
 **Helper Operations:**
 - Shape/Stride utilities: `ComputeStridesRank`, `ComputeStrides`, `SizeFromShape`, `EnsureStrides`, `IsContiguous`, `AdvanceOffsets`, `IterateOffsets`, `IterateOffsetsWithIndices`, `ComputeStrideOffset`
-- Iterator functions: `Elements`, `ElementsStrided`, `ElementsVec`, `ElementsVecStrided`, `ElementsMat`, `ElementsMatStrided`
+- Iterator functions: `Elements`, `ElementsStrided`, `ElementsIndices`, `ElementsIndicesStrided`, `ElementsVec`, `ElementsVecStrided`, `ElementsMat`, `ElementsMatStrided`
 
 ### ⏳ Pending Operations
 

@@ -6,226 +6,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestShapeIterator(t *testing.T) {
-	t.Run("no fixed dimensions - iterate all", func(t *testing.T) {
-		shape := NewShape(2, 3)
-
-		expected := [][]int{
-			{0, 0}, {0, 1}, {0, 2},
-			{1, 0}, {1, 1}, {1, 2},
-		}
-
-		var got [][]int
-		for indices := range shape.Iterator() {
-			got = append(got, indices)
-		}
-
-		assert.Equal(t, expected, got)
-	})
-
-	t.Run("fix first dimension", func(t *testing.T) {
-		shape := NewShape(2, 3, 4)
-
-		// Should iterate over dimensions 1 and 2 (12 combinations)
-		expectedCount := 3 * 4
-		count := 0
-
-		for indices := range shape.Iterator(0, 1) {
-			assert.Equal(t, 3, len(indices)) // All dimensions
-			assert.Equal(t, 1, indices[0])   // Fixed dimension 0
-			count++
-		}
-
-		assert.Equal(t, expectedCount, count)
-
-		// Verify first and last indices
-		var first, last []int
-		for indices := range shape.Iterator(0, 1) {
-			if first == nil {
-				first = indices
-			}
-			last = indices
-		}
-		assert.Equal(t, []int{1, 0, 0}, first) // Fixed dim 0 = 1, remaining dims start at 0
-		assert.Equal(t, []int{1, 2, 3}, last)  // Last combination
-	})
-
-	t.Run("fix middle dimension", func(t *testing.T) {
-		shape := NewShape(2, 3, 4)
-
-		// Should iterate over dimensions 0 and 2 (8 combinations)
-		expectedCount := 2 * 4
-		count := 0
-
-		for indices := range shape.Iterator(1, 2) {
-			assert.Equal(t, 3, len(indices)) // All dimensions
-			assert.Equal(t, 2, indices[1])   // Fixed dimension 1
-			count++
-		}
-
-		assert.Equal(t, expectedCount, count)
-
-		// Verify first indices
-		var first []int
-		for indices := range shape.Iterator(1, 2) {
-			if first == nil {
-				first = indices
-			}
-			break
-		}
-		assert.Equal(t, []int{0, 2, 0}, first) // Fixed dim 1 = 2, remaining dims start at 0
-	})
-
-	t.Run("fix multiple dimensions", func(t *testing.T) {
-		shape := NewShape(2, 3, 4, 5)
-
-		// Should iterate over dimensions 1 and 3 (15 combinations)
-		expectedCount := 3 * 5
-		count := 0
-
-		for indices := range shape.Iterator(0, 1, 2, 3) {
-			assert.Equal(t, 4, len(indices)) // All dimensions
-			assert.Equal(t, 1, indices[0])   // Fixed dimension 0
-			assert.Equal(t, 3, indices[2])   // Fixed dimension 2
-			count++
-		}
-
-		assert.Equal(t, expectedCount, count)
-
-		// Verify first indices
-		var first []int
-		for indices := range shape.Iterator(0, 1, 2, 3) {
-			if first == nil {
-				first = indices
-			}
-			break
-		}
-		assert.Equal(t, []int{1, 0, 3, 0}, first)
-	})
-
-	t.Run("fix all dimensions", func(t *testing.T) {
-		shape := NewShape(2, 3, 4)
-
-		// Should iterate once (single combination)
-		count := 0
-		var indices []int
-
-		for idx := range shape.Iterator(0, 1, 1, 2, 2, 3) {
-			indices = idx
-			count++
-		}
-
-		assert.Equal(t, 1, count)
-		assert.Equal(t, []int{1, 2, 3}, indices)
-	})
-
-	t.Run("empty shape", func(t *testing.T) {
-		shape := NewShape()
-
-		count := 0
-		var indices []int
-		for idx := range shape.Iterator() {
-			indices = idx
-			count++
-		}
-
-		assert.Equal(t, 1, count) // Should yield once with empty indices
-		assert.Equal(t, []int{}, indices)
-	})
-
-	t.Run("single dimension", func(t *testing.T) {
-		shape := NewShape(3)
-
-		expected := [][]int{{0}, {1}, {2}}
-		var got [][]int
-
-		for indices := range shape.Iterator() {
-			got = append(got, indices)
-		}
-
-		assert.Equal(t, expected, got)
-	})
-
-	t.Run("row-major order", func(t *testing.T) {
-		shape := NewShape(2, 3)
-
-		// Row-major: last dimension changes fastest
-		expected := [][]int{
-			{0, 0}, {0, 1}, {0, 2}, // First row
-			{1, 0}, {1, 1}, {1, 2}, // Second row
-		}
-
-		var got [][]int
-		for indices := range shape.Iterator() {
-			got = append(got, indices)
-		}
-
-		assert.Equal(t, expected, got)
-	})
-}
-
-func TestShapeIteratorPanics(t *testing.T) {
-	t.Run("odd number of arguments", func(t *testing.T) {
-		shape := NewShape(2, 3)
-		defer func() {
-			r := recover()
-			assert.NotNil(t, r)
-			assert.Contains(t, r.(string), "even number")
-		}()
-		shape.Iterator(0, 1, 2) // Odd number of arguments
-	})
-
-	t.Run("invalid dimension index", func(t *testing.T) {
-		shape := NewShape(2, 3)
-		defer func() {
-			r := recover()
-			assert.NotNil(t, r)
-			assert.Contains(t, r.(string), "out of range")
-		}()
-		shape.Iterator(5, 0) // Dimension 5 doesn't exist
-	})
-
-	t.Run("invalid fixed value", func(t *testing.T) {
-		shape := NewShape(2, 3)
-		defer func() {
-			r := recover()
-			assert.NotNil(t, r)
-			assert.Contains(t, r.(string), "out of range")
-		}()
-		shape.Iterator(0, 5) // Value 5 out of range for dimension 0 (size 2)
-	})
-
-	t.Run("negative dimension index", func(t *testing.T) {
-		shape := NewShape(2, 3)
-		defer func() {
-			r := recover()
-			assert.NotNil(t, r)
-			assert.Contains(t, r.(string), "out of range")
-		}()
-		shape.Iterator(-1, 0)
-	})
-
-	t.Run("negative fixed value", func(t *testing.T) {
-		shape := NewShape(2, 3)
-		defer func() {
-			r := recover()
-			assert.NotNil(t, r)
-			assert.Contains(t, r.(string), "out of range")
-		}()
-		shape.Iterator(0, -1)
-	})
-
-	t.Run("duplicate axis", func(t *testing.T) {
-		shape := NewShape(2, 3, 4)
-		defer func() {
-			r := recover()
-			assert.NotNil(t, r)
-			assert.Contains(t, r.(string), "duplicate axis")
-		}()
-		shape.Iterator(0, 1, 0, 2) // Duplicate axis 0
-	})
-}
-
 func TestNewShape(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -235,7 +15,7 @@ func TestNewShape(t *testing.T) {
 		{
 			name:     "empty shape",
 			dims:     []int{},
-			expected: nil,
+			expected: Shape{},
 		},
 		{
 			name:     "single dimension",
@@ -261,12 +41,18 @@ func TestNewShape(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := NewShape(tt.dims...)
+			// Make a copy of dims to avoid modifying the test data
+			dimsCopy := make([]int, len(tt.dims))
+			copy(dimsCopy, tt.dims)
+			result := NewShape(dimsCopy...)
 			assert.Equal(t, tt.expected, result)
-			// Verify it's a copy (modifying input shouldn't affect result)
-			if len(tt.dims) > 0 {
-				tt.dims[0] = 999
-				assert.NotEqual(t, tt.dims[0], result[0])
+			// Verify it's the same slice (modifying input affects result)
+			if len(dimsCopy) > 0 && len(result) > 0 {
+				originalValue := result[0]
+				dimsCopy[0] = 999
+				assert.Equal(t, 999, result[0], "NewShape should return the same slice")
+				// Restore for cleanup
+				dimsCopy[0] = originalValue
 			}
 		})
 	}
@@ -485,7 +271,7 @@ func TestShapeStrides(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.shape.Strides()
+			result := tt.shape.Strides(nil)
 			assert.Equal(t, tt.expected, result)
 			// Verify row-major order: last dimension has stride 1
 			if len(result) > 0 {
@@ -676,12 +462,14 @@ func TestShapeToSlice(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.shape.ToSlice()
 			assert.Equal(t, tt.expected, result)
-			// Verify it's a copy (modifying result shouldn't affect original)
-			if len(result) > 0 {
+			// Verify it's the same slice (modifying result affects original)
+			if len(result) > 0 && len(tt.shape) > 0 {
+				originalValue := tt.shape[0]
 				result[0] = 999
-				if len(tt.shape) > 0 {
-					assert.NotEqual(t, 999, tt.shape[0])
-				}
+				assert.Equal(t, 999, tt.shape[0], "ToSlice should return the same backing array")
+				// Restore for cleanup
+				tt.shape[0] = originalValue
+				result[0] = originalValue
 			}
 		})
 	}

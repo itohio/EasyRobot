@@ -331,93 +331,7 @@ func (t Tensor) Conv1D(dst types.Tensor, kernel, bias types.Tensor, stride, padd
 	resultData := types.GetTensorData[[]float32](result)
 	dstData := types.GetTensorData[[]float32](dst)
 	shapeSlice := result.Shape().ToSlice()
-	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(), result.Shape().Strides())
-	return dst
-}
-
-// Conv1DTo performs 1D convolution and stores result in dst (or creates new tensor if dst is nil).
-func (t Tensor) Conv1DTo(kernel, bias types.Tensor, dst types.Tensor, stride, padding int) types.Tensor {
-	if t.shape == nil || kernel == nil || kernel.Shape() == nil {
-		return nil
-	}
-
-	tShape := t.Shape()
-	kernelShape := kernel.Shape()
-
-	// Handle both 2D [batch, inChannels, length] and 3D [inChannels, length] input
-	var batchSize int
-	var inChannels int
-	var length int
-
-	if len(tShape) == 2 {
-		// [inChannels, length]
-		inChannels = tShape[0]
-		length = tShape[1]
-		batchSize = 1
-	} else if len(tShape) == 3 {
-		// [batch, inChannels, length]
-		batchSize = tShape[0]
-		inChannels = tShape[1]
-		length = tShape[2]
-	} else {
-		panic(fmt.Sprintf("tensor.Conv1DTo: input must be 2D [inChannels, length] or 3D [batch, inChannels, length], got %v", tShape))
-	}
-
-	// Validate kernel shape: [outChannels, inChannels, kernelLen]
-	if len(kernelShape) != 3 {
-		panic(fmt.Sprintf("tensor.Conv1DTo: kernel must be 3D [outChannels, inChannels, kernelLen], got %v", kernelShape))
-	}
-
-	if kernelShape[1] != inChannels {
-		panic(fmt.Sprintf("tensor.Conv1DTo: kernel inChannels %d doesn't match input inChannels %d", kernelShape[1], inChannels))
-	}
-
-	outChannels := kernelShape[0]
-	kernelLen := kernelShape[2]
-
-	// Calculate output length
-	outLen := (length+2*padding-kernelLen)/stride + 1
-
-	// Determine output shape
-	var outputShape []int
-	if len(tShape) == 2 {
-		outputShape = []int{outChannels, outLen}
-	} else {
-		outputShape = []int{batchSize, outChannels, outLen}
-	}
-
-	// Allocate destination if needed
-	expectedShape := types.NewShape(outputShape...)
-	var resultTensor types.Tensor
-	if dst == nil {
-		newTensor := New(t.DataType(), expectedShape)
-		resultTensor = &newTensor
-		dst = resultTensor
-	} else {
-		if len(dst.Shape()) != len(expectedShape) {
-			panic(fmt.Sprintf("tensor.Conv1DTo: destination shape %v doesn't match expected shape %v", dst.Shape(), expectedShape))
-		}
-		for i, dim := range dst.Shape() {
-			if dim != expectedShape[i] {
-				panic(fmt.Sprintf("tensor.Conv1DTo: destination shape %v doesn't match expected shape %v", dst.Shape(), expectedShape))
-			}
-		}
-	}
-
-	// Create 4D views of input and kernel tensors (share data) using FromFloat32
-	tData := types.GetTensorData[[]float32](t)
-	kernelData := types.GetTensorData[[]float32](kernel)
-	dstData := types.GetTensorData[[]float32](dst)
-
-	input4D := FromFloat32(types.NewShape(batchSize, inChannels, length, 1), tData)
-	kernel4D := FromFloat32(types.NewShape(outChannels, inChannels, kernelLen, 1), kernelData)
-
-	// Create 4D view of output tensor (shares data with dst)
-	output4D := FromFloat32(types.NewShape(batchSize, outChannels, outLen, 1), dstData)
-
-	// Use Conv2D with width=1
-	input4D.Conv2D(&output4D, kernel4D, bias, []int{stride, 1}, []int{padding, 0})
-
+	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(nil), result.Shape().Strides(nil))
 	return dst
 }
 
@@ -1797,8 +1711,8 @@ func (t Tensor) Unpad(dst types.Tensor, padding []int) types.Tensor {
 	}
 
 	// Compute strides
-	srcStrides := shape.Strides()
-	dstStrides := newShape.Strides()
+	srcStrides := shape.Strides(nil)
+	dstStrides := newShape.Strides(nil)
 
 	// Calculate source offset (skip padding at the beginning of each dimension)
 	srcOffset := 0
@@ -1877,8 +1791,8 @@ func (t Tensor) PadTo(dst types.Tensor, padding []int, value float64) types.Tens
 	result.Fill(result, value)
 
 	// Copy input data to the appropriate position in result
-	srcStrides := shape.Strides()
-	dstStrides := result.Shape().Strides()
+	srcStrides := shape.Strides(nil)
+	dstStrides := result.Shape().Strides(nil)
 
 	// Calculate destination offset (skip padding at the beginning of each dimension)
 	dstOffset := 0

@@ -1,6 +1,10 @@
 package st
 
-import . "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+import (
+	"fmt"
+
+	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+)
 
 // Elements returns an iterator over multi-dimensional indices for the given shape.
 // Yields []int representing the indices for each element.
@@ -293,6 +297,304 @@ func ElementsWindows(
 				if !yield(outIndices, absIndices, isValid) {
 					return
 				}
+			}
+		}
+	}
+}
+
+// ElementsIndices returns an iterator that fixes specified dimensions and iterates over the remaining ones.
+// Returns a function that can be used in Go 1.22+ range loops.
+// fixedAxisValuePairs are pairs of axis index and fixed value: axis1, value1, axis2, value2, ...
+// The iterator yields complete indices for all dimensions.
+// If fixedAxisValuePairs is empty, iterates over all dimensions (equivalent to Elements).
+//
+// **IMPORTANT**: The indices slice is reused across iterations and must not be modified.
+// If you need to store the indices, copy them: `indicesCopy := make([]int, len(indices)); copy(indicesCopy, indices)`
+//
+// Usage:
+//   - for indices := range ElementsIndices(shape) { ... } // iterates over all dimensions
+//   - for indices := range ElementsIndices(shape, 0, 1) { ... } // fixes dimension 0 at value 1, iterates over remaining dimensions
+//   - for indices := range ElementsIndices(shape, 0, 1, 2, 3) { ... } // fixes dimension 0 at 1, dimension 2 at 3
+func ElementsIndices(shape []int, fixedAxisValuePairs ...int) func(func([]int) bool) {
+	// Validate early, before closure creation
+	if len(fixedAxisValuePairs)%2 != 0 {
+		panic(fmt.Sprintf("tensor: Iterator requires even number of arguments (axis-value pairs), got %d", len(fixedAxisValuePairs)))
+	}
+	if len(shape) > MAX_DIMS {
+		panic(fmt.Sprintf("tensor: Iterator supports up to %d dimensions, got %d", MAX_DIMS, len(shape)))
+	}
+
+	rank := len(shape)
+	// Check for duplicate axes first (before value validation)
+	if len(fixedAxisValuePairs) > 0 {
+		seen := make(map[int]bool, len(fixedAxisValuePairs)/2)
+		for i := 0; i < len(fixedAxisValuePairs); i += 2 {
+			axis := fixedAxisValuePairs[i]
+			if seen[axis] {
+				panic(fmt.Sprintf("tensor: duplicate axis %d in Iterator arguments", axis))
+			}
+			seen[axis] = true
+		}
+	}
+
+	// Validate all inputs early, before closure creation
+	for i := 0; i < len(fixedAxisValuePairs); i += 2 {
+		axis := fixedAxisValuePairs[i]
+		value := fixedAxisValuePairs[i+1]
+
+		if axis < 0 || axis >= rank {
+			panic(fmt.Sprintf("tensor: fixed axis %d out of range for rank %d", axis, rank))
+		}
+		if value < 0 || value >= shape[axis] {
+			panic(fmt.Sprintf("tensor: fixed value %d out of range for axis %d (size %d)", value, axis, shape[axis]))
+		}
+	}
+
+	// Capture only what's absolutely necessary
+	shapeVals := shape
+	fixedPairs := fixedAxisValuePairs
+
+	return func(yield func([]int) bool) {
+		// ALL arrays declared inside closure - nothing escapes from outer function
+
+		if len(shapeVals) == 0 {
+			// Empty shape
+			var emptyIndices [0]int
+			yield(emptyIndices[:])
+			return
+		}
+
+		numFixedDims := len(fixedPairs) / 2
+
+		// Fast path: no fixed dimensions (most common case)
+		if numFixedDims == 0 {
+			var indicesArr [MAX_DIMS]int
+			indices := indicesArr[:rank]
+
+			// Iterate over all combinations without fixed dimensions
+			for {
+				// Yield the current indices
+				if !yield(indices) {
+					return
+				}
+
+				// Advance indices in row-major order (last dimension changes fastest)
+				advanced := false
+				for i := rank - 1; i >= 0; i-- {
+					indices[i]++
+					if indices[i] < shapeVals[i] {
+						advanced = true
+						break
+					}
+					indices[i] = 0
+				}
+
+				if !advanced {
+					// All combinations exhausted
+					break
+				}
+			}
+			return
+		}
+
+		// Build fixed dimensions array inside closure
+		var fixedDimsArr [MAX_DIMS]int
+		for i := 0; i < rank; i++ {
+			fixedDimsArr[i] = -1 // -1 means not fixed
+		}
+
+		// Build fixed dimensions array from pairs (validation already done above)
+		for i := 0; i < len(fixedPairs); i += 2 {
+			axis := fixedPairs[i]
+			value := fixedPairs[i+1]
+			fixedDimsArr[axis] = value
+		}
+
+		// Count remaining dimensions
+		remainingCount := 0
+		for i := 0; i < rank; i++ {
+			if fixedDimsArr[i] == -1 {
+				remainingCount++
+			}
+		}
+
+		// Build full indices array
+		var fullIndicesArr [MAX_DIMS]int
+		fullIndices := fullIndicesArr[:rank]
+
+		// Set fixed dimensions
+		for i := 0; i < rank; i++ {
+			if fixedDimsArr[i] != -1 {
+				fullIndices[i] = fixedDimsArr[i]
+			}
+		}
+
+		if remainingCount == 0 {
+			// All dimensions fixed - yield once
+			yield(fullIndices)
+			return
+		}
+
+		// Build list of remaining dimensions
+		var remainingArr [MAX_DIMS]int
+		remaining := remainingArr[:0]
+		for i := 0; i < rank; i++ {
+			if fixedDimsArr[i] == -1 {
+				remaining = append(remaining, i)
+			}
+		}
+
+		// Initialize indices for remaining dimensions to all zeros
+		var indicesArr [MAX_DIMS]int
+		indices := indicesArr[:remainingCount]
+
+		// Iterate over all combinations
+		for {
+			// Set remaining dimensions in full indices
+			for i, dim := range remaining {
+				fullIndices[dim] = indices[i]
+			}
+
+			// Yield the current full indices
+			if !yield(fullIndices) {
+				return
+			}
+
+			// Advance indices in row-major order (last dimension changes fastest)
+			advanced := false
+			for i := remainingCount - 1; i >= 0; i-- {
+				dim := remaining[i]
+				indices[i]++
+				if indices[i] < shapeVals[dim] {
+					advanced = true
+					break
+				}
+				indices[i] = 0
+			}
+
+			if !advanced {
+				// All combinations exhausted
+				break
+			}
+		}
+	}
+}
+
+// ElementsIndicesStrided returns an iterator over multi-dimensional indices for selected dimensions of the given shape with stride support.
+// Yields []int representing the indices for the selected dimensions only.
+// If dims is empty or nil, iterates over all dimensions (equivalent to ElementsStrided).
+//
+// **IMPORTANT**: The indices slice is reused across iterations and must not be modified.
+// If you need to store the indices, copy them: `indicesCopy := make([]int, len(indices)); copy(indicesCopy, indices)`
+//
+// Usage:
+//   - for indices := range ElementsIndicesStrided(shape, strides) { ... } // iterates over all dimensions
+//   - for indices := range ElementsIndicesStrided(shape, strides, 0, 2) { ... } // iterates over dimensions 0 and 2 only
+func ElementsIndicesStrided(shape []int, strides []int, dims ...int) func(func([]int) bool) {
+	rank := len(shape)
+	if rank == 0 {
+		return func(yield func([]int) bool) {
+			// Empty shape - yield empty indices once
+			var empty []int
+			yield(empty)
+		}
+	}
+
+	// Validate rank
+	if rank > MAX_DIMS {
+		return func(yield func([]int) bool) {
+			// Rank exceeds MAX_DIMS, return early without iterating
+		}
+	}
+
+	// Ensure strides are valid
+	strides = EnsureStrides(strides, shape)
+
+	// If no dims specified, use all dimensions (0, 1, 2, ..., rank-1)
+	var dimsArr [MAX_DIMS]int
+	numDims := len(dims)
+	if numDims == 0 {
+		numDims = rank
+		for i := 0; i < rank; i++ {
+			dimsArr[i] = i
+		}
+	} else {
+		// Validate number of dimensions
+		if numDims > MAX_DIMS {
+			return func(yield func([]int) bool) {
+				// Too many dimensions selected
+			}
+		}
+
+		// Check for duplicates and validate dimension indices
+		for i, dim := range dims {
+			if dim < 0 || dim >= rank {
+				return func(yield func([]int) bool) {
+					// Invalid dimension index
+				}
+			}
+			// Check for duplicates in already processed dimensions
+			for j := 0; j < i; j++ {
+				if dimsArr[j] == dim {
+					return func(yield func([]int) bool) {
+						// Duplicate dimension
+					}
+				}
+			}
+			dimsArr[i] = dim
+		}
+	}
+
+	// Build selected shape and validate it's not empty
+	var selectedShapeArr [MAX_DIMS]int
+	selectedShape := selectedShapeArr[:numDims]
+	selectedSize := 1
+	for i := 0; i < numDims; i++ {
+		dimSize := shape[dimsArr[i]]
+		if dimSize <= 0 {
+			return func(yield func([]int) bool) {
+				// Empty dimension
+			}
+		}
+		selectedShape[i] = dimSize
+		selectedSize *= dimSize
+	}
+
+	if selectedSize == 0 {
+		return func(yield func([]int) bool) {
+			// Empty selected tensor
+		}
+	}
+
+	// Capture shape and dims for closure
+	shapeVals := shape
+	selectedDims := dimsArr[:numDims]
+
+	return func(yield func([]int) bool) {
+		// All arrays declared inside closure - nothing escapes from outer function
+		var indicesArr [MAX_DIMS]int
+		indices := indicesArr[:numDims]
+
+		for {
+			if !yield(indices) {
+				return
+			}
+
+			// Advance indices in row-major order (last selected dimension changes fastest)
+			advanced := false
+			for i := numDims - 1; i >= 0; i-- {
+				dim := selectedDims[i]
+				indices[i]++
+				if indices[i] < shapeVals[dim] {
+					advanced = true
+					break
+				}
+				indices[i] = 0
+			}
+
+			if !advanced {
+				// All combinations exhausted
+				break
 			}
 		}
 	}

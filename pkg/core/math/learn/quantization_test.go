@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/itohio/EasyRobot/pkg/core/math/learn"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/generics"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
 )
 
@@ -82,7 +83,7 @@ func TestQuantizeDequantize(t *testing.T) {
 	}
 
 	// Check reconstruction error (should be small)
-	for indices := range input.Shape().Iterator() {
+	for indices := range generics.ElementsIndices(input.Shape()) {
 		val := input.At(indices...)
 		reconstructed := dequantized.At(indices...)
 		error := math.Abs(val - reconstructed)

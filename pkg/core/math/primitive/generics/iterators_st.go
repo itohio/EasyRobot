@@ -36,3 +36,11 @@ func ElementsWindow(windowOffset, windowShape, parentShape []int) func(func([]in
 func ElementsWindows(outputShape, kernelShape, inputShape []int, stride, padding []int) func(func([]int, []int, bool) bool) {
 	return st.ElementsWindows(outputShape, kernelShape, inputShape, stride, padding)
 }
+
+func ElementsIndices(shape []int, dims ...int) func(func([]int) bool) {
+	return st.ElementsIndices(shape, dims...)
+}
+
+func ElementsIndicesStrided(shape []int, strides []int, dims ...int) func(func([]int) bool) {
+	return st.ElementsIndicesStrided(shape, strides, dims...)
+}
