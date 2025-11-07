@@ -176,10 +176,30 @@ func TestTranspose2D(t *testing.T) {
 				assert.Equal(t, tt.expShape[i], resultShape[i], "Shape dimension %d mismatch", i)
 			}
 
-			resultData := result.Data().([]float32)
-			for i := range tt.expected {
-				assert.InDelta(t, tt.expected[i], resultData[i], 1e-5, "Data[%d] = %f, expected %f", i, resultData[i], tt.expected[i])
+			// Use At() method to access elements (views have different strides, so Data() order is different)
+			// Iterate through result in row-major order and compare with expected
+			rank := result.Rank()
+			indices := make([]int, rank)
+			expectedIdx := 0
+
+			var iterate func(dim int)
+			iterate = func(dim int) {
+				if dim == rank {
+					// Reached leaf, check value
+					value := result.At(indices...)
+					if expectedIdx < len(tt.expected) {
+						assert.InDelta(t, tt.expected[expectedIdx], value, 1e-5,
+							"At(%v) = %f, expected %f", indices, value, tt.expected[expectedIdx])
+						expectedIdx++
+					}
+					return
+				}
+				for i := 0; i < resultShape[dim]; i++ {
+					indices[dim] = i
+					iterate(dim + 1)
+				}
 			}
+			iterate(0)
 		})
 	}
 }

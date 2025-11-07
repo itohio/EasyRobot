@@ -9,11 +9,11 @@ func ElemVecApplyUnaryStrided[T Numeric](dst, src []T, n int, strideDst, strideS
 		return
 	}
 
-	dst = dst[:n]
-	src = src[:n]
 	if strideDst == 1 && strideSrc == 1 {
 		// Fast path: contiguous vectors
 		// Boundary check elimination hint
+		dst = dst[:n]
+		src = src[:n]
 		for i := range n {
 			dst[i] = op(src[i])
 		}

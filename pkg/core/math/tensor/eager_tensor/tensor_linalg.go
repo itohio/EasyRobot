@@ -53,7 +53,10 @@ func (t Tensor) MatMul(dst types.Tensor, other types.Tensor) types.Tensor {
 	resultData := types.GetTensorData[[]float32](result)
 	dstData := types.GetTensorData[[]float32](dst)
 	shapeSlice := result.Shape().ToSlice()
-	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(nil), result.Shape().Strides(nil))
+	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
+	dstStrides := dst.Strides(nil)
+	resultStrides := result.Strides(nil)
+	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dstStrides, resultStrides)
 	return dst
 }
 
@@ -160,9 +163,7 @@ func (t Tensor) matMulSameBatch(other types.Tensor, batchSize, M, N, K int) type
 	otherData := types.GetTensorData[[]float32](other)
 	resultData := types.GetTensorData[[]float32](resultPtr)
 
-	otherStrides := other.Shape().Strides(nil)
-	tShapeSlice := []int{M, K}
-	if t.shape.IsContiguous(nil) && IsContiguous(otherStrides, tShapeSlice) {
+	if t.IsContiguous() && other.IsContiguous() {
 		fp32.GemmStrided(
 			resultData,
 			tData,
@@ -344,24 +345,60 @@ func (t Tensor) Permute(dst types.Tensor, dims []int) types.Tensor {
 	}
 
 	// Handle destination
-	var result types.Tensor
-	var resultData []float32
 	if IsNil(dst) {
-		// Create new tensor
-		result = New(t.DataType(), types.NewShape(newShape...))
-		resultData = types.GetTensorData[[]float32](result)
-	} else {
-		// Validate dst shape matches permuted shape
-		if !newShape.Equal(dst.Shape()) {
-			panic(fmt.Sprintf("tensor.Permute: destination shape mismatch: expected %v, got %v", newShape, dst.Shape()))
+		// Create zero-copy view with permuted strides
+		// Get original strides - use Strides(nil) to get stored strides directly (no copy)
+		origStrides := t.Strides(nil)
+
+		// Compute permuted strides (reorder strides according to dims)
+		var newStridesStatic [MAX_DIMS]int
+		newStrides := newStridesStatic[:rank]
+		for i, d := range dims {
+			newStrides[i] = origStrides[d]
 		}
-		result = dst
-		resultData = types.GetTensorData[[]float32](dst)
+
+		// Check if permuted strides match canonical strides for new shape
+		var canonicalStridesStatic [MAX_DIMS]int
+		canonicalStrides := types.NewShape(newShape...).Strides(canonicalStridesStatic[:rank])
+		isCanonical := true
+		for i := range newStrides {
+			if newStrides[i] != canonicalStrides[i] {
+				isCanonical = false
+				break
+			}
+		}
+
+		// Store strides if they don't match canonical (non-contiguous)
+		var storedStrides []int
+		if !isCanonical {
+			storedStrides = make([]int, rank)
+			copy(storedStrides, newStrides)
+		}
+		// If canonical, storedStrides remains nil (contiguous)
+
+		return Tensor{
+			shape:   newShape,
+			data:    t.data,        // Same backing array
+			strides: storedStrides, // Permuted strides (or nil if canonical)
+			offset:  t.offset,      // Same offset
+		}
 	}
 
+	// Copy to dst (existing behavior)
+	// Validate dst shape matches permuted shape
+	if !newShape.Equal(dst.Shape()) {
+		panic(fmt.Sprintf("tensor.Permute: destination shape mismatch: expected %v, got %v", newShape, dst.Shape()))
+	}
+
+	var resultData []float32
+	resultData = types.GetTensorData[[]float32](dst)
+
 	// Compute source and destination strides
-	srcStrides := shape.Strides(nil)
-	dstStrides := newShape.Strides(nil)
+	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
+	srcStrides := t.Strides(nil)
+	// Compute strides for new shape (not from existing tensor, so compute)
+	var dstStridesStatic [MAX_DIMS]int
+	dstStrides := types.NewShape(newShape...).Strides(dstStridesStatic[:rank])
 
 	// Compute permuted source strides (map through permutation)
 	permutedSrcStrides := make([]int, rank)
@@ -380,7 +417,7 @@ func (t Tensor) Permute(dst types.Tensor, dims []int) types.Tensor {
 		permutedSrcStrides,
 	)
 
-	return result
+	return dst
 }
 
 // Dot computes dot product (vector) or Frobenius inner product (matrix).
@@ -404,9 +441,7 @@ func (t Tensor) Dot(other types.Tensor) float64 {
 
 		tData := types.GetTensorData[[]float32](t)
 		otherData := types.GetTensorData[[]float32](other)
-		otherStrides := other.Shape().Strides(nil)
-		tShapeSlice := []int{tShape[0]}
-		if t.shape.IsContiguous(nil) && IsContiguous(otherStrides, tShapeSlice) {
+		if t.IsContiguous() && other.IsContiguous() {
 			return float64(fp32.Dot(tData, otherData, 1, 1, tShape[0]))
 		}
 
@@ -430,8 +465,9 @@ func (t Tensor) Tensordot(other types.Tensor) float64 {
 
 // dotStrided computes dot product for strided vectors
 func (t Tensor) dotStrided(other types.Tensor, n int) float64 {
-	tStrides := t.shape.Strides(nil)
-	otherStrides := other.Shape().Strides(nil)
+	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
+	tStrides := t.Strides(nil)
+	otherStrides := other.Strides(nil)
 
 	var sum float32
 	tData := types.GetTensorData[[]float32](t)
@@ -468,7 +504,7 @@ func (t Tensor) Norm(ord int) float64 {
 	switch ord {
 	case 0:
 		// L1 norm
-		if t.shape.IsContiguous(nil) {
+		if t.IsContiguous() {
 			tData := types.GetTensorData[[]float32](t)
 			return float64(fp32.Asum(tData, 1, t.Size()))
 		}
@@ -476,7 +512,7 @@ func (t Tensor) Norm(ord int) float64 {
 
 	case 1:
 		// L2 norm (Euclidean norm)
-		if t.shape.IsContiguous(nil) {
+		if t.IsContiguous() {
 			tData := types.GetTensorData[[]float32](t)
 			return float64(fp32.Nrm2(tData, 1, t.Size()))
 		}
@@ -484,7 +520,7 @@ func (t Tensor) Norm(ord int) float64 {
 
 	case 2:
 		// Frobenius norm for matrices (same as L2 norm on flattened matrix)
-		if t.shape.IsContiguous(nil) {
+		if t.IsContiguous() {
 			tData := types.GetTensorData[[]float32](t)
 			return float64(fp32.Nrm2(tData, 1, t.Size()))
 		}
@@ -498,7 +534,8 @@ func (t Tensor) Norm(ord int) float64 {
 // norm1Strided computes L1 norm for strided tensor
 func (t Tensor) norm1Strided() float64 {
 	var sum float64
-	strides := t.shape.Strides(nil)
+	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
+	strides := t.Strides(nil)
 	indices := make([]int, t.shape.Rank())
 	t.norm1StridedRecursive(&sum, indices, strides, 0)
 	return sum
@@ -526,7 +563,8 @@ func (t Tensor) norm1StridedRecursive(sum *float64, indices []int, strides []int
 // norm2Strided computes L2 norm for strided tensor
 func (t Tensor) norm2Strided() float64 {
 	var sumSq float64
-	strides := t.shape.Strides(nil)
+	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
+	strides := t.Strides(nil)
 	indices := make([]int, t.shape.Rank())
 	t.norm2StridedRecursive(&sumSq, indices, strides, 0)
 	// Note: Need sqrt for L2 norm, but primitive.Nrm2 does that
@@ -613,7 +651,10 @@ func (t Tensor) L2Normalize(dst types.Tensor, dim int) types.Tensor {
 	resultData := types.GetTensorData[[]float32](result)
 	dstData := types.GetTensorData[[]float32](dst)
 	shapeSlice := result.Shape().ToSlice()
-	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dst.Shape().Strides(nil), result.Shape().Strides(nil))
+	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
+	dstStrides := dst.Strides(nil)
+	resultStrides := result.Strides(nil)
+	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dstStrides, resultStrides)
 	return dst
 }
 
@@ -626,9 +667,7 @@ func (t Tensor) Normalize(dst types.Tensor, dim int) types.Tensor {
 func (t Tensor) normalizeVector() types.Tensor {
 	result := t.Clone()
 
-	resultStrides := result.Shape().Strides(nil)
-	resultShape := result.Shape().ToSlice()
-	if !IsContiguous(resultStrides, resultShape) {
+	if !result.IsContiguous() {
 		// Handle strided case
 		norm := result.Norm(1) // L2 norm
 		if norm > 0 {

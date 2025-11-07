@@ -18,6 +18,10 @@ type Dense struct {
 	hasBias     bool
 	// Pre-allocated scratch tensor for backward pass optimization (single sample case)
 	gradInput2D tensorTypes.Tensor // For [1, inFeatures] intermediate in backward pass
+	// Pre-allocated bias tensor reshaped for batch case: [1, outFeatures] view of bias, reused across forward passes
+	biasReshaped tensorTypes.Tensor // Reshaped bias [outFeatures] -> [1, outFeatures] (view, no allocation)
+	// Pre-allocated broadcasted bias tensor for batch case: [batch, outFeatures]
+	biasBroadcast tensorTypes.Tensor // For [batch, outFeatures] broadcasted bias
 }
 
 // NewDense creates a new Dense layer with the given input and output features.
@@ -97,6 +101,22 @@ func (d *Dense) Init(inputShape tensor.Shape) error {
 	}
 	d.Base.AllocOutput(outputShape, outputSize)
 
+	// Pre-allocate bias tensors for batch case (only if 2D input and has bias)
+	if len(inputShape) == 2 && d.hasBias {
+		batchSize := inputShape[0]
+
+		// Reshape bias to [1, outFeatures] once (creates view, no allocation)
+		biasParam, ok := d.Base.Parameter(types.ParamBiases)
+		if ok && !tensor.IsNil(biasParam.Data) {
+			d.biasReshaped = biasParam.Data.Reshape(nil, tensor.NewShape(1, d.outFeatures))
+		}
+
+		// Pre-allocate broadcasted bias tensor: [batch, outFeatures]
+		biasBroadcastShape := tensor.NewShape(batchSize, d.outFeatures)
+		dtype := d.Base.DataType()
+		d.biasBroadcast = tensor.New(dtype, biasBroadcastShape)
+	}
+
 	return nil
 }
 
@@ -133,7 +153,7 @@ func (d *Dense) Forward(input tensorTypes.Tensor) (tensorTypes.Tensor, error) {
 			biasParam = biasParamVal.Data
 		}
 	}
-	if err := computeLinear(input, weightParam.Data, biasParam, output); err != nil {
+	if err := d.computeLinear(input, weightParam.Data, biasParam, output); err != nil {
 		return nil, fmt.Errorf("Dense.Forward: Linear operation failed: %w", err)
 	}
 
@@ -144,7 +164,7 @@ func (d *Dense) Forward(input tensorTypes.Tensor) (tensorTypes.Tensor, error) {
 
 // computeLinear computes output = input @ weight + bias directly into output tensor.
 // Uses weight's data type for all operations. Input and output must have compatible data types.
-func computeLinear(input tensorTypes.Tensor, weight tensorTypes.Tensor, bias tensorTypes.Tensor, output tensorTypes.Tensor) error {
+func (d *Dense) computeLinear(input tensorTypes.Tensor, weight tensorTypes.Tensor, bias tensorTypes.Tensor, output tensorTypes.Tensor) error {
 	inputShape := input.Shape()
 	weightShape := weight.Shape()
 	outFeatures := weightShape[1]
@@ -169,15 +189,12 @@ func computeLinear(input tensorTypes.Tensor, weight tensorTypes.Tensor, bias ten
 		if bias.Shape().Rank() > 0 {
 			biasShape := bias.Shape()
 			if len(biasShape) == 1 && biasShape[0] == outFeatures {
-				// Add bias using slice-based approach (more efficient than broadcasting)
-				// For each batch element, add the bias using AddScaled
-				batchSize := inputShape[0]
-				for b := 0; b < batchSize; b++ {
-					// Get output slice for this batch (creates view, zero-copy)
-					outputBatch := output.Slice(nil, 0, b, 1)
-					outputBatchReshaped := outputBatch.Reshape(nil, tensor.NewShape(outFeatures))
-					// Add scaled bias to this batch slice (in-place)
-					outputBatchReshaped.AddScaled(outputBatchReshaped, bias, 1.0)
+				// Add bias: use pre-reshaped bias [1, outFeatures] (from Init, no allocation),
+				// broadcast to [batch, outFeatures] using pre-allocated tensor (no allocation),
+				// then add directly (shapes match, no allocation)
+				if !tensor.IsNil(d.biasReshaped) && !tensor.IsNil(d.biasBroadcast) {
+					d.biasReshaped.BroadcastTo(d.biasBroadcast, output.Shape())
+					output.AddScaled(output, d.biasBroadcast, 1.0)
 				}
 			}
 		}

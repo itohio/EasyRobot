@@ -1825,8 +1825,10 @@ func (t Tensor) Unpad(dst types.Tensor, padding []int) types.Tensor {
 	}
 
 	// Compute strides
-	srcStrides := shape.Strides(nil)
-	dstStrides := newShape.Strides(nil)
+	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
+	srcStrides := t.Strides(nil)
+	// Compute strides for new shape (not from existing tensor, so compute)
+	dstStrides := types.NewShape(newShape...).Strides(nil)
 
 	// Calculate source offset (skip padding at the beginning of each dimension)
 	srcOffset := 0
@@ -1905,8 +1907,9 @@ func (t Tensor) PadTo(dst types.Tensor, padding []int, value float64) types.Tens
 	result.Fill(result, value)
 
 	// Copy input data to the appropriate position in result
-	srcStrides := shape.Strides(nil)
-	dstStrides := result.Shape().Strides(nil)
+	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
+	srcStrides := t.Strides(nil)
+	dstStrides := result.Strides(nil)
 
 	// Calculate destination offset (skip padding at the beginning of each dimension)
 	dstOffset := 0

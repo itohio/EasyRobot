@@ -3,9 +3,11 @@ package types
 import (
 	"fmt"
 	"sort"
+
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 )
 
-const MAX_DIMS = 16
+const MAX_DIMS = helpers.MAX_DIMS
 
 // Shape represents tensor dimensions.
 type Shape []int
@@ -22,23 +24,17 @@ func (s Shape) Rank() int {
 
 // Size returns total number of elements represented by the shape.
 // Scalars (len=0) report size 1.
+// Uses optimized helper function for non-empty shapes.
 func (s Shape) Size() int {
 	if len(s) == 0 {
 		return 1
 	}
-	size := 1
-	for _, d := range s {
-		if d <= 0 {
-			return 0
-		}
-		size *= d
-	}
-	return size
+	return helpers.SizeFromShape(s)
 }
 
 // Equal checks if two shapes are equal.
 func (s Shape) Equal(other Shape) bool {
-	if len(s) != len(other) {
+	if s.Rank() != other.Rank() {
 		return false
 	}
 	for i := range s {
@@ -50,37 +46,15 @@ func (s Shape) Equal(other Shape) bool {
 }
 
 // Strides computes row-major strides for the shape.
+// Uses optimized helper function with stack allocation when dst is nil.
 func (s Shape) Strides(dst []int) []int {
-	if len(s) == 0 {
-		return nil
-	}
-	if dst == nil {
-		dst = make([]int, len(s))
-	}
-	stride := 1
-	for i := len(s) - 1; i >= 0; i-- {
-		dst[i] = stride
-		stride *= s[i]
-	}
-	return dst
+	return helpers.ComputeStrides(dst, s)
 }
 
 // IsContiguous reports whether the given strides describe a dense row-major layout.
+// Uses optimized helper function with stack allocation.
 func (s Shape) IsContiguous(strides []int) bool {
-	if len(s) == 0 {
-		return true
-	}
-	static := [MAX_DIMS]int{}
-	canonical := s.Strides(static[:len(s)])
-	if len(strides) != len(canonical) {
-		return false
-	}
-	for i := range canonical {
-		if strides[i] != canonical[i] {
-			return false
-		}
-	}
-	return true
+	return helpers.IsContiguous(strides, s)
 }
 
 // ValidateAxes ensures axes are in range and unique. It sorts axes in-place.
@@ -119,7 +93,8 @@ func (s Shape) Clone() Shape {
 	if s == nil {
 		return nil
 	}
-	out := make([]int, len(s))
-	copy(out, s)
+	var static [helpers.MAX_DIMS]int
+	out := static[:len(s)]
+	copy(out[:], s)
 	return out
 }

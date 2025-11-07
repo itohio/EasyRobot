@@ -6,26 +6,36 @@ import (
 
 	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
 	"github.com/itohio/EasyRobot/pkg/core/math/primitive/generics"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
 )
 
 // Tensor represents a multi-dimensional array of values of type specified by types.DataType.
 // Data is stored in a contiguous slice of values.
 // This Tensor has eager execution semantics.
+//
+// Strides and offset support:
+//   - strides: If nil, tensor is contiguous (strides computed from shape).
+//     If non-nil, stores explicit strides for non-contiguous layouts (e.g., views, transposes).
+//   - offset: Base offset into the data slice. 0 means tensor starts at beginning of data.
+//     Non-zero offset is used for views (e.g., slices) that reference a portion of larger array.
 type Tensor struct {
-	shape types.Shape
-	data  any
+	shape   types.Shape
+	data    any
+	strides []int // Optional: if nil, compute from shape (contiguous). If non-nil, explicit strides.
+	offset  int   // Base offset into data. 0 means tensor starts at beginning of data.
 }
 
 // New creates a new tensor with the provided data type and shape.
 // The underlying buffer is zero-initialized.
+// New tensors are always contiguous (strides = nil, offset = 0).
 func New(dtype types.DataType, shape types.Shape) Tensor {
 	size := shape.Size()
 	buf := types.MakeTensorData(dtype, size)
 	if buf == nil {
 		panic(fmt.Sprintf("unsupported dtype: %v", dtype))
 	}
-	return Tensor{shape: shape, data: buf}
+	return Tensor{shape: shape, data: buf, strides: nil, offset: 0}
 }
 
 // NewAs creates a new tensor with the same data type and shape as the given tensor.
@@ -48,7 +58,7 @@ func FromArray[T types.DataElementType](shape types.Shape, data []T) Tensor {
 	if len(data) < size {
 		panic(fmt.Sprintf("tensor.FromArray: data length %d is less than shape size %d", len(data), size))
 	}
-	return Tensor{shape: shape, data: data[:size]}
+	return Tensor{shape: shape, data: data[:size], strides: nil, offset: 0}
 }
 
 // FromFloat32 constructs an FP32 tensor from an existing backing slice.
@@ -128,7 +138,119 @@ func (t Tensor) Size() int {
 	return t.shape.Size()
 }
 
+// Strides returns the tensor's strides, computing if necessary.
+// If dst is provided and has sufficient capacity, strides are written to dst.
+// If dst is nil or too small, a stack-allocated array is used.
+// Returns the slice containing the strides.
+//
+// For contiguous tensors (strides == nil), computes canonical row-major strides from shape.
+// For non-contiguous tensors, returns stored strides.
+func (t Tensor) Strides(dst []int) []int {
+	if t.shape == nil {
+		return nil
+	}
+
+	rank := t.shape.Rank()
+	if rank == 0 {
+		return nil
+	}
+
+	// If strides are stored, return them (may need to copy to dst)
+	if t.strides != nil {
+		if dst != nil && len(dst) >= rank {
+			copy(dst, t.strides)
+			return dst[:rank]
+		}
+		// Return stored strides directly (caller should not modify)
+		return t.strides
+	}
+
+	// Compute canonical strides from shape (contiguous tensor)
+	return t.shape.Strides(dst)
+}
+
+// IsContiguous reports whether the tensor is contiguous (dense row-major layout).
+// A tensor is contiguous if:
+// - strides == nil (always contiguous, uses canonical strides)
+// - OR stored strides match canonical row-major strides for the shape
+func (t Tensor) IsContiguous() bool {
+	if t.shape == nil {
+		return true
+	}
+
+	// nil strides means contiguous
+	if t.strides == nil {
+		return true
+	}
+
+	// Check if stored strides match canonical strides
+	return t.shape.IsContiguous(t.strides)
+}
+
+// Offset returns the base offset into the data slice.
+// Returns 0 for tensors that start at the beginning of data.
+// Non-zero offset is used for views (e.g., slices) that reference a portion of larger array.
+func (t Tensor) Offset() int {
+	return t.offset
+}
+
+// DataWithOffset returns the data slice adjusted by the tensor's offset.
+// For tensors with offset == 0, returns the data as-is.
+// For tensors with offset > 0, returns a slice starting at the offset.
+// This is a type-agnostic helper that works with all data types.
+func (t Tensor) DataWithOffset() any {
+	if t.data == nil {
+		return nil
+	}
+
+	if t.offset == 0 {
+		return t.data
+	}
+
+	// Adjust slice by offset (type-agnostic)
+	switch data := t.data.(type) {
+	case []float32:
+		if t.offset >= len(data) {
+			return []float32(nil)
+		}
+		return data[t.offset:]
+	case []float64:
+		if t.offset >= len(data) {
+			return []float64(nil)
+		}
+		return data[t.offset:]
+	case []int32:
+		if t.offset >= len(data) {
+			return []int32(nil)
+		}
+		return data[t.offset:]
+	case []int64:
+		if t.offset >= len(data) {
+			return []int64(nil)
+		}
+		return data[t.offset:]
+	case []int:
+		if t.offset >= len(data) {
+			return []int(nil)
+		}
+		return data[t.offset:]
+	case []int16:
+		if t.offset >= len(data) {
+			return []int16(nil)
+		}
+		return data[t.offset:]
+	case []int8:
+		if t.offset >= len(data) {
+			return []int8(nil)
+		}
+		return data[t.offset:]
+	default:
+		panic(fmt.Sprintf("tensor.DataWithOffset: unsupported data type: %T", t.data))
+	}
+}
+
 // Clone creates a deep copy of the tensor.
+// Clones shape, data, strides, and offset.
 func (t Tensor) Clone() types.Tensor {
 	if t.shape == nil && t.data == nil {
 		return nil
@@ -136,7 +258,20 @@ func (t Tensor) Clone() types.Tensor {
 
 	clonedData := types.CloneTensorDataTo(t.DataType(), t.Data())
 	clonedShape := t.Shape().Clone()
-	return Tensor{shape: clonedShape, data: clonedData}
+
+	// Clone strides if present
+	var clonedStrides []int
+	if t.strides != nil {
+		clonedStrides = make([]int, len(t.strides))
+		copy(clonedStrides, t.strides)
+	}
+
+	return Tensor{
+		shape:   clonedShape,
+		data:    clonedData,
+		strides: clonedStrides,
+		offset:  t.offset,
+	}
 }
 
 // Copy copies data from src tensor into this tensor.
@@ -165,7 +300,9 @@ func (t Tensor) Copy(src types.Tensor) types.Tensor {
 	srcData := src.Data()
 	tData := t.Data()
 	shapeSlice := src.Shape().ToSlice()
-	generics.ElemCopyStridedAny(tData, srcData, shapeSlice, t.Shape().Strides(nil), src.Shape().Strides(nil))
+	tStrides := t.Strides(nil)
+	srcStrides := src.Strides(nil)
+	generics.ElemCopyStridedAny(tData, srcData, shapeSlice, tStrides, srcStrides)
 
 	return t
 }
@@ -180,64 +317,72 @@ func (t Tensor) elementIndex(indices []int, strides []int) int {
 }
 
 // getElementAtIndex returns the element at the given linear index, converting from the actual data type to float64.
+// The index is relative to the tensor's offset.
 func (t Tensor) getElementAtIndex(index int) float64 {
 	if t.data == nil {
 		panic("tensor.getElementAtIndex: tensor has nil data")
 	}
 
+	// Adjust index by offset
+	adjustedIndex := t.offset + index
+
 	switch data := t.data.(type) {
 	case []float32:
-		if index >= len(data) {
+		if adjustedIndex >= len(data) {
 			panic("tensor.getElementAtIndex: index out of bounds")
 		}
-		return primitive.ConvertValue[float32, float64](data[index])
+		return primitive.ConvertValue[float32, float64](data[adjustedIndex])
 	case []float64:
-		if index >= len(data) {
+		if adjustedIndex >= len(data) {
 			panic("tensor.getElementAtIndex: index out of bounds")
 		}
-		return data[index]
+		return data[adjustedIndex]
 	case []int16:
-		if index >= len(data) {
+		if adjustedIndex >= len(data) {
 			panic("tensor.getElementAtIndex: index out of bounds")
 		}
-		return primitive.ConvertValue[int16, float64](data[index])
+		return primitive.ConvertValue[int16, float64](data[adjustedIndex])
 	case []int8:
-		if index >= len(data) {
+		if adjustedIndex >= len(data) {
 			panic("tensor.getElementAtIndex: index out of bounds")
 		}
-		return primitive.ConvertValue[int8, float64](data[index])
+		return primitive.ConvertValue[int8, float64](data[adjustedIndex])
 	default:
 		panic(fmt.Sprintf("tensor.getElementAtIndex: unsupported data type"))
 	}
 }
 
 // setElementAtIndex sets the element at the given linear index, converting from float64 to the actual data type.
+// The index is relative to the tensor's offset.
 func (t Tensor) setElementAtIndex(index int, value float64) {
 	if t.data == nil {
 		panic("tensor.setElementAtIndex: tensor has nil data")
 	}
 
+	// Adjust index by offset
+	adjustedIndex := t.offset + index
+
 	switch data := t.data.(type) {
 	case []float32:
-		if index >= len(data) {
+		if adjustedIndex >= len(data) {
 			panic("tensor.setElementAtIndex: index out of bounds")
 		}
-		data[index] = primitive.ConvertValue[float64, float32](value)
+		data[adjustedIndex] = primitive.ConvertValue[float64, float32](value)
 	case []float64:
-		if index >= len(data) {
+		if adjustedIndex >= len(data) {
 			panic("tensor.setElementAtIndex: index out of bounds")
 		}
-		data[index] = value
+		data[adjustedIndex] = value
 	case []int16:
-		if index >= len(data) {
+		if adjustedIndex >= len(data) {
 			panic("tensor.setElementAtIndex: index out of bounds")
 		}
-		data[index] = primitive.ConvertValue[float64, int16](value)
+		data[adjustedIndex] = primitive.ConvertValue[float64, int16](value)
 	case []int8:
-		if index >= len(data) {
+		if adjustedIndex >= len(data) {
 			panic("tensor.setElementAtIndex: index out of bounds")
 		}
-		data[index] = primitive.ConvertValue[float64, int8](value)
+		data[adjustedIndex] = primitive.ConvertValue[float64, int8](value)
 	default:
 		panic(fmt.Sprintf("tensor.setElementAtIndex: unsupported data type"))
 	}
@@ -276,7 +421,8 @@ func (t Tensor) At(indices ...int) float64 {
 		}
 	}
 
-	strides := t.shape.Strides(nil)
+	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
+	strides := t.Strides(nil)
 	linearIdx := t.elementIndex(indices, strides)
 	return t.getElementAtIndex(linearIdx)
 }
@@ -316,7 +462,8 @@ func (t Tensor) SetAt(value float64, indices ...int) {
 		}
 	}
 
-	strides := t.shape.Strides(nil)
+	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
+	strides := t.Strides(nil)
 	linearIdx := t.elementIndex(indices, strides)
 	t.setElementAtIndex(linearIdx, value)
 }
@@ -334,13 +481,75 @@ func (t Tensor) Reshape(dst types.Tensor, newShape types.Shape) types.Tensor {
 	if tData == nil {
 		panic("tensor.Reshape: cannot reshape tensor with nil data")
 	}
-	if shape.Size() != len(tData) {
+	// For views, compare with tensor size (which accounts for offset), not full data length
+	if shape.Size() != t.Size() {
 		panic("tensor.Reshape: cannot reshape tensor with different total size")
 	}
 
 	if IsNil(dst) {
 		// Create zero-copy view
-		return Tensor{shape: shape, data: t.data}
+		// Preserve offset (reshape doesn't change memory offset)
+		// For strides: if rank changes, we need to handle it differently
+		var newStrides []int
+		oldRank := t.shape.Rank()
+		newRank := shape.Rank()
+
+		if oldRank == newRank {
+			// Same rank: preserve strides
+			if t.strides != nil {
+				newStrides = make([]int, len(t.strides))
+				copy(newStrides, t.strides)
+			}
+			// If t.strides == nil, newStrides remains nil (contiguous)
+		} else {
+			// Rank changed:
+			// - If original was contiguous (strides == nil), result is also contiguous
+			// - If original was non-contiguous, we cannot preserve strides across rank change
+			//   because the stride array length won't match. In this case, we need to copy.
+			//   However, for zero-copy views, we'll set strides to nil and let Strides() compute.
+			//   This means the view will appear contiguous even though the underlying memory isn't.
+			//   This is a limitation: reshape of non-contiguous tensors with rank change
+			//   cannot be truly zero-copy while preserving correct indexing.
+			//
+			//   For now, we'll allow it but the indexing will be incorrect for non-contiguous cases.
+			//   A proper solution would require copying the data, which breaks zero-copy.
+			//
+			//   Actually, wait - if the tensor is non-contiguous and we reshape with rank change,
+			//   we can't just compute new strides from shape because the memory layout doesn't match.
+			//   We need to either:
+			//   1. Copy the data (not zero-copy)
+			//   2. Keep original strides and map them somehow (complex)
+			//   3. Disallow this operation
+			//
+			//   For now, let's check if the tensor is contiguous. If not, we need to copy.
+			if t.strides != nil && !t.IsContiguous() {
+				// Non-contiguous tensor with rank change: need to copy
+				// Create new tensor and copy data using strided copy
+				result := New(t.DataType(), shape)
+				var srcStridesStatic [helpers.MAX_DIMS]int
+				srcStrides := t.Strides(srcStridesStatic[:oldRank])
+				var dstStridesStatic [helpers.MAX_DIMS]int
+				dstStrides := shape.Strides(dstStridesStatic[:newRank])
+
+				// Use strided copy
+				tData := types.GetTensorData[[]float32](t)
+				resultData := types.GetTensorData[[]float32](result)
+				if tData != nil && resultData != nil {
+					primitive.CopyWithStrides(
+						t.DataWithOffset(),
+						resultData,
+						t.Shape().ToSlice(),
+						srcStrides,
+						dstStrides,
+					)
+				}
+				return result
+			}
+			// Contiguous tensor with rank change: can use zero-copy view
+			newStrides = nil
+		}
+
+		return Tensor{shape: shape, data: t.data, strides: newStrides, offset: t.offset}
 	}
 
 	// Validate dst shape matches newShape
@@ -360,7 +569,7 @@ func (t Tensor) Reshape(dst types.Tensor, newShape types.Shape) types.Tensor {
 
 // Slice extracts a contiguous slice along the specified dimension.
 // Returns a tensor with the sliced data.
-// If dst is nil, creates a new tensor with copied data.
+// If dst is nil, creates a zero-copy view with adjusted offset and same strides.
 // If dst is provided, copies sliced data to dst and returns dst.
 func (t Tensor) Slice(dst types.Tensor, dim int, start int, length int) types.Tensor {
 	if t.shape == nil && t.data == nil {
@@ -388,8 +597,8 @@ func (t Tensor) Slice(dst types.Tensor, dim int, start int, length int) types.Te
 		panic(fmt.Sprintf("tensor.Slice: start+length (%d+%d=%d) exceeds dimension size %d", start, length, start+length, dimSize))
 	}
 
-	// Compute strides for the original tensor
-	strides := shape.Strides(nil)
+	// Get original strides - use Strides(nil) to get stored strides directly (no copy)
+	origStrides := t.Strides(nil)
 
 	// Create new shape with reduced dimension
 	newShape := make(types.Shape, len(shape))
@@ -397,23 +606,34 @@ func (t Tensor) Slice(dst types.Tensor, dim int, start int, length int) types.Te
 	newShape[dim] = length
 
 	// Handle destination
-	var result types.Tensor
-	var slicedBuf any
 	if IsNil(dst) {
-		// Create new tensor
-		result = New(t.DataType(), newShape)
-		slicedBuf = result.Data()
-	} else {
-		// Validate dst shape matches newShape
-		if !newShape.Equal(dst.Shape()) {
-			panic(fmt.Sprintf("tensor.Slice: destination shape mismatch: expected %v, got %v", newShape, dst.Shape()))
+		// Create zero-copy view
+		// Compute new offset: original offset + start * stride[dim]
+		newOffset := t.offset + start*origStrides[dim]
+
+		// Preserve original strides (slicing doesn't change stride pattern)
+		// Even if original was contiguous (strides == nil), we need to store
+		// the original strides to maintain correct indexing after slicing
+		// Copy strides to new slice for the view
+		newStrides := make([]int, len(origStrides))
+		copy(newStrides, origStrides)
+
+		return Tensor{
+			shape:   newShape,
+			data:    t.data,     // Same backing array
+			strides: newStrides, // Preserved original strides (slicing doesn't change stride pattern)
+			offset:  newOffset,  // Adjusted offset
 		}
-		result = dst
-		slicedBuf = dst.Data()
+	}
+
+	// Copy to dst (existing behavior)
+	// Validate dst shape matches newShape
+	if !newShape.Equal(dst.Shape()) {
+		panic(fmt.Sprintf("tensor.Slice: destination shape mismatch: expected %v, got %v", newShape, dst.Shape()))
 	}
 
 	// Compute source offset and create source view
-	srcOffset := start * strides[dim]
+	srcOffset := t.offset + start*origStrides[dim]
 	var srcView any
 
 	// Adjust source view by offset (type-agnostic)
@@ -431,10 +651,11 @@ func (t Tensor) Slice(dst types.Tensor, dim int, start int, length int) types.Te
 	}
 
 	// Use primitive.CopyWithStrides - it handles all types automatically!
-	dstStrides := newShape.Strides(nil)
-	primitive.CopyWithStrides(srcView, slicedBuf, newShape.ToSlice(), strides, dstStrides)
+	var dstStridesStatic [helpers.MAX_DIMS]int
+	dstStrides := types.NewShape(newShape...).Strides(dstStridesStatic[:len(newShape)])
+	primitive.CopyWithStrides(srcView, dst.Data(), newShape.ToSlice(), origStrides, dstStrides)
 
-	return result
+	return dst
 }
 
 // Element represents a single tensor element with Get and Set methods.
@@ -488,7 +709,8 @@ func (t Tensor) Elements(fixedAxisValuePairs ...int) func(func(types.Element) bo
 
 	// Use shape iterator to get index combinations
 	shapeIter := generics.ElementsIndices(t.shape, fixedAxisValuePairs...)
-	strides := t.shape.Strides(nil)
+	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
+	strides := t.Strides(nil)
 
 	return func(yield func(types.Element) bool) {
 		for indices := range shapeIter {

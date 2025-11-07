@@ -90,6 +90,17 @@ func Must(t any, err error) any
 - `Size() int` - Returns the total number of elements
 - `Empty() bool` - Returns true if the tensor is empty (no shape or data)
 
+#### Memory Layout and Stride Access
+- `Strides(dst []int) []int` - Returns the tensor's strides, computing if necessary. If dst is provided and has sufficient capacity, strides are written to dst. For contiguous tensors (strides == nil), computes canonical row-major strides from shape. For non-contiguous tensors, returns stored strides. Returns nil for empty tensors or scalars (rank 0).
+
+- `IsContiguous() bool` - Reports whether the tensor is contiguous (dense row-major layout). A tensor is contiguous if strides == nil (always contiguous, uses canonical strides) OR stored strides match canonical row-major strides for the shape.
+
+- `Offset() int` - Returns the base offset into the data slice. Returns 0 for tensors that start at the beginning of data. Non-zero offset is used for views (e.g., slices) that reference a portion of larger array.
+
+- `DataWithOffset() any` - Returns the data slice adjusted by the tensor's offset. For tensors with offset == 0, returns the data as-is. For tensors with offset > 0, returns a slice starting at the offset. This is a type-agnostic helper that works with all data types. Returns nil if the tensor has no data or if offset is out of bounds.
+
+**Implementation Note**: The `eager_tensor` implementation stores strides and offset internally. Contiguous tensors have `strides = nil` (computed on-demand), while non-contiguous tensors store explicit strides. This design enables zero-copy views while maintaining backward compatibility.
+
 #### Element Access
 - `At(indices ...int) float64` - Returns element at given multi-dimensional indices. When only one index is provided and tensor rank > 1, uses linear indexing. Panics if indices are out of bounds.
 - `SetAt(value float64, indices ...int)` - Sets element at given multi-dimensional indices. When only one index is provided and tensor rank > 1, uses linear indexing. Panics if indices are out of bounds.
@@ -102,12 +113,14 @@ func Must(t any, err error) any
 - `Copy(src Tensor) Tensor` - Copies data from src tensor into this tensor. Both tensors must have the same shape. Supports data type conversion. Uses optimized primitive copy functions. Returns self for method chaining. Panics if shapes don't match.
 
 #### Shape Manipulation
-- `Reshape(dst Tensor, newShape Shape) Tensor` - Returns a tensor with the same data but different shape (zero-copy when possible). The total number of elements must remain the same. If dst is nil, creates a new tensor view (zero-copy when possible). If dst is provided, copies reshaped data to dst and returns dst. Panics if newShape is incompatible with current size or if dst shape doesn't match newShape.
-- `Slice(dst Tensor, dim int, start int, length int) Tensor` - Extracts a contiguous slice along the specified dimension. Parameters: dim (0-based dimension), start (starting index), length (number of elements). Result has same rank but dimension 'dim' is reduced to 'length'. If dst is nil, creates a new tensor with copied data. If dst is provided, copies sliced data to dst and returns dst. Panics if dim is out of range, if start+length exceeds dimension size, or if dst shape doesn't match.
+- `Reshape(dst Tensor, newShape Shape) Tensor` - Returns a tensor with the same data but different shape (zero-copy when possible). The total number of elements must remain the same. If dst is nil, creates a new tensor view (zero-copy when possible) that shares the underlying data and preserves strides/offset. If dst is provided, copies reshaped data to dst and returns dst. Panics if newShape is incompatible with current size or if dst shape doesn't match newShape.
+
+- `Slice(dst Tensor, dim int, start int, length int) Tensor` - Extracts a contiguous slice along the specified dimension. Parameters: dim (0-based dimension), start (starting index), length (number of elements). Result has same rank but dimension 'dim' is reduced to 'length'. If dst is nil, creates a zero-copy view with adjusted offset and same strides (Phase 2: currently copies data, will be zero-copy in future). If dst is provided, copies sliced data to dst and returns dst. Panics if dim is out of range, if start+length exceeds dimension size, or if dst shape doesn't match.
 
 #### Dimension Rearrangement
-- `Transpose(dst Tensor, dims []int) Tensor` - Transposes dimensions (matches tf.transpose). For 2D: [M, N] → [N, M] (swaps last two dimensions if no dims provided). Uses Permute internally with optimized fp32.ElemCopy for all cases. If dst is nil, creates a new tensor. If dst is provided, writes result to dst and returns dst. Panics if dimensions are invalid.
-- `Permute(dst Tensor, dims []int) Tensor` - Permutes dimensions according to the provided permutation. dims: permutation of [0, 1, 2, ..., rank-1]. Example: Permute([]int{1, 0, 2, 3}) swaps dimensions 0 and 1 in a 4D tensor. Uses optimized fp32.ElemCopy with stride-based copying. If dst is nil, creates a new tensor. If dst is provided, writes permuted result to dst and returns dst. Panics if permutation is invalid or if dst shape doesn't match permuted shape.
+- `Transpose(dst Tensor, dims []int) Tensor` - Transposes dimensions (matches tf.transpose). For 2D: [M, N] → [N, M] (swaps last two dimensions if no dims provided). Uses Permute internally with optimized fp32.ElemCopy for all cases. If dst is nil, creates a zero-copy view with permuted strides (Phase 2: currently copies data, will be zero-copy in future). If dst is provided, writes result to dst and returns dst. Panics if dimensions are invalid.
+
+- `Permute(dst Tensor, dims []int) Tensor` - Permutes dimensions according to the provided permutation. dims: permutation of [0, 1, 2, ..., rank-1]. Example: Permute([]int{1, 0, 2, 3}) swaps dimensions 0 and 1 in a 4D tensor. Uses optimized fp32.ElemCopy with stride-based copying. If dst is nil, creates a zero-copy view with permuted strides (Phase 2: currently copies data, will be zero-copy in future). If dst is provided, writes permuted result to dst and returns dst. Panics if permutation is invalid or if dst shape doesn't match permuted shape.
 - `BroadcastTo(dst Tensor, shape Shape) Tensor` - Broadcasts the tensor to the target shape. If dst is nil, creates a new tensor. If dst is provided, writes result to dst and returns dst. Panics if broadcasting is not possible or if dst shape doesn't match target shape.
 
 #### Filling and Padding
@@ -297,10 +310,19 @@ Many operations are designed to match TensorFlow behavior:
 
 ### Performance Considerations
 
-- Operations attempt zero-copy when possible (e.g., `Reshape`, `Slice`)
-- Optimized primitives are used for common operations (e.g., BLAS/LAPACK for linear algebra)
-- Prefer reusing destination tensors to reduce allocations
-- Use `Elements()` iterator for efficient element-wise iteration
+- **Zero-Copy Operations**: Operations attempt zero-copy when possible (e.g., `Reshape` creates views, `Slice` and `Transpose` will create views in Phase 2). Views share the underlying data and maintain their own shape/strides/offset metadata.
+
+- **Stride Optimization**: The implementation stores strides internally to avoid recomputing them on every operation. Contiguous tensors use lazy stride computation (strides computed on-demand), while non-contiguous tensors store explicit strides.
+
+- **Stack Allocation**: Stride computations use stack-allocated arrays (MAX_DIMS = 16) to avoid heap allocations in hot paths.
+
+- **Memory Efficiency**: Views enable multiple tensors to share the same backing array, reducing memory usage and enabling efficient in-place operations.
+
+- **Optimized Primitives**: Optimized primitives are used for common operations (e.g., BLAS/LAPACK for linear algebra, SIMD for element-wise operations).
+
+- **Destination Reuse**: Prefer reusing destination tensors to reduce allocations.
+
+- **Iterator Pattern**: Use `Elements()` iterator for efficient element-wise iteration.
 
 ### Implementation Notes
 

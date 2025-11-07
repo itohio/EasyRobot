@@ -168,16 +168,31 @@ func TestSlice(t *testing.T) {
 				}
 			}
 
-			// Verify data
-			resultData := result.Data().([]float32)
-			if len(resultData) != len(tt.expected) {
-				t.Errorf("Slice() Data length = %d, expected %d", len(resultData), len(tt.expected))
-			}
+			// Verify data using At() method (accounts for offset in views)
+			// For views, Data() returns the full backing array, so we use At() instead
+			rank := result.Rank()
+			indices := make([]int, rank)
+			expectedIdx := 0
 
-			for i := range tt.expected {
-				assert.InDeltaf(t, tt.expected[i], resultData[i], 1e-5,
-					"Slice() Data[%d] = %f, expected %f", i, resultData[i], tt.expected[i])
+			// Iterate through all elements using At()
+			var iterate func(dim int)
+			iterate = func(dim int) {
+				if dim == rank {
+					// Reached leaf, check value
+					value := result.At(indices...)
+					if expectedIdx < len(tt.expected) {
+						assert.InDeltaf(t, tt.expected[expectedIdx], value, 1e-5,
+							"Slice() At(%v) = %f, expected %f", indices, value, tt.expected[expectedIdx])
+						expectedIdx++
+					}
+					return
+				}
+				for i := 0; i < result.Shape()[dim]; i++ {
+					indices[dim] = i
+					iterate(dim + 1)
+				}
 			}
+			iterate(0)
 		})
 	}
 }
@@ -245,38 +260,35 @@ func TestSliceLSTMGates(t *testing.T) {
 	// Extract input gate (i): [batch_size, hidden_size] = [2, 2]
 	iGate := gates.Slice(nil, 1, 0, hiddenSize)
 	assert.Equal(t, []int{2, 2}, iGate.Shape().ToSlice())
-	iGateData := iGate.Data().([]float32)
-	assert.InDelta(t, 1.0, iGateData[0], 1e-5)
-	assert.InDelta(t, 2.0, iGateData[1], 1e-5)
-	assert.InDelta(t, 9.0, iGateData[2], 1e-5)
-	assert.InDelta(t, 10.0, iGateData[3], 1e-5)
+	// Use At() method to access elements (accounts for offset in views)
+	assert.InDelta(t, 1.0, iGate.At(0, 0), 1e-5)
+	assert.InDelta(t, 2.0, iGate.At(0, 1), 1e-5)
+	assert.InDelta(t, 9.0, iGate.At(1, 0), 1e-5)
+	assert.InDelta(t, 10.0, iGate.At(1, 1), 1e-5)
 
 	// Extract forget gate (f): [batch_size, hidden_size] = [2, 2]
 	fGate := gates.Slice(nil, 1, hiddenSize, hiddenSize)
 	assert.Equal(t, []int{2, 2}, fGate.Shape().ToSlice())
-	fGateData := fGate.Data().([]float32)
-	assert.InDelta(t, 3.0, fGateData[0], 1e-5)
-	assert.InDelta(t, 4.0, fGateData[1], 1e-5)
-	assert.InDelta(t, 11.0, fGateData[2], 1e-5)
-	assert.InDelta(t, 12.0, fGateData[3], 1e-5)
+	assert.InDelta(t, 3.0, fGate.At(0, 0), 1e-5)
+	assert.InDelta(t, 4.0, fGate.At(0, 1), 1e-5)
+	assert.InDelta(t, 11.0, fGate.At(1, 0), 1e-5)
+	assert.InDelta(t, 12.0, fGate.At(1, 1), 1e-5)
 
 	// Extract cell gate (g): [batch_size, hidden_size] = [2, 2]
 	gGate := gates.Slice(nil, 1, 2*hiddenSize, hiddenSize)
 	assert.Equal(t, []int{2, 2}, gGate.Shape().ToSlice())
-	gGateData := gGate.Data().([]float32)
-	assert.InDelta(t, 5.0, gGateData[0], 1e-5)
-	assert.InDelta(t, 6.0, gGateData[1], 1e-5)
-	assert.InDelta(t, 13.0, gGateData[2], 1e-5)
-	assert.InDelta(t, 14.0, gGateData[3], 1e-5)
+	assert.InDelta(t, 5.0, gGate.At(0, 0), 1e-5)
+	assert.InDelta(t, 6.0, gGate.At(0, 1), 1e-5)
+	assert.InDelta(t, 13.0, gGate.At(1, 0), 1e-5)
+	assert.InDelta(t, 14.0, gGate.At(1, 1), 1e-5)
 
 	// Extract output gate (o): [batch_size, hidden_size] = [2, 2]
 	oGate := gates.Slice(nil, 1, 3*hiddenSize, hiddenSize)
 	assert.Equal(t, []int{2, 2}, oGate.Shape().ToSlice())
-	oGateData := oGate.Data().([]float32)
-	assert.InDelta(t, 7.0, oGateData[0], 1e-5)
-	assert.InDelta(t, 8.0, oGateData[1], 1e-5)
-	assert.InDelta(t, 15.0, oGateData[2], 1e-5)
-	assert.InDelta(t, 16.0, oGateData[3], 1e-5)
+	assert.InDelta(t, 7.0, oGate.At(0, 0), 1e-5)
+	assert.InDelta(t, 8.0, oGate.At(0, 1), 1e-5)
+	assert.InDelta(t, 15.0, oGate.At(1, 0), 1e-5)
+	assert.InDelta(t, 16.0, oGate.At(1, 1), 1e-5)
 }
 
 func TestSliceWithDst(t *testing.T) {

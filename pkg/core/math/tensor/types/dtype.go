@@ -123,7 +123,8 @@ func CloneTensorData(data any) any {
 	return CloneTensorDataTo(TypeFromData(data), data)
 }
 
-// Helper functions to work with interface tensors
+// Helper functions to work with tensors.
+// Important: Passing in Tensor struct by value is expected.
 func GetTensorData[T any](t Tensor) T {
 	if t == nil || t.Empty() {
 		var zero T

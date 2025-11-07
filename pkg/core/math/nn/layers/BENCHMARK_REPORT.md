@@ -87,8 +87,8 @@ This report contains benchmark results for neural network layer forward and back
 
 | Layer | Operation | Duration (ns/op) | Allocations | Memory (B/op) | vs Prev Run | Alloc Change |
 |-------|-----------|-----------------|-------------|---------------|-------------|--------------|
-| Dense | Forward | 21,972,718 | 681 | 144,586 | +39.1% | -12.5% |
-| Dense | Backward | 28,916,446 | 24 | 7,277 | +27.4% | -17.2% |
+| Dense | Forward | 16,641,670 | 26 | 66,105 | -24.3% | -96.2% |
+| Dense | Backward | 30,478,519 | 24 | 8,209 | +5.4% | 0.0% |
 
 #### Softmax Layer
 - Input: [32, 128] (batch, features)
@@ -138,25 +138,30 @@ This report contains benchmark results for neural network layer forward and back
 ### Performance Highlights (Latest Run: November 7, 2025)
 
 **Major Allocation Improvements:**
-1. **Conv2D Forward**: 53.3% fewer allocations (15 → 7 allocs)
+1. **Dense Forward**: 96.2% fewer allocations (681 → 26 allocs) - **MASSIVE IMPROVEMENT**
+   - Eliminated per-batch tensor view allocations by pre-reshaping bias in Init()
+   - Pre-allocated bias broadcast tensor eliminates runtime allocations
+   - 24.3% faster forward pass (16.6ms vs 22.0ms)
+2. **Conv2D Forward**: 53.3% fewer allocations (15 → 7 allocs)
    - Significant reduction in allocation overhead
    - Performance varies with system load
-2. **Conv1D Forward**: 87.2% fewer allocations (39 → 5 allocs)
+3. **Conv1D Forward**: 87.2% fewer allocations (39 → 5 allocs)
    - Major reduction in allocation overhead
    - Improved memory efficiency
-3. **Dropout Forward**: 50.0% fewer allocations (32,798 → 16,410 allocs)
+4. **Dropout Forward**: 50.0% fewer allocations (32,798 → 16,410 allocs)
    - Significant improvement in mask generation efficiency
    - Reduced memory pressure during training
-4. **Dense Forward**: 12.5% fewer allocations (778 → 681 allocs)
-5. **Dense Backward**: 17.2% fewer allocations (29 → 24 allocs)
-6. **Softmax Forward**: 14.3% fewer allocations (7 → 6 allocs)
-7. **LSTM Forward**: 15.6% fewer allocations (135 → 114 allocs)
+5. **Softmax Forward**: 14.3% fewer allocations (7 → 6 allocs)
+6. **LSTM Forward**: 15.6% fewer allocations (135 → 114 allocs)
 
 **Performance Observations:**
-1. **Dropout Forward**: 11.3% faster (2.62ms → 2.33ms) with 50% fewer allocations
-2. **Dropout Backward**: 8.0% faster (60.6µs → 55.7µs)
-3. **MaxPool2D Backward**: 7.3% faster compared to "After Opt" baseline
-4. **AvgPool2D**: Both forward and backward remain faster than "After Opt" baseline
+1. **Dense Forward**: 24.3% faster (22.0ms → 16.6ms) with 96.2% fewer allocations (681 → 26)
+   - Pre-reshaped bias in Init() eliminates per-forward-pass reshape operations
+   - Pre-allocated broadcast tensor eliminates runtime allocations
+2. **Dropout Forward**: 11.3% faster (2.62ms → 2.33ms) with 50% fewer allocations
+3. **Dropout Backward**: 8.0% faster (60.6µs → 55.7µs)
+4. **MaxPool2D Backward**: 7.3% faster compared to "After Opt" baseline
+5. **AvgPool2D**: Both forward and backward remain faster than "After Opt" baseline
 
 **Performance Variations:**
 - Some layers show increased execution times compared to previous run, likely due to system load variations, CPU scheduling, and cache effects
@@ -170,13 +175,17 @@ This report contains benchmark results for neural network layer forward and back
 
 ### Overall Assessment
 
-**Latest Run: November 7, 2025**
-- **Key Achievement**: Significant allocation reductions across multiple layers
+**Latest Run: November 7, 2025 - Dense Layer Optimization**
+- **Key Achievement**: **Dense Forward: 96.2% allocation reduction (681 → 26 allocs)**
+  - Pre-reshaped bias tensor in Init() eliminates per-forward-pass reshape
+  - Pre-allocated bias broadcast tensor eliminates runtime allocations
+  - 24.3% faster forward pass performance
+- **Other Improvements**:
   - Conv2D Forward: 53.3% fewer allocations
   - Conv1D Forward: 87.2% fewer allocations
   - Dropout Forward: 50.0% fewer allocations
-- **Allocation Efficiency**: Continued reduction in allocations across most layers
-- **Performance Variability**: Some execution time increases observed, likely due to system load variations
+- **Allocation Efficiency**: Massive improvements, especially in Dense layer
+- **Performance**: Dense Forward is now significantly faster with minimal allocations
 
 **Compared to Original Baseline:**
 - All layers remain significantly faster than the "BEFORE Optimization" baseline
@@ -246,13 +255,15 @@ This report contains benchmark results for neural network layer forward and back
 - **Memory Efficiency**: Pre-allocated tensors are reused across multiple forward/backward passes, significantly reducing memory pressure
 - **Performance**: All optimizations use existing tensor API from `tensor/types/SPEC.md` with destination parameter pattern
 - **Allocation Reduction (Latest Run: November 7, 2025)**: 
+  - **Dense Forward: 96.2% reduction (681 → 26 allocations) - MASSIVE IMPROVEMENT**
+    - Pre-reshaped bias in Init() eliminates per-forward-pass reshape
+    - Pre-allocated bias broadcast tensor eliminates runtime allocations
   - Conv2D Forward: 53.3% reduction (15 → 7 allocations) - significant improvement
   - Conv1D Forward: 87.2% reduction (39 → 5 allocations) - major improvement
   - Conv1D Backward: 16.1% reduction (56 → 47 allocations)
   - Conv2D Backward: 8.0% reduction (87 → 80 allocations)
   - Dropout Forward: 50.0% reduction (32,798 → 16,410 allocations) - significant improvement
-  - Dense Forward: 12.5% reduction (778 → 681 allocations)
-  - Dense Backward: 17.2% reduction (29 → 24 allocations)
+  - Dense Backward: Maintained at 24 allocations
   - Softmax Forward: 14.3% reduction (7 → 6 allocations)
   - LSTM Forward: 15.6% reduction (135 → 114 allocations) from pre-allocating all reshape intermediates
   - Softmax Backward: Maintained at 1 allocation (from optimized SoftmaxGrad primitive)
@@ -264,4 +275,59 @@ This report contains benchmark results for neural network layer forward and back
 - **Performance metrics may vary between runs** due to system load, CPU scheduling, and cache effects
 - All layer training tests pass successfully
 - MaxPool2D and AvgPool2D benchmarks use smaller tensors (4×32×16×16) to fit within int16 index limits
+
+---
+
+## Matched Benchmark Comparison (Fair Comparison)
+
+**Configuration:** All layers process the same input size (1024 elements = 32×32) and produce the same output size (32 neurons)
+
+### Test Configurations
+
+**Dense_Matched:**
+- Input: [1, 1024] (1024 elements)
+- Output: [1, 32] (32 neurons)
+- Operation: Matrix multiplication 1024 → 32
+
+**Conv1D_Matched:**
+- Input: [1, 1, 1024] (1024 elements)
+- Output: [1, 32, 1] (32 neurons)
+- Kernel: 1024, stride: 1, padding: 0
+- Operation: 1D convolution reducing length from 1024 to 1
+
+**Conv2D_Matched:**
+- Input: [1, 1, 32, 32] (1024 elements)
+- Output: [1, 32, 1, 1] (32 neurons)
+- Kernel: 32×32, stride: 1×1, padding: 0×0
+- Operation: 2D convolution reducing spatial dimensions from 32×32 to 1×1
+
+### Matched Benchmark Results (Latest Run: November 7, 2025)
+
+| Layer | Operation | Duration (ns/op) | Duration (µs) | Allocations | Memory (B/op) | Speedup vs Dense |
+|-------|-----------|-----------------|---------------|-------------|---------------|------------------|
+| **Dense_Matched** | Forward | 127,984 | 128.0 | 25 | 712 | 1.00x (baseline) |
+| **Conv1D_Matched** | Forward | 105,875 | 105.9 | 4 | 4,296 | **1.21x faster** |
+| **Conv2D_Matched** | Forward | 106,773 | 106.8 | 6 | 4,336 | **1.20x faster** |
+| **Dense_Matched** | Backward | 504,750 | 504.8 | 24 | 709 | 1.00x (baseline) |
+| **Conv1D_Matched** | Backward | 595,414 | 595.4 | 44 | 140,692 | 0.85x slower |
+| **Conv2D_Matched** | Backward | 479,853 | 479.9 | 66 | 137,048 | **1.05x faster** |
+
+### Key Findings (Matched Benchmarks)
+
+**Forward Pass:**
+1. **Conv1D and Conv2D are faster** than Dense for this workload (1.20-1.21x faster)
+2. **Conv1D has the fewest allocations** (4 vs 25 for Dense, 84% reduction)
+3. **Conv2D has fewer allocations** than Dense (6 vs 25, 76% reduction)
+4. All three are optimized and perform well
+
+**Backward Pass:**
+1. **Conv2D is slightly faster** than Dense (1.05x faster)
+2. **Dense has the fewest allocations** (24 vs 44 for Conv1D, 66 for Conv2D)
+3. **Conv1D and Conv2D use more memory** due to larger intermediate tensors (140KB vs 709B)
+
+**Observations:**
+- For matched input/output sizes, convolution layers can be competitive or faster than Dense
+- Conv layers have excellent allocation efficiency in forward pass
+- Dense layer backward pass is very memory-efficient
+- The large kernel sizes (32×32, 1024) make these convolutions essentially equivalent to Dense operations, but with different memory access patterns
 
