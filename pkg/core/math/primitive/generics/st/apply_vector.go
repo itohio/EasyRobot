@@ -9,9 +9,12 @@ func ElemVecApplyUnaryStrided[T Numeric](dst, src []T, n int, strideDst, strideS
 		return
 	}
 
+	dst = dst[:n]
+	src = src[:n]
 	if strideDst == 1 && strideSrc == 1 {
 		// Fast path: contiguous vectors
-		for i := 0; i < n; i++ {
+		// Boundary check elimination hint
+		for i := range n {
 			dst[i] = op(src[i])
 		}
 		return
@@ -20,7 +23,7 @@ func ElemVecApplyUnaryStrided[T Numeric](dst, src []T, n int, strideDst, strideS
 	// Strided path
 	dIdx := 0
 	sIdx := 0
-	for i := 0; i < n; i++ {
+	for range n {
 		dst[dIdx] = op(src[sIdx])
 		dIdx += strideDst
 		sIdx += strideSrc
@@ -36,7 +39,11 @@ func ElemVecApplyBinaryStrided[T Numeric](dst, a, b []T, n int, strideDst, strid
 
 	if strideDst == 1 && strideA == 1 && strideB == 1 {
 		// Fast path: contiguous vectors
-		for i := 0; i < n; i++ {
+		// Boundary check elimination hint
+		dst = dst[:n]
+		a = a[:n]
+		b = b[:n]
+		for i := range n {
 			dst[i] = op(a[i], b[i])
 		}
 		return
@@ -46,7 +53,7 @@ func ElemVecApplyBinaryStrided[T Numeric](dst, a, b []T, n int, strideDst, strid
 	dIdx := 0
 	aIdx := 0
 	bIdx := 0
-	for i := 0; i < n; i++ {
+	for range n {
 		dst[dIdx] = op(a[aIdx], b[bIdx])
 		dIdx += strideDst
 		aIdx += strideA
@@ -63,7 +70,12 @@ func ElemVecApplyTernaryStrided[T Numeric](dst, condition, a, b []T, n int, stri
 
 	if strideDst == 1 && strideCond == 1 && strideA == 1 && strideB == 1 {
 		// Fast path: contiguous vectors
-		for i := 0; i < n; i++ {
+		// Boundary check elimination hint
+		dst = dst[:n]
+		condition = condition[:n]
+		a = a[:n]
+		b = b[:n]
+		for i := range n {
 			dst[i] = op(condition[i], a[i], b[i])
 		}
 		return
@@ -74,7 +86,7 @@ func ElemVecApplyTernaryStrided[T Numeric](dst, condition, a, b []T, n int, stri
 	cIdx := 0
 	aIdx := 0
 	bIdx := 0
-	for i := 0; i < n; i++ {
+	for range n {
 		dst[dIdx] = op(condition[cIdx], a[aIdx], b[bIdx])
 		dIdx += strideDst
 		cIdx += strideCond
@@ -92,7 +104,10 @@ func ElemVecApplyUnaryScalarStrided[T Numeric](dst, src []T, scalar T, n int, st
 
 	if strideDst == 1 && strideSrc == 1 {
 		// Fast path: contiguous vectors
-		for i := 0; i < n; i++ {
+		// Boundary check elimination hint
+		dst = dst[:n]
+		src = src[:n]
+		for i := range n {
 			dst[i] = op(src[i], scalar)
 		}
 		return
@@ -101,7 +116,7 @@ func ElemVecApplyUnaryScalarStrided[T Numeric](dst, src []T, scalar T, n int, st
 	// Strided path
 	dIdx := 0
 	sIdx := 0
-	for i := 0; i < n; i++ {
+	for range n {
 		dst[dIdx] = op(src[sIdx], scalar)
 		dIdx += strideDst
 		sIdx += strideSrc
@@ -117,7 +132,10 @@ func ElemVecApplyBinaryScalarStrided[T Numeric](dst, a []T, scalar T, n int, str
 
 	if strideDst == 1 && strideA == 1 {
 		// Fast path: contiguous vectors
-		for i := 0; i < n; i++ {
+		// Boundary check elimination hint
+		dst = dst[:n]
+		a = a[:n]
+		for i := range n {
 			dst[i] = op(a[i], scalar)
 		}
 		return
@@ -126,7 +144,7 @@ func ElemVecApplyBinaryScalarStrided[T Numeric](dst, a []T, scalar T, n int, str
 	// Strided path
 	dIdx := 0
 	aIdx := 0
-	for i := 0; i < n; i++ {
+	for range n {
 		dst[dIdx] = op(a[aIdx], scalar)
 		dIdx += strideDst
 		aIdx += strideA
@@ -142,7 +160,11 @@ func ElemVecApplyTernaryScalarStrided[T Numeric](dst, condition, a []T, scalar T
 
 	if strideDst == 1 && strideCond == 1 && strideA == 1 {
 		// Fast path: contiguous vectors
-		for i := 0; i < n; i++ {
+		// Boundary check elimination hint
+		dst = dst[:n]
+		condition = condition[:n]
+		a = a[:n]
+		for i := range n {
 			dst[i] = op(condition[i], a[i], scalar)
 		}
 		return
@@ -152,7 +174,7 @@ func ElemVecApplyTernaryScalarStrided[T Numeric](dst, condition, a []T, scalar T
 	dIdx := 0
 	cIdx := 0
 	aIdx := 0
-	for i := 0; i < n; i++ {
+	for range n {
 		dst[dIdx] = op(condition[cIdx], a[aIdx], scalar)
 		dIdx += strideDst
 		cIdx += strideCond

@@ -8,7 +8,9 @@ func ElemApplyBinary[T Numeric](dst, a, b []T, n int, op func(T, T) T) {
 	if n == 0 {
 		return
 	}
-	for i := 0; i < n; i++ {
+	a = a[:n]
+	b = b[:n]
+	for i := range n {
 		dst[i] = op(a[i], b[i])
 	}
 }
@@ -29,33 +31,56 @@ func ElemApplyBinaryStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, s
 	stridesA = EnsureStrides(aStridesStatic[:len(shape)], stridesA, shape)
 	stridesB = EnsureStrides(bStridesStatic[:len(shape)], stridesB, shape)
 
-	if IsContiguous(stridesDst, shape) && IsContiguous(stridesA, shape) && IsContiguous(stridesB, shape) {
-		// Fast path: contiguous arrays
-		// Boundary check elimination hint
-		if size > 0 {
-			_ = dst[size-1]
-			_ = a[size-1]
-			_ = b[size-1]
-		}
-		for i := 0; i < size; i++ {
-			dst[i] = op(a[i], b[i])
-		}
+	rank := len(shape)
+	isContiguous := IsContiguous(stridesDst, shape) && IsContiguous(stridesA, shape) && IsContiguous(stridesB, shape)
+
+	// Use optimized Vec/Mat variants for rank 1-2, or contiguous cases
+	if isContiguous {
+		// Contiguous: use Vec variant (works for any rank as 1D)
+		ElemVecApplyBinaryStrided(dst, a, b, size, 1, 1, 1, op)
 		return
 	}
 
-	// Strided path: iterate with strides using stack-allocated arrays
-	rank := len(shape)
-	var indicesStatic [MAX_DIMS]int
-	var offsetsStatic [3]int
-	indices := indicesStatic[:rank]
-	offsets := offsetsStatic[:3]
-	for {
-		dIdx := offsets[0]
-		aIdx := offsets[1]
-		bIdx := offsets[2]
-		dst[dIdx] = op(a[aIdx], b[bIdx])
-		if !AdvanceOffsets3(shape, indices, offsets, stridesDst, stridesA, stridesB) {
-			break
+	// Strided path: delegate to Vec/Mat for rank 1-2, otherwise use AdvanceOffsets3
+	switch rank {
+	case 1:
+		// 1D case: delegate to optimized vector function
+		ElemVecApplyBinaryStrided(dst, a, b, shape[0], stridesDst[0], stridesA[0], stridesB[0], op)
+		return
+	case 2:
+		// 2D case: delegate to optimized matrix function
+		// Leading dimension is stride[0], inner dimension is stride[1]
+		ElemMatApplyBinaryStrided(dst, a, b, shape[0], shape[1], stridesDst[0], stridesA[0], stridesB[0], op)
+		return
+	default:
+		// Higher ranks: recursively decompose to leverage optimized lower-dim operations
+		// Iterate over first dimension, recursively process remaining dimensions
+		n0 := shape[0]
+		dStride0 := stridesDst[0]
+		aStride0 := stridesA[0]
+		bStride0 := stridesB[0]
+
+		remainingShape := shape[1:]
+		remainingStridesDst := stridesDst[1:]
+		remainingStridesA := stridesA[1:]
+		remainingStridesB := stridesB[1:]
+
+		for i0 := range n0 {
+			dBase := i0 * dStride0
+			aBase := i0 * aStride0
+			bBase := i0 * bStride0
+
+			// Recursively process remaining dimensions
+			ElemApplyBinaryStrided(
+				dst[dBase:],
+				a[aBase:],
+				b[bBase:],
+				remainingShape,
+				remainingStridesDst,
+				remainingStridesA,
+				remainingStridesB,
+				op,
+			)
 		}
 	}
 }
@@ -66,7 +91,9 @@ func ElemApplyUnary[T Numeric](dst, src []T, n int, op func(T) T) {
 	if n == 0 {
 		return
 	}
-	for i := 0; i < n; i++ {
+	dst = dst[:n]
+	src = src[:n]
+	for i := range n {
 		dst[i] = op(src[i])
 	}
 }
@@ -88,28 +115,47 @@ func ElemApplyUnaryStrided[T Numeric](dst, src []T, shape []int, stridesDst, str
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesSrc, shape) {
 		// Fast path: contiguous arrays
 		// Boundary check elimination hint
-		if size > 0 {
-			_ = dst[size-1]
-			_ = src[size-1]
-		}
-		for i := 0; i < size; i++ {
+		dst = dst[:size]
+		src = src[:size]
+		for i := range size {
 			dst[i] = op(src[i])
 		}
 		return
 	}
 
-	// Strided path: iterate with strides using stack-allocated arrays
+	// Strided path: delegate to Vec/Mat for rank 1-2, otherwise recursively decompose
 	rank := len(shape)
-	var indicesStatic [MAX_DIMS]int
-	var offsetsStatic [2]int
-	indices := indicesStatic[:rank]
-	offsets := offsetsStatic[:2]
-	for {
-		dIdx := offsets[0]
-		sIdx := offsets[1]
-		dst[dIdx] = op(src[sIdx])
-		if !AdvanceOffsets(shape, indices, offsets, stridesDst, stridesSrc) {
-			break
+	switch rank {
+	case 1:
+		// 1D case: delegate to optimized vector function
+		ElemVecApplyUnaryStrided(dst, src, shape[0], stridesDst[0], stridesSrc[0], op)
+		return
+	case 2:
+		// 2D case: delegate to optimized matrix function
+		ElemMatApplyUnaryStrided(dst, src, shape[0], shape[1], stridesDst[0], stridesSrc[0], op)
+		return
+	default:
+		// Higher ranks: recursively decompose
+		n0 := shape[0]
+		dStride0 := stridesDst[0]
+		sStride0 := stridesSrc[0]
+
+		remainingShape := shape[1:]
+		remainingStridesDst := stridesDst[1:]
+		remainingStridesSrc := stridesSrc[1:]
+
+		for i0 := range n0 {
+			dBase := i0 * dStride0
+			sBase := i0 * sStride0
+
+			ElemApplyUnaryStrided(
+				dst[dBase:],
+				src[sBase:],
+				remainingShape,
+				remainingStridesDst,
+				remainingStridesSrc,
+				op,
+			)
 		}
 	}
 }
@@ -120,7 +166,11 @@ func ElemApplyTernary[T Numeric](dst, condition, a, b []T, n int, op func(T, T, 
 	if n == 0 {
 		return
 	}
-	for i := 0; i < n; i++ {
+	dst = dst[:n]
+	condition = condition[:n]
+	a = a[:n]
+	b = b[:n]
+	for i := range n {
 		dst[i] = op(condition[i], a[i], b[i])
 	}
 }
@@ -146,32 +196,59 @@ func ElemApplyTernaryStrided[T Numeric](dst, condition, a, b []T, shape []int, s
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesCond, shape) && IsContiguous(stridesA, shape) && IsContiguous(stridesB, shape) {
 		// Fast path: contiguous arrays
 		// Boundary check elimination hint
-		if size > 0 {
-			_ = dst[size-1]
-			_ = condition[size-1]
-			_ = a[size-1]
-			_ = b[size-1]
-		}
-		for i := 0; i < size; i++ {
+		dst = dst[:size]
+		condition = condition[:size]
+		a = a[:size]
+		b = b[:size]
+		for i := range size {
 			dst[i] = op(condition[i], a[i], b[i])
 		}
 		return
 	}
 
-	// Strided path: iterate with strides using stack-allocated arrays
+	// Strided path: delegate to Vec/Mat for rank 1-2, otherwise recursively decompose
 	rank := len(shape)
-	var indicesStatic [MAX_DIMS]int
-	var offsetsStatic [4]int
-	indices := indicesStatic[:rank]
-	offsets := offsetsStatic[:4]
-	for {
-		dIdx := offsets[0]
-		cIdx := offsets[1]
-		aIdx := offsets[2]
-		bIdx := offsets[3]
-		dst[dIdx] = op(condition[cIdx], a[aIdx], b[bIdx])
-		if !AdvanceOffsets4(shape, indices, offsets, stridesDst, stridesCond, stridesA, stridesB) {
-			break
+	switch rank {
+	case 1:
+		// 1D case: delegate to optimized vector function
+		ElemVecApplyTernaryStrided(dst, condition, a, b, shape[0], stridesDst[0], stridesCond[0], stridesA[0], stridesB[0], op)
+		return
+	case 2:
+		// 2D case: delegate to optimized matrix function
+		ElemMatApplyTernaryStrided(dst, condition, a, b, shape[0], shape[1], stridesDst[0], stridesCond[0], stridesA[0], stridesB[0], op)
+		return
+	default:
+		// Higher ranks: recursively decompose
+		n0 := shape[0]
+		dStride0 := stridesDst[0]
+		cStride0 := stridesCond[0]
+		aStride0 := stridesA[0]
+		bStride0 := stridesB[0]
+
+		remainingShape := shape[1:]
+		remainingStridesDst := stridesDst[1:]
+		remainingStridesCond := stridesCond[1:]
+		remainingStridesA := stridesA[1:]
+		remainingStridesB := stridesB[1:]
+
+		for i0 := range n0 {
+			dBase := i0 * dStride0
+			cBase := i0 * cStride0
+			aBase := i0 * aStride0
+			bBase := i0 * bStride0
+
+			ElemApplyTernaryStrided(
+				dst[dBase:],
+				condition[cBase:],
+				a[aBase:],
+				b[bBase:],
+				remainingShape,
+				remainingStridesDst,
+				remainingStridesCond,
+				remainingStridesA,
+				remainingStridesB,
+				op,
+			)
 		}
 	}
 }
@@ -182,7 +259,9 @@ func ElemApplyUnaryScalar[T Numeric](dst, src []T, scalar T, n int, op func(T, T
 	if n == 0 {
 		return
 	}
-	for i := 0; i < n; i++ {
+	dst = dst[:n]
+	src = src[:n]
+	for i := range n {
 		dst[i] = op(src[i], scalar)
 	}
 }
@@ -204,28 +283,48 @@ func ElemApplyUnaryScalarStrided[T Numeric](dst, src []T, scalar T, shape []int,
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesSrc, shape) {
 		// Fast path: contiguous arrays
 		// Boundary check elimination hint
-		if size > 0 {
-			_ = dst[size-1]
-			_ = src[size-1]
-		}
-		for i := 0; i < size; i++ {
+		dst = dst[:size]
+		src = src[:size]
+		for i := range size {
 			dst[i] = op(src[i], scalar)
 		}
 		return
 	}
 
-	// Strided path: iterate with strides using stack-allocated arrays
+	// Strided path: delegate to Vec/Mat for rank 1-2, otherwise recursively decompose
 	rank := len(shape)
-	var indicesStatic [MAX_DIMS]int
-	var offsetsStatic [2]int
-	indices := indicesStatic[:rank]
-	offsets := offsetsStatic[:2]
-	for {
-		dIdx := offsets[0]
-		sIdx := offsets[1]
-		dst[dIdx] = op(src[sIdx], scalar)
-		if !AdvanceOffsets(shape, indices, offsets, stridesDst, stridesSrc) {
-			break
+	switch rank {
+	case 1:
+		// 1D case: delegate to optimized vector function
+		ElemVecApplyUnaryScalarStrided(dst, src, scalar, shape[0], stridesDst[0], stridesSrc[0], op)
+		return
+	case 2:
+		// 2D case: delegate to optimized matrix function
+		ElemMatApplyUnaryScalarStrided(dst, src, scalar, shape[0], shape[1], stridesDst[0], stridesSrc[0], op)
+		return
+	default:
+		// Higher ranks: recursively decompose
+		n0 := shape[0]
+		dStride0 := stridesDst[0]
+		sStride0 := stridesSrc[0]
+
+		remainingShape := shape[1:]
+		remainingStridesDst := stridesDst[1:]
+		remainingStridesSrc := stridesSrc[1:]
+
+		for i0 := range n0 {
+			dBase := i0 * dStride0
+			sBase := i0 * sStride0
+
+			ElemApplyUnaryScalarStrided(
+				dst[dBase:],
+				src[sBase:],
+				scalar,
+				remainingShape,
+				remainingStridesDst,
+				remainingStridesSrc,
+				op,
+			)
 		}
 	}
 }
@@ -236,7 +335,9 @@ func ElemApplyBinaryScalar[T Numeric](dst, a []T, scalar T, n int, op func(T, T)
 	if n == 0 {
 		return
 	}
-	for i := 0; i < n; i++ {
+	dst = dst[:n]
+	a = a[:n]
+	for i := range n {
 		dst[i] = op(a[i], scalar)
 	}
 }
@@ -258,28 +359,48 @@ func ElemApplyBinaryScalarStrided[T Numeric](dst, a []T, scalar T, shape []int, 
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesA, shape) {
 		// Fast path: contiguous arrays
 		// Boundary check elimination hint
-		if size > 0 {
-			_ = dst[size-1]
-			_ = a[size-1]
-		}
-		for i := 0; i < size; i++ {
+		dst = dst[:size]
+		a = a[:size]
+		for i := range size {
 			dst[i] = op(a[i], scalar)
 		}
 		return
 	}
 
-	// Strided path: iterate with strides using stack-allocated arrays
+	// Strided path: delegate to Vec/Mat for rank 1-2, otherwise recursively decompose
 	rank := len(shape)
-	var indicesStatic [MAX_DIMS]int
-	var offsetsStatic [2]int
-	indices := indicesStatic[:rank]
-	offsets := offsetsStatic[:2]
-	for {
-		dIdx := offsets[0]
-		aIdx := offsets[1]
-		dst[dIdx] = op(a[aIdx], scalar)
-		if !AdvanceOffsets(shape, indices, offsets, stridesDst, stridesA) {
-			break
+	switch rank {
+	case 1:
+		// 1D case: delegate to optimized vector function
+		ElemVecApplyBinaryScalarStrided(dst, a, scalar, shape[0], stridesDst[0], stridesA[0], op)
+		return
+	case 2:
+		// 2D case: delegate to optimized matrix function
+		ElemMatApplyBinaryScalarStrided(dst, a, scalar, shape[0], shape[1], stridesDst[0], stridesA[0], op)
+		return
+	default:
+		// Higher ranks: recursively decompose
+		n0 := shape[0]
+		dStride0 := stridesDst[0]
+		aStride0 := stridesA[0]
+
+		remainingShape := shape[1:]
+		remainingStridesDst := stridesDst[1:]
+		remainingStridesA := stridesA[1:]
+
+		for i0 := range n0 {
+			dBase := i0 * dStride0
+			aBase := i0 * aStride0
+
+			ElemApplyBinaryScalarStrided(
+				dst[dBase:],
+				a[aBase:],
+				scalar,
+				remainingShape,
+				remainingStridesDst,
+				remainingStridesA,
+				op,
+			)
 		}
 	}
 }
@@ -290,7 +411,9 @@ func ElemApplyTernaryScalar[T Numeric](dst, condition, a []T, scalar T, n int, o
 	if n == 0 {
 		return
 	}
-	for i := 0; i < n; i++ {
+	condition = condition[:n]
+	a = a[:n]
+	for i := range n {
 		dst[i] = op(condition[i], a[i], scalar)
 	}
 }
@@ -314,30 +437,54 @@ func ElemApplyTernaryScalarStrided[T Numeric](dst, condition, a []T, scalar T, s
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesCond, shape) && IsContiguous(stridesA, shape) {
 		// Fast path: contiguous arrays
 		// Boundary check elimination hint
-		if size > 0 {
-			_ = dst[size-1]
-			_ = condition[size-1]
-			_ = a[size-1]
-		}
-		for i := 0; i < size; i++ {
+		dst = dst[:size]
+		condition = condition[:size]
+		a = a[:size]
+		for i := range size {
 			dst[i] = op(condition[i], a[i], scalar)
 		}
 		return
 	}
 
-	// Strided path: iterate with strides using stack-allocated arrays
+	// Strided path: delegate to Vec/Mat for rank 1-2, otherwise recursively decompose
 	rank := len(shape)
-	var indicesStatic [MAX_DIMS]int
-	var offsetsStatic [3]int
-	indices := indicesStatic[:rank]
-	offsets := offsetsStatic[:3]
-	for {
-		dIdx := offsets[0]
-		cIdx := offsets[1]
-		aIdx := offsets[2]
-		dst[dIdx] = op(condition[cIdx], a[aIdx], scalar)
-		if !AdvanceOffsets3(shape, indices, offsets, stridesDst, stridesCond, stridesA) {
-			break
+	switch rank {
+	case 1:
+		// 1D case: delegate to optimized vector function
+		ElemVecApplyTernaryScalarStrided(dst, condition, a, scalar, shape[0], stridesDst[0], stridesCond[0], stridesA[0], op)
+		return
+	case 2:
+		// 2D case: delegate to optimized matrix function
+		ElemMatApplyTernaryScalarStrided(dst, condition, a, scalar, shape[0], shape[1], stridesDst[0], stridesCond[0], stridesA[0], op)
+		return
+	default:
+		// Higher ranks: recursively decompose
+		n0 := shape[0]
+		dStride0 := stridesDst[0]
+		cStride0 := stridesCond[0]
+		aStride0 := stridesA[0]
+
+		remainingShape := shape[1:]
+		remainingStridesDst := stridesDst[1:]
+		remainingStridesCond := stridesCond[1:]
+		remainingStridesA := stridesA[1:]
+
+		for i0 := range n0 {
+			dBase := i0 * dStride0
+			cBase := i0 * cStride0
+			aBase := i0 * aStride0
+
+			ElemApplyTernaryScalarStrided(
+				dst[dBase:],
+				condition[cBase:],
+				a[aBase:],
+				scalar,
+				remainingShape,
+				remainingStridesDst,
+				remainingStridesCond,
+				remainingStridesA,
+				op,
+			)
 		}
 	}
 }
