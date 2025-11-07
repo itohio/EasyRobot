@@ -1,4 +1,4 @@
-//go:build mnist
+//go:build mnist_test
 
 package learn_test
 

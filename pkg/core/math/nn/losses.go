@@ -7,7 +7,10 @@ import (
 )
 
 // MSELoss implements Mean Squared Error loss function.
-type MSELoss struct{}
+type MSELoss struct {
+	// Pre-allocated scratch tensors for gradient computation
+	grad tensor.Tensor // Scratch tensor for gradient computation
+}
 
 // NewMSE creates a new MSE loss function.
 func NewMSE() *MSELoss {
@@ -25,33 +28,22 @@ func (m *MSELoss) Compute(pred, target tensor.Tensor) (float32, error) {
 
 // Gradient computes gradient w.r.t. predictions: gradPred = 2 * (pred - target) / size.
 func (m *MSELoss) Gradient(pred, target tensor.Tensor) (tensor.Tensor, error) {
-	if pred.Shape().Rank() == 0 || target.Shape().Rank() == 0 {
-		return nil, fmt.Errorf("MSE.Gradient: empty input")
+	if err := validateShapes(pred, target); err != nil {
+		return nil, fmt.Errorf("MSE.Gradient: %w", err)
 	}
 
+	// Reallocate grad tensor if shape changed
 	predShape := pred.Shape()
-	targetShape := target.Shape()
-
-	if len(predShape) != len(targetShape) {
-		return nil, fmt.Errorf("MSE.Gradient: shape mismatch: pred %v, target %v", predShape, targetShape)
-	}
-
-	for i := range predShape {
-		if predShape[i] != targetShape[i] {
-			return nil, fmt.Errorf("MSE.Gradient: shape mismatch: pred %v, target %v", predShape, targetShape)
-		}
+	if tensor.IsNil(m.grad) || !m.grad.Shape().Equal(predShape) {
+		m.grad = tensor.New(pred.DataType(), predShape)
 	}
 
 	// gradPred = 2 * (pred - target) / size
 	size := pred.Shape().Size()
-	// Create gradient tensor and compute in-place to avoid Clone
-	grad := tensor.New(pred.DataType(), pred.Shape())
-	grad.Copy(pred)
-	grad.Subtract(nil, target)
-	// Convert float32 to float64 for Scale interface
-	grad.MulScalar(nil, float64(2.0/float32(size)))
+	pred.Subtract(m.grad, target)
+	m.grad.MulScalar(nil, float64(2.0/float32(size)))
 
-	return grad, nil
+	return m.grad, nil
 }
 
 // CrossEntropyLoss implements cross-entropy loss function.
@@ -82,21 +74,8 @@ func (c *CrossEntropyLoss) Compute(pred, target tensor.Tensor) (float32, error) 
 
 // Gradient computes gradient w.r.t. predictions: gradPred = -target / (pred + epsilon).
 func (c *CrossEntropyLoss) Gradient(pred, target tensor.Tensor) (tensor.Tensor, error) {
-	if pred.Shape().Rank() == 0 || target.Shape().Rank() == 0 {
-		return nil, fmt.Errorf("CrossEntropy.Gradient: empty input")
-	}
-
-	predShape := pred.Shape()
-	targetShape := target.Shape()
-
-	if len(predShape) != len(targetShape) {
-		return nil, fmt.Errorf("CrossEntropy.Gradient: shape mismatch: pred %v, target %v", predShape, targetShape)
-	}
-
-	for i := range predShape {
-		if predShape[i] != targetShape[i] {
-			return nil, fmt.Errorf("CrossEntropy.Gradient: shape mismatch: pred %v, target %v", predShape, targetShape)
-		}
+	if err := validateShapes(pred, target); err != nil {
+		return nil, fmt.Errorf("CrossEntropy.Gradient: %w", err)
 	}
 
 	// Reallocate scratch tensors if shape changed
@@ -192,13 +171,15 @@ func (c *CategoricalCrossEntropy) Compute(pred, target tensor.Tensor) (float32, 
 			return 0, fmt.Errorf("CategoricalCrossEntropy.Compute: invalid pred shape")
 		}
 		dim := len(predShape) - 1 // Apply softmax along last dimension
-		// Pre-allocate tensor for softmax result
-		predProb := tensor.New(pred.DataType(), pred.Shape())
-		pred.Softmax(dim, predProb)
-		if tensor.IsNil(predProb) {
+		// Reuse pre-allocated tensor for softmax result if shape matches
+		if tensor.IsNil(c.predProb) || !c.predProb.Shape().Equal(pred.Shape()) {
+			c.predProb = tensor.New(pred.DataType(), pred.Shape())
+		}
+		pred.Softmax(dim, c.predProb)
+		if tensor.IsNil(c.predProb) {
 			return 0, fmt.Errorf("CategoricalCrossEntropy.Compute: softmax returned nil")
 		}
-		return CrossEntropy(predProb, target), nil
+		return CrossEntropy(c.predProb, target), nil
 	}
 
 	return CrossEntropy(pred, target), nil
@@ -208,22 +189,11 @@ func (c *CategoricalCrossEntropy) Compute(pred, target tensor.Tensor) (float32, 
 // If fromLogits is true and softmax was applied, returns: gradPred = pred - target.
 // Otherwise, returns: gradPred = -target / (pred + epsilon).
 func (c *CategoricalCrossEntropy) Gradient(pred, target tensor.Tensor) (tensor.Tensor, error) {
-	if pred.Shape().Rank() == 0 || target.Shape().Rank() == 0 {
-		return nil, fmt.Errorf("CategoricalCrossEntropy.Gradient: empty input")
+	if err := validateShapes(pred, target); err != nil {
+		return nil, fmt.Errorf("CategoricalCrossEntropy.Gradient: %w", err)
 	}
 
 	predShape := pred.Shape()
-	targetShape := target.Shape()
-
-	if len(predShape) != len(targetShape) {
-		return nil, fmt.Errorf("CategoricalCrossEntropy.Gradient: shape mismatch: pred %v, target %v", predShape, targetShape)
-	}
-
-	for i := range predShape {
-		if predShape[i] != targetShape[i] {
-			return nil, fmt.Errorf("CategoricalCrossEntropy.Gradient: shape mismatch: pred %v, target %v", predShape, targetShape)
-		}
-	}
 
 	if c.fromLogits {
 		// Apply softmax first
@@ -243,8 +213,7 @@ func (c *CategoricalCrossEntropy) Gradient(pred, target tensor.Tensor) (tensor.T
 		}
 
 		// Gradient after softmax: pred - target
-		c.grad.Copy(c.predProb)
-		c.grad.Subtract(nil, target)
+		c.predProb.Subtract(c.grad, target)
 		return c.grad, nil
 	}
 
@@ -314,21 +283,20 @@ func MSE(pred, target tensor.Tensor) float32 {
 	}
 
 	// Use destination parameter to avoid Clone
+	// Note: This creates temporary tensors, but MSE is typically called less frequently than Gradient
 	squaredDiff := tensor.New(pred.DataType(), pred.Shape())
-	squaredDiff.Copy(pred)
-	squaredDiff.Subtract(nil, target)
-	squaredDiff.Multiply(nil, squaredDiff)
+	pred.Subtract(squaredDiff, target)
+	squaredDiff.Square(squaredDiff)
 
 	size := pred.Shape().Size()
+	if size == 0 {
+		return 0
+	}
 	// Use destination parameter for Sum (scalar result)
 	sumResult := tensor.New(pred.DataType(), tensor.NewShape(1))
 	sum := squaredDiff.Sum(sumResult, nil)
-	if size > 0 {
-		// At() returns float64, convert to float32 for division
-		return float32(sum.At(0)) / float32(size)
-	}
-
-	return 0
+	// At() returns float64, convert to float32 for division
+	return float32(sum.At(0)) / float32(size)
 }
 
 // CrossEntropy computes cross-entropy loss between predictions and targets
@@ -337,23 +305,59 @@ func CrossEntropy(pred, target tensor.Tensor) float32 {
 		return 0
 	}
 
-	// Create masks: target != 0 && pred > 0
-	targetAbs := target.Clone().Abs(nil)
+	// Optimize: Create masks and compute loss with fewer intermediate allocations
+	// Use destination-based operations to avoid unnecessary clones
+	const epsilon = 1e-10
+
+	// Compute: -target * log(pred + epsilon) where target != 0 && pred > 0
+	// Pre-allocate intermediate tensors
+	predPlusEps := tensor.New(pred.DataType(), pred.Shape())
+	epsilonTensor := tensor.FullLike(pred, epsilon)
+	pred.Add(predPlusEps, epsilonTensor)
+
+	// Compute log(pred + epsilon)
+	logPred := predPlusEps.Log(nil)
+
+	// Compute target * log(pred + epsilon) using destination to avoid clone
+	targetLogPred := tensor.New(target.DataType(), target.Shape())
+	target.Multiply(targetLogPred, logPred)
+
+	// Create combined mask: target != 0 && pred > 0
+	// Use absolute value for target check to handle negative targets
+	targetAbs := tensor.New(target.DataType(), target.Shape())
+	target.Abs(targetAbs)
 	targetNonZero := targetAbs.GreaterScalar(nil, 0)          // mask for target != 0
 	predPositive := pred.GreaterScalar(nil, 0)                // mask for pred > 0
 	combinedMask := targetNonZero.Multiply(nil, predPositive) // combined condition mask
 
-	// Compute: -target * log(pred + epsilon) where condition is true
-	const epsilon = 1e-10
-	epsilonTensor := tensor.FullLike(pred, epsilon)
-	predPlusEps := pred.Clone().Add(nil, epsilonTensor)
-	logPred := predPlusEps.Log(nil)
-	targetLogPred := target.Clone().Multiply(nil, logPred)
+	// Apply mask to loss
 	maskedLoss := targetLogPred.Multiply(nil, combinedMask)
 
 	// Sum and negate to get final loss
+	sumResult := tensor.New(pred.DataType(), tensor.NewShape(1))
+	sum := maskedLoss.Sum(sumResult, nil)
 	// At() returns float64, convert to float32 for return
-	loss := -float32(maskedLoss.Sum(nil, nil).At(0))
+	return -float32(sum.At(0))
+}
 
-	return loss
+// validateShapes validates that two tensors have compatible shapes for loss computation
+func validateShapes(pred, target tensor.Tensor) error {
+	if pred.Shape().Rank() == 0 || target.Shape().Rank() == 0 {
+		return fmt.Errorf("empty input")
+	}
+
+	predShape := pred.Shape()
+	targetShape := target.Shape()
+
+	if len(predShape) != len(targetShape) {
+		return fmt.Errorf("shape rank mismatch: pred %v, target %v", predShape, targetShape)
+	}
+
+	for i := range predShape {
+		if predShape[i] != targetShape[i] {
+			return fmt.Errorf("shape mismatch: pred %v, target %v", predShape, targetShape)
+		}
+	}
+
+	return nil
 }

@@ -34,6 +34,16 @@ type LSTM struct {
 	iGateG                tensorTypes.Tensor // For iGate * gGate [hidden_size] or [batch_size, hidden_size]
 	cellNewTanhTmp        tensorTypes.Tensor // For tanh(cellNew) [hidden_size] or [batch_size, hidden_size]
 	outputNew             tensorTypes.Tensor // For oGate * tanh(cellNew) [hidden_size] or [batch_size, hidden_size]
+	// Pre-allocated tensors for non-batch case
+	inputReshaped          tensorTypes.Tensor // For input reshape [1, input_size]
+	gatesTemp              tensorTypes.Tensor // For MatMul result [1, 4*hidden_size]
+	gates1D                tensorTypes.Tensor // For gates result [4*hidden_size]
+	hiddenStateReshaped    tensorTypes.Tensor // For hiddenState reshape [1, hidden_size]
+	hiddenContributionTemp tensorTypes.Tensor // For MatMul result [1, 4*hidden_size]
+	hiddenContribution1D   tensorTypes.Tensor // For hiddenContribution result [4*hidden_size]
+	gatesResult1D          tensorTypes.Tensor // For gates + hiddenContribution result [4*hidden_size]
+	gatesResult1DBias      tensorTypes.Tensor // For gates + bias result [4*hidden_size]
+	biasReshaped           tensorTypes.Tensor // For bias reshape [1, 4*hidden_size]
 }
 
 // NewLSTM creates a new LSTM layer with the given input and hidden sizes.
@@ -136,15 +146,36 @@ func (l *LSTM) Init(inputShape tensor.Shape) error {
 
 	// Pre-allocate intermediate computation tensors to avoid allocations in computeForward
 	// Handle both batch and non-batch cases
+	// Bias reshape tensor is needed for both cases
+	biasReshapedShape := tensor.NewShape(1, 4*l.hiddenSize)
+	l.biasReshaped = tensor.New(dtype, biasReshapedShape)
+
 	if len(inputShape) == 2 {
 		// Batch case: gates have shape [batch_size, 4*hidden_size]
 		gatesShape := tensor.NewShape(inputShape[0], 4*l.hiddenSize)
 		l.gatesTmp = tensor.New(dtype, gatesShape)
 		l.hiddenContributionTmp = tensor.New(dtype, gatesShape)
 		l.biasFull = tensor.New(dtype, gatesShape)
+	} else {
+		// Non-batch case: pre-allocate all tensors needed for 1D processing
+		// Gates shape: [4*hidden_size]
+		gates1DShape := tensor.NewShape(4 * l.hiddenSize)
+		l.gates1D = tensor.New(dtype, gates1DShape)
+		l.hiddenContribution1D = tensor.New(dtype, gates1DShape)
+		l.gatesResult1D = tensor.New(dtype, gates1DShape)
+		l.gatesResult1DBias = tensor.New(dtype, gates1DShape)
+
+		// Reshape intermediates: [1, input_size] and [1, hidden_size]
+		inputReshapedShape := tensor.NewShape(1, l.inputSize)
+		l.inputReshaped = tensor.New(dtype, inputReshapedShape)
+		gatesTempShape := tensor.NewShape(1, 4*l.hiddenSize)
+		l.gatesTemp = tensor.New(dtype, gatesTempShape)
+
+		hiddenReshapedShape := tensor.NewShape(1, l.hiddenSize)
+		l.hiddenStateReshaped = tensor.New(dtype, hiddenReshapedShape)
+		hiddenContributionTempShape := tensor.NewShape(1, 4*l.hiddenSize)
+		l.hiddenContributionTemp = tensor.New(dtype, hiddenContributionTempShape)
 	}
-	// For non-batch case, gates have shape [4*hidden_size], but we'll allocate on-demand
-	// since the shape is different and single sample is less common
 
 	// Pre-allocate state update tensors (same shape as output)
 	l.cellNew = tensor.New(dtype, outputShape)
@@ -189,16 +220,12 @@ func (l *LSTM) Forward(input tensorTypes.Tensor) (tensorTypes.Tensor, error) {
 		return nil, fmt.Errorf("LSTM.Forward: bias parameter not initialized")
 	}
 
-	// Initialize hidden and cell states if not already initialized
-	inputShape := input.Shape()
+	// Hidden and cell states should already be initialized in Init()
 	if tensor.IsNil(l.hiddenState) {
-		if len(inputShape) == 1 {
-			l.hiddenState = tensor.New(l.Base.DataType(), tensor.NewShape(l.hiddenSize))
-			l.cellState = tensor.New(l.Base.DataType(), tensor.NewShape(l.hiddenSize))
-		} else {
-			l.hiddenState = tensor.New(l.Base.DataType(), tensor.NewShape(inputShape[0], l.hiddenSize))
-			l.cellState = tensor.New(l.Base.DataType(), tensor.NewShape(inputShape[0], l.hiddenSize))
-		}
+		return nil, fmt.Errorf("LSTM.Forward: hidden state not initialized, must call Init first")
+	}
+	if !l.hiddenState.Shape().Equal(output.Shape()) {
+		return nil, fmt.Errorf("LSTM.Forward: hidden state shape mismatch, expected %v, got %v", output.Shape(), l.hiddenState.Shape())
 	}
 
 	// Compute forward pass
@@ -207,11 +234,7 @@ func (l *LSTM) Forward(input tensorTypes.Tensor) (tensorTypes.Tensor, error) {
 		return nil, fmt.Errorf("LSTM.Forward: computation failed: %w", err)
 	}
 
-	// Update internal state using Copy instead of Clone (more efficient)
-	// Note: cellState is already updated in-place in computeForward via Copy
-	if tensor.IsNil(l.hiddenState) || !l.hiddenState.Shape().Equal(output.Shape()) {
-		l.hiddenState = tensor.New(output.DataType(), output.Shape())
-	}
+	// Update internal state using Copy (hiddenState is pre-allocated in Init)
 	l.hiddenState.Copy(output)
 
 	// Store output
@@ -238,19 +261,17 @@ func (l *LSTM) computeForward(input, weightIH, weightHH, bias,
 	if isBatch {
 		// input: [batch_size, input_size], weight_ih: [4*hidden_size, input_size]
 		// input @ weight_ih.T = [batch_size, 4*hidden_size]
-		// Use pre-allocated gatesTmp if available and shape matches
-		expectedGatesShape := tensor.NewShape(inputShape[0], 4*l.hiddenSize)
-		if tensor.IsNil(l.gatesTmp) || !l.gatesTmp.Shape().Equal(expectedGatesShape) {
-			l.gatesTmp = tensor.New(input.DataType(), expectedGatesShape)
-		}
+		// Use pre-allocated gatesTmp (allocated in Init)
 		gates = input.MatMulTransposed(l.gatesTmp, weightIH, false, true)
 	} else {
 		// input: [input_size], weight_ih: [4*hidden_size, input_size]
-		// Reshape input to [1, input_size] for matrix multiplication
-		inputReshaped := input.Reshape(nil, tensor.NewShape(1, l.inputSize))
-		gatesTemp := inputReshaped.MatMulTransposed(nil, weightIH, false, true)
-		// Reshape back to [4*hidden_size]
-		gates = gatesTemp.Reshape(nil, tensor.NewShape(4*l.hiddenSize))
+		// Reshape input to [1, input_size] for matrix multiplication (use pre-allocated destination)
+		input.Reshape(l.inputReshaped, l.inputReshaped.Shape())
+		// Use pre-allocated gatesTemp for MatMul result
+		l.inputReshaped.MatMulTransposed(l.gatesTemp, weightIH, false, true)
+		// Reshape back to [4*hidden_size] (use pre-allocated destination)
+		l.gatesTemp.Reshape(l.gates1D, l.gates1D.Shape())
+		gates = l.gates1D
 	}
 
 	// Add hidden contribution: hidden @ weight_hh.T
@@ -258,36 +279,45 @@ func (l *LSTM) computeForward(input, weightIH, weightHH, bias,
 	if isBatch {
 		// hiddenState: [batch_size, hidden_size], weight_hh: [4*hidden_size, hidden_size]
 		// hiddenState @ weight_hh.T = [batch_size, 4*hidden_size]
-		// Use pre-allocated hiddenContributionTmp if available and shape matches
-		expectedHiddenContributionShape := tensor.NewShape(inputShape[0], 4*l.hiddenSize)
-		if tensor.IsNil(l.hiddenContributionTmp) || !l.hiddenContributionTmp.Shape().Equal(expectedHiddenContributionShape) {
-			l.hiddenContributionTmp = tensor.New(hiddenState.DataType(), expectedHiddenContributionShape)
-		}
+		// Use pre-allocated hiddenContributionTmp (allocated in Init)
 		hiddenContribution = hiddenState.MatMulTransposed(l.hiddenContributionTmp, weightHH, false, true)
 	} else {
 		// hiddenState: [hidden_size], weight_hh: [4*hidden_size, hidden_size]
-		hiddenStateReshaped := hiddenState.Reshape(nil, tensor.NewShape(1, l.hiddenSize))
-		hiddenContributionTemp := hiddenStateReshaped.MatMulTransposed(nil, weightHH, false, true)
-		hiddenContribution = hiddenContributionTemp.Reshape(nil, tensor.NewShape(4*l.hiddenSize))
+		// Reshape hiddenState to [1, hidden_size] (use pre-allocated destination)
+		hiddenState.Reshape(l.hiddenStateReshaped, l.hiddenStateReshaped.Shape())
+		// Use pre-allocated hiddenContributionTemp for MatMul result
+		l.hiddenStateReshaped.MatMulTransposed(l.hiddenContributionTemp, weightHH, false, true)
+		// Reshape back to [4*hidden_size] (use pre-allocated destination)
+		l.hiddenContributionTemp.Reshape(l.hiddenContribution1D, l.hiddenContribution1D.Shape())
+		hiddenContribution = l.hiddenContribution1D
 	}
 
 	// Add contributions: gates = gates + hiddenContribution
-	gates = gates.Add(gates, hiddenContribution)
+	if isBatch {
+		// gates is already in gatesTmp, so we can add in-place to gatesTmp
+		gates.Add(gates, hiddenContribution)
+	} else {
+		// Use pre-allocated gatesResult1D for result
+		gates.Add(l.gatesResult1D, hiddenContribution)
+		gates = l.gatesResult1D
+	}
 
 	// Add bias (broadcast if needed)
 	if isBatch {
 		// gates: [batch_size, 4*hidden_size], bias: [4*hidden_size]
 		// Broadcast bias to [batch_size, 4*hidden_size]
-		// Use pre-allocated biasFull if available and shape matches
-		if tensor.IsNil(l.biasFull) || !l.biasFull.Shape().Equal(gates.Shape()) {
-			l.biasFull = tensor.New(gates.DataType(), gates.Shape())
-		}
-		biasBroadcast := bias.Reshape(nil, tensor.NewShape(1, 4*l.hiddenSize))
-		biasBroadcast.BroadcastTo(l.biasFull, gates.Shape())
-		gates = gates.Add(gates, l.biasFull)
+		// Use pre-allocated biasFull (allocated in Init)
+		// Reshape bias to [1, 4*hidden_size] (use pre-allocated destination)
+		bias.Reshape(l.biasReshaped, l.biasReshaped.Shape())
+		// Broadcast to gates shape using pre-allocated destination
+		l.biasReshaped.BroadcastTo(l.biasFull, gates.Shape())
+		// Add bias to gates (gates is already in gatesTmp, so add in-place)
+		gates.Add(gates, l.biasFull)
 	} else {
 		// gates: [4*hidden_size], bias: [4*hidden_size]
-		gates = gates.Add(gates, bias)
+		// Use pre-allocated gatesResult1DBias for result
+		gates.Add(l.gatesResult1DBias, bias)
+		gates = l.gatesResult1DBias
 	}
 
 	// Split gates into i, f, g, o using Slice operation

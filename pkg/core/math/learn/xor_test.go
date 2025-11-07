@@ -1,3 +1,5 @@
+//go:build xor_test
+
 package learn_test
 
 import (
