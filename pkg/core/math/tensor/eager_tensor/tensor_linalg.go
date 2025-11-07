@@ -26,38 +26,42 @@ func (t Tensor) MatMul(dst types.Tensor, other types.Tensor) types.Tensor {
 	tShape := t.Shape()
 	otherShape := other.Shape()
 
-	var result types.Tensor
-	// Handle 2D case: [M, K] × [K, N]
-	if len(tShape) == 2 && len(otherShape) == 2 {
-		result = t.matMul2D(other)
-	} else if len(tShape) >= 2 && len(otherShape) >= 2 {
-		// Handle batched case: [B, M, K] × [B, K, N] or [M, K] × [B, K, N]
-		result = t.matMulBatched(other)
-	} else {
-		panic(fmt.Sprintf("tensor.MatMul: unsupported tensor shapes: %v × %v", tShape, otherShape))
-	}
+	switch t.Data().(type) {
+	case []float32:
+		var result types.Tensor
+		// Handle 2D case: [M, K] × [K, N]
+		if len(tShape) == 2 && len(otherShape) == 2 {
+			result = t.matMul2D(other)
+		} else if len(tShape) >= 2 && len(otherShape) >= 2 {
+			// Handle batched case: [B, M, K] × [B, K, N] or [M, K] × [B, K, N]
+			result = t.matMulBatched(other)
+		} else {
+			panic(fmt.Sprintf("tensor.MatMul: unsupported tensor shapes: %v × %v", tShape, otherShape))
+		}
 
-	if result == nil {
-		return nil
-	}
+		if result == nil {
+			return nil
+		}
 
-	if IsNil(dst) {
-		return result
-	}
+		if IsNil(dst) {
+			return result
+		}
 
-	if !result.Shape().Equal(dst.Shape()) {
-		panic(fmt.Sprintf("tensor.MatMul: destination shape mismatch: expected %v, got %v", result.Shape(), dst.Shape()))
-	}
+		if !result.Shape().Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.MatMul: destination shape mismatch: expected %v, got %v", result.Shape(), dst.Shape()))
+		}
 
-	// Copy result to dst using generics
-	resultData := types.GetTensorData[[]float32](result)
-	dstData := types.GetTensorData[[]float32](dst)
-	shapeSlice := result.Shape().ToSlice()
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
-	dstStrides := dst.Strides(nil)
-	resultStrides := result.Strides(nil)
-	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dstStrides, resultStrides)
-	return dst
+		// Copy result to dst using generics
+		resultData := types.GetTensorData[[]float32](result)
+		dstData := types.GetTensorData[[]float32](dst)
+		shapeSlice := result.Shape().ToSlice()
+		dstStrides := dst.Strides(nil)
+		resultStrides := result.Strides(nil)
+		generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dstStrides, resultStrides)
+		return dst
+	default:
+		panic(fmt.Sprintf("tensor.MatMul: unsupported data type: %T", t.Data()))
+	}
 }
 
 // matMul2D performs matrix multiplication for 2D tensors: [M, K] × [K, N] = [M, N]
@@ -390,32 +394,32 @@ func (t Tensor) Permute(dst types.Tensor, dims []int) types.Tensor {
 		panic(fmt.Sprintf("tensor.Permute: destination shape mismatch: expected %v, got %v", newShape, dst.Shape()))
 	}
 
-	var resultData []float32
-	resultData = types.GetTensorData[[]float32](dst)
+	switch tData := t.Data().(type) {
+	case []float32:
+		resultData := types.GetTensorData[[]float32](dst)
 
-	// Compute source and destination strides
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
-	srcStrides := t.Strides(nil)
-	// Compute strides for new shape (not from existing tensor, so compute)
-	var dstStridesStatic [MAX_DIMS]int
-	dstStrides := types.NewShape(newShape...).Strides(dstStridesStatic[:rank])
+		// Compute source and destination strides
+		srcStrides := t.Strides(nil)
+		var dstStridesStatic [MAX_DIMS]int
+		dstStrides := types.NewShape(newShape...).Strides(dstStridesStatic[:rank])
 
-	// Compute permuted source strides (map through permutation)
-	permutedSrcStrides := make([]int, rank)
-	for i, d := range dims {
-		permutedSrcStrides[i] = srcStrides[d]
+		// Compute permuted source strides (map through permutation)
+		permutedSrcStrides := make([]int, rank)
+		for i, d := range dims {
+			permutedSrcStrides[i] = srcStrides[d]
+		}
+
+		// Use fp32.ElemCopy with permuted strides
+		fp32.ElemCopy(
+			resultData,
+			tData,
+			[]int(newShape),
+			dstStrides,
+			permutedSrcStrides,
+		)
+	default:
+		panic(fmt.Sprintf("tensor.Permute: unsupported data type: %T", tData))
 	}
-
-	// Use fp32.ElemCopy with permuted strides
-	// newShape is already []int (Shape is []int), no need for ToSlice()
-	tData := types.GetTensorData[[]float32](t)
-	fp32.ElemCopy(
-		resultData,
-		tData,
-		[]int(newShape),
-		dstStrides,
-		permutedSrcStrides,
-	)
 
 	return dst
 }
@@ -433,29 +437,34 @@ func (t Tensor) Dot(other types.Tensor) float64 {
 	tShape := t.Shape()
 	otherShape := other.Shape()
 
-	// Vector dot product: both are 1D and same size
-	if len(tShape) == 1 && len(otherShape) == 1 {
-		if tShape[0] != otherShape[0] {
-			panic(fmt.Sprintf("tensor.Dot: vector size mismatch: %d vs %d", tShape[0], otherShape[0]))
+	switch t.Data().(type) {
+	case []float32:
+		// Vector dot product: both are 1D and same size
+		if len(tShape) == 1 && len(otherShape) == 1 {
+			if tShape[0] != otherShape[0] {
+				panic(fmt.Sprintf("tensor.Dot: vector size mismatch: %d vs %d", tShape[0], otherShape[0]))
+			}
+
+			tData := types.GetTensorData[[]float32](t)
+			otherData := types.GetTensorData[[]float32](other)
+			if t.IsContiguous() && other.IsContiguous() {
+				return float64(fp32.Dot(tData, otherData, 1, 1, tShape[0]))
+			}
+
+			// Strided case
+			return t.dotStrided(other, tShape[0])
 		}
 
-		tData := types.GetTensorData[[]float32](t)
-		otherData := types.GetTensorData[[]float32](other)
-		if t.IsContiguous() && other.IsContiguous() {
-			return float64(fp32.Dot(tData, otherData, 1, 1, tShape[0]))
+		// Matrix Frobenius inner product: sum of all element-wise products
+		if !t.Shape().Equal(other.Shape()) {
+			panic(fmt.Sprintf("tensor.Dot: shape mismatch for Frobenius product: %v vs %v", tShape, otherShape))
 		}
 
-		// Strided case
-		return t.dotStrided(other, tShape[0])
+		// Flatten and compute dot product
+		return t.dotFrobenius(other)
+	default:
+		panic(fmt.Sprintf("tensor.Dot: unsupported data type: %T", t.Data()))
 	}
-
-	// Matrix Frobenius inner product: sum of all element-wise products
-	if !t.Shape().Equal(other.Shape()) {
-		panic(fmt.Sprintf("tensor.Dot: shape mismatch for Frobenius product: %v vs %v", tShape, otherShape))
-	}
-
-	// Flatten and compute dot product
-	return t.dotFrobenius(other)
 }
 
 // Tensordot is an alias for Dot (matches TensorFlow naming: tf.tensordot).
@@ -501,33 +510,38 @@ func (t Tensor) Norm(ord int) float64 {
 		return 0
 	}
 
-	switch ord {
-	case 0:
-		// L1 norm
-		if t.IsContiguous() {
-			tData := types.GetTensorData[[]float32](t)
-			return float64(fp32.Asum(tData, 1, t.Size()))
-		}
-		return t.norm1Strided()
+	switch t.Data().(type) {
+	case []float32:
+		switch ord {
+		case 0:
+			// L1 norm
+			if t.IsContiguous() {
+				tData := types.GetTensorData[[]float32](t)
+				return float64(fp32.Asum(tData, 1, t.Size()))
+			}
+			return t.norm1Strided()
 
-	case 1:
-		// L2 norm (Euclidean norm)
-		if t.IsContiguous() {
-			tData := types.GetTensorData[[]float32](t)
-			return float64(fp32.Nrm2(tData, 1, t.Size()))
-		}
-		return t.norm2Strided()
+		case 1:
+			// L2 norm (Euclidean norm)
+			if t.IsContiguous() {
+				tData := types.GetTensorData[[]float32](t)
+				return float64(fp32.Nrm2(tData, 1, t.Size()))
+			}
+			return t.norm2Strided()
 
-	case 2:
-		// Frobenius norm for matrices (same as L2 norm on flattened matrix)
-		if t.IsContiguous() {
-			tData := types.GetTensorData[[]float32](t)
-			return float64(fp32.Nrm2(tData, 1, t.Size()))
-		}
-		return t.norm2Strided()
+		case 2:
+			// Frobenius norm for matrices (same as L2 norm on flattened matrix)
+			if t.IsContiguous() {
+				tData := types.GetTensorData[[]float32](t)
+				return float64(fp32.Nrm2(tData, 1, t.Size()))
+			}
+			return t.norm2Strided()
 
+		default:
+			panic(fmt.Sprintf("tensor.Norm: unsupported order %d (use 0=L1, 1=L2, 2=Frobenius)", ord))
+		}
 	default:
-		panic(fmt.Sprintf("tensor.Norm: unsupported order %d (use 0=L1, 1=L2, 2=Frobenius)", ord))
+		panic(fmt.Sprintf("tensor.Norm: unsupported data type: %T", t.Data()))
 	}
 }
 
@@ -624,38 +638,43 @@ func (t Tensor) L2Normalize(dst types.Tensor, dim int) types.Tensor {
 	}
 
 	shape := t.Shape()
-	var result types.Tensor
-	if shape.Rank() == 1 {
-		// Vector normalization
-		result = t.normalizeVector()
-	} else if shape.Rank() == 2 {
-		// Matrix normalization along dimension
-		result = t.normalizeMatrixDim(dim)
-	} else {
-		panic(fmt.Sprintf("tensor.L2Normalize: unsupported tensor shape %v (use 1D or 2D)", shape))
-	}
 
-	if result == nil {
-		return nil
-	}
+	switch t.Data().(type) {
+	case []float32:
+		var result types.Tensor
+		if shape.Rank() == 1 {
+			// Vector normalization
+			result = t.normalizeVector()
+		} else if shape.Rank() == 2 {
+			// Matrix normalization along dimension
+			result = t.normalizeMatrixDim(dim)
+		} else {
+			panic(fmt.Sprintf("tensor.L2Normalize: unsupported tensor shape %v (use 1D or 2D)", shape))
+		}
 
-	if IsNil(dst) {
-		return result
-	}
+		if result == nil {
+			return nil
+		}
 
-	if !result.Shape().Equal(dst.Shape()) {
-		panic(fmt.Sprintf("tensor.L2Normalize: destination shape mismatch: expected %v, got %v", result.Shape(), dst.Shape()))
-	}
+		if IsNil(dst) {
+			return result
+		}
 
-	// Copy result to dst using generics
-	resultData := types.GetTensorData[[]float32](result)
-	dstData := types.GetTensorData[[]float32](dst)
-	shapeSlice := result.Shape().ToSlice()
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
-	dstStrides := dst.Strides(nil)
-	resultStrides := result.Strides(nil)
-	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dstStrides, resultStrides)
-	return dst
+		if !result.Shape().Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.L2Normalize: destination shape mismatch: expected %v, got %v", result.Shape(), dst.Shape()))
+		}
+
+		// Copy result to dst using generics
+		resultData := types.GetTensorData[[]float32](result)
+		dstData := types.GetTensorData[[]float32](dst)
+		shapeSlice := result.Shape().ToSlice()
+		dstStrides := dst.Strides(nil)
+		resultStrides := result.Strides(nil)
+		generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dstStrides, resultStrides)
+		return dst
+	default:
+		panic(fmt.Sprintf("tensor.L2Normalize: unsupported data type: %T", t.Data()))
+	}
 }
 
 // Normalize is an alias for L2Normalize (matches TensorFlow naming).

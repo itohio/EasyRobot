@@ -125,6 +125,7 @@ func Must(t any, err error) any
 
 #### Filling and Padding
 - `Fill(dst Tensor, value float64) Tensor` - Fills the tensor with a constant value. If dst is nil, operation is in-place (modifies t) and returns t. If dst is provided, writes result to dst and returns dst. Uses optimized primitive for efficient computation.
+- `FillFunc(dst Tensor, f func() float64) Tensor` - Fills the tensor with a value calculated by callback. If dst is nil, operation is in-place (modifies t) and returns t. If dst is provided, writes result to dst and returns dst. Uses optimized primitive for efficient computation.
 - `Pad(dst Tensor, padding []int, value float64) Tensor` - Adds padding to tensor with constant value (matches tf.pad). padding: [padBeforeDim0, padAfterDim0, padBeforeDim1, padAfterDim1, ...]. Each dimension has two padding values: before and after. value: constant value to pad with. If dst is nil, creates a new tensor. If dst is provided, writes result to dst and returns dst. Panics if padding values are invalid.
 - `Unpad(dst Tensor, padding []int) Tensor` - Removes padding from tensor. padding: [padBeforeDim0, padAfterDim0, padBeforeDim1, padAfterDim1, ...]. Each dimension has two padding values: before and after. If dst is nil, creates a new tensor with padding removed. If dst is provided, copies unpadded data to dst and returns dst. Panics if padding values are invalid, result shape would be invalid, or if dst shape doesn't match unpadded shape.
 

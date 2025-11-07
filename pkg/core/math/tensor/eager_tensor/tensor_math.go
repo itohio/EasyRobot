@@ -23,42 +23,42 @@ func (t Tensor) Add(dst types.Tensor, other types.Tensor) types.Tensor {
 		panic(fmt.Sprintf("tensor.Add: shape mismatch: %v vs %v", t.shape, other.Shape()))
 	}
 
-	var tData []float32
-	var dstData []float32
 	var result types.Tensor
 	if IsNil(dst) {
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](t)
 		result = t
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic(fmt.Sprintf("tensor.Add: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
 		}
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](dst)
 		result = dst
 	}
 
-	otherData := types.GetTensorData[[]float32](other)
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
+	shape := t.Shape().ToSlice()
 	tStrides := t.Strides(nil)
 	dstStrides := result.Strides(nil)
 	otherStrides := other.Strides(nil)
 
-	// Fast path for contiguous tensors
-	shapeSlice := []int(t.shape)
-	if t.IsContiguous() && other.IsContiguous() && result.IsContiguous() {
-		if !IsNil(dst) {
-			// Copy t to dst using generics
-			generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dstStrides, tStrides)
-		}
-		size := t.Size()
-		fp32.Axpy(dstData, otherData, 1, 1, size, 1.0)
-		return result
-	}
+	switch tData := t.Data().(type) {
+	case []float32:
+		otherData := types.GetTensorData[[]float32](other)
+		dstData := types.GetTensorData[[]float32](result)
 
-	// General path
-	fp32.ElemAdd(dstData, tData, otherData, []int(t.shape), dstStrides, tStrides, otherStrides)
+		// Fast path for contiguous tensors
+		if t.IsContiguous() && other.IsContiguous() && result.IsContiguous() {
+			if !IsNil(dst) {
+				// Copy t to dst using generics
+				generics.ElemCopyStrided[float32](dstData, tData, shape, dstStrides, tStrides)
+			}
+			size := t.Size()
+			fp32.Axpy(dstData, otherData, 1, 1, size, 1.0)
+			return result
+		}
+
+		// General path
+		fp32.ElemAdd(dstData, tData, otherData, shape, dstStrides, tStrides, otherStrides)
+	default:
+		panic(fmt.Sprintf("tensor.Add: unsupported data type: %T", tData))
+	}
 	return result
 }
 
@@ -76,42 +76,42 @@ func (t Tensor) Subtract(dst types.Tensor, other types.Tensor) types.Tensor {
 		panic(fmt.Sprintf("tensor.Subtract: shape mismatch: %v vs %v", t.shape, other.Shape()))
 	}
 
-	var tData []float32
-	var dstData []float32
 	var result types.Tensor
 	if IsNil(dst) {
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](t)
 		result = t
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic(fmt.Sprintf("tensor.Subtract: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
 		}
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](dst)
 		result = dst
 	}
 
-	otherData := types.GetTensorData[[]float32](other)
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
+	shape := t.Shape().ToSlice()
 	tStrides := t.Strides(nil)
 	dstStrides := result.Strides(nil)
 	otherStrides := other.Strides(nil)
 
-	// Fast path for contiguous tensors
-	shapeSlice := []int(t.shape)
-	if t.IsContiguous() && other.IsContiguous() && result.IsContiguous() {
-		if !IsNil(dst) {
-			// Copy t to dst using generics
-			generics.ElemCopyStrided[float32](dstData, tData, shapeSlice, dstStrides, tStrides)
-		}
-		size := t.Size()
-		fp32.Axpy(dstData, otherData, 1, 1, size, -1.0)
-		return result
-	}
+	switch tData := t.Data().(type) {
+	case []float32:
+		otherData := types.GetTensorData[[]float32](other)
+		dstData := types.GetTensorData[[]float32](result)
 
-	// General path
-	fp32.ElemSub(dstData, tData, otherData, []int(t.shape), dstStrides, tStrides, otherStrides)
+		// Fast path for contiguous tensors
+		if t.IsContiguous() && other.IsContiguous() && result.IsContiguous() {
+			if !IsNil(dst) {
+				// Copy t to dst using generics
+				generics.ElemCopyStrided[float32](dstData, tData, shape, dstStrides, tStrides)
+			}
+			size := t.Size()
+			fp32.Axpy(dstData, otherData, 1, 1, size, -1.0)
+			return result
+		}
+
+		// General path
+		fp32.ElemSub(dstData, tData, otherData, shape, dstStrides, tStrides, otherStrides)
+	default:
+		panic(fmt.Sprintf("tensor.Subtract: unsupported data type: %T", tData))
+	}
 	return result
 }
 
@@ -129,29 +129,29 @@ func (t Tensor) Multiply(dst types.Tensor, other types.Tensor) types.Tensor {
 		panic(fmt.Sprintf("tensor.Multiply: shape mismatch: %v vs %v", t.shape, other.Shape()))
 	}
 
-	var tData []float32
-	var dstData []float32
 	var result types.Tensor
 	if IsNil(dst) {
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](t)
 		result = t
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic(fmt.Sprintf("tensor.Multiply: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
 		}
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](dst)
 		result = dst
 	}
 
-	otherData := types.GetTensorData[[]float32](other)
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
+	shape := t.Shape().ToSlice()
 	tStrides := t.Strides(nil)
 	dstStrides := result.Strides(nil)
 	otherStrides := other.Strides(nil)
 
-	fp32.ElemMul(dstData, tData, otherData, []int(t.shape), dstStrides, tStrides, otherStrides)
+	switch tData := t.Data().(type) {
+	case []float32:
+		otherData := types.GetTensorData[[]float32](other)
+		dstData := types.GetTensorData[[]float32](result)
+		fp32.ElemMul(dstData, tData, otherData, shape, dstStrides, tStrides, otherStrides)
+	default:
+		panic(fmt.Sprintf("tensor.Multiply: unsupported data type: %T", tData))
+	}
 	return result
 }
 
@@ -169,29 +169,29 @@ func (t Tensor) Divide(dst types.Tensor, other types.Tensor) types.Tensor {
 		panic(fmt.Sprintf("tensor.Divide: shape mismatch: %v vs %v", t.shape, other.Shape()))
 	}
 
-	var tData []float32
-	var dstData []float32
 	var result types.Tensor
 	if IsNil(dst) {
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](t)
 		result = t
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic(fmt.Sprintf("tensor.Divide: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
 		}
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](dst)
 		result = dst
 	}
 
-	otherData := types.GetTensorData[[]float32](other)
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
+	shape := t.Shape().ToSlice()
 	tStrides := t.Strides(nil)
 	dstStrides := result.Strides(nil)
 	otherStrides := other.Strides(nil)
 
-	fp32.ElemDiv(dstData, tData, otherData, []int(t.shape), dstStrides, tStrides, otherStrides)
+	switch tData := t.Data().(type) {
+	case []float32:
+		otherData := types.GetTensorData[[]float32](other)
+		dstData := types.GetTensorData[[]float32](result)
+		fp32.ElemDiv(dstData, tData, otherData, shape, dstStrides, tStrides, otherStrides)
+	default:
+		panic(fmt.Sprintf("tensor.Divide: unsupported data type: %T", tData))
+	}
 	return result
 }
 
@@ -203,38 +203,39 @@ func (t Tensor) ScalarMul(dst types.Tensor, scalar float64) types.Tensor {
 		return t
 	}
 
-	scalar32 := float32(scalar)
-
-	var tData []float32
-	var dstData []float32
 	var result types.Tensor
 	if IsNil(dst) {
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](t)
 		result = t
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic(fmt.Sprintf("tensor.ScalarMul: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
 		}
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](dst)
 		result = dst
 	}
 
-	// Fast path for contiguous tensors (in-place only)
-	if IsNil(dst) && t.IsContiguous() {
-		size := t.Size()
-		fp32.Scal(dstData, 1, size, scalar32)
-		return result
-	}
-
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
+	shape := t.Shape().ToSlice()
 	tStrides := t.Strides(nil)
 	dstStrides := result.Strides(nil)
-	if IsNil(dst) {
-		fp32.ElemScaleInPlace(dstData, scalar32, []int(t.shape), tStrides)
-	} else {
-		fp32.ElemScale(dstData, tData, scalar32, []int(t.shape), dstStrides, tStrides)
+
+	switch tData := t.Data().(type) {
+	case []float32:
+		dstData := types.GetTensorData[[]float32](result)
+		scalar32 := float32(scalar)
+
+		// Fast path for contiguous tensors (in-place only)
+		if IsNil(dst) && t.IsContiguous() {
+			size := t.Size()
+			fp32.Scal(dstData, 1, size, scalar32)
+			return result
+		}
+
+		if IsNil(dst) {
+			fp32.ElemScaleInPlace(dstData, scalar32, shape, tStrides)
+		} else {
+			fp32.ElemScale(dstData, tData, scalar32, shape, dstStrides, tStrides)
+		}
+	default:
+		panic(fmt.Sprintf("tensor.ScalarMul: unsupported data type: %T", tData))
 	}
 	return result
 }
@@ -247,28 +248,28 @@ func (t Tensor) AddScalar(dst types.Tensor, scalar float64) types.Tensor {
 		return t
 	}
 
-	scalar32 := float32(scalar)
-
-	var tData []float32
-	var dstData []float32
 	var result types.Tensor
 	if IsNil(dst) {
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](t)
 		result = t
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic(fmt.Sprintf("tensor.AddScalar: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
 		}
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](dst)
 		result = dst
 	}
 
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
+	shape := t.Shape().ToSlice()
 	tStrides := t.Strides(nil)
 	dstStrides := result.Strides(nil)
-	fp32.ElemAddScalar(dstData, tData, scalar32, []int(t.shape), dstStrides, tStrides)
+
+	switch tData := t.Data().(type) {
+	case []float32:
+		dstData := types.GetTensorData[[]float32](result)
+		scalar32 := float32(scalar)
+		fp32.ElemAddScalar(dstData, tData, scalar32, shape, dstStrides, tStrides)
+	default:
+		panic(fmt.Sprintf("tensor.AddScalar: unsupported data type: %T", tData))
+	}
 	return result
 }
 
@@ -280,28 +281,28 @@ func (t Tensor) SubScalar(dst types.Tensor, scalar float64) types.Tensor {
 		return t
 	}
 
-	scalar32 := float32(scalar)
-
-	var tData []float32
-	var dstData []float32
 	var result types.Tensor
 	if IsNil(dst) {
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](t)
 		result = t
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic(fmt.Sprintf("tensor.SubScalar: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
 		}
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](dst)
 		result = dst
 	}
 
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
+	shape := t.Shape().ToSlice()
 	tStrides := t.Strides(nil)
 	dstStrides := result.Strides(nil)
-	fp32.ElemSubScalar(dstData, tData, scalar32, []int(t.shape), dstStrides, tStrides)
+
+	switch tData := t.Data().(type) {
+	case []float32:
+		dstData := types.GetTensorData[[]float32](result)
+		scalar32 := float32(scalar)
+		fp32.ElemSubScalar(dstData, tData, scalar32, shape, dstStrides, tStrides)
+	default:
+		panic(fmt.Sprintf("tensor.SubScalar: unsupported data type: %T", tData))
+	}
 	return result
 }
 
@@ -320,28 +321,28 @@ func (t Tensor) DivScalar(dst types.Tensor, scalar float64) types.Tensor {
 		return t
 	}
 
-	scalar32 := float32(scalar)
-
-	var tData []float32
-	var dstData []float32
 	var result types.Tensor
 	if IsNil(dst) {
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](t)
 		result = t
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic(fmt.Sprintf("tensor.DivScalar: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
 		}
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](dst)
 		result = dst
 	}
 
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
+	shape := t.Shape().ToSlice()
 	tStrides := t.Strides(nil)
 	dstStrides := result.Strides(nil)
-	fp32.ElemDivScalar(dstData, tData, scalar32, []int(t.shape), dstStrides, tStrides)
+
+	switch tData := t.Data().(type) {
+	case []float32:
+		dstData := types.GetTensorData[[]float32](result)
+		scalar32 := float32(scalar)
+		fp32.ElemDivScalar(dstData, tData, scalar32, shape, dstStrides, tStrides)
+	default:
+		panic(fmt.Sprintf("tensor.DivScalar: unsupported data type: %T", tData))
+	}
 	return result
 }
 
@@ -359,7 +360,6 @@ func (t Tensor) BroadcastTo(dst types.Tensor, shape types.Shape) types.Tensor {
 
 	// Handle destination
 	var result types.Tensor
-	var resultData []float32
 	if IsNil(dst) {
 		// If shapes match exactly, we can create a copy or use Clone semantics
 		if shape.Equal(t.Shape()) {
@@ -368,14 +368,12 @@ func (t Tensor) BroadcastTo(dst types.Tensor, shape types.Shape) types.Tensor {
 		}
 
 		// Validate broadcasting is possible
-		// Use Strides(nil) for read-only operations - returns stored strides directly without copy
 		tStrides := t.Strides(nil)
 		if _, err := fp32.BroadcastStrides(t.shape.ToSlice(), tStrides, shape); err != nil {
 			panic(fmt.Sprintf("tensor.BroadcastTo: %v", err))
 		}
 
 		result = New(t.DataType(), targetShape)
-		resultData = types.GetTensorData[[]float32](result)
 	} else {
 		// Validate dst shape matches target shape
 		if !targetShape.Equal(dst.Shape()) {
@@ -389,29 +387,31 @@ func (t Tensor) BroadcastTo(dst types.Tensor, shape types.Shape) types.Tensor {
 		}
 
 		// Validate broadcasting is possible
-		// Use Strides(nil) for read-only operations - returns stored strides directly without copy
 		tStrides := t.Strides(nil)
 		if _, err := fp32.BroadcastStrides(t.shape.ToSlice(), tStrides, shape); err != nil {
 			panic(fmt.Sprintf("tensor.BroadcastTo: %v", err))
 		}
 
 		result = dst
-		resultData = types.GetTensorData[[]float32](dst)
 	}
 
-	tData := types.GetTensorData[[]float32](t)
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
-	tStrides := t.Strides(nil)
-	resultStrides := result.Strides(nil)
-	if err := fp32.ExpandTo(
-		resultData,
-		tData,
-		result.Shape().ToSlice(),
-		t.shape.ToSlice(),
-		resultStrides,
-		tStrides,
-	); err != nil {
-		panic(fmt.Sprintf("tensor.BroadcastTo: %v", err))
+	switch tData := t.Data().(type) {
+	case []float32:
+		resultData := types.GetTensorData[[]float32](result)
+		tStrides := t.Strides(nil)
+		resultStrides := result.Strides(nil)
+		if err := fp32.ExpandTo(
+			resultData,
+			tData,
+			result.Shape().ToSlice(),
+			t.shape.ToSlice(),
+			resultStrides,
+			tStrides,
+		); err != nil {
+			panic(fmt.Sprintf("tensor.BroadcastTo: %v", err))
+		}
+	default:
+		panic(fmt.Sprintf("tensor.BroadcastTo: unsupported data type: %T", tData))
 	}
 
 	return result
@@ -798,17 +798,78 @@ func (t Tensor) Where(dst types.Tensor, condition, a, b types.Tensor) types.Tens
 	}
 
 	shape := t.Shape().ToSlice()
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
-	strides := t.Strides(nil)
-	conditionData := types.GetTensorData[[]float32](condition)
-	aData := types.GetTensorData[[]float32](a)
-	bData := types.GetTensorData[[]float32](b)
-	resultData := types.GetTensorData[[]float32](result)
+	dstStrides := result.Strides(nil)
+	conditionStrides := condition.Strides(nil)
+	aStrides := a.Strides(nil)
+	bStrides := b.Strides(nil)
 
-	generics.ElemWhere[float32](
-		resultData, conditionData, aData, bData,
-		shape, strides, strides, strides, strides,
-	)
+	switch tData := t.Data().(type) {
+	case []float32:
+		conditionData := types.GetTensorData[[]float32](condition)
+		aData := types.GetTensorData[[]float32](a)
+		bData := types.GetTensorData[[]float32](b)
+		resultData := types.GetTensorData[[]float32](result)
+		generics.ElemWhere[float32](
+			resultData, conditionData, aData, bData,
+			shape, dstStrides, conditionStrides, aStrides, bStrides,
+		)
+	case []float64:
+		conditionData := types.GetTensorData[[]float64](condition)
+		aData := types.GetTensorData[[]float64](a)
+		bData := types.GetTensorData[[]float64](b)
+		resultData := types.GetTensorData[[]float64](result)
+		generics.ElemWhere[float64](
+			resultData, conditionData, aData, bData,
+			shape, dstStrides, conditionStrides, aStrides, bStrides,
+		)
+	case []int32:
+		conditionData := types.GetTensorData[[]int32](condition)
+		aData := types.GetTensorData[[]int32](a)
+		bData := types.GetTensorData[[]int32](b)
+		resultData := types.GetTensorData[[]int32](result)
+		generics.ElemWhere[int32](
+			resultData, conditionData, aData, bData,
+			shape, dstStrides, conditionStrides, aStrides, bStrides,
+		)
+	case []int64:
+		conditionData := types.GetTensorData[[]int64](condition)
+		aData := types.GetTensorData[[]int64](a)
+		bData := types.GetTensorData[[]int64](b)
+		resultData := types.GetTensorData[[]int64](result)
+		generics.ElemWhere[int64](
+			resultData, conditionData, aData, bData,
+			shape, dstStrides, conditionStrides, aStrides, bStrides,
+		)
+	case []int:
+		conditionData := types.GetTensorData[[]int](condition)
+		aData := types.GetTensorData[[]int](a)
+		bData := types.GetTensorData[[]int](b)
+		resultData := types.GetTensorData[[]int](result)
+		generics.ElemWhere[int](
+			resultData, conditionData, aData, bData,
+			shape, dstStrides, conditionStrides, aStrides, bStrides,
+		)
+	case []int16:
+		conditionData := types.GetTensorData[[]int16](condition)
+		aData := types.GetTensorData[[]int16](a)
+		bData := types.GetTensorData[[]int16](b)
+		resultData := types.GetTensorData[[]int16](result)
+		generics.ElemWhere[int16](
+			resultData, conditionData, aData, bData,
+			shape, dstStrides, conditionStrides, aStrides, bStrides,
+		)
+	case []int8:
+		conditionData := types.GetTensorData[[]int8](condition)
+		aData := types.GetTensorData[[]int8](a)
+		bData := types.GetTensorData[[]int8](b)
+		resultData := types.GetTensorData[[]int8](result)
+		generics.ElemWhere[int8](
+			resultData, conditionData, aData, bData,
+			shape, dstStrides, conditionStrides, aStrides, bStrides,
+		)
+	default:
+		panic(fmt.Sprintf("tensor.Where: unsupported data type: %T", tData))
+	}
 	return result
 }
 
@@ -824,28 +885,73 @@ func (t Tensor) Greater(dst types.Tensor, other types.Tensor) types.Tensor {
 	}
 
 	shape := t.Shape().ToSlice()
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
-	strides := t.Strides(nil)
-	tData := types.GetTensorData[[]float32](t)
-	otherData := types.GetTensorData[[]float32](other)
+	tStrides := t.Strides(nil)
+	otherStrides := other.Strides(nil)
 
 	var result types.Tensor
-	var resultData []float32
 	if IsNil(dst) {
 		result = New(t.DataType(), t.shape)
-		resultData = types.GetTensorData[[]float32](result)
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.Greater: destination shape mismatch")
 		}
 		result = dst
-		resultData = types.GetTensorData[[]float32](dst)
 	}
+	dstStrides := result.Strides(nil)
 
-	generics.ElemGreaterThanStrided[float32](
-		resultData, tData, otherData,
-		shape, strides, strides, strides,
-	)
+	switch tData := t.Data().(type) {
+	case []float32:
+		otherData := types.GetTensorData[[]float32](other)
+		resultData := types.GetTensorData[[]float32](result)
+		generics.ElemGreaterThanStrided[float32](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []float64:
+		otherData := types.GetTensorData[[]float64](other)
+		resultData := types.GetTensorData[[]float64](result)
+		generics.ElemGreaterThanStrided[float64](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int32:
+		otherData := types.GetTensorData[[]int32](other)
+		resultData := types.GetTensorData[[]int32](result)
+		generics.ElemGreaterThanStrided[int32](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int64:
+		otherData := types.GetTensorData[[]int64](other)
+		resultData := types.GetTensorData[[]int64](result)
+		generics.ElemGreaterThanStrided[int64](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int:
+		otherData := types.GetTensorData[[]int](other)
+		resultData := types.GetTensorData[[]int](result)
+		generics.ElemGreaterThanStrided[int](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int16:
+		otherData := types.GetTensorData[[]int16](other)
+		resultData := types.GetTensorData[[]int16](result)
+		generics.ElemGreaterThanStrided[int16](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int8:
+		otherData := types.GetTensorData[[]int8](other)
+		resultData := types.GetTensorData[[]int8](result)
+		generics.ElemGreaterThanStrided[int8](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	default:
+		panic(fmt.Sprintf("tensor.Greater: unsupported data type: %T", tData))
+	}
 	return result
 }
 
@@ -906,26 +1012,27 @@ func (t Tensor) Square(dst types.Tensor) types.Tensor {
 		return t
 	}
 
-	var tData []float32
-	var dstData []float32
 	var result types.Tensor
 	if IsNil(dst) {
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](t)
 		result = t
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.Square: destination shape mismatch")
 		}
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](dst)
 		result = dst
 	}
 
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
+	shape := t.Shape().ToSlice()
 	tStrides := t.Strides(nil)
 	dstStrides := result.Strides(nil)
-	fp32.ElemSquare(dstData, tData, []int(t.shape), dstStrides, tStrides)
+
+	switch tData := t.Data().(type) {
+	case []float32:
+		dstData := types.GetTensorData[[]float32](result)
+		fp32.ElemSquare(dstData, tData, shape, dstStrides, tStrides)
+	default:
+		panic(fmt.Sprintf("tensor.Square: unsupported data type: %T", tData))
+	}
 	return result
 }
 
@@ -937,26 +1044,27 @@ func (t Tensor) Sqrt(dst types.Tensor) types.Tensor {
 		return t
 	}
 
-	var tData []float32
-	var dstData []float32
 	var result types.Tensor
 	if IsNil(dst) {
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](t)
 		result = t
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.Sqrt: destination shape mismatch")
 		}
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](dst)
 		result = dst
 	}
 
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
+	shape := t.Shape().ToSlice()
 	tStrides := t.Strides(nil)
 	dstStrides := result.Strides(nil)
-	fp32.ElemSqrt(dstData, tData, []int(t.shape), dstStrides, tStrides)
+
+	switch tData := t.Data().(type) {
+	case []float32:
+		dstData := types.GetTensorData[[]float32](result)
+		fp32.ElemSqrt(dstData, tData, shape, dstStrides, tStrides)
+	default:
+		panic(fmt.Sprintf("tensor.Sqrt: unsupported data type: %T", tData))
+	}
 	return result
 }
 
@@ -968,26 +1076,27 @@ func (t Tensor) Exp(dst types.Tensor) types.Tensor {
 		return t
 	}
 
-	var tData []float32
-	var dstData []float32
 	var result types.Tensor
 	if IsNil(dst) {
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](t)
 		result = t
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.Exp: destination shape mismatch")
 		}
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](dst)
 		result = dst
 	}
 
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
+	shape := t.Shape().ToSlice()
 	tStrides := t.Strides(nil)
 	dstStrides := result.Strides(nil)
-	fp32.ElemExp(dstData, tData, []int(t.shape), dstStrides, tStrides)
+
+	switch tData := t.Data().(type) {
+	case []float32:
+		dstData := types.GetTensorData[[]float32](result)
+		fp32.ElemExp(dstData, tData, shape, dstStrides, tStrides)
+	default:
+		panic(fmt.Sprintf("tensor.Exp: unsupported data type: %T", tData))
+	}
 	return result
 }
 
@@ -999,26 +1108,27 @@ func (t Tensor) Log(dst types.Tensor) types.Tensor {
 		return t
 	}
 
-	var tData []float32
-	var dstData []float32
 	var result types.Tensor
 	if IsNil(dst) {
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](t)
 		result = t
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.Log: destination shape mismatch")
 		}
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](dst)
 		result = dst
 	}
 
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
+	shape := t.Shape().ToSlice()
 	tStrides := t.Strides(nil)
 	dstStrides := result.Strides(nil)
-	fp32.ElemLog(dstData, tData, []int(t.shape), dstStrides, tStrides)
+
+	switch tData := t.Data().(type) {
+	case []float32:
+		dstData := types.GetTensorData[[]float32](result)
+		fp32.ElemLog(dstData, tData, shape, dstStrides, tStrides)
+	default:
+		panic(fmt.Sprintf("tensor.Log: unsupported data type: %T", tData))
+	}
 	return result
 }
 
@@ -1030,28 +1140,28 @@ func (t Tensor) Pow(dst types.Tensor, power float64) types.Tensor {
 		return t
 	}
 
-	power32 := float32(power)
-
-	var tData []float32
-	var dstData []float32
 	var result types.Tensor
 	if IsNil(dst) {
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](t)
 		result = t
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.Pow: destination shape mismatch")
 		}
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](dst)
 		result = dst
 	}
 
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
+	shape := t.Shape().ToSlice()
 	tStrides := t.Strides(nil)
 	dstStrides := result.Strides(nil)
-	fp32.ElemPow(dstData, tData, power32, []int(t.shape), dstStrides, tStrides)
+
+	switch tData := t.Data().(type) {
+	case []float32:
+		dstData := types.GetTensorData[[]float32](result)
+		power32 := float32(power)
+		fp32.ElemPow(dstData, tData, power32, shape, dstStrides, tStrides)
+	default:
+		panic(fmt.Sprintf("tensor.Pow: unsupported data type: %T", tData))
+	}
 	return result
 }
 
@@ -1067,32 +1177,73 @@ func (t Tensor) Equal(dst types.Tensor, other types.Tensor) types.Tensor {
 	}
 
 	shape := t.Shape().ToSlice()
-	var tStridesStatic [MAX_DIMS]int
-	tStrides := t.Strides(tStridesStatic[:t.shape.Rank()])
-	var otherStridesStatic [MAX_DIMS]int
-	otherStrides := other.Strides(otherStridesStatic[:other.Shape().Rank()])
-	tData := types.GetTensorData[[]float32](t)
-	otherData := types.GetTensorData[[]float32](other)
+	tStrides := t.Strides(nil)
+	otherStrides := other.Strides(nil)
 
 	var result types.Tensor
-	var resultData []float32
 	if IsNil(dst) {
 		result = New(t.DataType(), t.shape)
-		resultData = types.GetTensorData[[]float32](result)
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.Equal: destination shape mismatch")
 		}
 		result = dst
-		resultData = types.GetTensorData[[]float32](dst)
 	}
-	var dstStridesStatic [MAX_DIMS]int
-	dstStrides := result.Strides(dstStridesStatic[:result.Shape().Rank()])
+	dstStrides := result.Strides(nil)
 
-	generics.ElemEqualStrided[float32](
-		resultData, tData, otherData,
-		shape, dstStrides, tStrides, otherStrides,
-	)
+	switch tData := t.Data().(type) {
+	case []float32:
+		otherData := types.GetTensorData[[]float32](other)
+		resultData := types.GetTensorData[[]float32](result)
+		generics.ElemEqualStrided[float32](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []float64:
+		otherData := types.GetTensorData[[]float64](other)
+		resultData := types.GetTensorData[[]float64](result)
+		generics.ElemEqualStrided[float64](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int32:
+		otherData := types.GetTensorData[[]int32](other)
+		resultData := types.GetTensorData[[]int32](result)
+		generics.ElemEqualStrided[int32](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int64:
+		otherData := types.GetTensorData[[]int64](other)
+		resultData := types.GetTensorData[[]int64](result)
+		generics.ElemEqualStrided[int64](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int:
+		otherData := types.GetTensorData[[]int](other)
+		resultData := types.GetTensorData[[]int](result)
+		generics.ElemEqualStrided[int](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int16:
+		otherData := types.GetTensorData[[]int16](other)
+		resultData := types.GetTensorData[[]int16](result)
+		generics.ElemEqualStrided[int16](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int8:
+		otherData := types.GetTensorData[[]int8](other)
+		resultData := types.GetTensorData[[]int8](result)
+		generics.ElemEqualStrided[int8](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	default:
+		panic(fmt.Sprintf("tensor.Equal: unsupported data type: %T", tData))
+	}
 	return result
 }
 
@@ -1636,28 +1787,73 @@ func (t Tensor) Less(dst types.Tensor, other types.Tensor) types.Tensor {
 	}
 
 	shape := t.Shape().ToSlice()
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
-	strides := t.Strides(nil)
-	tData := types.GetTensorData[[]float32](t)
-	otherData := types.GetTensorData[[]float32](other)
+	tStrides := t.Strides(nil)
+	otherStrides := other.Strides(nil)
 
 	var result types.Tensor
-	var resultData []float32
 	if IsNil(dst) {
 		result = New(t.DataType(), t.shape)
-		resultData = types.GetTensorData[[]float32](result)
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.Less: destination shape mismatch")
 		}
 		result = dst
-		resultData = types.GetTensorData[[]float32](dst)
 	}
+	dstStrides := result.Strides(nil)
 
-	generics.ElemLessStrided[float32](
-		resultData, tData, otherData,
-		shape, strides, strides, strides,
-	)
+	switch tData := t.Data().(type) {
+	case []float32:
+		otherData := types.GetTensorData[[]float32](other)
+		resultData := types.GetTensorData[[]float32](result)
+		generics.ElemLessStrided[float32](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []float64:
+		otherData := types.GetTensorData[[]float64](other)
+		resultData := types.GetTensorData[[]float64](result)
+		generics.ElemLessStrided[float64](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int32:
+		otherData := types.GetTensorData[[]int32](other)
+		resultData := types.GetTensorData[[]int32](result)
+		generics.ElemLessStrided[int32](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int64:
+		otherData := types.GetTensorData[[]int64](other)
+		resultData := types.GetTensorData[[]int64](result)
+		generics.ElemLessStrided[int64](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int:
+		otherData := types.GetTensorData[[]int](other)
+		resultData := types.GetTensorData[[]int](result)
+		generics.ElemLessStrided[int](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int16:
+		otherData := types.GetTensorData[[]int16](other)
+		resultData := types.GetTensorData[[]int16](result)
+		generics.ElemLessStrided[int16](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int8:
+		otherData := types.GetTensorData[[]int8](other)
+		resultData := types.GetTensorData[[]int8](result)
+		generics.ElemLessStrided[int8](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	default:
+		panic(fmt.Sprintf("tensor.Less: unsupported data type: %T", tData))
+	}
 	return result
 }
 
@@ -1672,28 +1868,73 @@ func (t Tensor) NotEqual(dst types.Tensor, other types.Tensor) types.Tensor {
 	}
 
 	shape := t.Shape().ToSlice()
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
-	strides := t.Strides(nil)
-	tData := types.GetTensorData[[]float32](t)
-	otherData := types.GetTensorData[[]float32](other)
+	tStrides := t.Strides(nil)
+	otherStrides := other.Strides(nil)
 
 	var result types.Tensor
-	var resultData []float32
 	if IsNil(dst) {
 		result = New(t.DataType(), t.shape)
-		resultData = types.GetTensorData[[]float32](result)
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.NotEqual: destination shape mismatch")
 		}
 		result = dst
-		resultData = types.GetTensorData[[]float32](dst)
 	}
+	dstStrides := result.Strides(nil)
 
-	generics.ElemNotEqualStrided[float32](
-		resultData, tData, otherData,
-		shape, strides, strides, strides,
-	)
+	switch tData := t.Data().(type) {
+	case []float32:
+		otherData := types.GetTensorData[[]float32](other)
+		resultData := types.GetTensorData[[]float32](result)
+		generics.ElemNotEqualStrided[float32](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []float64:
+		otherData := types.GetTensorData[[]float64](other)
+		resultData := types.GetTensorData[[]float64](result)
+		generics.ElemNotEqualStrided[float64](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int32:
+		otherData := types.GetTensorData[[]int32](other)
+		resultData := types.GetTensorData[[]int32](result)
+		generics.ElemNotEqualStrided[int32](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int64:
+		otherData := types.GetTensorData[[]int64](other)
+		resultData := types.GetTensorData[[]int64](result)
+		generics.ElemNotEqualStrided[int64](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int:
+		otherData := types.GetTensorData[[]int](other)
+		resultData := types.GetTensorData[[]int](result)
+		generics.ElemNotEqualStrided[int](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int16:
+		otherData := types.GetTensorData[[]int16](other)
+		resultData := types.GetTensorData[[]int16](result)
+		generics.ElemNotEqualStrided[int16](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int8:
+		otherData := types.GetTensorData[[]int8](other)
+		resultData := types.GetTensorData[[]int8](result)
+		generics.ElemNotEqualStrided[int8](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	default:
+		panic(fmt.Sprintf("tensor.NotEqual: unsupported data type: %T", tData))
+	}
 	return result
 }
 
@@ -1708,28 +1949,73 @@ func (t Tensor) GreaterEqual(dst types.Tensor, other types.Tensor) types.Tensor 
 	}
 
 	shape := t.Shape().ToSlice()
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
-	strides := t.Strides(nil)
-	tData := types.GetTensorData[[]float32](t)
-	otherData := types.GetTensorData[[]float32](other)
+	tStrides := t.Strides(nil)
+	otherStrides := other.Strides(nil)
 
 	var result types.Tensor
-	var resultData []float32
 	if IsNil(dst) {
 		result = New(t.DataType(), t.shape)
-		resultData = types.GetTensorData[[]float32](result)
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.GreaterEqual: destination shape mismatch")
 		}
 		result = dst
-		resultData = types.GetTensorData[[]float32](dst)
 	}
+	dstStrides := result.Strides(nil)
 
-	generics.ElemGreaterEqualStrided[float32](
-		resultData, tData, otherData,
-		shape, strides, strides, strides,
-	)
+	switch tData := t.Data().(type) {
+	case []float32:
+		otherData := types.GetTensorData[[]float32](other)
+		resultData := types.GetTensorData[[]float32](result)
+		generics.ElemGreaterEqualStrided[float32](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []float64:
+		otherData := types.GetTensorData[[]float64](other)
+		resultData := types.GetTensorData[[]float64](result)
+		generics.ElemGreaterEqualStrided[float64](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int32:
+		otherData := types.GetTensorData[[]int32](other)
+		resultData := types.GetTensorData[[]int32](result)
+		generics.ElemGreaterEqualStrided[int32](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int64:
+		otherData := types.GetTensorData[[]int64](other)
+		resultData := types.GetTensorData[[]int64](result)
+		generics.ElemGreaterEqualStrided[int64](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int:
+		otherData := types.GetTensorData[[]int](other)
+		resultData := types.GetTensorData[[]int](result)
+		generics.ElemGreaterEqualStrided[int](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int16:
+		otherData := types.GetTensorData[[]int16](other)
+		resultData := types.GetTensorData[[]int16](result)
+		generics.ElemGreaterEqualStrided[int16](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int8:
+		otherData := types.GetTensorData[[]int8](other)
+		resultData := types.GetTensorData[[]int8](result)
+		generics.ElemGreaterEqualStrided[int8](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	default:
+		panic(fmt.Sprintf("tensor.GreaterEqual: unsupported data type: %T", tData))
+	}
 	return result
 }
 
@@ -1744,28 +2030,73 @@ func (t Tensor) LessEqual(dst types.Tensor, other types.Tensor) types.Tensor {
 	}
 
 	shape := t.Shape().ToSlice()
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
-	strides := t.Strides(nil)
-	tData := types.GetTensorData[[]float32](t)
-	otherData := types.GetTensorData[[]float32](other)
+	tStrides := t.Strides(nil)
+	otherStrides := other.Strides(nil)
 
 	var result types.Tensor
-	var resultData []float32
 	if IsNil(dst) {
 		result = New(t.DataType(), t.shape)
-		resultData = types.GetTensorData[[]float32](result)
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.LessEqual: destination shape mismatch")
 		}
 		result = dst
-		resultData = types.GetTensorData[[]float32](dst)
 	}
+	dstStrides := result.Strides(nil)
 
-	generics.ElemLessEqualStrided[float32](
-		resultData, tData, otherData,
-		shape, strides, strides, strides,
-	)
+	switch tData := t.Data().(type) {
+	case []float32:
+		otherData := types.GetTensorData[[]float32](other)
+		resultData := types.GetTensorData[[]float32](result)
+		generics.ElemLessEqualStrided[float32](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []float64:
+		otherData := types.GetTensorData[[]float64](other)
+		resultData := types.GetTensorData[[]float64](result)
+		generics.ElemLessEqualStrided[float64](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int32:
+		otherData := types.GetTensorData[[]int32](other)
+		resultData := types.GetTensorData[[]int32](result)
+		generics.ElemLessEqualStrided[int32](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int64:
+		otherData := types.GetTensorData[[]int64](other)
+		resultData := types.GetTensorData[[]int64](result)
+		generics.ElemLessEqualStrided[int64](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int:
+		otherData := types.GetTensorData[[]int](other)
+		resultData := types.GetTensorData[[]int](result)
+		generics.ElemLessEqualStrided[int](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int16:
+		otherData := types.GetTensorData[[]int16](other)
+		resultData := types.GetTensorData[[]int16](result)
+		generics.ElemLessEqualStrided[int16](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	case []int8:
+		otherData := types.GetTensorData[[]int8](other)
+		resultData := types.GetTensorData[[]int8](result)
+		generics.ElemLessEqualStrided[int8](
+			resultData, tData, otherData,
+			shape, dstStrides, tStrides, otherStrides,
+		)
+	default:
+		panic(fmt.Sprintf("tensor.LessEqual: unsupported data type: %T", tData))
+	}
 	return result
 }
 
@@ -1777,26 +2108,27 @@ func (t Tensor) Abs(dst types.Tensor) types.Tensor {
 		return t
 	}
 
-	var tData []float32
-	var dstData []float32
 	var result types.Tensor
 	if IsNil(dst) {
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](t)
 		result = t
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.Abs: destination shape mismatch")
 		}
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](dst)
 		result = dst
 	}
 
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
+	shape := t.Shape().ToSlice()
 	tStrides := t.Strides(nil)
 	dstStrides := result.Strides(nil)
-	fp32.ElemAbs(dstData, tData, []int(t.shape), dstStrides, tStrides)
+
+	switch tData := t.Data().(type) {
+	case []float32:
+		dstData := types.GetTensorData[[]float32](result)
+		fp32.ElemAbs(dstData, tData, shape, dstStrides, tStrides)
+	default:
+		panic(fmt.Sprintf("tensor.Abs: unsupported data type: %T", tData))
+	}
 	return result
 }
 
@@ -1808,26 +2140,45 @@ func (t Tensor) Sign(dst types.Tensor) types.Tensor {
 		return t
 	}
 
-	var tData []float32
-	var dstData []float32
 	var result types.Tensor
 	if IsNil(dst) {
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](t)
 		result = t
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.Sign: destination shape mismatch")
 		}
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](dst)
 		result = dst
 	}
 
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
+	shape := t.Shape().ToSlice()
 	tStrides := t.Strides(nil)
 	dstStrides := result.Strides(nil)
-	generics.ElemSignStrided[float32](dstData, tData, []int(t.shape), dstStrides, tStrides)
+
+	switch tData := t.Data().(type) {
+	case []float32:
+		dstData := types.GetTensorData[[]float32](result)
+		generics.ElemSignStrided[float32](dstData, tData, shape, dstStrides, tStrides)
+	case []float64:
+		dstData := types.GetTensorData[[]float64](result)
+		generics.ElemSignStrided[float64](dstData, tData, shape, dstStrides, tStrides)
+	case []int32:
+		dstData := types.GetTensorData[[]int32](result)
+		generics.ElemSignStrided[int32](dstData, tData, shape, dstStrides, tStrides)
+	case []int64:
+		dstData := types.GetTensorData[[]int64](result)
+		generics.ElemSignStrided[int64](dstData, tData, shape, dstStrides, tStrides)
+	case []int:
+		dstData := types.GetTensorData[[]int](result)
+		generics.ElemSignStrided[int](dstData, tData, shape, dstStrides, tStrides)
+	case []int16:
+		dstData := types.GetTensorData[[]int16](result)
+		generics.ElemSignStrided[int16](dstData, tData, shape, dstStrides, tStrides)
+	case []int8:
+		dstData := types.GetTensorData[[]int8](result)
+		generics.ElemSignStrided[int8](dstData, tData, shape, dstStrides, tStrides)
+	default:
+		panic(fmt.Sprintf("tensor.Sign: unsupported data type: %T", tData))
+	}
 	return result
 }
 
@@ -1839,26 +2190,27 @@ func (t Tensor) Cos(dst types.Tensor) types.Tensor {
 		return t
 	}
 
-	var tData []float32
-	var dstData []float32
 	var result types.Tensor
 	if IsNil(dst) {
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](t)
 		result = t
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.Cos: destination shape mismatch")
 		}
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](dst)
 		result = dst
 	}
 
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
+	shape := t.Shape().ToSlice()
 	tStrides := t.Strides(nil)
 	dstStrides := result.Strides(nil)
-	fp32.ElemCos(dstData, tData, []int(t.shape), dstStrides, tStrides)
+
+	switch tData := t.Data().(type) {
+	case []float32:
+		dstData := types.GetTensorData[[]float32](result)
+		fp32.ElemCos(dstData, tData, shape, dstStrides, tStrides)
+	default:
+		panic(fmt.Sprintf("tensor.Cos: unsupported data type: %T", tData))
+	}
 	return result
 }
 
@@ -1870,26 +2222,27 @@ func (t Tensor) Sin(dst types.Tensor) types.Tensor {
 		return t
 	}
 
-	var tData []float32
-	var dstData []float32
 	var result types.Tensor
 	if IsNil(dst) {
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](t)
 		result = t
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.Sin: destination shape mismatch")
 		}
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](dst)
 		result = dst
 	}
 
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
+	shape := t.Shape().ToSlice()
 	tStrides := t.Strides(nil)
 	dstStrides := result.Strides(nil)
-	fp32.ElemSin(dstData, tData, []int(t.shape), dstStrides, tStrides)
+
+	switch tData := t.Data().(type) {
+	case []float32:
+		dstData := types.GetTensorData[[]float32](result)
+		fp32.ElemSin(dstData, tData, shape, dstStrides, tStrides)
+	default:
+		panic(fmt.Sprintf("tensor.Sin: unsupported data type: %T", tData))
+	}
 	return result
 }
 
@@ -1901,26 +2254,45 @@ func (t Tensor) Negative(dst types.Tensor) types.Tensor {
 		return t
 	}
 
-	var tData []float32
-	var dstData []float32
 	var result types.Tensor
 	if IsNil(dst) {
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](t)
 		result = t
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic("tensor.Negative: destination shape mismatch")
 		}
-		tData = types.GetTensorData[[]float32](t)
-		dstData = types.GetTensorData[[]float32](dst)
 		result = dst
 	}
 
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
+	shape := t.Shape().ToSlice()
 	tStrides := t.Strides(nil)
 	dstStrides := result.Strides(nil)
-	generics.ElemNegativeStrided[float32](dstData, tData, []int(t.shape), dstStrides, tStrides)
+
+	switch tData := t.Data().(type) {
+	case []float32:
+		dstData := types.GetTensorData[[]float32](result)
+		generics.ElemNegativeStrided[float32](dstData, tData, shape, dstStrides, tStrides)
+	case []float64:
+		dstData := types.GetTensorData[[]float64](result)
+		generics.ElemNegativeStrided[float64](dstData, tData, shape, dstStrides, tStrides)
+	case []int32:
+		dstData := types.GetTensorData[[]int32](result)
+		generics.ElemNegativeStrided[int32](dstData, tData, shape, dstStrides, tStrides)
+	case []int64:
+		dstData := types.GetTensorData[[]int64](result)
+		generics.ElemNegativeStrided[int64](dstData, tData, shape, dstStrides, tStrides)
+	case []int:
+		dstData := types.GetTensorData[[]int](result)
+		generics.ElemNegativeStrided[int](dstData, tData, shape, dstStrides, tStrides)
+	case []int16:
+		dstData := types.GetTensorData[[]int16](result)
+		generics.ElemNegativeStrided[int16](dstData, tData, shape, dstStrides, tStrides)
+	case []int8:
+		dstData := types.GetTensorData[[]int8](result)
+		generics.ElemNegativeStrided[int8](dstData, tData, shape, dstStrides, tStrides)
+	default:
+		panic(fmt.Sprintf("tensor.Negative: unsupported data type: %T", tData))
+	}
 	return result
 }
 
@@ -1932,31 +2304,190 @@ func (t Tensor) Fill(dst types.Tensor, value float64) types.Tensor {
 		return t
 	}
 
-	value32 := float32(value)
-
-	var dstData []float32
 	var result types.Tensor
 	if IsNil(dst) {
-		dstData = types.GetTensorData[[]float32](t)
+		dst = t
 		result = t
 	} else {
 		if !t.Shape().Equal(dst.Shape()) {
 			panic(fmt.Sprintf("tensor.Fill: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
 		}
-		dstData = types.GetTensorData[[]float32](dst)
 		result = dst
 	}
 
-	shapeSlice := []int(t.shape)
-	if result.IsContiguous() {
-		// Fast path: contiguous - use ElemFill
-		size := t.Size()
-		generics.ElemFill[float32](dstData, value32, size)
-	} else {
-		// Strided path: use ElemFillStrided
-		// Use Strides(nil) for read-only operations - returns stored strides directly without copy
-		resultStrides := result.Strides(nil)
-		generics.ElemFillStrided[float32](dstData, value32, shapeSlice, resultStrides)
+	switch dstData := dst.Data().(type) {
+	case []float32:
+		value32 := float32(value)
+		if result.IsContiguous() {
+			size := t.Size()
+			generics.ElemFill[float32](dstData, value32, size)
+		} else {
+			resultStrides := result.Strides(nil)
+			generics.ElemFillStrided[float32](dstData, value32, dst.Shape(), resultStrides)
+		}
+	case []float64:
+		if result.IsContiguous() {
+			size := t.Size()
+			generics.ElemFill[float64](dstData, value, size)
+		} else {
+			resultStrides := result.Strides(nil)
+			generics.ElemFillStrided[float64](dstData, value, dst.Shape(), resultStrides)
+		}
+	case []int32:
+		value32 := int32(value)
+		if result.IsContiguous() {
+			size := t.Size()
+			generics.ElemFill[int32](dstData, value32, size)
+		} else {
+			resultStrides := result.Strides(nil)
+			generics.ElemFillStrided[int32](dstData, value32, dst.Shape(), resultStrides)
+		}
+	case []int64:
+		value64 := int64(value)
+		if result.IsContiguous() {
+			size := t.Size()
+			generics.ElemFill[int64](dstData, value64, size)
+		} else {
+			resultStrides := result.Strides(nil)
+			generics.ElemFillStrided[int64](dstData, value64, dst.Shape(), resultStrides)
+		}
+	case []int:
+		valueInt := int(value)
+		if result.IsContiguous() {
+			size := t.Size()
+			generics.ElemFill[int](dstData, valueInt, size)
+		} else {
+			resultStrides := result.Strides(nil)
+			generics.ElemFillStrided[int](dstData, valueInt, dst.Shape(), resultStrides)
+		}
+	case []int16:
+		value16 := int16(value)
+		if result.IsContiguous() {
+			size := t.Size()
+			generics.ElemFill[int16](dstData, value16, size)
+		} else {
+			resultStrides := result.Strides(nil)
+			generics.ElemFillStrided[int16](dstData, value16, dst.Shape(), resultStrides)
+		}
+	case []int8:
+		value8 := int8(value)
+		if result.IsContiguous() {
+			size := t.Size()
+			generics.ElemFill[int8](dstData, value8, size)
+		} else {
+			resultStrides := result.Strides(nil)
+			generics.ElemFillStrided[int8](dstData, value8, dst.Shape(), resultStrides)
+		}
+	default:
+		panic(fmt.Sprintf("tensor.Fill: unsupported data type: %T", dstData))
 	}
+	return result
+}
+
+func (t Tensor) FillFunc(dst types.Tensor, f func() float64) types.Tensor {
+	if t.shape == nil {
+		return t
+	}
+
+	var result types.Tensor
+	if IsNil(dst) {
+		dst = t
+		result = t
+	} else {
+		if !t.Shape().Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.Fill: destination shape mismatch: %v vs %v", dst.Shape(), t.shape))
+		}
+		result = dst
+	}
+
+	switch dstData := dst.Data().(type) {
+	case []float32:
+		if result.IsContiguous() {
+			size := t.Size()
+			generics.ElemApplyUnary[float32](dstData, dstData, size, func(v float32) float32 {
+				return float32(f())
+			})
+		} else {
+			resultStrides := result.Strides(nil)
+			generics.ElemApplyUnaryStrided[float32](dstData, dstData, dst.Shape(), resultStrides, resultStrides, func(v float32) float32 {
+				return float32(f())
+			})
+		}
+	case []float64:
+		if result.IsContiguous() {
+			size := t.Size()
+			generics.ElemApplyUnary[float64](dstData, dstData, size, func(v float64) float64 {
+				return float64(f())
+			})
+		} else {
+			resultStrides := result.Strides(nil)
+			generics.ElemApplyUnaryStrided[float64](dstData, dstData, dst.Shape(), resultStrides, resultStrides, func(v float64) float64 {
+				return float64(f())
+			})
+		}
+	case []int32:
+		if result.IsContiguous() {
+			size := t.Size()
+			generics.ElemApplyUnary[int32](dstData, dstData, size, func(v int32) int32 {
+				return int32(f())
+			})
+		} else {
+			resultStrides := result.Strides(nil)
+			generics.ElemApplyUnaryStrided[int32](dstData, dstData, dst.Shape(), resultStrides, resultStrides, func(v int32) int32 {
+				return int32(f())
+			})
+		}
+	case []int64:
+		if result.IsContiguous() {
+			size := t.Size()
+			generics.ElemApplyUnary[int64](dstData, dstData, size, func(v int64) int64 {
+				return int64(f())
+			})
+		} else {
+			resultStrides := result.Strides(nil)
+			generics.ElemApplyUnaryStrided[int64](dstData, dstData, dst.Shape(), resultStrides, resultStrides, func(v int64) int64 {
+				return int64(f())
+			})
+		}
+	case []int:
+		if result.IsContiguous() {
+			size := t.Size()
+			generics.ElemApplyUnary[int](dstData, dstData, size, func(v int) int {
+				return int(f())
+			})
+		} else {
+			resultStrides := result.Strides(nil)
+			generics.ElemApplyUnaryStrided[int](dstData, dstData, dst.Shape(), resultStrides, resultStrides, func(v int) int {
+				return int(f())
+			})
+		}
+	case []int16:
+		if result.IsContiguous() {
+			size := t.Size()
+			generics.ElemApplyUnary[int16](dstData, dstData, size, func(v int16) int16 {
+				return int16(f())
+			})
+		} else {
+			resultStrides := result.Strides(nil)
+			generics.ElemApplyUnaryStrided[int16](dstData, dstData, dst.Shape(), resultStrides, resultStrides, func(v int16) int16 {
+				return int16(f())
+			})
+		}
+	case []int8:
+		if result.IsContiguous() {
+			size := t.Size()
+			generics.ElemApplyUnary[int8](dstData, dstData, size, func(v int8) int8 {
+				return int8(f())
+			})
+		} else {
+			resultStrides := result.Strides(nil)
+			generics.ElemApplyUnaryStrided[int8](dstData, dstData, dst.Shape(), resultStrides, resultStrides, func(v int8) int8 {
+				return int8(f())
+			})
+		}
+	default:
+		panic(fmt.Sprintf("tensor.FillFunc: unsupported data type: %T", dstData))
+	}
+
 	return result
 }

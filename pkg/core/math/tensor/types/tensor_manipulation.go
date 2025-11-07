@@ -61,6 +61,12 @@ type TensorManipulation interface {
 	// Uses optimized primitive for efficient computation.
 	Fill(dst Tensor, value float64) Tensor
 
+	// Fill fills the tensor with a value calculated by callback function.
+	// If dst is nil, operation is in-place (modifies t) and returns t.
+	// If dst is provided, writes result to dst and returns dst.
+	// Uses optimized primitive for efficient computation.
+	FillFunc(dst Tensor, f func() float64) Tensor
+
 	// Pad adds padding to tensor with constant value (matches tf.pad).
 	// padding: [padBeforeDim0, padAfterDim0, padBeforeDim1, padAfterDim1, ...]
 	// Each dimension has two padding values: before and after.
