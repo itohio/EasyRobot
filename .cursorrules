@@ -1,4 +1,4 @@
-# Project specific rules
+# Project EasyRobot specific rules
 - Main use-case : Robotics
 - Precision - float32
 - As few allocations as possible (controlled buffer-preallocations, reuse)
@@ -6,6 +6,7 @@
 - Do not use Docker when working on unit tests
 - Use Python libraries via helper programs to verify results for math primitives
 - Use testify in unit tests
+- When working on EasyRobot project, modify only this repository!
 
 # General rules
 - Prefer composition over inheritance
@@ -90,17 +91,6 @@ Prefer:
 - errors.Is/As over type assertions
 - sync.Pool for frequently allocated objects
 - Concrete types in struct fields, interfaces in parameters
-
-<!-- # Execution Environment
-For any code execution, testing, or experiments:
-- MUST use Docker containers, never run directly on host
-- Create Dockerfile in project root or test directory
-- Use docker-compose for multi-service scenarios
-- Mount code as volume, don't copy into image during development
-- Examples:
-  * Python tests: docker run --rm -v $(pwd):/app -w /app python:3.11 pytest
-  * Go tests: docker run --rm -v $(pwd):/go/src/app -w /go/src/app golang:1.21 go test ./...
-  * Quick experiments: docker run --rm -it -v $(pwd):/workspace python:3.11 python script.py -->
 
 # Context Management
 When dealing with large files or datasets:
