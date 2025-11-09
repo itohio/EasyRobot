@@ -142,6 +142,29 @@ func TestMatMulTo(t *testing.T) {
 		dstData := dst.Data().([]float32)
 		assert.NotEqual(t, float32(0), dstData[0], "dst should be filled with result")
 	})
+
+	t.Run("use non-contiguous destination tensor", func(t *testing.T) {
+		t1 := FromFloat32(types.NewShape(2, 3), []float32{1, 2, 3, 4, 5, 6})
+		t2 := FromFloat32(types.NewShape(3, 2), []float32{1, 2, 3, 4, 5, 6})
+		base := New(types.FP32, types.NewShape(2, 2))
+		// Create a transposed view to force non-contiguous strides.
+		view := base.Transpose(nil, []int{1, 0})
+
+		result := t1.MatMul(view, t2)
+		assert.Equal(t, view, result, "MatMul should return provided non-contiguous destination")
+
+		expected := [][]float32{
+			{22, 28},
+			{49, 64},
+		}
+
+		for i := 0; i < 2; i++ {
+			for j := 0; j < 2; j++ {
+				assert.InDelta(t, expected[i][j], result.At(i, j), 1e-5, "value mismatch at (%d,%d)", i, j)
+				assert.InDelta(t, expected[j][i], base.At(i, j), 1e-5, "base storage mismatch at (%d,%d)", i, j)
+			}
+		}
+	})
 }
 
 func TestTranspose2D(t *testing.T) {

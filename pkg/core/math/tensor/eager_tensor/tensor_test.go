@@ -3,6 +3,7 @@ package eager_tensor
 import (
 	"testing"
 
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
 	"github.com/stretchr/testify/assert"
 )
@@ -249,6 +250,28 @@ func TestSetAt(t *testing.T) {
 			tensorCopy.SetAt(tt.value, tt.indices...)
 		})
 	}
+}
+
+func TestTensorReleaseReturnsBuffer(t *testing.T) {
+	_ = fp32.Pool.Reconfigure()
+
+	shape := types.NewShape(4, 4)
+	tensor := New(types.FP32, shape)
+	data := types.GetTensorData[[]float32](tensor)
+	if len(data) == 0 {
+		t.Fatal("expected tensor data length > 0")
+	}
+
+	firstPtr := &data[0]
+	tensor.Release()
+
+	reused := fp32.Pool.Get(len(data))
+	if len(reused) == 0 {
+		t.Fatal("expected reused slice length > 0")
+	}
+
+	assert.Equal(t, firstPtr, &reused[0], "pool should return previously released buffer")
+	fp32.Pool.Put(reused)
 }
 
 func TestReshape(t *testing.T) {

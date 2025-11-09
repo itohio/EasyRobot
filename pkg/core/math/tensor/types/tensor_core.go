@@ -73,4 +73,9 @@ type TensorCore interface {
 	// If no pairs provided, iterates over all elements. Iterates in row-major order.
 	// Returns Element objects with Get() and Set() methods for element access.
 	Elements(fixedAxisValuePairs ...int) func(func(Element) bool)
+
+	// Release allows tensors backed by pooled storage to return their buffers.
+	// Implementations may no-op when no pooling is used or when tensor views
+	// share storage. Calling Release multiple times should be safe.
+	Release()
 }

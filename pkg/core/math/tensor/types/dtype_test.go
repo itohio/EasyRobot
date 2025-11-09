@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -331,6 +332,20 @@ func TestCloneTensorData(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestReleaseTensorData(t *testing.T) {
+	_ = fp32.Pool.Reconfigure()
+	data := MakeTensorData(FP32, 8).([]float32)
+	ptr := &data[0]
+
+	ReleaseTensorData(data)
+
+	reused := fp32.Pool.Get(8)
+	if len(reused) > 0 {
+		assert.Equal(t, ptr, &reused[0], "expected buffer to be returned to pool")
+	}
+	fp32.Pool.Put(reused)
 }
 
 func TestCloneTensorDataTo(t *testing.T) {

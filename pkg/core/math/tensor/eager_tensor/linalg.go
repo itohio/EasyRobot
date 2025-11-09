@@ -28,44 +28,21 @@ func (t Tensor) MatMul(dst types.Tensor, other types.Tensor) types.Tensor {
 
 	switch t.Data().(type) {
 	case []float32:
-		var result types.Tensor
 		// Handle 2D case: [M, K] × [K, N]
 		if len(tShape) == 2 && len(otherShape) == 2 {
-			result = t.matMul2D(other)
+			return t.matMul2D(other, dst)
 		} else if len(tShape) >= 2 && len(otherShape) >= 2 {
 			// Handle batched case: [B, M, K] × [B, K, N] or [M, K] × [B, K, N]
-			result = t.matMulBatched(other)
-		} else {
-			panic(fmt.Sprintf("tensor.MatMul: unsupported tensor shapes: %v × %v", tShape, otherShape))
+			return t.matMulBatched(other, dst)
 		}
-
-		if result == nil {
-			return nil
-		}
-
-		if IsNil(dst) {
-			return result
-		}
-
-		if !result.Shape().Equal(dst.Shape()) {
-			panic(fmt.Sprintf("tensor.MatMul: destination shape mismatch: expected %v, got %v", result.Shape(), dst.Shape()))
-		}
-
-		// Copy result to dst using generics
-		resultData := types.GetTensorData[[]float32](result)
-		dstData := types.GetTensorData[[]float32](dst)
-		shapeSlice := result.Shape().ToSlice()
-		dstStrides := dst.Strides(nil)
-		resultStrides := result.Strides(nil)
-		generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dstStrides, resultStrides)
-		return dst
+		panic(fmt.Sprintf("tensor.MatMul: unsupported tensor shapes: %v × %v", tShape, otherShape))
 	default:
 		panic(fmt.Sprintf("tensor.MatMul: unsupported data type: %T", t.Data()))
 	}
 }
 
 // matMul2D performs matrix multiplication for 2D tensors: [M, K] × [K, N] = [M, N]
-func (t Tensor) matMul2D(other types.Tensor) types.Tensor {
+func (t Tensor) matMul2D(other types.Tensor, dst types.Tensor) types.Tensor {
 	tShape := t.Shape()
 	otherShape := other.Shape()
 	M := tShape[0]
@@ -81,12 +58,11 @@ func (t Tensor) matMul2D(other types.Tensor) types.Tensor {
 	ldB := N
 	ldC := N
 
-	result := New(t.DataType(), types.NewShape(M, N))
-	resultPtr := &result
+	resultShape := types.NewShape(M, N)
+	target, resultData, copyBack := prepareMatMulTarget(t.DataType(), resultShape, dst)
 
 	tData := types.GetTensorData[[]float32](t)
 	otherData := types.GetTensorData[[]float32](other)
-	resultData := types.GetTensorData[[]float32](resultPtr)
 
 	fp32.Gemm_NN(
 		resultData,
@@ -97,11 +73,11 @@ func (t Tensor) matMul2D(other types.Tensor) types.Tensor {
 		1.0, 0.0,
 	)
 
-	return resultPtr
+	return finalizeMatMulTarget(target, dst, copyBack, resultShape)
 }
 
 // matMulBatched handles batched matrix multiplication
-func (t Tensor) matMulBatched(other types.Tensor) types.Tensor {
+func (t Tensor) matMulBatched(other types.Tensor, dst types.Tensor) types.Tensor {
 	tShape := t.Shape()
 	otherShape := other.Shape()
 
@@ -134,20 +110,20 @@ func (t Tensor) matMulBatched(other types.Tensor) types.Tensor {
 
 	if tBatchSize == otherBatchSize {
 		// Both have same batch size
-		return t.matMulSameBatch(other, tBatchSize, M, N, K)
+		return t.matMulSameBatch(other, dst, tBatchSize, M, N, K)
 	} else if tBatchSize == 1 && otherBatchSize > 1 {
 		// Broadcast first tensor
-		return t.matMulBroadcastFirst(other, otherBatchSize, M, N, K)
+		return t.matMulBroadcastFirst(other, dst, otherBatchSize, M, N, K)
 	} else if tBatchSize > 1 && otherBatchSize == 1 {
 		// Broadcast second tensor
-		return t.matMulBroadcastSecond(other, tBatchSize, M, N, K)
+		return t.matMulBroadcastSecond(other, dst, tBatchSize, M, N, K)
 	}
 
 	panic(fmt.Sprintf("tensor.MatMul: unsupported batch configuration: %v × %v", tShape, otherShape))
 }
 
 // matMulSameBatch handles [B, M, K] × [B, K, N]
-func (t Tensor) matMulSameBatch(other types.Tensor, batchSize, M, N, K int) types.Tensor {
+func (t Tensor) matMulSameBatch(other types.Tensor, dst types.Tensor, batchSize, M, N, K int) types.Tensor {
 	ldA := K
 	ldB := N
 	ldC := N
@@ -159,13 +135,11 @@ func (t Tensor) matMulSameBatch(other types.Tensor, batchSize, M, N, K int) type
 	resultShape := append([]int(nil), t.shape...)
 	resultShape[len(resultShape)-2] = M
 	resultShape[len(resultShape)-1] = N
-
-	result := New(t.DataType(), types.NewShape(resultShape...))
-	resultPtr := &result
+	shape := types.NewShape(resultShape...)
+	target, resultData, copyBack := prepareMatMulTarget(t.DataType(), shape, dst)
 
 	tData := types.GetTensorData[[]float32](t)
 	otherData := types.GetTensorData[[]float32](other)
-	resultData := types.GetTensorData[[]float32](resultPtr)
 
 	if t.IsContiguous() && other.IsContiguous() {
 		fp32.GemmStrided(
@@ -195,27 +169,25 @@ func (t Tensor) matMulSameBatch(other types.Tensor, batchSize, M, N, K int) type
 		)
 	}
 
-	return resultPtr
+	return finalizeMatMulTarget(target, dst, copyBack, shape)
 }
 
 // matMulBroadcastFirst handles [M, K] × [B, K, N] (broadcast first tensor)
-func (t Tensor) matMulBroadcastFirst(other types.Tensor, batchSize, M, N, K int) types.Tensor {
-	resultShape := []int{batchSize, M, N}
-	result := New(t.DataType(), types.NewShape(resultShape...))
-	resultPtr := &result
+func (t Tensor) matMulBroadcastFirst(other types.Tensor, dst types.Tensor, batchSize, M, N, K int) types.Tensor {
+	resultShape := types.NewShape(append([]int{batchSize}, M, N)...)
+	target, resultData, copyBack := prepareMatMulTarget(t.DataType(), resultShape, dst)
 
 	sliceSize := K * N
 	dstSize := M * N
 
 	tData := types.GetTensorData[[]float32](t)
 	otherData := types.GetTensorData[[]float32](other)
-	resultData := types.GetTensorData[[]float32](resultPtr)
 
 	for b := 0; b < batchSize; b++ {
 		sliceOffset := b * sliceSize
 		dstOffset := b * dstSize
 		fp32.Gemm_NN(
-			resultData[dstOffset:],
+			resultData[dstOffset:dstOffset+dstSize],
 			tData,
 			otherData[sliceOffset:],
 			N, K, N,
@@ -224,16 +196,15 @@ func (t Tensor) matMulBroadcastFirst(other types.Tensor, batchSize, M, N, K int)
 		)
 	}
 
-	return resultPtr
+	return finalizeMatMulTarget(target, dst, copyBack, resultShape)
 }
 
 // matMulBroadcastSecond handles [B, M, K] × [K, N] (broadcast second tensor)
-func (t Tensor) matMulBroadcastSecond(other types.Tensor, batchSize, M, N, K int) types.Tensor {
+func (t Tensor) matMulBroadcastSecond(other types.Tensor, dst types.Tensor, batchSize, M, N, K int) types.Tensor {
 	resultShape := append([]int(nil), t.shape...)
 	resultShape[len(resultShape)-1] = N
-
-	result := New(t.DataType(), types.NewShape(resultShape...))
-	resultPtr := &result
+	shape := types.NewShape(resultShape...)
+	target, resultData, copyBack := prepareMatMulTarget(t.DataType(), shape, dst)
 
 	ldA := K
 	ldB := N
@@ -243,14 +214,13 @@ func (t Tensor) matMulBroadcastSecond(other types.Tensor, batchSize, M, N, K int
 
 	tData := types.GetTensorData[[]float32](t)
 	otherData := types.GetTensorData[[]float32](other)
-	resultData := types.GetTensorData[[]float32](resultPtr)
 
 	for b := 0; b < batchSize; b++ {
 		tOffset := b * tStride
 		resultOffset := b * resultStride
 
 		fp32.Gemm_NN(
-			resultData[resultOffset:],
+			resultData[resultOffset:resultOffset+resultStride],
 			tData[tOffset:],
 			otherData,
 			ldC, ldA, ldB,
@@ -259,7 +229,44 @@ func (t Tensor) matMulBroadcastSecond(other types.Tensor, batchSize, M, N, K int
 		)
 	}
 
-	return resultPtr
+	return finalizeMatMulTarget(target, dst, copyBack, shape)
+}
+
+func prepareMatMulTarget(dtype types.DataType, shape types.Shape, dst types.Tensor) (types.Tensor, []float32, bool) {
+	if IsNil(dst) {
+		tmp := New(dtype, shape)
+		tmpPtr := &tmp
+		return tmpPtr, types.GetTensorData[[]float32](tmpPtr), false
+	}
+
+	if dst.DataType() != dtype {
+		panic(fmt.Sprintf("tensor.MatMul: destination dtype mismatch: expected %v, got %v", dtype, dst.DataType()))
+	}
+	if !shape.Equal(dst.Shape()) {
+		panic(fmt.Sprintf("tensor.MatMul: destination shape mismatch: expected %v, got %v", shape, dst.Shape()))
+	}
+
+	if dst.IsContiguous() {
+		return dst, types.GetTensorData[[]float32](dst), false
+	}
+
+	tmp := New(dtype, shape)
+	tmpPtr := &tmp
+	return tmpPtr, types.GetTensorData[[]float32](tmpPtr), true
+}
+
+func finalizeMatMulTarget(target types.Tensor, dst types.Tensor, copyBack bool, shape types.Shape) types.Tensor {
+	if IsNil(dst) {
+		return target
+	}
+	if copyBack {
+		dstData := types.GetTensorData[[]float32](dst)
+		srcData := types.GetTensorData[[]float32](target)
+		dstStrides := dst.Strides(nil)
+		srcStrides := target.Strides(nil)
+		generics.ElemCopyStrided[float32](dstData, srcData, shape.ToSlice(), dstStrides, srcStrides)
+	}
+	return dst
 }
 
 // Transpose transposes tensor dimensions. Currently supports 2D transpose.

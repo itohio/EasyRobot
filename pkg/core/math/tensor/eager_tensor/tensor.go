@@ -118,6 +118,24 @@ func (t Tensor) Shape() types.Shape {
 	return t.shape
 }
 
+// Release returns tensor-backed buffers to their respective pools when possible.
+// It is safe to call Release multiple times. Views (non-zero offset or
+// non-contiguous tensors) do not release their storage.
+func (t Tensor) Release() {
+	if t.shape == nil || t.data == nil {
+		return
+	}
+	if t.offset != 0 || !t.IsContiguous() {
+		return
+	}
+	size := t.Size()
+	if size <= 0 {
+		return
+	}
+
+	types.ReleaseTensorData(t.data)
+}
+
 // Rank returns the number of dimensions.
 func (t Tensor) Rank() int {
 	if t.shape == nil {

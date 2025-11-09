@@ -2,6 +2,12 @@ package types
 
 import (
 	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/qi"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/qi16"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/qi32"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/qi64"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/qi8"
 )
 
 // DataType represents the underlying element type stored by a tensor.
@@ -63,23 +69,44 @@ func TypeFromData(v any) DataType {
 func MakeTensorData(dt DataType, size int) any {
 	switch dt {
 	case FP32:
-		return make([]float32, size)
+		return fp32.Pool.Get(size)
 	case FP64:
 		return make([]float64, size)
 	case INT16:
-		return make([]int16, size)
+		return qi16.Pool.Get(size)
 	case INT:
-		return make([]int, size)
+		return qi.Pool.Get(size)
 	case INT32:
-		return make([]int32, size)
+		return qi32.Pool.Get(size)
 	case INT64:
-		return make([]int64, size)
+		return qi64.Pool.Get(size)
 	case INT8:
-		return make([]int8, size)
+		return qi8.Pool.Get(size)
 	case INT48:
-		return make([]int8, size)
+		return qi8.Pool.Get(size)
 	default:
 		return nil
+	}
+}
+
+func ReleaseTensorData(data any) {
+	if data == nil {
+		return
+	}
+
+	switch buf := data.(type) {
+	case []float32:
+		fp32.Pool.Put(buf)
+	case []int16:
+		qi16.Pool.Put(buf)
+	case []int:
+		qi.Pool.Put(buf)
+	case []int32:
+		qi32.Pool.Put(buf)
+	case []int64:
+		qi64.Pool.Put(buf)
+	case []int8:
+		qi8.Pool.Put(buf)
 	}
 }
 
