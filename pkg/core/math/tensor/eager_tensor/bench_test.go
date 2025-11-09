@@ -1436,9 +1436,10 @@ func BenchmarkTensorBroadcastTo_InPlace(b *testing.B) {
 		srcShape types.Shape
 		dstShape types.Shape
 	}{
-		{"1D_to_2D", types.NewShape(100), types.NewShape(10, 100)},
-		{"1D_to_3D", types.NewShape(50), types.NewShape(10, 10, 50)},
-		{"2D_to_3D", types.NewShape(50, 100), types.NewShape(10, 50, 100)},
+		{"1x100_to_10x100", types.NewShape(1, 100), types.NewShape(10, 100)},
+		{"1x1x50_to_10x10x50", types.NewShape(1, 1, 50), types.NewShape(10, 10, 50)},
+		{"1x50x100_to_10x50x100", types.NewShape(1, 50, 100), types.NewShape(10, 50, 100)},
+		{"1x1_to_100x100", types.NewShape(1, 1), types.NewShape(100, 100)},
 	}
 	for _, bc := range broadcastCases {
 		b.Run(bc.name, func(b *testing.B) {
@@ -1458,9 +1459,10 @@ func BenchmarkTensorBroadcastTo_Destination(b *testing.B) {
 		srcShape types.Shape
 		dstShape types.Shape
 	}{
-		{"1D_to_2D", types.NewShape(100), types.NewShape(10, 100)},
-		{"1D_to_3D", types.NewShape(50), types.NewShape(10, 10, 50)},
-		{"2D_to_3D", types.NewShape(50, 100), types.NewShape(10, 50, 100)},
+		{"1x100_to_10x100", types.NewShape(1, 100), types.NewShape(10, 100)},
+		{"1x1x50_to_10x10x50", types.NewShape(1, 1, 50), types.NewShape(10, 10, 50)},
+		{"1x50x100_to_10x50x100", types.NewShape(1, 50, 100), types.NewShape(10, 50, 100)},
+		{"1x1_to_100x100", types.NewShape(1, 1), types.NewShape(100, 100)},
 	}
 	for _, bc := range broadcastCases {
 		b.Run(bc.name, func(b *testing.B) {
@@ -1738,6 +1740,118 @@ func BenchmarkTensorDot(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
 				t1.Dot(t2)
+			}
+		})
+	}
+}
+
+// Benchmark Convolution Operations
+var conv1DSizes = []struct {
+	name        string
+	inputShape  types.Shape // [batch, inChannels, length] or [inChannels, length]
+	kernelShape types.Shape // [outChannels, inChannels, kernelLen]
+	stride      int
+	padding     int
+}{
+	{"batch32_in64_out128_k3_s1_p1", types.NewShape(32, 64, 128), types.NewShape(128, 64, 3), 1, 1},
+	{"batch16_in32_out64_k5_s2_p2", types.NewShape(16, 32, 256), types.NewShape(64, 32, 5), 2, 2},
+	{"batch8_in16_out32_k7_s1_p3", types.NewShape(8, 16, 512), types.NewShape(32, 16, 7), 1, 3},
+	{"no_batch_in64_out128_k3_s1_p1", types.NewShape(64, 128), types.NewShape(128, 64, 3), 1, 1},
+}
+
+func BenchmarkTensorConv1D_Destination(b *testing.B) {
+	for _, size := range conv1DSizes {
+		b.Run(size.name, func(b *testing.B) {
+			input := makeBenchTensor(size.inputShape)
+			kernel := makeBenchTensor(size.kernelShape)
+			// Create bias: [outChannels]
+			biasShape := types.NewShape(size.kernelShape[0])
+			bias := makeBenchTensor(biasShape)
+			// Calculate output shape
+			inputShape := input.Shape()
+			var inLength int
+			if len(inputShape) == 3 {
+				inLength = inputShape[2]
+			} else {
+				inLength = inputShape[1]
+			}
+			outLength := (inLength+2*size.padding-size.kernelShape[2])/size.stride + 1
+			var outputShape types.Shape
+			if len(inputShape) == 3 {
+				outputShape = types.NewShape(inputShape[0], size.kernelShape[0], outLength)
+			} else {
+				outputShape = types.NewShape(size.kernelShape[0], outLength)
+			}
+			dst := New(types.FP32, outputShape)
+			b.ResetTimer()
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				input.Conv1D(dst, kernel, bias, size.stride, size.padding)
+			}
+		})
+	}
+}
+
+var conv2DSizes = []struct {
+	name        string
+	inputShape  types.Shape // [batch, inChannels, height, width]
+	kernelShape types.Shape // [outChannels, inChannels, kernelH, kernelW]
+	stride      []int
+	padding     []int
+}{
+	{"batch32_in64_out128_k3x3_s1x1_p1x1", types.NewShape(32, 64, 64, 64), types.NewShape(128, 64, 3, 3), []int{1, 1}, []int{1, 1}},
+	{"batch16_in32_out64_k5x5_s2x2_p2x2", types.NewShape(16, 32, 128, 128), types.NewShape(64, 32, 5, 5), []int{2, 2}, []int{2, 2}},
+	{"batch8_in16_out32_k7x7_s1x1_p3x3", types.NewShape(8, 16, 256, 256), types.NewShape(32, 16, 7, 7), []int{1, 1}, []int{3, 3}},
+	{"batch1_in3_out64_k3x3_s1x1_p1x1", types.NewShape(1, 3, 224, 224), types.NewShape(64, 3, 3, 3), []int{1, 1}, []int{1, 1}},
+}
+
+func BenchmarkTensorConv2D_Destination(b *testing.B) {
+	for _, size := range conv2DSizes {
+		b.Run(size.name, func(b *testing.B) {
+			input := makeBenchTensor(size.inputShape)
+			kernel := makeBenchTensor(size.kernelShape)
+			// Create bias: [outChannels]
+			biasShape := types.NewShape(size.kernelShape[0])
+			bias := makeBenchTensor(biasShape)
+			// Calculate output shape
+			inputShape := input.Shape()
+			inHeight := inputShape[2]
+			inWidth := inputShape[3]
+			outHeight := (inHeight+2*size.padding[0]-size.kernelShape[2])/size.stride[0] + 1
+			outWidth := (inWidth+2*size.padding[1]-size.kernelShape[3])/size.stride[1] + 1
+			outputShape := types.NewShape(inputShape[0], size.kernelShape[0], outHeight, outWidth)
+			dst := New(types.FP32, outputShape)
+			b.ResetTimer()
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				input.Conv2D(dst, kernel, bias, size.stride, size.padding)
+			}
+		})
+	}
+}
+
+func BenchmarkTensorConv2DTransposed_Destination(b *testing.B) {
+	for _, size := range conv2DSizes {
+		b.Run(size.name, func(b *testing.B) {
+			input := makeBenchTensor(size.inputShape)
+			// For transposed convolution, kernel shape is [inChannels, outChannels, kernelH, kernelW]
+			transposedKernelShape := types.NewShape(size.kernelShape[1], size.kernelShape[0], size.kernelShape[2], size.kernelShape[3])
+			kernel := makeBenchTensor(transposedKernelShape)
+			// Create bias: [outChannels] - note: outChannels is now the second dimension
+			biasShape := types.NewShape(transposedKernelShape[1])
+			bias := makeBenchTensor(biasShape)
+			// Calculate output shape for transposed convolution
+			inputShape := input.Shape()
+			inHeight := inputShape[2]
+			inWidth := inputShape[3]
+			outHeight := (inHeight-1)*size.stride[0] + size.kernelShape[2] - 2*size.padding[0]
+			outWidth := (inWidth-1)*size.stride[1] + size.kernelShape[3] - 2*size.padding[1]
+			outputShape := types.NewShape(inputShape[0], transposedKernelShape[1], outHeight, outWidth)
+			dst := New(types.FP32, outputShape)
+			b.ResetTimer()
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				input.Conv2DTransposed(dst, kernel, bias, size.stride, size.padding)
 			}
 		})
 	}

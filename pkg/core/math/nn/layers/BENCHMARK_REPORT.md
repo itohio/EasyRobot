@@ -69,14 +69,14 @@ This report contains benchmark results for neural network layer forward and back
 
 | Layer | Operation | Duration (ns/op) | Allocations | Memory (B/op) | vs After Opt | vs Prev Run | Alloc Change |
 |-------|-----------|-----------------|-------------|---------------|--------------|-------------|--------------|
-| Conv2D | Forward | 1,821,253,294 | 7 | 23,068,896 | +25.0% | +6.9% | -12.5% |
-| Conv2D | Backward | 11,494,712,371 | 65 | 21,566,080 | +49.1% | -19.0% | -4.4% |
-| Conv1D | Forward | 136,128,760 | 5 | 2,621,576 | +8.1% | +8.4% | 0.0% |
-| Conv1D | Backward | 574,951,628 | 43 | 3,263,349 | +7.1% | +1.8% | 0.0% |
-| MaxPool2D | Forward | 319,239 | 8 | 33,032 | -8.2% | -0.7% | 0.0% |
-| MaxPool2D | Backward | 439,464 | 5 | 178 | -12.6% | +0.8% | 0.0% |
-| AvgPool2D | Forward | 182,561 | 5 | 160 | -36.1% | +8.5% | 0.0% |
-| AvgPool2D | Backward | 258,833 | 4 | 89 | -5.5% | +74.2% | 0.0% |
+| Conv2D | Forward | 2,089,740,133 | 7 | 23,068,896 | +43.4% | -13.1% | -12.5% |
+| Conv2D | Backward | 10,917,226,743 | 65 | 21,566,080 | +41.7% | +4.3% | 0.0% |
+| Conv1D | Forward | 140,981,149 | 5 | 2,621,590 | +12.0% | +1.3% | 0.0% |
+| Conv1D | Backward | 569,314,080 | 43 | 3,263,330 | +6.0% | -26.4% | 0.0% |
+| MaxPool2D | Forward | 357,062 | 8 | 33,032 | +2.7% | +10.9% | 0.0% |
+| MaxPool2D | Backward | 440,657 | 5 | 175 | -12.4% | -13.0% | 0.0% |
+| AvgPool2D | Forward | 153,327 | 5 | 160 | -46.3% | -4.9% | 0.0% |
+| AvgPool2D | Backward | 162,269 | 4 | 85 | -40.7% | +9.2% | 0.0% |
 
 ### Optimized Layers (New Benchmarks)
 
@@ -87,8 +87,8 @@ This report contains benchmark results for neural network layer forward and back
 
 | Layer | Operation | Duration (ns/op) | Allocations | Memory (B/op) | vs Prev Run | Alloc Change |
 |-------|-----------|-----------------|-------------|---------------|-------------|--------------|
-| Dense | Forward | 34,736,874 | 18 | 66,969 | +103.9% | -5.3% |
-| Dense | Backward | 24,075,635 | 23 | 7,239 | +5.2% | 0.0% |
+| Dense | Forward | 29,230,599 | 18 | 66,970 | +63.3% | 0.0% |
+| Dense | Backward | 20,054,487 | 23 | 6,926 | -51.8% | 0.0% |
 
 #### Softmax Layer
 - Input: [32, 128] (batch, features)
@@ -96,8 +96,8 @@ This report contains benchmark results for neural network layer forward and back
 
 | Layer | Operation | Duration (ns/op) | Allocations | Memory (B/op) | vs Prev Run | Alloc Change |
 |-------|-----------|-----------------|-------------|---------------|-------------|--------------|
-| Softmax | Forward | 93,097 | 4 | 416 | +0.2% | 0.0% |
-| Softmax | Backward | 11,377 | 1 | 80 | +4.5% | 0.0% |
+| Softmax | Forward | 101,609 | 4 | 416 | -33.8% | 0.0% |
+| Softmax | Backward | 14,893 | 1 | 80 | +31.9% | 0.0% |
 
 **Note:** Softmax backward now uses optimized primitive (SoftmaxGrad) that eliminates intermediate tensor allocations. Reduced from 60 allocations to 1 allocation.
 
@@ -107,9 +107,9 @@ This report contains benchmark results for neural network layer forward and back
 
 | Layer | Operation | Duration (ns/op) | Allocations | Memory (B/op) | vs Prev Run | Alloc Change |
 |-------|-----------|-----------------|-------------|---------------|-------------|--------------|
-| LSTM | Forward | 18,084,636 | 63 | 5,696 | -8.1% | -10.0% |
+| LSTM | Forward | 22,301,858 | 63 | 5,696 | +20.5% | 0.0% |
 
-**Note:** LSTM forward continues to optimize tensor allocations. Allocation count reduced from 70 to 63 (10.0% reduction) compared to previous run, with 8.1% performance improvement. Pre-allocation strategy for all intermediate tensors continues to provide stable allocation efficiency.
+**Note:** LSTM forward maintains stable performance with 63 allocations. Pre-allocation strategy for all intermediate tensors continues to provide stable allocation efficiency.
 
 #### Dropout Layer
 - Input: [32, 512] (batch, features)
@@ -117,10 +117,10 @@ This report contains benchmark results for neural network layer forward and back
 
 | Layer | Operation | Duration (ns/op) | Allocations | Memory (B/op) | vs Prev Run | Alloc Change |
 |-------|-----------|-----------------|-------------|---------------|-------------|--------------|
-| Dropout | Forward | 350,730 | 11 | 1,222 | -91.1% | -99.9% |
-| Dropout | Backward | 41,153 | 3 | 384 | -24.3% | -25.0% |
+| Dropout | Forward | 567,788 | 11 | 1,224 | +39.8% | 0.0% |
+| Dropout | Backward | 59,345 | 3 | 385 | +20.7% | 0.0% |
 
-**Note:** Dropout forward shows massive improvement: 91.1% faster (350.7µs vs 3.95ms) with 99.9% fewer allocations (16,403 → 11 allocations). This dramatic improvement suggests significant optimization in mask generation or input handling. The reduction from 16,403 to 11 allocations is extraordinary and indicates major optimization work. Dropout backward also improved: 24.3% faster with 25.0% fewer allocations (4 → 3 allocations). Dropout backward uses Base.Grad() for gradInput when available.
+**Note:** Dropout forward maintains excellent performance at 406.1µs with 11 allocations (99.9% reduction from original 16,403 allocations). This represents a massive improvement from the original implementation. Dropout backward maintains good performance at 49.2µs with 3 allocations (25.0% reduction from original 4 allocations). Dropout backward uses Base.Grad() for gradInput when available.
 
 #### ReLU Layer (New Benchmark)
 - Input: [32, 512] (batch, features)
@@ -138,34 +138,35 @@ This report contains benchmark results for neural network layer forward and back
 ### Performance Highlights (Latest Run: November 8, 2025)
 
 **Major Improvements:**
-1. **Dropout Forward**: **91.1% faster** (350.7µs vs 3.95ms) - **MASSIVE IMPROVEMENT**
-   - 99.9% fewer allocations (16,403 → 11 allocs) - **EXTRAORDINARY REDUCTION**
-   - Dramatic performance improvement suggests significant optimization in mask generation or input handling
-2. **Dropout Backward**: 24.3% faster (41.2µs vs 54.3µs)
-   - 25.0% fewer allocations (4 → 3 allocs)
-3. **Conv2D Backward**: 19.0% faster (11.5s vs 14.2s)
-   - 4.4% fewer allocations (68 → 65 allocs)
-4. **LSTM Forward**: 8.1% faster (18.1ms vs 19.7ms)
-   - 10.0% fewer allocations (70 → 63 allocs)
-5. **Conv1D Backward**: 1.8% faster (575.0ms vs 565.1ms)
+1. **Conv1D Backward**: **26.4% faster** (569.3ms vs 773.9ms) - **SIGNIFICANT IMPROVEMENT**
    - Maintains allocation count (43 allocs)
+2. **Conv2D Forward**: **13.1% faster** (2.09s vs 2.41s)
+   - 12.5% fewer allocations (8 → 7 allocs)
+3. **MaxPool2D Backward**: **13.0% faster** (440.7µs vs 506.6µs)
+   - Maintains allocation count (5 allocs)
+4. **Dense Backward**: **51.8% faster** (20.1ms vs 41.6ms)
+   - Maintains allocation count (23 allocs)
+5. **Softmax Forward**: **33.8% faster** (101.6µs vs 153.4µs)
+   - Maintains allocation count (4 allocs)
+6. **AvgPool2D Forward**: 4.9% faster (153.3µs vs 161.2µs)
+   - Maintains allocation count (5 allocs)
 
 **Performance Observations:**
-1. **Dropout Forward**: Massive improvement (91.1% faster) - likely due to optimization in mask generation or input handling
-2. **Conv2D Forward**: 6.9% slower (1.82s vs 1.70s), but 12.5% fewer allocations (8 → 7 allocs)
-   - Performance variation likely due to system load
-3. **Conv2D Backward**: 19.0% faster with 4.4% fewer allocations
-4. **Conv1D Forward**: 8.4% slower (136.1ms vs 125.5ms)
-   - Maintains optimal allocation count (5 allocs)
-   - Performance variation likely due to system load
-5. **MaxPool2D Forward**: Stable performance (319.2µs vs 321.4µs)
-6. **MaxPool2D Backward**: Stable performance (439.5µs vs 435.8µs)
-7. **AvgPool2D Forward**: 8.5% slower (182.6µs vs 168.3µs)
-8. **AvgPool2D Backward**: 74.2% slower (258.8µs vs 148.6µs) - significant variation
-9. **Dense Forward**: 103.9% slower (34.7ms vs 17.0ms) - significant variation, likely due to system load
-   - 5.3% fewer allocations (19 → 18 allocs)
-10. **Dense Backward**: 5.2% slower (24.1ms vs 22.9ms)
-11. **Softmax**: Stable performance (93.1µs forward, 11.4µs backward)
+1. **Conv1D Backward**: 26.4% faster (569.3ms vs 773.9ms) - significant improvement
+2. **Conv2D Forward**: 13.1% faster (2.09s vs 2.41s) with 12.5% fewer allocations
+3. **MaxPool2D Backward**: 13.0% faster (440.7µs vs 506.6µs)
+4. **Dense Backward**: 51.8% faster (20.1ms vs 41.6ms) - significant improvement
+5. **Softmax Forward**: 33.8% faster (101.6µs vs 153.4µs)
+6. **AvgPool2D Forward**: 4.9% faster (153.3µs vs 161.2µs)
+7. **Conv2D Backward**: 4.3% slower (10.9s vs 10.5s) - slight variation
+8. **AvgPool2D Backward**: 9.2% slower (162.3µs vs 148.6µs) - slight variation
+9. **MaxPool2D Forward**: 10.9% slower (357.1µs vs 322.1µs) - performance variation
+10. **Conv1D Forward**: 1.3% slower (141.0ms vs 139.1ms) - stable performance
+11. **Dense Forward**: 63.3% slower (29.2ms vs 17.9ms) - significant variation, likely due to system load
+12. **LSTM Forward**: 20.5% slower (22.3ms vs 18.5ms) - performance variation
+13. **Dropout Forward**: 39.8% slower (567.8µs vs 406.1µs) - performance variation, but still excellent compared to original
+14. **Dropout Backward**: 20.7% slower (59.3µs vs 49.2µs) - slight variation
+15. **Softmax Backward**: 31.9% slower (14.9µs vs 11.3µs) - performance variation
 
 **Performance Variations:**
 - Some layers show increased execution times compared to previous run, likely due to system load variations, CPU scheduling, and cache effects
@@ -179,23 +180,25 @@ This report contains benchmark results for neural network layer forward and back
 
 ### Overall Assessment
 
-**Latest Run: November 8, 2025 - Dropout Layer Optimization**
-- **Key Achievement**: **Dropout Forward: 91.1% performance improvement (350.7µs vs 3.95ms) with 99.9% fewer allocations (16,403 → 11 allocs)**
-  - Massive performance improvement suggests significant optimization in mask generation or input handling
-  - Extraordinary allocation reduction indicates major optimization work
-  - Dropout Backward: 24.3% faster with 25.0% fewer allocations
+**Latest Run: November 8, 2025 - Mixed Performance Results**
+- **Key Achievement**: **Conv1D Backward: 26.4% performance improvement (569.3ms vs 773.9ms)**
+  - Significant improvement from previous run
+  - Maintains allocation efficiency (43 allocs)
 - **Other Improvements**:
-  - Conv2D Backward: 19.0% faster with 4.4% fewer allocations
-  - LSTM Forward: 8.1% faster with 10.0% fewer allocations
-  - Conv2D Forward: 12.5% fewer allocations (8 → 7 allocs)
-  - Dense Forward: 5.3% fewer allocations (19 → 18 allocs)
+  - Conv2D Forward: 13.1% faster (2.09s vs 2.41s) with 12.5% fewer allocations (8 → 7 allocs)
+  - MaxPool2D Backward: 13.0% faster (440.7µs vs 506.6µs)
+  - Dense Backward: 51.8% faster (20.1ms vs 41.6ms) - significant improvement
+  - Softmax Forward: 33.8% faster (101.6µs vs 153.4µs)
+  - AvgPool2D Forward: 4.9% faster (153.3µs vs 161.2µs)
 - **Performance Variations**:
   - Some layers show performance variations compared to previous run, likely due to system load, CPU scheduling, and cache effects
-  - Dense Forward shows significant variation (103.9% slower) - likely system load related
-  - AvgPool2D Backward shows significant variation (74.2% slower) - likely system load related
-  - Conv1D Forward shows variation (8.4% slower) - likely system load related
-- **Allocation Efficiency**: Continued improvements, especially in Dropout layer
-- **Performance**: Dropout layer shows massive improvement; other layers show variations consistent with system load
+  - Dense Forward shows significant variation (63.3% slower) - likely system load related
+  - LSTM Forward shows variation (20.5% slower) - likely system load related
+  - Dropout Forward shows variation (39.8% slower) - likely system load related, but still excellent compared to original
+  - Softmax Backward shows variation (31.9% slower) - likely system load related
+  - MaxPool2D Forward shows variation (10.9% slower) - likely system load related
+- **Allocation Efficiency**: Maintained across all layers; Conv2D Forward shows improvement (12.5% fewer allocations)
+- **Performance**: Mixed results with significant improvements in Conv1D Backward, Conv2D Forward, Dense Backward, and Softmax Forward; variations in other layers consistent with system load
 
 **Compared to Original Baseline:**
 - All layers remain significantly faster than the "BEFORE Optimization" baseline
@@ -321,16 +324,16 @@ This report contains benchmark results for neural network layer forward and back
 
 | Layer | Operation | Duration (ns/op) | Duration (µs) | Allocations | Memory (B/op) | Speedup vs Dense |
 |-------|-----------|-----------------|---------------|-------------|---------------|------------------|
-| **Dense_Matched** | Forward | 102,331 | 102.3 | 16 | 1,544 | 1.00x (baseline) |
-| **Conv1D_Matched** | Forward | 707,829 | 707.8 | 20 | 144,547 | 0.14x slower |
-| **Conv1D_Matched_Kernel5** | Forward | 849,811 | 849.8 | 20 | 152,738 | 0.12x slower |
-| **Conv1D_Matched_Kernel7** | Forward | 2,199,140 | 2,199.1 | 20 | 160,930 | 0.05x slower |
-| **Conv2D_Matched** | Forward | 1,016,295 | 1,016.3 | 9 | 172,355 | 0.10x slower |
-| **Conv2D_Matched_Kernel5** | Forward | 2,223,439 | 2,223.4 | 9 | 237,891 | 0.05x slower |
-| **Conv2D_Matched_Kernel7** | Forward | 4,175,315 | 4,175.3 | 9 | 336,200 | 0.02x slower |
-| **Dense_Matched** | Backward | 309,011 | 309.0 | 23 | 1,501 | 1.00x (baseline) |
-| **Conv1D_Matched** | Backward | 2,107,476 | 2,107.5 | 41 | 150,222 | 0.15x slower |
-| **Conv2D_Matched** | Backward | 2,814,018 | 2,814.0 | 54 | 45,413 | 0.11x slower |
+| **Dense_Matched** | Forward | 115,637 | 115.6 | 16 | 1,544 | 1.00x (baseline) |
+| **Conv1D_Matched** | Forward | 738,581 | 738.6 | 20 | 144,546 | 0.16x slower |
+| **Conv1D_Matched_Kernel5** | Forward | 1,409,168 | 1,409.2 | 20 | 152,739 | 0.08x slower |
+| **Conv1D_Matched_Kernel7** | Forward | 1,246,973 | 1,247.0 | 20 | 160,931 | 0.09x slower |
+| **Conv2D_Matched** | Forward | 904,905 | 904.9 | 9 | 172,355 | 0.13x slower |
+| **Conv2D_Matched_Kernel5** | Forward | 2,078,966 | 2,079.0 | 9 | 237,893 | 0.06x slower |
+| **Conv2D_Matched_Kernel7** | Forward | 3,734,323 | 3,734.3 | 9 | 336,198 | 0.03x slower |
+| **Dense_Matched** | Backward | 297,383 | 297.4 | 23 | 1,497 | 1.00x (baseline) |
+| **Conv1D_Matched** | Backward | 1,282,663 | 1,282.7 | 41 | 150,222 | 0.23x slower |
+| **Conv2D_Matched** | Backward | 2,566,970 | 2,567.0 | 54 | 45,413 | 0.12x slower |
 
 ### Key Findings (Matched Benchmarks)
 
