@@ -2,6 +2,8 @@ package fp32
 
 import (
 	"math"
+
+	helpers "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 )
 
 const float32ExpMax = 88.0 // max value for exp to avoid overflow
@@ -298,22 +300,31 @@ func ReLUGradStride(dst, gradOutput, input []float32, shape []int, stridesDst, s
 	}
 
 	// Stride-based path for non-contiguous tensors
-	indices := make([]int, len(shape))
-	offsets := make([]int, 3)
 	strideSet := [][]int{stridesDst, stridesGrad, stridesInput}
-	for {
-		dIdx := offsets[0]
-		gIdx := offsets[1]
-		iIdx := offsets[2]
-		if input[iIdx] > 0 {
-			dst[dIdx] = gradOutput[gIdx]
-		} else {
-			dst[dIdx] = 0
-		}
-		if !advanceOffsets(shape, indices, offsets, strideSet) {
-			break
+	var offsetsArr [3]int
+	process := func(indices []int, offsets []int) {
+		for {
+			dIdx := offsets[0]
+			gIdx := offsets[1]
+			iIdx := offsets[2]
+			if input[iIdx] > 0 {
+				dst[dIdx] = gradOutput[gIdx]
+			} else {
+				dst[dIdx] = 0
+			}
+			if !advanceOffsets(shape, indices, offsets, strideSet) {
+				break
+			}
 		}
 	}
+
+	if len(shape) <= helpers.MAX_DIMS {
+		var indicesArr [helpers.MAX_DIMS]int
+		process(indicesArr[:len(shape)], offsetsArr[:len(strideSet)])
+		return
+	}
+
+	process(make([]int, len(shape)), offsetsArr[:len(strideSet)])
 }
 
 // SigmoidGradStride computes sigmoid gradient with stride support: dst[i] = gradOutput[i] * output[i] * (1 - output[i])
@@ -338,19 +349,28 @@ func SigmoidGradStride(dst, gradOutput, output []float32, shape []int, stridesDs
 	}
 
 	// Stride-based path for non-contiguous tensors
-	indices := make([]int, len(shape))
-	offsets := make([]int, 3)
 	strideSet := [][]int{stridesDst, stridesGrad, stridesOutput}
-	for {
-		dIdx := offsets[0]
-		gIdx := offsets[1]
-		oIdx := offsets[2]
-		out := output[oIdx]
-		dst[dIdx] = gradOutput[gIdx] * out * (1 - out)
-		if !advanceOffsets(shape, indices, offsets, strideSet) {
-			break
+	var offsetsArr [3]int
+	process := func(indices []int, offsets []int) {
+		for {
+			dIdx := offsets[0]
+			gIdx := offsets[1]
+			oIdx := offsets[2]
+			out := output[oIdx]
+			dst[dIdx] = gradOutput[gIdx] * out * (1 - out)
+			if !advanceOffsets(shape, indices, offsets, strideSet) {
+				break
+			}
 		}
 	}
+
+	if len(shape) <= helpers.MAX_DIMS {
+		var indicesArr [helpers.MAX_DIMS]int
+		process(indicesArr[:len(shape)], offsetsArr[:len(strideSet)])
+		return
+	}
+
+	process(make([]int, len(shape)), offsetsArr[:len(strideSet)])
 }
 
 // TanhGradStride computes tanh gradient with stride support: dst[i] = gradOutput[i] * (1 - output[i]^2)
@@ -375,17 +395,26 @@ func TanhGradStride(dst, gradOutput, output []float32, shape []int, stridesDst, 
 	}
 
 	// Stride-based path for non-contiguous tensors
-	indices := make([]int, len(shape))
-	offsets := make([]int, 3)
 	strideSet := [][]int{stridesDst, stridesGrad, stridesOutput}
-	for {
-		dIdx := offsets[0]
-		gIdx := offsets[1]
-		oIdx := offsets[2]
-		out := output[oIdx]
-		dst[dIdx] = gradOutput[gIdx] * (1 - out*out)
-		if !advanceOffsets(shape, indices, offsets, strideSet) {
-			break
+	var offsetsArr [3]int
+	process := func(indices []int, offsets []int) {
+		for {
+			dIdx := offsets[0]
+			gIdx := offsets[1]
+			oIdx := offsets[2]
+			out := output[oIdx]
+			dst[dIdx] = gradOutput[gIdx] * (1 - out*out)
+			if !advanceOffsets(shape, indices, offsets, strideSet) {
+				break
+			}
 		}
 	}
+
+	if len(shape) <= helpers.MAX_DIMS {
+		var indicesArr [helpers.MAX_DIMS]int
+		process(indicesArr[:len(shape)], offsetsArr[:len(strideSet)])
+		return
+	}
+
+	process(make([]int, len(shape)), offsetsArr[:len(strideSet)])
 }

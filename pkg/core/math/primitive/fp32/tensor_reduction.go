@@ -1,6 +1,9 @@
 package fp32
 
-import "github.com/chewxy/math32"
+import (
+	"github.com/chewxy/math32"
+	helpers "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+)
 
 func ReduceSum(dst []float32, dstShape []int, dstStrides []int, src []float32, srcShape []int, srcStrides []int, axes []int) {
 	sizeDst := SizeFromShape(dstShape)
@@ -15,18 +18,28 @@ func ReduceSum(dst []float32, dstShape []int, dstStrides []int, src []float32, s
 	dstStrides = EnsureStrides(dstStrides, dstShape)
 	srcStrides = EnsureStrides(srcStrides, srcShape)
 	reduceMask := makeReduceMask(len(srcShape), axes)
-	mapped := mapStridesToSource(srcShape, reduceMask, dstStrides)
+	var mappedBuf [helpers.MAX_DIMS]int
+	mapped := mapStridesToSource(mappedBuf[:], srcShape, reduceMask, dstStrides)
 
-	indices := make([]int, len(srcShape))
-	offsets := make([]int, 2) // src, dst
 	strideSet := [][]int{srcStrides, mapped}
-	for {
-		dstOffset := offsets[1]
-		dst[dstOffset] += src[offsets[0]]
-		if !advanceOffsets(srcShape, indices, offsets, strideSet) {
-			break
+	var offsetsArr [2]int
+	process := func(indices []int, offsets []int) {
+		for {
+			dstOffset := offsets[1]
+			dst[dstOffset] += src[offsets[0]]
+			if !advanceOffsets(srcShape, indices, offsets, strideSet) {
+				break
+			}
 		}
 	}
+
+	if len(srcShape) <= helpers.MAX_DIMS {
+		var indicesArr [helpers.MAX_DIMS]int
+		process(indicesArr[:len(srcShape)], offsetsArr[:len(strideSet)])
+		return
+	}
+
+	process(make([]int, len(srcShape)), offsetsArr[:len(strideSet)])
 }
 
 func ReduceMean(dst []float32, dstShape []int, dstStrides []int, src []float32, srcShape []int, srcStrides []int, axes []int) {
@@ -60,25 +73,35 @@ func ReduceMax(dst []float32, dstShape []int, dstStrides []int, src []float32, s
 	dstStrides = EnsureStrides(dstStrides, dstShape)
 	srcStrides = EnsureStrides(srcStrides, srcShape)
 	reduceMask := makeReduceMask(len(srcShape), axes)
-	mapped := mapStridesToSource(srcShape, reduceMask, dstStrides)
+	var mappedBuf [helpers.MAX_DIMS]int
+	mapped := mapStridesToSource(mappedBuf[:], srcShape, reduceMask, dstStrides)
 
 	for i := 0; i < sizeDst; i++ {
 		dst[i] = -math32.MaxFloat32
 	}
 
-	indices := make([]int, len(srcShape))
-	offsets := make([]int, 2)
 	strideSet := [][]int{srcStrides, mapped}
-	for {
-		dstOffset := offsets[1]
-		val := src[offsets[0]]
-		if val > dst[dstOffset] {
-			dst[dstOffset] = val
-		}
-		if !advanceOffsets(srcShape, indices, offsets, strideSet) {
-			break
+	var offsetsArr [2]int
+	process := func(indices []int, offsets []int) {
+		for {
+			dstOffset := offsets[1]
+			val := src[offsets[0]]
+			if val > dst[dstOffset] {
+				dst[dstOffset] = val
+			}
+			if !advanceOffsets(srcShape, indices, offsets, strideSet) {
+				break
+			}
 		}
 	}
+
+	if len(srcShape) <= helpers.MAX_DIMS {
+		var indicesArr [helpers.MAX_DIMS]int
+		process(indicesArr[:len(srcShape)], offsetsArr[:len(strideSet)])
+		return
+	}
+
+	process(make([]int, len(srcShape)), offsetsArr[:len(strideSet)])
 }
 
 func ReduceMin(dst []float32, dstShape []int, dstStrides []int, src []float32, srcShape []int, srcStrides []int, axes []int) {
@@ -90,25 +113,35 @@ func ReduceMin(dst []float32, dstShape []int, dstStrides []int, src []float32, s
 	dstStrides = EnsureStrides(dstStrides, dstShape)
 	srcStrides = EnsureStrides(srcStrides, srcShape)
 	reduceMask := makeReduceMask(len(srcShape), axes)
-	mapped := mapStridesToSource(srcShape, reduceMask, dstStrides)
+	var mappedBuf [helpers.MAX_DIMS]int
+	mapped := mapStridesToSource(mappedBuf[:], srcShape, reduceMask, dstStrides)
 
 	for i := 0; i < sizeDst; i++ {
 		dst[i] = math32.MaxFloat32
 	}
 
-	indices := make([]int, len(srcShape))
-	offsets := make([]int, 2)
 	strideSet := [][]int{srcStrides, mapped}
-	for {
-		dstOffset := offsets[1]
-		val := src[offsets[0]]
-		if val < dst[dstOffset] {
-			dst[dstOffset] = val
-		}
-		if !advanceOffsets(srcShape, indices, offsets, strideSet) {
-			break
+	var offsetsArr [2]int
+	process := func(indices []int, offsets []int) {
+		for {
+			dstOffset := offsets[1]
+			val := src[offsets[0]]
+			if val < dst[dstOffset] {
+				dst[dstOffset] = val
+			}
+			if !advanceOffsets(srcShape, indices, offsets, strideSet) {
+				break
+			}
 		}
 	}
+
+	if len(srcShape) <= helpers.MAX_DIMS {
+		var indicesArr [helpers.MAX_DIMS]int
+		process(indicesArr[:len(srcShape)], offsetsArr[:len(strideSet)])
+		return
+	}
+
+	process(make([]int, len(srcShape)), offsetsArr[:len(strideSet)])
 }
 
 func Argmax(dst []float32, dstShape []int, dstStrides []int, src []float32, srcShape []int, srcStrides []int, axis int) {
@@ -120,27 +153,38 @@ func Argmax(dst []float32, dstShape []int, dstStrides []int, src []float32, srcS
 	dstStrides = EnsureStrides(dstStrides, dstShape)
 	srcStrides = EnsureStrides(srcStrides, srcShape)
 	reduceMask := makeReduceMask(len(srcShape), []int{axis})
-	mapped := mapStridesToSource(srcShape, reduceMask, dstStrides)
-	maxVals := make([]float32, sizeDst)
-	for i := range maxVals {
+	var mappedBuf [helpers.MAX_DIMS]int
+	mapped := mapStridesToSource(mappedBuf[:], srcShape, reduceMask, dstStrides)
+	maxVals := Pool.Get(sizeDst)
+	defer Pool.Put(maxVals)
+	for i := 0; i < sizeDst; i++ {
 		maxVals[i] = -math32.MaxFloat32
 		dst[i] = 0
 	}
 
-	indices := make([]int, len(srcShape))
-	offsets := make([]int, 2)
 	strideSet := [][]int{srcStrides, mapped}
-	for {
-		dstOffset := offsets[1]
-		val := src[offsets[0]]
-		if val > maxVals[dstOffset] {
-			maxVals[dstOffset] = val
-			dst[dstOffset] = float32(indices[axis])
-		}
-		if !advanceOffsets(srcShape, indices, offsets, strideSet) {
-			break
+	var offsetsArr [2]int
+	process := func(indices []int, offsets []int) {
+		for {
+			dstOffset := offsets[1]
+			val := src[offsets[0]]
+			if val > maxVals[dstOffset] {
+				maxVals[dstOffset] = val
+				dst[dstOffset] = float32(indices[axis])
+			}
+			if !advanceOffsets(srcShape, indices, offsets, strideSet) {
+				break
+			}
 		}
 	}
+
+	if len(srcShape) <= helpers.MAX_DIMS {
+		var indicesArr [helpers.MAX_DIMS]int
+		process(indicesArr[:len(srcShape)], offsetsArr[:len(strideSet)])
+		return
+	}
+
+	process(make([]int, len(srcShape)), offsetsArr[:len(strideSet)])
 }
 
 // Argmin finds index of minimum element along specified axis.
@@ -154,31 +198,48 @@ func Argmin(dst []int32, dstShape, dstStrides []int, src []float32, srcShape, sr
 	dstStrides = EnsureStrides(dstStrides, dstShape)
 	srcStrides = EnsureStrides(srcStrides, srcShape)
 	reduceMask := makeReduceMask(len(srcShape), []int{axis})
-	mapped := mapStridesToSource(srcShape, reduceMask, dstStrides)
-	minVals := make([]float32, sizeDst)
-	for i := range minVals {
+	var mappedBuf [helpers.MAX_DIMS]int
+	mapped := mapStridesToSource(mappedBuf[:], srcShape, reduceMask, dstStrides)
+	minVals := Pool.Get(sizeDst)
+	defer Pool.Put(minVals)
+	for i := 0; i < sizeDst; i++ {
 		minVals[i] = math32.MaxFloat32
 		dst[i] = 0
 	}
 
-	indices := make([]int, len(srcShape))
-	offsets := make([]int, 2)
 	strideSet := [][]int{srcStrides, mapped}
-	for {
-		dstOffset := offsets[1]
-		val := src[offsets[0]]
-		if val < minVals[dstOffset] {
-			minVals[dstOffset] = val
-			dst[dstOffset] = int32(indices[axis])
-		}
-		if !advanceOffsets(srcShape, indices, offsets, strideSet) {
-			break
+	var offsetsArr [2]int
+	process := func(indices []int, offsets []int) {
+		for {
+			dstOffset := offsets[1]
+			val := src[offsets[0]]
+			if val < minVals[dstOffset] {
+				minVals[dstOffset] = val
+				dst[dstOffset] = int32(indices[axis])
+			}
+			if !advanceOffsets(srcShape, indices, offsets, strideSet) {
+				break
+			}
 		}
 	}
+
+	if len(srcShape) <= helpers.MAX_DIMS {
+		var indicesArr [helpers.MAX_DIMS]int
+		process(indicesArr[:len(srcShape)], offsetsArr[:len(strideSet)])
+		return
+	}
+
+	process(make([]int, len(srcShape)), offsetsArr[:len(strideSet)])
 }
 
 func makeReduceMask(rank int, axes []int) []bool {
-	mask := make([]bool, rank)
+	maskStatic := [helpers.MAX_DIMS]bool{}
+	var mask []bool
+	if rank > len(maskStatic) {
+		mask = make([]bool, rank)
+	} else {
+		mask = maskStatic[:rank]
+	}
 	for _, axis := range axes {
 		if axis >= 0 && axis < rank {
 			mask[axis] = true
@@ -187,8 +248,11 @@ func makeReduceMask(rank int, axes []int) []bool {
 	return mask
 }
 
-func mapStridesToSource(srcShape []int, mask []bool, dstStrides []int) []int {
-	mapped := make([]int, len(srcShape))
+func mapStridesToSource(buf []int, srcShape []int, mask []bool, dstStrides []int) []int {
+	if len(srcShape) > len(buf) {
+		buf = make([]int, len(srcShape))
+	}
+	mapped := buf[:len(srcShape)]
 	dstIdx := 0
 	for dim := range srcShape {
 		if mask[dim] {

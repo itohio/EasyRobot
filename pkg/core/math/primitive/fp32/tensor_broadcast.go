@@ -1,15 +1,28 @@
 package fp32
 
-import "fmt"
+import (
+	"fmt"
+
+	helpers "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+)
 
 // BroadcastStrides computes effective strides when broadcasting a tensor with the given shape/strides to the target shape.
 func BroadcastStrides(shape []int, strides []int, target []int) ([]int, error) {
+	return BroadcastStridesTo(nil, shape, strides, target)
+}
+
+// BroadcastStridesTo computes effective strides when broadcasting and writes them into buf when provided.
+// If buf is nil or too small, a new slice is allocated.
+func BroadcastStridesTo(buf []int, shape []int, strides []int, target []int) ([]int, error) {
 	if len(target) < len(shape) {
 		return nil, fmt.Errorf("fp32: cannot broadcast rank %d tensor to rank %d", len(shape), len(target))
 	}
 
 	strides = EnsureStrides(strides, shape)
-	result := make([]int, len(target))
+	if len(target) > len(buf) {
+		buf = make([]int, len(target))
+	}
+	result := buf[:len(target)]
 
 	baseIdx := len(shape) - 1
 	for targetIdx := len(target) - 1; targetIdx >= 0; targetIdx-- {
@@ -46,22 +59,32 @@ func ExpandTo(dst, src []float32, dstShape, srcShape []int, dstStrides, srcStrid
 
 	dstStrides = EnsureStrides(dstStrides, dstShape)
 	srcStrides = EnsureStrides(srcStrides, srcShape)
-	effectiveSrc, err := BroadcastStrides(srcShape, srcStrides, dstShape)
+	var effectiveSrcBuf [helpers.MAX_DIMS]int
+	effectiveSrc, err := BroadcastStridesTo(effectiveSrcBuf[:], srcShape, srcStrides, dstShape)
 	if err != nil {
 		return err
 	}
 
-	indices := make([]int, len(dstShape))
-	offsets := make([]int, 2)
 	strideSet := [][]int{dstStrides, effectiveSrc}
-	for {
-		dIdx := offsets[0]
-		sIdx := offsets[1]
-		dst[dIdx] = src[sIdx]
-		if !advanceOffsets(dstShape, indices, offsets, strideSet) {
-			break
+	var offsetsArr [2]int
+	process := func(indices []int, offsets []int) {
+		for {
+			dIdx := offsets[0]
+			sIdx := offsets[1]
+			dst[dIdx] = src[sIdx]
+			if !advanceOffsets(dstShape, indices, offsets, strideSet) {
+				break
+			}
 		}
 	}
+
+	if len(dstShape) <= helpers.MAX_DIMS {
+		var indicesArr [helpers.MAX_DIMS]int
+		process(indicesArr[:len(dstShape)], offsetsArr[:len(strideSet)])
+		return nil
+	}
+
+	process(make([]int, len(dstShape)), offsetsArr[:len(strideSet)])
 
 	return nil
 }

@@ -35,25 +35,33 @@ func Gemm_NN(c, a, b []float32, ldC, ldA, ldB, M, N, K int, alpha, beta float32)
 		return
 	}
 
-	// Compute C = alpha*A*B + beta*C
-	// C[i][j] = alpha * sum_k(A[i][k] * B[k][j]) + beta * C[i][j]
-	pa := 0
-	pc := 0
-	for i := 0; i < M; i++ {
-		for j := 0; j < N; j++ {
-			sum := float32(0.0)
-			pb := 0
+	for i := range M {
+		aRow := a[i*ldA:]
+		aRow = aRow[:K]
+		cRow := c[i*ldC:]
+		cRow = cRow[:N]
 
-			// Compute dot product of row i of A with column j of B
-			for k := 0; k < K; k++ {
-				sum += a[pa+k] * b[pb+j]
+		for j := range cRow {
+			sum := float32(0.0)
+			pb := j
+
+			k := 0
+			for k+4 <= K {
+				sum += aRow[k] * b[pb]
+				sum += aRow[k+1] * b[pb+ldB]
+				sum += aRow[k+2] * b[pb+2*ldB]
+				sum += aRow[k+3] * b[pb+3*ldB]
+				pb += 4 * ldB
+				k += 4
+			}
+
+			for ; k < K; k++ {
+				sum += aRow[k] * b[pb]
 				pb += ldB
 			}
 
-			c[pc+j] += alpha * sum
+			cRow[j] += alpha * sum
 		}
-		pa += ldA
-		pc += ldC
 	}
 }
 
@@ -93,24 +101,31 @@ func Gemm_NT(c, a, b []float32, ldC, ldA, ldB, M, N, K int, alpha, beta float32)
 	}
 
 	// Compute C = alpha*A*B^T + beta*C
-	// C[i][j] = alpha * sum_k(A[i][k] * B^T[k][j]) + beta * C[i][j]
-	// B^T[k][j] = B[j][k] = b[j*ldB + k]
-	pa := 0
-	pc := 0
 	for i := 0; i < M; i++ {
-		for j := 0; j < N; j++ {
-			sum := float32(0.0)
-			pbRow := j * ldB
+		aRow := a[i*ldA:]
+		aRow = aRow[:K]
+		cRow := c[i*ldC:]
+		cRow = cRow[:N]
 
-			// Compute dot product of row i of A with row j of B (which is column j of B^T)
-			for k := 0; k < K; k++ {
-				sum += a[pa+k] * b[pbRow+k]
+		for j := 0; j < N; j++ {
+			bRow := b[j*ldB:]
+			bRow = bRow[:K]
+
+			sum := float32(0.0)
+			k := 0
+			for k+4 <= K {
+				sum += aRow[k] * bRow[k]
+				sum += aRow[k+1] * bRow[k+1]
+				sum += aRow[k+2] * bRow[k+2]
+				sum += aRow[k+3] * bRow[k+3]
+				k += 4
+			}
+			for ; k < K; k++ {
+				sum += aRow[k] * bRow[k]
 			}
 
-			c[pc+j] += alpha * sum
+			cRow[j] += alpha * sum
 		}
-		pa += ldA
-		pc += ldC
 	}
 }
 
@@ -152,22 +167,30 @@ func Gemm_TN(c, a, b []float32, ldC, ldA, ldB, M, N, K int, alpha, beta float32)
 	// Compute C = alpha*A^T*B + beta*C
 	// C[i][j] = alpha * sum_k(A^T[i][k] * B[k][j]) + beta * C[i][j]
 	// A^T[i][k] = A[k][i] = a[k*ldA + i]
-	pc := 0
 	for i := 0; i < M; i++ {
+		cRow := c[i*ldC:]
+		cRow = cRow[:N]
+
 		for j := 0; j < N; j++ {
 			sum := float32(0.0)
-			pb := 0
+			pb := j
 
-			// Compute dot product of column i of A (which is row i of A^T) with column j of B
-			for k := 0; k < K; k++ {
-				paElem := k*ldA + i // A[k][i] = a[k*ldA + i]
-				sum += a[paElem] * b[pb+j]
+			k := 0
+			for k+4 <= K {
+				sum += a[k*ldA+i] * b[pb]
+				sum += a[(k+1)*ldA+i] * b[pb+ldB]
+				sum += a[(k+2)*ldA+i] * b[pb+2*ldB]
+				sum += a[(k+3)*ldA+i] * b[pb+3*ldB]
+				pb += 4 * ldB
+				k += 4
+			}
+			for ; k < K; k++ {
+				sum += a[k*ldA+i] * b[pb]
 				pb += ldB
 			}
 
-			c[pc+j] += alpha * sum
+			cRow[j] += alpha * sum
 		}
-		pc += ldC
 	}
 }
 
@@ -207,24 +230,29 @@ func Gemm_TT(c, a, b []float32, ldC, ldA, ldB, M, N, K int, alpha, beta float32)
 	}
 
 	// Compute C = alpha*A^T*B^T + beta*C
-	// C[i][j] = alpha * sum_k(A^T[i][k] * B^T[k][j]) + beta * C[i][j]
-	// A^T[i][k] = A[k][i] = a[k*ldA + i]
-	// B^T[k][j] = B[j][k] = b[j*ldB + k]
-	pc := 0
 	for i := 0; i < M; i++ {
-		for j := 0; j < N; j++ {
-			sum := float32(0.0)
-			pbRow := j * ldB
+		cRow := c[i*ldC:]
+		cRow = cRow[:N]
 
-			// Compute dot product of column i of A (row i of A^T) with row j of B (column j of B^T)
-			for k := 0; k < K; k++ {
-				paElem := k*ldA + i // A[k][i] = a[k*ldA + i]
-				sum += a[paElem] * b[pbRow+k]
+		for j := 0; j < N; j++ {
+			bRow := b[j*ldB:]
+			bRow = bRow[:K]
+
+			sum := float32(0.0)
+			k := 0
+			for k+4 <= K {
+				sum += a[k*ldA+i] * bRow[k]
+				sum += a[(k+1)*ldA+i] * bRow[k+1]
+				sum += a[(k+2)*ldA+i] * bRow[k+2]
+				sum += a[(k+3)*ldA+i] * bRow[k+3]
+				k += 4
+			}
+			for ; k < K; k++ {
+				sum += a[k*ldA+i] * bRow[k]
 			}
 
-			c[pc+j] += alpha * sum
+			cRow[j] += alpha * sum
 		}
-		pc += ldC
 	}
 }
 

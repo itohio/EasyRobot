@@ -5,6 +5,7 @@ import (
 
 	"github.com/chewxy/math32"
 	"github.com/itohio/EasyRobot/pkg/core/math/primitive/generics"
+	helpers "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 )
 
 // ElemAdd writes element-wise sum of a and b into dst for the provided shape/strides.
@@ -50,21 +51,31 @@ func ElemDiv(dst, a, b []float32, shape []int, stridesDst, stridesA, stridesB []
 		return
 	}
 
-	indices := make([]int, len(shape))
-	offsets := make([]int, 3)
 	strideSet := [][]int{stridesDst, stridesA, stridesB}
-	for {
-		dIdx := offsets[0]
-		aIdx := offsets[1]
-		bIdx := offsets[2]
-		bv := b[bIdx]
-		if bv != 0 {
-			dst[dIdx] = a[aIdx] / bv
-		}
-		if !advanceOffsets(shape, indices, offsets, strideSet) {
-			break
+	process := func(indices []int, offsets []int) {
+		for {
+			dIdx := offsets[0]
+			aIdx := offsets[1]
+			bIdx := offsets[2]
+			bv := b[bIdx]
+			if bv != 0 {
+				dst[dIdx] = a[aIdx] / bv
+			}
+			if !advanceOffsets(shape, indices, offsets, strideSet) {
+				break
+			}
 		}
 	}
+
+	if len(shape) <= helpers.MAX_DIMS {
+		var indicesArr [helpers.MAX_DIMS]int
+		var offsetsArr [3]int
+		process(indicesArr[:len(shape)], offsetsArr[:len(strideSet)])
+		return
+	}
+
+	var offsetsArr [3]int
+	process(make([]int, len(shape)), offsetsArr[:len(strideSet)])
 }
 
 // ElemScaleInPlace multiplies dst by the given scalar (in-place) for the provided shape/strides.
@@ -83,16 +94,26 @@ func ElemScaleInPlace(dst []float32, scalar float32, shape []int, stridesDst []i
 		return
 	}
 
-	indices := make([]int, len(shape))
-	offsets := make([]int, 1)
 	strideSet := [][]int{stridesDst}
-	for {
-		dIdx := offsets[0]
-		dst[dIdx] *= scalar
-		if !advanceOffsets(shape, indices, offsets, strideSet) {
-			break
+	process := func(indices []int, offsets []int) {
+		for {
+			dIdx := offsets[0]
+			dst[dIdx] *= scalar
+			if !advanceOffsets(shape, indices, offsets, strideSet) {
+				break
+			}
 		}
 	}
+
+	if len(shape) <= helpers.MAX_DIMS {
+		var indicesArr [helpers.MAX_DIMS]int
+		var offsetsArr [1]int
+		process(indicesArr[:len(shape)], offsetsArr[:len(strideSet)])
+		return
+	}
+
+	var offsetsArr [1]int
+	process(make([]int, len(shape)), offsetsArr[:len(strideSet)])
 }
 
 // ElemCopy copies src into dst respecting the supplied shape/strides.
@@ -285,17 +306,27 @@ func ElemDivScalar(dst, src []float32, scalar float32, shape []int, stridesDst, 
 		return
 	}
 
-	indices := make([]int, len(shape))
-	offsets := make([]int, 2)
 	strideSet := [][]int{stridesDst, stridesSrc}
-	for {
-		dIdx := offsets[0]
-		sIdx := offsets[1]
-		dst[dIdx] = src[sIdx] / scalar
-		if !advanceOffsets(shape, indices, offsets, strideSet) {
-			break
+	process := func(indices []int, offsets []int) {
+		for {
+			dIdx := offsets[0]
+			sIdx := offsets[1]
+			dst[dIdx] = src[sIdx] / scalar
+			if !advanceOffsets(shape, indices, offsets, strideSet) {
+				break
+			}
 		}
 	}
+
+	if len(shape) <= helpers.MAX_DIMS {
+		var indicesArr [helpers.MAX_DIMS]int
+		var offsetsArr [2]int
+		process(indicesArr[:len(shape)], offsetsArr[:len(strideSet)])
+		return
+	}
+
+	var offsetsArr [2]int
+	process(make([]int, len(shape)), offsetsArr[:len(strideSet)])
 }
 
 // ElemNotEqual writes 1.0 where a != b, 0.0 otherwise

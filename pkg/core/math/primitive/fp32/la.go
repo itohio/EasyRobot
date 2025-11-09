@@ -414,7 +414,8 @@ func Getrf(a, l, u []float32, ipiv []int, ldA, ldL, ldU, M, N int) error {
 	var i, j int
 
 	// Copy a to work space (we'll modify it)
-	work := make([]float32, M*ldA)
+	work := Pool.Get(M * ldA)
+	defer Pool.Put(work)
 	copy(work, a)
 
 	// Perform LU with pivoting on work
@@ -681,26 +682,30 @@ func Gepseu(aPinv, a []float32, ldA, ldApinv, M, N int) error {
 	minMN := imin(M, N)
 
 	// Allocate working matrices for SVD
-	u := make([]float32, M*M)
-	s := make([]float32, N) // Singular values vector - allocate N even though only minMN are used
-	vt := make([]float32, N*N)
+	u := Pool.Get(M * M)
+	defer Pool.Put(u)
+	s := Pool.Get(N) // Singular values vector - allocate N even though only minMN are used
+	defer Pool.Put(s)
+	vtBuf := Pool.Get(N * N)
+	defer Pool.Put(vtBuf)
 	ldU := M
 	ldVt := N
 
 	// Compute SVD: A = U * Σ * V^T
 	// Note: Gesvd returns V (not V^T) in vt
-	if err := Gesvd(u, s, vt, a, ldA, ldU, ldVt, M, N); err != nil {
+	if err := Gesvd(u, s, vtBuf, a, ldA, ldU, ldVt, M, N); err != nil {
 		return err
 	}
 
 	// Transpose V to get V^T (pseudo-inverse expects V^T, consistent with svd.go)
-	vTemp := make([]float32, N*N)
+	vTemp := Pool.Get(N * N)
+	defer Pool.Put(vTemp)
 	for i := 0; i < N; i++ {
 		for j := 0; j < N; j++ {
-			vTemp[i*N+j] = getElem(vt, ldVt, j, i) // V^T[i][j] = V[j][i]
+			vTemp[i*N+j] = getElem(vtBuf, ldVt, j, i) // V^T[i][j] = V[j][i]
 		}
 	}
-	vt = vTemp
+	vt := vTemp
 	// ldVt stays N since it's still N×N
 
 	// Tolerance for singular values (treat values below this as zero)
@@ -770,7 +775,8 @@ func Gesvd(u, s, vt, a []float32, ldA, ldU, ldVt, M, N int) error {
 
 	// Create working copy of matrix A (since we modify it)
 	// Work matrix will be used for bidiagonalization - needs M rows and N columns
-	work := make([]float32, M*N)
+	work := Pool.Get(M * N)
+	defer Pool.Put(work)
 	for i := 0; i < M; i++ {
 		for j := 0; j < N; j++ {
 			setElem(work, N, i, j, getElem(a, ldA, i, j))
@@ -778,7 +784,8 @@ func Gesvd(u, s, vt, a []float32, ldA, ldU, ldVt, M, N int) error {
 	}
 
 	// Working vector for bidiagonalization
-	rv1 := make([]float32, N)
+	rv1 := Pool.Get(N)
+	defer Pool.Put(rv1)
 
 	// Initialize output matrices
 	// Vt will accumulate transformations
@@ -1123,8 +1130,10 @@ func Gnnls(x, a, b []float32, ldA, M, N int) (rNorm float32, err error) {
 	)
 
 	// Working vectors
-	zz := make([]float32, M)
-	w := make([]float32, N)
+	zz := Pool.Get(M)
+	defer Pool.Put(zz)
+	w := Pool.Get(N)
+	defer Pool.Put(w)
 	index := make([]int, N)
 
 	// Initialize solution vector

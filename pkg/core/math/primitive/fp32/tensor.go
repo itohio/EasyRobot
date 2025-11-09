@@ -20,6 +20,8 @@ func Im2Col(
 	// Calculate output dimensions
 	outHeight := (height+2*padH-kernelH)/strideH + 1
 	outWidth := (width+2*padW-kernelW)/strideW + 1
+	channelKernelSize := kernelH * kernelW
+	channelsKernelSize := channels * channelKernelSize
 
 	// Index for output column
 	colIdx := 0
@@ -30,28 +32,54 @@ func Im2Col(
 
 		// For each output position (outH, outW)
 		for outH := 0; outH < outHeight; outH++ {
+			inTop := outH*strideH - padH
 			for outW := 0; outW < outWidth; outW++ {
+				inLeft := outW*strideW - padW
+
+				dstBase := colIdx
+				colIdx += channelsKernelSize
+
+				// Use a fast path when the kernel window is fully inside
+				if inTop >= 0 && inTop+kernelH <= height && inLeft >= 0 && inLeft+kernelW <= width {
+					for c := 0; c < channels; c++ {
+						channelOffset := batchOffset + c*height*width
+						srcStart := channelOffset + inTop*width + inLeft
+						dstChannel := dstBase + c*channelKernelSize
+
+						for kh := 0; kh < kernelH; kh++ {
+							srcRow := srcStart + kh*width
+							dstRow := dstChannel + kh*kernelW
+							copy(col[dstRow:dstRow+kernelW], im[srcRow:srcRow+kernelW])
+						}
+					}
+					continue
+				}
+
 				// For each channel
 				for c := 0; c < channels; c++ {
 					channelOffset := batchOffset + c*height*width
+					dstChannel := dstBase + c*channelKernelSize
 
 					// For each kernel position
 					for kh := 0; kh < kernelH; kh++ {
-						for kw := 0; kw < kernelW; kw++ {
-							// Calculate input position
-							inH := outH*strideH + kh - padH
-							inW := outW*strideW + kw - padW
+						dstRow := dstChannel + kh*kernelW
+						inH := inTop + kh
 
-							// Check bounds
-							if inH >= 0 && inH < height && inW >= 0 && inW < width {
-								// Get pixel value from input
-								imIdx := channelOffset + inH*width + inW
-								col[colIdx] = im[imIdx]
-							} else {
-								// Padding: zero
-								col[colIdx] = 0
+						if inH < 0 || inH >= height {
+							for kw := 0; kw < kernelW; kw++ {
+								col[dstRow+kw] = 0
 							}
-							colIdx++
+							continue
+						}
+
+						rowOffset := channelOffset + inH*width
+						for kw := 0; kw < kernelW; kw++ {
+							inW := inLeft + kw
+							if inW >= 0 && inW < width {
+								col[dstRow+kw] = im[rowOffset+inW]
+							} else {
+								col[dstRow+kw] = 0
+							}
 						}
 					}
 				}
@@ -79,6 +107,8 @@ func Col2Im(
 	// Calculate output dimensions
 	outHeight := (height+2*padH-kernelH)/strideH + 1
 	outWidth := (width+2*padW-kernelW)/strideW + 1
+	channelKernelSize := kernelH * kernelW
+	channelsKernelSize := channels * channelKernelSize
 
 	// Index for input column
 	colIdx := 0
@@ -89,25 +119,51 @@ func Col2Im(
 
 		// For each output position (outH, outW)
 		for outH := 0; outH < outHeight; outH++ {
+			inTop := outH*strideH - padH
 			for outW := 0; outW < outWidth; outW++ {
+				inLeft := outW*strideW - padW
+
+				srcBase := colIdx
+				colIdx += channelsKernelSize
+
+				// Fast path: entire kernel fits within the bounds
+				if inTop >= 0 && inTop+kernelH <= height && inLeft >= 0 && inLeft+kernelW <= width {
+					for c := 0; c < channels; c++ {
+						channelOffset := batchOffset + c*height*width
+						dstStart := channelOffset + inTop*width + inLeft
+						srcChannel := srcBase + c*channelKernelSize
+
+						for kh := 0; kh < kernelH; kh++ {
+							dstRow := dstStart + kh*width
+							srcRow := srcChannel + kh*kernelW
+							for kw := 0; kw < kernelW; kw++ {
+								im[dstRow+kw] += col[srcRow+kw]
+							}
+						}
+					}
+					continue
+				}
+
 				// For each channel
 				for c := 0; c < channels; c++ {
 					channelOffset := batchOffset + c*height*width
+					srcChannel := srcBase + c*channelKernelSize
 
 					// For each kernel position
 					for kh := 0; kh < kernelH; kh++ {
-						for kw := 0; kw < kernelW; kw++ {
-							// Calculate input position
-							inH := outH*strideH + kh - padH
-							inW := outW*strideW + kw - padW
+						srcRow := srcChannel + kh*kernelW
+						inH := inTop + kh
 
-							// Check bounds
-							if inH >= 0 && inH < height && inW >= 0 && inW < width {
-								// Accumulate to output image
-								imIdx := channelOffset + inH*width + inW
-								im[imIdx] += col[colIdx]
+						if inH < 0 || inH >= height {
+							continue
+						}
+
+						rowOffset := channelOffset + inH*width
+						for kw := 0; kw < kernelW; kw++ {
+							inW := inLeft + kw
+							if inW >= 0 && inW < width {
+								im[rowOffset+inW] += col[srcRow+kw]
 							}
-							colIdx++
 						}
 					}
 				}
@@ -142,7 +198,8 @@ func Conv2D(
 
 	// Allocate temporary buffer for Im2Col output
 	// Format: [batchSize*outHeight*outWidth, inChannels*kernelH*kernelW]
-	im2col := make([]float32, im2colSize*kernelSize)
+	im2col := Pool.Get(im2colSize * kernelSize)
+	defer Pool.Put(im2col)
 
 	// Step 1: Convert input to columns using Im2Col
 	Im2Col(im2col, input, batchSize, inChannels, inHeight, inWidth,
@@ -168,7 +225,8 @@ func Conv2D(
 	// A (weights): M=outChannels, K=kernelSize
 	// B (im2col): N=im2colSize, K=kernelSize
 	// Result C: [outChannels, im2colSize] with ldC = im2colSize
-	gemmOutput := make([]float32, outChannels*im2colSize)
+	gemmOutput := Pool.Get(outChannels * im2colSize)
+	defer Pool.Put(gemmOutput)
 
 	// Perform GEMM_NT: gemmOutput = weights * im2col^T
 	// weights: [outChannels, kernelSize] with ldA = kernelSize
@@ -238,8 +296,10 @@ func Conv2DKernelGrad(
 	im2colSize := batchSize * outHeight * outWidth
 
 	// Allocate temporary buffers
-	inputIm2Col := make([]float32, im2colSize*kernelSize)
-	outputGradFlat := make([]float32, im2colSize*outChannels)
+	inputIm2Col := Pool.Get(im2colSize * kernelSize)
+	defer Pool.Put(inputIm2Col)
+	outputGradFlat := Pool.Get(im2colSize * outChannels)
+	defer Pool.Put(outputGradFlat)
 
 	// Step 1: Convert input to columns using Im2Col
 	// inputIm2Col: [batchSize*outHeight*outWidth, inChannels*kernelH*kernelW]
@@ -304,8 +364,10 @@ func Conv1DKernelGrad(
 	im2colSize := batchSize * outLength
 
 	// Allocate temporary buffers
-	inputIm2Col := make([]float32, im2colSize*kernelSize)
-	outputGradFlat := make([]float32, im2colSize*outChannels)
+	inputIm2Col := Pool.Get(im2colSize * kernelSize)
+	defer Pool.Put(inputIm2Col)
+	outputGradFlat := Pool.Get(im2colSize * outChannels)
+	defer Pool.Put(outputGradFlat)
 
 	// Step 1: Convert input to columns using Im2Col (treating as 2D with width=1)
 	Im2Col(inputIm2Col, input, batchSize, inChannels, inLength, 1,
@@ -1831,7 +1893,8 @@ func SeparableConv2D(
 	outWidth := (width+2*padW-kernelW)/strideW + 1
 
 	// Temporary buffer for depthwise output: [batchSize, channels, outHeight, outWidth]
-	depthwiseOutput := make([]float32, batchSize*channels*outHeight*outWidth)
+	depthwiseOutput := Pool.Get(batchSize * channels * outHeight * outWidth)
+	defer Pool.Put(depthwiseOutput)
 
 	// Step 1: Perform depthwise convolution
 	DepthwiseConv2D(depthwiseOutput, src, depthwiseKernel, nil,

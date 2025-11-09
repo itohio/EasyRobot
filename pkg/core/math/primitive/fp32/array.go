@@ -122,7 +122,8 @@ func PercentileArr(p float32, sumAboveP *float32, a []float32, num int, stride i
 	}
 
 	// Copy and collect values
-	values := make([]float32, num)
+	values := Pool.Get(num)
+	defer Pool.Put(values)
 	pa := 0
 	for i := 0; i < num; i++ {
 		values[i] = a[pa]
