@@ -4,7 +4,6 @@ package generics
 
 import (
 	mt "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/mt"
-	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 )
 
 // Re-export vector apply functions from multi-threaded implementation
@@ -31,4 +30,3 @@ func ElemVecApplyBinaryScalarStrided[T Numeric](dst, a []T, scalar T, n int, str
 func ElemVecApplyTernaryScalarStrided[T Numeric](dst, condition, a []T, scalar T, n int, strideDst, strideCond, strideA int, op func(T, T, T) T) {
 	mt.ElemVecApplyTernaryScalarStrided(dst, condition, a, scalar, n, strideDst, strideCond, strideA, op)
 }
-

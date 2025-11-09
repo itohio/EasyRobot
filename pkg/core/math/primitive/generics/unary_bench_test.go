@@ -2,8 +2,6 @@ package generics
 
 import (
 	"testing"
-
-	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 )
 
 var (

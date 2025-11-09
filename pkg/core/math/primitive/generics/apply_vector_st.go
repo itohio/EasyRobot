@@ -4,7 +4,6 @@ package generics
 
 import (
 	st "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/st"
-	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 )
 
 // Re-export vector apply functions from single-threaded implementation

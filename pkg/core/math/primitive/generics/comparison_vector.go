@@ -1,7 +1,5 @@
 package generics
 
-import . "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
-
 // ElemVecGreaterThanStrided writes 1 where a > b, 0 otherwise for vectors with stride support.
 // Optimized for 1D vector operations.
 // n is the vector length, strideDst, strideA, and strideB are the strides.
@@ -331,4 +329,3 @@ func ElemMatGreaterEqualStrided[T Numeric](dst, a, b []T, rows, cols int, ldDst,
 		}
 	}
 }
-

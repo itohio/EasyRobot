@@ -1,9 +1,9 @@
 package st
 
 import (
-	"fmt"
-
 	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+
+	"fmt"
 )
 
 // Elements returns an iterator over multi-dimensional indices for the given shape.

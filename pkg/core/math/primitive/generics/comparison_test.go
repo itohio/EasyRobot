@@ -2,8 +2,6 @@ package generics
 
 import (
 	"testing"
-
-	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 )
 
 func TestElemGreaterThan(t *testing.T) {
@@ -290,4 +288,3 @@ func testComparisonType[T Numeric](t *testing.T, a, b []T, shape []int) {
 		}
 	}
 }
-

@@ -1,7 +1,5 @@
 package generics
 
-import . "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
-
 // ElemVecSignStrided writes the sign of src into dst for a vector with stride support.
 // Optimized for 1D vector operations.
 // n is the vector length, strideDst and strideSrc are the strides.
@@ -113,4 +111,3 @@ func ElemMatNegativeStrided[T Numeric](dst, src []T, rows, cols int, ldDst, ldSr
 		}
 	}
 }
-

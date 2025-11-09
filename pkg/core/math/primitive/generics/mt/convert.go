@@ -1,9 +1,10 @@
 package mt
 
 import (
+	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+
 	"math"
 
-	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 	st "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/st"
 )
 

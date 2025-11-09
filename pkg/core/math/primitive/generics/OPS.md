@@ -4,6 +4,8 @@ This document specifies all generic operations for the `primitive/generics` pack
 
 **Note on Multi-threading**: Building with the `use_mt` build tag enables multi-threaded implementations for operations that support parallelization. Operations marked with 🔀 support both single-threaded and multi-threaded execution. Operations marked with 🔒 are single-threaded only.
 
+Multi-threaded code paths now share the typed worker pool defined in `primitive/generics/helpers`. The pool is re-exported from the `generics` package as `WorkerPool`, `WorkerPoolOption`, and related option helpers so higher-level packages can compose the same concurrency primitives. The `mt` subpackage initialises a single global worker pool during `init`, mirroring the previous bespoke implementation while centralising the concurrency plumbing.
+
 **Status Legend:**
 - ⏳ **Not Implemented** - Specified but not yet implemented
 - 🚧 **In Progress** - Currently being implemented

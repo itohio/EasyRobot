@@ -3,9 +3,9 @@
 package mt
 
 import (
-	"math"
-
 	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+
+	"math"
 )
 
 // clampableToInt is now in helpers package as ClampableToInt

@@ -1,7 +1,5 @@
 package generics
 
-import . "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
-
 // ValueConvert converts a value from type T to type U with appropriate clamping.
 // This is a naive implementation for single value conversion.
 // Handles all conversions including clamping for down-conversions (e.g., float64 -> int8).

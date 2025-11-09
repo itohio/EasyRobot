@@ -2,8 +2,6 @@ package generics
 
 import (
 	"testing"
-
-	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 )
 
 func TestElemSign(t *testing.T) {
@@ -142,4 +140,3 @@ func testNegativeType[T Numeric](t *testing.T, src []T, shape []int) {
 		}
 	}
 }
-

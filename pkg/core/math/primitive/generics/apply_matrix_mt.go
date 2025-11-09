@@ -4,7 +4,6 @@ package generics
 
 import (
 	mt "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/mt"
-	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 )
 
 // Re-export matrix apply functions from multi-threaded implementation
@@ -31,4 +30,3 @@ func ElemMatApplyBinaryScalarStrided[T Numeric](dst, a []T, scalar T, rows, cols
 func ElemMatApplyTernaryScalarStrided[T Numeric](dst, condition, a []T, scalar T, rows, cols int, ldDst, ldCond, ldA int, op func(T, T, T) T) {
 	mt.ElemMatApplyTernaryScalarStrided(dst, condition, a, scalar, rows, cols, ldDst, ldCond, ldA, op)
 }
-

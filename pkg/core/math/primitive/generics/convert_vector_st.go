@@ -4,7 +4,6 @@ package generics
 
 import (
 	st "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/st"
-	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 )
 
 // Re-export vector/matrix conversion functions from single-threaded implementation

@@ -1,9 +1,9 @@
 package st
 
 import (
-	"math"
-
 	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+
+	"math"
 )
 
 // Types that need clamping when converting to int8 (sorted by type size)

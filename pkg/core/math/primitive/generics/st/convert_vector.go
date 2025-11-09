@@ -1,6 +1,8 @@
 package st
 
-import . "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+import (
+	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+)
 
 // ElemVecConvertStrided converts src into dst for a vector with stride support.
 // Optimized for 1D vector operations.
@@ -51,4 +53,3 @@ func ElemMatConvertStrided[T, U Numeric](dst []T, src []U, rows, cols int, ldDst
 		_ = elemConvertNumeric(dstRow[:cols], srcRow[:cols])
 	}
 }
-

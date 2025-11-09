@@ -80,10 +80,10 @@ func TestCopyStrided(t *testing.T) {
 
 func TestSwap(t *testing.T) {
 	tests := []struct {
-		name string
-		x    []float32
-		y    []float32
-		n    int
+		name  string
+		x     []float32
+		y     []float32
+		n     int
 		wantX []float32
 		wantY []float32
 	}{
@@ -169,4 +169,3 @@ func TestSwapStrided(t *testing.T) {
 		})
 	}
 }
-

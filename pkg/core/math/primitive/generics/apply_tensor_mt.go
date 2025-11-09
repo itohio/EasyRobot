@@ -4,7 +4,6 @@ package generics
 
 import (
 	mt "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/mt"
-	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 )
 
 // Re-export apply functions from multi-threaded implementation
@@ -55,4 +54,3 @@ func ElemApplyTernaryScalar[T Numeric](dst, condition, a []T, scalar T, n int, o
 func ElemApplyTernaryScalarStrided[T Numeric](dst, condition, a []T, scalar T, shape []int, stridesDst, stridesCond, stridesA []int, op func(T, T, T) T) {
 	mt.ElemApplyTernaryScalarStrided(dst, condition, a, scalar, shape, stridesDst, stridesCond, stridesA, op)
 }
-

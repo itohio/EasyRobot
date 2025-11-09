@@ -2,8 +2,6 @@ package generics
 
 import (
 	"testing"
-
-	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 )
 
 func TestElemFill(t *testing.T) {
@@ -274,4 +272,3 @@ func testScalarComparisonType[T Numeric](t *testing.T, src []T, scalar T, shape 
 		}
 	}
 }
-

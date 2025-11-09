@@ -1,7 +1,5 @@
 package generics
 
-import . "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
-
 // ElemVecCopyStrided copies src into dst for a vector with stride support.
 // Optimized for 1D vector operations.
 // n is the vector length, strideDst and strideSrc are the strides.
@@ -50,4 +48,3 @@ func ElemMatCopyStrided[T Numeric](dst, src []T, rows, cols int, ldDst, ldSrc in
 		}
 	}
 }
-

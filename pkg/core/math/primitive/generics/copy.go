@@ -1,7 +1,5 @@
 package generics
 
-import . "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
-
 // ElemCopy copies src into dst for contiguous arrays.
 // This is a simple, optimized version for the common case of contiguous memory.
 // For strided or non-contiguous arrays, use ElemCopyStrided.

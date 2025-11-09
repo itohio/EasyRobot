@@ -4,7 +4,6 @@ package generics
 
 import (
 	mt "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/mt"
-	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
 )
 
 // Re-export comparison functions from multi-threaded implementation
@@ -55,4 +54,3 @@ func ElemGreaterEqual[T Numeric](dst, a, b []T, n int) {
 func ElemGreaterEqualStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, stridesA, stridesB []int) {
 	mt.ElemGreaterEqualStrided(dst, a, b, shape, stridesDst, stridesA, stridesB)
 }
-

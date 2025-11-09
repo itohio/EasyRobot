@@ -6,8 +6,8 @@ import (
 
 var (
 	scalarBenchSrc = make([]float32, 10000)
-	scalarBenchDst  = make([]float32, 10000)
-	scalarValue     = float32(5.0)
+	scalarBenchDst = make([]float32, 10000)
+	scalarValue    = float32(5.0)
 )
 
 func init() {
@@ -137,4 +137,3 @@ func greaterScalarNonGeneric(dst, src []float32, scalar float32, n int) {
 		}
 	}
 }
-

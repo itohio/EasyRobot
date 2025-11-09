@@ -6,12 +6,12 @@ import (
 
 func TestElemVecCopyStrided(t *testing.T) {
 	tests := []struct {
-		name     string
-		src      []float32
-		n        int
+		name      string
+		src       []float32
+		n         int
 		strideDst int
 		strideSrc int
-		want     []float32
+		want      []float32
 	}{
 		{
 			name:      "contiguous",
@@ -46,13 +46,13 @@ func TestElemVecCopyStrided(t *testing.T) {
 
 func TestElemMatCopyStrided(t *testing.T) {
 	tests := []struct {
-		name     string
-		src      []float32
-		rows     int
-		cols     int
-		ldDst    int
-		ldSrc    int
-		want     []float32
+		name  string
+		src   []float32
+		rows  int
+		cols  int
+		ldDst int
+		ldSrc int
+		want  []float32
 	}{
 		{
 			name:  "contiguous",
@@ -86,4 +86,3 @@ func TestElemMatCopyStrided(t *testing.T) {
 		})
 	}
 }
-
