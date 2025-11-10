@@ -1,6 +1,8 @@
 package fp32
 
-// Convolve1DAdd computes 1D convolution and add: dst += conv(vec, kernel)
+// Convolve1DAdd computes 1D convolution and add: dst += conv(vec, kernel).
+// The destination slice is not cleared; callers must zero dst themselves when
+// they need only the convolution result without additional accumulation.
 // vec is vector of size N
 // kernel is vector of size M
 // dst is output vector

@@ -1,8 +1,8 @@
 package types
 
-// TensorDropout defines dropout operations for neural networks.
+// Dropout defines dropout operations for neural networks.
 // This interface contains operations for regularization during training.
-type TensorDropout interface {
+type Dropout interface {
 	// DropoutForward applies dropout mask during forward pass: dst = t * mask.
 	// If dst is nil, creates a new tensor.
 	// If dst is provided, writes result to dst and returns dst.

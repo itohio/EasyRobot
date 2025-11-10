@@ -1,8 +1,8 @@
 package types
 
-// TensorPooling defines pooling operations for neural networks.
+// Pooling defines pooling operations for neural networks.
 // This interface contains operations for downsampling tensors through pooling.
-type TensorPooling interface {
+type Pooling interface {
 	// MaxPool2D performs max pooling operation.
 	// Input: [batch, channels, height, width]
 	// KernelSize: [kernelH, kernelW]

@@ -5,6 +5,7 @@ import (
 
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestConv2D(t *testing.T) {
@@ -304,6 +305,18 @@ func TestCol2Im(t *testing.T) {
 			assert.Equal(t, expectedShape[i], resultShape[i], "Shape dimension %d mismatch", i)
 		}
 	})
+}
+
+func TestScatterAddClearsDestination(t *testing.T) {
+	source := FromFloat32(types.NewShape(1, 1, 2, 2), []float32{0, 0, 0, 0})
+	destination := FromFloat32(types.NewShape(1, 1, 2, 2), []float32{99, 98, 97, 96})
+	indices := FromArray(types.NewShape(1, 1, 2, 2), []int32{0, 1, 2, 3})
+	values := FromFloat32(types.NewShape(1, 1, 2, 2), []float32{1, 2, 3, 4})
+
+	result := source.ScatterAdd(destination, indices, values)
+	require.NotNil(t, result)
+	assert.Equal(t, destination, result)
+	assert.InDeltaSlice(t, []float32{1, 2, 3, 4}, destination.Data().([]float32), 1e-6)
 }
 
 func TestDepthwiseConv2D(t *testing.T) {

@@ -189,6 +189,63 @@ func TestCol2Im(t *testing.T) {
 	}
 }
 
+func TestCol2ImClearsDestination(t *testing.T) {
+	col := []float32{1, 2, 3, 4}
+	im := make([]float32, 4)
+	for i := range im {
+		im[i] = 99
+	}
+
+	Col2Im(im, col, 1, 1, 2, 2, 1, 1, 0, 0, 1, 1)
+
+	assert.InDeltaSlice(t, []float32{1, 2, 3, 4}, im, 1e-6)
+}
+
+func TestAvgPool2DBackwardClearsDestination(t *testing.T) {
+	gradInput := make([]float32, 9)
+	for i := range gradInput {
+		gradInput[i] = 100 + float32(i)
+	}
+	gradOutput := []float32{1, 1, 1, 1}
+
+	AvgPool2DBackward(gradInput, gradOutput, 1, 1, 3, 3, 2, 2, 2, 2, 2, 2, 1, 1)
+
+	expected := []float32{
+		1, 0.5, 0.5,
+		0.5, 0.25, 0.25,
+		0.5, 0.25, 0.25,
+	}
+	assert.InDeltaSlice(t, expected, gradInput, 1e-6)
+}
+
+func TestMaxPool2DBackwardClearsDestination(t *testing.T) {
+	input := []float32{
+		1, 2, 3, 4,
+		5, 9, 8, 7,
+		0, 6, 5, 4,
+		3, 2, 1, 0,
+	}
+	output := make([]float32, 4)
+	indices := make([]int32, 4)
+	MaxPool2DWithIndices(output, input, indices, 1, 1, 4, 4, 2, 2, 2, 2, 0, 0)
+
+	gradInput := make([]float32, len(input))
+	for i := range gradInput {
+		gradInput[i] = 50 + float32(i)
+	}
+	gradOutput := []float32{1, 1, 1, 1}
+
+	MaxPool2DBackward(gradInput, gradOutput, indices, input, 1, 1, 4, 4, 2, 2, 2, 2, 2, 2, 0, 0)
+
+	expected := []float32{
+		0, 0, 0, 0,
+		0, 1, 1, 0,
+		0, 1, 1, 0,
+		0, 0, 0, 0,
+	}
+	assert.InDeltaSlice(t, expected, gradInput, 1e-6)
+}
+
 func TestConv2D(t *testing.T) {
 	tests := []struct {
 		name                    string

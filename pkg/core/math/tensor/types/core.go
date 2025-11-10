@@ -1,8 +1,8 @@
 package types
 
-// TensorCore defines the core tensor properties and metadata access.
+// Core defines the core tensor properties and metadata access.
 // This interface contains fundamental operations for tensor identity and element access.
-type TensorCore interface {
+type Core interface {
 	// ID returns a unique identifier for the tensor.
 	ID() uintptr
 

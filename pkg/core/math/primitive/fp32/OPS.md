@@ -12,12 +12,13 @@ This document catalogs all primitive operations implemented in the `fp32` packag
 4. [Batched BLAS Operations](#batched-blas-operations)
 5. [Element-wise Operations](#element-wise-operations)
 6. [Reduction Operations](#reduction-operations)
-7. [Tensor Operations](#tensor-operations)
-8. [Convolution Operations](#convolution-operations)
-9. [Activation Functions](#activation-functions)
-10. [Linear Algebra Operations](#linear-algebra-operations)
-11. [Utility Operations](#utility-operations)
-12. [Duplicates Summary](#duplicates-summary)
+7. [Normalization Operations](#normalization-operations)
+8. [Tensor Operations](#tensor-operations)
+9. [Convolution Operations](#convolution-operations)
+10. [Activation Functions](#activation-functions)
+11. [Linear Algebra Operations](#linear-algebra-operations)
+12. [Utility Operations](#utility-operations)
+13. [Duplicates Summary](#duplicates-summary)
 
 ## BLAS Level 1: Vector Operations
 
@@ -154,6 +155,57 @@ Located in `tensor_reduction.go`.
 | Reduce Min | `ReduceMin(dst, dstShape, dstStrides, src, srcShape, srcStrides, axes)` | Min reduction along axes |
 | Argmax | `Argmax(dst, dstShape, dstStrides, src, srcShape, srcStrides, axis)` | Argmax along specified axis (returns float32 indices) |
 | Argmin | `Argmin(dst, dstShape, dstStrides, src, srcShape, srcStrides, axis)` | Argmin along specified axis (returns int32 indices) |
+
+## Normalization Operations
+
+Located in `normalization.go`. Neural network normalization layers commonly used for stabilizing training.
+
+### Batch Normalization
+
+| Operation | Function | Description |
+|-----------|----------|-------------|
+| Batch Normalization Forward | `BatchNormForward(dst, x, gamma, beta, shape, eps)` | (x - mean) / sqrt(var + eps) * gamma + beta. Normalizes across batch dimension. |
+
+### Layer Normalization
+
+| Operation | Function | Description |
+|-----------|----------|-------------|
+| Layer Normalization Forward | `LayerNormForward(dst, x, gamma, beta, shape, eps)` | (x - mean) / sqrt(var + eps) * gamma + beta. Normalizes across last dimension. |
+
+### RMS Normalization
+
+| Operation | Function | Description |
+|-----------|----------|-------------|
+| RMS Normalization Forward | `RMSNormForward(dst, x, gamma, shape, eps)` | x / sqrt(mean(x²) + eps) * gamma. Simpler than layer norm, no centering. |
+
+### L2 Normalization
+
+| Operation | Function | Description |
+|-----------|----------|-------------|
+| L2 Normalization Forward | `L2NormForward(dst, x, shape, axis)` | x / ||x||₂. Normalizes to unit L2 norm along specified axis. |
+
+### Instance Normalization
+
+| Operation | Function | Description |
+|-----------|----------|-------------|
+| Instance Normalization 2D | `InstanceNorm2D(dst, x, gamma, beta, batchSize, channels, height, width, eps)` | (x - mean) / sqrt(var + eps) * gamma + beta. Normalizes spatial dimensions per instance/channel. |
+
+### Group Normalization
+
+| Operation | Function | Description |
+|-----------|----------|-------------|
+| Group Normalization Forward | `GroupNormForward(dst, x, gamma, beta, shape, numGroups, eps)` | (x - mean) / sqrt(var + eps) * gamma + beta. Normalizes within channel groups. |
+
+#### Normalization Gradients
+
+| Operation | Function | Description |
+|-----------|----------|-------------|
+| Batch Normalization Grad | `BatchNormGrad(gradOutput, input, gamma, shape, eps)` | Computes gradients for batch normalization. Returns (gradInput, gradGamma, gradBeta). |
+| Layer Normalization Grad | `LayerNormGrad(gradOutput, input, gamma, shape, eps)` | Computes gradients for layer normalization. Returns (gradInput, gradGamma, gradBeta). |
+| RMS Normalization Grad | `RMSNormGrad(gradOutput, input, gamma, shape, eps)` | Computes gradients for RMS normalization. Returns (gradInput, gradGamma). |
+| L2 Normalization Grad | `L2NormalizeGrad(gradOutput, input, shape, axis)` | Computes gradients for L2 normalization. Returns gradInput. |
+| Instance Normalization 2D Grad | `InstanceNorm2DGrad(gradOutput, input, gamma, batchSize, channels, height, width, eps)` | Computes gradients for 2D instance normalization. Returns (gradInput, gradGamma, gradBeta). |
+| Group Normalization Grad | `GroupNormGrad(gradOutput, input, gamma, shape, numGroups, eps)` | Computes gradients for group normalization. Returns (gradInput, gradGamma, gradBeta). |
 
 ## Tensor Operations
 
@@ -343,12 +395,13 @@ The fp32 package contains recommended implementations for all operations:
 - **BLAS Operations**: 18 (Level 1: 8, Level 2: 5, Level 3: 5, Batched: 3) ✓ **CORE - KEEP**
 - **Tensor Element-wise Operations**: 31 (Binary: 4, Unary: 13, Scalar: 5, Comparison: 6, Ternary: 1, Scaled: 2) ✓ **PRIMARY API**
 - **Reduction Operations**: 6 (Sum, Mean, Max, Min, Argmax, Argmin) ✓ **PRIMARY API**
+- **Normalization Operations**: 12 (Forward: 6, Gradients: 6) ✓ **NEURAL NETWORK LAYERS**
 - **Tensor Operations**: 29 (Pooling: 16, Convolution: 13) ✓ **PRIMARY API**
 - **Activation Functions**: 16 (Forward: 6, Gradient: 7, Gradient Stride: 3) ✓ **RECOMMENDED FOR EMBEDDED** - dedicated gradient functions provide better performance
 - **Linear Algebra**: 13 (LAPACK-style operations) ✓ **CORE - KEEP**
 - **Utilities**: 12 (Array: 7, Vector: 5, Tensor: 4) ✓ **CLEANED** (includes dst-based versions)
 
-**Total Operations**: 125 functions across 13 categories
+**Total Operations**: 137 functions across 14 categories
 **Migration Status**: 11 functions are deprecated (thin wrappers calling generics). 17 functions migrated to use generics internally (keep for API compatibility). All operations follow destination-first convention. See `GENERIC_OPS_MIGRATION_PLAN.md` for details.
 
 ### Operation Patterns

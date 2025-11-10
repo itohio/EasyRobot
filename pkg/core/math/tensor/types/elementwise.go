@@ -1,8 +1,8 @@
 package types
 
-// TensorElementWise defines element-wise operations on tensors.
+// ElementWise defines element-wise operations on tensors.
 // This interface contains operations that apply functions element-by-element.
-type TensorElementWise interface {
+type ElementWise interface {
 	// Binary operations (destination-based)
 	// Add performs element-wise addition: dst = t + other (matches tf.add).
 	// If dst is nil, operation is in-place (modifies t) and returns t.

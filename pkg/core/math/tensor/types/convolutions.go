@@ -1,8 +1,8 @@
 package types
 
-// TensorConvolutions defines convolution operations for neural networks.
+// Convolutions defines convolution operations for neural networks.
 // This interface contains operations for performing convolutions on tensors.
-type TensorConvolutions interface {
+type Convolutions interface {
 	// Conv1D performs 1D convolution (implemented via 2D conv with width=1) (matches tf.nn.conv1d).
 	// Input: [inChannels, length] or [batch, inChannels, length]
 	// Kernel: [outChannels, inChannels, kernelLen]

@@ -7,14 +7,15 @@ The Tensor interface defines the complete contract for tensor operations in the 
 ### Interface Composition
 
 The main `Tensor` interface embeds the following category interfaces:
-- `TensorCore` - Core properties and element access
-- `TensorManipulation` - Shape manipulation and copying operations
-- `TensorElementWise` - Element-wise mathematical operations
-- `TensorMath` - Reduction and linear algebra operations
-- `TensorActivations` - Activation functions for neural networks
-- `TensorConvolutions` - Convolution operations
-- `TensorPooling` - Pooling operations
-- `TensorDropout` - Dropout operations
+- `Core` - Core properties and element access
+- `Manipulation` - Shape manipulation and copying operations
+- `ElementWise` - Element-wise mathematical operations
+- `Math` - Reduction and linear algebra operations
+- `Normalizations` - Normalization operations for neural networks
+- `Activations` - Activation functions for neural networks
+- `Convolutions` - Convolution operations
+- `Pooling` - Pooling operations
+- `Dropout` - Dropout operations
 
 ### Helper Types
 
@@ -79,7 +80,7 @@ func Must(t any, err error) any
 
 ## Tensor Interface Methods
 
-### Core Properties and Access (TensorCore)
+### Core Properties and Access (Core)
 
 #### Identity and Metadata
 - `ID() uintptr` - Returns unique identifier for the tensor
@@ -106,7 +107,7 @@ func Must(t any, err error) any
 - `SetAt(value float64, indices ...int)` - Sets element at given multi-dimensional indices. When only one index is provided and tensor rank > 1, uses linear indexing. Panics if indices are out of bounds.
 - `Elements(fixedAxisValuePairs ...int) func(func(Element) bool)` - Creates iterator over tensor elements (Go 1.22+ range-over-function). fixedAxisValuePairs are pairs of axis index and fixed value. Iterates in row-major order. Returns Element objects with Get() and Set() methods.
 
-### Manipulation Operations (TensorManipulation)
+### Manipulation Operations (Manipulation)
 
 #### Copying and Cloning
 - `Clone() Tensor` - Creates a deep copy of the tensor and returns it as a Tensor interface. The returned tensor is independent of the original.
@@ -129,7 +130,7 @@ func Must(t any, err error) any
 - `Pad(dst Tensor, padding []int, value float64) Tensor` - Adds padding to tensor with constant value (matches tf.pad). padding: [padBeforeDim0, padAfterDim0, padBeforeDim1, padAfterDim1, ...]. Each dimension has two padding values: before and after. value: constant value to pad with. If dst is nil, creates a new tensor. If dst is provided, writes result to dst and returns dst. Panics if padding values are invalid.
 - `Unpad(dst Tensor, padding []int) Tensor` - Removes padding from tensor. padding: [padBeforeDim0, padAfterDim0, padBeforeDim1, padAfterDim1, ...]. Each dimension has two padding values: before and after. If dst is nil, creates a new tensor with padding removed. If dst is provided, copies unpadded data to dst and returns dst. Panics if padding values are invalid, result shape would be invalid, or if dst shape doesn't match unpadded shape.
 
-### Element-Wise Operations (TensorElementWise)
+### Element-Wise Operations (ElementWise)
 
 #### Binary Operations (Destination-based)
 All binary operations support in-place operations when dst is nil. If dst is provided, result is written to dst and dst is returned.
@@ -175,7 +176,7 @@ Comparison operations return new tensors with 1.0 where condition is true, 0.0 o
 #### Conditional Operations
 - `Where(dst Tensor, condition, a, b Tensor) Tensor` - Element-wise selection: dst[i] = condition[i] ? a[i] : b[i] (matches tf.where). All tensors must have the same shape. If dst is nil, creates a new tensor. If dst is provided, writes result to dst and returns dst. Panics if shapes don't match.
 
-### Math Operations (TensorMath)
+### Math Operations (Math)
 
 #### Reduction Operations
 Reduction operations reduce dimensions and return new tensors with reduced dimensions. All operations support destination tensor parameter. If dst is nil, creates a new tensor. If dst is provided, writes result to dst and returns dst.
@@ -209,7 +210,40 @@ All linear algebra operations use optimized BLAS/LAPACK operations when possible
 #### Gradient Routing and Utility Operations
 - `ScatterAdd(dst, index, value Tensor) Tensor` - Adds values to destination tensor at positions specified by indices. dst: destination tensor (modified in-place, should be zero-initialized). index: indices tensor [batch, channels, outHeight, outWidth] (as int16, linear indices into dst). value: values to add [batch, channels, outHeight, outWidth]. For each position in index, adds the corresponding value from value to dst[index[i]]. This is a general scatter operation useful for gradient routing in backpropagation. Returns the destination tensor.
 
-### Activation Functions (TensorActivations)
+### Normalization Operations (Normalizations)
+
+Normalization operations stabilize neural network training and improve convergence. All operations support destination tensor parameter. If dst is nil, creates a new tensor. Returns the destination tensor.
+
+#### Batch Normalization
+
+- `BatchNormForward(dst Tensor, gamma, beta Tensor, eps float64) Tensor` - Performs batch normalization: (x - mean) / sqrt(var + eps) * gamma + beta. Normalizes across batch dimension (axis 0). gamma and beta are learnable parameters with shape matching the non-batch dimensions. If gamma/beta are nil, uses gamma=1, beta=0. If dst is nil, creates a new tensor. If dst is provided, writes result to dst and returns dst.
+- `BatchNormGrad(gradInputDst, gradGammaDst, gradBetaDst, gradOutput, input, gamma Tensor, eps float64) (Tensor, Tensor, Tensor)` - Computes gradients for batch normalization. gradInputDst: destination for input gradient [batch, ...] (can be nil). gradGammaDst: destination for gamma gradient [...] (can be nil). gradBetaDst: destination for beta gradient [...] (can be nil). gradOutput: gradient w.r.t. output [batch, ...]. input: original input [batch, ...]. gamma: scale parameter [...]. eps: epsilon for numerical stability. Returns: (gradInput, gradGamma, gradBeta) - new tensors if dst was nil, otherwise returns dst tensors.
+
+#### Layer Normalization
+
+- `LayerNormForward(dst Tensor, gamma, beta Tensor, eps float64) Tensor` - Performs layer normalization: (x - mean) / sqrt(var + eps) * gamma + beta. Normalizes across the last dimension (feature dimension). gamma and beta are learnable parameters with shape matching the last dimension. If gamma/beta are nil, uses gamma=1, beta=0. If dst is nil, creates a new tensor. If dst is provided, writes result to dst and returns dst.
+- `LayerNormGrad(gradInputDst, gradGammaDst, gradBetaDst, gradOutput, input, gamma Tensor, eps float64) (Tensor, Tensor, Tensor)` - Computes gradients for layer normalization. gradInputDst: destination for input gradient [...] (can be nil). gradGammaDst: destination for gamma gradient [last_dim] (can be nil). gradBetaDst: destination for beta gradient [last_dim] (can be nil). gradOutput: gradient w.r.t. output [...]. input: original input [...]. gamma: scale parameter [last_dim]. eps: epsilon for numerical stability. Returns: (gradInput, gradGamma, gradBeta) - new tensors if dst was nil, otherwise returns dst tensors.
+
+#### RMS Normalization
+
+- `RMSNormForward(dst Tensor, gamma Tensor, eps float64) Tensor` - Performs RMS normalization: x / sqrt(mean(x^2) + eps) * gamma. Simpler than layer norm - only scales, no centering. Often used in transformers. gamma is a learnable parameter with shape matching the last dimension. If gamma is nil, uses gamma=1. If dst is nil, creates a new tensor. If dst is provided, writes result to dst and returns dst.
+- `RMSNormGrad(gradInputDst, gradGammaDst, gradOutput, input, gamma Tensor, eps float64) (Tensor, Tensor)` - Computes gradients for RMS normalization. gradInputDst: destination for input gradient [...] (can be nil). gradGammaDst: destination for gamma gradient [last_dim] (can be nil). gradOutput: gradient w.r.t. output [...]. input: original input [...]. gamma: scale parameter [last_dim]. eps: epsilon for numerical stability. Returns: (gradInput, gradGamma) - new tensors if dst was nil, otherwise returns dst tensors.
+
+#### L2 Normalization
+
+Note: L2Normalize is implemented in TensorMath interface, not TensorNormalizations.
+
+#### Instance Normalization
+
+- `InstanceNorm2D(dst Tensor, gamma, beta Tensor, eps float64) Tensor` - Performs instance normalization for 2D feature maps. Normalizes across spatial dimensions (H, W) for each instance and channel. Input shape: [batch, channels, height, width]. gamma/beta shape: [channels] (one per channel). If dst is nil, creates a new tensor. If dst is provided, writes result to dst and returns dst.
+- `InstanceNorm2DGrad(gradInputDst, gradGammaDst, gradBetaDst, gradOutput, input, gamma Tensor, eps float64) (Tensor, Tensor, Tensor)` - Computes gradients for 2D instance normalization. gradInputDst: destination for input gradient [batch, channels, height, width] (can be nil). gradGammaDst: destination for gamma gradient [channels] (can be nil). gradBetaDst: destination for beta gradient [channels] (can be nil). gradOutput: gradient w.r.t. output [batch, channels, height, width]. input: original input [batch, channels, height, width]. gamma: scale parameter [channels]. eps: epsilon for numerical stability. Returns: (gradInput, gradGamma, gradBeta) - new tensors if dst was nil, otherwise returns dst tensors.
+
+#### Group Normalization
+
+- `GroupNormForward(dst Tensor, gamma, beta Tensor, numGroups int, eps float64) Tensor` - Performs group normalization. Divides channels into groups and normalizes within each group. Input shape: [batch, channels, ...] where channels must be divisible by numGroups. gamma/beta shape: [channels] (one per channel). If dst is nil, creates a new tensor. If dst is provided, writes result to dst and returns dst.
+- `GroupNormGrad(gradInputDst, gradGammaDst, gradBetaDst, gradOutput, input, gamma Tensor, numGroups int, eps float64) (Tensor, Tensor, Tensor)` - Computes gradients for group normalization. gradInputDst: destination for input gradient [batch, channels, ...] (can be nil). gradGammaDst: destination for gamma gradient [channels] (can be nil). gradBetaDst: destination for beta gradient [channels] (can be nil). gradOutput: gradient w.r.t. output [batch, channels, ...]. input: original input [batch, channels, ...]. gamma: scale parameter [channels]. numGroups: number of groups used in forward pass. eps: epsilon for numerical stability. Returns: (gradInput, gradGamma, gradBeta) - new tensors if dst was nil, otherwise returns dst tensors.
+
+### Activation Functions (Activations)
 
 Activation functions apply non-linear transformations element-wise. All operations support destination tensor parameter. If dst is nil, creates a new tensor. Returns the destination tensor.
 
@@ -224,7 +258,7 @@ Activation functions apply non-linear transformations element-wise. All operatio
 - `Swish(dst Tensor) Tensor` - Applies Swish activation: result[i] = t[i] * sigmoid(t[i]) (matches tf.nn.swish).
 - `GELU(dst Tensor) Tensor` - Applies GELU activation: result[i] = t[i] * 0.5 * (1 + erf(t[i]/sqrt(2))) (matches tf.nn.gelu).
 
-### Convolution Operations (TensorConvolutions)
+### Convolution Operations (Convolutions)
 
 #### Forward Convolution
 All forward convolution operations support destination tensor parameter. If dst is nil, creates a new tensor. If dst is provided, writes result to dst and returns dst. All operations panic if shapes are incompatible.
@@ -245,7 +279,7 @@ These operations convert between image patches and column format for efficient c
 - `Im2Col(kernelSize, stride, padding []int) Tensor` - Converts image patches to columns for GEMM-based convolution. Input: [batch, channels, height, width]. Output: [batch*outHeight*outWidth, channels*kernelH*kernelW]. Returns a new tensor. Used internally for optimized convolution computation.
 - `Col2Im(outputShape, kernelSize, stride, padding []int) Tensor` - Converts columns back to image (inverse of Im2Col). Input: [batch*outHeight*outWidth, channels*kernelH*kernelW]. Output: [batch, channels, height, width]. Returns a new tensor. Used in backpropagation for convolution gradients.
 
-### Pooling Operations (TensorPooling)
+### Pooling Operations (Pooling)
 
 Pooling operations perform downsampling on tensors. All operations panic if shapes are incompatible.
 
@@ -262,7 +296,7 @@ Pooling operations perform downsampling on tensors. All operations panic if shap
 - `GlobalAvgPool2D(dst Tensor) Tensor` - Performs global average pooling. Input: [batch, channels, height, width]. Output: [batch, channels]. Computes mean over spatial dimensions (height, width). If dst is nil, creates a new tensor. If dst is provided, writes result to dst and returns dst.
 - `AdaptiveAvgPool2D(dst Tensor, outputSize []int) Tensor` - Performs adaptive average pooling to fixed output size. Input: [batch, channels, height, width]. outputSize: [outHeight, outWidth] - target output spatial dimensions. Output: [batch, channels, outHeight, outWidth]. Divides input into approximately equal regions and averages each region. If dst is nil, creates a new tensor. If dst is provided, writes result to dst and returns dst.
 
-### Dropout Operations (TensorDropout)
+### Dropout Operations (Dropout)
 
 Dropout operations are used for regularization during training of neural networks.
 

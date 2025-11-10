@@ -1,8 +1,8 @@
 package types
 
-// TensorActivations defines activation functions for neural networks.
+// Activations defines activation functions for neural networks.
 // This interface contains non-linear transformations applied element-wise.
-type TensorActivations interface {
+type Activations interface {
 	// ReLU applies Rectified Linear Unit activation: result[i] = max(0, t[i]).
 	// If dst is nil, creates a new tensor. Returns the destination tensor.
 	ReLU(dst Tensor) Tensor

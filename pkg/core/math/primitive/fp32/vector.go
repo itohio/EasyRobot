@@ -1,6 +1,8 @@
 package fp32
 
-// HadamardProductAdd computes element-wise product and add: dst[i] += a[i] * b[i]
+// HadamardProductAdd computes element-wise product and add: dst[i] += a[i] * b[i].
+// The destination slice is not cleared; callers must zero dst beforehand if a
+// fresh result is required.
 // Element-wise multiplication and addition for tensor operations
 func HadamardProductAdd(dst, a, b []float32, num int, strideA, strideB int) {
 	if num == 0 {
@@ -57,8 +59,8 @@ func NormalizeVecInPlace(dst []float32, num int, stride int) {
 	Scal(dst, stride, num, 1.0/norm)
 }
 
-// SumArrInPlace computes dst[i] += c for all i (in-place)
-// Utility function for scalar addition
+// SumArrInPlace computes dst[i] += c for all i (in-place).
+// The operation accumulates onto the existing contents of dst.
 // Note: Not directly replaceable with BLAS operations efficiently
 func SumArrInPlace(dst []float32, c float32, num int) {
 	if num == 0 {

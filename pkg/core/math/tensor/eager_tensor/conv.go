@@ -1834,7 +1834,7 @@ func (t Tensor) Col2Im(dst types.Tensor, outputShape, kernelSize, stride, paddin
 			resultData = types.GetTensorData[[]float32](dst)
 		}
 
-		// Call fp32.Col2Im
+		// Call fp32.Col2Im (which clears the destination before accumulation)
 		tData := types.GetTensorData[[]float32](t)
 		fp32.Col2Im(
 			resultData,
@@ -1858,7 +1858,8 @@ func (t Tensor) Col2Im(dst types.Tensor, outputShape, kernelSize, stride, paddin
 }
 
 // ScatterAdd adds values to destination tensor at positions specified by indices
-// dst: destination tensor (modified in-place, should be zero-initialized)
+// dst: destination tensor (modified in-place). The slice is cleared inside this
+// helper so callers do not need to zero pooled buffers manually.
 // index: indices tensor [batch, channels, outHeight, outWidth] as int32 (linear indices into dst)
 // value: values to add [batch, channels, outHeight, outWidth]
 // For each position in index, adds the corresponding value from value to dst[index[i]]
@@ -1898,6 +1899,9 @@ func (t Tensor) ScatterAdd(dst types.Tensor, index types.Tensor, value types.Ten
 	case []float32:
 		// Get data
 		dstData := types.GetTensorData[[]float32](dst)
+		for i := range dstData {
+			dstData[i] = 0
+		}
 		indexDataInt32 := types.GetTensorData[[]int32](index)
 		valueData := types.GetTensorData[[]float32](value)
 

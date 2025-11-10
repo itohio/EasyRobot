@@ -39,6 +39,7 @@ func (p *Pool[T]) Reconfigure(lengths ...int) error {
 }
 
 // Get returns a buffer of length n with capacity within the configured tiers.
+// IMPORTANT: Get DOES NOT guarantee initialized buffers! Use Fill() to initialize the buffer if necessary.
 func (p *Pool[T]) Get(n int) []T {
 	p.RLock()
 	if len(p.bounds) == 0 {

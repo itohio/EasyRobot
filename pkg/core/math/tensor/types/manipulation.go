@@ -1,8 +1,8 @@
 package types
 
-// TensorManipulation defines operations for copying, cloning, reshaping, and manipulating tensor structure.
+// Manipulation defines operations for copying, cloning, reshaping, and manipulating tensor structure.
 // This interface contains operations that modify tensor shape or create new tensor views.
-type TensorManipulation interface {
+type Manipulation interface {
 	// Clone creates a deep copy of the tensor and returns it as a Tensor interface.
 	// The returned tensor is independent of the original.
 	Clone() Tensor

@@ -1,8 +1,8 @@
 package types
 
-// TensorMath defines common tensor math operations including reductions and linear algebra.
+// Math defines common tensor math operations including reductions and linear algebra.
 // This interface contains operations for mathematical computations on tensors.
-type TensorMath interface {
+type Math interface {
 	// Reduction Operations
 	// Reduction operations reduce dimensions and return new tensors with reduced dimensions.
 

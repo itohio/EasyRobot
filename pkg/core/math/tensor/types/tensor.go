@@ -22,29 +22,32 @@ type Element interface {
 // Operations are gradually being moved from this interface to category interfaces.
 type Tensor interface {
 	// Core Properties and Access
-	// TensorCore interface is embedded to provide core tensor operations.
-	TensorCore
+	// Core interface is embedded to provide core tensor operations.
+	Core
 
-	// TensorManipulation interface is embedded to provide tensor manipulation operations.
-	TensorManipulation
+	// Manipulation interface is embedded to provide tensor manipulation operations.
+	Manipulation
 
-	// TensorElementWise interface is embedded to provide element-wise operations.
-	TensorElementWise
+	// ElementWise interface is embedded to provide element-wise operations.
+	ElementWise
 
-	// TensorMath interface is embedded to provide math operations (reductions, linear algebra).
-	TensorMath
+	// Math interface is embedded to provide math operations (reductions, linear algebra).
+	Math
 
-	// TensorActivations interface is embedded to provide activation functions.
-	TensorActivations
+	// Normalizations interface is embedded to provide normalization operations.
+	Normalizations
 
-	// TensorConvolutions interface is embedded to provide convolution operations.
-	TensorConvolutions
+	// Activations interface is embedded to provide activation functions.
+	Activations
 
-	// TensorPooling interface is embedded to provide pooling operations.
-	TensorPooling
+	// Convolutions interface is embedded to provide convolution operations.
+	Convolutions
 
-	// TensorDropout interface is embedded to provide dropout operations.
-	TensorDropout
+	// Pooling interface is embedded to provide pooling operations.
+	Pooling
+
+	// Dropout interface is embedded to provide dropout operations.
+	Dropout
 }
 
 // Helper functions that would accept Tensor interface:

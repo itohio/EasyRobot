@@ -91,7 +91,8 @@ func Im2Col(
 // Col2Im converts columns back to image (inverse of Im2Col)
 // col: input columns [batchSize*outHeight*outWidth, channels*kernelH*kernelW]
 // im: output image [batchSize, channels, height, width] in row-major layout
-// This accumulates values (for backpropagation or gradient accumulation)
+// This function zeroes the destination slice before accumulating values so
+// callers can safely reuse pooled buffers without manual clearing.
 func Col2Im(
 	im, col []float32,
 	batchSize, channels int,
@@ -102,6 +103,11 @@ func Col2Im(
 ) {
 	if batchSize == 0 || channels == 0 || height == 0 || width == 0 {
 		return
+	}
+
+	total := batchSize * channels * height * width
+	for i := 0; i < total && i < len(im); i++ {
+		im[i] = 0
 	}
 
 	// Calculate output dimensions
@@ -621,8 +627,10 @@ func MaxPool2DWithIndices(
 	}
 }
 
-// MaxPool2DBackward performs backward pass for 2D max pooling
-// gradInput: output gradient [batchSize, channels, inHeight, inWidth] (accumulated, should be zero-initialized)
+// MaxPool2DBackward performs backward pass for 2D max pooling.
+// gradInput: output gradient [batchSize, channels, inHeight, inWidth]. The slice
+// is cleared before gradients are accumulated so callers do not need to
+// pre-initialize pooled buffers.
 // gradOutput: input gradient [batchSize, channels, outHeight, outWidth]
 // indices: indices from forward pass [batchSize, channels, outHeight, outWidth] as int32
 // src: original input [batchSize, channels, inHeight, inWidth] (used to resolve ties when multiple positions have same max)
@@ -641,6 +649,11 @@ func MaxPool2DBackward(
 ) {
 	if batchSize == 0 || channels == 0 || inHeight == 0 || inWidth == 0 {
 		return
+	}
+
+	gradTotal := batchSize * channels * inHeight * inWidth
+	for i := 0; i < gradTotal && i < len(gradInput); i++ {
+		gradInput[i] = 0
 	}
 
 	// Process each batch, channel, and output position
@@ -780,8 +793,9 @@ func AvgPool2D(
 	}
 }
 
-// AvgPool2DBackward performs backward pass for 2D average pooling
-// gradInput: output gradient [batchSize, channels, inHeight, inWidth] (accumulated, should be zero-initialized)
+// AvgPool2DBackward performs backward pass for 2D average pooling.
+// gradInput: output gradient [batchSize, channels, inHeight, inWidth]. The slice
+// is cleared before gradients are accumulated.
 // gradOutput: input gradient [batchSize, channels, outHeight, outWidth]
 // batchSize, channels, inHeight, inWidth: input dimensions
 // outHeight, outWidth: output dimensions
@@ -797,8 +811,10 @@ func AvgPool2DBackward(
 		return
 	}
 
-	// Compute kernel area for normalization
-	kernelArea := float32(kernelH * kernelW)
+	gradTotal := batchSize * channels * inHeight * inWidth
+	for i := 0; i < gradTotal && i < len(gradInput); i++ {
+		gradInput[i] = 0
+	}
 
 	// Process each batch, channel, and output position
 	for b := 0; b < batchSize; b++ {
@@ -811,17 +827,29 @@ func AvgPool2DBackward(
 
 			for outH := 0; outH < outHeight; outH++ {
 				for outW := 0; outW < outWidth; outW++ {
-					// Get output gradient value
 					gradOutputIdx := gradOutputChannelOffset + outH*outWidth + outW
 					gradVal := gradOutput[gradOutputIdx]
 
-					// Calculate input window position
 					startH := outH*strideH - padH
 					startW := outW*strideW - padW
 
-					// Distribute gradient equally to all valid positions in the window
-					// Divide by kernel area to match forward pass (average pooling)
-					gradPerPosition := gradVal / kernelArea
+					// Count valid positions in the pooling window to mirror forward averaging
+					var count int
+					for kh := 0; kh < kernelH; kh++ {
+						for kw := 0; kw < kernelW; kw++ {
+							inH := startH + kh
+							inW := startW + kw
+							if inH >= 0 && inH < inHeight && inW >= 0 && inW < inWidth {
+								count++
+							}
+						}
+					}
+
+					if count == 0 {
+						continue
+					}
+
+					gradPerPosition := gradVal / float32(count)
 
 					for kh := 0; kh < kernelH; kh++ {
 						for kw := 0; kw < kernelW; kw++ {
@@ -1634,7 +1662,9 @@ func DilatedConv2D(
 }
 
 // ScatterAdd adds values to destination tensor at positions specified by indices
-// dst: destination tensor [batchSize, channels, inHeight, inWidth] (modified in-place, should be zero-initialized)
+// dst: destination tensor [batchSize, channels, inHeight, inWidth] (modified in-place).
+// The destination is not cleared automatically; callers that require a fresh
+// buffer must zero it before invoking this function.
 // index: indices tensor [batchSize, channels, outHeight, outWidth] as int32 (linear indices into dst)
 // value: values to add [batchSize, channels, outHeight, outWidth]
 // batchSize, channels, inHeight, inWidth: destination tensor dimensions
