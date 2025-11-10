@@ -21,8 +21,6 @@ type Conv2D struct {
 	padW        int
 	hasBias     bool
 	// Pre-allocated scratch tensors for backward pass optimization
-	gradOutputT        tensorTypes.Tensor // Scratch tensor for gradOutput transpose [outChannels, batch*outHeight*outWidth]
-	kernelGradMatrix   tensorTypes.Tensor // Scratch tensor for kernel gradient matrix [outChannels, inChannels*kernelH*kernelW]
 	inputGradTmpTensor tensorTypes.Tensor // Scratch tensor for input gradient temporary [batch, inChannels, inHeight, inWidth]
 }
 
@@ -145,12 +143,6 @@ func (c *Conv2D) Init(inputShape tensor.Shape) error {
 	// Pre-allocate scratch tensors for backward pass to avoid allocations
 	// These tensors will be reused across backward passes
 	dtype := c.Base.DataType()
-	// gradOutputT shape: [outChannels, batch*outHeight*outWidth]
-	gradOutputTShape := tensor.NewShape(c.outChannels, batchSize*outHeight*outWidth)
-	c.gradOutputT = tensor.New(dtype, gradOutputTShape)
-	// kernelGradMatrix shape: [outChannels, inChannels*kernelH*kernelW]
-	kernelGradMatrixShape := tensor.NewShape(c.outChannels, c.inChannels*c.kernelH*c.kernelW)
-	c.kernelGradMatrix = tensor.New(dtype, kernelGradMatrixShape)
 
 	// Pre-allocate inputGradTmpTensor for backward pass (matches input shape)
 	c.inputGradTmpTensor = tensor.New(dtype, inputShape)
@@ -282,47 +274,16 @@ func (c *Conv2D) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tensor, er
 		}
 	}
 
-	// Compute kernel gradient using primitive composition
+	// Compute kernel gradient using direct Conv2DKernelGrad (replaces inefficient Im2Col + GEMM approach)
 	if c.Base.CanLearn() && kernelParam.RequiresGrad {
 		if tensor.IsNil(kernelParam.Grad) {
 			// Use parameter's data type for gradient (matches layer's data type)
 			kernelParam.Grad = tensor.New(kernelParam.Data.DataType(), kernelParam.Data.Shape())
 		}
 
-		// Kernel gradient computation using primitives:
-		// kernelGrad = (gradOutput ⊛ input) where ⊛ is correlation
-		// This is equivalent to: kernelGrad = gradOutput_reshaped^T @ Im2Col(input)
-		// where gradOutput_reshaped: [batch*outHeight*outWidth, outChannels]
-
-		// Convert input to column format
-		inputCols := input.Im2Col(nil, []int{c.kernelH, c.kernelW}, []int{c.strideH, c.strideW}, []int{c.padH, c.padW})
-		// inputCols shape: [batch*outHeight*outWidth, inChannels*kernelH*kernelW]
-
-		// Reshape gradOutput from [batch, outChannels, outHeight, outWidth] to [batch*outHeight*outWidth, outChannels]
-		gradOutputShape := gradOutput.Shape()
-		batchSize := gradOutputShape[0]
-		outHeight := gradOutputShape[2]
-		outWidth := gradOutputShape[3]
-		gradOutputReshaped := gradOutput.Reshape(nil, tensor.NewShape(batchSize*outHeight*outWidth, c.outChannels))
-
-		// Compute: kernelGrad = gradOutputReshaped^T @ inputCols
-		// gradOutputReshaped^T shape: [outChannels, batch*outHeight*outWidth]
-		// inputCols shape: [batch*outHeight*outWidth, inChannels*kernelH*kernelW]
-		// Result: [outChannels, inChannels*kernelH*kernelW]
-		// Use pre-allocated scratch tensors
-		// Check if gradOutputT needs resizing (batch size might change)
-		expectedGradOutputTShape := tensor.NewShape(c.outChannels, batchSize*outHeight*outWidth)
-		if tensor.IsNil(c.gradOutputT) || !c.gradOutputT.Shape().Equal(expectedGradOutputTShape) {
-			c.gradOutputT = tensor.New(gradOutputReshaped.DataType(), expectedGradOutputTShape)
-		}
-		gradOutputT := gradOutputReshaped.Transpose(c.gradOutputT, []int{1, 0})
-		kernelGradMatrix := gradOutputT.MatMul(c.kernelGradMatrix, inputCols)
-
-		// Reshape result to kernel shape: [outChannels, inChannels, kernelH, kernelW]
-		kernelGradReshaped := kernelGradMatrix.Reshape(nil, tensor.NewShape(c.outChannels, c.inChannels, c.kernelH, c.kernelW))
-
-		// Copy using optimized Tensor.Copy method
-		kernelParam.Grad.Copy(kernelGradReshaped)
+		// Use direct Conv2DKernelGrad method - much more efficient than Im2Col + GEMM
+		// This computes the kernel gradient directly without intermediate matrix operations
+		kernelParam.Grad = input.Conv2DKernelGrad(kernelParam.Grad, gradOutput, kernelParam.Data, []int{c.strideH, c.strideW}, []int{c.padH, c.padW})
 		c.Base.SetParam(types.ParamKernels, kernelParam)
 	}
 

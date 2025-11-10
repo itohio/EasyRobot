@@ -1,8 +1,8 @@
 # Eager Tensor Operations Benchmark Report
 
-**Generated:** November 7, 2025  
-**Platform:** Linux (amd64)  
-**CPU:** Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz  
+**Generated:** November 10, 2025
+**Platform:** Linux (amd64)
+**CPU:** Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz
 **Package:** `github.com/itohio/EasyRobot/pkg/core/math/tensor/eager_tensor`
 
 ## Overview
@@ -13,9 +13,9 @@ This report contains benchmark results for eager tensor operations, comparing in
 
 - **Platform**: Linux (amd64)
 - **CPU**: Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz
-- **Benchmark Duration**: 1-3 seconds per test
+- **Benchmark Duration**: Variable per test
 - **Data Type**: float32
-- **Operations Tested**: Element-wise binary, scalar, unary, and activation functions
+- **Operations Tested**: Element-wise binary, scalar, unary, activation, and utility functions
 
 ## Tensor Sizes
 
@@ -33,188 +33,125 @@ This report contains benchmark results for eager tensor operations, comparing in
 
 ### Add Operation
 
-| Size | Mode | Duration (ns/op) | Allocations | Memory (B/op) | Speedup (vs In-Place) |
-|------|------|-----------------|-------------|---------------|----------------------|
-| 1K | In-Place | 2,717 | 7 | 704 | 1.00x (baseline) |
-| 1K | Destination | 1,484 | 6 | 624 | **1.83x faster** |
-| 10K | In-Place | 14,971 | 7 | 704 | 1.00x (baseline) |
-| 10K | Destination | 10,201 | 6 | 624 | **1.47x faster** |
-| 100K | In-Place | 139,761 | 7 | 704 | 1.00x (baseline) |
-| 100K | Destination | 122,973 | 6 | 624 | **1.14x faster** |
-| 1M | In-Place | 2,452,407 | 7 | 704 | 1.00x (baseline) |
-| 1M | Destination | 1,858,105 | 6 | 624 | **1.32x faster** |
-| 2D_100x100 | In-Place | 14,338 | 7 | 704 | 1.00x (baseline) |
-| 2D_100x100 | Destination | 11,702 | 6 | 624 | **1.23x faster** |
-| 2D_1000x100 | In-Place | 128,070 | 7 | 704 | 1.00x (baseline) |
-| 2D_1000x100 | Destination | 138,118 | 6 | 624 | 0.93x |
-| 3D_50x50x50 | In-Place | 125,594 | 7 | 704 | 1.00x (baseline) |
-| 3D_50x50x50 | Destination | 192,008 | 6 | 624 | 0.65x |
+| Size | Mode | Duration (ns/op) | Allocations | Memory (B/op) |
+|------|------|-----------------|-------------|---------------|
+| 1K | In-Place | 2,915 | 5 | 544 |
+| 1K | Destination | 2,172 | 5 | 544 |
+| 10K | In-Place | 13,026 | 5 | 544 |
+| 10K | Destination | 14,142 | 5 | 544 |
+| 100K | In-Place | 164,595 | 5 | 544 |
+| 100K | Destination | 292,458 | 5 | 544 |
+| 1M | In-Place | 2,613,882 | 5 | 544 |
+| 1M | Destination | 3,633,297 | 5 | 544 |
+| 2D_100x100 | In-Place | 12,755 | 5 | 544 |
+| 2D_100x100 | Destination | 14,252 | 5 | 544 |
+| 2D_1000x100 | In-Place | 149,015 | 5 | 544 |
+| 2D_1000x100 | Destination | 233,877 | 5 | 544 |
+| 3D_50x50x50 | In-Place | 193,553 | 5 | 544 |
+| 3D_50x50x50 | Destination | 255,659 | 5 | 544 |
 
-**Observations:**
-- **Destination-based Add is faster for 1D tensors** (1.14-1.83x faster)
-- For 2D tensors, performance varies by size (destination-based is faster for 100x100, slower for 1000x100)
-- For 3D tensors, in-place is faster (1.5x)
-- Destination-based operations use fewer allocations (6 vs 7) and less memory (624B vs 704B)
-- Performance characteristics vary significantly by tensor dimensionality
-
-### Multiply Operation
-
-| Size | Mode | Duration (ns/op) | Allocations | Memory (B/op) | Speedup (vs In-Place) |
-|------|------|-----------------|-------------|---------------|----------------------|
-| 1K | In-Place | 5,353 | 7 | 704 | 1.00x (baseline) |
-| 1K | Destination | 4,463 | 6 | 624 | **1.20x faster** |
-| 10K | In-Place | 45,200 | 7 | 704 | 1.00x (baseline) |
-| 10K | Destination | 33,646 | 6 | 624 | **1.34x faster** |
-| 100K | In-Place | 432,285 | 7 | 704 | 1.00x (baseline) |
-| 100K | Destination | 520,806 | 6 | 624 | 0.83x |
-| 1M | In-Place | 3,610,836 | 7 | 704 | 1.00x (baseline) |
-| 1M | Destination | 3,452,590 | 6 | 624 | **1.05x faster** |
-| 2D_100x100 | In-Place | 45,960 | 7 | 704 | 1.00x (baseline) |
-| 2D_100x100 | Destination | 24,448 | 6 | 624 | **1.88x faster** |
-| 2D_1000x100 | In-Place | 550,065 | 7 | 704 | 1.00x (baseline) |
-| 2D_1000x100 | Destination | 241,569 | 6 | 624 | **2.28x faster** |
-| 3D_50x50x50 | In-Place | 789,722 | 7 | 704 | 1.00x (baseline) |
-| 3D_50x50x50 | Destination | 308,944 | 6 | 624 | **2.56x faster** |
-
-**Observations:**
-- Destination-based multiply is faster for multi-dimensional tensors (2D, 3D)
-- For 2D and 3D tensors, destination-based is up to 2.56x faster
-- For 1D tensors, performance varies by size
-- Destination-based uses fewer allocations and less memory
 
 ### Subtract Operation
 
 | Size | Mode | Duration (ns/op) | Allocations | Memory (B/op) |
 |------|------|-----------------|-------------|---------------|
-| 1K | In-Place | 2,290 | 7 | 704 |
-| 1K | Destination | 1,982 | 6 | 624 |
-| 10K | In-Place | 9,613 | 7 | 704 |
-| 10K | Destination | 9,188 | 6 | 624 |
-| 100K | In-Place | 138,115 | 7 | 704 |
-| 100K | Destination | 170,220 | 6 | 624 |
-| 1M | In-Place | 1,308,224 | 7 | 704 |
-| 1M | Destination | 2,102,490 | 6 | 624 |
+| 1K | In-Place | 1,943 | 5 | 544 |
+| 1K | Destination | 2,724 | 5 | 544 |
+| 10K | In-Place | 13,948 | 5 | 544 |
+| 10K | Destination | 22,461 | 5 | 544 |
+| 100K | In-Place | 159,698 | 5 | 544 |
+| 100K | Destination | 444,410 | 5 | 544 |
+| 1M | In-Place | 2,297,976 | 5 | 544 |
+| 1M | Destination | 4,786,965 | 5 | 544 |
+| 2D_100x100 | In-Place | 14,046 | 5 | 544 |
+| 2D_100x100 | Destination | 15,898 | 5 | 544 |
+| 2D_1000x100 | In-Place | 203,904 | 5 | 544 |
+| 2D_1000x100 | Destination | 182,050 | 5 | 544 |
+| 3D_50x50x50 | In-Place | 429,394 | 5 | 544 |
+| 3D_50x50x50 | Destination | 297,122 | 5 | 544 |
 
-**Observations:**
-- Similar performance characteristics to Add operation
-- In-place is generally faster for large 1D tensors
-- Destination-based uses fewer allocations
+
+### Multiply Operation
+
+| Size | Mode | Duration (ns/op) | Allocations | Memory (B/op) |
+|------|------|-----------------|-------------|---------------|
+| 1K | In-Place | 6,718 | 5 | 544 |
+| 1K | Destination | 3,494 | 5 | 544 |
+| 10K | In-Place | 74,050 | 5 | 544 |
+| 10K | Destination | 36,668 | 5 | 544 |
+| 100K | In-Place | 635,644 | 5 | 544 |
+| 100K | Destination | 338,829 | 5 | 544 |
+| 1M | In-Place | 4,516,358 | 5 | 544 |
+| 1M | Destination | 4,141,826 | 5 | 544 |
+| 2D_100x100 | In-Place | 55,684 | 5 | 544 |
+| 2D_100x100 | Destination | 31,623 | 5 | 544 |
+| 2D_1000x100 | In-Place | 549,175 | 5 | 544 |
+| 2D_1000x100 | Destination | 384,203 | 5 | 544 |
+| 3D_50x50x50 | In-Place | 695,896 | 5 | 544 |
+| 3D_50x50x50 | Destination | 555,644 | 5 | 544 |
+
 
 ### Divide Operation
 
 | Size | Mode | Duration (ns/op) | Allocations | Memory (B/op) |
 |------|------|-----------------|-------------|---------------|
-| 1K | In-Place | 7,854 | 10 | 728 |
-| 1K | Destination | 2,488 | 9 | 648 |
-| 10K | In-Place | 69,814 | 10 | 728 |
-| 10K | Destination | 18,863 | 9 | 648 |
-| 100K | In-Place | 652,552 | 10 | 728 |
-| 100K | Destination | 174,165 | 9 | 648 |
-| 1M | In-Place | 6,140,987 | 10 | 728 |
-| 1M | Destination | 2,328,753 | 9 | 648 |
+| 1K | In-Place | 10,517 | 8 | 568 |
+| 1K | Destination | 3,446 | 8 | 568 |
+| 10K | In-Place | 74,185 | 8 | 568 |
+| 10K | Destination | 30,516 | 8 | 568 |
+| 100K | In-Place | 728,626 | 8 | 568 |
+| 100K | Destination | 305,112 | 8 | 568 |
+| 1M | In-Place | 7,090,320 | 8 | 568 |
+| 1M | Destination | 6,304,957 | 8 | 568 |
+| 2D_100x100 | In-Place | 75,375 | 8 | 592 |
+| 2D_100x100 | Destination | 27,082 | 8 | 592 |
+| 2D_1000x100 | In-Place | 888,077 | 8 | 592 |
+| 2D_1000x100 | Destination | 345,086 | 8 | 592 |
+| 3D_50x50x50 | In-Place | 995,633 | 8 | 616 |
+| 3D_50x50x50 | Destination | 1,361,648 | 8 | 616 |
 
-**Observations:**
-- **Destination-based divide is significantly faster** (2.6-3.8x) across all sizes
-- Division is more expensive than addition/subtraction (uses more allocations)
-- Destination-based has fewer allocations (9 vs 10)
 
 ## Scalar Operations
 
 ### ScalarMul Operation
 
-| Size | Mode | Duration (ns/op) | Allocations | Memory (B/op) | Speedup (vs In-Place) |
-|------|------|-----------------|-------------|---------------|----------------------|
-| 1K | In-Place | 1,042 | 3 | 240 | 1.00x (baseline) |
-| 1K | Destination | 2,859 | 4 | 416 | 0.36x |
-| 10K | In-Place | 8,024 | 3 | 240 | 1.00x (baseline) |
-| 10K | Destination | 22,729 | 4 | 416 | 0.35x |
-| 100K | In-Place | 83,111 | 3 | 240 | 1.00x (baseline) |
-| 100K | Destination | 231,190 | 4 | 416 | 0.36x |
-| 1M | In-Place | 1,018,349 | 3 | 240 | 1.00x (baseline) |
-| 1M | Destination | 2,529,989 | 4 | 416 | 0.40x |
-| 2D_100x100 | In-Place | 7,945 | 3 | 240 | 1.00x (baseline) |
-| 2D_100x100 | Destination | 22,764 | 4 | 416 | 0.35x |
-| 2D_1000x100 | In-Place | 79,607 | 3 | 240 | 1.00x (baseline) |
-| 2D_1000x100 | Destination | 231,020 | 4 | 416 | 0.34x |
-| 3D_50x50x50 | In-Place | 108,295 | 3 | 240 | 1.00x (baseline) |
-| 3D_50x50x50 | Destination | 290,349 | 4 | 416 | 0.37x |
+| Size | Mode | Duration (ns/op) | Allocations | Memory (B/op) |
+|------|------|-----------------|-------------|---------------|
+| 1K | In-Place | 1,364 | 3 | 336 |
+| 1K | Destination | 3,955 | 3 | 336 |
+| 10K | In-Place | 11,362 | 3 | 336 |
+| 10K | Destination | 27,988 | 3 | 336 |
+| 100K | In-Place | 117,283 | 3 | 336 |
+| 100K | Destination | 300,995 | 3 | 336 |
+| 1M | In-Place | 1,619,691 | 3 | 336 |
+| 1M | Destination | 3,742,713 | 3 | 336 |
+| 2D_100x100 | In-Place | 13,166 | 3 | 336 |
+| 2D_100x100 | Destination | 30,984 | 3 | 336 |
+| 2D_1000x100 | In-Place | 104,689 | 3 | 336 |
+| 2D_1000x100 | Destination | 331,114 | 3 | 336 |
+| 3D_50x50x50 | In-Place | 138,637 | 3 | 336 |
+| 3D_50x50x50 | Destination | 443,971 | 3 | 336 |
 
-**Observations:**
-- **In-place ScalarMul is significantly faster** (2.5-2.8x) across all sizes
-- In-place uses fewer allocations (3 vs 4) and less memory (240B vs 416B)
-- ScalarMul is one of the fastest operations (very low overhead)
 
 ### AddScalar Operation
 
 | Size | Mode | Duration (ns/op) | Allocations | Memory (B/op) |
 |------|------|-----------------|-------------|---------------|
-| 1K | In-Place | 2,753 | 5 | 496 |
-| 1K | Destination | 2,843 | 4 | 416 |
-| 10K | In-Place | 23,477 | 5 | 496 |
-| 10K | Destination | 24,480 | 4 | 416 |
-| 100K | In-Place | 230,108 | 5 | 496 |
-| 100K | Destination | 226,635 | 4 | 416 |
-| 1M | In-Place | 2,427,537 | 5 | 496 |
-| 1M | Destination | 2,508,628 | 4 | 416 |
+| 1K | In-Place | 5,386 | 3 | 336 |
+| 1K | Destination | 3,465 | 3 | 336 |
+| 10K | In-Place | 63,297 | 3 | 336 |
+| 10K | Destination | 31,873 | 3 | 336 |
+| 100K | In-Place | 705,500 | 3 | 336 |
+| 100K | Destination | 471,532 | 3 | 336 |
+| 1M | In-Place | 5,664,578 | 3 | 336 |
+| 1M | Destination | 5,253,750 | 3 | 336 |
+| 2D_100x100 | In-Place | 29,307 | 3 | 336 |
+| 2D_100x100 | Destination | 27,481 | 3 | 336 |
+| 2D_1000x100 | In-Place | 346,906 | 3 | 336 |
+| 2D_1000x100 | Destination | 306,389 | 3 | 336 |
+| 3D_50x50x50 | In-Place | 453,037 | 3 | 336 |
+| 3D_50x50x50 | Destination | 491,007 | 3 | 336 |
 
-**Observations:**
-- Performance is similar between in-place and destination-based
-- Destination-based uses fewer allocations (4 vs 5) and less memory
-- For large tensors, destination-based is slightly faster
-
-### SubScalar Operation
-
-| Size | Mode | Duration (ns/op) | Allocations | Memory (B/op) |
-|------|------|-----------------|-------------|---------------|
-| 1K | In-Place | 2,857 | 4 | 368 |
-| 1K | Destination | 3,645 | 3 | 288 |
-| 10K | In-Place | 20,938 | 4 | 368 |
-| 10K | Destination | 46,514 | 3 | 288 |
-| 100K | In-Place | 249,430 | 4 | 368 |
-| 100K | Destination | 243,976 | 3 | 288 |
-| 1M | In-Place | 2,805,252 | 4 | 368 |
-| 1M | Destination | 3,293,033 | 3 | 288 |
-
-**Observations:**
-- In-place is generally faster for small and medium tensors
-- Destination-based uses fewer allocations (3 vs 4) and less memory
-- For large tensors (100K+), performance is similar
-
-### MulScalar Operation
-
-| Size | Mode | Duration (ns/op) | Allocations | Memory (B/op) |
-|------|------|-----------------|-------------|---------------|
-| 1K | In-Place | 1,944 | 3 | 240 |
-| 1K | Destination | 4,229 | 3 | 288 |
-| 10K | In-Place | 10,215 | 3 | 240 |
-| 10K | Destination | 35,551 | 3 | 288 |
-| 100K | In-Place | 100,374 | 3 | 240 |
-| 100K | Destination | 366,776 | 3 | 288 |
-| 1M | In-Place | 844,935 | 3 | 240 |
-| 1M | Destination | 3,382,851 | 3 | 288 |
-
-**Observations:**
-- **In-place MulScalar is significantly faster** (2-4x) across all sizes
-- Both use the same number of allocations (3)
-- In-place uses less memory (240B vs 288B)
-
-### DivScalar Operation
-
-| Size | Mode | Duration (ns/op) | Allocations | Memory (B/op) |
-|------|------|-----------------|-------------|---------------|
-| 1K | In-Place | 2,330 | 6 | 384 |
-| 1K | Destination | 3,068 | 5 | 304 |
-| 10K | In-Place | 15,626 | 6 | 384 |
-| 10K | Destination | 17,820 | 5 | 304 |
-| 100K | In-Place | 262,419 | 6 | 384 |
-| 100K | Destination | 223,546 | 5 | 304 |
-| 1M | In-Place | 3,416,364 | 6 | 384 |
-| 1M | Destination | 2,449,198 | 5 | 304 |
-
-**Observations:**
-- Performance is similar between in-place and destination-based
-- Destination-based uses fewer allocations (5 vs 6) and less memory
-- For large tensors (100K+), destination-based is faster
 
 ## Unary Operations
 
@@ -222,249 +159,263 @@ This report contains benchmark results for eager tensor operations, comparing in
 
 | Size | Mode | Duration (ns/op) | Allocations | Memory (B/op) |
 |------|------|-----------------|-------------|---------------|
-| 1K | In-Place | 1,509 | 4 | 368 |
-| 1K | Destination | 2,126 | 3 | 288 |
-| 10K | In-Place | 13,457 | 4 | 368 |
-| 10K | Destination | 17,446 | 3 | 288 |
-| 100K | In-Place | 133,634 | 4 | 368 |
-| 100K | Destination | 168,389 | 3 | 288 |
-| 1M | In-Place | 1,325,470 | 4 | 368 |
-| 1M | Destination | 1,671,238 | 3 | 288 |
+| 1K | In-Place | 3,132 | 3 | 336 |
+| 1K | Destination | 3,697 | 3 | 336 |
+| 10K | In-Place | 29,795 | 3 | 336 |
+| 10K | Destination | 28,472 | 3 | 336 |
+| 100K | In-Place | 337,480 | 3 | 336 |
+| 100K | Destination | 343,113 | 3 | 336 |
+| 1M | In-Place | 3,369,661 | 3 | 336 |
+| 1M | Destination | 3,278,447 | 3 | 336 |
+| 2D_100x100 | In-Place | 27,197 | 3 | 336 |
+| 2D_100x100 | Destination | 50,138 | 3 | 336 |
+| 2D_1000x100 | In-Place | 291,222 | 3 | 336 |
+| 2D_1000x100 | Destination | 484,055 | 3 | 336 |
+| 3D_50x50x50 | In-Place | 416,962 | 3 | 336 |
+| 3D_50x50x50 | Destination | 639,139 | 3 | 336 |
 
-**Observations:**
-- In-place is faster (1.2-1.3x) across all sizes
-- Destination-based uses fewer allocations (3 vs 4) and less memory
 
 ### Sqrt Operation
 
-| Size | Mode | Duration (ns/op) | Allocations | Memory (B/op) | Speedup (vs In-Place) |
-|------|------|-----------------|-------------|---------------|----------------------|
-| 1K | In-Place | 5,095 | 5 | 496 | 1.00x (baseline) |
-| 1K | Destination | 6,292 | 4 | 416 | 0.81x |
-| 10K | In-Place | 44,247 | 5 | 496 | 1.00x (baseline) |
-| 10K | Destination | 46,273 | 4 | 416 | 0.96x |
-| 100K | In-Place | 452,254 | 5 | 496 | 1.00x (baseline) |
-| 100K | Destination | 469,512 | 4 | 416 | 0.96x |
-| 1M | In-Place | 6,217,843 | 5 | 496 | 1.00x (baseline) |
-| 1M | Destination | 4,817,519 | 4 | 416 | **1.29x faster** |
-| 2D_100x100 | In-Place | 77,908 | 5 | 496 | 1.00x (baseline) |
-| 2D_100x100 | Destination | 45,771 | 4 | 416 | **1.70x faster** |
-| 2D_1000x100 | In-Place | 758,598 | 5 | 496 | 1.00x (baseline) |
-| 2D_1000x100 | Destination | 484,694 | 4 | 416 | **1.57x faster** |
-| 3D_50x50x50 | In-Place | 1,010,307 | 5 | 496 | 1.00x (baseline) |
-| 3D_50x50x50 | Destination | 611,183 | 4 | 416 | **1.65x faster** |
+| Size | Mode | Duration (ns/op) | Allocations | Memory (B/op) |
+|------|------|-----------------|-------------|---------------|
+| 1K | In-Place | 7,477 | 3 | 336 |
+| 1K | Destination | 7,400 | 3 | 336 |
+| 10K | In-Place | 65,773 | 3 | 336 |
+| 10K | Destination | 49,539 | 3 | 336 |
+| 100K | In-Place | 803,440 | 3 | 336 |
+| 100K | Destination | 624,699 | 3 | 336 |
+| 1M | In-Place | 6,411,332 | 3 | 336 |
+| 1M | Destination | 7,606,662 | 3 | 336 |
+| 2D_100x100 | In-Place | 63,516 | 3 | 336 |
+| 2D_100x100 | Destination | 65,246 | 3 | 336 |
+| 2D_1000x100 | In-Place | 622,677 | 3 | 336 |
+| 2D_1000x100 | Destination | 562,399 | 3 | 336 |
+| 3D_50x50x50 | In-Place | 771,698 | 3 | 336 |
+| 3D_50x50x50 | Destination | 733,096 | 3 | 336 |
 
-**Observations:**
-- For 1D tensors, performance is similar
-- **For multi-dimensional tensors (2D, 3D), destination-based is significantly faster** (1.57-1.70x)
-- Destination-based uses fewer allocations (4 vs 5) and less memory
 
 ### Exp Operation
 
 | Size | Mode | Duration (ns/op) | Allocations | Memory (B/op) |
 |------|------|-----------------|-------------|---------------|
-| 1K | In-Place | 7,984 | 5 | 496 |
-| 1K | Destination | 8,847 | 4 | 416 |
-| 10K | In-Place | 72,438 | 5 | 496 |
-| 10K | Destination | 75,284 | 4 | 416 |
-| 100K | In-Place | 735,238 | 5 | 496 |
-| 100K | Destination | 756,847 | 4 | 416 |
-| 1M | In-Place | 7,523,847 | 5 | 496 |
-| 1M | Destination | 7,628,394 | 4 | 416 |
+| 1K | In-Place | 3,471 | 3 | 336 |
+| 1K | Destination | 20,880 | 3 | 336 |
+| 10K | In-Place | 31,557 | 3 | 336 |
+| 10K | Destination | 199,901 | 3 | 336 |
+| 100K | In-Place | 360,145 | 3 | 336 |
+| 100K | Destination | 2,059,813 | 3 | 336 |
+| 1M | In-Place | 4,739,498 | 3 | 336 |
+| 1M | Destination | 23,301,359 | 3 | 336 |
+| 2D_100x100 | In-Place | 33,583 | 3 | 336 |
+| 2D_100x100 | Destination | 238,449 | 3 | 336 |
+| 2D_1000x100 | In-Place | 364,328 | 3 | 336 |
+| 2D_1000x100 | Destination | 1,924,229 | 3 | 336 |
+| 3D_50x50x50 | In-Place | 421,159 | 3 | 336 |
+| 3D_50x50x50 | Destination | 3,127,067 | 3 | 336 |
 
-**Observations:**
-- Performance is similar between in-place and destination-based
-- Destination-based uses fewer allocations (4 vs 5) and less memory
-- Exp is computationally expensive (mathematical function)
 
 ### Log Operation
 
 | Size | Mode | Duration (ns/op) | Allocations | Memory (B/op) |
 |------|------|-----------------|-------------|---------------|
-| 1K | In-Place | 8,284 | 5 | 496 |
-| 1K | Destination | 9,173 | 4 | 416 |
-| 10K | In-Place | 78,429 | 5 | 496 |
-| 10K | Destination | 82,647 | 4 | 416 |
-| 100K | In-Place | 789,482 | 5 | 496 |
-| 100K | Destination | 834,729 | 4 | 416 |
-| 1M | In-Place | 7,948,273 | 5 | 496 |
-| 1M | Destination | 8,273,847 | 4 | 416 |
+| 1K | In-Place | 4,091 | 3 | 336 |
+| 1K | Destination | 41,096 | 3 | 336 |
+| 10K | In-Place | 40,593 | 3 | 336 |
+| 10K | Destination | 283,489 | 3 | 336 |
+| 100K | In-Place | 429,186 | 3 | 336 |
+| 100K | Destination | 1,983,756 | 3 | 336 |
+| 1M | In-Place | 4,509,836 | 3 | 336 |
+| 1M | Destination | 21,419,918 | 3 | 336 |
+| 2D_100x100 | In-Place | 58,822 | 3 | 336 |
+| 2D_100x100 | Destination | 249,476 | 3 | 336 |
+| 2D_1000x100 | In-Place | 418,262 | 3 | 336 |
+| 2D_1000x100 | Destination | 2,444,600 | 3 | 336 |
+| 3D_50x50x50 | In-Place | 583,737 | 3 | 336 |
+| 3D_50x50x50 | Destination | 3,466,434 | 3 | 336 |
 
-**Observations:**
-- Performance is similar between in-place and destination-based
-- Destination-based uses fewer allocations (4 vs 5) and less memory
-- Log is computationally expensive (mathematical function)
 
 ### Pow Operation
 
 | Size | Mode | Duration (ns/op) | Allocations | Memory (B/op) |
 |------|------|-----------------|-------------|---------------|
-| 1K | In-Place | 12,847 | 5 | 496 |
-| 1K | Destination | 14,283 | 4 | 416 |
-| 10K | In-Place | 124,738 | 5 | 496 |
-| 10K | Destination | 138,472 | 4 | 416 |
-| 100K | In-Place | 1,247,384 | 5 | 496 |
-| 100K | Destination | 1,384,729 | 4 | 416 |
-| 1M | In-Place | 12,483,847 | 5 | 496 |
-| 1M | Destination | 13,847,293 | 4 | 416 |
+| 1K | In-Place | 18,975 | 3 | 336 |
+| 1K | Destination | 129,284 | 3 | 336 |
+| 10K | In-Place | 216,458 | 3 | 336 |
+| 10K | Destination | 1,071,039 | 3 | 336 |
+| 100K | In-Place | 1,824,882 | 3 | 336 |
+| 100K | Destination | 12,351,957 | 3 | 336 |
+| 1M | In-Place | 26,529,740 | 3 | 336 |
+| 1M | Destination | 114,099,499 | 3 | 336 |
+| 2D_100x100 | In-Place | 134,656 | 3 | 336 |
+| 2D_100x100 | Destination | 1,069,671 | 3 | 336 |
+| 2D_1000x100 | In-Place | 1,211,678 | 3 | 336 |
+| 2D_1000x100 | Destination | 10,651,329 | 3 | 336 |
+| 3D_50x50x50 | In-Place | 1,578,221 | 3 | 336 |
+| 3D_50x50x50 | Destination | 14,060,158 | 3 | 336 |
 
-**Observations:**
-- Performance is similar between in-place and destination-based
-- Destination-based uses fewer allocations (4 vs 5) and less memory
-- Pow is computationally expensive (mathematical function)
 
 ### Abs Operation
 
 | Size | Mode | Duration (ns/op) | Allocations | Memory (B/op) |
 |------|------|-----------------|-------------|---------------|
-| 1K | In-Place | 1,847 | 4 | 368 |
-| 1K | Destination | 2,384 | 3 | 288 |
-| 10K | In-Place | 17,284 | 4 | 368 |
-| 10K | Destination | 21,847 | 3 | 288 |
-| 100K | In-Place | 173,847 | 4 | 368 |
-| 100K | Destination | 218,473 | 3 | 288 |
-| 1M | In-Place | 1,738,472 | 4 | 368 |
-| 1M | Destination | 2,184,738 | 3 | 288 |
+| 1K | In-Place | 3,123 | 3 | 336 |
+| 1K | Destination | 3,373 | 3 | 336 |
+| 10K | In-Place | 29,793 | 3 | 336 |
+| 10K | Destination | 30,843 | 3 | 336 |
+| 100K | In-Place | 355,523 | 3 | 336 |
+| 100K | Destination | 327,037 | 3 | 336 |
+| 1M | In-Place | 3,573,572 | 3 | 336 |
+| 1M | Destination | 3,919,014 | 3 | 336 |
+| 2D_100x100 | In-Place | 28,635 | 3 | 336 |
+| 2D_100x100 | Destination | 29,613 | 3 | 336 |
+| 2D_1000x100 | In-Place | 299,266 | 3 | 336 |
+| 2D_1000x100 | Destination | 289,989 | 3 | 336 |
+| 3D_50x50x50 | In-Place | 400,758 | 3 | 336 |
+| 3D_50x50x50 | Destination | 703,887 | 3 | 336 |
 
-**Observations:**
-- In-place is faster (1.2-1.3x) across all sizes
-- Destination-based uses fewer allocations (3 vs 4) and less memory
-- Abs is a simple operation (conditional check)
 
 ### Sign Operation
 
 | Size | Mode | Duration (ns/op) | Allocations | Memory (B/op) |
 |------|------|-----------------|-------------|---------------|
-| 1K | In-Place | 2,184 | 4 | 368 |
-| 1K | Destination | 2,847 | 3 | 288 |
-| 10K | In-Place | 21,847 | 4 | 368 |
-| 10K | Destination | 28,473 | 3 | 288 |
-| 100K | In-Place | 218,473 | 4 | 368 |
-| 100K | Destination | 284,738 | 3 | 288 |
-| 1M | In-Place | 2,184,738 | 4 | 368 |
-| 1M | Destination | 2,847,382 | 3 | 288 |
+| 1K | In-Place | 4,155 | 3 | 336 |
+| 1K | Destination | 3,659 | 3 | 336 |
+| 10K | In-Place | 35,011 | 3 | 336 |
+| 10K | Destination | 31,481 | 3 | 336 |
+| 100K | In-Place | 340,072 | 3 | 336 |
+| 100K | Destination | 386,392 | 3 | 336 |
+| 1M | In-Place | 3,184,632 | 3 | 336 |
+| 1M | Destination | 3,335,200 | 3 | 336 |
+| 2D_100x100 | In-Place | 53,600 | 3 | 336 |
+| 2D_100x100 | Destination | 30,330 | 3 | 336 |
+| 2D_1000x100 | In-Place | 324,666 | 3 | 336 |
+| 2D_1000x100 | Destination | 340,660 | 3 | 336 |
+| 3D_50x50x50 | In-Place | 415,960 | 3 | 336 |
+| 3D_50x50x50 | Destination | 466,302 | 3 | 336 |
 
-**Observations:**
-- In-place is faster (1.2-1.3x) across all sizes
-- Destination-based uses fewer allocations (3 vs 4) and less memory
-- Sign is a simple operation (conditional check)
 
 ### Cos Operation
 
 | Size | Mode | Duration (ns/op) | Allocations | Memory (B/op) |
 |------|------|-----------------|-------------|---------------|
-| 1K | In-Place | 8,384 | 5 | 496 |
-| 1K | Destination | 9,283 | 4 | 416 |
-| 10K | In-Place | 82,847 | 5 | 496 |
-| 10K | Destination | 92,837 | 4 | 416 |
-| 100K | In-Place | 828,473 | 5 | 496 |
-| 100K | Destination | 928,374 | 4 | 416 |
-| 1M | In-Place | 8,284,738 | 5 | 496 |
-| 1M | Destination | 9,283,747 | 4 | 416 |
+| 1K | In-Place | 25,191 | 3 | 336 |
+| 1K | Destination | 29,562 | 3 | 336 |
+| 10K | In-Place | 225,872 | 3 | 336 |
+| 10K | Destination | 232,922 | 3 | 336 |
+| 100K | In-Place | 2,285,105 | 3 | 336 |
+| 100K | Destination | 2,459,826 | 3 | 336 |
+| 1M | In-Place | 21,901,645 | 3 | 336 |
+| 1M | Destination | 23,649,918 | 3 | 336 |
+| 2D_100x100 | In-Place | 265,408 | 3 | 336 |
+| 2D_100x100 | Destination | 224,325 | 3 | 336 |
+| 2D_1000x100 | In-Place | 1,937,103 | 3 | 336 |
+| 2D_1000x100 | Destination | 2,701,385 | 3 | 336 |
+| 3D_50x50x50 | In-Place | 2,787,869 | 3 | 336 |
+| 3D_50x50x50 | Destination | 4,231,467 | 3 | 336 |
 
-**Observations:**
-- Performance is similar between in-place and destination-based
-- Destination-based uses fewer allocations (4 vs 5) and less memory
-- Cos is computationally expensive (trigonometric function)
 
 ### Sin Operation
 
 | Size | Mode | Duration (ns/op) | Allocations | Memory (B/op) |
 |------|------|-----------------|-------------|---------------|
-| 1K | In-Place | 8,284 | 5 | 496 |
-| 1K | Destination | 9,283 | 4 | 416 |
-| 10K | In-Place | 82,847 | 5 | 496 |
-| 10K | Destination | 92,837 | 4 | 416 |
-| 100K | In-Place | 828,473 | 5 | 496 |
-| 100K | Destination | 928,374 | 4 | 416 |
-| 1M | In-Place | 8,284,738 | 5 | 496 |
-| 1M | Destination | 9,283,747 | 4 | 416 |
+| 1K | In-Place | 40,018 | 3 | 336 |
+| 1K | Destination | 36,372 | 3 | 336 |
+| 10K | In-Place | 346,523 | 3 | 336 |
+| 10K | Destination | 262,655 | 3 | 336 |
+| 100K | In-Place | 5,054,736 | 3 | 336 |
+| 100K | Destination | 5,438,536 | 3 | 336 |
+| 1M | In-Place | 27,142,997 | 3 | 336 |
+| 1M | Destination | 20,541,126 | 3 | 336 |
+| 2D_100x100 | In-Place | 233,889 | 3 | 336 |
+| 2D_100x100 | Destination | 192,315 | 3 | 336 |
+| 2D_1000x100 | In-Place | 2,687,274 | 3 | 336 |
+| 2D_1000x100 | Destination | 2,060,612 | 3 | 336 |
+| 3D_50x50x50 | In-Place | 2,471,734 | 3 | 336 |
+| 3D_50x50x50 | Destination | 2,801,583 | 3 | 336 |
 
-**Observations:**
-- Performance is similar between in-place and destination-based
-- Destination-based uses fewer allocations (4 vs 5) and less memory
-- Sin is computationally expensive (trigonometric function)
 
 ### Negative Operation
 
 | Size | Mode | Duration (ns/op) | Allocations | Memory (B/op) |
 |------|------|-----------------|-------------|---------------|
-| 1K | In-Place | 1,284 | 4 | 368 |
-| 1K | Destination | 1,847 | 3 | 288 |
-| 10K | In-Place | 12,847 | 4 | 368 |
-| 10K | Destination | 18,473 | 3 | 288 |
-| 100K | In-Place | 128,473 | 4 | 368 |
-| 100K | Destination | 184,738 | 3 | 288 |
-| 1M | In-Place | 1,284,738 | 4 | 368 |
-| 1M | Destination | 1,847,382 | 3 | 288 |
+| 1K | In-Place | 1,561 | 3 | 336 |
+| 1K | Destination | 1,912 | 3 | 336 |
+| 10K | In-Place | 14,985 | 3 | 336 |
+| 10K | Destination | 15,414 | 3 | 336 |
+| 100K | In-Place | 100,942 | 3 | 336 |
+| 100K | Destination | 247,540 | 3 | 336 |
+| 1M | In-Place | 1,543,893 | 3 | 336 |
+| 1M | Destination | 2,216,243 | 3 | 336 |
+| 2D_100x100 | In-Place | 9,379 | 3 | 336 |
+| 2D_100x100 | Destination | 11,957 | 3 | 336 |
+| 2D_1000x100 | In-Place | 126,684 | 3 | 336 |
+| 2D_1000x100 | Destination | 153,720 | 3 | 336 |
+| 3D_50x50x50 | In-Place | 181,525 | 3 | 336 |
+| 3D_50x50x50 | Destination | 198,136 | 3 | 336 |
 
-**Observations:**
-- In-place is faster (1.4-1.5x) across all sizes
-- Destination-based uses fewer allocations (3 vs 4) and less memory
-- Negative is a simple operation (sign flip)
 
 ## Activation Functions
 
 ### ReLU Operation
 
-| Size | Mode | Duration (ns/op) | Allocations | Memory (B/op) | Speedup (vs In-Place) |
-|------|------|-----------------|-------------|---------------|----------------------|
-| 1K | In-Place | 1,902 | 2 | 160 | 1.00x (baseline) |
-| 1K | Destination | 1,830 | 2 | 160 | **1.04x faster** |
-| 10K | In-Place | 17,084 | 2 | 160 | 1.00x (baseline) |
-| 10K | Destination | 16,417 | 2 | 160 | **1.04x faster** |
-| 100K | In-Place | 170,195 | 2 | 160 | 1.00x (baseline) |
-| 100K | Destination | 178,675 | 2 | 160 | 0.95x |
-| 1M | In-Place | 2,021,985 | 2 | 160 | 1.00x (baseline) |
-| 1M | Destination | 1,946,413 | 2 | 160 | **1.04x faster** |
-| 2D_100x100 | In-Place | 17,550 | 2 | 160 | 1.00x (baseline) |
-| 2D_100x100 | Destination | 16,411 | 2 | 160 | **1.07x faster** |
-| 2D_1000x100 | In-Place | 173,379 | 2 | 160 | 1.00x (baseline) |
-| 2D_1000x100 | Destination | 170,738 | 2 | 160 | **1.02x faster** |
-| 3D_50x50x50 | In-Place | 209,783 | 2 | 160 | 1.00x (baseline) |
-| 3D_50x50x50 | Destination | 212,801 | 2 | 160 | 0.99x |
+| Size | Mode | Duration (ns/op) | Allocations | Memory (B/op) |
+|------|------|-----------------|-------------|---------------|
+| 1K | In-Place | 2,185 | 3 | 240 |
+| 1K | Destination | 1,850 | 2 | 160 |
+| 10K | In-Place | 19,892 | 3 | 240 |
+| 10K | Destination | 15,802 | 2 | 160 |
+| 100K | In-Place | 225,592 | 3 | 240 |
+| 100K | Destination | 161,357 | 2 | 160 |
+| 1M | In-Place | 1,790,338 | 3 | 240 |
+| 1M | Destination | 1,868,780 | 2 | 160 |
+| 2D_100x100 | In-Place | 18,072 | 3 | 240 |
+| 2D_100x100 | Destination | 16,084 | 2 | 160 |
+| 2D_1000x100 | In-Place | 179,753 | 3 | 240 |
+| 2D_1000x100 | Destination | 160,899 | 2 | 160 |
+| 3D_50x50x50 | In-Place | 203,419 | 3 | 240 |
+| 3D_50x50x50 | Destination | 251,457 | 2 | 160 |
 
-**Observations:**
-- **Performance is very similar** between in-place and destination-based (within 5%)
-- Both use the same number of allocations (2) and memory (160B)
-- ReLU is highly optimized with minimal overhead
-- One of the fastest activation functions
 
 ### Sigmoid Operation
 
 | Size | Mode | Duration (ns/op) | Allocations | Memory (B/op) |
 |------|------|-----------------|-------------|---------------|
-| 1K | In-Place | 4,284 | 4 | 368 |
-| 1K | Destination | 4,847 | 3 | 288 |
-| 10K | In-Place | 42,847 | 4 | 368 |
-| 10K | Destination | 48,473 | 3 | 288 |
-| 100K | In-Place | 428,473 | 4 | 368 |
-| 100K | Destination | 484,738 | 3 | 288 |
-| 1M | In-Place | 4,284,738 | 4 | 368 |
-| 1M | Destination | 4,847,382 | 3 | 288 |
+| 1K | In-Place | 21,857 | 3 | 240 |
+| 1K | Destination | 30,540 | 2 | 160 |
+| 10K | In-Place | 205,584 | 3 | 240 |
+| 10K | Destination | 262,222 | 2 | 160 |
+| 100K | In-Place | 1,934,728 | 3 | 240 |
+| 100K | Destination | 3,076,567 | 2 | 160 |
+| 1M | In-Place | 21,596,840 | 3 | 240 |
+| 1M | Destination | 30,500,760 | 2 | 160 |
+| 2D_100x100 | In-Place | 266,584 | 3 | 240 |
+| 2D_100x100 | Destination | 286,282 | 2 | 160 |
+| 2D_1000x100 | In-Place | 2,199,530 | 3 | 240 |
+| 2D_1000x100 | Destination | 2,769,153 | 2 | 160 |
+| 3D_50x50x50 | In-Place | 6,680,596 | 3 | 240 |
+| 3D_50x50x50 | Destination | 3,345,544 | 2 | 160 |
 
-**Observations:**
-- In-place is slightly faster (1.1-1.2x) across all sizes
-- Destination-based uses fewer allocations (3 vs 4) and less memory
-- Sigmoid is computationally expensive (exponential function)
 
 ### Tanh Operation
 
 | Size | Mode | Duration (ns/op) | Allocations | Memory (B/op) |
 |------|------|-----------------|-------------|---------------|
-| 1K | In-Place | 4,284 | 4 | 368 |
-| 1K | Destination | 4,847 | 3 | 288 |
-| 10K | In-Place | 42,847 | 4 | 368 |
-| 10K | Destination | 48,473 | 3 | 288 |
-| 100K | In-Place | 428,473 | 4 | 368 |
-| 100K | Destination | 484,738 | 3 | 288 |
-| 1M | In-Place | 4,284,738 | 4 | 368 |
-| 1M | Destination | 4,847,382 | 3 | 288 |
+| 1K | In-Place | 21,171 | 3 | 240 |
+| 1K | Destination | 63,337 | 2 | 160 |
+| 10K | In-Place | 212,425 | 3 | 240 |
+| 10K | Destination | 635,818 | 2 | 160 |
+| 100K | In-Place | 1,967,596 | 3 | 240 |
+| 100K | Destination | 6,494,757 | 2 | 160 |
+| 1M | In-Place | 22,899,471 | 3 | 240 |
+| 1M | Destination | 61,287,516 | 2 | 160 |
+| 2D_100x100 | In-Place | 201,406 | 3 | 240 |
+| 2D_100x100 | Destination | 640,821 | 2 | 160 |
+| 2D_1000x100 | In-Place | 2,168,756 | 3 | 240 |
+| 2D_1000x100 | Destination | 6,294,216 | 2 | 160 |
+| 3D_50x50x50 | In-Place | 2,927,416 | 3 | 240 |
+| 3D_50x50x50 | Destination | 7,987,475 | 2 | 160 |
 
-**Observations:**
-- In-place is slightly faster (1.1-1.2x) across all sizes
-- Destination-based uses fewer allocations (3 vs 4) and less memory
-- Tanh is computationally expensive (hyperbolic tangent)
 
 ## Utility Operations
 
@@ -472,96 +423,18 @@ This report contains benchmark results for eager tensor operations, comparing in
 
 | Size | Mode | Duration (ns/op) | Allocations | Memory (B/op) |
 |------|------|-----------------|-------------|---------------|
-| 1K | In-Place | 284 | 2 | 160 |
-| 1K | Destination | 847 | 3 | 288 |
-| 10K | In-Place | 2,847 | 2 | 160 |
-| 10K | Destination | 8,473 | 3 | 288 |
-| 100K | In-Place | 28,473 | 2 | 160 |
-| 100K | Destination | 84,738 | 3 | 288 |
-| 1M | In-Place | 284,738 | 2 | 160 |
-| 1M | Destination | 847,382 | 3 | 288 |
-
-**Observations:**
-- **In-place Fill is significantly faster** (3x) across all sizes
-- In-place uses fewer allocations (2 vs 3) and less memory (160B vs 288B)
-- Fill is a simple operation (memory assignment)
-
-## Performance Summary
-
-### Key Findings
-
-1. **In-Place Operations Generally Faster:**
-   - For element-wise binary operations (Add, Subtract), in-place is 1.2-1.7x faster
-   - For scalar operations (ScalarMul, MulScalar), in-place is 2.5-4x faster
-   - For simple unary operations (Abs, Sign, Negative), in-place is 1.2-1.5x faster
-   - For utility operations (Fill), in-place is 3x faster
-
-2. **Destination-Based Operations Advantages:**
-   - **Fewer allocations** across all operations (typically 1-2 fewer allocations)
-   - **Less memory usage** (typically 80-120 bytes less per operation)
-   - **Better for multi-dimensional tensors**: Destination-based Multiply and Sqrt are faster for 2D/3D tensors
-   - **Better for expensive operations**: Destination-based Divide is significantly faster (2.6-3.8x)
-
-3. **Operation Categories:**
-   - **Simple Operations** (Add, Subtract, ScalarMul, Fill): In-place is faster
-   - **Complex Operations** (Divide, Multiply on 2D/3D, Sqrt on 2D/3D): Destination-based can be faster
-   - **Mathematical Functions** (Exp, Log, Pow, Cos, Sin): Performance is similar
-   - **Activation Functions** (ReLU, Sigmoid, Tanh): Performance is similar, ReLU is highly optimized
-
-4. **Tensor Size Impact:**
-   - Small tensors (1K): Performance differences are minimal
-   - Medium tensors (10K-100K): Performance differences become noticeable
-   - Large tensors (1M+): Performance differences are significant
-   - Multi-dimensional tensors (2D, 3D): Often benefit from destination-based operations
-
-5. **Allocation Efficiency:**
-   - Destination-based operations consistently use fewer allocations
-   - In-place operations have slightly more overhead due to stride computation
-   - Both modes are highly optimized with minimal allocations (2-10 allocations per operation)
-
-### Recommendations
-
-1. **Use In-Place Operations When:**
-   - Performance is critical and you can modify the input tensor
-   - Working with simple operations (Add, Subtract, ScalarMul)
-   - Working with small to medium tensors (1K-100K elements)
-   - Memory is not a constraint
-
-2. **Use Destination-Based Operations When:**
-   - You need to preserve the original tensor
-   - Working with expensive operations (Divide, complex mathematical functions)
-   - Working with multi-dimensional tensors (2D, 3D) for certain operations
-   - Allocation efficiency is important
-   - Building computation graphs or pipelines
-
-3. **General Guidelines:**
-   - **ReLU**: Use either mode (performance is similar)
-   - **ScalarMul**: Prefer in-place (2.5-4x faster)
-   - **Divide**: Prefer destination-based (2.6-3.8x faster)
-   - **Fill**: Prefer in-place (3x faster)
-   - **Multi-dimensional Multiply/Sqrt**: Prefer destination-based (1.5-2.5x faster)
-
-## Performance Metrics
-
-- **Allocation Efficiency**: Both modes are highly optimized with minimal allocations
-- **Memory Efficiency**: Destination-based uses less memory per operation
-- **Computational Efficiency**: In-place is generally faster for simple operations
-- **Scalability**: Performance differences increase with tensor size
-- **Multi-dimensional Performance**: Destination-based often performs better for 2D/3D tensors
-
-## Notes
-
-- All operations are implemented using optimized primitives from the `primitive` package
-- Benchmarks use float32 tensors
-- Performance may vary between runs due to system load, CPU scheduling, and cache effects
-- All operations support both in-place and destination-based modes
-- Destination-based operations require pre-allocated destination tensors
-- In-place operations modify the input tensor directly
-
----
-
-**Generated:** November 7, 2025  
-**Platform:** Linux (amd64)  
-**CPU:** Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz  
-**Package:** `github.com/itohio/EasyRobot/pkg/core/math/tensor/eager_tensor`
+| 1K | In-Place | 834 | 2 | 160 |
+| 1K | Destination | 685 | 1 | 80 |
+| 10K | In-Place | 6,932 | 2 | 160 |
+| 10K | Destination | 5,004 | 1 | 80 |
+| 100K | In-Place | 56,889 | 2 | 160 |
+| 100K | Destination | 50,579 | 1 | 80 |
+| 1M | In-Place | 953,525 | 2 | 160 |
+| 1M | Destination | 886,774 | 1 | 80 |
+| 2D_100x100 | In-Place | 5,339 | 2 | 160 |
+| 2D_100x100 | Destination | 6,806 | 1 | 80 |
+| 2D_1000x100 | In-Place | 54,887 | 2 | 160 |
+| 2D_1000x100 | Destination | 54,780 | 1 | 80 |
+| 3D_50x50x50 | In-Place | 76,122 | 2 | 160 |
+| 3D_50x50x50 | Destination | 71,307 | 1 | 80 |
 

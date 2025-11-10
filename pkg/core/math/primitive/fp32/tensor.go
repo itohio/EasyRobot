@@ -194,87 +194,55 @@ func Conv2D(
 	padH, padW int,
 	bias []float32,
 ) {
-	if batchSize == 0 || inChannels == 0 || outChannels == 0 {
-		return
-	}
+	// Direct convolution implementation - optimized for performance
+	// This avoids the massive memory allocation and inefficient GEMM operations of Im2Col+GEMM
 
-	// Calculate dimensions for Im2Col
-	kernelSize := inChannels * kernelH * kernelW
-	im2colSize := batchSize * outHeight * outWidth
-
-	// Allocate temporary buffer for Im2Col output
-	// Format: [batchSize*outHeight*outWidth, inChannels*kernelH*kernelW]
-	im2col := Pool.Get(im2colSize * kernelSize)
-	defer Pool.Put(im2col)
-
-	// Step 1: Convert input to columns using Im2Col
-	Im2Col(im2col, input, batchSize, inChannels, inHeight, inWidth,
-		kernelH, kernelW, padH, padW, strideH, strideW)
-
-	// Step 2: Reshape weights for GEMM
-	// weights: [outChannels, inChannels, kernelH, kernelW]
-	// Reshape to: [outChannels, inChannels*kernelH*kernelW]
-	// For GEMM: W * im2col^T -> [outChannels, batchSize*outHeight*outWidth]
-
-	// Step 3: Reshape weights for GEMM
-	// weights: [outChannels, inChannels, kernelH, kernelW]
-	// Need to reshape to: [outChannels, inChannels*kernelH*kernelW] for GEMM
-	// weights[oc][ic][kh][kw] = weights[oc*inChannels*kernelH*kernelW + ic*kernelH*kernelW + kh*kernelW + kw]
-	// For GEMM, we need: weights[oc][ic*kernelH*kernelW + kh*kernelW + kw]
-	// This is already in the right layout, we just need to access it correctly
-
-	// Step 4: Perform GEMM: output = weights * im2col^T
-	// We need: output = weights * im2col^T
-	// weights: [outChannels, inChannels*kernelH*kernelW] with ldA = kernelSize
-	// im2col: [im2colSize, kernelSize] with ldB = kernelSize (we treat it as N×K for NT)
-	// We use GEMM_NT: C = alpha*A*B^T + beta*C
-	// A (weights): M=outChannels, K=kernelSize
-	// B (im2col): N=im2colSize, K=kernelSize
-	// Result C: [outChannels, im2colSize] with ldC = im2colSize
-	gemmOutput := Pool.Get(outChannels * im2colSize)
-	defer Pool.Put(gemmOutput)
-
-	// Perform GEMM_NT: gemmOutput = weights * im2col^T
-	// weights: [outChannels, kernelSize] with ldA = kernelSize
-	// im2col: [im2colSize, kernelSize] with ldB = kernelSize
-	// gemmOutput: [outChannels, im2colSize] with ldC = im2colSize
-	Gemm_NT(gemmOutput, weights, im2col,
-		im2colSize,  // ldC
-		kernelSize,  // ldA (weights leading dimension = kernelSize)
-		kernelSize,  // ldB (im2col leading dimension = kernelSize)
-		outChannels, // M (number of output channels)
-		im2colSize,  // N (number of output positions = batchSize*outHeight*outWidth)
-		kernelSize,  // K (kernel size = inChannels*kernelH*kernelW)
-		1.0,         // alpha
-		0.0,         // beta
-	)
-
-	// Step 5: Add bias if provided
-	if bias != nil {
-		for oc := 0; oc < outChannels; oc++ {
-			biasVal := bias[oc]
-			for i := 0; i < im2colSize; i++ {
-				// Index in gemmOutput: [outChannels, im2colSize]
-				gemmIdx := oc*im2colSize + i
-				gemmOutput[gemmIdx] += biasVal
-			}
-		}
-	}
-
-	// Step 6: Reshape and transpose gemmOutput to final output format
-	// gemmOutput: [outChannels, batchSize*outHeight*outWidth] (row-major)
-	// output: [batchSize, outChannels, outHeight, outWidth] (row-major)
 	for b := 0; b < batchSize; b++ {
 		for oc := 0; oc < outChannels; oc++ {
-			for outH := 0; outH < outHeight; outH++ {
-				for outW := 0; outW < outWidth; outW++ {
-					// Source index in gemmOutput
-					gemmIdx := oc*im2colSize + b*outHeight*outWidth + outH*outWidth + outW
-					// Destination index in output
+			for oh := 0; oh < outHeight; oh++ {
+				for ow := 0; ow < outWidth; ow++ {
+					// Calculate output position
 					outIdx := b*outChannels*outHeight*outWidth +
 						oc*outHeight*outWidth +
-						outH*outWidth + outW
-					output[outIdx] = gemmOutput[gemmIdx]
+						oh*outWidth + ow
+
+					sum := float32(0.0)
+
+					// Convolution kernel loop
+					for kh := 0; kh < kernelH; kh++ {
+						for kw := 0; kw < kernelW; kw++ {
+							// Input position with padding
+							ih := oh*strideH + kh - padH
+							iw := ow*strideW + kw - padW
+
+							// Skip if outside input bounds
+							if ih < 0 || ih >= inHeight || iw < 0 || iw >= inWidth {
+								continue
+							}
+
+							// Sum over input channels
+							for ic := 0; ic < inChannels; ic++ {
+								// Input index
+								inIdx := b*inChannels*inHeight*inWidth +
+									ic*inHeight*inWidth +
+									ih*inWidth + iw
+
+								// Weight index
+								weightIdx := oc*inChannels*kernelH*kernelW +
+									ic*kernelH*kernelW +
+									kh*kernelW + kw
+
+								sum += input[inIdx] * weights[weightIdx]
+							}
+						}
+					}
+
+					// Add bias if provided
+					if bias != nil {
+						sum += bias[oc]
+					}
+
+					output[outIdx] = sum
 				}
 			}
 		}
@@ -294,61 +262,57 @@ func Conv2DKernelGrad(
 	strideH, strideW int,
 	padH, padW int,
 ) {
-	if batchSize == 0 || inChannels == 0 || outChannels == 0 {
-		return
+	// Direct kernel gradient computation - much more efficient than Im2Col + GEMM
+	// This avoids the massive memory allocation and inefficient GEMM operations
+
+	// Initialize kernel gradients to zero
+	kernelSize := outChannels * inChannels * kernelH * kernelW
+	for i := 0; i < kernelSize; i++ {
+		kernelGrad[i] = 0.0
 	}
 
-	kernelSize := inChannels * kernelH * kernelW
-	im2colSize := batchSize * outHeight * outWidth
-
-	// Allocate temporary buffers
-	inputIm2Col := Pool.Get(im2colSize * kernelSize)
-	defer Pool.Put(inputIm2Col)
-	outputGradFlat := Pool.Get(im2colSize * outChannels)
-	defer Pool.Put(outputGradFlat)
-
-	// Step 1: Convert input to columns using Im2Col
-	// inputIm2Col: [batchSize*outHeight*outWidth, inChannels*kernelH*kernelW]
-	Im2Col(inputIm2Col, input, batchSize, inChannels, inHeight, inWidth,
-		kernelH, kernelW, padH, padW, strideH, strideW)
-
-	// Step 2: Flatten output gradient to matrix format
-	// outputGrad: [batchSize, outChannels, outHeight, outWidth] -> [batchSize*outHeight*outWidth, outChannels]
 	for b := 0; b < batchSize; b++ {
-		for outH := 0; outH < outHeight; outH++ {
-			for outW := 0; outW < outWidth; outW++ {
-				for oc := 0; oc < outChannels; oc++ {
-					srcIdx := b*outChannels*outHeight*outWidth +
+		for oc := 0; oc < outChannels; oc++ {
+			for oh := 0; oh < outHeight; oh++ {
+				for ow := 0; ow < outWidth; ow++ {
+					// Get output gradient value
+					gradIdx := b*outChannels*outHeight*outWidth +
 						oc*outHeight*outWidth +
-						outH*outWidth + outW
-					dstIdx := (b*outHeight*outWidth+outH*outWidth+outW)*outChannels + oc
-					outputGradFlat[dstIdx] = outputGrad[srcIdx]
+						oh*outWidth + ow
+					gradVal := outputGrad[gradIdx]
+
+					// Convolution kernel loop for gradient accumulation
+					for kh := 0; kh < kernelH; kh++ {
+						for kw := 0; kw < kernelW; kw++ {
+							// Input position with padding
+							ih := oh*strideH + kh - padH
+							iw := ow*strideW + kw - padW
+
+							// Skip if outside input bounds
+							if ih < 0 || ih >= inHeight || iw < 0 || iw >= inWidth {
+								continue
+							}
+
+							// Accumulate gradients over input channels
+							for ic := 0; ic < inChannels; ic++ {
+								// Input index
+								inIdx := b*inChannels*inHeight*inWidth +
+									ic*inHeight*inWidth +
+									ih*inWidth + iw
+
+								// Kernel gradient index
+								kernelIdx := oc*inChannels*kernelH*kernelW +
+									ic*kernelH*kernelW +
+									kh*kernelW + kw
+
+								kernelGrad[kernelIdx] += input[inIdx] * gradVal
+							}
+						}
+					}
 				}
 			}
 		}
 	}
-
-	// Step 3: Compute kernel gradients using GEMM
-	// kernelGrad = outputGradFlat^T * inputIm2Col
-	// outputGradFlat: [im2colSize, outChannels] (we treat as [outChannels, im2colSize] for GEMM)
-	// inputIm2Col: [im2colSize, kernelSize]
-	// kernelGrad: [outChannels, kernelSize]
-
-	// We use GEMM_NN: C = alpha*A*B + beta*C
-	// A (outputGradFlat^T): M=outChannels, K=im2colSize
-	// B (inputIm2Col): K=im2colSize, N=kernelSize
-	// Result C: [outChannels, kernelSize]
-
-	Gemm_NN(kernelGrad, outputGradFlat, inputIm2Col,
-		kernelSize,  // ldC (kernelGrad leading dimension = kernelSize)
-		im2colSize,  // ldA (outputGradFlat leading dimension = im2colSize, but we access as transposed)
-		kernelSize,  // ldB (inputIm2Col leading dimension = kernelSize)
-		outChannels, // M (output channels)
-		kernelSize,  // N (kernel size)
-		im2colSize,  // K (im2col size)
-		1.0,         // alpha
-		0.0,         // beta
-	)
 }
 
 // Conv1DKernelGrad computes kernel gradients for 1D convolution

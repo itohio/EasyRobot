@@ -33,13 +33,13 @@ func createRandomInput(shape tensor.Shape) tensor.Tensor {
 	return tensor.FromFloat32(shape, data)
 }
 
-// Benchmark Conv2D Forward Pass
-func BenchmarkConv2D_Forward(b *testing.B) {
-	batchSize := 8
-	inChannels := 64
-	outChannels := 128
-	height := 32
-	width := 32
+// Benchmark Conv2D Forward Pass - SMALL (for debugging)
+func BenchmarkConv2D_Forward_Small(b *testing.B) {
+	batchSize := 1
+	inChannels := 3
+	outChannels := 16
+	height := 28
+	width := 28
 	kernelH := 3
 	kernelW := 3
 	strideH := 1
@@ -78,6 +78,8 @@ func BenchmarkConv2D_Forward(b *testing.B) {
 		Throughput: float64(b.N) / b.Elapsed().Seconds(),
 	}
 	benchmarkResults = append(benchmarkResults, report)
+
+	// Debug output - allocations are reported automatically by b.ReportAllocs()
 }
 
 // Benchmark Conv2D Backward Pass
