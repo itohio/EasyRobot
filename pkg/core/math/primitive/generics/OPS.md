@@ -63,6 +63,12 @@ Multi-threaded code paths now share the typed worker pool defined in `primitive/
 - Loop bounds are explicit and within slice capacity
 - Slice operations use `[:n]` patterns that the compiler can prove are safe
 
+### Destination Reuse and Buffer Lifecycle
+
+- Callers should pass contiguous, offset-free `dst` tensors so higher-level operations can write results in-place without borrowing scratch buffers from the tensor pool.
+- When strided views or non-zero offsets force a temporary, the operation must copy the result back into `dst` and immediately call `Release()` on the scratch tensor so pools remain balanced.
+- Any operation that returns a newly allocated tensor (because `dst` was omitted) must document that the caller owns the buffer and is responsible for calling `Release()` once the data is no longer needed.
+
 ---
 
 ## Tensor Operations
