@@ -796,9 +796,9 @@ func testFullTraining(t *testing.T) {
 // TestMNISTConvDebug is a debug version of the MNIST conv test with reduced parameters
 // for quick testing of training functionality
 func TestMNISTConvDebug(t *testing.T) {
-	const maxTrainSamples = 50
-	const maxTestSamples = 20
-	const epochs = 5
+	const maxTrainSamples = 100
+	const maxTestSamples = 50
+	const epochs = 10
 
 	trainPath := filepath.Join("datasets", "mnist", "mnist_train.csv.gz")
 	trainSamples, err := mnist.Load(trainPath, maxTrainSamples)
