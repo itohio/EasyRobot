@@ -194,11 +194,44 @@ func (t Tensor) Conv2DTransposed(dst types.Tensor, kernel, bias types.Tensor, st
 	padH := padding[0]
 	padW := padding[1]
 
-	// Calculate output dimensions for transposed convolution
+	// Calculate base output dimensions for transposed convolution
 	// outHeight = (inHeight - 1) * strideH - 2*padH + kernelH
 	// outWidth = (inWidth - 1) * strideW - 2*padW + kernelW
-	outHeight := (inHeight-1)*strideH - 2*padH + kernelH
-	outWidth := (inWidth-1)*strideW - 2*padW + kernelW
+	baseOutHeight := (inHeight-1)*strideH - 2*padH + kernelH
+	baseOutWidth := (inWidth-1)*strideW - 2*padW + kernelW
+
+	outputPadH := 0
+	outputPadW := 0
+	outHeight := baseOutHeight
+	outWidth := baseOutWidth
+
+	if !IsNil(dst) && dst.Shape() != nil {
+		dstShape := dst.Shape()
+		if len(dstShape) != 4 {
+			panic(fmt.Sprintf("tensor.Conv2DTransposed: destination must be 4D [batch, channels, height, width], got %v", dstShape))
+		}
+		if dstShape[0] != batchSize {
+			panic(fmt.Sprintf("tensor.Conv2DTransposed: destination batch %d doesn't match input batch %d", dstShape[0], batchSize))
+		}
+		if dstShape[1] != outChannels {
+			panic(fmt.Sprintf("tensor.Conv2DTransposed: destination channels %d doesn't match expected %d", dstShape[1], outChannels))
+		}
+
+		padHDelta := dstShape[2] - baseOutHeight
+		padWDelta := dstShape[3] - baseOutWidth
+
+		if padHDelta < 0 || padWDelta < 0 {
+			panic(fmt.Sprintf("tensor.Conv2DTransposed: destination spatial dims %v smaller than base output [%d %d]", dstShape[2:], baseOutHeight, baseOutWidth))
+		}
+		if padHDelta >= strideH || padWDelta >= strideW {
+			panic(fmt.Sprintf("tensor.Conv2DTransposed: required output padding (%d, %d) must be less than stride (%d, %d)", padHDelta, padWDelta, strideH, strideW))
+		}
+
+		outputPadH = padHDelta
+		outputPadW = padWDelta
+		outHeight = baseOutHeight + outputPadH
+		outWidth = baseOutWidth + outputPadW
+	}
 
 	switch t.Data().(type) {
 	case []float32:
@@ -243,26 +276,50 @@ func (t Tensor) Conv2DTransposed(dst types.Tensor, kernel, bias types.Tensor, st
 			resultData = types.GetTensorData[[]float32](dst)
 		}
 
-		// Call fp32.Conv2DTransposed DIRECTLY with raw data slices
-		fp32.Conv2DTransposed(
-			resultData,
-			tData,
-			kernelData,
-			batchSize,
-			inChannels,
-			outChannels,
-			inHeight,
-			inWidth,
-			outHeight,
-			outWidth,
-			kernelH,
-			kernelW,
-			strideH,
-			strideW,
-			padH,
-			padW,
-			biasData, // Can be nil if scalar bias
-		)
+		// Call fp32 Conv2DTransposed primitive, extending with output padding when needed.
+		if outputPadH == 0 && outputPadW == 0 {
+			fp32.Conv2DTransposed(
+				resultData,
+				tData,
+				kernelData,
+				batchSize,
+				inChannels,
+				outChannels,
+				inHeight,
+				inWidth,
+				outHeight,
+				outWidth,
+				kernelH,
+				kernelW,
+				strideH,
+				strideW,
+				padH,
+				padW,
+				biasData, // Can be nil if scalar bias
+			)
+		} else {
+			fp32.Conv2DTransposedWithOutputPadding(
+				resultData,
+				tData,
+				kernelData,
+				batchSize,
+				inChannels,
+				outChannels,
+				inHeight,
+				inWidth,
+				outHeight,
+				outWidth,
+				kernelH,
+				kernelW,
+				strideH,
+				strideW,
+				padH,
+				padW,
+				outputPadH,
+				outputPadW,
+				biasData,
+			)
+		}
 
 		// Handle scalar bias if needed - apply directly to output
 		if hasScalarBias && biasScalar != 0 {

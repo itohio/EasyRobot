@@ -427,29 +427,30 @@ func (t Tensor) Sum(dst types.Tensor, dims []int) types.Tensor {
 		return nil
 	}
 
-	result := t.reduceTensor(dims, true, fp32.ReduceSum)
+	result, scratch := t.reduceTensor(dst, dims, true, fp32.ReduceSum)
 	if result == nil {
 		return nil
+	}
+
+	if scratch {
+		if IsNil(dst) {
+			panic("tensor.Sum: internal scratch buffer without destination")
+		}
+		dstData := types.GetTensorData[[]float32](dst)
+		srcData := types.GetTensorData[[]float32](result)
+		shapeSlice := dst.Shape().ToSlice()
+		dstStrides := dst.Strides(nil)
+		srcStrides := result.Strides(nil)
+		generics.ElemCopyStrided[float32](dstData, srcData, shapeSlice, dstStrides, srcStrides)
+		result.Release()
+		return dst
 	}
 
 	if IsNil(dst) {
 		return result
 	}
 
-	if !result.Shape().Equal(dst.Shape()) {
-		panic(fmt.Sprintf("tensor.Sum: destination shape mismatch: expected %v, got %v", result.Shape(), dst.Shape()))
-	}
-
-	// Copy result to dst using generics
-	resultData := types.GetTensorData[[]float32](result)
-	dstData := types.GetTensorData[[]float32](dst)
-	shapeSlice := result.Shape().ToSlice()
-	var dstStridesStatic [MAX_DIMS]int
-	dstStrides := dst.Strides(dstStridesStatic[:dst.Shape().Rank()])
-	var resultStridesStatic [MAX_DIMS]int
-	resultStrides := result.Strides(resultStridesStatic[:result.Shape().Rank()])
-	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dstStrides, resultStrides)
-	return dst
+	return result
 }
 
 // ReduceSum is an alias for Sum (matches TensorFlow naming: tf.reduce_sum).
@@ -465,29 +466,30 @@ func (t Tensor) Mean(dst types.Tensor, dims []int) types.Tensor {
 		return nil
 	}
 
-	result := t.reduceTensor(dims, true, fp32.ReduceMean)
+	result, scratch := t.reduceTensor(dst, dims, true, fp32.ReduceMean)
 	if result == nil {
 		return nil
+	}
+
+	if scratch {
+		if IsNil(dst) {
+			panic("tensor.Mean: internal scratch buffer without destination")
+		}
+		dstData := types.GetTensorData[[]float32](dst)
+		srcData := types.GetTensorData[[]float32](result)
+		shapeSlice := dst.Shape().ToSlice()
+		dstStrides := dst.Strides(nil)
+		srcStrides := result.Strides(nil)
+		generics.ElemCopyStrided[float32](dstData, srcData, shapeSlice, dstStrides, srcStrides)
+		result.Release()
+		return dst
 	}
 
 	if IsNil(dst) {
 		return result
 	}
 
-	if !result.Shape().Equal(dst.Shape()) {
-		panic(fmt.Sprintf("tensor.Mean: destination shape mismatch: expected %v, got %v", result.Shape(), dst.Shape()))
-	}
-
-	// Copy result to dst using generics
-	resultData := types.GetTensorData[[]float32](result)
-	dstData := types.GetTensorData[[]float32](dst)
-	shapeSlice := result.Shape().ToSlice()
-	var dstStridesStatic [MAX_DIMS]int
-	dstStrides := dst.Strides(dstStridesStatic[:dst.Shape().Rank()])
-	var resultStridesStatic [MAX_DIMS]int
-	resultStrides := result.Strides(resultStridesStatic[:result.Shape().Rank()])
-	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dstStrides, resultStrides)
-	return dst
+	return result
 }
 
 // ReduceMean is an alias for Mean (matches TensorFlow naming: tf.reduce_mean).
@@ -503,29 +505,30 @@ func (t Tensor) Max(dst types.Tensor, dims []int) types.Tensor {
 		return nil
 	}
 
-	result := t.reduceTensor(dims, true, fp32.ReduceMax)
+	result, scratch := t.reduceTensor(dst, dims, true, fp32.ReduceMax)
 	if result == nil {
 		return nil
+	}
+
+	if scratch {
+		if IsNil(dst) {
+			panic("tensor.Max: internal scratch buffer without destination")
+		}
+		dstData := types.GetTensorData[[]float32](dst)
+		srcData := types.GetTensorData[[]float32](result)
+		shapeSlice := dst.Shape().ToSlice()
+		dstStrides := dst.Strides(nil)
+		srcStrides := result.Strides(nil)
+		generics.ElemCopyStrided[float32](dstData, srcData, shapeSlice, dstStrides, srcStrides)
+		result.Release()
+		return dst
 	}
 
 	if IsNil(dst) {
 		return result
 	}
 
-	if !result.Shape().Equal(dst.Shape()) {
-		panic(fmt.Sprintf("tensor.Max: destination shape mismatch: expected %v, got %v", result.Shape(), dst.Shape()))
-	}
-
-	// Copy result to dst using generics
-	resultData := types.GetTensorData[[]float32](result)
-	dstData := types.GetTensorData[[]float32](dst)
-	shapeSlice := result.Shape().ToSlice()
-	var dstStridesStatic [MAX_DIMS]int
-	dstStrides := dst.Strides(dstStridesStatic[:dst.Shape().Rank()])
-	var resultStridesStatic [MAX_DIMS]int
-	resultStrides := result.Strides(resultStridesStatic[:result.Shape().Rank()])
-	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dstStrides, resultStrides)
-	return dst
+	return result
 }
 
 // ReduceMax is an alias for Max (matches TensorFlow naming: tf.reduce_max).
@@ -541,29 +544,30 @@ func (t Tensor) Min(dst types.Tensor, dims []int) types.Tensor {
 		return nil
 	}
 
-	result := t.reduceTensor(dims, true, fp32.ReduceMin)
+	result, scratch := t.reduceTensor(dst, dims, true, fp32.ReduceMin)
 	if result == nil {
 		return nil
+	}
+
+	if scratch {
+		if IsNil(dst) {
+			panic("tensor.Min: internal scratch buffer without destination")
+		}
+		dstData := types.GetTensorData[[]float32](dst)
+		srcData := types.GetTensorData[[]float32](result)
+		shapeSlice := dst.Shape().ToSlice()
+		dstStrides := dst.Strides(nil)
+		srcStrides := result.Strides(nil)
+		generics.ElemCopyStrided[float32](dstData, srcData, shapeSlice, dstStrides, srcStrides)
+		result.Release()
+		return dst
 	}
 
 	if IsNil(dst) {
 		return result
 	}
 
-	if !result.Shape().Equal(dst.Shape()) {
-		panic(fmt.Sprintf("tensor.Min: destination shape mismatch: expected %v, got %v", result.Shape(), dst.Shape()))
-	}
-
-	// Copy result to dst using generics
-	resultData := types.GetTensorData[[]float32](result)
-	dstData := types.GetTensorData[[]float32](dst)
-	shapeSlice := result.Shape().ToSlice()
-	var dstStridesStatic [MAX_DIMS]int
-	dstStrides := dst.Strides(dstStridesStatic[:dst.Shape().Rank()])
-	var resultStridesStatic [MAX_DIMS]int
-	resultStrides := result.Strides(resultStridesStatic[:result.Shape().Rank()])
-	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dstStrides, resultStrides)
-	return dst
+	return result
 }
 
 // ReduceMin is an alias for Min (matches TensorFlow naming: tf.reduce_min).
@@ -583,46 +587,64 @@ func (t Tensor) ArgMax(dst types.Tensor, dim int) types.Tensor {
 		panic(fmt.Sprintf("tensor.ArgMax: dimension %d out of range for shape %v", dim, t.shape))
 	}
 
-	var result types.Tensor
-	if t.shape.Rank() == 1 && t.IsContiguous() {
-		idx := fp32.Iamax(types.GetTensorData[[]float32](t), 1, t.Size())
-		result = FromFloat32(types.NewShape(1), []float32{float32(idx)})
+	resultShape, axis := t.prepareArgmax(dim)
+	targetShape := types.NewShape(resultShape...)
+	dtype := t.DataType()
+
+	var target types.Tensor
+	useScratch := false
+
+	if IsNil(dst) {
+		target = New(dtype, targetShape)
 	} else {
-		resultShape, axis := t.prepareArgmax(dim)
-		result = New(t.DataType(), types.NewShape(resultShape...))
-		resultData := types.GetTensorData[[]float32](result)
-		tData := types.GetTensorData[[]float32](t)
-		// Use Strides(nil) for read-only operations - returns stored strides directly without copy
-		resultStrides := result.Strides(nil)
-		tStrides := t.Strides(nil)
-		fp32.Argmax(
-			resultData,
-			result.Shape().ToSlice(),
-			resultStrides,
-			tData,
-			t.shape.ToSlice(),
-			tStrides,
-			axis,
-		)
+		if dst.DataType() != dtype {
+			panic(fmt.Sprintf("tensor.ArgMax: destination dtype mismatch: expected %v, got %v", dtype, dst.DataType()))
+		}
+		if !targetShape.Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.ArgMax: destination shape mismatch: expected %v, got %v", targetShape, dst.Shape()))
+		}
+		if dst.IsContiguous() && dst.Offset() == 0 {
+			target = dst
+		} else {
+			tmp := New(dtype, targetShape)
+			target = tmp
+			useScratch = true
+		}
+	}
+
+	tData := types.GetTensorData[[]float32](t)
+	targetData := types.GetTensorData[[]float32](target)
+	if tData == nil || targetData == nil {
+		panic("tensor.ArgMax: unsupported data type")
+	}
+
+	resultStrides := target.Strides(nil)
+	tStrides := t.Strides(nil)
+	fp32.Argmax(
+		targetData,
+		target.Shape().ToSlice(),
+		resultStrides,
+		tData,
+		t.shape.ToSlice(),
+		tStrides,
+		axis,
+	)
+
+	if useScratch {
+		dstData := types.GetTensorData[[]float32](dst)
+		shapeSlice := dst.Shape().ToSlice()
+		dstStrides := dst.Strides(nil)
+		srcStrides := target.Strides(nil)
+		generics.ElemCopyStrided[float32](dstData, targetData, shapeSlice, dstStrides, srcStrides)
+		target.Release()
+		return dst
 	}
 
 	if IsNil(dst) {
-		return result
+		return target
 	}
 
-	if !result.Shape().Equal(dst.Shape()) {
-		panic(fmt.Sprintf("tensor.ArgMax: destination shape mismatch: expected %v, got %v", result.Shape(), dst.Shape()))
-	}
-
-	// Copy result to dst using generics
-	resultData := types.GetTensorData[[]float32](result)
-	dstData := types.GetTensorData[[]float32](dst)
-	shapeSlice := result.Shape().ToSlice()
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
-	dstStrides := dst.Strides(nil)
-	resultStrides := result.Strides(nil)
-	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dstStrides, resultStrides)
-	return dst
+	return target
 }
 
 // ArgMin returns the index of the minimum element along the specified dimension (matches tf.argmin).
@@ -638,57 +660,77 @@ func (t Tensor) ArgMin(dst types.Tensor, dim int) types.Tensor {
 	}
 
 	resultShape, axis := t.prepareArgmax(dim)
-	result := New(t.DataType(), types.NewShape(resultShape...))
-	tData := types.GetTensorData[[]float32](t)
+	targetShape := types.NewShape(resultShape...)
+	dtype := t.DataType()
 
-	// Argmin returns int32, but we need to store as float32 to match ArgMax pattern
-	// Create a temporary int32 slice for the result
-	resultDataInt32 := make([]int32, result.Size())
-	// Use Strides(nil) for read-only operations - returns stored strides directly without copy
-	resultStrides := result.Strides(nil)
+	var target types.Tensor
+	useScratch := false
+
+	if IsNil(dst) {
+		target = New(dtype, targetShape)
+	} else {
+		if dst.DataType() != dtype {
+			panic(fmt.Sprintf("tensor.ArgMin: destination dtype mismatch: expected %v, got %v", dtype, dst.DataType()))
+		}
+		if !targetShape.Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.ArgMin: destination shape mismatch: expected %v, got %v", targetShape, dst.Shape()))
+		}
+		if dst.IsContiguous() && dst.Offset() == 0 {
+			target = dst
+		} else {
+			tmp := New(dtype, targetShape)
+			target = tmp
+			useScratch = true
+		}
+	}
+
+	tData := types.GetTensorData[[]float32](t)
+	targetData := types.GetTensorData[[]float32](target)
+	if tData == nil || targetData == nil {
+		panic("tensor.ArgMin: unsupported data type")
+	}
+
+	targetStrides := target.Strides(nil)
 	tStrides := t.Strides(nil)
+	indices := make([]int32, target.Size())
 	fp32.Argmin(
-		resultDataInt32,
-		result.Shape().ToSlice(),
-		resultStrides,
+		indices,
+		target.Shape().ToSlice(),
+		targetStrides,
 		tData,
 		t.shape.ToSlice(),
 		tStrides,
 		axis,
 	)
 
-	// Convert int32 to float32
-	resultData := types.GetTensorData[[]float32](result)
-	for i := range resultDataInt32 {
-		resultData[i] = float32(resultDataInt32[i])
+	for i := range indices {
+		targetData[i] = float32(indices[i])
+	}
+
+	if useScratch {
+		dstData := types.GetTensorData[[]float32](dst)
+		shapeSlice := dst.Shape().ToSlice()
+		dstStrides := dst.Strides(nil)
+		srcStrides := target.Strides(nil)
+		generics.ElemCopyStrided[float32](dstData, targetData, shapeSlice, dstStrides, srcStrides)
+		target.Release()
+		return dst
 	}
 
 	if IsNil(dst) {
-		return result
+		return target
 	}
 
-	if !result.Shape().Equal(dst.Shape()) {
-		panic(fmt.Sprintf("tensor.ArgMin: destination shape mismatch: expected %v, got %v", result.Shape(), dst.Shape()))
-	}
-
-	// Copy result to dst using generics
-	dstData := types.GetTensorData[[]float32](dst)
-	shapeSlice := result.Shape().ToSlice()
-	var dstStridesStatic2 [MAX_DIMS]int
-	dstStrides := dst.Strides(dstStridesStatic2[:dst.Shape().Rank()])
-	var resultStridesStatic2 [MAX_DIMS]int
-	resultStrides = result.Strides(resultStridesStatic2[:result.Shape().Rank()])
-	generics.ElemCopyStrided[float32](dstData, resultData, shapeSlice, dstStrides, resultStrides)
-	return dst
+	return target
 }
 
 // Helper functions
 
 type reduceFunc func(dst []float32, dstShape []int, dstStrides []int, src []float32, srcShape []int, srcStrides []int, axes []int)
 
-func (t Tensor) reduceTensor(dims []int, scalarWhenEmpty bool, reducer reduceFunc) types.Tensor {
+func (t Tensor) reduceTensor(dst types.Tensor, dims []int, scalarWhenEmpty bool, reducer reduceFunc) (types.Tensor, bool) {
 	if t.shape == nil {
-		return nil
+		return nil, false
 	}
 
 	axes := t.normalizeAxes(dims)
@@ -707,25 +749,52 @@ func (t Tensor) reduceTensor(dims []int, scalarWhenEmpty bool, reducer reduceFun
 		resultShape = []int{1}
 	}
 
-	res := New(t.DataType(), types.NewShape(resultShape...))
-	resData := types.GetTensorData[[]float32](res)
+	targetShape := types.NewShape(resultShape...)
+	dtype := t.DataType()
+
+	var target types.Tensor
+	useScratch := false
+
+	if IsNil(dst) {
+		target = New(dtype, targetShape)
+	} else {
+		if dst.DataType() != dtype {
+			panic(fmt.Sprintf("tensor.reduceTensor: destination dtype mismatch: expected %v, got %v", dtype, dst.DataType()))
+		}
+		if !targetShape.Equal(dst.Shape()) {
+			panic(fmt.Sprintf("tensor.reduceTensor: destination shape mismatch: expected %v, got %v", targetShape, dst.Shape()))
+		}
+		if dst.IsContiguous() && dst.Offset() == 0 {
+			target = dst
+		} else {
+			tmp := New(dtype, targetShape)
+			target = tmp
+			useScratch = true
+		}
+	}
+
 	tData := types.GetTensorData[[]float32](t)
-	var resStridesStatic [MAX_DIMS]int
-	resStrides := res.Strides(resStridesStatic[:res.Shape().Rank()])
+	targetData := types.GetTensorData[[]float32](target)
+	if tData == nil || targetData == nil {
+		panic("tensor.reduceTensor: unsupported data type")
+	}
+
+	var targetStridesStatic [MAX_DIMS]int
+	targetStrides := target.Strides(targetStridesStatic[:target.Shape().Rank()])
 	var tStridesStatic [MAX_DIMS]int
 	tStrides := t.Strides(tStridesStatic[:t.shape.Rank()])
 
 	reducer(
-		resData,
-		res.Shape().ToSlice(),
-		resStrides,
+		targetData,
+		target.Shape().ToSlice(),
+		targetStrides,
 		tData,
 		t.shape.ToSlice(),
 		tStrides,
 		axes,
 	)
 
-	return res
+	return target, useScratch
 }
 
 func (t Tensor) normalizeAxes(dims []int) []int {

@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/generics"
 )
 
-const MAX_DIMS = helpers.MAX_DIMS
+const MAX_DIMS = generics.MAX_DIMS
 
 // Shape represents tensor dimensions.
 type Shape []int
@@ -29,7 +29,7 @@ func (s Shape) Size() int {
 	if len(s) == 0 {
 		return 1
 	}
-	return helpers.SizeFromShape(s)
+	return generics.SizeFromShape(s)
 }
 
 // Equal checks if two shapes are equal.
@@ -48,13 +48,13 @@ func (s Shape) Equal(other Shape) bool {
 // Strides computes row-major strides for the shape.
 // Uses optimized helper function with stack allocation when dst is nil.
 func (s Shape) Strides(dst []int) []int {
-	return helpers.ComputeStrides(dst, s)
+	return generics.ComputeStrides(dst, s)
 }
 
 // IsContiguous reports whether the given strides describe a dense row-major layout.
 // Uses optimized helper function with stack allocation.
 func (s Shape) IsContiguous(strides []int) bool {
-	return helpers.IsContiguous(strides, s)
+	return generics.IsContiguous(strides, s)
 }
 
 // ValidateAxes ensures axes are in range and unique. It sorts axes in-place.
@@ -93,8 +93,24 @@ func (s Shape) Clone() Shape {
 	if s == nil {
 		return nil
 	}
-	var static [helpers.MAX_DIMS]int
+	var static [generics.MAX_DIMS]int
 	out := static[:len(s)]
 	copy(out[:], s)
 	return out
+}
+
+func (s Shape) Iterator(fixedAxisValuePairs ...int) func(func([]int) bool) {
+	return generics.ElementsIndices([]int(s), fixedAxisValuePairs...)
+}
+
+// Elements iterates over shape indices using the provided callback. Returning false stops iteration.
+func (s Shape) Elements(callback func([]int) bool, fixedAxisValuePairs ...int) {
+	if callback == nil {
+		return
+	}
+	for indices := range s.Iterator(fixedAxisValuePairs...) {
+		if !callback(indices) {
+			return
+		}
+	}
 }

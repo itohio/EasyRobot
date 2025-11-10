@@ -1499,4 +1499,11 @@ See test files for examples:
 - `eager_tensor/tensor_slice_test.go` - Slicing operations
 - `eager_tensor/activations_test.go` - Activation function tests
 
+## Memory Management Guidelines
+
+- Eager tensor math and linear algebra operators accept an optional `dst` tensor. When `dst` is contiguous and has zero offset, the implementation now writes results directly into that buffer instead of creating temporaries.
+- If `dst` is non-contiguous or has a non-zero offset, the operator allocates a scratch tensor, copies the result back into `dst`, and immediately calls `Release()` on the scratch buffer.
+- Callers that receive a newly allocated tensor (because `dst` was `nil`) remain responsible for calling `Release()` once the data has been consumed.
+- Supplying a correctly-shaped `dst` avoids pool churn and keeps temporary allocations out of the hot path.
+
 

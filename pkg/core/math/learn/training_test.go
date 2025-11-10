@@ -13,6 +13,13 @@ import (
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
 )
 
+// oneHot creates a one-hot encoded tensor for a label.
+// Returns shape [1, numClasses] to match model output.
+func oneHot(label int, numClasses int) tensor.Tensor {
+	data := make([]float32, numClasses)
+	data[label] = 1.0
+	return tensor.FromFloat32(tensor.NewShape(1, numClasses), data)
+}
 func TestTrainStep_NilInputs(t *testing.T) {
 	// Create a simple model for testing
 	denseLayer, err := layers.NewDense(2, 1, layers.WithCanLearn(true))

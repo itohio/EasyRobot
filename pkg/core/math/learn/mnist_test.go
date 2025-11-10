@@ -129,13 +129,15 @@ func TestMNIST(t *testing.T) {
 
 	// Create loss and optimizer
 	lossFn := nn.NewCategoricalCrossEntropy(true) // fromLogits=true, applies softmax
-	// optimizer := learn.NewAdam(0.2, 0.9, 0.999, 1e-8)
-	optimizer := learn.NewSGD(0.6)
+	optimizer := learn.NewAdam(0.001, 0.9, 0.999, 1e-8)
 
 	// Training loop
 	epochs := 5
 	t.Log("\n=== Training ===")
 	for epoch := 0; epoch < epochs; epoch++ {
+		rand.Shuffle(len(trainSamples), func(i, j int) {
+			trainSamples[i], trainSamples[j] = trainSamples[j], trainSamples[i]
+		})
 		totalLoss := float64(0)
 		correct := 0
 

@@ -15,14 +15,6 @@ import (
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
 )
 
-// oneHot creates a one-hot encoded tensor for a label.
-// Returns shape [1, numClasses] to match model output.
-func oneHot(label int, numClasses int) tensor.Tensor {
-	data := make([]float32, numClasses)
-	data[label] = 1.0
-	return tensor.FromFloat32(tensor.NewShape(1, numClasses), data)
-}
-
 // TestMNISTLarge trains a larger CNN on MNIST dataset.
 // Uses convolutional blocks with pooling layers.
 // Optimized for speed: reduced model size, fewer samples, fewer epochs.

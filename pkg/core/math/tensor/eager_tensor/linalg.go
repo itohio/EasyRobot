@@ -246,7 +246,7 @@ func prepareMatMulTarget(dtype types.DataType, shape types.Shape, dst types.Tens
 		panic(fmt.Sprintf("tensor.MatMul: destination shape mismatch: expected %v, got %v", shape, dst.Shape()))
 	}
 
-	if dst.IsContiguous() {
+	if dst.IsContiguous() && dst.Offset() == 0 {
 		return dst, types.GetTensorData[[]float32](dst), false
 	}
 
@@ -265,6 +265,7 @@ func finalizeMatMulTarget(target types.Tensor, dst types.Tensor, copyBack bool, 
 		dstStrides := dst.Strides(nil)
 		srcStrides := target.Strides(nil)
 		generics.ElemCopyStrided[float32](dstData, srcData, shape.ToSlice(), dstStrides, srcStrides)
+		target.Release()
 	}
 	return dst
 }
