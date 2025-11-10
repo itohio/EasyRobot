@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand"
 
+	"github.com/itohio/EasyRobot/pkg/core/math/nn/types"
 	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
 	tensorTypes "github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
 )
@@ -569,4 +570,186 @@ func (d *Dropout) TrainingMode() bool {
 // Rate returns the dropout rate.
 func (d *Dropout) Rate() float32 {
 	return d.p
+}
+
+// BatchNorm2D implements batch normalization for 2D feature maps.
+type BatchNorm2D struct {
+	Base
+	numFeatures int
+	eps         float64
+	momentum    float64
+	isTraining  bool
+
+	// Learnable parameters
+	weight Tensor // gamma (scale) - shape: [numFeatures]
+	bias   Tensor // beta (shift) - shape: [numFeatures]
+
+	// Running statistics for inference
+	runningMean Tensor // shape: [numFeatures]
+	runningVar  Tensor // shape: [numFeatures]
+}
+
+// NewBatchNorm2D creates a new BatchNorm2D layer.
+// numFeatures: number of channels/features to normalize
+// eps: small constant for numerical stability (default 1e-5)
+// momentum: momentum for running statistics update (default 0.1)
+func NewBatchNorm2D(numFeatures int, eps, momentum float64, name string) *BatchNorm2D {
+	if eps <= 0 {
+		eps = 1e-5
+	}
+	if momentum <= 0 {
+		momentum = 0.1
+	}
+
+	bn := &BatchNorm2D{
+		Base:        NewBase("batchnorm2d"),
+		numFeatures: numFeatures,
+		eps:         eps,
+		momentum:    momentum,
+		isTraining:  true, // Default to training mode
+	}
+	bn.Base.ParseOptions(WithName(name))
+	return bn
+}
+
+// Init initializes the BatchNorm2D layer.
+func (bn *BatchNorm2D) Init(inputShape tensor.Shape) error {
+	if len(inputShape) != 4 {
+		return fmt.Errorf("BatchNorm2D.Init: expected 4D input [batch, channels, height, width], got shape %v", inputShape)
+	}
+
+	channels := inputShape[1] // NCHW format
+	if channels != bn.numFeatures {
+		return fmt.Errorf("BatchNorm2D.Init: channel mismatch, expected %d channels, got %d", bn.numFeatures, channels)
+	}
+
+	// Output shape is same as input
+	bn.Base.AllocOutput(inputShape, inputShape.Size())
+
+	// Initialize learnable parameters using Base layer parameter management
+	featureShape := tensor.NewShape(bn.numFeatures)
+
+	// Initialize weight parameter (gamma) - scale factor
+	bn.Base.initParam(types.ParamWeights)
+	weightParam, _ := bn.Base.Parameter(types.ParamWeights)
+	weightParam.Init(bn.Base.dataType, featureShape, types.ParamWeights, 0, 0, bn.Base.rng, bn.Base.CanLearn())
+	// Initialize to 1.0
+	weightData := make([]float32, bn.numFeatures)
+	for i := range weightData {
+		weightData[i] = 1.0
+	}
+	weightParam.Data = tensor.FromFloat32(featureShape, weightData)
+	bn.Base.SetParam(types.ParamWeights, weightParam)
+
+	// Initialize bias parameter (beta) - shift factor
+	bn.Base.initParam(types.ParamBiases)
+	biasParam, _ := bn.Base.Parameter(types.ParamBiases)
+	biasParam.Init(bn.Base.dataType, featureShape, types.ParamBiases, 1, 0, bn.Base.rng, bn.Base.CanLearn())
+	// Initialize to 0.0
+	biasData := make([]float32, bn.numFeatures)
+	biasParam.Data = tensor.FromFloat32(featureShape, biasData)
+	bn.Base.SetParam(types.ParamBiases, biasParam)
+
+	// Store references for convenience
+	bn.weight = weightParam.Data
+	bn.bias = biasParam.Data
+
+	// Running statistics initialized to 0 (mean) and 1 (variance)
+	bn.runningMean = tensor.FromFloat32(featureShape, make([]float32, bn.numFeatures))
+	bn.runningVar = tensor.FromFloat32(featureShape, make([]float32, bn.numFeatures))
+	for i := 0; i < bn.numFeatures; i++ {
+		bn.runningVar.SetAt(1.0, i)
+	}
+
+	return nil
+}
+
+// Forward performs batch normalization.
+func (bn *BatchNorm2D) Forward(input Tensor) (Tensor, error) {
+	if bn == nil {
+		return nil, fmt.Errorf("BatchNorm2D.Forward: nil layer")
+	}
+	if tensor.IsNil(input) {
+		return nil, fmt.Errorf("BatchNorm2D.Forward: nil input")
+	}
+
+	// Store input for backward pass
+	bn.Base.StoreInput(input)
+
+	// Get parameters from Base layer
+	weightParam, _ := bn.Base.Parameter(types.ParamWeights)
+	biasParam, _ := bn.Base.Parameter(types.ParamBiases)
+
+	// For 2D batch normalization, we use InstanceNorm2D which normalizes per channel
+	// across spatial dimensions (height, width) for each instance in the batch.
+	// This is the standard behavior for BatchNorm2D in CNNs.
+	output := input.InstanceNorm2D(bn.output, weightParam.Data, biasParam.Data, bn.eps)
+	bn.Base.StoreOutput(output)
+	return output, nil
+}
+
+// Backward computes gradients for batch normalization.
+func (bn *BatchNorm2D) Backward(gradOutput Tensor) (Tensor, error) {
+	if bn == nil {
+		return nil, fmt.Errorf("BatchNorm2D.Backward: nil layer")
+	}
+	if tensor.IsNil(gradOutput) {
+		return nil, fmt.Errorf("BatchNorm2D.Backward: nil gradOutput")
+	}
+
+	// Get input from Base layer
+	input := bn.Base.Input()
+	if tensor.IsNil(input) {
+		return nil, fmt.Errorf("BatchNorm2D.Backward: no stored input")
+	}
+
+	// Get parameters from Base layer
+	weightParam, _ := bn.Base.Parameter(types.ParamWeights)
+
+	// Compute gradients using InstanceNorm2DGrad
+	gradInput, gradWeight, gradBias := input.InstanceNorm2DGrad(nil, nil, nil, gradOutput, input, weightParam.Data, bn.eps)
+
+	// Store gradients in Base layer parameters
+	if !tensor.IsNil(gradWeight) {
+		weightParam.Grad = gradWeight
+		bn.Base.SetParam(types.ParamWeights, weightParam)
+	}
+
+	if !tensor.IsNil(gradBias) {
+		biasParam, _ := bn.Base.Parameter(types.ParamBiases)
+		biasParam.Grad = gradBias
+		bn.Base.SetParam(types.ParamBiases, biasParam)
+	}
+
+	return gradInput, nil
+}
+
+// SetTrainingMode sets whether the layer is in training or inference mode.
+func (bn *BatchNorm2D) SetTrainingMode(isTraining bool) {
+	bn.isTraining = isTraining
+}
+
+// TrainingMode returns whether the layer is in training mode.
+func (bn *BatchNorm2D) TrainingMode() bool {
+	return bn.isTraining
+}
+
+// Eps returns the epsilon value.
+func (bn *BatchNorm2D) Eps() float64 {
+	return bn.eps
+}
+
+// Momentum returns the momentum value.
+func (bn *BatchNorm2D) Momentum() float64 {
+	return bn.momentum
+}
+
+// OutputShape returns the output shape for the given input shape.
+// For BatchNorm2D, output shape equals input shape.
+func (bn *BatchNorm2D) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
+	if len(inputShape) != 4 {
+		return nil, fmt.Errorf("BatchNorm2D.OutputShape: expected 4D input [batch, channels, height, width], got shape %v", inputShape)
+	}
+	// Output shape is same as input shape
+	return inputShape, nil
 }
