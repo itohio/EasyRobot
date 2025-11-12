@@ -359,9 +359,115 @@ Many operations are designed to match TensorFlow behavior:
 
 - **Iterator Pattern**: Use `Elements()` iterator for efficient element-wise iteration.
 
+## Execution Modes: Eager vs Graph
+
+The tensor interface supports two execution modes:
+
+### Eager Execution
+
+Operations execute immediately and return results:
+
+```go
+t1 := eager_tensor.New(types.FP32, 10, 10)
+t2 := eager_tensor.New(types.FP32, 10, 10)
+t1.Fill(nil, 1.0)
+t2.Fill(nil, 2.0)
+result := t1.MatMul(nil, t2).ReLU(nil)  // Executes immediately
+output := result.Data()                  // Data is already computed
+```
+
+**Best for**: Debugging, prototyping, simple operations
+
+### Graph Execution
+
+Operations are recorded into a computation graph and compiled for efficient execution:
+
+```go
+// Create computation graph
+eg := gorgonia.NewExpressionGraph()
+
+// Create tensor nodes (placeholders)
+t1 := eg.New(types.FP32, 10, 10)
+t2 := eg.New(types.FP32, 10, 10)
+
+// Build graph (records operations, doesn't execute)
+result := t1.MatMul(nil, t2).ReLU(nil)
+
+// Compile once
+eg.Compile()
+
+// Execute multiple times with different inputs
+for i := 0; i < 100; i++ {
+    t1.Copy(inputData1[i])  // Set input data
+    t2.Copy(inputData2[i])
+    eg.Compute()            // Execute compiled graph
+    output := result.Data() // Get output data
+}
+```
+
+**Best for**: Production inference, training, CNN operations
+
+### ExpressionGraph Interface
+
+Graph-based backends implement the `ExpressionGraph` interface:
+
+```go
+type ExpressionGraph interface {
+    // New creates a new tensor node in the graph
+    New(dtype DataType, shape ...int) Tensor
+    
+    // NewConstant creates a constant tensor (embedded in graph)
+    NewConstant(data any, shape ...int) Tensor
+    
+    // State returns the current graph state (Building, Compiled, Executing)
+    State() GraphState
+    
+    // Compile compiles the graph for execution
+    Compile() error
+    
+    // Compute executes the compiled graph
+    Compute() error
+    
+    // Reset resets the graph to building state
+    Reset()
+}
+```
+
+### Graph Tensor Properties
+
+Tensors in a computation graph behave differently:
+
+- **Operations record, don't execute**: `t1.Add(nil, t2)` records an Add operation
+- **Data access requires compilation**: `t.Data()` only works after `eg.Compile()`
+- **Input data via Copy**: `t.Copy(data)` sets input before `eg.Compute()`
+- **Constant tensors**: `eg.NewConstant(weights, ...)` embeds data in graph
+
+### Backend Capabilities
+
+Backends can declare their capabilities via the `GraphBackend` interface:
+
+```go
+type GraphBackend interface {
+    NewExpressionGraph() ExecutionGraph
+    Capabilities() BackendCapabilities
+}
+
+type BackendCapabilities struct {
+    SupportsEagerExecution bool  // Can execute immediately
+    SupportsGraphExecution bool  // Can build/compile graphs
+    RecommendedMode       ExecutionMode
+}
+```
+
+- **eager_tensor**: Eager execution only
+- **gorgonia**: Graph execution (with BLAS optimization)
+- **tflite**: Graph execution (hardware-accelerated inference)
+
 ### Implementation Notes
 
 - Concrete implementations must use value receivers (not pointers) to satisfy the interface
 - The Tensor interface is designed to be composable with category interfaces
 - Helper types (`Element`, `RNG`) enable flexible implementations
-- The interface design supports both eager and lazy evaluation backends
+- The interface design supports both eager and graph evaluation backends
+- Graph-based backends provide all operations (Conv2D, pooling, etc.) natively
+- Eager backends may need fallback implementations for complex operations

@@ -8,6 +8,7 @@ import (
 	"github.com/itohio/EasyRobot/pkg/core/math/primitive/qi32"
 	"github.com/itohio/EasyRobot/pkg/core/math/primitive/qi64"
 	"github.com/itohio/EasyRobot/pkg/core/math/primitive/qi8"
+	"github.com/itohio/EasyRobot/pkg/core/math/primitive/qu8"
 )
 
 // DataType represents the underlying element type stored by a tensor.
@@ -24,6 +25,7 @@ const (
 	FP16                // 16-bit floating point tensors
 	INT8                // 8-bit integer tensors
 	INT48               // 4-bit integer tensors unpacked into 8bit
+	UINT8               // 8-bit unsigned tensors (image data)
 )
 
 // DataElementType is the type constraint for the data elements in the tensor.
@@ -61,6 +63,8 @@ func TypeFromData(v any) DataType {
 		return INT64
 	case []int8:
 		return INT8
+	case []uint8:
+		return UINT8
 	default:
 		return DT_UNKNOWN
 	}
@@ -84,6 +88,8 @@ func MakeTensorData(dt DataType, size int) any {
 		return qi8.Pool.Get(size)
 	case INT48:
 		return qi8.Pool.Get(size)
+	case UINT8:
+		return qu8.Pool.Get(size)
 	default:
 		return nil
 	}
@@ -107,6 +113,9 @@ func ReleaseTensorData(data any) {
 		qi64.Pool.Put(buf)
 	case []int8:
 		qi8.Pool.Put(buf)
+	case []uint8:
+		qu8.Pool.Put(buf)
+		// no pooling for uint8
 	}
 }
 
@@ -129,6 +138,8 @@ func CloneTensorDataTo(dst DataType, data any) any {
 	case []int64:
 		size = len(d)
 	case []int8:
+		size = len(d)
+	case []uint8:
 		size = len(d)
 	default:
 		return nil

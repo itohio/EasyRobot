@@ -1,0 +1,67 @@
+# Helper Makefile for building OpenCV for GoCV integration
+
+SHELL := /bin/bash
+
+OPENCV_VERSION ?= 4.5.3
+OPENCV_REPO ?= https://github.com/opencv/opencv.git
+OPENCV_CONTRIB_REPO ?= https://github.com/opencv/opencv_contrib.git
+
+PREFIX ?= $(CURDIR)/third_party/opencv
+SRC_DIR ?= $(CURDIR)/third_party/src
+BUILD_DIR ?= $(CURDIR)/build/opencv
+
+NUM_JOBS ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+
+OPENCV_SRC := $(SRC_DIR)/opencv
+OPENCV_CONTRIB_SRC := $(SRC_DIR)/opencv_contrib
+
+.PHONY: checkout configure build install clean distclean info
+
+info:
+	@echo "OpenCV version: $(OPENCV_VERSION)"
+	@echo "Source directory: $(SRC_DIR)"
+	@echo "Build directory:  $(BUILD_DIR)"
+	@echo "Install prefix:   $(PREFIX)"
+
+checkout: $(OPENCV_SRC)/.git $(OPENCV_CONTRIB_SRC)/.git
+	git -C $(OPENCV_SRC) fetch --tags
+	git -C $(OPENCV_SRC) checkout $(OPENCV_VERSION)
+	git -C $(OPENCV_CONTRIB_SRC) fetch --tags
+	git -C $(OPENCV_CONTRIB_SRC) checkout $(OPENCV_VERSION)
+
+$(OPENCV_SRC)/.git:
+	@mkdir -p $(SRC_DIR)
+	git clone $(OPENCV_REPO) $(OPENCV_SRC)
+
+$(OPENCV_CONTRIB_SRC)/.git:
+	@mkdir -p $(SRC_DIR)
+	git clone $(OPENCV_CONTRIB_REPO) $(OPENCV_CONTRIB_SRC)
+
+configure: checkout
+	@mkdir -p $(BUILD_DIR)
+	cmake -S $(OPENCV_SRC) -B $(BUILD_DIR) \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX="$(PREFIX)" \
+		-DOPENCV_GENERATE_PKGCONFIG=ON \
+		-DOPENCV_EXTRA_MODULES_PATH=$(OPENCV_CONTRIB_SRC)/modules \
+		-DBUILD_EXAMPLES=OFF \
+		-DBUILD_TESTS=OFF \
+		-DBUILD_PERF_TESTS=OFF \
+		-DBUILD_JAVA=OFF \
+		-DBUILD_opencv_python3=OFF \
+		-DBUILD_opencv_python2=OFF \
+		-DBUILD_opencv_js=OFF \
+		-DBUILD_SHARED_LIBS=ON
+
+build: configure
+	cmake --build $(BUILD_DIR) --target all -- -j$(NUM_JOBS)
+
+install: build
+	cmake --build $(BUILD_DIR) --target install
+
+clean:
+	@rm -rf $(BUILD_DIR)
+
+distclean: clean
+	@rm -rf $(SRC_DIR) $(PREFIX)
+
