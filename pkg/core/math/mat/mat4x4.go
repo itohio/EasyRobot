@@ -233,14 +233,14 @@ func (m *Matrix4x4) Transpose(m1 Matrix4x4) *Matrix4x4 {
 
 func (m *Matrix4x4) Add(m1 Matrix4x4) *Matrix4x4 {
 	for i := range m {
-		vec.Vector(m[i][:]).Add(m1[i][:])
+		vec.Vector(m[i][:]).Add(vec.Vector(m1[i][:]))
 	}
 	return m
 }
 
 func (m *Matrix4x4) Sub(m1 Matrix4x4) *Matrix4x4 {
 	for i := range m {
-		vec.Vector(m[i][:]).Sub(m1[i][:])
+		vec.Vector(m[i][:]).Sub(vec.Vector(m1[i][:]))
 	}
 	return m
 }

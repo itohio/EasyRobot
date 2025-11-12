@@ -1,15 +1,70 @@
 package mat
 
 import (
+	"fmt"
 	"unsafe"
 
 	"github.com/chewxy/math32"
+	matTypes "github.com/itohio/EasyRobot/pkg/core/math/mat/types"
 	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
 	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	vecTypes "github.com/itohio/EasyRobot/pkg/core/math/vec/types"
 )
 
 // Matrix layout is row-major.
 type Matrix [][]float32
+
+var _ matTypes.Matrix = Matrix(nil)
+
+type vectorView interface {
+	Vector() vec.Vector
+}
+
+func ensureMatrix(arg matTypes.Matrix, op string) Matrix {
+	if arg == nil {
+		panic("mat.Matrix." + op + ": nil matrix")
+	}
+	if concrete, ok := arg.(Matrix); ok {
+		return concrete
+	}
+	if view := arg.Matrix(); view != nil {
+		if concrete, ok := view.(Matrix); ok {
+			return concrete
+		}
+	}
+	panic(fmt.Sprintf("mat.Matrix.%s: unsupported matrix type %T", op, arg))
+}
+
+func ensureVector(arg vecTypes.Vector, op string) vec.Vector {
+	if arg == nil {
+		panic("mat.Matrix." + op + ": nil vector")
+	}
+	if concrete, ok := arg.(vec.Vector); ok {
+		return concrete
+	}
+	if view, ok := arg.(vectorView); ok {
+		return view.Vector()
+	}
+	if clone := arg.Clone(); clone != nil {
+		if concrete, ok := clone.(vec.Vector); ok {
+			return concrete
+		}
+		if view, ok := clone.(vectorView); ok {
+			return view.Vector()
+		}
+	}
+	panic(fmt.Sprintf("mat.Matrix.%s: unsupported vector type %T", op, arg))
+}
+
+func ensureQuaternion(arg vecTypes.Quaternion, op string) *vec.Quaternion {
+	if arg == nil {
+		panic("mat.Matrix." + op + ": nil quaternion")
+	}
+	if concrete, ok := arg.(*vec.Quaternion); ok {
+		return concrete
+	}
+	panic(fmt.Sprintf("mat.Matrix.%s: unsupported quaternion type %T", op, arg))
+}
 
 // New creates a new matrix. Matrix is backed by a flat array. If backing is provided, it must be of length rows*cols, otherwise new backing array is created.
 // Matrix layout is row-major.
@@ -81,7 +136,7 @@ func (m Matrix) Flat() []float32 {
 // Returns a Matrix view of this matrix.
 // The view actually contains slices of original matrix rows.
 // This way original matrix can be modified.
-func (m Matrix) Matrix() Matrix {
+func (m Matrix) Matrix() matTypes.Matrix {
 	m1 := make(Matrix, len(m))
 	for i := range m {
 		m1[i] = m[i][:]
@@ -89,9 +144,7 @@ func (m Matrix) Matrix() Matrix {
 	return m1
 }
 
-// Fills destination matrix with a 2D rotation
-// Matrix size must be at least 2x2
-func (m Matrix) Rotation2D(a float32) Matrix {
+func (m Matrix) Rotation2D(a float32) matTypes.Matrix {
 	c := math32.Cos(a)
 	s := math32.Sin(a)
 	return m.SetSubmatrixRaw(0, 0, 2, 2,
@@ -100,9 +153,7 @@ func (m Matrix) Rotation2D(a float32) Matrix {
 	)
 }
 
-// Fills destination matrix with a rotation around X axis
-// Matrix size must be at least 3x3
-func (m Matrix) RotationX(a float32) Matrix {
+func (m Matrix) RotationX(a float32) matTypes.Matrix {
 	c := math32.Cos(a)
 	s := math32.Sin(a)
 	return m.SetSubmatrixRaw(0, 0, 3, 3,
@@ -112,9 +163,7 @@ func (m Matrix) RotationX(a float32) Matrix {
 	)
 }
 
-// Fills destination matrix with a rotation around Y axis
-// Matrix size must be at least 3x3
-func (m Matrix) RotationY(a float32) Matrix {
+func (m Matrix) RotationY(a float32) matTypes.Matrix {
 	c := math32.Cos(a)
 	s := math32.Sin(a)
 	return m.SetSubmatrixRaw(0, 0, 3, 3,
@@ -124,9 +173,7 @@ func (m Matrix) RotationY(a float32) Matrix {
 	)
 }
 
-// Fills destination matrix with a rotation around Z axis
-// Matrix size must be at least 3x3
-func (m Matrix) RotationZ(a float32) Matrix {
+func (m Matrix) RotationZ(a float32) matTypes.Matrix {
 	c := math32.Cos(a)
 	s := math32.Sin(a)
 	return m.SetSubmatrixRaw(0, 0, 3, 3,
@@ -136,19 +183,17 @@ func (m Matrix) RotationZ(a float32) Matrix {
 	)
 }
 
-// Build orientation matrix from quaternion
-// Matrix size must be at least 3x3
-// Quaternion axis must be unit vector
-func (m Matrix) Orientation(q vec.Quaternion) Matrix {
-	theta := q.Theta() / 2
+func (m Matrix) Orientation(q vecTypes.Quaternion) matTypes.Matrix {
+	quat := ensureQuaternion(q, "Orientation")
+	theta := quat.Theta() / 2
 
 	qr := math32.Cos(theta)
 	s := math32.Sin(theta)
-	qi := q[0] * s
-	qj := q[1] * s
-	qk := q[2] * s
+	qVal := *quat
+	qi := qVal[0] * s
+	qj := qVal[1] * s
+	qk := qVal[2] * s
 
-	// calculate quaternion rotation matrix
 	qjqj := qj * qj
 	qiqi := qi * qi
 	qkqk := qk * qk
@@ -171,8 +216,7 @@ func (m Matrix) Orientation(q vec.Quaternion) Matrix {
 	)
 }
 
-// Fills destination matrix with identity matrix.
-func (m Matrix) Eye() Matrix {
+func (m Matrix) Eye() matTypes.Matrix {
 	for i := range m {
 		row := m[i][:]
 		for j := range row {
@@ -185,36 +229,35 @@ func (m Matrix) Eye() Matrix {
 	return m
 }
 
-// Returns a slice to the row.
-func (m Matrix) Row(row int) vec.Vector {
-	return m[row][:]
+func (m Matrix) Row(row int) vecTypes.Vector {
+	return vec.Vector(m[row][:])
 }
 
-// Returns a copy of the matrix column.
-func (m Matrix) Col(col int, v vec.Vector) vec.Vector {
+func (m Matrix) Col(col int, v vecTypes.Vector) vecTypes.Vector {
+	dst := ensureVector(v, "Col")
 	for i, row := range m {
-		v[i] = row[col]
+		dst[i] = row[col]
 	}
-	return v
+	return dst
 }
 
-func (m Matrix) SetRow(row int, v vec.Vector) Matrix {
-	copy(m[row][:], v[:])
+func (m Matrix) SetRow(row int, v vecTypes.Vector) matTypes.Matrix {
+	src := ensureVector(v, "SetRow")
+	copy(m[row][:], src)
 	return m
 }
 
-func (m Matrix) SetCol(col int, v vec.Vector) Matrix {
-	for i, v := range v {
-		m[i][col] = v
+func (m Matrix) SetCol(col int, v vecTypes.Vector) matTypes.Matrix {
+	src := ensureVector(v, "SetCol")
+	for i, val := range src {
+		m[i][col] = val
 	}
 	return m
 }
 
-// SetColFromRow sets a partial column starting at rowStart.
-// Copies elements from v into column col starting at rowStart.
-// This is needed for IK solvers that build Jacobian matrices.
-func (m Matrix) SetColFromRow(col int, rowStart int, v vec.Vector) Matrix {
-	for i, val := range v {
+func (m Matrix) SetColFromRow(col int, rowStart int, v vecTypes.Vector) matTypes.Matrix {
+	src := ensureVector(v, "SetColFromRow")
+	for i, val := range src {
 		if rowStart+i < len(m) {
 			m[rowStart+i][col] = val
 		}
@@ -222,29 +265,28 @@ func (m Matrix) SetColFromRow(col int, rowStart int, v vec.Vector) Matrix {
 	return m
 }
 
-// GetCol extracts a column from the matrix as a vector.
-// dst must be at least as long as the number of rows.
-func (m Matrix) GetCol(col int, dst vec.Vector) vec.Vector {
+func (m Matrix) GetCol(col int, dst vecTypes.Vector) vecTypes.Vector {
+	out := ensureVector(dst, "GetCol")
 	for i := range m {
-		if i < len(dst) {
-			dst[i] = m[i][col]
+		if i < len(out) {
+			out[i] = m[i][col]
 		}
 	}
-	return dst
+	return out
 }
 
-// Size of the destination vector must equal to number of rows
-func (m Matrix) Diagonal(dst vec.Vector) vec.Vector {
+func (m Matrix) Diagonal(dst vecTypes.Vector) vecTypes.Vector {
+	out := ensureVector(dst, "Diagonal")
 	for i, row := range m {
-		dst[i] = row[i]
+		out[i] = row[i]
 	}
-	return dst
+	return out
 }
 
-// Size of the vector must equal to number of rows
-func (m Matrix) SetDiagonal(v vec.Vector) Matrix {
-	for i, v := range v {
-		m[i][i] = v
+func (m Matrix) SetDiagonal(v vecTypes.Vector) matTypes.Matrix {
+	src := ensureVector(v, "SetDiagonal")
+	for i, val := range src {
+		m[i][i] = val
 	}
 	return m
 }
@@ -267,245 +309,193 @@ func FromDiagonal(diagonal ...float32) Matrix {
 // FromVector creates a square diagonal matrix from a vector.
 // The vector elements become the diagonal elements of the matrix.
 // Returns a matrix with zeros everywhere except the diagonal.
-func FromVector(v vec.Vector) Matrix {
-	if len(v) == 0 {
+func FromVector(v vecTypes.Vector) Matrix {
+	vecSrc := ensureVector(v, "FromVector")
+	if len(vecSrc) == 0 {
 		return nil
 	}
-	size := len(v)
+	size := len(vecSrc)
 	m := New(size, size)
-	for i := range v {
-		m[i][i] = v[i]
+	for i := range vecSrc {
+		m[i][i] = vecSrc[i]
 	}
 	return m
 }
 
-func (m Matrix) Submatrix(row, col int, m1 Matrix) Matrix {
-	cols := len(m1[0])
-	for i, m1row := range m1 {
-		copy(m1row, m[row+i][col : cols+col][:])
+func (m Matrix) Submatrix(row, col int, m1 matTypes.Matrix) matTypes.Matrix {
+	dst := ensureMatrix(m1, "Submatrix")
+	cols := len(dst[0])
+	for i := range dst {
+		copy(dst[i], m[row+i][col:cols+col])
 	}
-	return m1
+	return dst
 }
 
-func (m Matrix) SetSubmatrix(row, col int, m1 Matrix) Matrix {
-	for i := range m[row : row+len(m1)] {
-		copy(m[row+i][col : col+len(m1[i])][:], m1[i][:])
+func (m Matrix) SetSubmatrix(row, col int, m1 matTypes.Matrix) matTypes.Matrix {
+	src := ensureMatrix(m1, "SetSubmatrix")
+	for i := range m[row : row+len(src)] {
+		copy(m[row+i][col:col+len(src[i])], src[i])
 	}
 	return m
 }
 
-func (m Matrix) SetSubmatrixRaw(row, col, rows1, cols1 int, m1 ...float32) Matrix {
+func (m Matrix) SetSubmatrixRaw(row, col, rows1, cols1 int, m1 ...float32) matTypes.Matrix {
 	for i := 0; i < rows1; i++ {
-		copy(m[row+i][col : col+cols1][:], m1[i*cols1:i*cols1+cols1])
+		copy(m[row+i][col:col+cols1], m1[i*cols1:i*cols1+cols1])
 	}
 	return m
 }
 
-func (m Matrix) Clone() Matrix {
-
+func (m Matrix) Clone() matTypes.Matrix {
+	if len(m) == 0 {
+		return nil
+	}
 	m1 := New(len(m), len(m[0]))
-
 	for i, row := range m {
-		copy(m1[i][:], row[:])
+		copy(m1[i], row)
 	}
 	return m1
 }
 
-// Transposes matrix m1 and stores the result in the destination matrix
-// destination matrix must be of appropriate size.
-// NOTE: Does not support in place transpose
-func (m Matrix) Transpose(m1 Matrix) Matrix {
-	rows := len(m1)
-	cols := len(m1[0])
-
-	// Direct transpose using loops (no BLAS equivalent for pure transpose)
+func (m Matrix) Transpose(m1 matTypes.Matrix) matTypes.Matrix {
+	src := ensureMatrix(m1, "Transpose")
+	rows := len(src)
+	cols := len(src[0])
 	for i := 0; i < rows; i++ {
 		for j := 0; j < cols; j++ {
-			m[j][i] = m1[i][j]
+			m[j][i] = src[i][j]
 		}
 	}
-
 	return m
 }
 
-func (m Matrix) Add(m1 Matrix) Matrix {
+func (m Matrix) Add(m1 matTypes.Matrix) matTypes.Matrix {
 	rows := len(m)
 	if rows == 0 {
 		return m
 	}
 	cols := len(m[0])
 	total := rows * cols
-
-	// Flatten both matrices (zero-copy if contiguous)
 	mFlat := m.Flat()
-	m1Flat := m1.Flat()
-
-	// Use ElemAdd for element-wise addition
+	m1Flat := ensureMatrix(m1, "Add").Flat()
 	fp32.ElemAdd(mFlat, mFlat, m1Flat, []int{total}, []int{1}, []int{1}, []int{1})
-
 	return m
 }
 
-func (m Matrix) Sub(m1 Matrix) Matrix {
+func (m Matrix) Sub(m1 matTypes.Matrix) matTypes.Matrix {
 	rows := len(m)
 	if rows == 0 {
 		return m
 	}
 	cols := len(m[0])
 	total := rows * cols
-
-	// Flatten both matrices (zero-copy if contiguous)
 	mFlat := m.Flat()
-	m1Flat := m1.Flat()
-
-	// Use ElemSub for element-wise subtraction
+	m1Flat := ensureMatrix(m1, "Sub").Flat()
 	fp32.ElemSub(mFlat, mFlat, m1Flat, []int{total}, []int{1}, []int{1}, []int{1})
-
 	return m
 }
 
-func (m Matrix) MulC(c float32) Matrix {
+func (m Matrix) MulC(c float32) matTypes.Matrix {
 	rows := len(m)
 	if rows == 0 {
 		return m
 	}
 	cols := len(m[0])
 	total := rows * cols
-
-	// Flatten matrix (zero-copy if contiguous)
 	mFlat := m.Flat()
-
-	// Use Scal for scalar multiplication
 	fp32.Scal(mFlat, 1, total, c)
-
 	return m
 }
 
-func (m Matrix) DivC(c float32) Matrix {
+func (m Matrix) DivC(c float32) matTypes.Matrix {
 	rows := len(m)
 	if rows == 0 {
 		return m
 	}
 	cols := len(m[0])
 	total := rows * cols
-
-	// Flatten matrix (zero-copy if contiguous)
 	mFlat := m.Flat()
-
-	// Use Scal for scalar division (multiply by 1/c)
 	fp32.Scal(mFlat, 1, total, 1.0/c)
-
 	return m
 }
 
-// Destination matrix must be properly sized.
-// given that a is MxK and b is KxN
-// then destination matrix must be MxN
-func (m Matrix) Mul(a Matrix, b Matrix) Matrix {
-	M := len(a)
+func (m Matrix) Mul(a matTypes.Matrix, b matTypes.Matrix) matTypes.Matrix {
+	aMat := ensureMatrix(a, "Mul.left")
+	bMat := ensureMatrix(b, "Mul.right")
+	M := len(aMat)
 	if M == 0 {
 		return m
 	}
-	N := len(b[0])
-	K := len(b)
-
-	// Validate destination matrix size
+	N := len(bMat[0])
+	K := len(bMat)
 	if len(m) < M || len(m[0]) < N {
-		// Matrix too small - this should not happen in normal usage
-		// but we need to ensure we don't write beyond bounds
-		return m
+		panic("mat.Matrix.Mul: destination too small")
 	}
-
-	// Flatten matrices (zero-copy if contiguous)
-	aFlat := a.Flat()
-	bFlat := b.Flat()
+	aFlat := aMat.Flat()
+	bFlat := bMat.Flat()
 	mFlat := m.Flat()
-
-	// Use BLAS Level 3 Gemm_NN: m = 1.0 * a * b + 0.0 * m
-	// A: M×K (ldA = K), B: K×N (ldB = N), C: M×N (ldC = N)
-	// Leading dimensions: number of columns for each matrix
-	// Note: ldC = N (result columns), not len(m[0]) - this assumes m is exactly M×N
 	ldC := N
 	ldA := K
 	ldB := N
 	fp32.Gemm_NN(mFlat, aFlat, bFlat, ldC, ldA, ldB, M, N, K, 1.0, 0.0)
-
 	return m
 }
 
-// Only makes sense for square matrices.
-// Vector size must be equal to number of rows/cols
-func (m Matrix) MulDiag(a Matrix, b vec.Vector) Matrix {
-	rows := len(a)
-	cols := len(a[0])
-
-	// Use Hadamard product for element-wise multiplication
-	// For each row, multiply by corresponding b element
+func (m Matrix) MulDiag(a matTypes.Matrix, b vecTypes.Vector) matTypes.Matrix {
+	aMat := ensureMatrix(a, "MulDiag")
+	vecB := ensureVector(b, "MulDiag")
+	rows := len(aMat)
+	cols := len(aMat[0])
 	for i := 0; i < rows; i++ {
-		fp32.ElemMul(m[i], a[i], b, []int{cols}, []int{1}, []int{1}, []int{1})
+		fp32.ElemMul(m[i], aMat[i], vecB, []int{cols}, []int{1}, []int{1}, []int{1})
 	}
-
 	return m
 }
 
-// Vector must have a size equal to number of cols.
-// Destination vector must have a size equal to number of rows.
-func (m Matrix) MulVec(v vec.Vector, dst vec.Vector) vec.Vector {
+func (m Matrix) MulVec(v vecTypes.Vector, dst vecTypes.Vector) vecTypes.Vector {
 	rows := len(m)
 	if rows == 0 {
 		return dst
 	}
 	cols := len(m[0])
-
-	// Flatten matrix (zero-copy if contiguous)
 	matFlat := m.Flat()
-
-	// Use BLAS Level 2 Gemv_N: dst = 1.0 * mat * v + 0.0 * dst
-	fp32.Gemv_N(dst, matFlat, v, cols, rows, cols, 1.0, 0.0)
-
-	return dst
+	srcVec := ensureVector(v, "MulVec")
+	dstVec := ensureVector(dst, "MulVec.dst")
+	fp32.Gemv_N(dstVec, matFlat, srcVec, cols, rows, cols, 1.0, 0.0)
+	return dstVec
 }
 
-// Vector must have a size equal to number of rows.
-// Destination vector must have a size equal to number of cols.
-func (m Matrix) MulVecT(v vec.Vector, dst vec.Vector) vec.Vector {
+func (m Matrix) MulVecT(v vecTypes.Vector, dst vecTypes.Vector) vecTypes.Vector {
 	rows := len(m)
 	if rows == 0 {
 		return dst
 	}
 	cols := len(m[0])
-
-	// Flatten matrix (zero-copy if contiguous)
 	matFlat := m.Flat()
-
-	// Use BLAS Level 2 Gemv_T: dst = 1.0 * mat^T * v + 0.0 * dst
-	fp32.Gemv_T(dst, matFlat, v, cols, rows, cols, 1.0, 0.0)
-
-	return dst
+	srcVec := ensureVector(v, "MulVecT")
+	dstVec := ensureVector(dst, "MulVecT.dst")
+	fp32.Gemv_T(dstVec, matFlat, srcVec, cols, rows, cols, 1.0, 0.0)
+	return dstVec
 }
 
 // Determinant only valid for square matrix
 // Undefined behavior for non square matrices
 func (m Matrix) Det() float32 {
-	tmp := m.Clone()
+	tmp := ensureMatrix(m.Clone(), "Det.clone")
 
 	var ratio float32
 	var det float32 = 1
 	size := len(tmp)
 
-	// Upper triangular form using Gaussian elimination
 	for i := 0; i < size; i++ {
 		row := tmp[i][:]
 		for j := i + 1; j < size; j++ {
 			tmpj := tmp[j][:]
 			ratio = tmpj[i] / row[i]
-			// Use Axpy for row operation: tmpj = tmpj - ratio * row
-			// Axpy computes: y = alpha*x + y, so we use -ratio to get subtraction
 			fp32.Axpy(tmpj, row, 1, 1, size, -ratio)
 		}
 	}
 
-	// Compute determinant as product of diagonal elements
 	for i := range tmp {
 		det *= tmp[i][i]
 	}
@@ -516,45 +506,40 @@ func (m Matrix) Det() float32 {
 // LU decomposition into two triangular matrices
 // NOTE: Assume, that l&u matrices are set to zero
 // Matrix must be square and M, L and U matrix sizes must be equal
-func (m Matrix) LU(L, U Matrix) {
+func (m Matrix) LU(L, U matTypes.Matrix) {
+	LMat := ensureMatrix(L, "LU.L")
+	UMat := ensureMatrix(U, "LU.U")
 	size := len(m)
 
-	// Flatten matrices (zero-copy if contiguous)
 	mFlat := m.Flat()
-	LFlat := L.Flat()
-	UFlat := U.Flat()
+	LFlat := LMat.Flat()
+	UFlat := UMat.Flat()
 	ldA := len(m[0])
-	ldL := len(L[0])
-	ldU := len(U[0])
+	ldL := len(LMat[0])
+	ldU := len(UMat[0])
 
-	// Use Getrf for LU decomposition
 	ipiv := make([]int, size)
 	if err := fp32.Getrf(mFlat, LFlat, UFlat, ipiv, ldA, ldL, ldU, size, size); err != nil {
-		// Fall back to manual implementation if Getrf fails
-		// This maintains compatibility
 		for i := 0; i < size; i++ {
-			// Upper Triangular
 			for k := i; k < size; k++ {
 				var sum float32
 				for j := 0; j < i; j++ {
-					sum += L[i][j] * U[j][k]
+					sum += LMat[i][j] * UMat[j][k]
 				}
-				U[i][k] = m[i][k] - sum
+				UMat[i][k] = m[i][k] - sum
 			}
-
-			// Lower Triangular
 			for k := i; k < size; k++ {
 				if i == k {
-					L[i][i] = 1 // Diagonal as 1
+					LMat[i][i] = 1
 				} else {
 					var sum float32
 					for j := 0; j < i; j++ {
-						sum += L[k][j] * U[j][i]
+						sum += LMat[k][j] * UMat[j][i]
 					}
-					if i < len(U) && i < len(U[i]) && U[i][i] != 0 {
-						L[k][i] = (m[k][i] - sum) / U[i][i]
-					} else if k < len(L) && i < len(L[k]) {
-						L[k][i] = 0
+					if UMat[i][i] != 0 {
+						LMat[k][i] = (m[k][i] - sum) / UMat[i][i]
+					} else {
+						LMat[k][i] = 0
 					}
 				}
 			}
@@ -564,25 +549,26 @@ func (m Matrix) LU(L, U Matrix) {
 
 // / https://math.stackexchange.com/questions/893984/conversion-of-rotation-matrix-to-quaternion
 // / Must be at least 3x3 matrix
-func (m Matrix) Quaternion() (q *vec.Quaternion) {
+func (m Matrix) Quaternion() vecTypes.Quaternion {
 	var t float32
+	var q vec.Quaternion
 	if m[2][2] < 0 {
 		if m[0][0] > m[1][1] {
 			t = 1 + m[0][0] - m[1][1] - m[2][2]
-			q = &vec.Quaternion{t, m[0][1] + m[1][0], m[2][0] + m[0][2], m[1][2] - m[2][1]}
+			q = vec.Quaternion{t, m[0][1] + m[1][0], m[2][0] + m[0][2], m[1][2] - m[2][1]}
 		} else {
 			t = 1 - m[0][0] + m[1][1] - m[2][2]
-			q = &vec.Quaternion{m[0][1] + m[1][0], t, m[1][2] + m[2][1], m[2][0] - m[0][2]}
+			q = vec.Quaternion{m[0][1] + m[1][0], t, m[1][2] + m[2][1], m[2][0] - m[0][2]}
 		}
 	} else {
 		if m[0][0] < -m[1][1] {
 			t = 1 - m[0][0] - m[1][1] + m[2][2]
-			q = &vec.Quaternion{m[2][0] + m[0][2], m[1][2] + m[2][1], t, m[0][1] - m[1][0]}
+			q = vec.Quaternion{m[2][0] + m[0][2], m[1][2] + m[2][1], t, m[0][1] - m[1][0]}
 		} else {
 			t = 1 + m[0][0] + m[1][1] + m[2][2]
-			q = &vec.Quaternion{m[1][2] - m[2][1], m[2][0] - m[0][2], m[0][1] - m[1][0], t}
+			q = vec.Quaternion{m[1][2] - m[2][1], m[2][0] - m[0][2], m[0][1] - m[1][0], t}
 		}
 	}
-	q.Vector().MulC(0.5 / math32.Sqrt(t))
-	return
+	vec.Vector(q[:]).MulC(0.5 / math32.Sqrt(t))
+	return &q
 }

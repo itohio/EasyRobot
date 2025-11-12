@@ -192,7 +192,7 @@ func TestMatrix_GetCol(t *testing.T) {
 				t.Errorf("GetCol: returned nil")
 			}
 			if tt.verify != nil {
-				tt.verify(result, t)
+				tt.verify(dst, t)
 			}
 		})
 	}

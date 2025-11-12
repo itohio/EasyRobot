@@ -22,14 +22,15 @@ func TestMatrix_SVD(t *testing.T) {
 			},
 			wantErr: false,
 			verify: func(m Matrix, result *SVDResult, t *testing.T) {
+				values := ensureVector(result.S, "SVDTest.S")
 				// Identity should have singular values of 1
-				if len(result.S) != 3 {
-					t.Errorf("SVD: singular values should have length 3, got %d", len(result.S))
+				if len(values) != 3 {
+					t.Errorf("SVD: singular values should have length 3, got %d", len(values))
 					return
 				}
 				for i := 0; i < 3; i++ {
-					if math32.Abs(result.S[i]-1.0) > 1e-5 {
-						t.Errorf("SVD: singular value %d should be 1, got %v", i, result.S[i])
+					if math32.Abs(values[i]-1.0) > 1e-5 {
+						t.Errorf("SVD: singular value %d should be 1, got %v", i, values[i])
 					}
 				}
 				// Verify reconstruction: M = U * Σ * V^T
@@ -48,8 +49,14 @@ func TestMatrix_SVD(t *testing.T) {
 			},
 			wantErr: false,
 			verify: func(m Matrix, result *SVDResult, t *testing.T) {
+				values := ensureVector(result.S, "SVDTest.S")
 				// Diagonal matrix should have singular values equal to diagonal elements
 				// Note: singular values may not be in the same order, just check reconstruction
+				if len(values) != 3 {
+					t.Errorf("SVD: singular values should have length 3, got %d", len(values))
+					return
+				}
+				// Verify reconstruction: M = U * Σ * V^T
 				verifySVDReconstruction(m, result, t)
 			},
 		},
@@ -74,8 +81,10 @@ func TestMatrix_SVD(t *testing.T) {
 			},
 			wantErr: false,
 			verify: func(m Matrix, result *SVDResult, t *testing.T) {
-				if len(result.S) != 3 {
-					t.Errorf("SVD: singular values should have length 3, got %d", len(result.S))
+				values := ensureVector(result.S, "SVDTest.S")
+				if len(values) != 3 {
+					t.Errorf("SVD: singular values should have length 3, got %d", len(values))
+					return
 				}
 				verifySVDReconstruction(m, result, t)
 			},
@@ -98,9 +107,10 @@ func TestMatrix_SVD(t *testing.T) {
 			},
 			wantErr: false,
 			verify: func(m Matrix, result *SVDResult, t *testing.T) {
-				for i := range result.S {
-					if math32.Abs(result.S[i]) > 1e-5 {
-						t.Errorf("SVD: singular value %d should be ~0, got %v", i, result.S[i])
+				values := ensureVector(result.S, "SVDTest.S")
+				for i := range values {
+					if math32.Abs(values[i]) > 1e-5 {
+						t.Errorf("SVD: singular value %d should be ~0, got %v", i, values[i])
 					}
 				}
 			},
@@ -172,19 +182,22 @@ func verifySVDReconstruction(m Matrix, result *SVDResult, t *testing.T) {
 
 	// Create Σ matrix (diagonal matrix with singular values)
 	sigma := New(rows, cols)
+	values := ensureVector(result.S, "SVDTest.S")
 	for i := 0; i < rows && i < cols; i++ {
-		if i < len(result.S) {
-			sigma[i][i] = result.S[i]
+		if i < len(values) {
+			sigma[i][i] = values[i]
 		}
 	}
 
 	// Compute U * Σ
+	U := ensureMatrix(result.U, "SVDTest.U")
 	uSigma := New(rows, cols)
-	uSigma.Mul(result.U, sigma)
+	uSigma.Mul(U, sigma)
 
 	// Compute (U * Σ) * V^T
+	Vt := ensureMatrix(result.Vt, "SVDTest.Vt")
 	reconstructed := New(rows, cols)
-	reconstructed.Mul(uSigma, result.Vt)
+	reconstructed.Mul(uSigma, Vt)
 
 	// Compare with original
 	for i := 0; i < rows; i++ {

@@ -231,14 +231,14 @@ func (m *Matrix3x3) Transpose(m1 Matrix3x3) *Matrix3x3 {
 
 func (m *Matrix3x3) Add(m1 Matrix3x3) *Matrix3x3 {
 	for i := range m {
-		vec.Vector(m[i][:]).Add(m1[i][:])
+		vec.Vector(m[i][:]).Add(vec.Vector(m1[i][:]))
 	}
 	return m
 }
 
 func (m *Matrix3x3) Sub(m1 Matrix3x3) *Matrix3x3 {
 	for i := range m {
-		vec.Vector(m[i][:]).Sub(m1[i][:])
+		vec.Vector(m[i][:]).Sub(vec.Vector(m1[i][:]))
 	}
 	return m
 }

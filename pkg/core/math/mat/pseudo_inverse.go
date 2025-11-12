@@ -3,6 +3,7 @@ package mat
 import (
 	"errors"
 
+	matTypes "github.com/itohio/EasyRobot/pkg/core/math/mat/types"
 	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
 )
 
@@ -14,7 +15,7 @@ var (
 // PseudoInverse calculates Moore-Penrose pseudo-inverse of a rectangular matrix.
 // Uses SVD-based implementation: A^+ = V * Σ^+ * U^T
 // Destination matrix must be properly sized (cols × rows).
-func (m Matrix) PseudoInverse(dst Matrix) error {
+func (m Matrix) PseudoInverse(dst matTypes.Matrix) error {
 	rows := len(m)
 	if rows == 0 {
 		return ErrPseudoInverseFailed
@@ -24,11 +25,13 @@ func (m Matrix) PseudoInverse(dst Matrix) error {
 		return ErrPseudoInverseFailed
 	}
 
+	dstMat := ensureMatrix(dst, "PseudoInverse.dst")
+
 	// Flatten matrices (zero-copy if contiguous)
 	mFlat := m.Flat()
-	dstFlat := dst.Flat()
+	dstFlat := dstMat.Flat()
 	ldA := len(m[0])
-	ldApinv := len(dst[0])
+	ldApinv := len(dstMat[0])
 
 	// Use Gepseu for pseudo-inverse computation
 	if err := fp32.Gepseu(dstFlat, mFlat, ldA, ldApinv, rows, cols); err != nil {
@@ -42,7 +45,7 @@ func (m Matrix) PseudoInverse(dst Matrix) error {
 // J+ = J^T * (J * J^T + λ^2 * I)^(-1)
 // Lambda (λ) is damping factor for better singularity handling.
 // Destination matrix must be properly sized (cols × rows).
-func (m Matrix) DampedLeastSquares(lambda float32, dst Matrix) error {
+func (m Matrix) DampedLeastSquares(lambda float32, dst matTypes.Matrix) error {
 	rows := len(m)
 	if rows == 0 {
 		return ErrPseudoInverseFailed
@@ -51,6 +54,8 @@ func (m Matrix) DampedLeastSquares(lambda float32, dst Matrix) error {
 	if cols == 0 {
 		return ErrPseudoInverseFailed
 	}
+
+	dstMat := ensureMatrix(dst, "DampedLeastSquares.dst")
 
 	// Transpose
 	mT := New(cols, rows)
@@ -73,7 +78,7 @@ func (m Matrix) DampedLeastSquares(lambda float32, dst Matrix) error {
 	}
 
 	// J+ = J^T * (J * J^T + λ^2 * I)^(-1)
-	dst.Mul(mT, JJTInv)
+	dstMat.Mul(mT, JJTInv)
 
 	return nil
 }

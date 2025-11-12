@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/chewxy/math32"
+	matTypes "github.com/itohio/EasyRobot/pkg/core/math/mat/types"
 	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
 )
 
@@ -22,7 +23,7 @@ var (
 // Inverse calculates the inverse of a square matrix using LU decomposition.
 // Returns error if matrix is not square or singular.
 // Destination matrix must be properly sized (same as source).
-func (m Matrix) Inverse(dst Matrix) error {
+func (m Matrix) Inverse(dst matTypes.Matrix) error {
 	rows := len(m)
 	if rows == 0 {
 		return ErrNotSquare
@@ -32,13 +33,13 @@ func (m Matrix) Inverse(dst Matrix) error {
 		return ErrNotSquare
 	}
 
-	// Flatten matrices (zero-copy if contiguous)
-	mFlat := m.Flat()
-	dstFlat := dst.Flat()
-	ldA := len(m[0])
-	ldInv := len(dst[0])
+	dstMat := ensureMatrix(dst, "Inverse.dst")
 
-	// Use Getrf_IP for LU decomposition (in-place)
+	mFlat := m.Flat()
+	dstFlat := dstMat.Flat()
+	ldA := len(m[0])
+	ldInv := len(dstMat[0])
+
 	work := make([]float32, len(mFlat))
 	copy(work, mFlat)
 	ipiv := make([]int, rows)

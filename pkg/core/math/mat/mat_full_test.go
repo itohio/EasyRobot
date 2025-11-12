@@ -186,7 +186,7 @@ func TestMatrix_RotationZ(t *testing.T) {
 
 func TestMatrix_Orientation(t *testing.T) {
 	type args struct {
-		q vec.Quaternion
+		q *vec.Quaternion
 	}
 	tests := []struct {
 		name    string

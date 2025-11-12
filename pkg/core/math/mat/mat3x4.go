@@ -181,14 +181,14 @@ func (m *Matrix3x4) Transpose(m1 Matrix4x3) *Matrix3x4 {
 
 func (m *Matrix3x4) Add(m1 Matrix3x4) *Matrix3x4 {
 	for i := range m {
-		vec.Vector(m[i][:]).Add(m1[i][:])
+		vec.Vector(m[i][:]).Add(vec.Vector(m1[i][:]))
 	}
 	return m
 }
 
 func (m *Matrix3x4) Sub(m1 Matrix3x4) *Matrix3x4 {
 	for i := range m {
-		vec.Vector(m[i][:]).Sub(m1[i][:])
+		vec.Vector(m[i][:]).Sub(vec.Vector(m1[i][:]))
 	}
 	return m
 }
@@ -250,8 +250,8 @@ func (m *Matrix3x4) MulVecT(v vec.Vector3D, dst vec.Vector) vec.Vector {
 	return dst
 }
 
-/// https://math.stackexchange.com/questions/893984/conversion-of-rotation-matrix-to-quaternion
-/// Must be at least 3x3 matrix
+// / https://math.stackexchange.com/questions/893984/conversion-of-rotation-matrix-to-quaternion
+// / Must be at least 3x3 matrix
 func (m *Matrix3x4) Quaternion() (q *vec.Quaternion) {
 	var t float32
 	if m[2][2] < 0 {

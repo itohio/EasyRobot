@@ -102,29 +102,31 @@ func TestMatrix_QRDecompose(t *testing.T) {
 }
 
 func verifyQRDecomposition(m Matrix, result *QRResult, t *testing.T) {
-	// Note: QRDecompose creates a copy of the matrix, so QR() reconstruction
-	// may not work perfectly without the modified matrix.
-	// Instead, verify basic properties:
-	
-	// Verify dimensions
-	if len(result.Q) != len(m) {
-		t.Errorf("QR: Q should have %d rows, got %d", len(m), len(result.Q))
+	if result.Q == nil {
+		t.Fatalf("QR: Q not set")
 	}
-	
-	// Verify R dimensions (R is allocated in QR(), not QRDecompose)
-	cols := len(m[0])
-	// Note: R is not allocated in QRDecompose, it's only allocated in QR()
-	// So we can't verify R dimensions here, just check that C and D are set
-	
-	// Verify R is upper triangular (if we reconstruct it)
-	// For now, just verify the diagonal D elements are stored
-	if len(result.D) != cols {
-		t.Errorf("QR: D should have length %d, got %d", cols, len(result.D))
+	Q := ensureMatrix(result.Q, "QRTest.Q")
+	if len(Q) != len(m) {
+		t.Errorf("QR: Q should have %d rows, got %d", len(m), len(Q))
 	}
-	
-	// Verify C and D have correct lengths
-	if len(result.C) != cols {
-		t.Errorf("QR: C should have length %d, got %d", cols, len(result.C))
-	}
-}
 
+	cols := len(m[0])
+
+	if result.D == nil {
+		t.Fatalf("QR: D not set")
+	}
+	D := ensureVector(result.D, "QRTest.D")
+	if len(D) != cols {
+		t.Errorf("QR: D should have length %d, got %d", cols, len(D))
+	}
+
+	if result.C == nil {
+		t.Fatalf("QR: C not set")
+	}
+	C := ensureVector(result.C, "QRTest.C")
+	if len(C) != cols {
+		t.Errorf("QR: C should have length %d, got %d", cols, len(C))
+	}
+
+	_ = Q // prevent unused warning if additional checks are added later
+}

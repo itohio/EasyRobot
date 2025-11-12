@@ -8,26 +8,16 @@ import (
 	"errors"
 
 	"github.com/chewxy/math32"
+	mattypes "github.com/itohio/EasyRobot/pkg/core/math/mat/types"
 	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
 	"github.com/itohio/EasyRobot/pkg/core/math/vec"
 )
-
-// QRResult holds the result of QR decomposition.
-// M = Q * R
-// Note: Input matrix M is modified (contains Q via Householder vectors)
-type QRResult struct {
-	Q        Matrix     // Orthogonal matrix (row x row) - stored in input matrix
-	R        Matrix     // Upper triangular matrix (row x col)
-	C        vec.Vector // Householder constants (col length)
-	D        vec.Vector // Diagonal of R (col length)
-	Singular bool       // True if matrix is singular
-}
 
 // QRDecompose performs QR decomposition using Householder transformations.
 // M = Q * R
 // Note: Input matrix M is modified (contains Q on output via Householder vectors).
 // Returns error if computation fails.
-func (m Matrix) QRDecompose(dst *QRResult) error {
+func (m Matrix) QRDecompose(dst *mattypes.QRResult) error {
 	if len(m) == 0 || len(m[0]) == 0 {
 		return errors.New("qr: empty matrix")
 	}
@@ -54,8 +44,10 @@ func (m Matrix) QRDecompose(dst *QRResult) error {
 	}
 
 	// Extract C and D from tau and modified matrix
-	dst.C = make(vec.Vector, cols)
-	dst.D = make(vec.Vector, cols)
+	C := make(vec.Vector, cols)
+	dst.C = C
+	D := make(vec.Vector, cols)
+	dst.D = D
 
 	// Reconstruct C and D from tau (matching original format)
 	// The original algorithm stored Householder constants differently
@@ -64,24 +56,24 @@ func (m Matrix) QRDecompose(dst *QRResult) error {
 	for k := 0; k < cols; k++ {
 		if k < minMN-1 {
 			// Extract tau value
-			dst.C[k] = tau[k]
+			C[k] = tau[k]
 			// D is stored in diagonal of modified matrix
 			// After Geqrf, diagonal elements contain R diagonal
 			if k < rows {
-				dst.D[k] = QFlat[k*ldA+k]
+				D[k] = QFlat[k*ldA+k]
 			}
-			if math32.Abs(dst.D[k]) < 1e-10 {
+			if math32.Abs(D[k]) < 1e-10 {
 				singular = true
 			}
 		} else {
-			dst.C[k] = 0.0
+			C[k] = 0.0
 			if k < rows && k < cols {
-				dst.D[k] = QFlat[k*ldA+k]
-				if math32.Abs(dst.D[k]) < 1e-10 {
+				D[k] = QFlat[k*ldA+k]
+				if math32.Abs(D[k]) < 1e-10 {
 					singular = true
 				}
 			} else {
-				dst.D[k] = 0.0
+				D[k] = 0.0
 			}
 		}
 	}
@@ -93,8 +85,10 @@ func (m Matrix) QRDecompose(dst *QRResult) error {
 
 // QR reconstructs Q and R from decomposition.
 // Must call QRDecompose first.
-func (m Matrix) QR(dst *QRResult) error {
-	if len(dst.C) == 0 || len(dst.D) == 0 {
+func (m Matrix) QR(dst *mattypes.QRResult) error {
+	cVec := ensureVector(dst.C, "QR.C")
+	dVec := ensureVector(dst.D, "QR.D")
+	if len(cVec) == 0 || len(dVec) == 0 {
 		return errors.New("qr: must call QRDecompose first")
 	}
 
@@ -113,7 +107,7 @@ func (m Matrix) QR(dst *QRResult) error {
 	}
 	tau := make([]float32, minMN)
 	for k := 0; k < minMN-1; k++ {
-		tau[k] = dst.C[k]
+		tau[k] = cVec[k]
 	}
 	tau[minMN-1] = 0.0
 
@@ -126,20 +120,20 @@ func (m Matrix) QR(dst *QRResult) error {
 
 	// Allocate R matrix
 	dst.R = New(cols, cols)
+	R := ensureMatrix(dst.R, "QR.R")
 
 	// Extract R from modified matrix (upper triangular part)
 	for i := 0; i < cols; i++ {
 		for j := 0; j < cols; j++ {
 			if i > j {
-				dst.R[i][j] = 0.0
+				R[i][j] = 0.0
 			} else if i == j {
-				dst.R[i][j] = dst.D[i]
+				R[i][j] = dVec[i]
 			} else {
-				// R[i][j] comes from modified matrix
 				if i < rows && j < cols {
-					dst.R[i][j] = mFlat[i*ldA+j]
+					R[i][j] = mFlat[i*ldA+j]
 				} else {
-					dst.R[i][j] = 0.0
+					R[i][j] = 0.0
 				}
 			}
 		}

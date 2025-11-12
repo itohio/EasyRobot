@@ -169,14 +169,14 @@ func (m *Matrix2x2) Transpose(m1 Matrix2x2) *Matrix2x2 {
 
 func (m *Matrix2x2) Add(m1 Matrix2x2) *Matrix2x2 {
 	for i := range m {
-		vec.Vector(m[i][:]).Add(m1[i][:])
+		vec.Vector(m[i][:]).Add(vec.Vector(m1[i][:]))
 	}
 	return m
 }
 
 func (m *Matrix2x2) Sub(m1 Matrix2x2) *Matrix2x2 {
 	for i := range m {
-		vec.Vector(m[i][:]).Sub(m1[i][:])
+		vec.Vector(m[i][:]).Sub(vec.Vector(m1[i][:]))
 	}
 	return m
 }
