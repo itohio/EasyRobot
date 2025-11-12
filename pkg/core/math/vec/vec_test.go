@@ -1037,7 +1037,7 @@ func TestVector_Yaw(t *testing.T) {
 
 func TestVector_Product(t *testing.T) {
 	type args struct {
-		b Quaternion
+		b *Quaternion
 	}
 	tests := []struct {
 		name    string

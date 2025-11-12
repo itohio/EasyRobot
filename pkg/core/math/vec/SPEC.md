@@ -12,6 +12,7 @@ The `vec` package provides vector mathematics for 2D, 3D, 4D, and arbitrary-dime
 4. **Float32 Precision**: Uses `float32` for embedded-friendly precision
 5. **Type Safety**: Fixed-size types (Vec2D, Vec3D, Vec4D) for compile-time size guarantees
 6. **Highly optimized**: Fixed-size vectors use direct math computations without any loops
+7. **Interface Compliance**: All vector variants implement the `types.Vector` interface; operations that are not semantically valid for a specific variant must panic with a descriptive message.
 
 ## Types
 

@@ -53,10 +53,11 @@ func BenchmarkDot4(b *testing.B) {
 }
 
 func BenchmarkDot4D(b *testing.B) {
-	va := Vector4D{1, 2, 3, 4}
-	vb := Vector4D{1, 2, 3, 4}
+	va := &Vector4D{1, 2, 3, 4}
+	vb := &Vector4D{1, 2, 3, 4}
+	vbView := vb.view()
 	for i := 0; i < b.N; i++ {
-		_ = va.Dot(vb)
+		_ = va.Dot(vbView)
 	}
 }
 
@@ -69,9 +70,10 @@ func BenchmarkCross(b *testing.B) {
 }
 
 func BenchmarkCross3D(b *testing.B) {
-	va := Vector3D{1, 2, 3}
-	vb := Vector3D{1, 2, 3}
+	va := &Vector3D{1, 2, 3}
+	vb := &Vector3D{1, 2, 3}
+	vbView := vb.view()
 	for i := 0; i < b.N; i++ {
-		_ = va.Cross(vb)
+		_ = va.Cross(vbView)
 	}
 }

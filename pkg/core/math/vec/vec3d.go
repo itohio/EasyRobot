@@ -5,9 +5,16 @@ package vec
 import (
 	"github.com/chewxy/math32"
 	"github.com/itohio/EasyRobot/pkg/core/math"
+	vecTypes "github.com/itohio/EasyRobot/pkg/core/math/vec/types"
 )
 
+const vector3DSize = 3
+
 type Vector3D [3]float32
+
+func (v *Vector3D) view() Vector {
+	return v[:]
+}
 
 func (v *Vector3D) Sum() float32 {
 	var sum float32
@@ -18,18 +25,26 @@ func (v *Vector3D) Sum() float32 {
 }
 
 func (v *Vector3D) Vector() Vector {
-	return v[:]
+	return v.view()
 }
 
-func (v *Vector3D) Slice(start, end int) Vector {
+func (v *Vector3D) Slice(start, end int) vecTypes.Vector {
 	if end < 0 {
 		end = len(v)
 	}
-	return v[start:end]
+	return Vector(v[start:end])
+}
+
+func (v *Vector3D) XY() (float32, float32) {
+	return v[0], v[1]
 }
 
 func (v *Vector3D) XYZ() (float32, float32, float32) {
 	return v[0], v[1], v[2]
+}
+
+func (v *Vector3D) XYZW() (float32, float32, float32, float32) {
+	panic("vec.Vector3D.XYZW: unsupported operation")
 }
 
 func (v *Vector3D) SumSqr() float32 {
@@ -44,199 +59,273 @@ func (v *Vector3D) Magnitude() float32 {
 	return math32.Sqrt(v.SumSqr())
 }
 
-func (v *Vector3D) DistanceSqr(v1 Vector3D) float32 {
-	return v.Clone().Sub(v1).SumSqr()
+func (v *Vector3D) DistanceSqr(v1 vecTypes.Vector) float32 {
+	other := readVector(v1, "Vector3D.DistanceSqr", vector3DSize)
+	dx := v[0] - other[0]
+	dy := v[1] - other[1]
+	dz := v[2] - other[2]
+	return dx*dx + dy*dy + dz*dz
 }
 
-func (v *Vector3D) Distance(v1 Vector3D) float32 {
+func (v *Vector3D) Distance(v1 vecTypes.Vector) float32 {
 	return math32.Sqrt(v.DistanceSqr(v1))
 }
 
-func (v *Vector3D) Clone() *Vector3D {
-	clone := Vector3D{}
+func (v *Vector3D) Clone() vecTypes.Vector {
+	if v == nil {
+		return nil
+	}
+	clone := new(Vector3D)
 	copy(clone[:], v[:])
-	return &clone
+	return clone
 }
 
-func (v *Vector3D) CopyFrom(start int, v1 Vector) *Vector3D {
-	copy(v[start:], v1)
-	return v
+func (v *Vector3D) CopyFrom(start int, v1 vecTypes.Vector) vecTypes.Vector {
+	src := readVector(v1, "Vector3D.CopyFrom", vector3DSize)
+	copy(v[start:], src)
+	return v.view()
 }
 
-func (v *Vector3D) CopyTo(start int, v1 Vector) Vector {
-	copy(v1, v[start:])
+func (v *Vector3D) CopyTo(start int, v1 vecTypes.Vector) vecTypes.Vector {
+	dst := writeVector(v1, "Vector3D.CopyTo", vector3DSize)
+	copy(dst, v[start:])
 	return v1
 }
 
-func (v *Vector3D) Clamp(min, max Vector3D) *Vector3D {
+func (v *Vector3D) Clamp(min, max vecTypes.Vector) vecTypes.Vector {
+	minVec := readVector(min, "Vector3D.Clamp.min", vector3DSize)
+	maxVec := readVector(max, "Vector3D.Clamp.max", vector3DSize)
 	for i := range v {
-		v[i] = math.Clamp(v[i], min[i], max[i])
+		v[i] = math.Clamp(v[i], minVec[i], maxVec[i])
 	}
-	return v
+	return v.view()
 }
 
-func (v *Vector3D) FillC(c float32) *Vector3D {
+func (v *Vector3D) FillC(c float32) vecTypes.Vector {
 	for i := range v {
 		v[i] = c
 	}
-	return v
+	return v.view()
 }
 
-func (v *Vector3D) Neg() *Vector3D {
+func (v *Vector3D) Neg() vecTypes.Vector {
 	for i := range v {
 		v[i] = -v[i]
 	}
-	return v
+	return v.view()
 }
 
-func (v *Vector3D) Add(v1 Vector3D) *Vector3D {
+func (v *Vector3D) Add(v1 vecTypes.Vector) vecTypes.Vector {
+	other := readVector(v1, "Vector3D.Add", vector3DSize)
 	for i := range v {
-		v[i] += v1[i]
+		v[i] += other[i]
 	}
-	return v
+	return v.view()
 }
 
-func (v *Vector3D) AddC(c float32) *Vector3D {
+func (v *Vector3D) AddC(c float32) vecTypes.Vector {
 	for i := range v {
 		v[i] += c
 	}
-	return v
+	return v.view()
 }
 
-func (v *Vector3D) Sub(v1 Vector3D) *Vector3D {
+func (v *Vector3D) Sub(v1 vecTypes.Vector) vecTypes.Vector {
+	other := readVector(v1, "Vector3D.Sub", vector3DSize)
 	for i := range v {
-		v[i] -= v1[i]
+		v[i] -= other[i]
 	}
-	return v
+	return v.view()
 }
 
-func (v *Vector3D) SubC(c float32) *Vector3D {
+func (v *Vector3D) SubC(c float32) vecTypes.Vector {
 	for i := range v {
 		v[i] -= c
 	}
-	return v
+	return v.view()
 }
 
-func (v *Vector3D) MulC(c float32) *Vector3D {
+func (v *Vector3D) MulC(c float32) vecTypes.Vector {
 	for i := range v {
 		v[i] *= c
 	}
-	return v
+	return v.view()
 }
 
-func (v *Vector3D) MulCAdd(c float32, v1 Vector3D) *Vector3D {
+func (v *Vector3D) MulCAdd(c float32, v1 vecTypes.Vector) vecTypes.Vector {
+	other := readVector(v1, "Vector3D.MulCAdd", vector3DSize)
 	for i := range v {
-		v[i] += v1[i] * c
+		v[i] += other[i] * c
 	}
-	return v
+	return v.view()
 }
 
-func (v *Vector3D) MulCSub(c float32, v1 Vector3D) *Vector3D {
+func (v *Vector3D) MulCSub(c float32, v1 vecTypes.Vector) vecTypes.Vector {
+	other := readVector(v1, "Vector3D.MulCSub", vector3DSize)
 	for i := range v {
-		v[i] -= v1[i] * c
+		v[i] -= other[i] * c
 	}
-	return v
+	return v.view()
 }
 
-func (v *Vector3D) DivC(c float32) *Vector3D {
+func (v *Vector3D) DivC(c float32) vecTypes.Vector {
+	if c == 0 {
+		panic("vec.Vector3D.DivC: divide by zero")
+	}
 	for i := range v {
 		v[i] /= c
 	}
-	return v
+	return v.view()
 }
 
-func (v *Vector3D) DivCAdd(c float32, v1 Vector3D) *Vector3D {
-	for i := range v {
-		v[i] += v1[i] / c
+func (v *Vector3D) DivCAdd(c float32, v1 vecTypes.Vector) vecTypes.Vector {
+	if c == 0 {
+		panic("vec.Vector3D.DivCAdd: divide by zero")
 	}
-	return v
-}
-
-func (v *Vector3D) DivCSub(c float32, v1 Vector3D) *Vector3D {
+	other := readVector(v1, "Vector3D.DivCAdd", vector3DSize)
 	for i := range v {
-		v[i] -= v1[i] / c
+		v[i] += other[i] / c
 	}
-	return v
+	return v.view()
 }
 
-func (v *Vector3D) Normal() *Vector3D {
-	d := v.Magnitude()
-	return v.DivC(d)
-}
-
-func (v *Vector3D) NormalFast() *Vector3D {
-	d := v.SumSqr()
-	return v.MulC(math.FastISqrt(d))
-}
-
-func (v *Vector3D) Multiply(v1 Vector3D) *Vector3D {
+func (v *Vector3D) DivCSub(c float32, v1 vecTypes.Vector) vecTypes.Vector {
+	if c == 0 {
+		panic("vec.Vector3D.DivCSub: divide by zero")
+	}
+	other := readVector(v1, "Vector3D.DivCSub", vector3DSize)
 	for i := range v {
-		v[i] *= v1[i]
+		v[i] -= other[i] / c
 	}
-	return v
+	return v.view()
 }
 
-func (v *Vector3D) Dot(v1 Vector3D) float32 {
-	var sum float32
+func (v *Vector3D) Normal() vecTypes.Vector {
+	m := v.Magnitude()
+	if m == 0 {
+		panic("vec.Vector3D.Normal: zero magnitude")
+	}
+	return v.DivC(m)
+}
+
+func (v *Vector3D) NormalFast() vecTypes.Vector {
+	s := v.SumSqr()
+	if s == 0 {
+		panic("vec.Vector3D.NormalFast: zero magnitude")
+	}
+	return v.MulC(math.FastISqrt(s))
+}
+
+func (v *Vector3D) Multiply(v1 vecTypes.Vector) vecTypes.Vector {
+	other := readVector(v1, "Vector3D.Multiply", vector3DSize)
 	for i := range v {
-		sum += v[i] * v1[i]
+		v[i] *= other[i]
 	}
-	return sum
+	return v.view()
 }
 
-func (v *Vector3D) Cross(v1 Vector3D) *Vector3D {
-	t := []float32{v[0], v[1], v[2]}
-	v[0] = t[1]*v1[2] - t[2]*v1[1]
-	v[1] = t[2]*v1[0] - t[0]*v1[2]
-	v[2] = t[0]*v1[1] - t[1]*v1[0]
-	return v
+func (v *Vector3D) Dot(v1 vecTypes.Vector) float32 {
+	other := readVector(v1, "Vector3D.Dot", vector3DSize)
+	return v[0]*other[0] + v[1]*other[1] + v[2]*other[2]
 }
 
-func (v *Vector3D) Refract(n Vector3D, ni, nt float32) (*Vector3D, bool) {
-	var (
-		sin_T  Vector3D /* sin vect of the refracted vect */
-		cos_V  Vector3D /* cos vect of the incident vect */
-		n_mult float32  /* ni over nt */
-	)
+func (v *Vector3D) Cross(v1 vecTypes.Vector) vecTypes.Vector {
+	other := readVector(v1, "Vector3D.Cross", vector3DSize)
+	x := v[0]
+	y := v[1]
+	z := v[2]
+	v[0] = y*other[2] - z*other[1]
+	v[1] = z*other[0] - x*other[2]
+	v[2] = x*other[1] - y*other[0]
+	return v.view()
+}
 
-	N_dot_V := n.Dot(*v)
+func (v *Vector3D) Refract2D(vecTypes.Vector, float32, float32) (vecTypes.Vector, bool) {
+	panic("vec.Vector3D.Refract2D: unsupported operation")
+}
 
-	if N_dot_V > 0.0 {
-		n_mult = ni / nt
+func (v *Vector3D) Refract3D(n vecTypes.Vector, ni, nt float32) (vecTypes.Vector, bool) {
+	nVec := readVector(n, "Vector3D.Refract3D.normal", vector3DSize)
+	NdotV := nVec[0]*v[0] + nVec[1]*v[1] + nVec[2]*v[2]
+	var nMult float32
+	if NdotV > 0 {
+		nMult = ni / nt
 	} else {
-		n_mult = nt / ni
+		nMult = nt / ni
 	}
-	cos_V[0] = n[0] * N_dot_V
-	cos_V[1] = n[1] * N_dot_V
-	cos_V[2] = n[2] * N_dot_V
-	sin_T[0] = (cos_V[0] - v[0]) * (n_mult)
-	sin_T[1] = (cos_V[1] - v[1]) * (n_mult)
-	sin_T[2] = (cos_V[2] - v[2]) * (n_mult)
-	len_sin_T := sin_T.Dot(sin_T)
-	if len_sin_T >= 1.0 {
-		return v, false // internal reflection
+
+	sinT := Vector3D{}
+	cosV := Vector3D{}
+	cosV[0] = nVec[0] * NdotV
+	cosV[1] = nVec[1] * NdotV
+	cosV[2] = nVec[2] * NdotV
+	sinT[0] = (cosV[0] - v[0]) * nMult
+	sinT[1] = (cosV[1] - v[1]) * nMult
+	sinT[2] = (cosV[2] - v[2]) * nMult
+	lenSinT := sinT[0]*sinT[0] + sinT[1]*sinT[1] + sinT[2]*sinT[2]
+	if lenSinT >= 1 {
+		return v, false
 	}
-	N_dot_T := math32.Sqrt(1.0 - len_sin_T)
-	if N_dot_V < 0.0 {
-		N_dot_T = -N_dot_T
+	NdotT := math32.Sqrt(1 - lenSinT)
+	if NdotV < 0 {
+		NdotT = -NdotT
 	}
-	v[0] = sin_T[0] - n[0]*N_dot_T
-	v[1] = sin_T[1] - n[1]*N_dot_T
-	v[2] = sin_T[2] - n[2]*N_dot_T
+	v[0] = sinT[0] - nVec[0]*NdotT
+	v[1] = sinT[1] - nVec[1]*NdotT
+	v[2] = sinT[2] - nVec[2]*NdotT
 
 	return v, true
 }
 
-func (v *Vector3D) Reflect(n Vector3D) *Vector3D {
-
-	N_dot_V := n.Dot(*v) * 2
-
-	return v.Neg().MulCAdd(N_dot_V, n)
+func (v *Vector3D) Reflect(n vecTypes.Vector) vecTypes.Vector {
+	nVec := readVector(n, "Vector3D.Reflect", vector3DSize)
+	d := v.Dot(n) * 2
+	v[0] = -v[0] + d*nVec[0]
+	v[1] = -v[1] + d*nVec[1]
+	v[2] = -v[2] + d*nVec[2]
+	return v.view()
 }
 
-func (v *Vector3D) Interpolate(v1 Vector3D, t float32) *Vector3D {
+func (v *Vector3D) Interpolate(v1 vecTypes.Vector, t float32) vecTypes.Vector {
+	other := readVector(v1, "Vector3D.Interpolate", vector3DSize)
+	v[0] = v[0] + t*(other[0]-v[0])
+	v[1] = v[1] + t*(other[1]-v[1])
+	v[2] = v[2] + t*(other[2]-v[2])
+	return v.view()
+}
 
-	d := v1.Clone().Sub(*v)
-	return v.MulCAdd(t, *d)
+func (v *Vector3D) Axis() vecTypes.Vector {
+	panic("vec.Vector3D.Axis: unsupported operation")
+}
 
+func (v *Vector3D) Theta() float32 {
+	panic("vec.Vector3D.Theta: unsupported operation")
+}
+
+func (v *Vector3D) Conjugate() vecTypes.Vector {
+	panic("vec.Vector3D.Conjugate: unsupported operation")
+}
+
+func (v *Vector3D) Roll() float32 {
+	panic("vec.Vector3D.Roll: unsupported operation")
+}
+
+func (v *Vector3D) Pitch() float32 {
+	panic("vec.Vector3D.Pitch: unsupported operation")
+}
+
+func (v *Vector3D) Yaw() float32 {
+	panic("vec.Vector3D.Yaw: unsupported operation")
+}
+
+func (v *Vector3D) Product(vecTypes.Quaternion) vecTypes.Vector {
+	panic("vec.Vector3D.Product: unsupported operation")
+}
+
+func (v *Vector3D) Slerp(vecTypes.Vector, float32, float32) vecTypes.Vector {
+	panic("vec.Vector3D.Slerp: unsupported operation")
+}
+
+func (v *Vector3D) SlerpLong(vecTypes.Vector, float32, float32) vecTypes.Vector {
+	panic("vec.Vector3D.SlerpLong: unsupported operation")
 }

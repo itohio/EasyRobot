@@ -84,13 +84,13 @@ func TestVector2D_Clone(t *testing.T) {
 		init    func(t *testing.T) *Vector2D
 		inspect func(r *Vector2D, t *testing.T) //inspects receiver after test run
 
-		want1 *Vector2D
+		want1 Vector
 	}{
 		{
 			"modify",
 			func(t *testing.T) *Vector2D { return &Vector2D{1, 2} },
 			func(r *Vector2D, t *testing.T) { r[0] = 123 },
-			&Vector2D{1, 2},
+			NewFrom(1, 2),
 		},
 	}
 
@@ -116,13 +116,13 @@ func TestVector2D_Neg(t *testing.T) {
 		init    func(t *testing.T) *Vector2D
 		inspect func(r *Vector2D, t *testing.T) //inspects receiver after test run
 
-		want1 *Vector2D
+		want1 Vector
 	}{
 		{
 			"modify",
 			func(t *testing.T) *Vector2D { return &Vector2D{1, 2} },
 			func(r *Vector2D, t *testing.T) { r[0] = 123 },
-			&Vector2D{123, -2},
+			NewFrom(123, -2),
 		},
 	}
 

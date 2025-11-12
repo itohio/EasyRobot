@@ -6,6 +6,7 @@ import (
 	"github.com/chewxy/math32"
 	"github.com/itohio/EasyRobot/pkg/core/math"
 	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
+	vecTypes "github.com/itohio/EasyRobot/pkg/core/math/vec/types"
 )
 
 type Vector []float32
@@ -25,7 +26,7 @@ func (v Vector) Sum() float32 {
 	return fp32.Sum(v, len(v), 1)
 }
 
-func (v Vector) Slice(start, end int) Vector {
+func (v Vector) Slice(start, end int) vecTypes.Vector {
 	if end < 0 {
 		end = len(v)
 	}
@@ -55,15 +56,18 @@ func (v Vector) Magnitude() float32 {
 	return math32.Sqrt(v.SumSqr())
 }
 
-func (v Vector) DistanceSqr(v1 Vector) float32 {
-	return v.Clone().Sub(v1).SumSqr()
+func (v Vector) DistanceSqr(v1 vecTypes.Vector) float32 {
+	other := readVector(v1, "Vector.DistanceSqr", len(v))
+	clone := v.Clone().(Vector)
+	clone.Sub(other)
+	return clone.SumSqr()
 }
 
-func (v Vector) Distance(v1 Vector) float32 {
+func (v Vector) Distance(v1 vecTypes.Vector) float32 {
 	return math32.Sqrt(v.DistanceSqr(v1))
 }
 
-func (v Vector) Clone() Vector {
+func (v Vector) Clone() vecTypes.Vector {
 	if v == nil {
 		return nil
 	}
@@ -73,37 +77,38 @@ func (v Vector) Clone() Vector {
 	return clone
 }
 
-func (v Vector) CopyFrom(start int, v1 Vector) Vector {
-	copy(v[start:], v1)
+func (v Vector) CopyFrom(start int, v1 vecTypes.Vector) vecTypes.Vector {
+	src := readVector(v1, "Vector.CopyFrom", len(v))
+	copy(v[start:], src)
 	return v
 }
 
-func (v Vector) CopyTo(start int, v1 Vector) Vector {
-	copy(v1, v[start:])
+func (v Vector) CopyTo(start int, v1 vecTypes.Vector) vecTypes.Vector {
+	dst := writeVector(v1, "Vector.CopyTo", len(v))
+	copy(dst, v[start:])
 	return v1
 }
 
-func (v Vector) Clamp(min, max Vector) Vector {
+func (v Vector) Clamp(min, max vecTypes.Vector) vecTypes.Vector {
+	minVec := readVector(min, "Vector.Clamp.min", len(v))
+	maxVec := readVector(max, "Vector.Clamp.max", len(v))
 	for i := range v {
-		v[i] = math.Clamp(v[i], min[i], max[i])
+		v[i] = math.Clamp(v[i], minVec[i], maxVec[i])
 	}
 	return v
 }
 
-func (v Vector) FillC(c float32) Vector {
+func (v Vector) FillC(c float32) vecTypes.Vector {
 	if len(v) == 0 {
 		return v
 	}
-	// Fill with constant: use SumArrConst with zero source and constant
-	// Actually simpler: just use MulArrConst with 0 then add c
-	// Or even simpler: loop is fine for fill operations
 	for i := range v {
 		v[i] = c
 	}
 	return v
 }
 
-func (v Vector) Neg() Vector {
+func (v Vector) Neg() vecTypes.Vector {
 	if len(v) == 0 {
 		return v
 	}
@@ -111,16 +116,16 @@ func (v Vector) Neg() Vector {
 	return v
 }
 
-func (v Vector) Add(v1 Vector) Vector {
+func (v Vector) Add(v1 vecTypes.Vector) vecTypes.Vector {
 	if len(v) == 0 {
 		return v
 	}
-	// v = v + v1  =>  v = v + 1.0 * v1
-	fp32.Axpy(v, v1, 1, 1, len(v), 1.0)
+	other := readVector(v1, "Vector.Add", len(v))
+	fp32.Axpy(v, other, 1, 1, len(v), 1.0)
 	return v
 }
 
-func (v Vector) AddC(c float32) Vector {
+func (v Vector) AddC(c float32) vecTypes.Vector {
 	if len(v) == 0 {
 		return v
 	}
@@ -128,16 +133,16 @@ func (v Vector) AddC(c float32) Vector {
 	return v
 }
 
-func (v Vector) Sub(v1 Vector) Vector {
+func (v Vector) Sub(v1 vecTypes.Vector) vecTypes.Vector {
 	if len(v) == 0 {
 		return v
 	}
-	// v = v - v1  =>  v = v + (-1.0) * v1
-	fp32.Axpy(v, v1, 1, 1, len(v), -1.0)
+	other := readVector(v1, "Vector.Sub", len(v))
+	fp32.Axpy(v, other, 1, 1, len(v), -1.0)
 	return v
 }
 
-func (v Vector) SubC(c float32) Vector {
+func (v Vector) SubC(c float32) vecTypes.Vector {
 	if len(v) == 0 {
 		return v
 	}
@@ -145,7 +150,7 @@ func (v Vector) SubC(c float32) Vector {
 	return v
 }
 
-func (v Vector) MulC(c float32) Vector {
+func (v Vector) MulC(c float32) vecTypes.Vector {
 	if len(v) == 0 {
 		return v
 	}
@@ -153,24 +158,25 @@ func (v Vector) MulC(c float32) Vector {
 	return v
 }
 
-func (v Vector) MulCAdd(c float32, v1 Vector) Vector {
+func (v Vector) MulCAdd(c float32, v1 vecTypes.Vector) vecTypes.Vector {
 	if len(v) == 0 {
 		return v
 	}
-	fp32.Axpy(v, v1, 1, 1, len(v), c)
+	other := readVector(v1, "Vector.MulCAdd", len(v))
+	fp32.Axpy(v, other, 1, 1, len(v), c)
 	return v
 }
 
-func (v Vector) MulCSub(c float32, v1 Vector) Vector {
+func (v Vector) MulCSub(c float32, v1 vecTypes.Vector) vecTypes.Vector {
 	if len(v) == 0 {
 		return v
 	}
-	// v = v - v1 * c  =>  v = v + (-c) * v1
-	fp32.Axpy(v, v1, 1, 1, len(v), -c)
+	other := readVector(v1, "Vector.MulCSub", len(v))
+	fp32.Axpy(v, other, 1, 1, len(v), -c)
 	return v
 }
 
-func (v Vector) DivC(c float32) Vector {
+func (v Vector) DivC(c float32) vecTypes.Vector {
 	if len(v) == 0 || c == 0 {
 		return v
 	}
@@ -178,39 +184,50 @@ func (v Vector) DivC(c float32) Vector {
 	return v
 }
 
-func (v Vector) DivCAdd(c float32, v1 Vector) Vector {
+func (v Vector) DivCAdd(c float32, v1 vecTypes.Vector) vecTypes.Vector {
+	other := readVector(v1, "Vector.DivCAdd", len(v))
 	for i := range v {
-		v[i] += v1[i] / c
+		v[i] += other[i] / c
 	}
 	return v
 }
 
-func (v Vector) DivCSub(c float32, v1 Vector) Vector {
+func (v Vector) DivCSub(c float32, v1 vecTypes.Vector) vecTypes.Vector {
+	other := readVector(v1, "Vector.DivCSub", len(v))
 	for i := range v {
-		v[i] -= v1[i] / c
+		v[i] -= other[i] / c
 	}
 	return v
 }
 
-func (v Vector) Normal() Vector {
+func (v Vector) Normal() vecTypes.Vector {
 	d := v.Magnitude()
 	return v.DivC(d)
 }
 
-func (v Vector) NormalFast() Vector {
+func (v Vector) NormalFast() vecTypes.Vector {
 	d := v.SumSqr()
 	return v.MulC(math.FastISqrt(d))
 }
 
-func (v Vector) Axis() Vector {
+func (v Vector) Axis() vecTypes.Vector {
+	if len(v) < 3 {
+		panic("vec.Vector.Axis: requires length >= 3")
+	}
 	return v[:3]
 }
 
 func (v Vector) Theta() float32 {
+	if len(v) < 4 {
+		panic("vec.Vector.Theta: requires length >= 4")
+	}
 	return v[3]
 }
 
-func (v Vector) Conjugate() Vector {
+func (v Vector) Conjugate() vecTypes.Vector {
+	if len(v) < 3 {
+		panic("vec.Vector.Conjugate: requires length >= 3")
+	}
 	v[0] = -v[0]
 	v[1] = -v[1]
 	v[2] = -v[2]
@@ -227,11 +244,12 @@ func (v Vector) Yaw() float32 {
 	return math32.Atan2(v[0]*v[1]+v[3]*v[2], 0.5-v[1]*v[1]-v[2]*v[2])
 }
 
-func (a Vector) Product(b Quaternion) Vector {
-	x := a[3]*b[0] + a[0]*b[3] + a[1]*b[2] - a[2]*b[1]
-	y := a[3]*b[1] - a[0]*b[2] + a[1]*b[3] + a[2]*b[0]
-	z := a[3]*b[2] + a[0]*b[1] - a[1]*b[0] + a[2]*b[3]
-	w := a[3]*b[3] - a[0]*b[0] - a[1]*b[1] - a[2]*b[2]
+func (a Vector) Product(b vecTypes.Quaternion) vecTypes.Vector {
+	other := readVector(b, "Vector.Product", 4)
+	x := a[3]*other[0] + a[0]*other[3] + a[1]*other[2] - a[2]*other[1]
+	y := a[3]*other[1] - a[0]*other[2] + a[1]*other[3] + a[2]*other[0]
+	z := a[3]*other[2] + a[0]*other[1] - a[1]*other[0] + a[2]*other[3]
+	w := a[3]*other[3] - a[0]*other[0] - a[1]*other[1] - a[2]*other[2]
 	a[0] = x
 	a[1] = y
 	a[2] = z
@@ -239,173 +257,177 @@ func (a Vector) Product(b Quaternion) Vector {
 	return a
 }
 
-func (v Vector) Slerp(v1 Vector, time, spin float32) Vector {
-	const SLERP_EPSILON = 1.0e-10
+func (v Vector) Slerp(v1 vecTypes.Vector, time, spin float32) vecTypes.Vector {
+	other := readVector(v1, "Vector.Slerp", len(v))
+	const slerpEpsilon = 1.0e-10
 	var (
-		k1, k2       float32 // interpolation coefficions.
-		angle        float32 // angle between A and B
-		angleSpin    float32 // angle between A and B plus spin.
-		sin_a, cos_a float32 // sine, cosine of angle
+		k1, k2     float32
+		angle      float32
+		angleSpin  float32
+		sinA, cosA float32
 	)
 
-	flipk2 := 0
-	cos_a = v.Dot(v1)
-	if cos_a < 0.0 {
-		cos_a = -cos_a
-		flipk2 = -1
+	flipK2 := float32(1)
+	cosA = v.Dot(v1)
+	if cosA < 0 {
+		cosA = -cosA
+		flipK2 = -1
+	}
+
+	if (1 - cosA) < slerpEpsilon {
+		k1 = 1 - time
+		k2 = time
 	} else {
-		flipk2 = 1
-	}
-
-	if (1.0 - cos_a) < SLERP_EPSILON {
-		k1 = 1.0 - time
-		k2 = time
-	} else { /* normal case */
-		angle = math32.Acos(cos_a)
-		sin_a = math32.Sin(angle)
+		angle = math32.Acos(cosA)
+		sinA = math32.Sin(angle)
 		angleSpin = angle + spin*math32.Pi
-		k1 = math32.Sin(angle-time*angleSpin) / sin_a
-		k2 = math32.Sin(time*angleSpin) / sin_a
+		k1 = math32.Sin(angle-time*angleSpin) / sinA
+		k2 = math32.Sin(time*angleSpin) / sinA
 	}
-	k2 *= float32(flipk2)
+	k2 *= flipK2
 
-	v[0] = k1*v[0] + k2*v1[0]
-	v[1] = k1*v[1] + k2*v1[1]
-	v[2] = k1*v[2] + k2*v1[2]
-	v[3] = k1*v[3] + k2*v1[3]
+	for i := range v {
+		v[i] = k1*v[i] + k2*other[i]
+	}
 	return v
 }
 
-func (v Vector) SlerpLong(v1 Vector, time, spin float32) Vector {
-	const SLERP_EPSILON = 1.0e-10
+func (v Vector) SlerpLong(v1 vecTypes.Vector, time, spin float32) vecTypes.Vector {
+	other := readVector(v1, "Vector.SlerpLong", len(v))
+	const slerpEpsilon = 1.0e-10
 	var (
-		k1, k2       float32 // interpolation coefficions.
-		angle        float32 // angle between A and B
-		angleSpin    float32 // angle between A and B plus spin.
-		sin_a, cos_a float32 // sine, cosine of angle
+		k1, k2     float32
+		angle      float32
+		angleSpin  float32
+		sinA, cosA float32
 	)
 
-	cos_a = v.Dot(v1)
+	cosA = v.Dot(v1)
 
-	if 1.0-math32.Abs(cos_a) < SLERP_EPSILON {
-		k1 = 1.0 - time
+	if 1-math32.Abs(cosA) < slerpEpsilon {
+		k1 = 1 - time
 		k2 = time
-	} else { /* normal case */
-		angle = math32.Acos(cos_a)
-		sin_a = math32.Sin(angle)
+	} else {
+		angle = math32.Acos(cosA)
+		sinA = math32.Sin(angle)
 		angleSpin = angle + spin*math32.Pi
-		k1 = math32.Sin(angle-time*angleSpin) / sin_a
-		k2 = math32.Sin(time*angleSpin) / sin_a
+		k1 = math32.Sin(angle-time*angleSpin) / sinA
+		k2 = math32.Sin(time*angleSpin) / sinA
 	}
 
-	v[0] = k1*v[0] + k2*v1[0]
-	v[1] = k1*v[1] + k2*v1[1]
-	v[2] = k1*v[2] + k2*v1[2]
-	v[3] = k1*v[3] + k2*v1[3]
+	for i := range v {
+		v[i] = k1*v[i] + k2*other[i]
+	}
 	return v
 }
 
-func (v Vector) Multiply(v1 Vector) Vector {
+func (v Vector) Multiply(v1 vecTypes.Vector) vecTypes.Vector {
 	if len(v) == 0 {
 		return v
 	}
-	fp32.ElemMul(v, v, v1, []int{len(v)}, []int{1}, []int{1}, []int{1})
+	other := readVector(v1, "Vector.Multiply", len(v))
+	fp32.ElemMul(v, v, other, []int{len(v)}, []int{1}, []int{1}, []int{1})
 	return v
 }
 
-func (v Vector) Dot(v1 Vector) float32 {
-	if len(v) == 0 || len(v1) == 0 || len(v) != len(v1) {
+func (v Vector) Dot(v1 vecTypes.Vector) float32 {
+	if len(v) == 0 {
 		return 0
 	}
-	return fp32.Dot(v, v1, 1, 1, len(v))
+	other := readVector(v1, "Vector.Dot", len(v))
+	return fp32.Dot(v, other, 1, 1, len(v))
 }
 
-func (v Vector) Cross(v1 Vector) Vector {
+func (v Vector) Cross(v1 vecTypes.Vector) vecTypes.Vector {
+	if len(v) < 3 {
+		panic("vec.Vector.Cross: requires at least 3 dimensions")
+	}
+	other := readVector(v1, "Vector.Cross", len(v))
 	t := []float32{v[0], v[1], v[2]}
-	v[0] = t[1]*v1[2] - t[2]*v1[1]
-	v[1] = t[2]*v1[0] - t[0]*v1[2]
-	v[2] = t[0]*v1[1] - t[1]*v1[0]
+	v[0] = t[1]*other[2] - t[2]*other[1]
+	v[1] = t[2]*other[0] - t[0]*other[2]
+	v[2] = t[0]*other[1] - t[1]*other[0]
 	return v
 }
 
-func (v Vector) Refract2D(n Vector, ni, nt float32) (Vector, bool) {
-	var (
-		cos_V  Vector
-		sin_T  Vector
-		n_mult float32
-	)
+func (v Vector) Refract2D(n vecTypes.Vector, ni, nt float32) (vecTypes.Vector, bool) {
+	nVec := readVector(n, "Vector.Refract2D.normal", 2)
+	cosV := make(Vector, 2)
+	sinT := make(Vector, 2)
 
-	N_dot_V := n.Dot(v)
+	NdotV := nVec[0]*v[0] + nVec[1]*v[1]
 
-	if N_dot_V > 0.0 {
-		n_mult = ni / nt
+	var nMult float32
+	if NdotV > 0 {
+		nMult = ni / nt
 	} else {
-		n_mult = nt / ni
+		nMult = nt / ni
 	}
 
-	cos_V[0] = n[0] * N_dot_V
-	cos_V[1] = n[1] * N_dot_V
-	sin_T[0] = (cos_V[0] - v[0]) * (n_mult)
-	sin_T[1] = (cos_V[1] - v[1]) * (n_mult)
-	len_sin_T := sin_T.Dot(sin_T)
-	if len_sin_T >= 1.0 {
-		return v, false // internal reflection
+	cosV[0] = nVec[0] * NdotV
+	cosV[1] = nVec[1] * NdotV
+	sinT[0] = (cosV[0] - v[0]) * nMult
+	sinT[1] = (cosV[1] - v[1]) * nMult
+	lenSinT := sinT[0]*sinT[0] + sinT[1]*sinT[1]
+	if lenSinT >= 1 {
+		return v, false
 	}
-	N_dot_T := math32.Sqrt(1.0 - len_sin_T)
-	if N_dot_V < 0.0 {
-		N_dot_T = -N_dot_T
+	NdotT := math32.Sqrt(1 - lenSinT)
+	if NdotV < 0 {
+		NdotT = -NdotT
 	}
-	v[0] = sin_T[0] - n[0]*N_dot_T
-	v[1] = sin_T[1] - n[1]*N_dot_T
+	v[0] = sinT[0] - nVec[0]*NdotT
+	v[1] = sinT[1] - nVec[1]*NdotT
 
 	return v, true
 }
 
-func (v Vector) Refract3D(n Vector, ni, nt float32) (Vector, bool) {
-	var (
-		sin_T  Vector  /* sin vect of the refracted vect */
-		cos_V  Vector  /* cos vect of the incident vect */
-		n_mult float32 /* ni over nt */
-	)
+func (v Vector) Refract3D(n vecTypes.Vector, ni, nt float32) (vecTypes.Vector, bool) {
+	nVec := readVector(n, "Vector.Refract3D.normal", 3)
+	cosV := make(Vector, 3)
+	sinT := make(Vector, 3)
 
-	N_dot_V := n.Dot(v)
+	NdotV := nVec[0]*v[0] + nVec[1]*v[1] + nVec[2]*v[2]
 
-	if N_dot_V > 0.0 {
-		n_mult = ni / nt
+	var nMult float32
+	if NdotV > 0 {
+		nMult = ni / nt
 	} else {
-		n_mult = nt / ni
+		nMult = nt / ni
 	}
-	cos_V[0] = n[0] * N_dot_V
-	cos_V[1] = n[1] * N_dot_V
-	cos_V[2] = n[2] * N_dot_V
-	sin_T[0] = (cos_V[0] - v[0]) * (n_mult)
-	sin_T[1] = (cos_V[1] - v[1]) * (n_mult)
-	sin_T[2] = (cos_V[2] - v[2]) * (n_mult)
-	len_sin_T := sin_T.Dot(sin_T)
-	if len_sin_T >= 1.0 {
-		return v, false // internal reflection
+	cosV[0] = nVec[0] * NdotV
+	cosV[1] = nVec[1] * NdotV
+	cosV[2] = nVec[2] * NdotV
+	sinT[0] = (cosV[0] - v[0]) * nMult
+	sinT[1] = (cosV[1] - v[1]) * nMult
+	sinT[2] = (cosV[2] - v[2]) * nMult
+	lenSinT := sinT[0]*sinT[0] + sinT[1]*sinT[1] + sinT[2]*sinT[2]
+	if lenSinT >= 1 {
+		return v, false
 	}
-	N_dot_T := math32.Sqrt(1.0 - len_sin_T)
-	if N_dot_V < 0.0 {
-		N_dot_T = -N_dot_T
+	NdotT := math32.Sqrt(1 - lenSinT)
+	if NdotV < 0 {
+		NdotT = -NdotT
 	}
-	v[0] = sin_T[0] - n[0]*N_dot_T
-	v[1] = sin_T[1] - n[1]*N_dot_T
-	v[2] = sin_T[2] - n[2]*N_dot_T
+	v[0] = sinT[0] - nVec[0]*NdotT
+	v[1] = sinT[1] - nVec[1]*NdotT
+	v[2] = sinT[2] - nVec[2]*NdotT
 
 	return v, true
 }
 
-func (v Vector) Reflect(n Vector) Vector {
-
-	N_dot_V := n.Dot(v) * 2
-
-	return v.Neg().MulCAdd(N_dot_V, n)
+func (v Vector) Reflect(n vecTypes.Vector) vecTypes.Vector {
+	nVec := readVector(n, "Vector.Reflect", len(v))
+	NdotV := v.Dot(n) * 2
+	for i := range v {
+		v[i] = -v[i] + NdotV*nVec[i]
+	}
+	return v
 }
 
-func (v Vector) Interpolate(v1 Vector, t float32) Vector {
-
-	d := v1.Clone().Sub(v)
+func (v Vector) Interpolate(v1 vecTypes.Vector, t float32) vecTypes.Vector {
+	other := readVector(v1, "Vector.Interpolate", len(v))
+	d := other.Clone().(Vector)
+	d.Sub(v)
 	return v.MulCAdd(t, d)
-
 }
