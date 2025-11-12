@@ -1,12 +1,9 @@
 package gocv
 
-import (
-	"fmt"
-	"os"
-)
+import "fmt"
 
 func buildStreams(cfg config) ([]sourceStream, error) {
-	specs, err := resolveSources(cfg.sources)
+	specs, err := resolveSources(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -26,13 +23,12 @@ func buildStreams(cfg config) ([]sourceStream, error) {
 				return nil, err
 			}
 			streams = append(streams, stream)
-		case sourceKindDirectory:
-			if err := ensureDirExists(spec.Path); err != nil {
+		case sourceKindFileList:
+			stream, err := newFileListLoader(spec.Path, spec.Files, cfg)
+			if err != nil {
 				return nil, err
 			}
-			streams = append(streams, newFolderLoader(spec.Path, cfg))
-		case sourceKindFileList:
-			streams = append(streams, newFileListLoader(spec.Path, spec.Files, cfg))
+			streams = append(streams, stream)
 		case sourceKindSingle, sourceKindUnknown:
 			streams = append(streams, newImageLoader(spec.Path, cfg))
 		default:
@@ -40,15 +36,4 @@ func buildStreams(cfg config) ([]sourceStream, error) {
 		}
 	}
 	return streams, nil
-}
-
-func ensureDirExists(path string) error {
-	info, err := os.Stat(path)
-	if err != nil {
-		return fmt.Errorf("gocv: stat dir %s: %w", path, err)
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("gocv: path %s is not a directory", path)
-	}
-	return nil
 }

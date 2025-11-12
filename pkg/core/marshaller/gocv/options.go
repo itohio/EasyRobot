@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	cv "gocv.io/x/gocv"
@@ -18,7 +19,6 @@ type sourceKind int
 const (
 	sourceKindUnknown sourceKind = iota
 	sourceKindSingle
-	sourceKindDirectory
 	sourceKindVideoFile
 	sourceKindVideoDevice
 	sourceKindFileList
@@ -37,6 +37,8 @@ type sourceSpec struct {
 	Files  []string
 }
 
+type fileSorter func([]string) []string
+
 type config struct {
 	ctx             context.Context
 	imageEncoding   string
@@ -47,6 +49,14 @@ type config struct {
 	netTarget       cv.NetTargetType
 	allowBestEffort bool
 	sequential      bool
+	sorter          fileSorter
+	displayEnabled  bool
+	displayTitle    string
+	displayWidth    int
+	displayHeight   int
+	onKey           func(int) bool
+	onMouse         func(int, int, int, int) bool
+	eventLoop       func(context.Context, func() bool)
 }
 
 func defaultConfig() config {
@@ -60,7 +70,20 @@ func defaultConfig() config {
 		netTarget:       cv.NetTargetCPU,
 		allowBestEffort: true,
 		sequential:      false,
+		sorter:          defaultSorter,
+		displayTitle:    "GoCV Display",
 	}
+}
+
+func defaultSorter(list []string) []string {
+	if len(list) == 0 {
+		return list
+	}
+	sorted := append([]string(nil), list...)
+	sort.Slice(sorted, func(i, j int) bool {
+		return strings.ToLower(sorted[i]) < strings.ToLower(sorted[j])
+	})
+	return sorted
 }
 
 type configOption interface {
@@ -177,6 +200,75 @@ func WithSequential(enable bool) types.Option {
 	})
 }
 
+// WithDisplay enables display output using default window parameters.
+func WithDisplay() types.Option {
+	return newOption(func(cfg *config) {
+		cfg.displayEnabled = true
+		if strings.TrimSpace(cfg.displayTitle) == "" {
+			cfg.displayTitle = "GoCV Display"
+		}
+	})
+}
+
+// WithTitle sets the display window title and enables display output.
+func WithTitle(title string) types.Option {
+	return newOption(func(cfg *config) {
+		cfg.displayEnabled = true
+		cfg.displayTitle = strings.TrimSpace(title)
+		if cfg.displayTitle == "" {
+			cfg.displayTitle = "GoCV Display"
+		}
+	})
+}
+
+// WithWindowSize configures the display window size and enables display output.
+func WithWindowSize(width, height int) types.Option {
+	return newOption(func(cfg *config) {
+		cfg.displayEnabled = true
+		if width > 0 {
+			cfg.displayWidth = width
+		}
+		if height > 0 {
+			cfg.displayHeight = height
+		}
+	})
+}
+
+// WithOnKey installs a key handler invoked on each WaitKey event. Returning
+// false stops the display/event loop.
+func WithOnKey(handler func(int) bool) types.Option {
+	return newOption(func(cfg *config) {
+		cfg.displayEnabled = true
+		cfg.onKey = handler
+	})
+}
+
+// WithOnMouse installs a mouse handler; returning false stops the display loop.
+func WithOnMouse(handler func(event, x, y, flags int) bool) types.Option {
+	return newOption(func(cfg *config) {
+		cfg.displayEnabled = true
+		cfg.onMouse = handler
+	})
+}
+
+// WithEventLoop overrides the default event loop used for display rendering.
+func WithEventLoop(loop func(context.Context, func() bool)) types.Option {
+	return newOption(func(cfg *config) {
+		cfg.eventLoop = loop
+	})
+}
+
+// WithSorter configures filename ordering for globbed image lists.
+func WithSorter(sorter func([]string) []string) types.Option {
+	return newOption(func(cfg *config) {
+		if sorter == nil {
+			cfg.sorter = defaultSorter
+			return
+		}
+		cfg.sorter = sorter
+	})
+}
+
 func applyOptions(base types.Options, cfg config, opts []types.Option) (types.Options, config) {
 	local := base
 	localCfg := cfg
@@ -198,6 +290,12 @@ func applyOptions(base types.Options, cfg config, opts []types.Option) (types.Op
 	if local.Context != nil {
 		localCfg.ctx = local.Context
 	}
+	if localCfg.sorter == nil {
+		localCfg.sorter = defaultSorter
+	}
+	if localCfg.displayEnabled && strings.TrimSpace(localCfg.displayTitle) == "" {
+		localCfg.displayTitle = "GoCV Display"
+	}
 	return local, localCfg
 }
 
@@ -215,9 +313,13 @@ func classifyPath(path string) sourceKind {
 	}
 }
 
-func resolveSources(specs []sourceSpec) ([]sourceSpec, error) {
-	resolved := make([]sourceSpec, 0, len(specs))
-	for _, spec := range specs {
+func resolveSources(cfg config) ([]sourceSpec, error) {
+	resolved := make([]sourceSpec, 0, len(cfg.sources))
+	sorter := cfg.sorter
+	if sorter == nil {
+		sorter = defaultSorter
+	}
+	for _, spec := range cfg.sources {
 		if spec.Kind == sourceKindVideoDevice {
 			if spec.Device == nil {
 				return nil, fmt.Errorf("gocv: video device option missing configuration")
@@ -239,6 +341,9 @@ func resolveSources(specs []sourceSpec) ([]sourceSpec, error) {
 				if len(matches) == 0 {
 					return nil, fmt.Errorf("gocv: glob %s did not match any files", spec.Path)
 				}
+				if sorter != nil {
+					matches = sorter(matches)
+				}
 				resolved = append(resolved, sourceSpec{
 					Kind:  sourceKindFileList,
 					Path:  spec.Path,
@@ -247,18 +352,8 @@ func resolveSources(specs []sourceSpec) ([]sourceSpec, error) {
 				continue
 			}
 
-			info, err := os.Stat(spec.Path)
-			if err == nil && info.IsDir() {
-				resolved = append(resolved, sourceSpec{
-					Kind: sourceKindDirectory,
-					Path: spec.Path,
-				})
-				continue
-			}
-
 			kind = classifyPath(spec.Path)
 			if kind == sourceKindUnknown {
-				// attempt to treat unknown path as single file; runtime will validate.
 				kind = sourceKindSingle
 			}
 		}
@@ -279,4 +374,25 @@ func resolveSources(specs []sourceSpec) ([]sourceSpec, error) {
 
 func isGlobPattern(path string) bool {
 	return strings.ContainsAny(path, "*?[")
+}
+
+func resolveOutputDirs(cfg config) ([]string, error) {
+	dirs := make([]string, 0, len(cfg.sources))
+	for _, spec := range cfg.sources {
+		if spec.Kind != sourceKindUnknown {
+			continue
+		}
+		path := strings.TrimSpace(spec.Path)
+		if path == "" {
+			continue
+		}
+		if isGlobPattern(path) {
+			continue
+		}
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			return nil, fmt.Errorf("gocv: ensure output dir %s: %w", path, err)
+		}
+		dirs = append(dirs, path)
+	}
+	return dirs, nil
 }

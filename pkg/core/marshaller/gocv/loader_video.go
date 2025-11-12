@@ -3,6 +3,8 @@ package gocv
 import (
 	"context"
 	"fmt"
+	"path/filepath"
+	"strings"
 	"time"
 
 	cv "gocv.io/x/gocv"
@@ -11,10 +13,11 @@ import (
 )
 
 type videoFileLoader struct {
-	path    string
-	cfg     config
-	capture *cv.VideoCapture
-	index   int
+	path     string
+	baseName string
+	cfg      config
+	capture  *cv.VideoCapture
+	index    int
 }
 
 func newVideoFileLoader(path string, cfg config) (sourceStream, error) {
@@ -22,10 +25,14 @@ func newVideoFileLoader(path string, cfg config) (sourceStream, error) {
 	if err != nil {
 		return nil, fmt.Errorf("gocv: open video file %s: %w", path, err)
 	}
+	base := filepath.Base(path)
+	ext := filepath.Ext(base)
+	base = strings.TrimSuffix(base, ext)
 	return &videoFileLoader{
-		path:    path,
-		cfg:     cfg,
-		capture: cap,
+		path:     path,
+		baseName: base,
+		cfg:      cfg,
+		capture:  cap,
 	}, nil
 }
 
@@ -52,11 +59,15 @@ func (l *videoFileLoader) Next(ctx context.Context) (frameItem, bool, error) {
 		return frameItem{}, false, err
 	}
 
+	filename := fmt.Sprintf("%s_%06d.png", l.baseName, l.index)
 	meta := map[string]any{
 		"path":        l.path,
 		"timestamp":   time.Now().UnixNano(),
 		"source":      "video",
 		"frame_index": l.index,
+		"index":       l.index,
+		"filename":    filename,
+		"name":        []string{filename},
 	}
 	l.index++
 

@@ -35,6 +35,18 @@ func (l *imageLoader) Next(ctx context.Context) (frameItem, bool, error) {
 	if err != nil {
 		return frameItem{}, false, err
 	}
+	if item.metadata == nil {
+		item.metadata = map[string]any{}
+	}
+	if _, ok := item.metadata["filename"]; !ok {
+		item.metadata["filename"] = filepath.Base(l.path)
+	}
+	if _, ok := item.metadata["index"]; !ok {
+		item.metadata["index"] = 0
+	}
+	if _, ok := item.metadata["name"]; !ok {
+		item.metadata["name"] = []string{filepath.Base(l.path)}
+	}
 	return item, true, nil
 }
 
@@ -76,6 +88,7 @@ func loadImageFile(path string, cfg config) (frameItem, error) {
 		"path":      path,
 		"timestamp": time.Now().UnixNano(),
 		"source":    "image",
+		"name":      []string{filepath.Base(path)},
 	}
 
 	return frameItem{
@@ -99,6 +112,7 @@ func loadMatFile(path string, cfg config) (frameItem, error) {
 		"path":      path,
 		"timestamp": time.Now().UnixNano(),
 		"source":    "mat",
+		"name":      []string{filepath.Base(path)},
 	}
 
 	return frameItem{

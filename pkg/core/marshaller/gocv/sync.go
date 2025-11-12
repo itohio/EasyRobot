@@ -111,6 +111,7 @@ func combineFrameItems(items []frameItem, index int) types.Frame {
 	meta := map[string]any{}
 	var tensors []types.Tensor
 	sources := make([]map[string]any, 0, len(items))
+	var names []string
 
 	for _, item := range items {
 		if len(item.tensors) > 0 {
@@ -121,6 +122,7 @@ func combineFrameItems(items []frameItem, index int) types.Frame {
 			for k, v := range item.metadata {
 				copied[k] = v
 			}
+			names = append(names, extractNameList(copied)...)
 			sources = append(sources, copied)
 		} else {
 			sources = append(sources, map[string]any{})
@@ -133,6 +135,10 @@ func combineFrameItems(items []frameItem, index int) types.Frame {
 		}
 	} else {
 		meta["sources"] = sources
+	}
+
+	if len(names) > 0 {
+		meta["name"] = names
 	}
 
 	return types.Frame{
@@ -150,5 +156,29 @@ func errorFrame(err error, index int) types.Frame {
 		Metadata: map[string]any{
 			"error": err,
 		},
+	}
+}
+
+func extractNameList(meta map[string]any) []string {
+	if meta == nil {
+		return nil
+	}
+	raw, ok := meta["name"]
+	if !ok {
+		return nil
+	}
+	switch v := raw.(type) {
+	case []string:
+		return append([]string(nil), v...)
+	case []interface{}:
+		names := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok && s != "" {
+				names = append(names, s)
+			}
+		}
+		return names
+	default:
+		return nil
 	}
 }

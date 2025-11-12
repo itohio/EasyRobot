@@ -1,6 +1,8 @@
 package gocv
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"image"
 	"io"
@@ -57,6 +59,13 @@ func (m *Marshaller) Marshal(w io.Writer, value any, opts ...types.Option) error
 		return m.writeImage(w, *v, localCfg.imageEncoding)
 	case types.Tensor:
 		return m.writeTensor(w, v)
+	case types.FrameStream:
+		return m.writeFrameStream(w, v, localCfg)
+	case *types.FrameStream:
+		if v == nil {
+			return types.NewError("marshal", "gocv", "nil *FrameStream", nil)
+		}
+		return m.writeFrameStream(w, *v, localCfg)
 	case []byte:
 		// allow raw bytes pass-through for DNN weights.
 		_, err := w.Write(v)
@@ -99,4 +108,121 @@ func (m *Marshaller) writeTensor(w io.Writer, tensor types.Tensor) error {
 	}
 	defer mat.Close()
 	return m.writeMat(w, mat)
+}
+
+func (m *Marshaller) writeFrameStream(w io.Writer, stream types.FrameStream, cfg config) error {
+	targets, err := resolveOutputDirs(cfg)
+	if err != nil {
+		return err
+	}
+
+	defer stream.Close()
+
+	frames := stream.C
+
+	var (
+		writers    []frameWriter
+		fileWriter *fileWriter
+	)
+
+	if len(targets) > 0 {
+		fw, err := newFileWriter(targets, cfg)
+		if err != nil {
+			return err
+		}
+		fileWriter = fw
+		writers = append(writers, fw)
+	}
+
+	if cfg.displayEnabled {
+		dw, err := newDisplayWriter(cfg)
+		if err != nil {
+			return err
+		}
+		writers = append(writers, dw)
+	}
+
+	var (
+		stop    bool
+		stepErr error
+	)
+
+	step := func() bool {
+		if stop {
+			return false
+		}
+		frame, ok := <-frames
+		if !ok {
+			return false
+		}
+
+		for _, writer := range writers {
+			if stop {
+				break
+			}
+			if err := writer.Write(frame); err != nil {
+				if errors.Is(err, errStopLoop) {
+					stop = true
+				} else {
+					stepErr = err
+					stop = true
+				}
+			}
+		}
+
+		return !stop
+	}
+
+	loop := cfg.eventLoop
+	if loop == nil {
+		loop = defaultEventLoop
+	}
+	ctx := cfg.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	loop(ctx, step)
+
+	for _, writer := range writers {
+		_ = writer.Close()
+	}
+
+	if stepErr != nil {
+		return stepErr
+	}
+
+	if fileWriter != nil && w != nil {
+		if summary := fileWriter.Summary(); len(summary) > 0 {
+			if _, err := w.Write(summary); err != nil {
+				return types.NewError("marshal", "gocv", "write summary", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+func tensorToMat(tensor types.Tensor) (cv.Mat, error) {
+	accessor, ok := tensor.(tensorgocv.Accessor)
+	if !ok {
+		return cv.Mat{}, fmt.Errorf("gocv: tensor does not expose GoCV accessor")
+	}
+	mat, err := accessor.MatClone()
+	if err != nil {
+		return cv.Mat{}, err
+	}
+	return mat, nil
+}
+
+func defaultEventLoop(ctx context.Context, step func() bool) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		if !step() {
+			return
+		}
+	}
 }

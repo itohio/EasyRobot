@@ -71,11 +71,15 @@ func (l *videoDeviceLoader) Next(ctx context.Context) (frameItem, bool, error) {
 			return frameItem{}, false, err
 		}
 
+		filename := fmt.Sprintf("device_%d_%06d.png", l.spec.ID, l.index)
 		meta := map[string]any{
 			"device":      l.spec.ID,
 			"timestamp":   time.Now().UnixNano(),
 			"source":      "video_device",
 			"frame_index": l.index,
+			"index":       l.index,
+			"filename":    filename,
+			"name":        []string{filename},
 		}
 		l.index++
 

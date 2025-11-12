@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"image"
 	"strings"
-	"time"
 
 	cv "gocv.io/x/gocv"
 
