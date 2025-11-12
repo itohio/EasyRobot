@@ -1,3 +1,5 @@
+// Package vaj provides jerk-limited motion profiles with bounded velocity
+// and acceleration for one-dimensional trajectories.
 package vaj
 
 import (
@@ -5,6 +7,9 @@ import (
 	"github.com/itohio/EasyRobot/pkg/core/math"
 )
 
+// VAJ1D implements a jerk-limited (velocity–acceleration–jerk) trajectory
+// generator for one-dimensional motion. The profile respects configured
+// limits while tracking a target position that may change over time.
 type VAJ1D struct {
 	maxV, maxA, maxJ           float32
 	v1max, v2max, vamax        float32
@@ -12,6 +17,8 @@ type VAJ1D struct {
 	Input, Output, Target      float32
 }
 
+// New1D constructs a VAJ1D profile with the supplied kinematic limits.
+// The returned profile is ready to track targets via successive Update calls.
 func New1D(maxVelocity, maxAcceleration, jerk float32) VAJ1D {
 	vamax := (maxAcceleration * maxAcceleration) / (jerk * 2)
 	v1max := maxVelocity / 2
@@ -32,12 +39,16 @@ func New1D(maxVelocity, maxAcceleration, jerk float32) VAJ1D {
 	}
 }
 
+// Reset clears the velocity and acceleration state without altering limits.
 func (l *VAJ1D) Reset() *VAJ1D {
 	l.Velocity = 0
 	l.Acceleration = 0
 	return l
 }
 
+// Update advances the internal profile by the supplied sample period and moves
+// the Output toward Target while respecting jerk, acceleration, and velocity
+// constraints.
 func (l *VAJ1D) Update(samplePeriod float32) *VAJ1D {
 	defer func() {
 		l.Input = l.Output
@@ -64,6 +75,8 @@ func (l *VAJ1D) Update(samplePeriod float32) *VAJ1D {
 	return l
 }
 
+// calculateKinematics integrates the next position increment given the
+// remaining distance x1 while enforcing kinematic constraints.
 func (l *VAJ1D) calculateKinematics(samplePeriod, x1 float32) float32 {
 	dt := samplePeriod
 	v0 := l.Velocity
@@ -86,7 +99,7 @@ func (l *VAJ1D) calculateKinematics(samplePeriod, x1 float32) float32 {
 	}
 
 	// integrate the step
-	x0 += (v0 + (0.5*a0*dt+(1/6)*l.j0*dt)*dt) * dt
+	x0 += (v0 + (0.5*a0*dt+(1.0/6.0)*l.j0*dt)*dt) * dt
 	l.Velocity += (a0 + .5*l.j0*dt) * dt
 	a0 += l.j0 * dt
 	l.Acceleration = math.Clamp(a0, -l.maxA, l.maxA)
@@ -95,6 +108,9 @@ func (l *VAJ1D) calculateKinematics(samplePeriod, x1 float32) float32 {
 	return x0
 }
 
+// calculateJerk determines the jerk control to keep the trajectory within
+// the v1, v2, and jerk bounds, returning the position delta and updated
+// state variables.
 func (l *VAJ1D) calculateJerk(dt, x1, v0, a0, j0 float32) (float32, float32, float32, float32) {
 	var x0, jC float32
 	v0x := v0 + a0*dt + .5*j0*dt*dt
@@ -102,7 +118,7 @@ func (l *VAJ1D) calculateJerk(dt, x1, v0, a0, j0 float32) (float32, float32, flo
 		if j0 == -l.maxJ {
 			_, t := math.Quad(.5*j0, a0, v0-l.v1max, 1e-6)
 			if t <= 2*dt {
-				x0 = (v0 + (0.5*a0+(1/6)*j0*t)*t) * t
+				x0 = (v0 + (0.5*a0+(1.0/6.0)*j0*t)*t) * t
 				v0 += (a0 + .5*j0*t) * t
 				a0 += j0 * t
 			}
@@ -111,7 +127,7 @@ func (l *VAJ1D) calculateJerk(dt, x1, v0, a0, j0 float32) (float32, float32, flo
 	} else if v0x < l.maxV && v0x > l.v2max {
 		if j0 == l.maxJ {
 			t, _ := math.Quad(.5*j0, a0, v0-l.v2max, 1e-6)
-			x0 = (v0 + (0.5*a0+(1/6)*j0*t)*t) * t
+			x0 = (v0 + (0.5*a0+(1.0/6.0)*j0*t)*t) * t
 			v0 += (a0 + .5*j0*t) * t
 			a0 += j0 * t
 		}
@@ -123,6 +139,9 @@ func (l *VAJ1D) calculateJerk(dt, x1, v0, a0, j0 float32) (float32, float32, flo
 	return x0, v0, a0, jC
 }
 
+// calculateStoppingDistance estimates the distance required to stop from the
+// current velocity and acceleration under the configured jerk and acceleration
+// limits.
 func (l *VAJ1D) calculateStoppingDistance(v0, a0 float32) float32 {
 	var (
 		s, s1, s2, s3 float32
@@ -134,7 +153,7 @@ func (l *VAJ1D) calculateStoppingDistance(v0, a0 float32) float32 {
 	if a0 > 0 {
 		t := a0 / l.maxJ
 		jt := .5 * l.maxJ * t
-		s = (v0 + (.5*a0-(1/3)*jt)*t) * t
+		s = (v0 + (.5*a0-(1.0/3.0)*jt)*t) * t
 		v0 += (a0 - jt) * t
 		a0 = 0
 	}
@@ -152,7 +171,7 @@ func (l *VAJ1D) calculateStoppingDistance(v0, a0 float32) float32 {
 		_, t := math.Quad(-.5*l.maxJ, a0, v0-v2m, 1e-6)
 		v2 = v2m
 		v1 = v2m
-		s1 = (v0 + (0.5*a0-(1/6)*l.maxJ*t)*t) * t
+		s1 = (v0 + (0.5*a0-(1.0/6.0)*l.maxJ*t)*t) * t
 		a1 = a0 - l.maxJ*t
 	} else {
 		v1 = v0
@@ -170,7 +189,7 @@ func (l *VAJ1D) calculateStoppingDistance(v0, a0 float32) float32 {
 	// remove deceleration
 	if v2 > 0 {
 		t, _ := math.Quad(.5*l.maxJ, a1, v2, 1e-6)
-		s3 = (v2 + (.5*a1+(1/6)*l.maxJ*t)*t) * t
+		s3 = (v2 + (.5*a1+(1.0/6.0)*l.maxJ*t)*t) * t
 	}
 
 	return s + s1 + s2 + s3
