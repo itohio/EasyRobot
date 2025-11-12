@@ -201,9 +201,10 @@ func WithSequential(enable bool) types.Option {
 }
 
 // WithDisplay enables display output using default window parameters.
-func WithDisplay() types.Option {
+func WithDisplay(ctx context.Context) types.Option {
 	return newOption(func(cfg *config) {
 		cfg.displayEnabled = true
+		cfg.ctx = ctx
 		if strings.TrimSpace(cfg.displayTitle) == "" {
 			cfg.displayTitle = "GoCV Display"
 		}

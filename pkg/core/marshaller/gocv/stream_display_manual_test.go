@@ -31,7 +31,7 @@ func TestManualDisplayWebcam(t *testing.T) {
 	defer cancel()
 
 	marshaller := NewMarshaller(
-		WithDisplay(),
+		WithDisplay(ctx),
 		WithTitle("EasyRobot GoCV Display (Press ESC to exit)"),
 		WithWindowSize(640, 480),
 		WithOnKey(func(key int) bool {
