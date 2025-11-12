@@ -12,12 +12,8 @@ const quaternionSize = 4
 
 type Quaternion [4]float32
 
-func (v *Quaternion) view() Vector {
-	return v[:]
-}
-
-func (v *Quaternion) Vector() Vector {
-	return v.view()
+func (v *Quaternion) Vector() vecTypes.Vector {
+	return Vector(v[:])
 }
 
 func (v *Quaternion) Slice(start, end int) vecTypes.Vector {
@@ -76,7 +72,7 @@ func (v *Quaternion) Clone() vecTypes.Vector {
 func (v *Quaternion) CopyFrom(start int, v1 vecTypes.Vector) vecTypes.Vector {
 	src := readVector(v1, "Quaternion.CopyFrom", quaternionSize)
 	copy(v[start:], src)
-	return v.view()
+	return v
 }
 
 func (v *Quaternion) CopyTo(start int, v1 vecTypes.Vector) vecTypes.Vector {
@@ -91,21 +87,21 @@ func (v *Quaternion) Clamp(min, max vecTypes.Vector) vecTypes.Vector {
 	for i := range v {
 		v[i] = math.Clamp(v[i], minVec[i], maxVec[i])
 	}
-	return v.view()
+	return v
 }
 
 func (v *Quaternion) FillC(c float32) vecTypes.Vector {
 	for i := range v {
 		v[i] = c
 	}
-	return v.view()
+	return v
 }
 
 func (v *Quaternion) Neg() vecTypes.Vector {
 	for i := range v {
 		v[i] = -v[i]
 	}
-	return v.view()
+	return v
 }
 
 func (v *Quaternion) Add(v1 vecTypes.Vector) vecTypes.Vector {
@@ -113,14 +109,14 @@ func (v *Quaternion) Add(v1 vecTypes.Vector) vecTypes.Vector {
 	for i := range v {
 		v[i] += other[i]
 	}
-	return v.view()
+	return v
 }
 
 func (v *Quaternion) AddC(c float32) vecTypes.Vector {
 	for i := range v {
 		v[i] += c
 	}
-	return v.view()
+	return v
 }
 
 func (v *Quaternion) Sub(v1 vecTypes.Vector) vecTypes.Vector {
@@ -128,21 +124,21 @@ func (v *Quaternion) Sub(v1 vecTypes.Vector) vecTypes.Vector {
 	for i := range v {
 		v[i] -= other[i]
 	}
-	return v.view()
+	return v
 }
 
 func (v *Quaternion) SubC(c float32) vecTypes.Vector {
 	for i := range v {
 		v[i] -= c
 	}
-	return v.view()
+	return v
 }
 
 func (v *Quaternion) MulC(c float32) vecTypes.Vector {
 	for i := range v {
 		v[i] *= c
 	}
-	return v.view()
+	return v
 }
 
 func (v *Quaternion) MulCAdd(c float32, v1 vecTypes.Vector) vecTypes.Vector {
@@ -150,7 +146,7 @@ func (v *Quaternion) MulCAdd(c float32, v1 vecTypes.Vector) vecTypes.Vector {
 	for i := range v {
 		v[i] += other[i] * c
 	}
-	return v.view()
+	return v
 }
 
 func (v *Quaternion) MulCSub(c float32, v1 vecTypes.Vector) vecTypes.Vector {
@@ -158,7 +154,7 @@ func (v *Quaternion) MulCSub(c float32, v1 vecTypes.Vector) vecTypes.Vector {
 	for i := range v {
 		v[i] -= other[i] * c
 	}
-	return v.view()
+	return v
 }
 
 func (v *Quaternion) DivC(c float32) vecTypes.Vector {
@@ -168,7 +164,7 @@ func (v *Quaternion) DivC(c float32) vecTypes.Vector {
 	for i := range v {
 		v[i] /= c
 	}
-	return v.view()
+	return v
 }
 
 func (v *Quaternion) DivCAdd(c float32, v1 vecTypes.Vector) vecTypes.Vector {
@@ -179,7 +175,7 @@ func (v *Quaternion) DivCAdd(c float32, v1 vecTypes.Vector) vecTypes.Vector {
 	for i := range v {
 		v[i] += other[i] / c
 	}
-	return v.view()
+	return v
 }
 
 func (v *Quaternion) DivCSub(c float32, v1 vecTypes.Vector) vecTypes.Vector {
@@ -190,7 +186,7 @@ func (v *Quaternion) DivCSub(c float32, v1 vecTypes.Vector) vecTypes.Vector {
 	for i := range v {
 		v[i] -= other[i] / c
 	}
-	return v.view()
+	return v
 }
 
 func (v *Quaternion) Normal() vecTypes.Vector {
@@ -221,7 +217,7 @@ func (v *Quaternion) Conjugate() vecTypes.Vector {
 	v[0] = -v[0]
 	v[1] = -v[1]
 	v[2] = -v[2]
-	return v.view()
+	return v
 }
 
 func (v *Quaternion) Roll() float32 {
@@ -280,7 +276,7 @@ func (v *Quaternion) Slerp(v1 vecTypes.Vector, time, spin float32) vecTypes.Vect
 	v[1] = k1*v[1] + k2*other[1]
 	v[2] = k1*v[2] + k2*other[2]
 	v[3] = k1*v[3] + k2*other[3]
-	return v.view()
+	return v
 }
 
 func (v *Quaternion) SlerpLong(v1 vecTypes.Vector, time, spin float32) vecTypes.Vector {
@@ -310,7 +306,7 @@ func (v *Quaternion) SlerpLong(v1 vecTypes.Vector, time, spin float32) vecTypes.
 	v[1] = k1*v[1] + k2*other[1]
 	v[2] = k1*v[2] + k2*other[2]
 	v[3] = k1*v[3] + k2*other[3]
-	return v.view()
+	return v
 }
 
 func (v *Quaternion) Multiply(v1 vecTypes.Vector) vecTypes.Vector {
@@ -318,7 +314,7 @@ func (v *Quaternion) Multiply(v1 vecTypes.Vector) vecTypes.Vector {
 	for i := range v {
 		v[i] *= other[i]
 	}
-	return v.view()
+	return v
 }
 
 func (v *Quaternion) Dot(v1 vecTypes.Vector) float32 {
@@ -344,7 +340,7 @@ func (v *Quaternion) Reflect(n vecTypes.Vector) vecTypes.Vector {
 	for i := range v {
 		v[i] = -v[i] + d*nVec[i]
 	}
-	return v.view()
+	return v
 }
 
 func (v *Quaternion) Interpolate(v1 vecTypes.Vector, t float32) vecTypes.Vector {
@@ -352,7 +348,7 @@ func (v *Quaternion) Interpolate(v1 vecTypes.Vector, t float32) vecTypes.Vector 
 	for i := range v {
 		v[i] = v[i] + t*(other[i]-v[i])
 	}
-	return v.view()
+	return v
 }
 
 func (v *Quaternion) Sum() float32 {
