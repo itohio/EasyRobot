@@ -1,0 +1,120 @@
+# Makefile.tflite
+#
+# Usage:
+#   make -f Makefile.tflite all
+#   make -f Makefile.tflite install PREFIX=/usr/local
+#   make -f Makefile.tflite docker
+#   make -f Makefile.tflite buildkit
+#
+# Requirements:
+#   * curl
+#   * tar
+#   * bazel (or bazelisk) available on PATH (for native build)
+#   * docker (for docker target)
+#   * build-essential toolchain (gcc, g++, etc.)
+
+SHELL := /bin/bash
+
+# 2.2.0-rc3 does not exist
+# And lacks TfLiteInterpreterOptionsSetUseNNAPI
+TF_VERSION      := 2.6.0
+TF_ARCHIVE      := tensorflow-$(TF_VERSION).tar.gz
+TF_URL          := https://github.com/tensorflow/tensorflow/archive/refs/tags/v$(TF_VERSION).tar.gz
+WORK_DIR        := $(abspath .)/build
+DOWNLOAD_DIR    := $(WORK_DIR)/downloads
+SRC_DIR         := $(WORK_DIR)/src
+TF_SRC_DIR      := $(SRC_DIR)/tensorflow-$(TF_VERSION)
+BAZEL_BIN_DIR   := $(TF_SRC_DIR)/bazel-bin/tensorflow/lite/c
+OUTPUT_LIB      := $(WORK_DIR)/lib/libtensorflowlite_c.so
+OUTPUT_HDR_DIR  := $(WORK_DIR)/include/tensorflow/lite
+BUILDKIT_ARCHIVE := go-tflite-buildkit-20240529.tar.gz
+BUILDKIT_URL     := https://github.com/mattn/go-tflite/releases/download/v1.0.5/$(BUILDKIT_ARCHIVE)
+BUILDKIT_DIR     := $(WORK_DIR)/buildkit
+
+PREFIX ?= /usr/local
+DOCKER_IMAGE := tflite-builder-$(TF_VERSION)
+DOCKER_OUT_DIR := $(WORK_DIR)/docker
+
+build: $(OUTPUT_LIB) $(OUTPUT_HDR_DIR)/c_api.h
+
+$(DOWNLOAD_DIR)/$(TF_ARCHIVE):
+	@mkdir -p $(DOWNLOAD_DIR)
+	curl -L $(TF_URL) -o $@
+
+$(TF_SRC_DIR)/.extracted: $(DOWNLOAD_DIR)/$(TF_ARCHIVE)
+	@mkdir -p $(SRC_DIR)
+	tar -C $(SRC_DIR) -xzf $<
+	touch $@
+
+$(TF_SRC_DIR)/.configured: $(TF_SRC_DIR)/.extracted
+	# Ensure .bazelrc exists (GitHub releases omit dotfiles)
+	if [ ! -f $(TF_SRC_DIR)/.bazelrc ]; then \
+	  curl -L https://raw.githubusercontent.com/tensorflow/tensorflow/v$(TF_VERSION)/.bazelrc \
+	    -o $(TF_SRC_DIR)/.bazelrc; \
+	fi
+	# Generate .tf_configure.bazelrc by running configure non-interactively
+	cd $(TF_SRC_DIR) && \
+	  export PYTHON_BIN_PATH=$$(which python3) && \
+	  export USE_DEFAULT_PYTHON_LIB_PATH=1 && \
+	  export TF_ENABLE_XLA=0 && \
+	  export TF_NEED_ROCM=0 && \
+	  export TF_NEED_CUDA=0 && \
+	  export TF_DOWNLOAD_CLANG=0 && \
+	  export TF_SET_ANDROID_WORKSPACE=0 && \
+	  yes "" | ./configure
+	touch $@
+
+$(OUTPUT_LIB): $(TF_SRC_DIR)/.configured
+	# cd $(TF_SRC_DIR) && bazel build --config opt --config monolithic tensorflow:libtensorflow_cc.so
+	cd $(TF_SRC_DIR) && bazel build --config opt --config monolithic //tensorflow/lite:libtensorflowlite.so	
+	cd $(TF_SRC_DIR) && bazel build --config=opt --config monolithic //tensorflow/lite/c:tensorflowlite_c
+	@mkdir -p $(WORK_DIR)/lib
+	cp $(BAZEL_BIN_DIR)/libtensorflowlite_c.so $(OUTPUT_LIB)
+
+$(OUTPUT_HDR_DIR)/c_api.h: $(TF_SRC_DIR)/.configured
+	@mkdir -p $(OUTPUT_HDR_DIR)
+	@mkdir -p $(OUTPUT_HDR_DIR)/c
+	cp $(TF_SRC_DIR)/tensorflow/lite/c/*.h $(OUTPUT_HDR_DIR)/c/
+	cp $(TF_SRC_DIR)/tensorflow/lite/*.h $(OUTPUT_HDR_DIR)/
+
+install: build
+	install -d $(PREFIX)/lib
+	install -m 0755 $(OUTPUT_LIB) $(PREFIX)/lib/
+	install -d $(PREFIX)/include/tensorflow/lite/c
+	install -m 0644 $(OUTPUT_HDR_DIR)/*.h $(PREFIX)/include/tensorflow/lite/
+	install -m 0644 $(OUTPUT_HDR_DIR)/c/*.h $(PREFIX)/include/tensorflow/lite/c/
+	ldconfig || true
+
+$(DOWNLOAD_DIR)/$(BUILDKIT_ARCHIVE):
+	@mkdir -p $(DOWNLOAD_DIR)
+	curl -L $(BUILDKIT_URL) -o $@
+
+buildkit: $(DOWNLOAD_DIR)/$(BUILDKIT_ARCHIVE)
+	@mkdir -p $(BUILDKIT_DIR)
+	tar -xf $< -C $(BUILDKIT_DIR)
+	@mkdir -p $(OUTPUT_LIB_DIR)
+	@mkdir -p $(OUTPUT_HDR_DIR)
+	@mkdir -p $(OUTPUT_HDR_DIR)/c
+	cp $(BUILDKIT_DIR)/usr/local/lib/libtensorflowlite_c.so $(OUTPUT_LIB_DIR)/
+	cp $(BUILDKIT_DIR)/usr/local/include/tensorflow/lite/c/*.h $(OUTPUT_HDR_DIR)/c/
+	cp $(BUILDKIT_DIR)/usr/local/include/tensorflow/lite/*.h $(OUTPUT_HDR_DIR)/
+	@echo "Buildkit artifacts are available under $(BUILDKIT_DIR)/usr/local."
+	@echo "To install manually run:"
+	@echo "  sudo cp $(BUILDKIT_DIR)/usr/local/lib/libtensorflowlite_c.so /usr/local/lib/"
+	@echo "  sudo cp $(BUILDKIT_DIR)/usr/local/include/tensorflow/lite/c/*.h /usr/local/include/tensorflow/lite/c/"
+	@echo "  sudo ldconfig"
+
+docker:
+	docker build -f Dockerfile.tflite --build-arg TF_VERSION=$(TF_VERSION) -t $(DOCKER_IMAGE) .
+	@mkdir -p $(DOCKER_OUT_DIR)
+	docker run --rm -v $(DOCKER_OUT_DIR):/out $(DOCKER_IMAGE)
+	@mkdir -p $(OUTPUT_LIB_DIR)
+	@mkdir -p $(OUTPUT_HDR_DIR)
+	@mkdir -p $(OUTPUT_HDR_DIR)/c
+	cp $(DOCKER_OUT_DIR)/lib/libtensorflowlite_c.so $(OUTPUT_LIB_DIR)/
+	cp $(DOCKER_OUT_DIR)/include/tensorflow/lite/c/*.h $(OUTPUT_HDR_DIR)/
+
+clean:
+	rm -rf $(WORK_DIR)
+
+.PHONY: build install docker buildkit clean
