@@ -6,10 +6,10 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/itohio/EasyRobot/pkg/control/actuator"
+	"github.com/itohio/EasyRobot/pkg/control/actuator/servos"
+	"github.com/itohio/EasyRobot/pkg/control/kinematics"
 	"github.com/itohio/EasyRobot/pkg/core/math/vec"
-	"github.com/itohio/EasyRobot/pkg/robot/actuator"
-	"github.com/itohio/EasyRobot/pkg/robot/actuator/servos"
-	"github.com/itohio/EasyRobot/pkg/robot/kinematics"
 	"go.bug.st/serial.v1"
 )
 

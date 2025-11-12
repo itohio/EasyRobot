@@ -4,8 +4,8 @@
 package main
 
 import (
-	"github.com/itohio/EasyRobot/pkg/robot/kinematics"
-	"github.com/itohio/EasyRobot/pkg/robot/transport"
+	"github.com/itohio/EasyRobot/pkg/control/kinematics"
+	"github.com/itohio/EasyRobot/pkg/control/transport"
 )
 
 var (

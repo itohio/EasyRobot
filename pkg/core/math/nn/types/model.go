@@ -14,4 +14,14 @@ type Model interface {
 
 	// ZeroGrad zeros all parameter gradients.
 	ZeroGrad()
+
+	// LayerCount returns the number of layers in the model.
+	// For Sequential models, returns the number of layers.
+	// For individual layers, returns 1.
+	LayerCount() int
+
+	// GetLayer returns the layer at the specified index.
+	// For Sequential models, returns the layer at that index.
+	// For individual layers, returns the layer itself if index is 0.
+	GetLayer(index int) Layer
 }

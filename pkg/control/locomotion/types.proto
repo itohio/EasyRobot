@@ -1,0 +1,191 @@
+syntax = "proto3";
+package locomotion;
+
+// Differential drive configuration
+message DifferentialConfig {
+    float WheelRadius = 1;     // Wheel radius in meters
+    float BaseWidth = 2;       // Distance between wheels in meters
+    float MaxLinearVel = 3;    // Maximum linear velocity (m/s)
+    float MaxAngularVel = 4;   // Maximum angular velocity (rad/s)
+    uint32 EncoderCPR = 5;     // Encoder counts per revolution
+    float MaxAcceleration = 6; // Maximum linear acceleration (m/s²)
+    float MaxAngularAccel = 7; // Maximum angular acceleration (rad/s²)
+}
+
+// DH parameters for appendage configuration
+message DHParameter {
+    uint32 JointType = 1;      // 0=revolute, 3=prismatic
+    float Theta = 2;           // Joint angle (revolute) or offset (prismatic)
+    float Alpha = 3;           // Link twist angle
+    float R = 4;               // Link length
+    float D = 5;               // Link offset
+}
+
+// Joint constraints
+message JointConstraint {
+    float Min = 1;             // Minimum joint value
+    float Max = 2;             // Maximum joint value
+    float MaxVel = 3;          // Maximum joint velocity
+    float MaxAccel = 4;        // Maximum joint acceleration
+}
+
+// Workspace constraints
+message WorkspaceConstraint {
+    float MinX = 1;
+    float MaxX = 2;
+    float MinY = 3;
+    float MaxY = 4;
+    float MinZ = 5;
+    float MaxZ = 6;
+    float MaxReach = 7;        // Maximum reach from origin
+}
+
+// Appendage configuration (arm or leg)
+message AppendageConfig {
+    repeated DHParameter DHParams = 1;
+    repeated JointConstraint JointConstraints = 2;
+    WorkspaceConstraint Workspace = 3;
+    uint32 MaxIterations = 4;  // IK solver iterations
+    float Tolerance = 5;       // IK convergence tolerance
+}
+
+// Quadruped leg configuration
+message QuadrupedLegConfig {
+    AppendageConfig Kinematics = 1;
+    float OffsetX = 2;         // Leg offset from body center (X)
+    float OffsetY = 3;         // Leg offset from body center (Y)
+    float OffsetZ = 4;         // Leg offset from body center (Z)
+}
+
+// Quadruped configuration
+message QuadrupedConfig {
+    QuadrupedLegConfig FrontLeft = 1;
+    QuadrupedLegConfig FrontRight = 2;
+    QuadrupedLegConfig RearLeft = 3;
+    QuadrupedLegConfig RearRight = 4;
+    float BodyLength = 5;      // Body length
+    float BodyWidth = 6;       // Body width
+    float DefaultHeight = 7;   // Default body height
+    GaitConfig Gait = 8;
+    StabilizationConfig Stabilization = 9;
+}
+
+// Hexapod leg configuration
+message HexapodLegConfig {
+    AppendageConfig Kinematics = 1;
+    float OffsetX = 2;
+    float OffsetY = 3;
+    float OffsetZ = 4;
+    float AngleOffset = 5;     // Angular offset around body
+}
+
+// Hexapod configuration
+message HexapodConfig {
+    repeated HexapodLegConfig Legs = 1;  // 6 legs
+    float BodyLength = 2;
+    float BodyWidth = 3;
+    float DefaultHeight = 4;
+    GaitConfig Gait = 5;
+    StabilizationConfig Stabilization = 6;
+}
+
+// Robotic arm configuration
+message ArmConfig {
+    AppendageConfig Kinematics = 1;
+    float ToolOffsetX = 2;     // Tool center point offset
+    float ToolOffsetY = 3;
+    float ToolOffsetZ = 4;
+    WorkspaceConstraint Workspace = 5;
+    uint32 ControlMode = 6;    // 0=joint, 1=cartesian, 2=trajectory
+}
+
+// Gait configuration
+message GaitConfig {
+    uint32 Type = 1;           // Gait type enum
+    float Frequency = 2;       // Gait frequency (Hz)
+    float DutyFactor = 3;      // Duty factor (0-1)
+    float StepHeight = 4;      // Step height (m)
+    float StepLength = 5;      // Step length (m)
+    repeated float PhaseOffsets = 6;  // Phase offsets per leg
+}
+
+// Stabilization configuration
+message StabilizationConfig {
+    bool EnableCOMControl = 1;
+    float COMHeight = 2;
+    float MaxRollCorrection = 3;
+    float MaxPitchCorrection = 4;
+    float StabilityThreshold = 5;
+    float CorrectionGain = 6;
+}
+
+// Trajectory waypoint
+message TrajectoryWaypoint {
+    repeated float Position = 1;     // Target position/orientation
+    repeated float Velocity = 2;     // Target velocity
+    repeated float Acceleration = 3; // Target acceleration
+    uint64 TimestampMs = 4;          // Timestamp in milliseconds
+}
+
+// Trajectory configuration
+message TrajectoryConfig {
+    repeated TrajectoryWaypoint Waypoints = 1;
+    uint32 Mode = 2;           // Interpolation mode
+    bool Loop = 3;             // Loop trajectory
+}
+
+// Locomotion configuration union
+message Config {
+    oneof Type {
+        DifferentialConfig Differential = 1;
+        QuadrupedConfig Quadruped = 2;
+        HexapodConfig Hexapod = 3;
+        ArmConfig Arm = 4;
+        TrajectoryConfig Trajectory = 5;
+    }
+}
+
+// Sensor data for locomotion
+message SensorData {
+    repeated int32 EncoderTicks = 1;    // Wheel encoder readings
+    repeated float JointAngles = 2;     // Joint angles (radians)
+    IMUData IMU = 3;
+    repeated bool TouchSensors = 4;     // Contact sensors
+    repeated float ForceSensors = 5;    // Force/torque readings
+}
+
+// IMU sensor data
+message IMUData {
+    repeated float Acceleration = 1;    // [ax, ay, az] (m/s²)
+    repeated float AngularVel = 2;      // [ωx, ωy, ωz] (rad/s)
+    repeated float MagneticField = 3;   // [mx, my, mz] (µT)
+    float Temperature = 4;              // Temperature (°C)
+}
+
+// Locomotion target
+message Target {
+    repeated float LinearVelocity = 1;  // [vx, vy, vz] (m/s)
+    repeated float AngularVelocity = 2; // [ωx, ωy, ωz] (rad/s)
+    repeated float Position = 3;        // [x, y, z] (m)
+    repeated float Orientation = 4;     // Quaternion [w, x, y, z]
+    BodyPose BodyPose = 5;
+}
+
+// Body pose for legged robots
+message BodyPose {
+    float Height = 1;  // Body height (m)
+    float Roll = 2;    // Roll angle (rad)
+    float Pitch = 3;   // Pitch angle (rad)
+    float Yaw = 4;     // Yaw angle (rad)
+}
+
+// Locomotion state
+message State {
+    repeated float Position = 1;        // [x, y, z] (m)
+    repeated float Orientation = 2;     // Quaternion [w, x, y, z]
+    repeated float Velocity = 3;        // [vx, vy, vz] (m/s)
+    repeated float JointAngles = 4;     // Joint angles (radians)
+    repeated bool ContactState = 5;     // Contact states
+    float Stability = 6;                // Stability metric (0-1)
+    string Error = 7;                   // Error message
+}

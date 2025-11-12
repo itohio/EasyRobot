@@ -18,4 +18,5 @@
 *.png
 *.jpg
 *.jpeg
-temporary_for_reference_only
+temporary_for_reference_only/
+tmp/

@@ -11,8 +11,7 @@ require (
 	github.com/rs/zerolog v1.23.0
 	github.com/stretchr/testify v1.11.1
 	go.bug.st/serial.v1 v0.0.0-20191202182710-24a6610f0541
-	gocv.io/x/gocv v0.27.0
-	gonum.org/v1/hdf5 v0.0.0-20210714002203-8c5d23bc6946
+	gocv.io/x/gocv v0.42.0
 	google.golang.org/protobuf v1.36.10
 	gopkg.in/yaml.v3 v3.0.1
 	gorgonia.org/gorgonia v0.9.18
