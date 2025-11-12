@@ -17,7 +17,7 @@ type Matrix [][]float32
 var _ matTypes.Matrix = Matrix(nil)
 
 type vectorView interface {
-	Vector() vec.Vector
+	Vector() vecTypes.Vector
 }
 
 func ensureMatrix(arg matTypes.Matrix, op string) Matrix {
@@ -43,14 +43,28 @@ func ensureVector(arg vecTypes.Vector, op string) vec.Vector {
 		return concrete
 	}
 	if view, ok := arg.(vectorView); ok {
-		return view.Vector()
+		provided := view.Vector()
+		if provided == nil {
+			panic(fmt.Sprintf("mat.Matrix.%s: vector provider returned nil", op))
+		}
+		if concrete, ok := provided.(vec.Vector); ok {
+			return concrete
+		}
+		return ensureVector(provided, op)
 	}
 	if clone := arg.Clone(); clone != nil {
 		if concrete, ok := clone.(vec.Vector); ok {
 			return concrete
 		}
 		if view, ok := clone.(vectorView); ok {
-			return view.Vector()
+			provided := view.Vector()
+			if provided == nil {
+				panic(fmt.Sprintf("mat.Matrix.%s: cloned vector provider returned nil", op))
+			}
+			if concrete, ok := provided.(vec.Vector); ok {
+				return concrete
+			}
+			return ensureVector(provided, op)
 		}
 	}
 	panic(fmt.Sprintf("mat.Matrix.%s: unsupported vector type %T", op, arg))
@@ -64,6 +78,15 @@ func ensureQuaternion(arg vecTypes.Quaternion, op string) *vec.Quaternion {
 		return concrete
 	}
 	panic(fmt.Sprintf("mat.Matrix.%s: unsupported quaternion type %T", op, arg))
+}
+
+func cloneFlat(flat []float32) []float32 {
+	if flat == nil {
+		return nil
+	}
+	dup := make([]float32, len(flat))
+	copy(dup, flat)
+	return dup
 }
 
 // New creates a new matrix. Matrix is backed by a flat array. If backing is provided, it must be of length rows*cols, otherwise new backing array is created.

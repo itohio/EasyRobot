@@ -116,11 +116,11 @@ func TestMatrix2x2_Inverse(t *testing.T) {
 			},
 			wantErr: false,
 			verify: func(m, inv *Matrix2x2, t *testing.T) {
-				var product Matrix2x2
-				product.Mul(*m, *inv)
-				var identity Matrix2x2
+				product := &Matrix2x2{}
+				product.Mul(m, inv)
+				identity := &Matrix2x2{}
 				identity.Eye()
-				assert.True(t, matrices2x2Equal(&product, &identity, 1e-5), "M * M^-1 should equal identity")
+				assert.True(t, matrices2x2Equal(product, identity, 1e-5), "M * M^-1 should equal identity")
 			},
 		},
 		{
@@ -133,11 +133,11 @@ func TestMatrix2x2_Inverse(t *testing.T) {
 			},
 			wantErr: false,
 			verify: func(m, inv *Matrix2x2, t *testing.T) {
-				var product Matrix2x2
-				product.Mul(*m, *inv)
-				var identity Matrix2x2
+				product := &Matrix2x2{}
+				product.Mul(m, inv)
+				identity := &Matrix2x2{}
 				identity.Eye()
-				assert.True(t, matrices2x2Equal(&product, &identity, 1e-5), "M * M^-1 should equal identity")
+				assert.True(t, matrices2x2Equal(product, identity, 1e-5), "M * M^-1 should equal identity")
 			},
 		},
 		{
@@ -186,11 +186,11 @@ func TestMatrix3x3_Inverse(t *testing.T) {
 			},
 			wantErr: false,
 			verify: func(m, inv *Matrix3x3, t *testing.T) {
-				var product Matrix3x3
-				product.Mul(*m, *inv)
-				var identity Matrix3x3
+				product := &Matrix3x3{}
+				product.Mul(m, inv)
+				identity := &Matrix3x3{}
 				identity.Eye()
-				assert.True(t, matrices3x3Equal(&product, &identity, 1e-5), "M * M^-1 should equal identity")
+				assert.True(t, matrices3x3Equal(product, identity, 1e-5), "M * M^-1 should equal identity")
 			},
 		},
 		{
@@ -202,11 +202,11 @@ func TestMatrix3x3_Inverse(t *testing.T) {
 			},
 			wantErr: false,
 			verify: func(m, inv *Matrix3x3, t *testing.T) {
-				var product Matrix3x3
-				product.Mul(*m, *inv)
-				var identity Matrix3x3
+				product := &Matrix3x3{}
+				product.Mul(m, inv)
+				identity := &Matrix3x3{}
 				identity.Eye()
-				assert.True(t, matrices3x3Equal(&product, &identity, 1e-5), "M * M^-1 should equal identity")
+				assert.True(t, matrices3x3Equal(product, identity, 1e-5), "M * M^-1 should equal identity")
 			},
 		},
 	}
@@ -246,11 +246,11 @@ func TestMatrix4x4_Inverse(t *testing.T) {
 			},
 			wantErr: false,
 			verify: func(m, inv *Matrix4x4, t *testing.T) {
-				var product Matrix4x4
-				product.Mul(*m, *inv)
-				var identity Matrix4x4
+				product := &Matrix4x4{}
+				product.Mul(m, inv)
+				identity := &Matrix4x4{}
 				identity.Eye()
-				assert.True(t, matrices4x4Equal(&product, &identity, 1e-5), "M * M^-1 should equal identity")
+				assert.True(t, matrices4x4Equal(product, identity, 1e-5), "M * M^-1 should equal identity")
 			},
 		},
 	}

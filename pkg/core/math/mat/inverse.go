@@ -56,52 +56,58 @@ func (m Matrix) Inverse(dst matTypes.Matrix) error {
 }
 
 // Inverse calculates the inverse of a Matrix2x2 using direct formula.
-func (m *Matrix2x2) Inverse(dst *Matrix2x2) error {
+func (m *Matrix2x2) Inverse(dst matTypes.Matrix) error {
 	det := m.Det()
 	if math32.Abs(det) < SingularityTolerance {
 		return ErrSingular
 	}
 
+	out := ensureMatrix(dst, "Matrix2x2.Inverse.dst")
+
 	invDet := 1.0 / det
-	dst[0][0] = m[1][1] * invDet
-	dst[0][1] = -m[0][1] * invDet
-	dst[1][0] = -m[1][0] * invDet
-	dst[1][1] = m[0][0] * invDet
+	out[0][0] = m[1][1] * invDet
+	out[0][1] = -m[0][1] * invDet
+	out[1][0] = -m[1][0] * invDet
+	out[1][1] = m[0][0] * invDet
 
 	return nil
 }
 
 // Inverse calculates the inverse of a Matrix3x3 using direct formula.
-func (m *Matrix3x3) Inverse(dst *Matrix3x3) error {
+func (m *Matrix3x3) Inverse(dst matTypes.Matrix) error {
 	det := m.Det()
 	if math32.Abs(det) < SingularityTolerance {
 		return ErrSingular
 	}
 
+	out := ensureMatrix(dst, "Matrix3x3.Inverse.dst")
+
 	invDet := 1.0 / det
 
 	// Cofactor matrix (adjugate transpose)
-	dst[0][0] = (m[1][1]*m[2][2] - m[1][2]*m[2][1]) * invDet
-	dst[0][1] = (m[0][2]*m[2][1] - m[0][1]*m[2][2]) * invDet
-	dst[0][2] = (m[0][1]*m[1][2] - m[0][2]*m[1][1]) * invDet
+	out[0][0] = (m[1][1]*m[2][2] - m[1][2]*m[2][1]) * invDet
+	out[0][1] = (m[0][2]*m[2][1] - m[0][1]*m[2][2]) * invDet
+	out[0][2] = (m[0][1]*m[1][2] - m[0][2]*m[1][1]) * invDet
 
-	dst[1][0] = (m[1][2]*m[2][0] - m[1][0]*m[2][2]) * invDet
-	dst[1][1] = (m[0][0]*m[2][2] - m[0][2]*m[2][0]) * invDet
-	dst[1][2] = (m[0][2]*m[1][0] - m[0][0]*m[1][2]) * invDet
+	out[1][0] = (m[1][2]*m[2][0] - m[1][0]*m[2][2]) * invDet
+	out[1][1] = (m[0][0]*m[2][2] - m[0][2]*m[2][0]) * invDet
+	out[1][2] = (m[0][2]*m[1][0] - m[0][0]*m[1][2]) * invDet
 
-	dst[2][0] = (m[1][0]*m[2][1] - m[1][1]*m[2][0]) * invDet
-	dst[2][1] = (m[0][1]*m[2][0] - m[0][0]*m[2][1]) * invDet
-	dst[2][2] = (m[0][0]*m[1][1] - m[0][1]*m[1][0]) * invDet
+	out[2][0] = (m[1][0]*m[2][1] - m[1][1]*m[2][0]) * invDet
+	out[2][1] = (m[0][1]*m[2][0] - m[0][0]*m[2][1]) * invDet
+	out[2][2] = (m[0][0]*m[1][1] - m[0][1]*m[1][0]) * invDet
 
 	return nil
 }
 
 // Inverse calculates the inverse of a Matrix4x4 using LU decomposition.
-func (m *Matrix4x4) Inverse(dst *Matrix4x4) error {
+func (m *Matrix4x4) Inverse(dst matTypes.Matrix) error {
 	det := m.Det()
 	if math32.Abs(det) < SingularityTolerance {
 		return ErrSingular
 	}
+
+	out := ensureMatrix(dst, "Matrix4x4.Inverse.dst")
 
 	// LU decomposition
 	var L, U Matrix4x4
@@ -128,9 +134,9 @@ func (m *Matrix4x4) Inverse(dst *Matrix4x4) error {
 		for row := 3; row >= 0; row-- {
 			sum := Y[row][col]
 			for k := row + 1; k < 4; k++ {
-				sum -= U[row][k] * dst[k][col]
+				sum -= U[row][k] * out[k][col]
 			}
-			dst[row][col] = sum / U[row][row]
+			out[row][col] = sum / U[row][row]
 		}
 	}
 

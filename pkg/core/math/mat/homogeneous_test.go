@@ -83,7 +83,7 @@ func TestMatrix4x4_HomogenousInverse(t *testing.T) {
 			verify: func(m, inv *Matrix4x4, t *testing.T) {
 				// M * M^-1 should be identity
 				product := &Matrix4x4{}
-				product.Mul(*m, *inv)
+				product.Mul(m, inv)
 				identity := &Matrix4x4{}
 				identity.Eye()
 				assert.True(t, matrices4x4Equal(product, identity, 1e-4), "HomogenousInverse: M * M^-1 should be identity")
@@ -102,7 +102,7 @@ func TestMatrix4x4_HomogenousInverse(t *testing.T) {
 			verify: func(m, inv *Matrix4x4, t *testing.T) {
 				// M * M^-1 should be identity
 				product := &Matrix4x4{}
-				product.Mul(*m, *inv)
+				product.Mul(m, inv)
 				identity := &Matrix4x4{}
 				identity.Eye()
 				assert.True(t, matrices4x4Equal(product, identity, 1e-4), "HomogenousInverse: M * M^-1 should be identity")

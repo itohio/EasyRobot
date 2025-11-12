@@ -28,28 +28,28 @@ func BenchmarkCloneMatrix4(b *testing.B) {
 }
 
 func BenchmarkCloneMatrix2x2(b *testing.B) {
-	v := Matrix2x2{}
+	v := &Matrix2x2{}
 	for i := 0; i < b.N; i++ {
 		_ = v.Clone()
 	}
 }
 
 func BenchmarkCloneMatrix3x3(b *testing.B) {
-	v := Matrix3x3{}
+	v := &Matrix3x3{}
 	for i := 0; i < b.N; i++ {
 		_ = v.Clone()
 	}
 }
 
 func BenchmarkCloneMatrix4x4(b *testing.B) {
-	v := Matrix4x4{}
+	v := &Matrix4x4{}
 	for i := 0; i < b.N; i++ {
 		_ = v.Clone()
 	}
 }
 
 func BenchmarkMatrixMatrix4x4(b *testing.B) {
-	v := Matrix4x4{}
+	v := &Matrix4x4{}
 	for i := 0; i < b.N; i++ {
 		_ = v.Matrix()
 	}
@@ -67,9 +67,9 @@ func BenchmarkMul4(b *testing.B) {
 }
 
 func BenchmarkMul4x4(b *testing.B) {
-	va := Matrix4x4{}
-	vb := Matrix4x4{}
-	dst := Matrix4x4{}
+	va := &Matrix4x4{}
+	vb := &Matrix4x4{}
+	dst := &Matrix4x4{}
 	va.Eye()
 	vb.Eye()
 	for i := 0; i < b.N; i++ {
@@ -88,11 +88,11 @@ func BenchmarkMulV(b *testing.B) {
 }
 
 func BenchmarkMulV4x4(b *testing.B) {
-	va := Matrix4x4{}
-	vb := vec.Vector4D{}
-	dst := vec.Vector4D{}
+	va := &Matrix4x4{}
+	vb := vec.New(4)
+	dst := vec.New(4)
 	va.Eye()
 	for i := 0; i < b.N; i++ {
-		_ = va.MulVec(vb, dst.Vector())
+		_ = va.MulVec(vb, dst)
 	}
 }

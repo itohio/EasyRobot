@@ -4,10 +4,27 @@ package mat
 
 import (
 	"github.com/chewxy/math32"
+	matTypes "github.com/itohio/EasyRobot/pkg/core/math/mat/types"
 	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	vecTypes "github.com/itohio/EasyRobot/pkg/core/math/vec/types"
 )
 
 type Matrix4x3 [4][3]float32
+
+var _ matTypes.Matrix = (*Matrix4x3)(nil)
+
+func (m *Matrix4x3) view() Matrix {
+	return Matrix{
+		m[0][:],
+		m[1][:],
+		m[2][:],
+		m[3][:],
+	}
+}
+
+func (m *Matrix4x3) IsContiguous() bool {
+	return true
+}
 
 func New4x3(arr ...float32) Matrix4x3 {
 	m := Matrix4x3{}
@@ -20,28 +37,20 @@ func New4x3(arr ...float32) Matrix4x3 {
 }
 
 // Returns a flat representation of this matrix.
-func (m *Matrix4x3) Flat(v vec.Vector) vec.Vector {
-	N := len(m[0])
-	for i, row := range m {
-		copy(v[i*N:i*N+N], row[:])
-	}
-	return v
+func (m *Matrix4x3) Flat() []float32 {
+	return cloneFlat(m.view().Flat())
 }
 
 // Returns a Matrix view of this matrix.
 // The view actually contains slices of original matrix rows.
 // This way original matrix can be modified.
-func (m *Matrix4x3) Matrix() Matrix {
-	m1 := make(Matrix, len(m))
-	for i := range m {
-		m1[i] = m[i][:]
-	}
-	return m1
+func (m *Matrix4x3) Matrix() matTypes.Matrix {
+	return m.view()
 }
 
 // Fills destination matrix with a rotation around X axis
 // Matrix size must be at least 3x3
-func (m *Matrix4x3) RotationX(a float32) *Matrix4x3 {
+func (m *Matrix4x3) RotationX(a float32) matTypes.Matrix {
 	c := math32.Cos(a)
 	s := math32.Sin(a)
 	return m.SetSubmatrixRaw(0, 0, 3, 3,
@@ -53,7 +62,7 @@ func (m *Matrix4x3) RotationX(a float32) *Matrix4x3 {
 
 // Fills destination matrix with a rotation around Y axis
 // Matrix size must be at least 3x3
-func (m *Matrix4x3) RotationY(a float32) *Matrix4x3 {
+func (m *Matrix4x3) RotationY(a float32) matTypes.Matrix {
 	c := math32.Cos(a)
 	s := math32.Sin(a)
 	return m.SetSubmatrixRaw(0, 0, 3, 3,
@@ -65,7 +74,7 @@ func (m *Matrix4x3) RotationY(a float32) *Matrix4x3 {
 
 // Fills destination matrix with a rotation around Z axis
 // Matrix size must be at least 3x3
-func (m *Matrix4x3) RotationZ(a float32) *Matrix4x3 {
+func (m *Matrix4x3) RotationZ(a float32) matTypes.Matrix {
 	c := math32.Cos(a)
 	s := math32.Sin(a)
 	return m.SetSubmatrixRaw(0, 0, 3, 3,
@@ -75,202 +84,187 @@ func (m *Matrix4x3) RotationZ(a float32) *Matrix4x3 {
 	)
 }
 
-// Build orientation matrix from quaternion
-// Matrix size must be at least 3x3
-// Quaternion axis must be unit vector
-func (m *Matrix4x3) Orientation(q vec.Quaternion) *Matrix4x3 {
-	theta := q.Theta() / 2
-
-	qr := math32.Cos(theta)
-	s := math32.Sin(theta)
-	qi := q[0] * s
-	qj := q[1] * s
-	qk := q[2] * s
-
-	// calculate quaternion rotation matrix
-	qjqj := qj * qj
-	qiqi := qi * qi
-	qkqk := qk * qk
-	qiqj := qi * qj
-	qjqr := qj * qr
-	qiqk := qi * qk
-	qiqr := qi * qr
-	qkqr := qk * qr
-	qjqk := qj * qk
-	return m.SetSubmatrixRaw(0, 0, 3, 3,
-		1.0-2.0*(qjqj+qkqk),
-		2.0*(qiqj+qkqr),
-		2.0*(qiqk+qjqr),
-		2.0*(qiqj+qkqr),
-		1.0-2.0*(qiqi+qkqk),
-		2.0*(qjqk+qiqr),
-		2.0*(qiqk+qjqr),
-		2.0*(qjqk+qiqr),
-		1.0-2.0*(qiqi+qjqj),
-	)
-}
-
-// Returns a slice to the row.
-func (m *Matrix4x3) Row(row int) vec.Vector {
-	return m[row][:]
-}
-
-// Returns a copy of the matrix column.
-func (m *Matrix4x3) Col(col int, v vec.Vector) vec.Vector {
-	for i, row := range m {
-		v[i] = row[col]
-	}
-	return v
-}
-
-func (m *Matrix4x3) SetRow(row int, v vec.Vector) *Matrix4x3 {
-	copy(m[row][:], v[:])
+func (m *Matrix4x3) Rotation2D(a float32) matTypes.Matrix {
+	m.view().Rotation2D(a)
 	return m
 }
 
-func (m *Matrix4x3) SetCol(col int, v vec.Vector) *Matrix4x3 {
-	for i, v := range v {
-		m[i][col] = v
-	}
-	return m
-}
-
-func (m *Matrix4x3) Submatrix(row, col int, m1 Matrix) Matrix {
-	cols := len(m1[0])
-	for i, m1row := range m1 {
-		copy(m1row, m[row+i][col : cols+col][:])
-	}
-	return m1
-}
-
-func (m *Matrix4x3) SetSubmatrix(row, col int, m1 Matrix) *Matrix4x3 {
-	for i := range m[row : row+len(m1)] {
-		copy(m[row+i][col : col+len(m1[i])][:], m1[i][:])
-	}
-	return m
-}
-
-func (m *Matrix4x3) SetSubmatrixRaw(row, col, rows1, cols1 int, m1 ...float32) *Matrix4x3 {
-	for i := 0; i < rows1; i++ {
-		copy(m[row+i][col : col+cols1][:], m1[i*cols1:i*cols1+cols1])
-	}
-	return m
-}
-
-func (m *Matrix4x3) Clone() *Matrix4x3 {
-
-	m1 := &Matrix4x3{}
-
-	for i, row := range m {
-		copy(m1[i][:], row[:])
-	}
-	return m1
-}
-
-// Transposes matrix m1 and stores the result in the destination matrix
-// destination matrix must be of appropriate size.
-// NOTE: Does not support in place transpose
-func (m *Matrix4x3) Transpose(m1 Matrix3x4) *Matrix4x3 {
-	for i, row := range m1 {
-		for j, val := range row {
-			m[j][i] = val
+func (m *Matrix4x3) Eye() matTypes.Matrix {
+	for i := range m {
+		row := m[i][:]
+		for j := range row {
+			row[j] = 0
+		}
+		if i < len(row) {
+			row[i] = 1
 		}
 	}
 	return m
 }
 
-func (m *Matrix4x3) Add(m1 Matrix4x3) *Matrix4x3 {
-	for i := range m {
-		vec.Vector(m[i][:]).Add(vec.Vector(m1[i][:]))
-	}
+// Build orientation matrix from quaternion
+// Matrix size must be at least 3x3
+// Quaternion axis must be unit vector
+func (m *Matrix4x3) Orientation(q vecTypes.Quaternion) matTypes.Matrix {
+	m.view().Orientation(q)
 	return m
 }
 
-func (m *Matrix4x3) Sub(m1 Matrix4x3) *Matrix4x3 {
-	for i := range m {
-		vec.Vector(m[i][:]).Sub(vec.Vector(m1[i][:]))
-	}
+// Returns a slice to the row.
+func (m *Matrix4x3) Row(row int) vecTypes.Vector {
+	return vec.Vector(m[row][:])
+}
+
+// Returns a copy of the matrix column.
+func (m *Matrix4x3) Col(col int, v vecTypes.Vector) vecTypes.Vector {
+	return m.view().Col(col, v)
+}
+
+func (m *Matrix4x3) SetRow(row int, v vecTypes.Vector) matTypes.Matrix {
+	m.view().SetRow(row, v)
 	return m
 }
 
-func (m *Matrix4x3) MulC(c float32) *Matrix4x3 {
-	for i := range m {
-		vec.Vector(m[i][:]).MulC(c)
-	}
+func (m *Matrix4x3) SetCol(col int, v vecTypes.Vector) matTypes.Matrix {
+	m.view().SetCol(col, v)
 	return m
 }
 
-func (m *Matrix4x3) DivC(c float32) *Matrix4x3 {
-	for i := range m {
-		vec.Vector(m[i][:]).DivC(c)
+func (m *Matrix4x3) SetColFromRow(col int, rowStart int, v vecTypes.Vector) matTypes.Matrix {
+	m.view().SetColFromRow(col, rowStart, v)
+	return m
+}
+
+func (m *Matrix4x3) Submatrix(row, col int, m1 matTypes.Matrix) matTypes.Matrix {
+	return m.view().Submatrix(row, col, m1)
+}
+
+func (m *Matrix4x3) SetSubmatrix(row, col int, m1 matTypes.Matrix) matTypes.Matrix {
+	m.view().SetSubmatrix(row, col, m1)
+	return m
+}
+
+func (m *Matrix4x3) SetSubmatrixRaw(row, col, rows1, cols1 int, m1 ...float32) matTypes.Matrix {
+	m.view().SetSubmatrixRaw(row, col, rows1, cols1, m1...)
+	return m
+}
+
+func (m *Matrix4x3) Clone() matTypes.Matrix {
+	clone := &Matrix4x3{}
+	for i, row := range m {
+		copy(clone[i][:], row[:])
 	}
+	return clone
+}
+
+// Transposes matrix m1 and stores the result in the destination matrix
+// destination matrix must be of appropriate size.
+// NOTE: Does not support in place transpose
+func (m *Matrix4x3) Transpose(m1 matTypes.Matrix) matTypes.Matrix {
+	m.view().Transpose(m1)
+	return m
+}
+
+func (m *Matrix4x3) Add(m1 matTypes.Matrix) matTypes.Matrix {
+	m.view().Add(m1)
+	return m
+}
+
+func (m *Matrix4x3) Sub(m1 matTypes.Matrix) matTypes.Matrix {
+	m.view().Sub(m1)
+	return m
+}
+
+func (m *Matrix4x3) MulC(c float32) matTypes.Matrix {
+	m.view().MulC(c)
+	return m
+}
+
+func (m *Matrix4x3) DivC(c float32) matTypes.Matrix {
+	m.view().DivC(c)
 	return m
 }
 
 // Destination matrix must be properly sized.
 // given that a is MxN and b is NxK
 // then destinatiom matrix must be MxK
-func (m *Matrix4x3) Mul(a Matrix, b Matrix3x4) *Matrix4x3 {
-	for i, row := range a {
-		mrow := m[i][:]
-		for j := range mrow {
-			var sum float32
-			for k, brow := range b {
-				sum += row[k] * brow[j]
-			}
-			mrow[j] = sum
-		}
-	}
+func (m *Matrix4x3) Mul(a matTypes.Matrix, b matTypes.Matrix) matTypes.Matrix {
+	m.view().Mul(a, b)
+	return m
+}
+
+func (m *Matrix4x3) MulDiag(a matTypes.Matrix, b vecTypes.Vector) matTypes.Matrix {
+	m.view().MulDiag(a, b)
 	return m
 }
 
 // Vector must have a size equal to number of cols.
 // Destination vector must have a size equal to number of rows.
-func (m *Matrix4x3) MulVec(v vec.Vector3D, dst vec.Vector) vec.Vector {
-	for i, row := range m {
-		var sum float32
-		for j, val := range row {
-			sum += v[j] * val
-		}
-		dst[i] = sum
-	}
-	return dst
+func (m *Matrix4x3) MulVec(v vecTypes.Vector, dst vecTypes.Vector) vecTypes.Vector {
+	return m.view().MulVec(v, dst)
 }
 
 // Vector must have a size equal to number of rows.
 // Destination vector must have a size equal to number of cols.
-func (m *Matrix4x3) MulVecT(v vec.Vector4D, dst vec.Vector) vec.Vector {
-	for i := range m[0] {
-		var sum float32
-		for j, val := range m {
-			sum += v[j] * val[i]
-		}
-		dst[i] = sum
-	}
-	return dst
+func (m *Matrix4x3) MulVecT(v vecTypes.Vector, dst vecTypes.Vector) vecTypes.Vector {
+	return m.view().MulVecT(v, dst)
 }
 
 // / https://math.stackexchange.com/questions/893984/conversion-of-rotation-matrix-to-quaternion
 // / Must be at least 3x3 matrix
-func (m *Matrix4x3) Quaternion() (q *vec.Quaternion) {
-	var t float32
-	if m[2][2] < 0 {
-		if m[0][0] > m[1][1] {
-			t = 1 + m[0][0] - m[1][1] - m[2][2]
-			q = &vec.Quaternion{t, m[0][1] + m[1][0], m[2][0] + m[0][2], m[1][2] - m[2][1]}
-		} else {
-			t = 1 - m[0][0] + m[1][1] - m[2][2]
-			q = &vec.Quaternion{m[0][1] + m[1][0], t, m[1][2] + m[2][1], m[2][0] - m[0][2]}
-		}
-	} else {
-		if m[0][0] < -m[1][1] {
-			t = 1 - m[0][0] - m[1][1] + m[2][2]
-			q = &vec.Quaternion{m[2][0] + m[0][2], m[1][2] + m[2][1], t, m[0][1] - m[1][0]}
-		} else {
-			t = 1 + m[0][0] + m[1][1] + m[2][2]
-			q = &vec.Quaternion{m[1][2] - m[2][1], m[2][0] - m[0][2], m[0][1] - m[1][0], t}
-		}
-	}
-	q.Vector().MulC(0.5 / math32.Sqrt(t))
-	return
+func (m *Matrix4x3) Quaternion() vecTypes.Quaternion {
+	return m.view().Quaternion()
+}
+
+func (m *Matrix4x3) Cholesky(dst matTypes.Matrix) error {
+	return m.view().Cholesky(dst)
+}
+
+func (m *Matrix4x3) CholeskySolve(b vecTypes.Vector, dst vecTypes.Vector) error {
+	return m.view().CholeskySolve(b, dst)
+}
+
+func (m *Matrix4x3) QRDecompose(dst *matTypes.QRResult) error {
+	return m.view().QRDecompose(dst)
+}
+
+func (m *Matrix4x3) QR(dst *matTypes.QRResult) error {
+	return m.view().QR(dst)
+}
+
+func (m *Matrix4x3) Inverse(dst matTypes.Matrix) error {
+	return m.view().Inverse(dst)
+}
+
+func (m *Matrix4x3) PseudoInverse(dst matTypes.Matrix) error {
+	return m.view().PseudoInverse(dst)
+}
+
+func (m *Matrix4x3) DampedLeastSquares(lambda float32, dst matTypes.Matrix) error {
+	return m.view().DampedLeastSquares(lambda, dst)
+}
+
+func (m *Matrix4x3) SVD(dst *matTypes.SVDResult) error {
+	return m.view().SVD(dst)
+}
+
+func (m *Matrix4x3) Det() float32 {
+	return m.view().Det()
+}
+
+func (m *Matrix4x3) GetCol(col int, dst vecTypes.Vector) vecTypes.Vector {
+	return m.view().GetCol(col, dst)
+}
+
+func (m *Matrix4x3) Diagonal(dst vecTypes.Vector) vecTypes.Vector {
+	return m.view().Diagonal(dst)
+}
+
+func (m *Matrix4x3) SetDiagonal(v vecTypes.Vector) matTypes.Matrix {
+	m.view().SetDiagonal(v)
+	return m
+}
+
+func (m *Matrix4x3) LU(L, U matTypes.Matrix) {
+	m.view().LU(L, U)
 }

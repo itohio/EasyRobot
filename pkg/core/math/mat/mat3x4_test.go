@@ -34,27 +34,20 @@ func TestNew3x4(t *testing.T) {
 }
 
 func TestMatrix3x4_Flat(t *testing.T) {
-	type args struct {
-		v vec.Vector
-	}
 	tests := []struct {
 		name    string
 		init    func(t *testing.T) *Matrix3x4
 		inspect func(r *Matrix3x4, t *testing.T) //inspects receiver after test run
 
-		args func(t *testing.T) args
-
-		want1 vec.Vector
+		want1 []float32
 	}{
 		//TODO: Add test cases
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tArgs := tt.args(t)
-
 			receiver := tt.init(t)
-			got1 := receiver.Flat(tArgs.v)
+			got1 := receiver.Flat()
 
 			if tt.inspect != nil {
 				tt.inspect(receiver, t)
@@ -217,7 +210,7 @@ func TestMatrix3x4_Orientation(t *testing.T) {
 			tArgs := tt.args(t)
 
 			receiver := tt.init(t)
-			got1 := receiver.Orientation(tArgs.q)
+			got1 := receiver.Orientation(&tArgs.q)
 
 			if tt.inspect != nil {
 				tt.inspect(receiver, t)
@@ -392,7 +385,7 @@ func TestMatrix3x4_Submatrix(t *testing.T) {
 			tArgs := tt.args(t)
 
 			receiver := tt.init(t)
-			got1 := receiver.Submatrix(tArgs.row, tArgs.col, tArgs.m1)
+			got1 := receiver.Submatrix(tArgs.row, tArgs.col, &tArgs.m1)
 
 			if tt.inspect != nil {
 				tt.inspect(receiver, t)
@@ -428,7 +421,7 @@ func TestMatrix3x4_SetSubmatrix(t *testing.T) {
 			tArgs := tt.args(t)
 
 			receiver := tt.init(t)
-			got1 := receiver.SetSubmatrix(tArgs.row, tArgs.col, tArgs.m1)
+			got1 := receiver.SetSubmatrix(tArgs.row, tArgs.col, &tArgs.m1)
 
 			if tt.inspect != nil {
 				tt.inspect(receiver, t)
@@ -527,7 +520,7 @@ func TestMatrix3x4_Transpose(t *testing.T) {
 			tArgs := tt.args(t)
 
 			receiver := tt.init(t)
-			got1 := receiver.Transpose(tArgs.m1)
+			got1 := receiver.Transpose(&tArgs.m1)
 
 			if tt.inspect != nil {
 				tt.inspect(receiver, t)
@@ -561,7 +554,7 @@ func TestMatrix3x4_Add(t *testing.T) {
 			tArgs := tt.args(t)
 
 			receiver := tt.init(t)
-			got1 := receiver.Add(tArgs.m1)
+			got1 := receiver.Add(&tArgs.m1)
 
 			if tt.inspect != nil {
 				tt.inspect(receiver, t)
@@ -595,7 +588,7 @@ func TestMatrix3x4_Sub(t *testing.T) {
 			tArgs := tt.args(t)
 
 			receiver := tt.init(t)
-			got1 := receiver.Sub(tArgs.m1)
+			got1 := receiver.Sub(&tArgs.m1)
 
 			if tt.inspect != nil {
 				tt.inspect(receiver, t)
@@ -698,7 +691,7 @@ func TestMatrix3x4_Mul(t *testing.T) {
 			tArgs := tt.args(t)
 
 			receiver := tt.init(t)
-			got1 := receiver.Mul(tArgs.a, tArgs.b)
+			got1 := receiver.Mul(&tArgs.a, &tArgs.b)
 
 			if tt.inspect != nil {
 				tt.inspect(receiver, t)
