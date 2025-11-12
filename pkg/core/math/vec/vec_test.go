@@ -515,6 +515,7 @@ func TestVector_Add(t *testing.T) {
 	type args struct {
 		v1 Vector
 	}
+	var backing []float32
 	tests := []struct {
 		name    string
 		init    func(t *testing.T) Vector
@@ -524,7 +525,21 @@ func TestVector_Add(t *testing.T) {
 
 		want1 Vector
 	}{
-		//TODO: Add test cases
+		{
+			name: "adds elements in place",
+			init: func(t *testing.T) Vector {
+				backing = []float32{1, 2, 3}
+				return Vector(backing)
+			},
+			inspect: func(r Vector, t *testing.T) {
+				assert.Equal(t, Vector{4, 6, 8}, r)
+				assert.Equal(t, []float32{4, 6, 8}, backing)
+			},
+			args: func(t *testing.T) args {
+				return args{NewFrom(3, 4, 5)}
+			},
+			want1: NewFrom(4, 6, 8),
+		},
 	}
 
 	for _, tt := range tests {
@@ -532,6 +547,10 @@ func TestVector_Add(t *testing.T) {
 			tArgs := tt.args(t)
 
 			receiver := tt.init(t)
+			var basePtr *float32
+			if len(receiver) > 0 {
+				basePtr = &receiver[0]
+			}
 			got1 := receiver.Add(tArgs.v1)
 
 			if tt.inspect != nil {
@@ -539,14 +558,32 @@ func TestVector_Add(t *testing.T) {
 			}
 
 			assert.Equal(t, tt.want1, got1, "Vector.Add got1 = %v, want1: %v")
+			if basePtr != nil {
+				if res, ok := got1.(Vector); ok && len(res) > 0 {
+					assert.True(t, basePtr == &res[0], "Vector.Add should mutate receiver in place")
+				}
+			}
 		})
 	}
+}
+
+func TestVector_AddDoesNotMutateValueOperands(t *testing.T) {
+	receiverBacking := []float32{1, 2}
+	receiver := Vector(receiverBacking)
+	operand := Vector2D{3, 4}
+
+	got := receiver.Add(operand)
+
+	assert.Equal(t, Vector{4, 6}, got)
+	assert.Equal(t, []float32{4, 6}, receiverBacking)
+	assert.Equal(t, Vector2D{3, 4}, operand)
 }
 
 func TestVector_AddC(t *testing.T) {
 	type args struct {
 		c float32
 	}
+	var backing []float32
 	tests := []struct {
 		name    string
 		init    func(t *testing.T) Vector
@@ -556,7 +593,21 @@ func TestVector_AddC(t *testing.T) {
 
 		want1 Vector
 	}{
-		//TODO: Add test cases
+		{
+			name: "adds constant in place",
+			init: func(t *testing.T) Vector {
+				backing = []float32{1, 2, 3}
+				return Vector(backing)
+			},
+			inspect: func(r Vector, t *testing.T) {
+				assert.Equal(t, Vector{3, 4, 5}, r)
+				assert.Equal(t, []float32{3, 4, 5}, backing)
+			},
+			args: func(t *testing.T) args {
+				return args{2}
+			},
+			want1: NewFrom(3, 4, 5),
+		},
 	}
 
 	for _, tt := range tests {
@@ -564,6 +615,10 @@ func TestVector_AddC(t *testing.T) {
 			tArgs := tt.args(t)
 
 			receiver := tt.init(t)
+			var basePtr *float32
+			if len(receiver) > 0 {
+				basePtr = &receiver[0]
+			}
 			got1 := receiver.AddC(tArgs.c)
 
 			if tt.inspect != nil {
@@ -571,6 +626,11 @@ func TestVector_AddC(t *testing.T) {
 			}
 
 			assert.Equal(t, tt.want1, got1, "Vector.AddC got1 = %v, want1: %v")
+			if basePtr != nil {
+				if res, ok := got1.(Vector); ok && len(res) > 0 {
+					assert.True(t, basePtr == &res[0], "Vector.AddC should mutate receiver in place")
+				}
+			}
 		})
 	}
 }

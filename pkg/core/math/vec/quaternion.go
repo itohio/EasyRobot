@@ -8,34 +8,36 @@ import (
 	vecTypes "github.com/itohio/EasyRobot/pkg/core/math/vec/types"
 )
 
+var _ vecTypes.Vector = Quaternion{}
+
 const quaternionSize = 4
 
 type Quaternion [4]float32
 
-func (v *Quaternion) Vector() vecTypes.Vector {
+func (v Quaternion) View() vecTypes.Vector {
 	return Vector(v[:])
 }
 
-func (v *Quaternion) Slice(start, end int) vecTypes.Vector {
+func (v Quaternion) Slice(start, end int) vecTypes.Vector {
 	if end < 0 {
 		end = len(v)
 	}
 	return Vector(v[start:end])
 }
 
-func (v *Quaternion) XY() (float32, float32) {
+func (v Quaternion) XY() (float32, float32) {
 	return v[0], v[1]
 }
 
-func (v *Quaternion) XYZ() (float32, float32, float32) {
+func (v Quaternion) XYZ() (float32, float32, float32) {
 	return v[0], v[1], v[2]
 }
 
-func (v *Quaternion) XYZW() (float32, float32, float32, float32) {
+func (v Quaternion) XYZW() (float32, float32, float32, float32) {
 	return v[0], v[1], v[2], v[3]
 }
 
-func (v *Quaternion) SumSqr() float32 {
+func (v Quaternion) SumSqr() float32 {
 	var sum float32
 	for _, val := range v {
 		sum += val * val
@@ -43,11 +45,11 @@ func (v *Quaternion) SumSqr() float32 {
 	return sum
 }
 
-func (v *Quaternion) Magnitude() float32 {
+func (v Quaternion) Magnitude() float32 {
 	return math32.Sqrt(v.SumSqr())
 }
 
-func (v *Quaternion) DistanceSqr(v1 vecTypes.Vector) float32 {
+func (v Quaternion) DistanceSqr(v1 vecTypes.Vector) float32 {
 	other := readVector(v1, "Quaternion.DistanceSqr", quaternionSize)
 	d0 := v[0] - other[0]
 	d1 := v[1] - other[1]
@@ -56,32 +58,29 @@ func (v *Quaternion) DistanceSqr(v1 vecTypes.Vector) float32 {
 	return d0*d0 + d1*d1 + d2*d2 + d3*d3
 }
 
-func (v *Quaternion) Distance(v1 vecTypes.Vector) float32 {
+func (v Quaternion) Distance(v1 vecTypes.Vector) float32 {
 	return math32.Sqrt(v.DistanceSqr(v1))
 }
 
-func (v *Quaternion) Clone() vecTypes.Vector {
-	if v == nil {
-		return nil
-	}
+func (v Quaternion) Clone() vecTypes.Vector {
 	clone := new(Quaternion)
 	copy(clone[:], v[:])
 	return clone
 }
 
-func (v *Quaternion) CopyFrom(start int, v1 vecTypes.Vector) vecTypes.Vector {
+func (v Quaternion) CopyFrom(start int, v1 vecTypes.Vector) vecTypes.Vector {
 	src := readVector(v1, "Quaternion.CopyFrom", quaternionSize)
 	copy(v[start:], src)
 	return v
 }
 
-func (v *Quaternion) CopyTo(start int, v1 vecTypes.Vector) vecTypes.Vector {
+func (v Quaternion) CopyTo(start int, v1 vecTypes.Vector) vecTypes.Vector {
 	dst := writeVector(v1, "Quaternion.CopyTo", quaternionSize)
 	copy(dst, v[start:])
 	return v1
 }
 
-func (v *Quaternion) Clamp(min, max vecTypes.Vector) vecTypes.Vector {
+func (v Quaternion) Clamp(min, max vecTypes.Vector) vecTypes.Vector {
 	minVec := readVector(min, "Quaternion.Clamp.min", quaternionSize)
 	maxVec := readVector(max, "Quaternion.Clamp.max", quaternionSize)
 	for i := range v {
@@ -90,21 +89,21 @@ func (v *Quaternion) Clamp(min, max vecTypes.Vector) vecTypes.Vector {
 	return v
 }
 
-func (v *Quaternion) FillC(c float32) vecTypes.Vector {
+func (v Quaternion) FillC(c float32) vecTypes.Vector {
 	for i := range v {
 		v[i] = c
 	}
 	return v
 }
 
-func (v *Quaternion) Neg() vecTypes.Vector {
+func (v Quaternion) Neg() vecTypes.Vector {
 	for i := range v {
 		v[i] = -v[i]
 	}
 	return v
 }
 
-func (v *Quaternion) Add(v1 vecTypes.Vector) vecTypes.Vector {
+func (v Quaternion) Add(v1 vecTypes.Vector) vecTypes.Vector {
 	other := readVector(v1, "Quaternion.Add", quaternionSize)
 	for i := range v {
 		v[i] += other[i]
@@ -112,14 +111,14 @@ func (v *Quaternion) Add(v1 vecTypes.Vector) vecTypes.Vector {
 	return v
 }
 
-func (v *Quaternion) AddC(c float32) vecTypes.Vector {
+func (v Quaternion) AddC(c float32) vecTypes.Vector {
 	for i := range v {
 		v[i] += c
 	}
 	return v
 }
 
-func (v *Quaternion) Sub(v1 vecTypes.Vector) vecTypes.Vector {
+func (v Quaternion) Sub(v1 vecTypes.Vector) vecTypes.Vector {
 	other := readVector(v1, "Quaternion.Sub", quaternionSize)
 	for i := range v {
 		v[i] -= other[i]
@@ -127,21 +126,21 @@ func (v *Quaternion) Sub(v1 vecTypes.Vector) vecTypes.Vector {
 	return v
 }
 
-func (v *Quaternion) SubC(c float32) vecTypes.Vector {
+func (v Quaternion) SubC(c float32) vecTypes.Vector {
 	for i := range v {
 		v[i] -= c
 	}
 	return v
 }
 
-func (v *Quaternion) MulC(c float32) vecTypes.Vector {
+func (v Quaternion) MulC(c float32) vecTypes.Vector {
 	for i := range v {
 		v[i] *= c
 	}
 	return v
 }
 
-func (v *Quaternion) MulCAdd(c float32, v1 vecTypes.Vector) vecTypes.Vector {
+func (v Quaternion) MulCAdd(c float32, v1 vecTypes.Vector) vecTypes.Vector {
 	other := readVector(v1, "Quaternion.MulCAdd", quaternionSize)
 	for i := range v {
 		v[i] += other[i] * c
@@ -149,7 +148,7 @@ func (v *Quaternion) MulCAdd(c float32, v1 vecTypes.Vector) vecTypes.Vector {
 	return v
 }
 
-func (v *Quaternion) MulCSub(c float32, v1 vecTypes.Vector) vecTypes.Vector {
+func (v Quaternion) MulCSub(c float32, v1 vecTypes.Vector) vecTypes.Vector {
 	other := readVector(v1, "Quaternion.MulCSub", quaternionSize)
 	for i := range v {
 		v[i] -= other[i] * c
@@ -157,7 +156,7 @@ func (v *Quaternion) MulCSub(c float32, v1 vecTypes.Vector) vecTypes.Vector {
 	return v
 }
 
-func (v *Quaternion) DivC(c float32) vecTypes.Vector {
+func (v Quaternion) DivC(c float32) vecTypes.Vector {
 	if c == 0 {
 		panic("vec.Quaternion.DivC: divide by zero")
 	}
@@ -167,7 +166,7 @@ func (v *Quaternion) DivC(c float32) vecTypes.Vector {
 	return v
 }
 
-func (v *Quaternion) DivCAdd(c float32, v1 vecTypes.Vector) vecTypes.Vector {
+func (v Quaternion) DivCAdd(c float32, v1 vecTypes.Vector) vecTypes.Vector {
 	if c == 0 {
 		panic("vec.Quaternion.DivCAdd: divide by zero")
 	}
@@ -178,7 +177,7 @@ func (v *Quaternion) DivCAdd(c float32, v1 vecTypes.Vector) vecTypes.Vector {
 	return v
 }
 
-func (v *Quaternion) DivCSub(c float32, v1 vecTypes.Vector) vecTypes.Vector {
+func (v Quaternion) DivCSub(c float32, v1 vecTypes.Vector) vecTypes.Vector {
 	if c == 0 {
 		panic("vec.Quaternion.DivCSub: divide by zero")
 	}
@@ -189,7 +188,7 @@ func (v *Quaternion) DivCSub(c float32, v1 vecTypes.Vector) vecTypes.Vector {
 	return v
 }
 
-func (v *Quaternion) Normal() vecTypes.Vector {
+func (v Quaternion) Normal() vecTypes.Vector {
 	m := v.Magnitude()
 	if m == 0 {
 		panic("vec.Quaternion.Normal: zero magnitude")
@@ -197,7 +196,7 @@ func (v *Quaternion) Normal() vecTypes.Vector {
 	return v.DivC(m)
 }
 
-func (v *Quaternion) NormalFast() vecTypes.Vector {
+func (v Quaternion) NormalFast() vecTypes.Vector {
 	s := v.SumSqr()
 	if s == 0 {
 		panic("vec.Quaternion.NormalFast: zero magnitude")
@@ -205,32 +204,32 @@ func (v *Quaternion) NormalFast() vecTypes.Vector {
 	return v.MulC(math.FastISqrt(s))
 }
 
-func (v *Quaternion) Axis() vecTypes.Vector {
+func (v Quaternion) Axis() vecTypes.Vector {
 	return Vector(v[:3])
 }
 
-func (v *Quaternion) Theta() float32 {
+func (v Quaternion) Theta() float32 {
 	return v[3]
 }
 
-func (v *Quaternion) Conjugate() vecTypes.Vector {
+func (v Quaternion) Conjugate() vecTypes.Vector {
 	v[0] = -v[0]
 	v[1] = -v[1]
 	v[2] = -v[2]
 	return v
 }
 
-func (v *Quaternion) Roll() float32 {
+func (v Quaternion) Roll() float32 {
 	return math32.Atan2(v[3]*v[0]+v[1]*v[2], 0.5-v[0]*v[0]-v[1]*v[1])
 }
-func (v *Quaternion) Pitch() float32 {
+func (v Quaternion) Pitch() float32 {
 	return math32.Asin(-2.0 * (v[0]*v[2] - v[3]*v[1]))
 }
-func (v *Quaternion) Yaw() float32 {
+func (v Quaternion) Yaw() float32 {
 	return math32.Atan2(v[0]*v[1]+v[3]*v[2], 0.5-v[1]*v[1]-v[2]*v[2])
 }
 
-func (a *Quaternion) Product(b vecTypes.Quaternion) vecTypes.Vector {
+func (a Quaternion) Product(b vecTypes.Quaternion) vecTypes.Vector {
 	other := readVector(b, "Quaternion.Product", quaternionSize)
 	x := a[3]*other[0] + a[0]*other[3] + a[1]*other[2] - a[2]*other[1]
 	y := a[3]*other[1] - a[0]*other[2] + a[1]*other[3] + a[2]*other[0]
@@ -243,7 +242,7 @@ func (a *Quaternion) Product(b vecTypes.Quaternion) vecTypes.Vector {
 	return a
 }
 
-func (v *Quaternion) Slerp(v1 vecTypes.Vector, time, spin float32) vecTypes.Vector {
+func (v Quaternion) Slerp(v1 vecTypes.Vector, time, spin float32) vecTypes.Vector {
 	other := readVector(v1, "Quaternion.Slerp", quaternionSize)
 	const slerpEpsilon = 1.0e-10
 	var (
@@ -279,7 +278,7 @@ func (v *Quaternion) Slerp(v1 vecTypes.Vector, time, spin float32) vecTypes.Vect
 	return v
 }
 
-func (v *Quaternion) SlerpLong(v1 vecTypes.Vector, time, spin float32) vecTypes.Vector {
+func (v Quaternion) SlerpLong(v1 vecTypes.Vector, time, spin float32) vecTypes.Vector {
 	other := readVector(v1, "Quaternion.SlerpLong", quaternionSize)
 	const slerpEpsilon = 1.0e-10
 	var (
@@ -309,7 +308,7 @@ func (v *Quaternion) SlerpLong(v1 vecTypes.Vector, time, spin float32) vecTypes.
 	return v
 }
 
-func (v *Quaternion) Multiply(v1 vecTypes.Vector) vecTypes.Vector {
+func (v Quaternion) Multiply(v1 vecTypes.Vector) vecTypes.Vector {
 	other := readVector(v1, "Quaternion.Multiply", quaternionSize)
 	for i := range v {
 		v[i] *= other[i]
@@ -317,24 +316,24 @@ func (v *Quaternion) Multiply(v1 vecTypes.Vector) vecTypes.Vector {
 	return v
 }
 
-func (v *Quaternion) Dot(v1 vecTypes.Vector) float32 {
+func (v Quaternion) Dot(v1 vecTypes.Vector) float32 {
 	other := readVector(v1, "Quaternion.Dot", quaternionSize)
 	return v[0]*other[0] + v[1]*other[1] + v[2]*other[2] + v[3]*other[3]
 }
 
-func (v *Quaternion) Cross(vecTypes.Vector) vecTypes.Vector {
+func (v Quaternion) Cross(vecTypes.Vector) vecTypes.Vector {
 	panic("vec.Quaternion.Cross: unsupported operation")
 }
 
-func (v *Quaternion) Refract2D(vecTypes.Vector, float32, float32) (vecTypes.Vector, bool) {
+func (v Quaternion) Refract2D(vecTypes.Vector, float32, float32) (vecTypes.Vector, bool) {
 	panic("vec.Quaternion.Refract2D: unsupported operation")
 }
 
-func (v *Quaternion) Refract3D(vecTypes.Vector, float32, float32) (vecTypes.Vector, bool) {
+func (v Quaternion) Refract3D(vecTypes.Vector, float32, float32) (vecTypes.Vector, bool) {
 	panic("vec.Quaternion.Refract3D: unsupported operation")
 }
 
-func (v *Quaternion) Reflect(n vecTypes.Vector) vecTypes.Vector {
+func (v Quaternion) Reflect(n vecTypes.Vector) vecTypes.Vector {
 	nVec := readVector(n, "Quaternion.Reflect", quaternionSize)
 	d := v.Dot(n) * 2
 	for i := range v {
@@ -343,7 +342,7 @@ func (v *Quaternion) Reflect(n vecTypes.Vector) vecTypes.Vector {
 	return v
 }
 
-func (v *Quaternion) Interpolate(v1 vecTypes.Vector, t float32) vecTypes.Vector {
+func (v Quaternion) Interpolate(v1 vecTypes.Vector, t float32) vecTypes.Vector {
 	other := readVector(v1, "Quaternion.Interpolate", quaternionSize)
 	for i := range v {
 		v[i] = v[i] + t*(other[i]-v[i])
@@ -351,7 +350,7 @@ func (v *Quaternion) Interpolate(v1 vecTypes.Vector, t float32) vecTypes.Vector 
 	return v
 }
 
-func (v *Quaternion) Sum() float32 {
+func (v Quaternion) Sum() float32 {
 	var sum float32
 	for _, val := range v {
 		sum += val

@@ -13,13 +13,13 @@ func readVector(arg vecTypes.Vector, op string, minLen int) Vector {
 			panic(fmt.Sprintf("vec.%s: expected minimum length %d, got %d", op, minLen, len(v)))
 		}
 		return v
-	case *Vector2D:
+	case Vector2D:
 		return v[:]
-	case *Vector3D:
+	case Vector3D:
 		return v[:]
-	case *Vector4D:
+	case Vector4D:
 		return v[:]
-	case *Quaternion:
+	case Quaternion:
 		return v[:]
 	default:
 		if clone := arg.Clone(); clone != nil {
@@ -41,13 +41,13 @@ func writeVector(arg vecTypes.Vector, op string, minLen int) Vector {
 			panic(fmt.Sprintf("vec.%s: expected minimum length %d, got %d", op, minLen, len(v)))
 		}
 		return v
-	case *Vector2D:
+	case Vector2D:
 		return v[:]
-	case *Vector3D:
+	case Vector3D:
 		return v[:]
-	case *Vector4D:
+	case Vector4D:
 		return v[:]
-	case *Quaternion:
+	case Quaternion:
 		return v[:]
 	default:
 		panic(fmt.Sprintf("vec.%s: unsupported destination vector type %T", op, arg))

@@ -244,4 +244,6 @@ The `Vector` type currently uses `primitive` package functions:
 - Benchmark tests for performance critical paths
 - Edge case tests (empty vectors, zero division, etc.)
 - Fixed-size vs. variable-size performance comparisons
+- Behavioural parity tests verifying slice-backed `Vector` operations mutate receivers in-place while array-backed `Vector2D`/`Vector3D`/`Vector4D` return modified copies
+- Regression tests ensuring cloning, slicing, and mixed-type arithmetic preserve original operands when value semantics are expected
 

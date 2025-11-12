@@ -1,3 +1,9 @@
+// Package types defines vector interfaces.
+//
+// Note on receiver semantics:
+// - All vector methods use value receivers. This means that for types implementing these interfaces (e.g., Vec2D, Vec3D, etc.), methods will NOT mutate the original value in-place because the method operates on a copy.
+// - The exception is for vec.Vector (which is a slice type). Slice semantics in Go allow in-place modification, so for vec.Vector underlying data is mutated when using these methods.
+// - Thus, for VecXD types, in-place modifications do not work, whereas for vec.Vector (slice), in-place modifications do work.
 package types
 
 // Accessors encapsulate read access helpers for vector components.
@@ -12,6 +18,7 @@ type Accessors interface {
 	DistanceSqr(v1 Vector) float32
 	Distance(v1 Vector) float32
 	Clone() Vector
+	View() Vector
 	CopyFrom(start int, v1 Vector) Vector
 	CopyTo(start int, v1 Vector) Vector
 }

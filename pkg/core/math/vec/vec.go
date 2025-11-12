@@ -9,6 +9,8 @@ import (
 	vecTypes "github.com/itohio/EasyRobot/pkg/core/math/vec/types"
 )
 
+var _ vecTypes.Vector = (Vector)(nil)
+
 type Vector []float32
 
 func New(size int) Vector {
@@ -17,6 +19,10 @@ func New(size int) Vector {
 
 func NewFrom(v ...float32) Vector {
 	return v[:]
+}
+
+func (v Vector) View() vecTypes.Vector {
+	return Vector(v[:])
 }
 
 func (v Vector) Sum() float32 {

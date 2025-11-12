@@ -8,6 +8,8 @@ import (
 	vecTypes "github.com/itohio/EasyRobot/pkg/core/math/vec/types"
 )
 
+var _ vecTypes.Vector = Vector4D{}
+
 const vector4DSize = 4
 
 type Vector4D [4]float32
@@ -20,7 +22,7 @@ func (v Vector4D) Sum() float32 {
 	return sum
 }
 
-func (v Vector4D) Vector() vecTypes.Vector {
+func (v Vector4D) View() vecTypes.Vector {
 	return Vector(v[:])
 }
 
@@ -69,7 +71,7 @@ func (v Vector4D) Distance(v1 vecTypes.Vector) float32 {
 }
 
 func (v Vector4D) Clone() vecTypes.Vector {
-	clone := new(Vector4D)
+	var clone Vector4D
 	copy(clone[:], v[:])
 	return clone
 }

@@ -8,6 +8,8 @@ import (
 	vecTypes "github.com/itohio/EasyRobot/pkg/core/math/vec/types"
 )
 
+var _ vecTypes.Vector = Vector3D{}
+
 const vector3DSize = 3
 
 type Vector3D [3]float32
@@ -20,7 +22,7 @@ func (v Vector3D) Sum() float32 {
 	return sum
 }
 
-func (v Vector3D) Vector() vecTypes.Vector {
+func (v Vector3D) View() vecTypes.Vector {
 	return Vector(v[:])
 }
 
@@ -68,7 +70,7 @@ func (v Vector3D) Distance(v1 vecTypes.Vector) float32 {
 }
 
 func (v Vector3D) Clone() vecTypes.Vector {
-	clone := new(Vector3D)
+	var clone Vector3D
 	copy(clone[:], v[:])
 	return clone
 }
