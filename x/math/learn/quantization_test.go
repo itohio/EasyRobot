@@ -4,9 +4,9 @@ import (
 	"math"
 	"testing"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/learn"
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive/generics"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
+	"github.com/itohio/EasyRobot/x/math/learn"
+	"github.com/itohio/EasyRobot/x/math/primitive/generics"
+	"github.com/itohio/EasyRobot/x/math/tensor"
 )
 
 func TestQuantizationParams(t *testing.T) {

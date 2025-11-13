@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"reflect"
 
-	. "github.com/itohio/EasyRobot/pkg/core/logger"
+	. "github.com/itohio/EasyRobot/x/logger"
 )
 
 var ErrNOP = errors.New("No op")

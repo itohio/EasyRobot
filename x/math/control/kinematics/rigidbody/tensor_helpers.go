@@ -1,7 +1,7 @@
 package rigidbody
 
 import (
-	"github.com/itohio/EasyRobot/pkg/core/math/mat"
+	"github.com/itohio/EasyRobot/x/math/mat"
 )
 
 func InertiaSolidSphere(mass, radius float32) mat.Matrix3x3 {

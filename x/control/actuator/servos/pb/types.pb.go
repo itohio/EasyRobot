@@ -10,7 +10,7 @@ import (
 	math "math"
 	math_bits "math/bits"
 
-	proto "github.com/itohio/EasyRobot/pkg/control/proto"
+	proto "github.com/itohio/EasyRobot/x/control/proto"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.

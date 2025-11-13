@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/itohio/EasyRobot/pkg/core/marshaller"
-	tflitepkg "github.com/itohio/EasyRobot/pkg/core/marshaller/tflite"
-	"github.com/itohio/EasyRobot/pkg/core/math/learn/datasets/mnist"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
+	"github.com/itohio/EasyRobot/x/marshaller"
+	tflitepkg "github.com/itohio/EasyRobot/x/marshaller/tflite"
+	"github.com/itohio/EasyRobot/x/math/learn/datasets/mnist"
+	"github.com/itohio/EasyRobot/x/math/tensor"
 )
 
 func isTFLiteUnavailable(err error) bool {

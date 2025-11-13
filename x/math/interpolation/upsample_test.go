@@ -3,7 +3,7 @@ package interpolation
 import (
 	"testing"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
 func TestLinearUpsample(t *testing.T) {

@@ -6,7 +6,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/types"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
 )
 
 // Marshaller implements YAML-based marshalling.

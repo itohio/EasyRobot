@@ -1,6 +1,6 @@
 package gocv
 
-import "github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+import "github.com/itohio/EasyRobot/x/math/tensor/types"
 
 func (t Tensor) DropoutForward(dst types.Tensor, mask types.Tensor) types.Tensor {
 	panicUnsupported("DropoutForward")

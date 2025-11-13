@@ -3,10 +3,10 @@ package learn_test
 import (
 	"testing"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/learn"
-	"github.com/itohio/EasyRobot/pkg/core/math/nn"
-	"github.com/itohio/EasyRobot/pkg/core/math/nn/layers"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
+	"github.com/itohio/EasyRobot/x/math/learn"
+	"github.com/itohio/EasyRobot/x/math/nn"
+	"github.com/itohio/EasyRobot/x/math/nn/layers"
+	"github.com/itohio/EasyRobot/x/math/tensor"
 )
 
 // TestConv1D_Layer_Learning tests if a single Conv1D layer can learn a simple pattern.

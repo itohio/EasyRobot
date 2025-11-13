@@ -3,10 +3,10 @@ package nn
 import (
 	"fmt"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/nn/layers"
-	"github.com/itohio/EasyRobot/pkg/core/math/nn/models"
-	"github.com/itohio/EasyRobot/pkg/core/math/nn/types"
-	tensorTypes "github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/math/nn/layers"
+	"github.com/itohio/EasyRobot/x/math/nn/models"
+	"github.com/itohio/EasyRobot/x/math/nn/types"
+	tensorTypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 )
 
 // SequentialModelBuilder helps construct models by adding layers sequentially.

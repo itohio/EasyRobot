@@ -1,7 +1,7 @@
 package st
 
 import (
-	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+	. "github.com/itohio/EasyRobot/x/math/primitive/generics/helpers"
 )
 
 func applyUnaryContiguous[T Numeric](dst, src []T, n int, op func(T) T) {

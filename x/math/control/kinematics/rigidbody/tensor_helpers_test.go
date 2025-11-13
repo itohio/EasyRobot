@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/chewxy/math32"
-	"github.com/itohio/EasyRobot/pkg/core/math/mat"
+	"github.com/itohio/EasyRobot/x/math/mat"
 )
 
 func TestInertiaHelpersProducePositiveDiagonal(t *testing.T) {

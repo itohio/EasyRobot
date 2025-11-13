@@ -8,10 +8,10 @@ import (
 	"errors"
 
 	"github.com/chewxy/math32"
-	matTypes "github.com/itohio/EasyRobot/pkg/core/math/mat/types"
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
-	vecTypes "github.com/itohio/EasyRobot/pkg/core/math/vec/types"
+	matTypes "github.com/itohio/EasyRobot/x/math/mat/types"
+	"github.com/itohio/EasyRobot/x/math/primitive/fp32"
+	"github.com/itohio/EasyRobot/x/math/vec"
+	vecTypes "github.com/itohio/EasyRobot/x/math/vec/types"
 )
 
 // Cholesky computes Cholesky decomposition.

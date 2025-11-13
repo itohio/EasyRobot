@@ -2,8 +2,8 @@ package thrusters
 
 import (
 	"github.com/chewxy/math32"
-	"github.com/itohio/EasyRobot/pkg/core/math/mat"
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	"github.com/itohio/EasyRobot/x/math/mat"
+	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
 const solveTolerance = 1e-4

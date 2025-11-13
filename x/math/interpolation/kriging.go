@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/chewxy/math32"
-	"github.com/itohio/EasyRobot/pkg/core/math/mat"
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	"github.com/itohio/EasyRobot/x/math/mat"
+	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
 // Sample represents a known data point with location and value.

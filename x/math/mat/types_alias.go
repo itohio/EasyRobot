@@ -1,6 +1,6 @@
 package mat
 
-import matTypes "github.com/itohio/EasyRobot/pkg/core/math/mat/types"
+import matTypes "github.com/itohio/EasyRobot/x/math/mat/types"
 
 // Re-export result types for backward compatibility with existing code/tests.
 type QRResult = matTypes.QRResult

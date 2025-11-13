@@ -7,7 +7,7 @@
 package mat
 
 import (
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
 // Homogenous creates homogeneous transform matrix from rotation and translation.

@@ -8,7 +8,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
+	"github.com/itohio/EasyRobot/x/math/tensor"
 )
 
 // Sample represents a single MNIST sample.

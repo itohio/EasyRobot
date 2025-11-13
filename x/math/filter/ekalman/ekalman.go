@@ -1,9 +1,9 @@
 package ekalman
 
 import (
-	"github.com/itohio/EasyRobot/pkg/core/math/filter"
-	"github.com/itohio/EasyRobot/pkg/core/math/mat"
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	"github.com/itohio/EasyRobot/x/math/filter"
+	"github.com/itohio/EasyRobot/x/math/mat"
+	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
 // StateTransitionFunc defines the nonlinear state transition function.

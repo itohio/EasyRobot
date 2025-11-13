@@ -3,8 +3,8 @@ package thrusters
 import (
 	"errors"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/mat"
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	"github.com/itohio/EasyRobot/x/math/mat"
+	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
 var (

@@ -1,6 +1,6 @@
 package generics
 
-import helpers "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+import helpers "github.com/itohio/EasyRobot/x/math/primitive/generics/helpers"
 
 const MAX_DIMS = helpers.MAX_DIMS
 

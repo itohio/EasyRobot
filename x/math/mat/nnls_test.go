@@ -3,8 +3,8 @@ package mat
 import (
 	"testing"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	"github.com/itohio/EasyRobot/x/math/primitive/fp32"
+	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
 func TestNNLS(t *testing.T) {

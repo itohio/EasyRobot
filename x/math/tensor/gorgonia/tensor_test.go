@@ -3,7 +3,7 @@ package gorgonia
 import (
 	"testing"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/math/tensor/types"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -173,4 +173,3 @@ func TestTranspose(t *testing.T) {
 	assert.Equal(t, 3, shape[0], "First dimension should be 3")
 	assert.Equal(t, 2, shape[1], "Second dimension should be 2")
 }
-

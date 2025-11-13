@@ -10,8 +10,8 @@ import (
 
 	cv "gocv.io/x/gocv"
 
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/types"
-	tensorgocv "github.com/itohio/EasyRobot/pkg/core/math/tensor/gocv"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
+	tensorgocv "github.com/itohio/EasyRobot/x/math/tensor/gocv"
 )
 
 type sourceKind int

@@ -11,8 +11,8 @@ import (
 	"errors"
 
 	"github.com/chewxy/math32"
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	"github.com/itohio/EasyRobot/x/math/primitive/fp32"
+	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
 // NNLSResult holds the result of Non-Negative Least Squares.

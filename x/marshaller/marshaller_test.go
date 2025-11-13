@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/itohio/EasyRobot/pkg/core/marshaller"
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/types"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
+	"github.com/itohio/EasyRobot/x/marshaller"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
+	"github.com/itohio/EasyRobot/x/math/tensor"
 )
 
 func TestTextMarshaller(t *testing.T) {
@@ -183,4 +183,3 @@ func TestMarshallerRegistration(t *testing.T) {
 		t.Error("Expected error for unknown unmarshaller format")
 	}
 }
-

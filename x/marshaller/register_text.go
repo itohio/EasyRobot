@@ -1,8 +1,8 @@
 package marshaller
 
 import (
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/text"
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/types"
+	"github.com/itohio/EasyRobot/x/marshaller/text"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
 )
 
 func init() {
@@ -10,4 +10,3 @@ func init() {
 		return text.New(opts...)
 	})
 }
-

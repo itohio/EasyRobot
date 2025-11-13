@@ -1,7 +1,7 @@
 package graph
 
 import (
-	"github.com/itohio/EasyRobot/pkg/core/math/mat"
+	"github.com/itohio/EasyRobot/x/math/mat"
 )
 
 // MatrixGraph represents a graph where each column is a node

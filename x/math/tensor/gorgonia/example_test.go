@@ -3,8 +3,8 @@ package gorgonia_test
 import (
 	"fmt"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor/gorgonia"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/math/tensor/gorgonia"
+	"github.com/itohio/EasyRobot/x/math/tensor/types"
 )
 
 func ExampleNew() {
@@ -112,22 +112,21 @@ func ExampleTensor_ScalarMul() {
 
 func ExampleTensor_Copy() {
 	// Demonstrate automatic conversion between tensor types using Copy
-	
+
 	// Create an eager tensor (from standard implementation)
 	eagerTensor := gorgonia.New(types.FP32, 2, 2) // Using gorgonia for example simplicity
 	eagerTensor.Fill(nil, 5.0)
-	
+
 	// Create a gorgonia tensor
 	gorgoniaTensor := gorgonia.New(types.FP32, 2, 2)
-	
+
 	// Copy automatically handles conversion
 	gorgoniaTensor.Copy(eagerTensor)
-	
+
 	fmt.Printf("Copied value at [0,0]: %.1f\n", gorgoniaTensor.At(0, 0))
 	fmt.Printf("Copied value at [1,1]: %.1f\n", gorgoniaTensor.At(1, 1))
-	
+
 	// Output:
 	// Copied value at [0,0]: 5.0
 	// Copied value at [1,1]: 5.0
 }
-

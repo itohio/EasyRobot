@@ -163,8 +163,8 @@ Each fixed-size type only implements the methods that are meaningful for its dim
 ## External Dependencies
 
 - `github.com/chewxy/math32` – trigonometric and elementary functions.
-- `github.com/itohio/EasyRobot/pkg/core/math/vec` – typed vector helpers (`Vector2D`, `Vector3D`, `Vector4D`, `Quaternion`).
-- `github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32` – BLAS/LAPACK-like routines (`Gemm`, `Gemv`, `Getrf`, `Gesvd`, `Gepseu`, …) and dot-product utilities.
+- `github.com/itohio/EasyRobot/x/math/vec` – typed vector helpers (`Vector2D`, `Vector3D`, `Vector4D`, `Quaternion`).
+- `github.com/itohio/EasyRobot/x/math/primitive/fp32` – BLAS/LAPACK-like routines (`Gemm`, `Gemv`, `Getrf`, `Gesvd`, `Gepseu`, …) and dot-product utilities.
 
 ## Testing Expectations
 

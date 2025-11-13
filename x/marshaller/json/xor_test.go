@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/types"
-	"github.com/itohio/EasyRobot/pkg/core/math/learn"
-	"github.com/itohio/EasyRobot/pkg/core/math/nn"
-	"github.com/itohio/EasyRobot/pkg/core/math/nn/layers"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
+	"github.com/itohio/EasyRobot/x/math/learn"
+	"github.com/itohio/EasyRobot/x/math/nn"
+	"github.com/itohio/EasyRobot/x/math/nn/layers"
+	"github.com/itohio/EasyRobot/x/math/tensor"
 )
 
 func TestXORModelParametersRoundTrip(t *testing.T) {
@@ -31,7 +31,7 @@ func TestXORModelParametersRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create dense1: %v", err)
 	}
-	
+
 	dense2, err := layers.NewDense(4, 1, layers.UseBias(true))
 	if err != nil {
 		t.Fatalf("Failed to create dense2: %v", err)
@@ -120,10 +120,10 @@ func TestXORModelParametersRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Forward pass failed: %v", err)
 	}
-	
+
 	result := output.At(0)
 	t.Logf("XOR(1,0) = %v (expected ~1.0)", result)
-	
+
 	// Should be close to 1.0 for XOR(1,0)
 	if result < 0.7 || result > 1.3 {
 		t.Logf("Warning: Model prediction may not be fully converged: got %v, expected ~1.0", result)

@@ -4,7 +4,7 @@ package vaj
 
 import (
 	"github.com/chewxy/math32"
-	"github.com/itohio/EasyRobot/pkg/core/math"
+	"github.com/itohio/EasyRobot/x/math"
 )
 
 // VAJ1D implements a jerk-limited (velocity–acceleration–jerk) trajectory

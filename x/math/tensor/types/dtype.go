@@ -1,14 +1,14 @@
 package types
 
 import (
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive/qi"
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive/qi16"
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive/qi32"
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive/qi64"
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive/qi8"
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive/qu8"
+	"github.com/itohio/EasyRobot/x/math/primitive"
+	"github.com/itohio/EasyRobot/x/math/primitive/fp32"
+	"github.com/itohio/EasyRobot/x/math/primitive/qi"
+	"github.com/itohio/EasyRobot/x/math/primitive/qi16"
+	"github.com/itohio/EasyRobot/x/math/primitive/qi32"
+	"github.com/itohio/EasyRobot/x/math/primitive/qi64"
+	"github.com/itohio/EasyRobot/x/math/primitive/qi8"
+	"github.com/itohio/EasyRobot/x/math/primitive/qu8"
 )
 
 // DataType represents the underlying element type stored by a tensor.

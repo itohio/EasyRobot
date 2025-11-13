@@ -99,7 +99,7 @@ ellipse := grid.ExtractEllipse(src, centerX, centerY, a, b, angle, fillValue)
 ### Ray Casting
 
 ```go
-import "github.com/itohio/EasyRobot/pkg/core/math/grid"
+import "github.com/itohio/EasyRobot/x/math/grid"
 
 // Pre-compute ray directions
 rayAngles := vec.NewFrom(0.0, math.Pi/2, math.Pi, 3*math.Pi/2)

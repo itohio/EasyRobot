@@ -4,8 +4,8 @@ import (
 	"math"
 
 	"github.com/chewxy/math32"
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive/generics"
-	helpers "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+	"github.com/itohio/EasyRobot/x/math/primitive/generics"
+	helpers "github.com/itohio/EasyRobot/x/math/primitive/generics/helpers"
 )
 
 // ElemAdd writes element-wise sum of a and b into dst for the provided shape/strides.

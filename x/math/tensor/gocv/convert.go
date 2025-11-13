@@ -5,7 +5,7 @@ import (
 	"image"
 	"image/draw"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/math/tensor/types"
 	cv "gocv.io/x/gocv"
 )
 

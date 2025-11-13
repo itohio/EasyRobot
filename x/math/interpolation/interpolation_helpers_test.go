@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/mat"
+	"github.com/itohio/EasyRobot/x/math/mat"
 )
 
 const floatTolerance = 1e-5

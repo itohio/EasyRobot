@@ -3,7 +3,7 @@ package fp32
 import (
 	"math"
 
-	helpers "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+	helpers "github.com/itohio/EasyRobot/x/math/primitive/generics/helpers"
 )
 
 const float32ExpMax = 88.0 // max value for exp to avoid overflow

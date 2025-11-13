@@ -3,11 +3,11 @@ package layers_test
 import (
 	"testing"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/nn/layers"
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor/eager_tensor"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/math/nn/layers"
+	"github.com/itohio/EasyRobot/x/math/primitive/fp32"
+	"github.com/itohio/EasyRobot/x/math/tensor"
+	"github.com/itohio/EasyRobot/x/math/tensor/eager_tensor"
+	"github.com/itohio/EasyRobot/x/math/tensor/types"
 )
 
 func TestAvgPoolLayerBackwardMatchesExpected(t *testing.T) {

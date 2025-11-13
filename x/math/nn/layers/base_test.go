@@ -3,8 +3,8 @@ package layers
 import (
 	"testing"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/nn/types"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
+	"github.com/itohio/EasyRobot/x/math/nn/types"
+	"github.com/itohio/EasyRobot/x/math/tensor"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

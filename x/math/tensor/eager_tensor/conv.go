@@ -3,9 +3,9 @@ package eager_tensor
 import (
 	"fmt"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/math/primitive"
+	"github.com/itohio/EasyRobot/x/math/primitive/fp32"
+	"github.com/itohio/EasyRobot/x/math/tensor/types"
 )
 
 // Conv2D performs 2D convolution (matches tf.nn.conv2d).

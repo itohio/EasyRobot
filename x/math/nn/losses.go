@@ -3,7 +3,7 @@ package nn
 import (
 	"fmt"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
+	"github.com/itohio/EasyRobot/x/math/tensor"
 )
 
 // MSELoss implements Mean Squared Error loss function.

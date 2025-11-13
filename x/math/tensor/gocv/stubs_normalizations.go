@@ -1,6 +1,6 @@
 package gocv
 
-import "github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+import "github.com/itohio/EasyRobot/x/math/tensor/types"
 
 func (t Tensor) BatchNormForward(dst types.Tensor, gamma, beta types.Tensor, eps float64) types.Tensor {
 	panicUnsupported("BatchNormForward")
@@ -51,4 +51,3 @@ func (t Tensor) GroupNormGrad(gradInputDst, gradGammaDst, gradBetaDst, gradOutpu
 	panicUnsupported("GroupNormGrad")
 	return nil, nil, nil
 }
-

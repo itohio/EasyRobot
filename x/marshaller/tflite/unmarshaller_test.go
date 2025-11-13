@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/learn/datasets/mnist"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
+	"github.com/itohio/EasyRobot/x/math/learn/datasets/mnist"
+	"github.com/itohio/EasyRobot/x/math/tensor"
 )
 
 func isTFLiteUnavailable(err error) bool {

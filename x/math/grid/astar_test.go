@@ -4,9 +4,9 @@ import (
 	"testing"
 
 	"github.com/chewxy/math32"
-	"github.com/itohio/EasyRobot/pkg/core/math/graph"
-	"github.com/itohio/EasyRobot/pkg/core/math/mat"
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	"github.com/itohio/EasyRobot/x/math/graph"
+	"github.com/itohio/EasyRobot/x/math/mat"
+	"github.com/itohio/EasyRobot/x/math/vec"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

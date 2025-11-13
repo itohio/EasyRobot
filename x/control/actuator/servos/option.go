@@ -1,7 +1,7 @@
 package servos
 
 import (
-	"github.com/itohio/EasyRobot/pkg/core/options"
+	"github.com/itohio/EasyRobot/x/options"
 )
 
 func WithPin(pin uint32) options.Option {

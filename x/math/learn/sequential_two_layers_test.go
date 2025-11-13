@@ -3,10 +3,10 @@ package learn
 import (
 	"testing"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/nn"
-	"github.com/itohio/EasyRobot/pkg/core/math/nn/layers"
-	"github.com/itohio/EasyRobot/pkg/core/math/nn/types"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
+	"github.com/itohio/EasyRobot/x/math/nn"
+	"github.com/itohio/EasyRobot/x/math/nn/layers"
+	"github.com/itohio/EasyRobot/x/math/nn/types"
+	"github.com/itohio/EasyRobot/x/math/tensor"
 	"github.com/stretchr/testify/assert"
 )
 

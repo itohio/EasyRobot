@@ -1,7 +1,7 @@
 package st
 
 import (
-	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+	. "github.com/itohio/EasyRobot/x/math/primitive/generics/helpers"
 )
 
 // ElemVecConvertStrided converts src into dst for a vector with stride support.

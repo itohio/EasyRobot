@@ -1,7 +1,7 @@
 package types
 
 import (
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
+	"github.com/itohio/EasyRobot/x/math/tensor"
 )
 
 // Layer represents a neural network layer with forward and backward operations.

@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"unsafe"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive/generics"
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/math/primitive"
+	"github.com/itohio/EasyRobot/x/math/primitive/generics"
+	"github.com/itohio/EasyRobot/x/math/primitive/generics/helpers"
+	"github.com/itohio/EasyRobot/x/math/tensor/types"
 )
 
 // Tensor represents a multi-dimensional array of values of type specified by types.DataType.

@@ -5,8 +5,8 @@ import (
 	"errors"
 
 	"github.com/itohio/EasyRobot/internal/concurrency"
-	. "github.com/itohio/EasyRobot/pkg/core/logger"
-	"github.com/itohio/EasyRobot/pkg/core/store"
+	. "github.com/itohio/EasyRobot/x/logger"
+	"github.com/itohio/EasyRobot/x/store"
 )
 
 var (

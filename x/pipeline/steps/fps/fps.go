@@ -3,12 +3,12 @@ package fps
 import (
 	"time"
 
-	. "github.com/itohio/EasyRobot/pkg/core/logger"
-	"github.com/itohio/EasyRobot/pkg/core/options"
-	"github.com/itohio/EasyRobot/pkg/core/pipeline"
-	"github.com/itohio/EasyRobot/pkg/core/pipeline/steps"
-	"github.com/itohio/EasyRobot/pkg/core/plugin"
-	"github.com/itohio/EasyRobot/pkg/core/store"
+	. "github.com/itohio/EasyRobot/x/logger"
+	"github.com/itohio/EasyRobot/x/options"
+	"github.com/itohio/EasyRobot/x/pipeline"
+	"github.com/itohio/EasyRobot/x/pipeline/steps"
+	"github.com/itohio/EasyRobot/x/plugin"
+	"github.com/itohio/EasyRobot/x/store"
 )
 
 func init() {

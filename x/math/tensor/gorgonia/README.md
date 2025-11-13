@@ -24,8 +24,8 @@ go get gorgonia.org/tensor
 ### Creating Tensors
 
 ```go
-import "github.com/itohio/EasyRobot/pkg/core/math/tensor/gorgonia"
-import "github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+import "github.com/itohio/EasyRobot/x/math/tensor/gorgonia"
+import "github.com/itohio/EasyRobot/x/math/tensor/types"
 
 // Create a new FP32 tensor with shape [2, 3, 4]
 t := gorgonia.New(types.FP32, 2, 3, 4)
@@ -62,7 +62,7 @@ result = a.ScalarMul(nil, 2.0) // result[i] = a[i] * 2.0
 ### Converting Between Gorgonia and Eager Tensors
 
 ```go
-import "github.com/itohio/EasyRobot/pkg/core/math/tensor/eager_tensor"
+import "github.com/itohio/EasyRobot/x/math/tensor/eager_tensor"
 
 // Explicit conversion using ToEagerTensor/FromEagerTensor
 gTensor := gorgonia.New(types.FP32, 2, 3)
@@ -206,8 +206,8 @@ package main
 
 import (
     "fmt"
-    "github.com/itohio/EasyRobot/pkg/core/math/tensor/gorgonia"
-    "github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+    "github.com/itohio/EasyRobot/x/math/tensor/gorgonia"
+    "github.com/itohio/EasyRobot/x/math/tensor/types"
 )
 
 func main() {

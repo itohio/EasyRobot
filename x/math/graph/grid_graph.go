@@ -1,7 +1,7 @@
 package graph
 
 import (
-	"github.com/itohio/EasyRobot/pkg/core/math/mat"
+	"github.com/itohio/EasyRobot/x/math/mat"
 )
 
 // GridGraph adapts Matrix to Graph interface for grid-based pathfinding

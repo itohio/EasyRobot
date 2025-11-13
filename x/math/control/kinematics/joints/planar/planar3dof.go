@@ -2,9 +2,9 @@ package planar
 
 import (
 	"github.com/chewxy/math32"
-	kintypes "github.com/itohio/EasyRobot/pkg/core/math/control/kinematics/types"
-	"github.com/itohio/EasyRobot/pkg/core/math/mat"
-	mattype "github.com/itohio/EasyRobot/pkg/core/math/mat/types"
+	kintypes "github.com/itohio/EasyRobot/x/math/control/kinematics/types"
+	"github.com/itohio/EasyRobot/x/math/mat"
+	mattype "github.com/itohio/EasyRobot/x/math/mat/types"
 )
 
 var _ kintypes.Bidirectional = (*p3d)(nil)

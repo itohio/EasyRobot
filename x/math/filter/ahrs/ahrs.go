@@ -1,6 +1,6 @@
 package ahrs
 
-import vec "github.com/itohio/EasyRobot/pkg/core/math/vec/types"
+import vec "github.com/itohio/EasyRobot/x/math/vec/types"
 
 type AHRS interface {
 	Acceleration() vec.Vector

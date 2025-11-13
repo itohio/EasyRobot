@@ -1,10 +1,11 @@
+//go:build !no_gob
 // +build !no_gob
 
 package marshaller
 
 import (
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/gob"
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/types"
+	"github.com/itohio/EasyRobot/x/marshaller/gob"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
 )
 
 func init() {
@@ -16,4 +17,3 @@ func init() {
 		return gob.NewUnmarshaller(opts...)
 	})
 }
-

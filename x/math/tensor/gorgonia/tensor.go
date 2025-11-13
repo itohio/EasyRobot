@@ -3,8 +3,8 @@ package gorgonia
 import (
 	"math"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor/eager_tensor"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/math/tensor/eager_tensor"
+	"github.com/itohio/EasyRobot/x/math/tensor/types"
 	"gorgonia.org/tensor"
 )
 

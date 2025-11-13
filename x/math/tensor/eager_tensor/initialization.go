@@ -3,7 +3,7 @@ package eager_tensor
 import (
 	"math"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/math/tensor/types"
 )
 
 // XavierUniform creates a new tensor with the given data type and shape,

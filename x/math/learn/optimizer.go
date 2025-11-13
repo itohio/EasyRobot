@@ -5,8 +5,8 @@ import (
 	"math"
 	"sync"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/nn/types"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
+	"github.com/itohio/EasyRobot/x/math/nn/types"
+	"github.com/itohio/EasyRobot/x/math/tensor"
 )
 
 // SGD implements Stochastic Gradient Descent optimizer.

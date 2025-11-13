@@ -3,7 +3,7 @@ package interpolation
 import (
 	"testing"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/mat"
+	"github.com/itohio/EasyRobot/x/math/mat"
 )
 
 func TestLinearMatrixUpsample(t *testing.T) {

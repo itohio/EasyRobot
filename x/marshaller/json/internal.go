@@ -1,7 +1,7 @@
 package json
 
 import (
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/types"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
 )
 
 // Internal structs for JSON encoding/decoding.
@@ -9,9 +9,9 @@ import (
 
 // jsonTensor represents a tensor for JSON encoding/decoding.
 type jsonTensor struct {
-	DataType string  `json:"dtype"`
-	Shape    []int   `json:"shape"`
-	Data     any     `json:"data"` // JSON will handle type-specific encoding
+	DataType string `json:"dtype"`
+	Shape    []int  `json:"shape"`
+	Data     any    `json:"data"` // JSON will handle type-specific encoding
 }
 
 // jsonParameter represents a parameter for JSON encoding/decoding.
@@ -180,4 +180,3 @@ func modelToJSON(model types.Model) jsonModel {
 
 	return result
 }
-

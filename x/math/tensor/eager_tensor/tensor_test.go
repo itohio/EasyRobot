@@ -3,8 +3,8 @@ package eager_tensor
 import (
 	"testing"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/math/primitive/fp32"
+	"github.com/itohio/EasyRobot/x/math/tensor/types"
 	"github.com/stretchr/testify/assert"
 )
 

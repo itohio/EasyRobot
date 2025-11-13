@@ -116,7 +116,7 @@ Minimizes KL divergence between float32 and quantized distributions.
 ### Basic Usage
 
 ```go
-import "github.com/itohio/EasyRobot/pkg/core/math/learn"
+import "github.com/itohio/EasyRobot/x/math/learn"
 
 // Create calibrator
 calibrator := learn.NewCalibrator(

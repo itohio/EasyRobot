@@ -1,9 +1,9 @@
 package mt
 
 import (
-	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+	. "github.com/itohio/EasyRobot/x/math/primitive/generics/helpers"
 
-	st "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/st"
+	st "github.com/itohio/EasyRobot/x/math/primitive/generics/st"
 )
 
 // ElemVecApplyUnaryStrided applies a unary function to a vector: dst[i] = op(src[i]).

@@ -3,7 +3,7 @@ package marshallerv1
 import (
 	"fmt"
 
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/types"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
 	pb "github.com/itohio/EasyRobot/types/core"
 )
 

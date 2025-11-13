@@ -3,9 +3,9 @@ package tensor
 import (
 	"testing"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor/eager_tensor"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor/gorgonia"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/math/tensor/eager_tensor"
+	"github.com/itohio/EasyRobot/x/math/tensor/gorgonia"
+	"github.com/itohio/EasyRobot/x/math/tensor/types"
 )
 
 // Comparative benchmarks between different tensor implementations

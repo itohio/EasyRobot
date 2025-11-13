@@ -5,7 +5,7 @@ import (
 	"io"
 	"reflect"
 
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/types"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
 	pb "github.com/itohio/EasyRobot/types/core"
 	"google.golang.org/protobuf/proto"
 )

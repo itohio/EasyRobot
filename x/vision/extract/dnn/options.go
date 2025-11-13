@@ -1,7 +1,7 @@
 package dnn
 
 import (
-	"github.com/itohio/EasyRobot/pkg/core/options"
+	"github.com/itohio/EasyRobot/x/options"
 	"gocv.io/x/gocv"
 )
 

@@ -10,7 +10,7 @@
 //
 // Example usage:
 //
-//	import "github.com/itohio/EasyRobot/pkg/core/math/tensor/gorgonia"
+//	import "github.com/itohio/EasyRobot/x/math/tensor/gorgonia"
 //
 //	// Create a new tensor with shape [2, 3, 4]
 //	t := gorgonia.New(2, 3, 4)

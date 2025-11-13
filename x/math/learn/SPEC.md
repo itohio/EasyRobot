@@ -323,8 +323,8 @@ for _, param := range model.Parameters() {
 
 ## Dependencies
 
-- `github.com/itohio/EasyRobot/pkg/core/math/nn`: Neural network interfaces
-- `github.com/itohio/EasyRobot/pkg/core/math/tensor`: Tensor operations
+- `github.com/itohio/EasyRobot/x/math/nn`: Neural network interfaces
+- `github.com/itohio/EasyRobot/x/math/tensor`: Tensor operations
 - Standard library: `fmt`, `math`, `sync`, `unsafe`
 
 ## Performance Considerations for Embedded Systems

@@ -3,8 +3,8 @@ package rigidbody
 import (
 	"fmt"
 
-	mattype "github.com/itohio/EasyRobot/pkg/core/math/mat/types"
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	mattype "github.com/itohio/EasyRobot/x/math/mat/types"
+	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
 func plannerFromPositions(points []vec.Vector3D) (pathPlanner, error) {

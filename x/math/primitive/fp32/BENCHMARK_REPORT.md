@@ -3,7 +3,7 @@
 **Generated:** November 10, 2025  
 **Platform:** Linux amd64  
 **CPU:** Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz  
-**Package:** `github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32`
+**Package:** `github.com/itohio/EasyRobot/x/math/primitive/fp32`
 
 **Benchmark command:** `go test -bench . -run ^$ ./pkg/core/math/primitive/fp32`
 

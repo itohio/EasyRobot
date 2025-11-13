@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/types"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
+	"github.com/itohio/EasyRobot/x/math/tensor"
 )
 
 // Text marshaller is output-only for diagnostics, so we only test display output

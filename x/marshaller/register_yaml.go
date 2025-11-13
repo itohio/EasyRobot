@@ -1,10 +1,11 @@
+//go:build !no_yaml
 // +build !no_yaml
 
 package marshaller
 
 import (
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/types"
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/yaml"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
+	"github.com/itohio/EasyRobot/x/marshaller/yaml"
 )
 
 func init() {
@@ -16,4 +17,3 @@ func init() {
 		return yaml.NewUnmarshaller(opts...)
 	})
 }
-

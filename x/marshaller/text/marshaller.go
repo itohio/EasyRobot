@@ -5,7 +5,7 @@ import (
 	"io"
 	"reflect"
 
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/types"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
 )
 
 // Marshaller implements text-based marshalling that prints object information.

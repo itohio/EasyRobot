@@ -1,7 +1,7 @@
 package pid
 
 import (
-	"github.com/itohio/EasyRobot/pkg/core/math"
+	"github.com/itohio/EasyRobot/x/math"
 )
 
 type PID1D struct {

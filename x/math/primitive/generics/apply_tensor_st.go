@@ -3,7 +3,7 @@
 package generics
 
 import (
-	st "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/st"
+	st "github.com/itohio/EasyRobot/x/math/primitive/generics/st"
 )
 
 // Re-export apply functions from single-threaded implementation

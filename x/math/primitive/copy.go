@@ -3,7 +3,7 @@ package primitive
 import (
 	"math"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
+	"github.com/itohio/EasyRobot/x/math/primitive/fp32"
 )
 
 // CopyWithConversion copies data from src to dst with type conversion.

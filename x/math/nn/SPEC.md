@@ -303,7 +303,7 @@ result := model.Output
 ### Training
 
 ```go
-import "github.com/itohio/EasyRobot/pkg/core/math/learn"
+import "github.com/itohio/EasyRobot/x/math/learn"
 
 lossFn := nn.NewCategoricalCrossEntropy(true)
 optimizer := learn.NewSGD(0.01)

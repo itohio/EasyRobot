@@ -7,9 +7,9 @@ import (
 
 	cv "gocv.io/x/gocv"
 
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/types"
-	tensorgocv "github.com/itohio/EasyRobot/pkg/core/math/tensor/gocv"
-	tensortypes "github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
+	tensorgocv "github.com/itohio/EasyRobot/x/math/tensor/gocv"
+	tensortypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 )
 
 func normalizeImageFormat(format string) string {

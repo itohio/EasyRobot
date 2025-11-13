@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/nn/types"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
-	tensortypes "github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/math/nn/types"
+	"github.com/itohio/EasyRobot/x/math/tensor"
+	tensortypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 )
 
 // Option configures marshaller/unmarshaller behavior.

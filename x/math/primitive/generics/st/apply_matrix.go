@@ -1,7 +1,7 @@
 package st
 
 import (
-	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+	. "github.com/itohio/EasyRobot/x/math/primitive/generics/helpers"
 )
 
 // ElemMatApplyUnaryStrided applies a unary function to a matrix: dst[i,j] = op(src[i,j]).

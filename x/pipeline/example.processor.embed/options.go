@@ -1,6 +1,6 @@
 package example
 
-import "github.com/itohio/EasyRobot/pkg/core/options"
+import "github.com/itohio/EasyRobot/x/options"
 
 const NAME = "example"
 

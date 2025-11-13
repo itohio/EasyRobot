@@ -3,7 +3,7 @@ package gorgonia
 import (
 	"testing"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/math/tensor/types"
 )
 
 func TestGraphBasicOperations(t *testing.T) {

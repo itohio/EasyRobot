@@ -5,12 +5,12 @@ import (
 	"math"
 
 	"github.com/chewxy/math32"
-	kintypes "github.com/itohio/EasyRobot/pkg/core/math/control/kinematics/types"
-	vaj "github.com/itohio/EasyRobot/pkg/core/math/control/motion"
-	"github.com/itohio/EasyRobot/pkg/core/math/control/pid"
-	"github.com/itohio/EasyRobot/pkg/core/math/mat"
-	mattype "github.com/itohio/EasyRobot/pkg/core/math/mat/types"
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	kintypes "github.com/itohio/EasyRobot/x/math/control/kinematics/types"
+	vaj "github.com/itohio/EasyRobot/x/math/control/motion"
+	"github.com/itohio/EasyRobot/x/math/control/pid"
+	"github.com/itohio/EasyRobot/x/math/mat"
+	mattype "github.com/itohio/EasyRobot/x/math/mat/types"
+	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
 const (

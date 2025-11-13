@@ -1,7 +1,7 @@
 package gob
 
 import (
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/types"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
 )
 
 // Internal structs for gob encoding/decoding.

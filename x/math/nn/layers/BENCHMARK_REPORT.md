@@ -3,7 +3,7 @@
 **Generated:** November 10, 2025
 **Platform:** Linux (amd64)  
 **CPU:** Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz  
-**Package:** `github.com/itohio/EasyRobot/pkg/core/math/nn/layers`
+**Package:** `github.com/itohio/EasyRobot/x/math/nn/layers`
 
 ## Overview
 

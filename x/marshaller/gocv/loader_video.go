@@ -9,7 +9,7 @@ import (
 
 	cv "gocv.io/x/gocv"
 
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/types"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
 )
 
 type videoFileLoader struct {

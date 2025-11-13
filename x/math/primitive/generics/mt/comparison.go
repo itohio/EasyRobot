@@ -1,9 +1,9 @@
 package mt
 
 import (
-	. "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+	. "github.com/itohio/EasyRobot/x/math/primitive/generics/helpers"
 
-	st "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/st"
+	st "github.com/itohio/EasyRobot/x/math/primitive/generics/st"
 )
 
 // ElemGreaterThan writes 1 where a > b, 0 otherwise for contiguous arrays.

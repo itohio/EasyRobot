@@ -8,11 +8,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/learn"
-	"github.com/itohio/EasyRobot/pkg/core/math/learn/datasets/mnist"
-	"github.com/itohio/EasyRobot/pkg/core/math/nn"
-	"github.com/itohio/EasyRobot/pkg/core/math/nn/layers"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
+	"github.com/itohio/EasyRobot/x/math/learn"
+	"github.com/itohio/EasyRobot/x/math/learn/datasets/mnist"
+	"github.com/itohio/EasyRobot/x/math/nn"
+	"github.com/itohio/EasyRobot/x/math/nn/layers"
+	"github.com/itohio/EasyRobot/x/math/tensor"
 )
 
 // TestMNISTLarge trains a larger CNN on MNIST dataset.

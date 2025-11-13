@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 
-	"github.com/itohio/EasyRobot/pkg/core/options"
-	"github.com/itohio/EasyRobot/pkg/core/plugin"
-	"github.com/itohio/EasyRobot/pkg/core/store"
+	"github.com/itohio/EasyRobot/x/options"
+	"github.com/itohio/EasyRobot/x/plugin"
+	"github.com/itohio/EasyRobot/x/store"
 )
 
 var ErrEOS = errors.New("end of stream")

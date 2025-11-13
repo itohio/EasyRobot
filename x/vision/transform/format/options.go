@@ -1,8 +1,8 @@
 package format
 
 import (
-	"github.com/itohio/EasyRobot/pkg/core/options"
-	"github.com/itohio/EasyRobot/pkg/core/store"
+	"github.com/itohio/EasyRobot/x/options"
+	"github.com/itohio/EasyRobot/x/store"
 )
 
 type Options struct {

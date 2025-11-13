@@ -4,8 +4,8 @@ import (
 	"errors"
 	stdmath "math"
 
-	ermath "github.com/itohio/EasyRobot/pkg/core/math"
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	ermath "github.com/itohio/EasyRobot/x/math"
+	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
 var (

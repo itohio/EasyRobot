@@ -2,8 +2,8 @@ package grid
 
 import (
 	"github.com/chewxy/math32"
-	"github.com/itohio/EasyRobot/pkg/core/math/mat"
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	"github.com/itohio/EasyRobot/x/math/mat"
+	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
 // Line draws a line between two points in the matrix using Bresenham's algorithm

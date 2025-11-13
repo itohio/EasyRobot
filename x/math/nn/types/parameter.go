@@ -1,8 +1,8 @@
 package types
 
 import (
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/math/tensor"
+	"github.com/itohio/EasyRobot/x/math/tensor/types"
 )
 
 // ParamIndex represents a typed parameter index for layers

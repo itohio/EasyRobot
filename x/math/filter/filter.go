@@ -1,6 +1,6 @@
 package filter
 
-import "github.com/itohio/EasyRobot/pkg/core/math/vec"
+import "github.com/itohio/EasyRobot/x/math/vec"
 
 type Filter interface {
 	Reset() Filter

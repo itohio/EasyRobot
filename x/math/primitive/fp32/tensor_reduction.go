@@ -2,7 +2,7 @@ package fp32
 
 import (
 	"github.com/chewxy/math32"
-	helpers "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+	helpers "github.com/itohio/EasyRobot/x/math/primitive/generics/helpers"
 )
 
 func ReduceSum(dst []float32, dstShape []int, dstStrides []int, src []float32, srcShape []int, srcStrides []int, axes []int) {

@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/nn/layers"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
+	"github.com/itohio/EasyRobot/x/math/nn/layers"
+	"github.com/itohio/EasyRobot/x/math/tensor"
 )
 
 // TestGPTEmbeddingLearning demonstrates that GPT embeddings can learn meaningful representations.
@@ -25,12 +25,12 @@ func TestGPTEmbeddingLearning(t *testing.T) {
 // testFullEmbeddingLearning tests complete embedding learning with training
 func testFullEmbeddingLearning(t *testing.T) {
 	const (
-		vocabSize   = 12  // Small vocabulary: 3 categories × 4 words each
-		embedDim    = 8   // Small embedding dimension
-		numClasses  = 3   // 3 categories
-		seqLen      = 4   // 4 words per sequence
-		batchSize   = 8   // 8 sequences per batch
-		numEpochs   = 20  // Fewer epochs for faster testing
+		vocabSize    = 12 // Small vocabulary: 3 categories × 4 words each
+		embedDim     = 8  // Small embedding dimension
+		numClasses   = 3  // 3 categories
+		seqLen       = 4  // 4 words per sequence
+		batchSize    = 8  // 8 sequences per batch
+		numEpochs    = 20 // Fewer epochs for faster testing
 		learningRate = 0.01
 	)
 
@@ -117,10 +117,10 @@ func testFullEmbeddingLearning(t *testing.T) {
 // testBasicEmbeddingForward tests basic embedding functionality with a simple forward/backward pass
 func testBasicEmbeddingForward(t *testing.T) {
 	const (
-		vocabSize = 10  // Small vocabulary for testing
-		embedDim  = 4   // Small embedding dimension
-		seqLen    = 3   // Short sequence
-		batchSize = 2   // Small batch
+		vocabSize = 10 // Small vocabulary for testing
+		embedDim  = 4  // Small embedding dimension
+		seqLen    = 3  // Short sequence
+		batchSize = 2  // Small batch
 	)
 
 	// Create embedding layer
@@ -169,7 +169,7 @@ type embeddingBatch struct {
 // Groups vocabulary words into categories and creates sequences within categories.
 func createEmbeddingDataset(batchSize, seqLen, vocabSize, numClasses int) []embeddingBatch {
 	wordsPerClass := vocabSize / numClasses // 32 words per class
-	numBatches := 10 // 10 batches for training
+	numBatches := 10                        // 10 batches for training
 
 	dataset := make([]embeddingBatch, numBatches)
 
@@ -312,7 +312,7 @@ func getEmbeddingVector(embedTable tensor.Tensor, wordID int) []float32 {
 // Groups vocabulary words into categories and creates sequences within categories.
 func createSimpleEmbeddingDataset(batchSize, seqLen, vocabSize, numClasses int) []embeddingBatch {
 	wordsPerClass := vocabSize / numClasses // 4 words per class for vocabSize=12, numClasses=3
-	numBatches := 5 // 5 batches for training
+	numBatches := 5                         // 5 batches for training
 
 	dataset := make([]embeddingBatch, numBatches)
 

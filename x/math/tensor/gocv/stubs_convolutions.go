@@ -1,6 +1,6 @@
 package gocv
 
-import "github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+import "github.com/itohio/EasyRobot/x/math/tensor/types"
 
 func (t Tensor) Conv1D(dst types.Tensor, kernel, bias types.Tensor, stride, padding int) types.Tensor {
 	panicUnsupported("Conv1D")
@@ -36,4 +36,3 @@ func (t Tensor) Col2Im(dst types.Tensor, outputShape, kernelSize, stride, paddin
 	panicUnsupported("Col2Im")
 	return nil
 }
-

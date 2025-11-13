@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/chewxy/math32"
-	matTypes "github.com/itohio/EasyRobot/pkg/core/math/mat/types"
+	matTypes "github.com/itohio/EasyRobot/x/math/mat/types"
 	"github.com/stretchr/testify/assert"
 )
 

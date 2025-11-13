@@ -4,20 +4,20 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/nn/types"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
-	tensorTypes "github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/math/nn/types"
+	"github.com/itohio/EasyRobot/x/math/tensor"
+	tensorTypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 )
 
 // GPTAttention represents a multi-head self-attention layer for GPT models.
 // Implements causal self-attention for sequence processing in robot navigation.
 type GPTAttention struct {
 	Base
-	embedDim    int // Input embedding dimension
-	numHeads    int // Number of attention heads
-	headDim     int // Dimension per head (embedDim / numHeads)
-	maxSeqLen   int // Maximum sequence length for causal masking
-	dropout     float64 // Dropout probability (0.0 = no dropout)
+	embedDim  int     // Input embedding dimension
+	numHeads  int     // Number of attention heads
+	headDim   int     // Dimension per head (embedDim / numHeads)
+	maxSeqLen int     // Maximum sequence length for causal masking
+	dropout   float64 // Dropout probability (0.0 = no dropout)
 
 	// Pre-computed causal mask for efficiency
 	causalMask tensorTypes.Tensor // [maxSeqLen, maxSeqLen] boolean mask
@@ -56,12 +56,12 @@ func NewGPTAttention(embedDim, numHeads, maxSeqLen int, dropout float64, opts ..
 	base := NewBase("gpt_attention")
 
 	attention := &GPTAttention{
-		Base:       base,
-		embedDim:   embedDim,
-		numHeads:   numHeads,
-		headDim:    headDim,
-		maxSeqLen:  maxSeqLen,
-		dropout:    dropout,
+		Base:      base,
+		embedDim:  embedDim,
+		numHeads:  numHeads,
+		headDim:   headDim,
+		maxSeqLen: maxSeqLen,
+		dropout:   dropout,
 	}
 
 	// Parse options first to get data type and any pre-set weights
@@ -275,9 +275,9 @@ func (a *GPTAttention) splitAndReshapeQKV(batchSize, seqLen int) (q, k, v tensor
 
 	if batchSize == 1 && len(a.qkvBuffer.Shape()) == 2 {
 		// Single sequence case
-		qSlice = a.qkvBuffer.Slice(nil, 1, 0, a.embedDim)                    // [seq, embedDim]
-		kSlice = a.qkvBuffer.Slice(nil, 1, a.embedDim, 2*a.embedDim)          // [seq, embedDim]
-		vSlice = a.qkvBuffer.Slice(nil, 1, 2*a.embedDim, 3*a.embedDim)        // [seq, embedDim]
+		qSlice = a.qkvBuffer.Slice(nil, 1, 0, a.embedDim)              // [seq, embedDim]
+		kSlice = a.qkvBuffer.Slice(nil, 1, a.embedDim, 2*a.embedDim)   // [seq, embedDim]
+		vSlice = a.qkvBuffer.Slice(nil, 1, 2*a.embedDim, 3*a.embedDim) // [seq, embedDim]
 
 		// Reshape for multi-head: [seq, embedDim] -> [numHeads, seq, headDim]
 		q = qSlice.Reshape(nil, tensor.NewShape(a.numHeads, seqLen, a.headDim))
@@ -285,9 +285,9 @@ func (a *GPTAttention) splitAndReshapeQKV(batchSize, seqLen int) (q, k, v tensor
 		v = vSlice.Reshape(nil, tensor.NewShape(a.numHeads, seqLen, a.headDim))
 	} else {
 		// Batch case
-		qSlice = a.qkvBuffer.Slice(nil, 2, 0, a.embedDim)                    // [batch, seq, embedDim]
-		kSlice = a.qkvBuffer.Slice(nil, 2, a.embedDim, 2*a.embedDim)          // [batch, seq, embedDim]
-		vSlice = a.qkvBuffer.Slice(nil, 2, 2*a.embedDim, 3*a.embedDim)        // [batch, seq, embedDim]
+		qSlice = a.qkvBuffer.Slice(nil, 2, 0, a.embedDim)              // [batch, seq, embedDim]
+		kSlice = a.qkvBuffer.Slice(nil, 2, a.embedDim, 2*a.embedDim)   // [batch, seq, embedDim]
+		vSlice = a.qkvBuffer.Slice(nil, 2, 2*a.embedDim, 3*a.embedDim) // [batch, seq, embedDim]
 
 		// Reshape for multi-head: [batch, seq, embedDim] -> [batch, numHeads, seq, headDim]
 		q = qSlice.Reshape(nil, tensor.NewShape(batchSize, a.numHeads, seqLen, a.headDim))
@@ -313,7 +313,7 @@ func (a *GPTAttention) computeScaledDotProductAttention(q, k, v tensorTypes.Tens
 			// Attention weights: Q_h @ K_h^T / sqrt(headDim) -> [seq, seq]
 			attnHead := a.attnWeights.Slice(nil, 0, h, h+1).Reshape(nil, tensor.NewShape(seqLen, seqLen))
 			qh.MatMulTransposed(attnHead, kh, false, true) // Q @ K^T
-			attnHead.ScalarMul(attnHead, scale)             // Scale
+			attnHead.ScalarMul(attnHead, scale)            // Scale
 
 			// Apply causal mask
 			causalMask := a.causalMask.Slice(nil, 0, 0, seqLen).Slice(nil, 1, 0, seqLen) // [seq, seq]
@@ -343,7 +343,7 @@ func (a *GPTAttention) computeScaledDotProductAttention(q, k, v tensorTypes.Tens
 				// Attention weights: Q_h @ K_h^T / sqrt(headDim) -> [seq, seq]
 				attnHead := a.attnWeights.Slice(nil, 0, b, b+1).Slice(nil, 1, h, h+1).Reshape(nil, tensor.NewShape(seqLen, seqLen))
 				qh.MatMulTransposed(attnHead, kh, false, true) // Q @ K^T
-				attnHead.ScalarMul(attnHead, scale)             // Scale
+				attnHead.ScalarMul(attnHead, scale)            // Scale
 
 				// Apply causal mask
 				causalMask := a.causalMask.Slice(nil, 0, 0, seqLen).Slice(nil, 1, 0, seqLen) // [seq, seq]

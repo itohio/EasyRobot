@@ -7,11 +7,11 @@ import (
 	"errors"
 	"io"
 
-	"github.com/itohio/EasyRobot/pkg/control/actuator"
-	"github.com/itohio/EasyRobot/pkg/control/actuator/servos/pb"
-	"github.com/itohio/EasyRobot/pkg/control/kinematics"
-	"github.com/itohio/EasyRobot/pkg/control/transport"
-	"github.com/itohio/EasyRobot/pkg/core/options"
+	"github.com/itohio/EasyRobot/x/control/actuator"
+	"github.com/itohio/EasyRobot/x/control/actuator/servos/pb"
+	"github.com/itohio/EasyRobot/x/control/kinematics"
+	"github.com/itohio/EasyRobot/x/control/transport"
+	"github.com/itohio/EasyRobot/x/options"
 )
 
 const (

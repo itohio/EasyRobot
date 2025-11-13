@@ -3,8 +3,8 @@ package tflite
 import (
 	"fmt"
 
-	nnTypes "github.com/itohio/EasyRobot/pkg/core/math/nn/types"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
+	nnTypes "github.com/itohio/EasyRobot/x/math/nn/types"
+	"github.com/itohio/EasyRobot/x/math/tensor"
 	tflite "github.com/mattn/go-tflite"
 )
 

@@ -1,10 +1,11 @@
+//go:build !no_json
 // +build !no_json
 
 package marshaller
 
 import (
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/json"
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/types"
+	"github.com/itohio/EasyRobot/x/marshaller/json"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
 )
 
 func init() {
@@ -16,4 +17,3 @@ func init() {
 		return json.NewUnmarshaller(opts...)
 	})
 }
-

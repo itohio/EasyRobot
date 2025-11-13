@@ -3,8 +3,8 @@ package grid
 import (
 	"container/heap"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/mat"
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	"github.com/itohio/EasyRobot/x/math/mat"
+	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
 // FastDijkstra is an optimized Dijkstra search that operates directly on matrices

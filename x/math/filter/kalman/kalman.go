@@ -1,9 +1,9 @@
 package kalman
 
 import (
-	"github.com/itohio/EasyRobot/pkg/core/math/filter"
-	"github.com/itohio/EasyRobot/pkg/core/math/mat"
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	"github.com/itohio/EasyRobot/x/math/filter"
+	"github.com/itohio/EasyRobot/x/math/mat"
+	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
 // Kalman implements a linear Kalman filter for state estimation.

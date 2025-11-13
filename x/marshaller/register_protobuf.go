@@ -4,8 +4,8 @@
 package marshaller
 
 import (
-	marshallerv1 "github.com/itohio/EasyRobot/pkg/core/marshaller/proto"
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/types"
+	marshallerv1 "github.com/itohio/EasyRobot/x/marshaller/proto"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
 )
 
 func init() {

@@ -4,9 +4,9 @@ import (
 	"testing"
 
 	"github.com/chewxy/math32"
-	rigidbody "github.com/itohio/EasyRobot/pkg/core/math/control/kinematics/rigidbody"
-	"github.com/itohio/EasyRobot/pkg/core/math/mat"
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	rigidbody "github.com/itohio/EasyRobot/x/math/control/kinematics/rigidbody"
+	"github.com/itohio/EasyRobot/x/math/mat"
+	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
 func TestTriangularChassisFollowsSinusoid(t *testing.T) {

@@ -35,8 +35,8 @@ The marshaller automatically registers itself on package initialization. It can 
 
 ```go
 import (
-    "github.com/itohio/EasyRobot/pkg/core/marshaller"
-    _ "github.com/itohio/EasyRobot/pkg/core/marshaller/proto"  // Register protobuf marshaller
+    "github.com/itohio/EasyRobot/x/marshaller"
+    _ "github.com/itohio/EasyRobot/x/marshaller/proto"  // Register protobuf marshaller
 )
 
 // Create marshaller

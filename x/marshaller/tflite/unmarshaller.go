@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/types"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
 )
 
 // Unmarshaller implements types.Unmarshaller for TFLite models.

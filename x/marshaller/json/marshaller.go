@@ -5,7 +5,7 @@ import (
 	"io"
 	"reflect"
 
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/types"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
 )
 
 // Marshaller implements JSON-based marshalling.
@@ -107,4 +107,3 @@ func (m *Marshaller) valueToJSON(value any) (*jsonValue, error) {
 		Kind: "generic",
 	}, nil
 }
-

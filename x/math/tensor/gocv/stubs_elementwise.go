@@ -1,6 +1,6 @@
 package gocv
 
-import "github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+import "github.com/itohio/EasyRobot/x/math/tensor/types"
 
 func (t Tensor) Add(dst types.Tensor, other types.Tensor) types.Tensor {
 	panicUnsupported("Add")
@@ -161,4 +161,3 @@ func (t Tensor) Where(dst types.Tensor, condition, a, b types.Tensor) types.Tens
 	panicUnsupported("Where")
 	return nil
 }
-

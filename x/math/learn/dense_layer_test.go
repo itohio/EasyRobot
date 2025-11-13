@@ -3,10 +3,10 @@ package learn
 import (
 	"testing"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/nn"
-	"github.com/itohio/EasyRobot/pkg/core/math/nn/layers"
-	"github.com/itohio/EasyRobot/pkg/core/math/nn/types"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
+	"github.com/itohio/EasyRobot/x/math/nn"
+	"github.com/itohio/EasyRobot/x/math/nn/layers"
+	"github.com/itohio/EasyRobot/x/math/nn/types"
+	"github.com/itohio/EasyRobot/x/math/tensor"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -86,7 +86,7 @@ func TestDenseLayer_SimpleLinearRegression(t *testing.T) {
 		for i := range inputs {
 			// Copy original input into training tensor
 			trainingInput.Copy(inputs[i])
-			
+
 			loss, err := TrainStep(dense, optimizer, lossFn, trainingInput, targets[i])
 			if err != nil {
 				t.Fatalf("TrainStep failed at epoch %d, sample %d: %v", epoch, i, err)

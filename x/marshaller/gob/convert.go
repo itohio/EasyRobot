@@ -3,8 +3,8 @@ package gob
 import (
 	"fmt"
 
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/types"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
+	"github.com/itohio/EasyRobot/x/math/tensor"
 )
 
 // Conversion from gob structs back to domain types

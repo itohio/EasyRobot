@@ -1,6 +1,6 @@
 package gocv
 
-import "github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+import "github.com/itohio/EasyRobot/x/math/tensor/types"
 
 func (t Tensor) ReLU(dst types.Tensor) types.Tensor {
 	panicUnsupported("ReLU")
@@ -71,4 +71,3 @@ func (t Tensor) SoftmaxGrad(dst types.Tensor, gradOutput types.Tensor, dim int) 
 	panicUnsupported("SoftmaxGrad")
 	return nil
 }
-

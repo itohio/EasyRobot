@@ -1,6 +1,6 @@
 package gocv
 
-import "github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+import "github.com/itohio/EasyRobot/x/math/tensor/types"
 
 func (t Tensor) MaxPool2D(dst types.Tensor, kernelSize, stride, padding []int) types.Tensor {
 	panicUnsupported("MaxPool2D")
@@ -36,4 +36,3 @@ func (t Tensor) AdaptiveAvgPool2D(dst types.Tensor, outputSize []int) types.Tens
 	panicUnsupported("AdaptiveAvgPool2D")
 	return nil
 }
-

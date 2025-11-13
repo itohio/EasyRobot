@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive/generics"
+	"github.com/itohio/EasyRobot/x/math/primitive/generics"
 )
 
 const MAX_DIMS = generics.MAX_DIMS

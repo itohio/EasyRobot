@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/chewxy/math32"
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
 func TestMatrix_Cholesky(t *testing.T) {
@@ -192,4 +192,3 @@ func verifyCholeskyDecomposition(m Matrix, L Matrix, t *testing.T) {
 		}
 	}
 }
-

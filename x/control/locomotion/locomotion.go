@@ -3,7 +3,7 @@ package locomotion
 import (
 	"time"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
 // Locomotion represents any mobile robot locomotion system

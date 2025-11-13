@@ -3,8 +3,8 @@ package kalman
 import (
 	"testing"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/mat"
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	"github.com/itohio/EasyRobot/x/math/mat"
+	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
 // TestKalmanFilter_Simple1D tests a simple 1D position tracking filter.

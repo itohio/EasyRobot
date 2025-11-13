@@ -1,8 +1,8 @@
 package thrusters
 
 import (
-	"github.com/itohio/EasyRobot/pkg/core/math/mat"
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	"github.com/itohio/EasyRobot/x/math/mat"
+	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
 func applyForward(body Body, base BodyState, cmds []ThrusterCommand) (BodyState, error) {

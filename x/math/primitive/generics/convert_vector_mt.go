@@ -3,7 +3,7 @@
 package generics
 
 import (
-	mt "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/mt"
+	mt "github.com/itohio/EasyRobot/x/math/primitive/generics/mt"
 )
 
 // Re-export vector/matrix conversion functions from multi-threaded implementation

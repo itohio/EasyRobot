@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/itohio/EasyRobot/pkg/core/options"
-	"github.com/itohio/EasyRobot/pkg/core/pipeline"
+	"github.com/itohio/EasyRobot/x/options"
+	"github.com/itohio/EasyRobot/x/pipeline"
 )
 
 func TestNewFanOut(t *testing.T) {

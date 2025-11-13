@@ -5,7 +5,7 @@ import (
 	"io"
 	"reflect"
 
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/types"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
 )
 
 // Marshaller implements gob-based marshalling.
@@ -113,4 +113,3 @@ func (m *Marshaller) sliceToGob(rv reflect.Value) (*gobValue, error) {
 		SliceData: rv.Interface(),
 	}, nil
 }
-

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/math/tensor/types"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -35,7 +35,7 @@ func TestSlice_ZeroCopyView(t *testing.T) {
 	originalValue := original.At(1, 0) // Second row, first column
 	sliced.SetAt(99.0, 0, 0)
 	assert.Equal(t, float64(99), original.At(1, 0), "Modifying view should modify original")
-	
+
 	// Restore
 	sliced.SetAt(originalValue, 0, 0)
 }
@@ -146,7 +146,7 @@ func TestPermute_ZeroCopyView(t *testing.T) {
 	originalValue := float64(originalData[0])
 	transposed.SetAt(99.0, 0, 0)
 	assert.Equal(t, float32(99), originalData[0], "Modifying view should modify original")
-	
+
 	// Restore
 	transposed.SetAt(originalValue, 0, 0)
 }
@@ -245,7 +245,7 @@ func TestReshape_ZeroCopyView(t *testing.T) {
 	originalValue := float64(originalData[0])
 	reshaped.SetAt(99.0, 0)
 	assert.Equal(t, float32(99), originalData[0], "Modifying view should modify original")
-	
+
 	// Restore
 	reshaped.SetAt(originalValue, 0)
 }
@@ -269,7 +269,7 @@ func TestNestedViews(t *testing.T) {
 	originalData := original.Data().([]float32)
 	slicedData := sliced.Data().([]float32)
 	transposedData := transposed.Data().([]float32)
-	
+
 	assert.Equal(t, uintptr(unsafe.Pointer(&originalData[0])), uintptr(unsafe.Pointer(&slicedData[0])))
 	assert.Equal(t, uintptr(unsafe.Pointer(&originalData[0])), uintptr(unsafe.Pointer(&transposedData[0])))
 
@@ -278,7 +278,7 @@ func TestNestedViews(t *testing.T) {
 	originalValue := float64(originalData[12]) // Offset for slice
 	transposed.SetAt(99.0, 0, 0, 0)
 	assert.Equal(t, float32(99), originalData[12], "Modifying nested view should modify original")
-	
+
 	// Restore
 	transposed.SetAt(originalValue, 0, 0, 0)
 }
@@ -311,4 +311,3 @@ func TestViewMemorySharing(t *testing.T) {
 	assert.Equal(t, float64(99), view2.At(0, 0))
 	assert.Equal(t, float64(99), view3.At(0))
 }
-

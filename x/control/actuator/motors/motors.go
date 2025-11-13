@@ -1,8 +1,8 @@
 package motors
 
 import (
-	"github.com/itohio/EasyRobot/pkg/control/actuator/motors/pb"
-	"github.com/itohio/EasyRobot/pkg/control/kinematics"
+	"github.com/itohio/EasyRobot/x/control/actuator/motors/pb"
+	"github.com/itohio/EasyRobot/x/control/kinematics"
 )
 
 //go:generate protoc -I=./ -I=${GOPATH}/pkg/mod/ -I=${GOPATH}/src --gogofaster_out=./ --proto_path=../../ pb/types.proto

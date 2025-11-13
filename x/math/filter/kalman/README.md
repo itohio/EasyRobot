@@ -35,9 +35,9 @@ z = [ax, ay, az, wx_gyro, wy_gyro, wz_gyro]
 package main
 
 import (
-    "github.com/itohio/EasyRobot/pkg/core/math/filter/kalman"
-    "github.com/itohio/EasyRobot/pkg/core/math/mat"
-    "github.com/itohio/EasyRobot/pkg/core/math/vec"
+    "github.com/itohio/EasyRobot/x/math/filter/kalman"
+    "github.com/itohio/EasyRobot/x/math/mat"
+    "github.com/itohio/EasyRobot/x/math/vec"
 )
 
 func setupAccelGyroFusion(dt float32) *kalman.Kalman {

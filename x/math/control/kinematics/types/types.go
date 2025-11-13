@@ -3,7 +3,7 @@ package types
 import (
 	"errors"
 
-	mattype "github.com/itohio/EasyRobot/pkg/core/math/mat/types"
+	mattype "github.com/itohio/EasyRobot/x/math/mat/types"
 )
 
 // Config groups immutable configuration parameters required to instantiate a

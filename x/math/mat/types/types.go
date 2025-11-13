@@ -1,7 +1,7 @@
 package types
 
 import (
-	vec "github.com/itohio/EasyRobot/pkg/core/math/vec/types"
+	vec "github.com/itohio/EasyRobot/x/math/vec/types"
 )
 
 // Core enumerates structural matrix operations used throughout the `mat` package.

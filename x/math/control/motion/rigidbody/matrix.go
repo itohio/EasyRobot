@@ -3,9 +3,9 @@ package rigidbody
 import (
 	"fmt"
 
-	kintypes "github.com/itohio/EasyRobot/pkg/core/math/control/kinematics/types"
-	mattype "github.com/itohio/EasyRobot/pkg/core/math/mat/types"
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	kintypes "github.com/itohio/EasyRobot/x/math/control/kinematics/types"
+	mattype "github.com/itohio/EasyRobot/x/math/mat/types"
+	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
 const (

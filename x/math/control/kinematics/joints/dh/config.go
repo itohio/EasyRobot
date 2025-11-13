@@ -2,7 +2,7 @@ package dh
 
 import (
 	"github.com/chewxy/math32"
-	"github.com/itohio/EasyRobot/pkg/core/math/mat"
+	"github.com/itohio/EasyRobot/x/math/mat"
 )
 
 ///

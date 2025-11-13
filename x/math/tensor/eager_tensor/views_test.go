@@ -4,7 +4,7 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/math/tensor/types"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -35,17 +35,17 @@ func Test3DSlice_SetGet(t *testing.T) {
 	// Test 2: Set on slice, verify original is modified
 	testValue := 999.0
 	sliced.SetAt(testValue, 0, 0, 0)
-	
+
 	// Verify original tensor was modified
 	assert.Equal(t, testValue, original.At(1, 0, 0), "Setting slice should modify original tensor")
-	
+
 	// Verify slice reflects the change
 	assert.Equal(t, testValue, sliced.At(0, 0, 0), "Slice should reflect the change")
 
 	// Test 3: Set on original, verify slice is modified
 	testValue2 := 888.0
 	original.SetAt(testValue2, 1, 1, 1)
-	
+
 	// Verify slice reflects the change
 	assert.Equal(t, testValue2, sliced.At(0, 1, 1), "Setting original should modify slice")
 
@@ -100,17 +100,17 @@ func Test3DTranspose_SetGet(t *testing.T) {
 	// Test 3: Set on transposed, verify original is modified
 	testValue := 999.0
 	transposed.SetAt(testValue, 0, 1, 0)
-	
+
 	// Verify original tensor was modified at correct position
 	assert.Equal(t, testValue, original.At(0, 0, 1), "Setting transposed should modify original tensor")
-	
+
 	// Verify transposed reflects the change
 	assert.Equal(t, testValue, transposed.At(0, 1, 0), "Transposed should reflect the change")
 
 	// Test 4: Set on original, verify transposed is modified
 	testValue2 := 888.0
 	original.SetAt(testValue2, 0, 1, 2)
-	
+
 	// Verify transposed reflects the change (indices swapped)
 	assert.Equal(t, testValue2, transposed.At(0, 2, 1), "Setting original should modify transposed")
 
@@ -159,17 +159,17 @@ func Test3DReshape_SetGet(t *testing.T) {
 	// Test 3: Set on reshaped, verify original is modified
 	testValue := 999.0
 	reshaped.SetAt(testValue, 0, 1)
-	
+
 	// Verify original tensor was modified at correct position
 	assert.Equal(t, testValue, original.At(0, 0, 1), "Setting reshaped should modify original tensor")
-	
+
 	// Verify reshaped reflects the change
 	assert.Equal(t, testValue, reshaped.At(0, 1), "Reshaped should reflect the change")
 
 	// Test 4: Set on original, verify reshaped is modified
 	testValue2 := 888.0
 	original.SetAt(testValue2, 1, 1, 1)
-	
+
 	// Calculate linear index: 1*3*4 + 1*4 + 1 = 12 + 4 + 1 = 17
 	// Reshaped as [6, 4]: row = 17 / 4 = 4, col = 17 % 4 = 1
 	assert.Equal(t, testValue2, reshaped.At(4, 1), "Setting original should modify reshaped")
@@ -235,17 +235,17 @@ func Test3DPermute_SetGet(t *testing.T) {
 	// Test 3: Set on permuted, verify original is modified
 	testValue := 999.0
 	permuted.SetAt(testValue, 2, 0, 1)
-	
+
 	// Verify original tensor was modified at correct position
 	assert.Equal(t, testValue, original.At(0, 1, 2), "Setting permuted should modify original tensor")
-	
+
 	// Verify permuted reflects the change
 	assert.Equal(t, testValue, permuted.At(2, 0, 1), "Permuted should reflect the change")
 
 	// Test 4: Set on original, verify permuted is modified
 	testValue2 := 888.0
 	original.SetAt(testValue2, 1, 2, 3)
-	
+
 	// Verify permuted reflects the change (indices permuted)
 	// orig[1,2,3] -> perm[3,1,2] (apply permutation [2,0,1])
 	assert.Equal(t, testValue2, permuted.At(3, 1, 2), "Setting original should modify permuted")
@@ -286,8 +286,8 @@ func Test3DChainedViews(t *testing.T) {
 	original := FromFloat32(types.NewShape(2, 3, 4), data)
 
 	// Chain: Slice -> Transpose -> Reshape
-	sliced := original.Slice(nil, 0, 1, 1).(Tensor)      // [1, 3, 4]
-	transposed := sliced.Transpose(nil, nil).(Tensor)    // [1, 4, 3]
+	sliced := original.Slice(nil, 0, 1, 1).(Tensor)                    // [1, 3, 4]
+	transposed := sliced.Transpose(nil, nil).(Tensor)                  // [1, 4, 3]
 	reshaped := transposed.Reshape(nil, types.NewShape(4, 3)).(Tensor) // [4, 3]
 
 	// Verify all share same backing array
@@ -305,7 +305,7 @@ func Test3DChainedViews(t *testing.T) {
 	reshapedData := reshaped.Data().([]float32)
 	originalData := original.Data().([]float32)
 	shareMemory := uintptr(unsafe.Pointer(&reshapedData[0])) == uintptr(unsafe.Pointer(&originalData[0]))
-	
+
 	if shareMemory {
 		// If they share memory, all views should be modified
 		assert.Equal(t, testValue, original.At(1, 0, 0), "Chained view set should modify original")
@@ -411,7 +411,7 @@ func Test3DRoundTrip_Reshape(t *testing.T) {
 	testValue := 999.0
 	reshaped2.SetAt(testValue, 0, 0, 0)
 	assert.Equal(t, testValue, original.At(0, 0, 0), "Modifying reshaped2 should modify original")
-	
+
 	// Restore
 	reshaped2.SetAt(0.0, 0, 0, 0)
 }
@@ -462,7 +462,7 @@ func Test3DRoundTrip_Transpose(t *testing.T) {
 	testValue := 999.0
 	transposed2.SetAt(testValue, 0, 0, 0)
 	assert.Equal(t, testValue, original.At(0, 0, 0), "Modifying transposed2 should modify original")
-	
+
 	// Restore
 	transposed2.SetAt(0.0, 0, 0, 0)
 }
@@ -520,18 +520,18 @@ func Test3DRoundTrip_TransposeReshape(t *testing.T) {
 	// Note: When reshaping a non-contiguous tensor (transposed) with rank change,
 	// Reshape copies data, so transposed2 may not share memory with original.
 	// We verify values are correct, but memory sharing is not guaranteed.
-	
+
 	// Verify values are correct (this is the main requirement)
 	// Memory sharing check is conditional
 	testValue := 999.0
 	originalValue := original.At(0, 0, 0)
 	transposed2.SetAt(testValue, 0, 0, 0)
-	
+
 	// Check if they share memory
 	transposed2Data := transposed2.Data().([]float32)
 	originalData := original.Data().([]float32)
 	shareMemory := uintptr(unsafe.Pointer(&transposed2Data[0])) == uintptr(unsafe.Pointer(&originalData[0]))
-	
+
 	if shareMemory {
 		// If they share memory, modification should propagate
 		assert.Equal(t, testValue, original.At(0, 0, 0), "Modifying transposed2 should modify original (shared memory)")
@@ -546,8 +546,7 @@ func Test3DRoundTrip_TransposeReshape(t *testing.T) {
 	// Also verify intermediate steps are correct
 	// transposed1[0,0,0] should equal original[0,0,0]
 	assert.Equal(t, original.At(0, 0, 0), transposed1.At(0, 0, 0), "Transposed1[0,0,0] should equal Original[0,0,0]")
-	
+
 	// transposed1[0,0,1] should equal original[0,1,0]
 	assert.Equal(t, original.At(0, 1, 0), transposed1.At(0, 0, 1), "Transposed1[0,0,1] should equal Original[0,1,0]")
 }
-

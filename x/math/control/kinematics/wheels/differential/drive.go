@@ -1,10 +1,10 @@
 package differential
 
 import (
-	kintypes "github.com/itohio/EasyRobot/pkg/core/math/control/kinematics/types"
-	"github.com/itohio/EasyRobot/pkg/core/math/mat"
-	mattype "github.com/itohio/EasyRobot/pkg/core/math/mat/types"
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	kintypes "github.com/itohio/EasyRobot/x/math/control/kinematics/types"
+	"github.com/itohio/EasyRobot/x/math/mat"
+	mattype "github.com/itohio/EasyRobot/x/math/mat/types"
+	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
 type drive struct {

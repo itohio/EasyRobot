@@ -4,9 +4,9 @@ package vec
 
 import (
 	"github.com/chewxy/math32"
-	"github.com/itohio/EasyRobot/pkg/core/math"
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
-	vecTypes "github.com/itohio/EasyRobot/pkg/core/math/vec/types"
+	"github.com/itohio/EasyRobot/x/math"
+	"github.com/itohio/EasyRobot/x/math/primitive/fp32"
+	vecTypes "github.com/itohio/EasyRobot/x/math/vec/types"
 )
 
 var _ vecTypes.Vector = (Vector)(nil)

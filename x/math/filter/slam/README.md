@@ -28,9 +28,9 @@ package main
 
 import (
     "math"
-    "github.com/itohio/EasyRobot/pkg/core/math/filter/slam"
-    "github.com/itohio/EasyRobot/pkg/core/math/mat"
-    "github.com/itohio/EasyRobot/pkg/core/math/vec"
+    "github.com/itohio/EasyRobot/x/math/filter/slam"
+    "github.com/itohio/EasyRobot/x/math/mat"
+    "github.com/itohio/EasyRobot/x/math/vec"
 )
 
 func main() {

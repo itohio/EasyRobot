@@ -3,7 +3,7 @@ package fp32
 import (
 	"fmt"
 
-	helpers "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+	helpers "github.com/itohio/EasyRobot/x/math/primitive/generics/helpers"
 )
 
 // BroadcastStrides computes effective strides when broadcasting a tensor with the given shape/strides to the target shape.

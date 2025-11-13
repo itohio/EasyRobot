@@ -3,9 +3,9 @@ package layers
 import (
 	"fmt"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/nn/types"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
-	tensorTypes "github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/math/nn/types"
+	"github.com/itohio/EasyRobot/x/math/tensor"
+	tensorTypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 )
 
 // Conv1D represents a 1D convolution layer.

@@ -3,7 +3,7 @@ package mat
 import (
 	"testing"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
 func TestMatrix_QRDecompose(t *testing.T) {

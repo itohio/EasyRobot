@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/itohio/EasyRobot/internal/concurrency"
-	. "github.com/itohio/EasyRobot/pkg/core/logger"
-	"github.com/itohio/EasyRobot/pkg/core/options"
-	"github.com/itohio/EasyRobot/pkg/core/pipeline"
-	"github.com/itohio/EasyRobot/pkg/core/store"
+	. "github.com/itohio/EasyRobot/x/logger"
+	"github.com/itohio/EasyRobot/x/options"
+	"github.com/itohio/EasyRobot/x/pipeline"
+	"github.com/itohio/EasyRobot/x/store"
 )
 
 const JOIN_NAME = "join"

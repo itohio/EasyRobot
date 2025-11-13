@@ -1,11 +1,11 @@
 package color
 
 import (
-	"github.com/itohio/EasyRobot/pkg/backend"
-	"github.com/itohio/EasyRobot/pkg/core/options"
-	"github.com/itohio/EasyRobot/pkg/core/pipeline"
-	"github.com/itohio/EasyRobot/pkg/core/pipeline/steps"
-	"github.com/itohio/EasyRobot/pkg/core/store"
+	"github.com/itohio/EasyRobot/x/backend"
+	"github.com/itohio/EasyRobot/x/options"
+	"github.com/itohio/EasyRobot/x/pipeline"
+	"github.com/itohio/EasyRobot/x/pipeline/steps"
+	"github.com/itohio/EasyRobot/x/store"
 
 	"gocv.io/x/gocv"
 )

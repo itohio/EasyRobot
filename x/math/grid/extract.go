@@ -2,7 +2,7 @@ package grid
 
 import (
 	"github.com/chewxy/math32"
-	"github.com/itohio/EasyRobot/pkg/core/math/mat"
+	"github.com/itohio/EasyRobot/x/math/mat"
 )
 
 // Mask masks one matrix with another (element-wise multiplication).

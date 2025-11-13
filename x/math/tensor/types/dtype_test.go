@@ -3,8 +3,8 @@ package types
 import (
 	"testing"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive"
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
+	"github.com/itohio/EasyRobot/x/math/primitive"
+	"github.com/itohio/EasyRobot/x/math/primitive/fp32"
 	"github.com/stretchr/testify/assert"
 )
 

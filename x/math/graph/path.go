@@ -1,7 +1,7 @@
 package graph
 
 import (
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
 // GridPathToVector2D converts a Path containing GridNode to []vec.Vector2D

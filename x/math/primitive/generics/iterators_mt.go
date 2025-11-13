@@ -2,7 +2,7 @@
 
 package generics
 
-import mt "github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/mt"
+import mt "github.com/itohio/EasyRobot/x/math/primitive/generics/mt"
 
 // Re-export iterator functions from multi-threaded implementation
 func Elements(shape []int) func(func([]int) bool) {

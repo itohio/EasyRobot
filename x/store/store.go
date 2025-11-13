@@ -6,7 +6,7 @@ import (
 	"image"
 	"io"
 
-	. "github.com/itohio/EasyRobot/pkg/core/logger"
+	. "github.com/itohio/EasyRobot/x/logger"
 )
 
 var (

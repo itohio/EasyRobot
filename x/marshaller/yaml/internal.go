@@ -1,7 +1,7 @@
 package yaml
 
 import (
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/types"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
 )
 
 // Internal structs for YAML encoding/decoding.
@@ -180,4 +180,3 @@ func modelToYAML(model types.Model) yamlModel {
 
 	return result
 }
-

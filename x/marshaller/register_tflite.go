@@ -4,8 +4,8 @@
 package marshaller
 
 import (
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/tflite"
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/types"
+	"github.com/itohio/EasyRobot/x/marshaller/tflite"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
 )
 
 func init() {

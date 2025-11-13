@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/math/tensor/types"
 	"gorgonia.org/gorgonia"
 	"gorgonia.org/tensor"
 )

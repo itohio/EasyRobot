@@ -1,10 +1,10 @@
 package actuator
 
 import (
-	motors "github.com/itohio/EasyRobot/pkg/control/actuator/motors/pb"
-	servos "github.com/itohio/EasyRobot/pkg/control/actuator/servos/pb"
-	"github.com/itohio/EasyRobot/pkg/control/kinematics"
-	"github.com/itohio/EasyRobot/pkg/control/transport"
+	motors "github.com/itohio/EasyRobot/x/control/actuator/motors/pb"
+	servos "github.com/itohio/EasyRobot/x/control/actuator/servos/pb"
+	"github.com/itohio/EasyRobot/x/control/kinematics"
+	"github.com/itohio/EasyRobot/x/control/transport"
 )
 
 type ConfigureOption func() (packetType uint32, packet []byte)

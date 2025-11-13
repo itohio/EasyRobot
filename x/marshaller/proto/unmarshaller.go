@@ -5,9 +5,9 @@ import (
 	"io"
 	"reflect"
 
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/types"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
-	tensortypes "github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
+	"github.com/itohio/EasyRobot/x/math/tensor"
+	tensortypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 	pb "github.com/itohio/EasyRobot/types/core"
 	"google.golang.org/protobuf/proto"
 )

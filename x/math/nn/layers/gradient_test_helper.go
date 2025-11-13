@@ -3,9 +3,9 @@ package layers
 import (
 	"math"
 
-	nntypes "github.com/itohio/EasyRobot/pkg/core/math/nn/types"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+	nntypes "github.com/itohio/EasyRobot/x/math/nn/types"
+	"github.com/itohio/EasyRobot/x/math/tensor"
+	"github.com/itohio/EasyRobot/x/math/tensor/types"
 )
 
 // numericalGradient computes numerical gradient using finite differences

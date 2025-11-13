@@ -7,7 +7,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/types"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
 )
 
 // TestManualDisplayWebcam exercises the webcam->display pipeline. It requires a

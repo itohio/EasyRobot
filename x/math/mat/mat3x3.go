@@ -4,9 +4,9 @@ import (
 	"fmt"
 
 	"github.com/chewxy/math32"
-	matTypes "github.com/itohio/EasyRobot/pkg/core/math/mat/types"
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
-	vecTypes "github.com/itohio/EasyRobot/pkg/core/math/vec/types"
+	matTypes "github.com/itohio/EasyRobot/x/math/mat/types"
+	"github.com/itohio/EasyRobot/x/math/vec"
+	vecTypes "github.com/itohio/EasyRobot/x/math/vec/types"
 )
 
 type Matrix3x3 [3][3]float32

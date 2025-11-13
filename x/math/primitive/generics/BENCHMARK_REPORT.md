@@ -3,7 +3,7 @@
 **Generated:** November 7, 2025  
 **Platform:** Linux amd64  
 **CPU:** Intel(R) Core(TM) i7-8750H CPU @ 2.20GHz  
-**Package:** `github.com/itohio/EasyRobot/pkg/core/math/primitive/generics`
+**Package:** `github.com/itohio/EasyRobot/x/math/primitive/generics`
 
 **⚠️ IMPORTANT:** This report tracks benchmark results over time. When updating this report:
 - Preserve all historical comparison columns (shift left when adding new run)

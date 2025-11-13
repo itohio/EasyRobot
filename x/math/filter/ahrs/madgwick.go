@@ -2,8 +2,8 @@ package ahrs
 
 import (
 	"github.com/chewxy/math32"
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
-	vecTypes "github.com/itohio/EasyRobot/pkg/core/math/vec/types"
+	"github.com/itohio/EasyRobot/x/math/vec"
+	vecTypes "github.com/itohio/EasyRobot/x/math/vec/types"
 )
 
 type MadgwickAHRS struct {

@@ -3,8 +3,8 @@ package layers
 import (
 	"fmt"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/math/tensor"
+	"github.com/itohio/EasyRobot/x/math/tensor/types"
 )
 
 // MaxPool2D represents a 2D max pooling layer.

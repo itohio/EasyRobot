@@ -1,6 +1,6 @@
 package gocv
 
-import "github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+import "github.com/itohio/EasyRobot/x/math/tensor/types"
 
 func (t Tensor) Sum(dst types.Tensor, dims []int) types.Tensor {
 	panicUnsupported("Sum")
@@ -101,4 +101,3 @@ func (t Tensor) ScatterAdd(dst types.Tensor, index, value types.Tensor) types.Te
 	panicUnsupported("ScatterAdd")
 	return nil
 }
-

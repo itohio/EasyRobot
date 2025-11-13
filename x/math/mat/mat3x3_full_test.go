@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/chewxy/math32"
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	"github.com/itohio/EasyRobot/x/math/vec"
 	"github.com/stretchr/testify/require"
 )
 

@@ -3,7 +3,7 @@ package gorgonia
 import (
 	"testing"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/math/tensor/types"
 )
 
 // Benchmark MatMul operations with various matrix sizes
@@ -428,4 +428,3 @@ func BenchmarkSetAtLinear_Sequential(b *testing.B) {
 		}
 	}
 }
-

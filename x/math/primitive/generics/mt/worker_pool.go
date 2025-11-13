@@ -5,7 +5,7 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive/generics/helpers"
+	"github.com/itohio/EasyRobot/x/math/primitive/generics/helpers"
 )
 
 var (

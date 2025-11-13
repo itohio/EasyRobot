@@ -1,6 +1,6 @@
 package gorgonia
 
-import "github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+import "github.com/itohio/EasyRobot/x/math/tensor/types"
 
 // This file contains stub implementations for operations not yet implemented
 // for GraphTensor. These will be implemented as needed.
@@ -310,4 +310,3 @@ func (gt *GraphTensor) DropoutMask(p, scale float64, rng types.RNG) types.Tensor
 func (gt *GraphTensor) DropoutBackward(grad, mask, dst types.Tensor) types.Tensor {
 	panic("gorgonia.GraphTensor.DropoutBackward: not yet implemented")
 }
-

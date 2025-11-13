@@ -1,10 +1,10 @@
 package format
 
 import (
-	"github.com/itohio/EasyRobot/pkg/core/options"
-	"github.com/itohio/EasyRobot/pkg/core/pipeline"
-	"github.com/itohio/EasyRobot/pkg/core/pipeline/steps"
-	"github.com/itohio/EasyRobot/pkg/core/store"
+	"github.com/itohio/EasyRobot/x/options"
+	"github.com/itohio/EasyRobot/x/pipeline"
+	"github.com/itohio/EasyRobot/x/pipeline/steps"
+	"github.com/itohio/EasyRobot/x/store"
 )
 
 const D2S_NAME = "data2stereo"

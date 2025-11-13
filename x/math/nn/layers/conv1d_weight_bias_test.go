@@ -3,8 +3,8 @@ package layers
 import (
 	"testing"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/nn/types"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
+	"github.com/itohio/EasyRobot/x/math/nn/types"
+	"github.com/itohio/EasyRobot/x/math/tensor"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -64,9 +64,9 @@ func TestConv1D_WeightBiasInitializationAndCloning(t *testing.T) {
 	weightParam1.Data.SetAt(5.0, 0, 1, 1) // outCh=0, inCh=1, k=1
 	weightParam1.Data.SetAt(6.0, 0, 1, 2) // outCh=0, inCh=1, k=2
 	// Output channel 1
-	weightParam1.Data.SetAt(7.0, 1, 0, 0) // outCh=1, inCh=0, k=0
-	weightParam1.Data.SetAt(8.0, 1, 0, 1) // outCh=1, inCh=0, k=1
-	weightParam1.Data.SetAt(9.0, 1, 0, 2) // outCh=1, inCh=0, k=2
+	weightParam1.Data.SetAt(7.0, 1, 0, 0)  // outCh=1, inCh=0, k=0
+	weightParam1.Data.SetAt(8.0, 1, 0, 1)  // outCh=1, inCh=0, k=1
+	weightParam1.Data.SetAt(9.0, 1, 0, 2)  // outCh=1, inCh=0, k=2
 	weightParam1.Data.SetAt(10.0, 1, 1, 0) // outCh=1, inCh=1, k=0
 	weightParam1.Data.SetAt(11.0, 1, 1, 1) // outCh=1, inCh=1, k=1
 	weightParam1.Data.SetAt(12.0, 1, 1, 2) // outCh=1, inCh=1, k=2
@@ -226,7 +226,7 @@ func TestConv1D_SetCanLearn_DisablesWeightBiasGradients(t *testing.T) {
 	require.NotNil(t, weightParam1.Grad, "Weight grad should be computed when CanLearn=true")
 	weightGradData1 := weightParam1.Grad.Data().([]float32)
 	require.Greater(t, len(weightGradData1), 0, "Weight grad should have elements")
-	
+
 	// Verify weight gradient is non-zero
 	weightGradSum1 := float32(0.0)
 	for _, val := range weightGradData1 {
@@ -239,7 +239,7 @@ func TestConv1D_SetCanLearn_DisablesWeightBiasGradients(t *testing.T) {
 	require.NotNil(t, biasParam1.Grad, "Bias grad should be computed when CanLearn=true")
 	biasGradData1 := biasParam1.Grad.Data().([]float32)
 	require.Len(t, biasGradData1, outChannels, "Bias grad should have correct size")
-	
+
 	// Verify bias gradient is non-zero
 	biasGradSum1 := float32(0.0)
 	for _, val := range biasGradData1 {
@@ -303,4 +303,3 @@ func TestConv1D_SetCanLearn_DisablesWeightBiasGradients(t *testing.T) {
 			"Bias grad should be nil/empty when CanLearn=false")
 	}
 }
-

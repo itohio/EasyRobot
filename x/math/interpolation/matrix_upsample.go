@@ -1,8 +1,8 @@
 package interpolation
 
 import (
-	"github.com/itohio/EasyRobot/pkg/core/math/mat"
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	"github.com/itohio/EasyRobot/x/math/mat"
+	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
 // LinearMatrixUpsample upsamples a matrix using separable linear interpolation.

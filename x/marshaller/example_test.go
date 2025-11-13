@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/itohio/EasyRobot/pkg/core/marshaller"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
+	"github.com/itohio/EasyRobot/x/marshaller"
+	"github.com/itohio/EasyRobot/x/math/tensor"
 )
 
 // Example_textMarshaller demonstrates the text marshaller with a tensor.
@@ -83,4 +83,3 @@ func checkTensorsEqual(a, b tensor.Tensor) bool {
 	}
 	return true
 }
-

@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	gaittypes "github.com/itohio/EasyRobot/pkg/core/math/control/motion/gait/types"
-	vec "github.com/itohio/EasyRobot/pkg/core/math/vec"
+	gaittypes "github.com/itohio/EasyRobot/x/math/control/motion/gait/types"
+	vec "github.com/itohio/EasyRobot/x/math/vec"
 )
 
 // ErrNotImplemented signals functionality that remains to be completed.

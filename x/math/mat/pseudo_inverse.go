@@ -3,8 +3,8 @@ package mat
 import (
 	"errors"
 
-	matTypes "github.com/itohio/EasyRobot/pkg/core/math/mat/types"
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
+	matTypes "github.com/itohio/EasyRobot/x/math/mat/types"
+	"github.com/itohio/EasyRobot/x/math/primitive/fp32"
 )
 
 var (

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	vec "github.com/itohio/EasyRobot/pkg/core/math/vec"
+	vec "github.com/itohio/EasyRobot/x/math/vec"
 )
 
 // TerrainMode enumerates the level of terrain awareness available to planners.

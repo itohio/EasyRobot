@@ -3,9 +3,9 @@ package eager_tensor
 import (
 	"fmt"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive/generics"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/math/primitive/fp32"
+	"github.com/itohio/EasyRobot/x/math/primitive/generics"
+	"github.com/itohio/EasyRobot/x/math/tensor/types"
 )
 
 // ReLU applies the Rectified Linear Unit activation function: dst[i] = max(0, t[i])

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/itohio/EasyRobot/pkg/core/options"
+	"github.com/itohio/EasyRobot/x/options"
 )
 
 var (

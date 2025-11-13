@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/chewxy/math32"
-	kintypes "github.com/itohio/EasyRobot/pkg/core/math/control/kinematics/types"
-	"github.com/itohio/EasyRobot/pkg/core/math/mat"
+	kintypes "github.com/itohio/EasyRobot/x/math/control/kinematics/types"
+	"github.com/itohio/EasyRobot/x/math/mat"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

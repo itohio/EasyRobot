@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/nn/types"
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive/generics"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
+	"github.com/itohio/EasyRobot/x/math/nn/types"
+	"github.com/itohio/EasyRobot/x/math/primitive/generics"
+	"github.com/itohio/EasyRobot/x/math/tensor"
 )
 
 // QuantizationScheme represents the method for computing quantization parameters.

@@ -1,7 +1,7 @@
 package nn
 
 import (
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
+	"github.com/itohio/EasyRobot/x/math/tensor"
 )
 
 // LossFunction represents a loss function.

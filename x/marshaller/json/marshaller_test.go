@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/types"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
+	"github.com/itohio/EasyRobot/x/math/tensor"
 )
 
 func TestTensorRoundTrip(t *testing.T) {
@@ -97,7 +97,7 @@ func TestArrayRoundTrip(t *testing.T) {
 
 			// Unmarshal
 			u := NewUnmarshaller()
-			
+
 			// Create result of same type
 			var result any
 			switch tt.data.(type) {

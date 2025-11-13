@@ -3,7 +3,7 @@ package gocv
 import (
 	"errors"
 
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/types"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
 )
 
 var errStopLoop = errors.New("gocv: stop loop")

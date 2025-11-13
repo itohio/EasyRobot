@@ -3,7 +3,7 @@ package gorgonia
 import (
 	"fmt"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/math/tensor/types"
 	"gorgonia.org/gorgonia"
 	"gorgonia.org/tensor"
 )
@@ -254,4 +254,3 @@ func (e *graphElement) Get() float64 {
 func (e *graphElement) Set(value float64) {
 	e.tensor.SetAt(value, e.indices...)
 }
-

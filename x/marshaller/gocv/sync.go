@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/itohio/EasyRobot/pkg/core/marshaller/types"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
 )
 
 type frameItem struct {

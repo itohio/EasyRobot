@@ -3,8 +3,8 @@ package layers
 import (
 	"fmt"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor"
-	"github.com/itohio/EasyRobot/pkg/core/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/math/tensor"
+	"github.com/itohio/EasyRobot/x/math/tensor/types"
 )
 
 // Flatten represents a layer that flattens multi-dimensional input to 2D.

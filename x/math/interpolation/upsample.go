@@ -1,7 +1,7 @@
 package interpolation
 
 import (
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
 // LinearUpsample upsamples a vector from size N to size M using linear interpolation.

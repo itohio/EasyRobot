@@ -11,8 +11,8 @@ package mat
 import (
 	"errors"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/primitive/fp32"
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	"github.com/itohio/EasyRobot/x/math/primitive/fp32"
+	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
 // SVD computes singular value decomposition.

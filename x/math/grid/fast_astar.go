@@ -3,9 +3,9 @@ package grid
 import (
 	"container/heap"
 
-	"github.com/itohio/EasyRobot/pkg/core/math/graph"
-	"github.com/itohio/EasyRobot/pkg/core/math/mat"
-	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	"github.com/itohio/EasyRobot/x/math/graph"
+	"github.com/itohio/EasyRobot/x/math/mat"
+	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
 // FastAStar is an optimized A* search that operates directly on matrices
