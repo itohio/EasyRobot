@@ -9,7 +9,7 @@ import (
 
 func TestVector4D_AddDoesNotMutateReceiver(t *testing.T) {
 	receiver := Vector4D{1, 2, 3, 4}
-	operand := NewFrom(4, 5, 6, 7)
+	operand := Vector4D{4, 5, 6, 7}
 
 	got := receiver.Add(operand)
 

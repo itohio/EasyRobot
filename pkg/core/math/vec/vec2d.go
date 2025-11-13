@@ -1,5 +1,3 @@
-// Generated code. DO NOT EDIT
-
 package vec
 
 import (
@@ -10,16 +8,10 @@ import (
 
 var _ vecTypes.Vector = Vector2D{}
 
-const vector2DSize = 2
-
 type Vector2D [2]float32
 
 func (v Vector2D) Sum() float32 {
-	var sum float32
-	for _, val := range v {
-		sum += val
-	}
-	return sum
+	return v[0] + v[1]
 }
 
 func (v Vector2D) View() vecTypes.Vector {
@@ -38,19 +30,15 @@ func (v Vector2D) XY() (float32, float32) {
 }
 
 func (v Vector2D) XYZ() (float32, float32, float32) {
-	panic("vec.Vector2D.XYZ: unsupported operation")
+	return v[0], v[1], 0
 }
 
 func (v Vector2D) XYZW() (float32, float32, float32, float32) {
-	panic("vec.Vector2D.XYZW: unsupported operation")
+	return v[0], v[1], 0, 0
 }
 
 func (v Vector2D) SumSqr() float32 {
-	var sum float32
-	for _, val := range v {
-		sum += val * val
-	}
-	return sum
+	return v[0] * v[1]
 }
 
 func (v Vector2D) Magnitude() float32 {
@@ -58,7 +46,7 @@ func (v Vector2D) Magnitude() float32 {
 }
 
 func (v Vector2D) DistanceSqr(v1 vecTypes.Vector) float32 {
-	other := readVector(v1, "Vector2D.DistanceSqr", vector2DSize)
+	other := v1.(Vector2D)
 	dx := v[0] - other[0]
 	dy := v[1] - other[1]
 	return dx*dx + dy*dy
@@ -69,96 +57,84 @@ func (v Vector2D) Distance(v1 vecTypes.Vector) float32 {
 }
 
 func (v Vector2D) Clone() vecTypes.Vector {
-	var clone Vector2D
-	copy(clone[:], v[:])
-	return clone
+	return v
 }
 
 func (v Vector2D) CopyFrom(start int, v1 vecTypes.Vector) vecTypes.Vector {
-	src := readVector(v1, "Vector2D.CopyFrom", vector2DSize)
-	copy(v[start:], src)
+	src := v1.View().(Vector)
+	copy(v[:], src[start:])
 	return v
 }
 
 func (v Vector2D) CopyTo(start int, v1 vecTypes.Vector) vecTypes.Vector {
-	dst := writeVector(v1, "Vector2D.CopyTo", vector2DSize)
+	dst := v1.View().(Vector)
 	copy(dst, v[start:])
 	return v1
 }
 
 func (v Vector2D) Clamp(min, max vecTypes.Vector) vecTypes.Vector {
-	minVec := readVector(min, "Vector2D.Clamp.min", vector2DSize)
-	maxVec := readVector(max, "Vector2D.Clamp.max", vector2DSize)
-	for i := range v {
-		v[i] = math.Clamp(v[i], minVec[i], maxVec[i])
-	}
+	minVec := min.(Vector2D)
+	maxVec := max.(Vector2D)
+	v[0] = math.Clamp(v[0], minVec[0], maxVec[0])
+	v[1] = math.Clamp(v[1], minVec[1], maxVec[1])
 	return v
 }
 
 func (v Vector2D) FillC(c float32) vecTypes.Vector {
-	for i := range v {
-		v[i] = c
-	}
+	v[0] = c
+	v[1] = c
 	return v
 }
 
 func (v Vector2D) Neg() vecTypes.Vector {
-	for i := range v {
-		v[i] = -v[i]
-	}
+	v[0] = -v[0]
+	v[1] = -v[1]
 	return v
 }
 
 func (v Vector2D) Add(v1 vecTypes.Vector) vecTypes.Vector {
-	other := readVector(v1, "Vector2D.Add", vector2DSize)
-	for i := range v {
-		v[i] += other[i]
-	}
+	other := v1.(Vector2D)
+	v[0] += other[0]
+	v[1] += other[1]
 	return v
 }
 
 func (v Vector2D) AddC(c float32) vecTypes.Vector {
-	for i := range v {
-		v[i] += c
-	}
+	v[0] += c
+	v[1] += c
 	return v
 }
 
 func (v Vector2D) Sub(v1 vecTypes.Vector) vecTypes.Vector {
-	other := readVector(v1, "Vector2D.Sub", vector2DSize)
-	for i := range v {
-		v[i] -= other[i]
-	}
+	other := v1.(Vector2D)
+	v[0] -= other[0]
+	v[1] -= other[1]
 	return v
 }
 
 func (v Vector2D) SubC(c float32) vecTypes.Vector {
-	for i := range v {
-		v[i] -= c
-	}
+	v[0] -= c
+	v[1] -= c
 	return v
 }
 
 func (v Vector2D) MulC(c float32) vecTypes.Vector {
-	for i := range v {
-		v[i] *= c
-	}
+	v[0] *= c
+	v[1] *= c
 	return v
 }
 
 func (v Vector2D) MulCAdd(c float32, v1 vecTypes.Vector) vecTypes.Vector {
-	other := readVector(v1, "Vector2D.MulCAdd", vector2DSize)
-	for i := range v {
-		v[i] += other[i] * c
-	}
+	other := v1.(Vector2D)
+	v[0] += other[0] * c
+	v[1] += other[1] * c
 	return v
 }
 
 func (v Vector2D) MulCSub(c float32, v1 vecTypes.Vector) vecTypes.Vector {
-	other := readVector(v1, "Vector2D.MulCSub", vector2DSize)
-	for i := range v {
-		v[i] -= other[i] * c
-	}
+	other := v1.(Vector2D)
+	v[0] -= other[0] * c
+	v[1] -= other[1] * c
 	return v
 }
 
@@ -166,9 +142,8 @@ func (v Vector2D) DivC(c float32) vecTypes.Vector {
 	if c == 0 {
 		panic("vec.Vector2D.DivC: divide by zero")
 	}
-	for i := range v {
-		v[i] /= c
-	}
+	v[0] /= c
+	v[1] /= c
 	return v
 }
 
@@ -176,10 +151,9 @@ func (v Vector2D) DivCAdd(c float32, v1 vecTypes.Vector) vecTypes.Vector {
 	if c == 0 {
 		panic("vec.Vector2D.DivCAdd: divide by zero")
 	}
-	other := readVector(v1, "Vector2D.DivCAdd", vector2DSize)
-	for i := range v {
-		v[i] += other[i] / c
-	}
+	other := v1.(Vector2D)
+	v[0] += other[0] / c
+	v[1] += other[1] / c
 	return v
 }
 
@@ -187,10 +161,9 @@ func (v Vector2D) DivCSub(c float32, v1 vecTypes.Vector) vecTypes.Vector {
 	if c == 0 {
 		panic("vec.Vector2D.DivCSub: divide by zero")
 	}
-	other := readVector(v1, "Vector2D.DivCSub", vector2DSize)
-	for i := range v {
-		v[i] -= other[i] / c
-	}
+	other := v1.(Vector2D)
+	v[0] -= other[0] / c
+	v[1] -= other[1] / c
 	return v
 }
 
@@ -211,24 +184,31 @@ func (v Vector2D) NormalFast() vecTypes.Vector {
 }
 
 func (v Vector2D) Multiply(v1 vecTypes.Vector) vecTypes.Vector {
-	other := readVector(v1, "Vector2D.Multiply", vector2DSize)
-	for i := range v {
-		v[i] *= other[i]
-	}
+	other := v1.(Vector2D)
+	v[0] *= other[0]
+	v[1] *= other[1]
 	return v
 }
 
 func (v Vector2D) Dot(v1 vecTypes.Vector) float32 {
-	other := readVector(v1, "Vector2D.Dot", vector2DSize)
+	other := v1.(Vector2D)
 	return v[0]*other[0] + v[1]*other[1]
 }
 
-func (v Vector2D) Cross(vecTypes.Vector) vecTypes.Vector {
-	panic("vec.Vector2D.Cross: unsupported operation")
+// Cross returns a Vector3D that is the cross product of the 3D-equivalent vectors from 2D vectors.
+// That is, it lifts both 2D vectors to Z=0 in 3D and returns the cross product as a Vector3D.
+func (v Vector2D) Cross(v1 vecTypes.Vector) vecTypes.Vector {
+	other, ok := v1.(Vector2D)
+	if !ok {
+		panic("vec.Vector2D.Cross: input is not a Vector2D")
+	}
+	// The cross product in 3D of (x1, y1, 0) and (x2, y2, 0) yields (0, 0, x1*y2 - y1*x2)
+	z := v[0]*other[1] - v[1]*other[0]
+	return Vector3D{0, 0, z}
 }
 
 func (v Vector2D) Refract2D(n vecTypes.Vector, ni, nt float32) (vecTypes.Vector, bool) {
-	nVec := readVector(n, "Vector2D.Refract2D.normal", vector2DSize)
+	nVec := n.(Vector2D)
 	NdotV := nVec[0]*v[0] + nVec[1]*v[1]
 	var nMult float32
 	if NdotV > 0 {
@@ -262,7 +242,7 @@ func (v Vector2D) Refract3D(vecTypes.Vector, float32, float32) (vecTypes.Vector,
 }
 
 func (v Vector2D) Reflect(n vecTypes.Vector) vecTypes.Vector {
-	nVec := readVector(n, "Vector2D.Reflect", vector2DSize)
+	nVec := n.(Vector2D)
 	d := v.Dot(n)
 	v[0] = -v[0] + 2*d*nVec[0]
 	v[1] = -v[1] + 2*d*nVec[1]
@@ -270,7 +250,7 @@ func (v Vector2D) Reflect(n vecTypes.Vector) vecTypes.Vector {
 }
 
 func (v Vector2D) Interpolate(v1 vecTypes.Vector, t float32) vecTypes.Vector {
-	other := readVector(v1, "Vector2D.Interpolate", vector2DSize)
+	other := v1.(Vector2D)
 	v[0] = v[0] + t*(other[0]-v[0])
 	v[1] = v[1] + t*(other[1]-v[1])
 	return v
@@ -304,10 +284,91 @@ func (v Vector2D) Product(vecTypes.Quaternion) vecTypes.Vector {
 	panic("vec.Vector2D.Product: unsupported operation")
 }
 
-func (v Vector2D) Slerp(vecTypes.Vector, float32, float32) vecTypes.Vector {
-	panic("vec.Vector2D.Slerp: unsupported operation")
+// Slerp computes the spherical linear interpolation between v and v1 at fraction t.
+// tol is unused here for compatibility, but not typically needed for 2D SLERP.
+// Algorithm: standard 2D slerp between normalized vectors.
+func (v Vector2D) Slerp(v1 vecTypes.Vector, t float32, tol float32) vecTypes.Vector {
+	other := v1.(Vector2D)
+
+	// Normalize v and other
+	var vNorm, oNorm Vector2D
+	copy(vNorm[:], v[:])
+	copy(oNorm[:], other[:])
+	vNorm = vNorm.Normal().(Vector2D)
+	oNorm = oNorm.Normal().(Vector2D)
+
+	// Compute dot product and clamp to [-1, 1]
+	dot := vNorm.Dot(oNorm)
+	if dot > 1.0 {
+		dot = 1.0
+	}
+	if dot < -1.0 {
+		dot = -1.0
+	}
+
+	// Linear interpolation if angle is too small
+	const epsilon = 1e-6
+	if math32.Abs(dot) > 1.0-epsilon {
+		return vNorm.Interpolate(oNorm, t)
+	}
+
+	theta := math32.Acos(dot)
+	sinTheta := math32.Sin(theta)
+
+	a := math32.Sin((1-t)*theta) / sinTheta
+	b := math32.Sin(t*theta) / sinTheta
+
+	return Vector2D{
+		vNorm[0]*a + oNorm[0]*b,
+		vNorm[1]*a + oNorm[1]*b,
+	}
 }
 
-func (v Vector2D) SlerpLong(vecTypes.Vector, float32, float32) vecTypes.Vector {
-	panic("vec.Vector2D.SlerpLong: unsupported operation")
+// SlerpLong computes the "long" path spherical interpolation between v and v1 at fraction t.
+// Equivalent to negating one vector if the dot is positive, then slerping.
+func (v Vector2D) SlerpLong(v1 vecTypes.Vector, t float32, tol float32) vecTypes.Vector {
+	other := v1.(Vector2D)
+
+	// Normalize v and other
+	var vNorm, oNorm Vector2D
+	copy(vNorm[:], v[:])
+	copy(oNorm[:], other[:])
+	vNorm = vNorm.Normal().(Vector2D)
+	oNorm = oNorm.Normal().(Vector2D)
+
+	// Compute dot product and clamp to [-1, 1]
+	dot := vNorm.Dot(oNorm)
+	if dot > 1.0 {
+		dot = 1.0
+	}
+	if dot < -1.0 {
+		dot = -1.0
+	}
+
+	// Take the long way around the sphere by negating one vector if dot > 0
+	if dot > 0 {
+		oNorm[0] = -oNorm[0]
+		oNorm[1] = -oNorm[1]
+		dot = vNorm.Dot(oNorm)
+		if dot < -1.0 {
+			dot = -1.0
+		}
+	}
+
+	// Linear interpolation if angle is too small
+	const epsilon = 1e-6
+	if math32.Abs(dot) > 1.0-epsilon {
+		return vNorm.Interpolate(oNorm, t)
+	}
+
+	theta := math32.Acos(dot)
+	sinTheta := math32.Sin(theta)
+
+	a := math32.Sin((1-t)*theta) / sinTheta
+	b := math32.Sin(t*theta) / sinTheta
+
+	return Vector2D{
+		vNorm[0]*a + oNorm[0]*b,
+		vNorm[1]*a + oNorm[1]*b,
+	}
 }

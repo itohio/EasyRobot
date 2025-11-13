@@ -1,5 +1,3 @@
-// Generated code. DO NOT EDIT
-
 package vec
 
 import (
@@ -15,11 +13,7 @@ const vector4DSize = 4
 type Vector4D [4]float32
 
 func (v Vector4D) Sum() float32 {
-	var sum float32
-	for _, val := range v {
-		sum += val
-	}
-	return sum
+	return v[0] + v[1] + v[2] + v[3]
 }
 
 func (v Vector4D) View() vecTypes.Vector {
@@ -46,11 +40,7 @@ func (v Vector4D) XYZW() (float32, float32, float32, float32) {
 }
 
 func (v Vector4D) SumSqr() float32 {
-	var sum float32
-	for _, val := range v {
-		sum += val * val
-	}
-	return sum
+	return v[0]*v[0] + v[1]*v[1] + v[2]*v[2] + v[3]*v[3]
 }
 
 func (v Vector4D) Magnitude() float32 {
@@ -58,7 +48,7 @@ func (v Vector4D) Magnitude() float32 {
 }
 
 func (v Vector4D) DistanceSqr(v1 vecTypes.Vector) float32 {
-	other := readVector(v1, "Vector4D.DistanceSqr", vector4DSize)
+	other := v1.View().(Vector4D)
 	d0 := v[0] - other[0]
 	d1 := v[1] - other[1]
 	d2 := v[2] - other[2]
@@ -71,96 +61,104 @@ func (v Vector4D) Distance(v1 vecTypes.Vector) float32 {
 }
 
 func (v Vector4D) Clone() vecTypes.Vector {
-	var clone Vector4D
-	copy(clone[:], v[:])
-	return clone
+	return v
 }
 
 func (v Vector4D) CopyFrom(start int, v1 vecTypes.Vector) vecTypes.Vector {
-	src := readVector(v1, "Vector4D.CopyFrom", vector4DSize)
-	copy(v[start:], src)
+	src := v1.View().(Vector)
+	copy(v[:], src[start:])
 	return v
 }
 
 func (v Vector4D) CopyTo(start int, v1 vecTypes.Vector) vecTypes.Vector {
-	dst := writeVector(v1, "Vector4D.CopyTo", vector4DSize)
+	dst := v1.View().(Vector)
 	copy(dst, v[start:])
 	return v1
 }
 
 func (v Vector4D) Clamp(min, max vecTypes.Vector) vecTypes.Vector {
-	minVec := readVector(min, "Vector4D.Clamp.min", vector4DSize)
-	maxVec := readVector(max, "Vector4D.Clamp.max", vector4DSize)
-	for i := range v {
-		v[i] = math.Clamp(v[i], minVec[i], maxVec[i])
-	}
+	minVec := min.(Vector4D)
+	maxVec := max.(Vector4D)
+	v[0] = math.Clamp(v[0], minVec[0], maxVec[0])
+	v[1] = math.Clamp(v[1], minVec[1], maxVec[1])
+	v[2] = math.Clamp(v[2], minVec[2], maxVec[2])
+	v[3] = math.Clamp(v[3], minVec[3], maxVec[3])
 	return v
 }
 
 func (v Vector4D) FillC(c float32) vecTypes.Vector {
-	for i := range v {
-		v[i] = c
-	}
+	v[0] = c
+	v[1] = c
+	v[2] = c
+	v[3] = c
 	return v
 }
 
 func (v Vector4D) Neg() vecTypes.Vector {
-	for i := range v {
-		v[i] = -v[i]
-	}
+	v[0] = -v[0]
+	v[1] = -v[1]
+	v[2] = -v[2]
+	v[3] = -v[3]
 	return v
 }
 
 func (v Vector4D) Add(v1 vecTypes.Vector) vecTypes.Vector {
-	other := readVector(v1, "Vector4D.Add", vector4DSize)
-	for i := range v {
-		v[i] += other[i]
-	}
+	other := v1.(Vector4D)
+	v[0] += other[0]
+	v[1] += other[1]
+	v[2] += other[2]
+	v[3] += other[3]
 	return v
 }
 
 func (v Vector4D) AddC(c float32) vecTypes.Vector {
-	for i := range v {
-		v[i] += c
-	}
+	v[0] += c
+	v[1] += c
+	v[2] += c
+	v[3] += c
 	return v
 }
 
 func (v Vector4D) Sub(v1 vecTypes.Vector) vecTypes.Vector {
-	other := readVector(v1, "Vector4D.Sub", vector4DSize)
-	for i := range v {
-		v[i] -= other[i]
-	}
+	other := v1.(Vector4D)
+	v[0] -= other[0]
+	v[1] -= other[1]
+	v[2] -= other[2]
+	v[3] -= other[3]
 	return v
 }
 
 func (v Vector4D) SubC(c float32) vecTypes.Vector {
-	for i := range v {
-		v[i] -= c
-	}
+	v[0] -= c
+	v[1] -= c
+	v[2] -= c
+	v[3] -= c
 	return v
 }
 
 func (v Vector4D) MulC(c float32) vecTypes.Vector {
-	for i := range v {
-		v[i] *= c
-	}
+	v[0] *= c
+	v[1] *= c
+	v[2] *= c
+	v[3] *= c
 	return v
 }
 
 func (v Vector4D) MulCAdd(c float32, v1 vecTypes.Vector) vecTypes.Vector {
-	other := readVector(v1, "Vector4D.MulCAdd", vector4DSize)
-	for i := range v {
-		v[i] += other[i] * c
-	}
+	other := v1.(Vector4D)
+	v[0] += other[0] * c
+	v[1] += other[1] * c
+	v[2] += other[2] * c
+	v[3] += other[3] * c
 	return v
 }
 
 func (v Vector4D) MulCSub(c float32, v1 vecTypes.Vector) vecTypes.Vector {
-	other := readVector(v1, "Vector4D.MulCSub", vector4DSize)
-	for i := range v {
-		v[i] -= other[i] * c
-	}
+	other := v1.(Vector4D)
+	v[0] -= other[0] * c
+	v[1] -= other[1] * c
+	v[2] -= other[2] * c
+	v[3] -= other[3] * c
 	return v
 }
 
@@ -168,9 +166,10 @@ func (v Vector4D) DivC(c float32) vecTypes.Vector {
 	if c == 0 {
 		panic("vec.Vector4D.DivC: divide by zero")
 	}
-	for i := range v {
-		v[i] /= c
-	}
+	v[0] /= c
+	v[1] /= c
+	v[2] /= c
+	v[3] /= c
 	return v
 }
 
@@ -178,10 +177,11 @@ func (v Vector4D) DivCAdd(c float32, v1 vecTypes.Vector) vecTypes.Vector {
 	if c == 0 {
 		panic("vec.Vector4D.DivCAdd: divide by zero")
 	}
-	other := readVector(v1, "Vector4D.DivCAdd", vector4DSize)
-	for i := range v {
-		v[i] += other[i] / c
-	}
+	other := v1.(Vector4D)
+	v[0] += other[0] / c
+	v[1] += other[1] / c
+	v[2] += other[2] / c
+	v[3] += other[3] / c
 	return v
 }
 
@@ -189,10 +189,11 @@ func (v Vector4D) DivCSub(c float32, v1 vecTypes.Vector) vecTypes.Vector {
 	if c == 0 {
 		panic("vec.Vector4D.DivCSub: divide by zero")
 	}
-	other := readVector(v1, "Vector4D.DivCSub", vector4DSize)
-	for i := range v {
-		v[i] -= other[i] / c
-	}
+	other := v1.(Vector4D)
+	v[0] -= other[0] / c
+	v[1] -= other[1] / c
+	v[2] -= other[2] / c
+	v[3] -= other[3] / c
 	return v
 }
 
@@ -238,7 +239,7 @@ func (v Vector4D) Yaw() float32 {
 }
 
 func (a Vector4D) Product(b vecTypes.Quaternion) vecTypes.Vector {
-	other := readVector(b, "Vector4D.Product", vector4DSize)
+	other := b.(Vector4D)
 	x := a[3]*other[0] + a[0]*other[3] + a[1]*other[2] - a[2]*other[1]
 	y := a[3]*other[1] - a[0]*other[2] + a[1]*other[3] + a[2]*other[0]
 	z := a[3]*other[2] + a[0]*other[1] - a[1]*other[0] + a[2]*other[3]
@@ -251,7 +252,7 @@ func (a Vector4D) Product(b vecTypes.Quaternion) vecTypes.Vector {
 }
 
 func (v Vector4D) Slerp(v1 vecTypes.Vector, time, spin float32) vecTypes.Vector {
-	other := readVector(v1, "Vector4D.Slerp", vector4DSize)
+	other := v1.(Vector4D)
 	const slerpEpsilon = 1.0e-10
 	var (
 		k1, k2     float32
@@ -287,7 +288,7 @@ func (v Vector4D) Slerp(v1 vecTypes.Vector, time, spin float32) vecTypes.Vector 
 }
 
 func (v Vector4D) SlerpLong(v1 vecTypes.Vector, time, spin float32) vecTypes.Vector {
-	other := readVector(v1, "Vector4D.SlerpLong", vector4DSize)
+	other := v1.(Vector4D)
 	const slerpEpsilon = 1.0e-10
 	var (
 		k1, k2     float32
@@ -317,15 +318,16 @@ func (v Vector4D) SlerpLong(v1 vecTypes.Vector, time, spin float32) vecTypes.Vec
 }
 
 func (v Vector4D) Multiply(v1 vecTypes.Vector) vecTypes.Vector {
-	other := readVector(v1, "Vector4D.Multiply", vector4DSize)
-	for i := range v {
-		v[i] *= other[i]
-	}
+	other := v1.(Vector4D)
+	v[0] *= other[0]
+	v[1] *= other[1]
+	v[2] *= other[2]
+	v[3] *= other[3]
 	return v
 }
 
 func (v Vector4D) Dot(v1 vecTypes.Vector) float32 {
-	other := readVector(v1, "Vector4D.Dot", vector4DSize)
+	other := v1.(Vector4D)
 	return v[0]*other[0] + v[1]*other[1] + v[2]*other[2] + v[3]*other[3]
 }
 
@@ -342,18 +344,20 @@ func (v Vector4D) Refract3D(vecTypes.Vector, float32, float32) (vecTypes.Vector,
 }
 
 func (v Vector4D) Reflect(n vecTypes.Vector) vecTypes.Vector {
-	nVec := readVector(n, "Vector4D.Reflect", vector4DSize)
+	nVec := n.(Vector4D)
 	d := v.Dot(n) * 2
-	for i := range v {
-		v[i] = -v[i] + d*nVec[i]
-	}
+	v[0] = -v[0] + d*nVec[0]
+	v[1] = -v[1] + d*nVec[1]
+	v[2] = -v[2] + d*nVec[2]
+	v[3] = -v[3] + d*nVec[3]
 	return v
 }
 
 func (v Vector4D) Interpolate(v1 vecTypes.Vector, t float32) vecTypes.Vector {
-	other := readVector(v1, "Vector4D.Interpolate", vector4DSize)
-	for i := range v {
-		v[i] = v[i] + t*(other[i]-v[i])
-	}
+	other := v1.(Vector4D)
+	v[0] = v[0] + t*(other[0]-v[0])
+	v[1] = v[1] + t*(other[1]-v[1])
+	v[2] = v[2] + t*(other[2]-v[2])
+	v[3] = v[3] + t*(other[3]-v[3])
 	return v
 }

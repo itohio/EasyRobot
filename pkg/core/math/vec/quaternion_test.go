@@ -9,7 +9,7 @@ import (
 
 func TestQuaternion_AddDoesNotMutatePointerReceiver(t *testing.T) {
 	receiver := &Quaternion{1, 2, 3, 4}
-	operand := NewFrom(1, 1, 1, 1)
+	operand := Quaternion{1, 1, 1, 1}
 	before := *receiver
 
 	got := receiver.Add(operand)

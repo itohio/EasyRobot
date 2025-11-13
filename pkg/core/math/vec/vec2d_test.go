@@ -102,7 +102,7 @@ func TestVector2D_Neg(t *testing.T) {
 
 func TestVector2D_AddDoesNotMutateReceiver(t *testing.T) {
 	receiver := Vector2D{1, 2}
-	operand := NewFrom(3, 4)
+	operand := Vector2D{3, 4}
 
 	got := receiver.Add(operand)
 
@@ -115,7 +115,7 @@ func TestVector2D_AddDoesNotMutateReceiver(t *testing.T) {
 
 func TestVector2D_AddDoesNotMutatePointerReceiver(t *testing.T) {
 	receiver := &Vector2D{1, 2}
-	operand := NewFrom(3, 4)
+	operand := Vector2D{3, 4}
 	before := *receiver
 
 	got := receiver.Add(operand)

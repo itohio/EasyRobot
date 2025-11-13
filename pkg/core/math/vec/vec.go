@@ -63,7 +63,7 @@ func (v Vector) Magnitude() float32 {
 }
 
 func (v Vector) DistanceSqr(v1 vecTypes.Vector) float32 {
-	other := readVector(v1, "Vector.DistanceSqr", len(v))
+	other := v1.View().(Vector)
 	clone := v.Clone().(Vector)
 	clone.Sub(other)
 	return clone.SumSqr()
@@ -84,20 +84,20 @@ func (v Vector) Clone() vecTypes.Vector {
 }
 
 func (v Vector) CopyFrom(start int, v1 vecTypes.Vector) vecTypes.Vector {
-	src := readVector(v1, "Vector.CopyFrom", len(v))
-	copy(v[start:], src)
+	src := v1.View().(Vector)
+	copy(v, src[start:])
 	return v
 }
 
 func (v Vector) CopyTo(start int, v1 vecTypes.Vector) vecTypes.Vector {
-	dst := writeVector(v1, "Vector.CopyTo", len(v))
+	dst := v1.View().(Vector)
 	copy(dst, v[start:])
 	return v1
 }
 
 func (v Vector) Clamp(min, max vecTypes.Vector) vecTypes.Vector {
-	minVec := readVector(min, "Vector.Clamp.min", len(v))
-	maxVec := readVector(max, "Vector.Clamp.max", len(v))
+	minVec := min.View().(Vector)
+	maxVec := max.View().(Vector)
 	for i := range v {
 		v[i] = math.Clamp(v[i], minVec[i], maxVec[i])
 	}
@@ -126,7 +126,7 @@ func (v Vector) Add(v1 vecTypes.Vector) vecTypes.Vector {
 	if len(v) == 0 {
 		return v
 	}
-	other := readVector(v1, "Vector.Add", len(v))
+	other := v1.View().(Vector)
 	fp32.Axpy(v, other, 1, 1, len(v), 1.0)
 	return v
 }
@@ -143,7 +143,7 @@ func (v Vector) Sub(v1 vecTypes.Vector) vecTypes.Vector {
 	if len(v) == 0 {
 		return v
 	}
-	other := readVector(v1, "Vector.Sub", len(v))
+	other := v1.View().(Vector)
 	fp32.Axpy(v, other, 1, 1, len(v), -1.0)
 	return v
 }
@@ -168,7 +168,7 @@ func (v Vector) MulCAdd(c float32, v1 vecTypes.Vector) vecTypes.Vector {
 	if len(v) == 0 {
 		return v
 	}
-	other := readVector(v1, "Vector.MulCAdd", len(v))
+	other := v1.View().(Vector)
 	fp32.Axpy(v, other, 1, 1, len(v), c)
 	return v
 }
@@ -177,7 +177,7 @@ func (v Vector) MulCSub(c float32, v1 vecTypes.Vector) vecTypes.Vector {
 	if len(v) == 0 {
 		return v
 	}
-	other := readVector(v1, "Vector.MulCSub", len(v))
+	other := v1.View().(Vector)
 	fp32.Axpy(v, other, 1, 1, len(v), -c)
 	return v
 }
@@ -191,7 +191,7 @@ func (v Vector) DivC(c float32) vecTypes.Vector {
 }
 
 func (v Vector) DivCAdd(c float32, v1 vecTypes.Vector) vecTypes.Vector {
-	other := readVector(v1, "Vector.DivCAdd", len(v))
+	other := v1.View().(Vector)
 	for i := range v {
 		v[i] += other[i] / c
 	}
@@ -199,7 +199,7 @@ func (v Vector) DivCAdd(c float32, v1 vecTypes.Vector) vecTypes.Vector {
 }
 
 func (v Vector) DivCSub(c float32, v1 vecTypes.Vector) vecTypes.Vector {
-	other := readVector(v1, "Vector.DivCSub", len(v))
+	other := v1.View().(Vector)
 	for i := range v {
 		v[i] -= other[i] / c
 	}
@@ -251,7 +251,7 @@ func (v Vector) Yaw() float32 {
 }
 
 func (a Vector) Product(b vecTypes.Quaternion) vecTypes.Vector {
-	other := readVector(b, "Vector.Product", 4)
+	other := b.View().(Quaternion)
 	x := a[3]*other[0] + a[0]*other[3] + a[1]*other[2] - a[2]*other[1]
 	y := a[3]*other[1] - a[0]*other[2] + a[1]*other[3] + a[2]*other[0]
 	z := a[3]*other[2] + a[0]*other[1] - a[1]*other[0] + a[2]*other[3]
@@ -264,7 +264,7 @@ func (a Vector) Product(b vecTypes.Quaternion) vecTypes.Vector {
 }
 
 func (v Vector) Slerp(v1 vecTypes.Vector, time, spin float32) vecTypes.Vector {
-	other := readVector(v1, "Vector.Slerp", len(v))
+	other := v1.View().(Vector)
 	const slerpEpsilon = 1.0e-10
 	var (
 		k1, k2     float32
@@ -299,7 +299,7 @@ func (v Vector) Slerp(v1 vecTypes.Vector, time, spin float32) vecTypes.Vector {
 }
 
 func (v Vector) SlerpLong(v1 vecTypes.Vector, time, spin float32) vecTypes.Vector {
-	other := readVector(v1, "Vector.SlerpLong", len(v))
+	other := v1.View().(Vector)
 	const slerpEpsilon = 1.0e-10
 	var (
 		k1, k2     float32
@@ -331,7 +331,7 @@ func (v Vector) Multiply(v1 vecTypes.Vector) vecTypes.Vector {
 	if len(v) == 0 {
 		return v
 	}
-	other := readVector(v1, "Vector.Multiply", len(v))
+	other := v1.View().(Vector)
 	fp32.ElemMul(v, v, other, []int{len(v)}, []int{1}, []int{1}, []int{1})
 	return v
 }
@@ -340,7 +340,7 @@ func (v Vector) Dot(v1 vecTypes.Vector) float32 {
 	if len(v) == 0 {
 		return 0
 	}
-	other := readVector(v1, "Vector.Dot", len(v))
+	other := v1.View().(Vector)
 	return fp32.Dot(v, other, 1, 1, len(v))
 }
 
@@ -348,7 +348,7 @@ func (v Vector) Cross(v1 vecTypes.Vector) vecTypes.Vector {
 	if len(v) < 3 {
 		panic("vec.Vector.Cross: requires at least 3 dimensions")
 	}
-	other := readVector(v1, "Vector.Cross", len(v))
+	other := v1.View().(Vector)
 	t := []float32{v[0], v[1], v[2]}
 	v[0] = t[1]*other[2] - t[2]*other[1]
 	v[1] = t[2]*other[0] - t[0]*other[2]
@@ -357,9 +357,9 @@ func (v Vector) Cross(v1 vecTypes.Vector) vecTypes.Vector {
 }
 
 func (v Vector) Refract2D(n vecTypes.Vector, ni, nt float32) (vecTypes.Vector, bool) {
-	nVec := readVector(n, "Vector.Refract2D.normal", 2)
-	cosV := make(Vector, 2)
-	sinT := make(Vector, 2)
+	nVec := n.View().(Vector)
+	cosV := Vector2D{}
+	sinT := Vector2D{}
 
 	NdotV := nVec[0]*v[0] + nVec[1]*v[1]
 
@@ -389,9 +389,9 @@ func (v Vector) Refract2D(n vecTypes.Vector, ni, nt float32) (vecTypes.Vector, b
 }
 
 func (v Vector) Refract3D(n vecTypes.Vector, ni, nt float32) (vecTypes.Vector, bool) {
-	nVec := readVector(n, "Vector.Refract3D.normal", 3)
-	cosV := make(Vector, 3)
-	sinT := make(Vector, 3)
+	nVec := n.View().(Vector)
+	cosV := Vector3D{}
+	sinT := Vector3D{}
 
 	NdotV := nVec[0]*v[0] + nVec[1]*v[1] + nVec[2]*v[2]
 
@@ -423,7 +423,7 @@ func (v Vector) Refract3D(n vecTypes.Vector, ni, nt float32) (vecTypes.Vector, b
 }
 
 func (v Vector) Reflect(n vecTypes.Vector) vecTypes.Vector {
-	nVec := readVector(n, "Vector.Reflect", len(v))
+	nVec := n.View().(Vector)
 	NdotV := v.Dot(n) * 2
 	for i := range v {
 		v[i] = -v[i] + NdotV*nVec[i]
@@ -432,7 +432,7 @@ func (v Vector) Reflect(n vecTypes.Vector) vecTypes.Vector {
 }
 
 func (v Vector) Interpolate(v1 vecTypes.Vector, t float32) vecTypes.Vector {
-	other := readVector(v1, "Vector.Interpolate", len(v))
+	other := v1.View().(Vector)
 	d := other.Clone().(Vector)
 	d.Sub(v)
 	return v.MulCAdd(t, d)
