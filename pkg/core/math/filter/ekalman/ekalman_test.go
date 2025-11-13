@@ -202,8 +202,9 @@ func TestEKF_WithControl(t *testing.T) {
 
 	// State should advance with control
 	state := ekf.GetOutput()
-	if state[1] < 0.9 || state[1] > 1.1 {
-		t.Errorf("Expected velocity ~1.0 after control, got %f", state[1])
+	expectedVelocity := control[0] * dt
+	if diff := math32.Abs(state[1] - expectedVelocity); diff > 1e-3 {
+		t.Errorf("Expected velocity ~%0.2f after control, got %f", expectedVelocity, state[1])
 	}
 }
 

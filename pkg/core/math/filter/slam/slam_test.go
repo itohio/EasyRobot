@@ -16,8 +16,9 @@ func TestRayCast_Simple(t *testing.T) {
 	mapGrid.Eye()
 	mapGrid.MulC(0) // Initialize all cells to free
 
-	// Add obstacle at center
-	mapGrid[5][5] = 1.0 // Occupied
+	// Add obstacles aligned with the test rays
+	mapGrid[3][5] = 1.0 // Occupied cell directly east of pose
+	mapGrid[5][3] = 1.0 // Occupied cell directly north of pose
 
 	mapResolution := float32(0.1) // 10cm per cell
 	mapOriginX := float32(0.0)
@@ -31,7 +32,7 @@ func TestRayCast_Simple(t *testing.T) {
 	rayAngle := float32(0.0) // East
 	distance := grid.RayCast(pose, rayAngle, mapGrid, mapResolution, mapOriginX, mapOriginY, maxRange)
 
-	// Expected distance: from (0.3, 0.3) to obstacle at (0.5, 0.5)
+	// Expected distance: from (0.3, 0.3) to obstacle at (0.5, 0.3)
 	// Ray is eastward, so hits cell (5, 3) which is at x=0.5
 	// Distance should be approximately 0.2 meters
 	if distance < 0.15 || distance > 0.25 {
@@ -42,6 +43,7 @@ func TestRayCast_Simple(t *testing.T) {
 	rayAngle = math32.Pi / 2.0 // North
 	distance = grid.RayCast(pose, rayAngle, mapGrid, mapResolution, mapOriginX, mapOriginY, maxRange)
 
+	// Expected distance: from (0.3, 0.3) to obstacle at (0.3, 0.5)
 	if distance < 0.15 || distance > 0.25 {
 		t.Errorf("Expected distance ~0.2m for northward ray, got %f", distance)
 	}

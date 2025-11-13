@@ -1,9 +1,22 @@
 package dh
 
 import (
-	"github.com/itohio/EasyRobot/pkg/control/kinematics"
+	"errors"
+
+	kintypes "github.com/itohio/EasyRobot/pkg/core/math/control/kinematics/types"
 	"github.com/itohio/EasyRobot/pkg/core/math/mat"
+	mattype "github.com/itohio/EasyRobot/pkg/core/math/mat/types"
 	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+)
+
+const effectorSize = 7
+
+var (
+	_ kintypes.Bidirectional = (*DenavitHartenberg)(nil)
+
+	// ErrNoConvergence indicates the iterative inverse kinematics solver failed to
+	// converge within the configured iteration/tolerance budget.
+	ErrNoConvergence = errors.New("dh: inverse kinematics did not converge")
 )
 
 type DenavitHartenberg struct {
@@ -11,12 +24,15 @@ type DenavitHartenberg struct {
 	eps           float32
 	maxIterations int
 	params        []float32
-	pos           [7]float32
+	pos           [effectorSize]float32
 	H0i           []mat.Matrix4x4
 	jointTypes    []int
+	constraints   kintypes.Constraints
+	dimensions    kintypes.Dimensions
+	capabilities  kintypes.Capabilities
 }
 
-func New(eps float32, maxIterations int, cfg ...Config) kinematics.Kinematics {
+func New(eps float32, maxIterations int, cfg ...Config) *DenavitHartenberg {
 	dof := len(cfg)
 	jointTypes := make([]int, dof)
 	for i := range cfg {
@@ -30,159 +46,217 @@ func New(eps float32, maxIterations int, cfg ...Config) kinematics.Kinematics {
 		params:        make([]float32, dof),
 		H0i:           make([]mat.Matrix4x4, dof+1),
 		jointTypes:    jointTypes,
+		dimensions: kintypes.Dimensions{
+			StateRows:    dof,
+			StateCols:    1,
+			ControlSize:  dof,
+			ActuatorSize: dof,
+		},
+		capabilities: kintypes.Capabilities{
+			Holonomic:      true,
+			Underactuated:  false,
+			ConstraintRank: dof,
+		},
 	}
 }
 
-func (p *DenavitHartenberg) DOF() int {
-	return len(p.c)
+func (p *DenavitHartenberg) Dimensions() kintypes.Dimensions {
+	return p.dimensions
 }
 
-func (p *DenavitHartenberg) Params() vec.Vector {
-	return p.params[:]
+func (p *DenavitHartenberg) Capabilities() kintypes.Capabilities {
+	return p.capabilities
 }
 
-func (p *DenavitHartenberg) Effector() vec.Vector {
-	return p.pos[:]
+func (p *DenavitHartenberg) ConstraintSet() kintypes.Constraints {
+	return p.constraints
 }
 
-func (p *DenavitHartenberg) Forward() bool {
-	H := mat.Matrix4x4{}
-	H.Eye()
-	p.H0i[0].Eye()
+// Forward interprets `state` as a DOF×1 joint parameter column vector and
+// writes the end-effector pose `[x, y, z, qx, qy, qz, qw]` into `destination`.
+func (p *DenavitHartenberg) Forward(state mattype.Matrix, destination mattype.Matrix, controls mattype.Matrix) error {
+	if err := p.loadState(state); err != nil {
+		return err
+	}
+	if err := ensureColumn(destination, effectorSize); err != nil {
+		return err
+	}
+
+	if err := p.forwardInternal(); err != nil {
+		return err
+	}
+
+	view := destination.View().(mat.Matrix)
+	for i := 0; i < effectorSize; i++ {
+		view[i][0] = p.pos[i]
+	}
+	return nil
+}
+
+// Backward consumes a desired pose `[x, y, z, qx, qy, qz, qw]` from
+// `destination` and writes solved joint parameters into the `controls`
+// column vector. Optional `state` seeds the current joint values.
+func (p *DenavitHartenberg) Backward(state mattype.Matrix, destination mattype.Matrix, controls mattype.Matrix) error {
+	if err := p.loadState(state); err != nil {
+		return err
+	}
+	if err := p.loadEffector(destination); err != nil {
+		return err
+	}
+	if err := ensureColumn(controls, len(p.params)); err != nil {
+		return err
+	}
+
+	if err := p.inverseInternal(); err != nil {
+		return err
+	}
+
+	view := controls.View().(mat.Matrix)
+	for i, val := range p.params {
+		view[i][0] = val
+	}
+	return nil
+}
+
+func (p *DenavitHartenberg) forwardInternal() error {
+	identity := mat.Matrix4x4{}.Eye().(mat.Matrix4x4)
+	H := identity
+	p.H0i[0] = identity
 	for i, cfg := range p.c {
+		p.params[i] = cfg.Limit(p.params[i])
 		if !cfg.CalculateTransform(p.params[i], &H) {
-			return false
+			return kintypes.ErrUnsupportedOperation
 		}
-		p.H0i[i+1].Mul(p.H0i[i], H)
+		p.H0i[i+1] = (mat.Matrix4x4{}).Mul(p.H0i[i], H).(mat.Matrix4x4)
 	}
 
-	// Extract position from column 3 using Col3D (matches C++ reference)
 	var posVec vec.Vector3D
 	posVec = p.H0i[len(p.c)].Col3D(3, posVec)
 	p.pos[0] = posVec[0]
 	p.pos[1] = posVec[1]
 	p.pos[2] = posVec[2]
 
-	// Extract quaternion from rotation matrix (if needed)
-	copy(p.pos[3:], p.H0i[len(p.c)].Quaternion().Vector())
+	quat := p.H0i[len(p.c)].View().Quaternion()
+	copy(p.pos[3:], quat.View().(vec.Vector))
 
-	return true
+	return nil
 }
 
-func (p *DenavitHartenberg) Inverse() bool {
+func (p *DenavitHartenberg) inverseInternal() error {
 	eps2 := p.eps * p.eps
-	var error vec.Vector3D
-	target := vec.Vector3D{p.pos[0], p.pos[1], p.pos[2]} // Target position
-
+	target := vec.Vector3D{p.pos[0], p.pos[1], p.pos[2]}
 	var actual vec.Vector3D
+	var errVec vec.Vector3D
 
 	for iter := 0; iter <= p.maxIterations; iter++ {
-		// Forward kinematics with current params
-		if !p.Forward() {
-			return false
+		if err := p.forwardInternal(); err != nil {
+			return err
 		}
 
-		// Extract actual position
 		actual[0] = p.pos[0]
 		actual[1] = p.pos[1]
 		actual[2] = p.pos[2]
 
-		// Calculate error
-		error[0] = target[0] - actual[0]
-		error[1] = target[1] - actual[1]
-		error[2] = target[2] - actual[2]
+		errVec[0] = target[0] - actual[0]
+		errVec[1] = target[1] - actual[1]
+		errVec[2] = target[2] - actual[2]
 
-		// Check convergence
-		errSqr := error[0]*error[0] + error[1]*error[1] + error[2]*error[2]
-		if errSqr < eps2 {
-			return true
+		if errVec.SumSqr() < eps2 {
+			return nil
 		}
 
 		if iter == p.maxIterations {
-			return false
+			return ErrNoConvergence
 		}
 
-		// Jacobian-based IK update
-		if !p.ikSolverJacobianPos(error) {
-			return false
+		if err := p.ikSolverJacobianPos(errVec); err != nil {
+			return err
 		}
 	}
 
-	return false
+	return ErrNoConvergence
 }
 
 // ikSolverJacobianPos implements Jacobian-based IK solver for position only.
-// Equivalent to ik_solver_jacobian_pos in C++ reference.
-func (p *DenavitHartenberg) ikSolverJacobianPos(v vec.Vector3D) bool {
+// Equivalent to ik_solver_jacobian_pos in the C++ reference implementation.
+func (p *DenavitHartenberg) ikSolverJacobianPos(v vec.Vector3D) error {
 	dof := len(p.c)
-
-	// Create Jacobian matrix (3 x DOF)
 	J := mat.New(3, dof)
-
-	// Create pseudo-inverse matrix (DOF x 3)
 	Jinv := mat.New(dof, 3)
 
-	// Extract end-effector position
 	var dn vec.Vector3D
 	dn = p.H0i[dof].Col3D(3, dn)
 
 	var R, di, d vec.Vector3D
-	R = vec.Vector3D{0, 0, 1} // Z-axis
+	R = vec.Vector3D{0, 0, 1}
 
 	for i := 0; i < dof; i++ {
-		// Extract rotation axis from column 2
 		R = p.H0i[i].Col3D(2, R)
 
 		jointType := p.jointTypes[i]
-
 		if jointType == 0 {
-			// Revolute joint
-			// Extract joint position from column 3
 			di = p.H0i[i].Col3D(3, di)
-
-			// d = dn - di
 			d[0] = dn[0] - di[0]
 			d[1] = dn[1] - di[1]
 			d[2] = dn[2] - di[2]
 
-			// R.cross(d) = R × d (angular velocity contribution)
-			// For revolute joints: linear = R × d, angular = R
 			linear := vec.Vector3D{
-				R[1]*d[2] - R[2]*d[1], // R × d
+				R[1]*d[2] - R[2]*d[1],
 				R[2]*d[0] - R[0]*d[2],
 				R[0]*d[1] - R[1]*d[0],
 			}
-
-			// Set linear velocity column (rows 0-2)
 			J.SetColFromRow(i, 0, vec.Vector(linear[:]))
-			// Angular velocity column would be at row 3, but we only have 3 rows for position IK
-			// For position-only IK, we only use linear velocity
-
 		} else if jointType == 3 {
-			// Prismatic joint along Z
-			// Linear velocity contribution is along rotation axis
 			J.SetColFromRow(i, 0, vec.Vector(R[:]))
 		} else {
-			// Unsupported joint type
-			return false
+			return kintypes.ErrUnsupportedOperation
 		}
 	}
 
-	// Compute pseudo-inverse
 	if err := J.PseudoInverse(Jinv); err != nil {
-		return false
+		return kintypes.ErrUnsupportedOperation
 	}
 
-	// Compute parameter update: delta_params = Jinv * v
-	// Then update: params = params + delta_params
 	var vVec vec.Vector = vec.Vector{v[0], v[1], v[2]}
 	deltaParams := make(vec.Vector, dof)
 	Jinv.MulVec(vVec, deltaParams)
 
-	// Add delta to current parameters
 	for i := range p.params {
 		p.params[i] += deltaParams[i]
 	}
 
-	return true
+	return nil
+}
+
+func (p *DenavitHartenberg) loadState(state mattype.Matrix) error {
+	if err := ensureColumn(state, len(p.params)); err != nil {
+		return err
+	}
+
+	view := state.View().(mat.Matrix)
+	for i := range p.params {
+		p.params[i] = view[i][0]
+	}
+	return nil
+}
+
+func (p *DenavitHartenberg) loadEffector(destination mattype.Matrix) error {
+	if err := ensureColumn(destination, effectorSize); err != nil {
+		return err
+	}
+	view := destination.View().(mat.Matrix)
+	for i := 0; i < effectorSize; i++ {
+		p.pos[i] = view[i][0]
+	}
+	return nil
+}
+
+func ensureColumn(m mattype.Matrix, rows int) error {
+	if m == nil {
+		return kintypes.ErrInvalidDimensions
+	}
+	if m.Rows() != rows || m.Cols() < 1 {
+		return kintypes.ErrInvalidDimensions
+	}
+	return nil
 }

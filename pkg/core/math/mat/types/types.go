@@ -4,7 +4,16 @@ import (
 	vec "github.com/itohio/EasyRobot/pkg/core/math/vec/types"
 )
 
-// Core groups fundamental matrix access and manipulation operations.
+// Core enumerates structural matrix operations used throughout the `mat` package.
+// Implementations must provide reference-style semantics for slice-backed matrices
+// (receiver mutated in place) and value-style semantics for fixed-size arrays (updated
+// copies returned to caller). Core covers:
+//   - Layout queries (`IsContiguous`, `Flat`, `View`, `Rows`, `Cols`, `Rank`)
+//   - Identity/clone helpers (`Eye`, `Clone`, `CopyFrom`)
+//   - Row/column accessors and mutators (`Row`, `Col`, `SetRow`, `SetCol`, `SetColFromRow`, `GetCol`)
+//   - Diagonal helpers (`Diagonal`, `SetDiagonal`)
+//   - Submatrix extraction/insertion (`Submatrix`, `SetSubmatrix`, `SetSubmatrixRaw`)
+//   - Transposition (`Transpose`)
 type Core interface {
 	IsContiguous() bool
 	Flat() []float32
@@ -30,7 +39,8 @@ type Core interface {
 	Transpose(m1 Matrix) Matrix
 }
 
-// Rotations enumerates routines for constructing rotation matrices.
+// Rotations defines constructors for orientation matrices used in kinematics.
+// Implementations map angle/quaternion inputs into rotation matrices without allocations.
 type Rotations interface {
 	Rotation2D(a float32) Matrix
 	RotationX(a float32) Matrix
@@ -39,7 +49,8 @@ type Rotations interface {
 	Orientation(q vec.Quaternion) Matrix
 }
 
-// Arithmetic encapsulates scalar and element-wise matrix operations.
+// Arithmetic encapsulates element-wise matrix arithmetic on shared dimensions.
+// Slice-backed matrices mutate in place; fixed-size arrays return updated copies.
 type Arithmetic interface {
 	Add(m1 Matrix) Matrix
 	Sub(m1 Matrix) Matrix
@@ -47,7 +58,8 @@ type Arithmetic interface {
 	DivC(c float32) Matrix
 }
 
-// Multiplication captures matrix-matrix and matrix-vector multiplication.
+// Multiplication captures dense matrix products and mixed matrix/vector operations.
+// Slice-backed matrices reuse destination buffers; fixed-size arrays deliver computed copies.
 type Multiplication interface {
 	Mul(a Matrix, b Matrix) Matrix
 	MulDiag(a Matrix, b vec.Vector) Matrix
@@ -56,6 +68,8 @@ type Multiplication interface {
 }
 
 // Factorization exposes higher-level decomposition and inversion routines.
+// Implementations should either provide the full set of operations or panic when a routine
+// is not meaningful for the concrete matrix dimensions (e.g. SVD on rectangular fixed arrays).
 type Factorization interface {
 	Det() float32
 	LU(L, U Matrix)
@@ -70,7 +84,10 @@ type Factorization interface {
 	DampedLeastSquares(lambda float32, dst Matrix) error
 }
 
-// Matrix composes all matrix capabilities provided by the mat package.
+// Matrix aggregates all behaviours required by EasyRobot matrix types, accommodating both
+// reference-semantic (`Matrix`) and value-semantic (fixed-size arrays) implementations.
+// Conforming implementations must satisfy Core, Rotations, Arithmetic, Multiplication, and Factorization.
+// Fixed-size types may deliberately panic on methods that do not make sense for their geometry.
 type Matrix interface {
 	Core
 	Rotations

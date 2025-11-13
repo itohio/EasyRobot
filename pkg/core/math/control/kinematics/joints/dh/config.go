@@ -54,16 +54,12 @@ func (c Config) CalculateTransform(parameter float32, m *mat.Matrix4x4) bool {
 	switch c.Index {
 	case 0:
 		theta += parameter
-		break
 	case 1:
 		alpha += parameter
-		break
 	case 2:
 		r += parameter
-		break
 	case 3:
 		d += parameter
-		break
 	default:
 		return false
 	}

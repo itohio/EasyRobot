@@ -107,3 +107,13 @@ flowchart TD
     end
 ```
 
+## Matrix/Vector Semantics Migration (2025-11)
+
+- Adopt the updated `mat`/`vec` semantics where fixed-size types return modified copies:
+  - Capture results from matrix/vector operations and write them back into the chassis state/parameter buffers.
+  - Replace pointer-return helpers (`*Matrix3x4`, `*Matrix4x3`) with value-oriented flows that type-assert to fixed-size matrices.
+- Audit wheel packages:
+  - `mecanum`: reassign `MulVec` outputs into `params`/`state` and modernise transform helpers.
+  - `differential`, `steer4`, `steer4dual`, `steer6`: confirm slice exposures remain valid and capture any mutator results.
+- Extend table-driven tests to assert copy-on-return behaviour (Forward↔Inverse round-trips should compare stored arrays rather than relying on in-place mutation).
+

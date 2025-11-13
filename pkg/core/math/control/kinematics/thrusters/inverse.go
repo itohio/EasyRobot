@@ -2,12 +2,13 @@ package thrusters
 
 import (
 	"github.com/chewxy/math32"
+	"github.com/itohio/EasyRobot/pkg/core/math/mat"
 	"github.com/itohio/EasyRobot/pkg/core/math/vec"
 )
 
 const solveTolerance = 1e-4
 
-func Inverse(body Body, thrusters []Thruster, current, desired BodyState) ([]Command, error) {
+func allocate(body Body, thrusters []Thruster, current, desired BodyState) ([]Command, error) {
 	if err := validateBody(body); err != nil {
 		return nil, err
 	}
@@ -47,13 +48,10 @@ func targetWrench(body Body, delta BodyState) [6]float32 {
 	return wrench
 }
 
-func allocationMatrix(thrusters []Thruster) [][]float32 {
+func allocationMatrix(thrusters []Thruster) mat.Matrix {
 	rows := 6
 	cols := len(thrusters) * 2
-	matrix := make([][]float32, rows)
-	for r := range matrix {
-		matrix[r] = make([]float32, cols)
-	}
+	matrix := mat.New(rows, cols)
 	for i, th := range thrusters {
 		thrustCol := 2 * i
 		torqueCol := thrustCol + 1
@@ -67,78 +65,46 @@ func allocationMatrix(thrusters []Thruster) [][]float32 {
 	return matrix
 }
 
-func solveAllocation(W [][]float32, wrench [6]float32) ([]float32, error) {
+func solveAllocation(W mat.Matrix, wrench [6]float32) ([]float32, error) {
 	rows := len(W)
+	if rows == 0 {
+		return nil, ErrInfeasible
+	}
 	cols := len(W[0])
-	A := make([][]float32, cols)
-	for i := range A {
-		A[i] = make([]float32, cols)
-	}
-	y := make([]float32, cols)
-	for i := 0; i < cols; i++ {
-		for j := 0; j < cols; j++ {
-			var sum float32
-			for r := 0; r < rows; r++ {
-				sum += W[r][i] * W[r][j]
-			}
-			A[i][j] = sum
-		}
-		var sum float32
-		for r := 0; r < rows; r++ {
-			sum += W[r][i] * wrench[r]
-		}
-		y[i] = sum
-	}
-	return solveLinear(A, y)
-}
-
-func solveLinear(A [][]float32, b []float32) ([]float32, error) {
-	n := len(A)
-	aug := make([][]float32, n)
-	for i := 0; i < n; i++ {
-		row := make([]float32, n+1)
-		copy(row, A[i])
-		row[n] = b[i]
-		aug[i] = row
-	}
-	for col := 0; col < n; col++ {
-		pivot := col
-		maxVal := math32.Abs(aug[pivot][col])
-		for r := col + 1; r < n; r++ {
-			if v := math32.Abs(aug[r][col]); v > maxVal {
-				maxVal = v
-				pivot = r
-			}
-		}
-		if maxVal < solveTolerance {
+	pseudo := mat.New(cols, rows)
+	if err := W.PseudoInverse(pseudo); err != nil {
+		if err := dampedPseudoInverse(W, pseudo, 1e-3); err != nil {
 			return nil, ErrInfeasible
 		}
-		if pivot != col {
-			aug[col], aug[pivot] = aug[pivot], aug[col]
-		}
-		pivotVal := aug[col][col]
-		invPivot := 1 / pivotVal
-		for c := col; c <= n; c++ {
-			aug[col][c] *= invPivot
-		}
-		for r := 0; r < n; r++ {
-			if r == col {
-				continue
-			}
-			factor := aug[r][col]
-			if math32.Abs(factor) < solveTolerance {
-				continue
-			}
-			for c := col; c <= n; c++ {
-				aug[r][c] -= factor * aug[col][c]
-			}
-		}
 	}
-	solution := make([]float32, n)
-	for i := 0; i < n; i++ {
-		solution[i] = aug[i][n]
+	wrenchVec := vec.New(rows)
+	for i := 0; i < rows && i < len(wrenchVec); i++ {
+		wrenchVec[i] = wrench[i]
 	}
+	solutionVec := vec.New(cols)
+	pseudo.MulVec(wrenchVec, solutionVec)
+	solution := make([]float32, cols)
+	copy(solution, solutionVec)
 	return solution, nil
+}
+
+func dampedPseudoInverse(J mat.Matrix, dst mat.Matrix, lambda float32) error {
+	rows := len(J)
+	cols := len(J[0])
+	JT := mat.New(cols, rows)
+	JT.Transpose(J)
+	JJT := mat.New(rows, rows)
+	JJT.Mul(J, JT)
+	lambda2 := lambda * lambda
+	for i := 0; i < rows; i++ {
+		JJT[i][i] += lambda2
+	}
+	JJTInv := mat.New(rows, rows)
+	if err := JJT.Inverse(JJTInv); err != nil {
+		return err
+	}
+	dst.Mul(JT, JJTInv)
+	return nil
 }
 
 func mapSolution(thrusters []Thruster, sol []float32) ([]Command, bool) {
@@ -164,7 +130,7 @@ func verifySolution(body Body, thrusters []Thruster, cmds []Command) ([6]float32
 			Command:  cmds[i],
 		}
 	}
-	result, err := Forward(body, BodyState{}, tc)
+	result, err := applyForward(body, BodyState{}, tc)
 	if err != nil {
 		return [6]float32{}, err
 	}

@@ -3,6 +3,7 @@ package ahrs
 import (
 	"github.com/chewxy/math32"
 	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	vecTypes "github.com/itohio/EasyRobot/pkg/core/math/vec/types"
 )
 
 type MadgwickAHRS struct {
@@ -22,25 +23,24 @@ func NewMadgwick(opts ...Option) AHRS {
 	return &m
 }
 
-func (m *MadgwickAHRS) Acceleration() vec.Vector {
-	return m.accel[:]
+func (m *MadgwickAHRS) Acceleration() vecTypes.Vector {
+	return m.accel.View()
 }
 
-func (m *MadgwickAHRS) Gyroscope() vec.Vector {
-	return m.gyro[:]
+func (m *MadgwickAHRS) Gyroscope() vecTypes.Vector {
+	return m.gyro.View()
 }
 
-func (m *MadgwickAHRS) Magnetometer() vec.Vector {
-	return m.mag[:]
+func (m *MadgwickAHRS) Magnetometer() vecTypes.Vector {
+	return m.mag.View()
 }
 
-func (m *MadgwickAHRS) Orientation() vec.Vector {
-	return m.q[:]
+func (m *MadgwickAHRS) Orientation() vecTypes.Vector {
+	return m.q.View()
 }
 
 func (m *MadgwickAHRS) Reset() AHRS {
-	m.q.Vector().FillC(0)
-	m.q[0] = 1
+	m.q = vec.Quaternion{1, 0, 0, 0}
 	return m
 }
 
@@ -78,10 +78,10 @@ func (m *MadgwickAHRS) Calculate() AHRS {
 	q4q4 := q4 * q4
 
 	// Normalise accelerometer measurement
-	ax, ay, az := m.accel.Clone().NormalFast().XYZ()
+	ax, ay, az := m.accel.NormalFast().XYZ()
 
 	// Normalise magnetometer measurement
-	mx, my, mz := m.mag.Clone().NormalFast().XYZ()
+	mx, my, mz := m.mag.NormalFast().XYZ()
 
 	// Reference direction of Earth's magnetic field
 	_2q1mx := 2 * q1 * mx
@@ -102,19 +102,26 @@ func (m *MadgwickAHRS) Calculate() AHRS {
 		-_2q1*(2*q2q4-_2q1q3-ax) + _2q4*(2*q1q2+_2q3q4-ay) - 4*q3*(1-2*q2q2-2*q3q3-az) + (-_4bx*q3-_2bz*q1)*(_2bx*(0.5-q3q3-q4q4)+_2bz*(q2q4-q1q3)-mx) + (_2bx*q2+_2bz*q4)*(_2bx*(q2q3-q1q4)+_2bz*(q1q2+q3q4)-my) + (_2bx*q1-_4bz*q3)*(_2bx*(q1q3+q2q4)+_2bz*(0.5-q2q2-q3q3)-mz),
 		_2q2*(2*q2q4-_2q1q3-ax) + _2q3*(2*q1q2+_2q3q4-ay) + (-_4bx*q4+_2bz*q2)*(_2bx*(0.5-q3q3-q4q4)+_2bz*(q2q4-q1q3)-mx) + (-_2bx*q1+_2bz*q3)*(_2bx*(q2q3-q1q4)+_2bz*(q1q2+q3q4)-my) + _2bx*q2*(_2bx*(q1q3+q2q4)+_2bz*(0.5-q2q2-q3q3)-mz),
 	}
-	s.NormalFast()
+	s = s.NormalFast().(vec.Quaternion)
 
 	// Compute rate of change of quaternion
-	m.q[0] = 0.5 * (-q2*m.gyro[0] - q3*m.gyro[1] - q4*m.gyro[2])
-	m.q[1] = 0.5 * (q1*m.gyro[0] + q3*m.gyro[2] - q4*m.gyro[1])
-	m.q[2] = 0.5 * (q1*m.gyro[1] - q2*m.gyro[2] + q4*m.gyro[0])
-	m.q[3] = 0.5 * (q1*m.gyro[2] + q2*m.gyro[1] - q3*m.gyro[0])
-	m.q.MulCSub(m.GainP, s)
+	qDot := vec.Quaternion{
+		0.5 * (-q2*m.gyro[0] - q3*m.gyro[1] - q4*m.gyro[2]),
+		0.5 * (q1*m.gyro[0] + q3*m.gyro[2] - q4*m.gyro[1]),
+		0.5 * (q1*m.gyro[1] - q2*m.gyro[2] + q4*m.gyro[0]),
+		0.5 * (q1*m.gyro[2] + q2*m.gyro[1] - q3*m.gyro[0]),
+	}
+	qDot = qDot.MulCSub(m.GainP, s).(vec.Quaternion)
 
 	// Integrate to yield quaternion
-	m.q.MulCAdd(m.SamplePeriod, m.q)
+	m.q = vec.Quaternion{
+		q1 + qDot[0]*m.SamplePeriod,
+		q2 + qDot[1]*m.SamplePeriod,
+		q3 + qDot[2]*m.SamplePeriod,
+		q4 + qDot[3]*m.SamplePeriod,
+	}
 
-	m.q.NormalFast()
+	m.q = m.q.NormalFast().(vec.Quaternion)
 
 	return m
 }
@@ -138,7 +145,7 @@ func (m *MadgwickAHRS) calculateWOMag() AHRS {
 	q4q4 := q4 * q4
 
 	// Normalise accelerometer measurement
-	a := m.accel.Clone().NormalFast()
+	a := m.accel.NormalFast().(vec.Vector3D)
 
 	// Gradient decent algorithm corrective step
 	s := vec.Quaternion{
@@ -147,19 +154,26 @@ func (m *MadgwickAHRS) calculateWOMag() AHRS {
 		4*q1q1*q3 + _2q1*a[0] + _4q3*q4q4 - _2q4*a[1] - _4q3 + _8q3*q2q2 + _8q3*q3q3 + _4q3*a[2],
 		4*q2q2*q4 - _2q2*a[0] + 4*q3q3*q4 - _2q3*a[1],
 	}
-	s.NormalFast()
+	s = s.NormalFast().(vec.Quaternion)
 
 	// Compute rate of change of quaternion
-	m.q[0] = 0.5 * (-q2*m.gyro[0] - q3*m.gyro[1] - q4*m.gyro[2])
-	m.q[1] = 0.5 * (q1*m.gyro[0] + q3*m.gyro[2] - q4*m.gyro[1])
-	m.q[2] = 0.5 * (q1*m.gyro[1] - q2*m.gyro[2] + q4*m.gyro[0])
-	m.q[3] = 0.5 * (q1*m.gyro[2] + q2*m.gyro[1] - q3*m.gyro[0])
-	m.q.MulCSub(m.GainP, s)
+	qDot := vec.Quaternion{
+		0.5 * (-q2*m.gyro[0] - q3*m.gyro[1] - q4*m.gyro[2]),
+		0.5 * (q1*m.gyro[0] + q3*m.gyro[2] - q4*m.gyro[1]),
+		0.5 * (q1*m.gyro[1] - q2*m.gyro[2] + q4*m.gyro[0]),
+		0.5 * (q1*m.gyro[2] + q2*m.gyro[1] - q3*m.gyro[0]),
+	}
+	qDot = qDot.MulCSub(m.GainP, s).(vec.Quaternion)
 
 	// Integrate to yield quaternion
-	m.q.MulCAdd(m.SamplePeriod, m.q)
+	m.q = vec.Quaternion{
+		q1 + qDot[0]*m.SamplePeriod,
+		q2 + qDot[1]*m.SamplePeriod,
+		q3 + qDot[2]*m.SamplePeriod,
+		q4 + qDot[3]*m.SamplePeriod,
+	}
 
-	m.q.NormalFast()
+	m.q = m.q.NormalFast().(vec.Quaternion)
 
 	return m
 }

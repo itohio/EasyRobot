@@ -5,7 +5,7 @@ import (
 	"github.com/itohio/EasyRobot/pkg/core/math/vec"
 )
 
-func Forward(body Body, base BodyState, cmds []ThrusterCommand) (BodyState, error) {
+func applyForward(body Body, base BodyState, cmds []ThrusterCommand) (BodyState, error) {
 	if err := validateBody(body); err != nil {
 		return BodyState{}, err
 	}

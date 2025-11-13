@@ -4,6 +4,12 @@
 
 This document outlines the implementation plan for a simple Simultaneous Localization And Mapping (SLAM) filter that works with ray-based sensors (e.g., LiDAR, sonar).
 
+## 2025-11-13 Maintenance Notes
+
+- Align ray-casting unit tests with the intended map geometry by placing obstacles along the rays under test.
+- Extend EKF measurement update internals with correctly sized temporary matrices so matrix multiplications remain dimensionally valid.
+- Keep helper allocations reusable to preserve performance characteristics of prediction and update steps.
+
 ## Requirements
 
 1. **Arbitrary number of rays**: Support any number of sensor rays

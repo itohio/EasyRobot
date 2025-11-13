@@ -52,6 +52,9 @@ type EKF struct {
 	tempM  mat.Matrix // Temporary for matrix operations
 	tempN  mat.Matrix // Temporary for matrix operations
 	tempN2 mat.Matrix // Temporary for matrix operations (n x n)
+	tempHP mat.Matrix // Temporary for H * P (m x n)
+	tempHT mat.Matrix // Temporary for Hᵀ (n x m)
+	tempPH mat.Matrix // Temporary for P * Hᵀ (n x m)
 	tempV  vec.Vector // Temporary for vector operations
 	tempV2 vec.Vector // Temporary for vector operations
 	tempV3 vec.Vector // Temporary for vector operations
@@ -119,6 +122,9 @@ func New(
 		tempM:           mat.New(n, n),
 		tempN:           mat.New(m, m),
 		tempN2:          mat.New(n, n),
+		tempHP:          mat.New(m, n),
+		tempHT:          mat.New(n, m),
+		tempPH:          mat.New(n, m),
 		tempV:           vec.New(n),
 		tempV2:          vec.New(n),
 		tempV3:          vec.New(n),
@@ -180,6 +186,9 @@ func NewWithControl(
 		tempM:           mat.New(n, n),
 		tempN:           mat.New(m, m),
 		tempN2:          mat.New(n, n),
+		tempHP:          mat.New(m, n),
+		tempHT:          mat.New(n, m),
+		tempPH:          mat.New(n, m),
 		tempV:           vec.New(n),
 		tempV2:          vec.New(n),
 		tempV3:          vec.New(n),
@@ -345,6 +354,7 @@ func (e *EKF) Predict(dt float32) *EKF {
 
 	// Add Q: P_pred = F * P * F^T + Q
 	e.P.Add(e.Q)
+	copy(e.Output, e.x)
 
 	return e
 }
@@ -376,6 +386,7 @@ func (e *EKF) PredictWithControl(u vec.Vector, dt float32) *EKF {
 
 	// Add Q: P_pred = F * P * F^T + Q
 	e.P.Add(e.Q)
+	copy(e.Output, e.x)
 
 	return e
 }
@@ -403,23 +414,21 @@ func (e *EKF) UpdateMeasurement(z vec.Vector) *EKF {
 	e.computeMeasurementJacobian(e.x)
 
 	// Innovation covariance: S = H * P_pred * H^T + R
-	// First compute H * P
-	zeroMatrix(e.tempM)
-	e.tempM.Mul(e.H, e.P)
+	zeroMatrix(e.tempHP)
+	e.tempHP.Mul(e.H, e.P)
 
-	// Then compute (H * P) * H^T
-	zeroMatrix(e.tempP)
-	e.tempP.Transpose(e.H)
+	zeroMatrix(e.tempHT)
+	e.tempHT.Transpose(e.H)
+
 	zeroMatrix(e.S)
-	e.S.Mul(e.tempM, e.tempP)
+	e.S.Mul(e.tempHP, e.tempHT)
 
 	// Add R: S = H * P_pred * H^T + R
 	e.S.Add(e.R)
 
 	// Kalman gain: K = P_pred * H^T * S^-1
-	// First compute P_pred * H^T
-	zeroMatrix(e.tempM)
-	e.tempM.Mul(e.P, e.tempP)
+	zeroMatrix(e.tempPH)
+	e.tempPH.Mul(e.P, e.tempHT)
 
 	// Compute S^-1
 	zeroMatrix(e.tempN)
@@ -430,7 +439,7 @@ func (e *EKF) UpdateMeasurement(z vec.Vector) *EKF {
 
 	// K = (P_pred * H^T) * S^-1
 	zeroMatrix(e.K)
-	e.K.Mul(e.tempM, e.tempN)
+	e.K.Mul(e.tempPH, e.tempN)
 
 	// Update state: x = x_pred + K * y
 	e.tempV.FillC(0)

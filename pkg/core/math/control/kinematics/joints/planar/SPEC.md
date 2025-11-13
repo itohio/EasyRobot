@@ -44,6 +44,9 @@ type p2d struct {
     params [2]float32     // Joint angles (input/output)
     pos    [6]float32     // End-effector pose (x, y, z, orientation, ...)
 }
+
+func (p *p2d) Forward(state mattype.Matrix, destination mattype.Matrix, controls mattype.Matrix) error
+func (p *p2d) Backward(state mattype.Matrix, destination mattype.Matrix, controls mattype.Matrix) error
 ```
 
 **Forward Kinematics**:
@@ -55,7 +58,7 @@ type p2d struct {
    - `x' = x*cos(a0)`
    - `y' = x*sin(a0)`
    - `z' = z`
-4. Store position and orientation angles
+4. Store position and orientation angles in the provided `destination` matrix (rows 0-5, column 0)
 
 **Inverse Kinematics**:
 1. Calculate distance from base to target:
@@ -63,7 +66,7 @@ type p2d struct {
 2. Calculate joint angles:
    - `a0 = atan2(y, x)`  // Base rotation
    - `a1 = atan2(z, x_prime)`  // Elbow angle
-3. Apply joint limits
+3. Apply joint limits and write results to the `controls` matrix
 
 **Questions**:
 1. Should we support multiple IK solutions (elbow up/down)?
@@ -86,6 +89,9 @@ type p3d struct {
     params [3]float32     // Joint angles (input/output)
     pos    [6]float32     // End-effector pose (x, y, z, orientation, ...)
 }
+
+func (p *p3d) Forward(state mattype.Matrix, destination mattype.Matrix, controls mattype.Matrix) error
+func (p *p3d) Backward(state mattype.Matrix, destination mattype.Matrix, controls mattype.Matrix) error
 ```
 
 **Forward Kinematics**:
@@ -96,7 +102,7 @@ type p3d struct {
    - `x = l0 + l1*cos(a1) + l2*cos(a2_total)`
    - `z = l1*sin(a1) + l2*sin(a2_total)`
 4. Rotate around Z-axis by `a0`
-5. Store position and orientation angles
+5. Store position and orientation angles in the provided `destination` matrix
 
 **Inverse Kinematics**:
 1. Calculate distance from base to target:
@@ -109,6 +115,7 @@ type p3d struct {
    - `a0 = atan2(y, x)`  // Base rotation
    - `a1 = gamma + alpha`  // First link angle
    - `a2 = beta - π`  // Second link angle (relative to first)
+4. Apply joint limits and write results to the `controls` matrix
 
 **Questions**:
 1. Should we support multiple IK solutions (elbow up/down)?

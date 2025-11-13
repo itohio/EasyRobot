@@ -21,7 +21,7 @@
 
 - `type Thruster struct { Position, Direction vec.Vector3D; Thrust struct { Min, Max float32 }; Torque struct { Min, Max float32 } }`
 - `type Body struct { Mass float32; Inertia mat.Matrix3x3 }`
-- `Forward(body Body, thrusters []ThrusterCommand) BodyState`
+- `Model` implements `kinematics/types.Bidirectional` allowing destination-based forward/backward calls.
   - `ThrusterCommand` couples a Thruster with applied thrust/torque values, clamped to limits.
 - `Inverse(body Body, thrusters []Thruster) (Allocator, error)`
   - Allocator exposes `Solve(desired BodyState) ([]ThrusterCommand, error)` performing constrained allocation.
@@ -56,6 +56,8 @@
   - Thrusters positioned to produce rotation around axes.
   - Inverse solving small systems (2–4 thrusters).
   - Saturation scenarios verifying clamping and infeasibility detection.
+- Toy craft scenarios (e.g. quadcopter) that validate both forward and inverse allocation using realistic geometry.
+- Regression for matrix/vector semantics: ensure helper maths operate on returned values rather than implicit mutation.
 
 ## Future Extensions
 

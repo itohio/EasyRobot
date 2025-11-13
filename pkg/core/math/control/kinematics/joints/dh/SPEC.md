@@ -50,8 +50,8 @@ type Config struct {
 **Purpose**: Forward and inverse kinematics solver for arbitrary DOF manipulators
 
 **Current Implementation**:
-- ✅ Forward Kinematics (FK): Fully implemented
-- ❌ Inverse Kinematics (IK): Not implemented (returns false)
+- ✅ Forward Kinematics (FK): Destination-based matrix API implemented
+- ✅ Inverse Kinematics (IK): Iterative Jacobian-based solver implemented (position only)
 
 **Interface**:
 ```go
@@ -60,27 +60,28 @@ type DenavitHartenberg struct {
     eps           float32       // Convergence tolerance
     maxIterations int           // Maximum IK iterations
     params        []float32     // Joint parameters (input/output)
-    pos           [7]float32    // End-effector pose (x, y, z, qw, qx, qy, qz)
+    pos           [7]float32    // End-effector pose (x, y, z, qx, qy, qz, qw)
     H0i           []mat.Matrix4x4  // Transformation matrices
 }
 
-func (p *DenavitHartenberg) Forward() bool   // FK: params → pos
-func (p *DenavitHartenberg) Inverse() bool  // IK: pos → params (NOT IMPLEMENTED)
+func (p *DenavitHartenberg) Forward(state mattype.Matrix, destination mattype.Matrix, controls mattype.Matrix) error
+func (p *DenavitHartenberg) Backward(state mattype.Matrix, destination mattype.Matrix, controls mattype.Matrix) error
 ```
 
 **Forward Kinematics (FK)**:
-1. Initialize identity transformation matrix
-2. For each joint:
-   - Calculate joint transformation matrix using DH parameters
-   - Multiply with previous transformation
-3. Extract position (x, y, z) from transformation matrix
-4. Extract orientation (quaternion) from transformation matrix
+1. Validate that `state` is a DOF×1 joint parameter column vector and `destination` is at least 7×1.
+2. Initialize identity transformation matrix.
+3. For each joint:
+   - Clamp the joint value to configuration limits.
+   - Calculate the joint transformation matrix using DH parameters.
+   - Multiply with the cumulative transform.
+4. Extract position (x, y, z) from the final transform and write to `destination`.
+5. Extract orientation (quaternion) from the final transform and write to rows 3–6 of `destination`.
 
-**Inverse Kinematics (IK)** - TO BE IMPLEMENTED:
-The IK solver needs to be implemented. Common approaches:
-1. **Analytical IK**: Closed-form solutions (only for specific configurations)
-2. **Numerical IK**: Iterative methods (Jacobian-based)
-3. **Hybrid IK**: Analytical where possible, numerical otherwise
+**Inverse Kinematics (IK)**:
+- Iterative Jacobian pseudo-inverse solver updating joint parameters in-place.
+- Consumes a desired end-effector pose (position + quaternion) stored in `destination` and writes solved joint parameters to the `controls` column vector.
+- Returns `ErrNoConvergence` when the solver fails to reach the required tolerance within `maxIterations`.
 
 **Recommended IK Approach**:
 - **For 2-3 DOF**: Analytical solutions (geometric)
@@ -152,6 +153,7 @@ The IK solver needs to be implemented. Common approaches:
    - Multiply: `H0i[i+1] = H0i[i] * H`
 3. Extract position from `H0i[len(c)].Col(3)` → `pos[0:3]`
 4. Extract quaternion from `H0i[len(c)].Quaternion()` → `pos[3:7]`
+5. **Matrix Semantics**: Fixed-size matrix operations now return new values; callers must capture the return value rather than relying on in-place mutation.
 
 **Issues**:
 - `H0i` slice not initialized in `New()` - potential panic

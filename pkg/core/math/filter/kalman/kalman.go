@@ -25,8 +25,10 @@ type Kalman struct {
 	// Temporary matrices for computations
 	K      mat.Matrix // Kalman gain (n x m)
 	S      mat.Matrix // Innovation covariance (m x m)
-	tempP  mat.Matrix // Temporary for P_pred
-	tempM  mat.Matrix // Temporary for matrix operations
+	tempP  mat.Matrix // Temporary for transposes (n x n)
+	tempM  mat.Matrix // Temporary for P-related products (n x n)
+	tempHP mat.Matrix // Temporary for H*P (m x n)
+	tempHT mat.Matrix // Temporary for H^T (n x m)
 	tempN  mat.Matrix // Temporary for matrix operations
 	tempN2 mat.Matrix // Temporary for matrix operations (n x n)
 	tempV  vec.Vector // Temporary for vector operations
@@ -79,7 +81,10 @@ func New(n, m int, F, H, Q, R mat.Matrix) *Kalman {
 		S:      mat.New(m, m),
 		tempP:  mat.New(n, n),
 		tempM:  mat.New(n, n),
+		tempHP: mat.New(m, n),
+		tempHT: mat.New(n, m),
 		tempN:  mat.New(m, m),
+		tempN2: mat.New(n, n),
 		tempV:  vec.New(n),
 		Input:  vec.New(m),
 		Output: vec.New(n),
@@ -134,6 +139,8 @@ func NewWithControl(n, m, k int, F, H, B, Q, R mat.Matrix) *Kalman {
 		S:      mat.New(m, m),
 		tempP:  mat.New(n, n),
 		tempM:  mat.New(n, n),
+		tempHP: mat.New(m, n),
+		tempHT: mat.New(n, m),
 		tempN:  mat.New(m, m),
 		tempN2: mat.New(n, n),
 		tempV:  vec.New(n),
@@ -212,6 +219,9 @@ func (k *Kalman) Predict() *Kalman {
 	// Add Q: P_pred = F * P * F^T + Q
 	k.P.Add(k.Q)
 
+	// Expose predicted state via Filter interface
+	copy(k.Output, k.x)
+
 	return k
 }
 
@@ -230,10 +240,10 @@ func (k *Kalman) PredictWithControl(u vec.Vector) *Kalman {
 	k.F.MulVec(k.x, k.tempV)
 
 	// x_pred = F * x + B * u
-	copy(k.tempV2, u)
-	k.B.MulVec(k.tempV2, k.tempV)
-	k.x.Add(k.tempV)
-	copy(k.tempV, k.x)
+	k.tempV2.FillC(0)
+	k.B.MulVec(u, k.tempV2)
+	k.tempV.Add(k.tempV2)
+	copy(k.x, k.tempV)
 
 	// P_pred = F * P * F^T + Q
 	// First compute F * P
@@ -248,6 +258,9 @@ func (k *Kalman) PredictWithControl(u vec.Vector) *Kalman {
 
 	// Add Q: P_pred = F * P * F^T + Q
 	k.P.Add(k.Q)
+
+	// Expose predicted state via Filter interface
+	copy(k.Output, k.x)
 
 	return k
 }
@@ -279,14 +292,14 @@ func (k *Kalman) update(z vec.Vector) *Kalman {
 
 	// Innovation covariance: S = H * P_pred * H^T + R
 	// First compute H * P_pred
-	zeroMatrix(k.tempM)
-	k.tempM.Mul(k.H, k.P)
+	zeroMatrix(k.tempHP)
+	k.tempHP.Mul(k.H, k.P)
 
 	// Then compute (H * P_pred) * H^T
-	zeroMatrix(k.tempP)
-	k.tempP.Transpose(k.H)
+	zeroMatrix(k.tempHT)
+	k.tempHT.Transpose(k.H)
 	zeroMatrix(k.S)
-	k.S.Mul(k.tempM, k.tempP)
+	k.S.Mul(k.tempHP, k.tempHT)
 
 	// Add R: S = H * P_pred * H^T + R
 	k.S.Add(k.R)
@@ -294,7 +307,7 @@ func (k *Kalman) update(z vec.Vector) *Kalman {
 	// Kalman gain: K = P_pred * H^T * S^-1
 	// First compute P_pred * H^T
 	zeroMatrix(k.tempM)
-	k.tempM.Mul(k.P, k.tempP)
+	k.tempM.Mul(k.P, k.tempHT)
 
 	// Compute S^-1
 	zeroMatrix(k.tempN)

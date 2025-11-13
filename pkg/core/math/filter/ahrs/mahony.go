@@ -3,6 +3,7 @@ package ahrs
 import (
 	"github.com/chewxy/math32"
 	"github.com/itohio/EasyRobot/pkg/core/math/vec"
+	vecTypes "github.com/itohio/EasyRobot/pkg/core/math/vec/types"
 )
 
 type MahonyAHRS struct {
@@ -23,26 +24,25 @@ func NewMahony(opts ...Option) AHRS {
 	return &m
 }
 
-func (m *MahonyAHRS) Acceleration() vec.Vector {
-	return m.accel[:]
+func (m *MahonyAHRS) Acceleration() vecTypes.Vector {
+	return m.accel.View()
 }
 
-func (m *MahonyAHRS) Gyroscope() vec.Vector {
-	return m.gyro[:]
+func (m *MahonyAHRS) Gyroscope() vecTypes.Vector {
+	return m.gyro.View()
 }
 
-func (m *MahonyAHRS) Magnetometer() vec.Vector {
-	return m.mag[:]
+func (m *MahonyAHRS) Magnetometer() vecTypes.Vector {
+	return m.mag.View()
 }
 
-func (m *MahonyAHRS) Orientation() vec.Vector {
-	return m.q[:]
+func (m *MahonyAHRS) Orientation() vecTypes.Vector {
+	return m.q.View()
 }
 
 func (m *MahonyAHRS) Reset() AHRS {
-	m.q.Vector().FillC(0)
-	m.eInt.Vector().FillC(0)
-	m.q[0] = 1
+	m.q = vec.Quaternion{1, 0, 0, 0}
+	m.eInt = vec.Vector3D{0, 0, 0}
 	return m
 }
 
@@ -74,10 +74,10 @@ func (m *MahonyAHRS) Calculate() AHRS {
 	q4q4 := q4 * q4
 
 	// Normalise accelerometer measurement
-	a := m.accel.Clone().NormalFast()
+	a := m.accel.NormalFast().(vec.Vector3D)
 
 	// Normalise magnetometer measurement
-	mag := m.mag.Clone().NormalFast()
+	mag := m.mag.NormalFast().(vec.Vector3D)
 
 	// Reference direction of Earth's magnetic field
 	hx := 2*mag[0]*(0.5-q3q3-q4q4) + 2*mag[1]*(q2q3-q1q4) + 2*mag[2]*(q2q4+q1q3)
@@ -104,13 +104,13 @@ func (m *MahonyAHRS) Calculate() AHRS {
 		(a[0]*v[1] - a[1]*v[0]) + (mag[0]*w[1] - mag[1]*w[0]),
 	}
 	if m.GainI > 0 {
-		m.eInt.Add(e) // accumulate integral error
+		m.eInt = m.eInt.Add(e).(vec.Vector3D) // accumulate integral error
 	} else {
 		m.eInt = vec.Vector3D{} // prevent integral wind up
 	}
 
 	// Apply feedback terms
-	g := m.gyro.Clone().MulCAdd(m.GainP, e).MulCAdd(m.GainI, m.eInt)
+	g := m.gyro.MulCAdd(m.GainP, e).MulCAdd(m.GainI, m.eInt).(vec.Vector3D)
 
 	// Integrate rate of change of quaternion
 	m.q[0] = q1 + (-q2*g[0]-q3*g[1]-q4*g[2])*(0.5*m.SamplePeriod)
@@ -118,7 +118,7 @@ func (m *MahonyAHRS) Calculate() AHRS {
 	m.q[2] = q3 + (q1*g[1]-q2*g[2]+q4*g[0])*(0.5*m.SamplePeriod)
 	m.q[3] = q4 + (q1*g[2]+q2*g[1]-q3*g[0])*(0.5*m.SamplePeriod)
 
-	m.q.NormalFast()
+	m.q = m.q.NormalFast().(vec.Quaternion)
 
 	return m
 }
@@ -127,7 +127,7 @@ func (m *MahonyAHRS) calculateWOMag() AHRS {
 	q1, q2, q3, q4 := m.q[0], m.q[1], m.q[2], m.q[3] // short name local variable for readability
 
 	// Normalise accelerometer measurement
-	a := m.accel.Clone().NormalFast()
+	a := m.accel.NormalFast().(vec.Vector3D)
 
 	// Estimated direction of gravity
 	v := vec.Vector3D{
@@ -137,15 +137,15 @@ func (m *MahonyAHRS) calculateWOMag() AHRS {
 	}
 
 	// Error is cross product between estimated direction and measured direction of gravity
-	e := v.Cross(*a)
+	e := v.Cross(a).(vec.Vector3D)
 	if m.GainI > 0 {
-		m.eInt.Add(*e) // accumulate integral error
+		m.eInt = m.eInt.Add(e).(vec.Vector3D) // accumulate integral error
 	} else {
 		m.eInt = vec.Vector3D{} // prevent integral wind up
 	}
 
 	// Apply feedback terms
-	g := m.gyro.Clone().MulCAdd(m.GainP, *e).MulCAdd(m.GainI, m.eInt)
+	g := m.gyro.MulCAdd(m.GainP, e).MulCAdd(m.GainI, m.eInt).(vec.Vector3D)
 
 	// Integrate rate of change of quaternion
 	m.q[0] = q1 + (-q2*g[0]-q3*g[1]-q4*g[2])*(0.5*m.SamplePeriod)
@@ -153,7 +153,7 @@ func (m *MahonyAHRS) calculateWOMag() AHRS {
 	m.q[2] = q3 + (q1*g[1]-q2*g[2]+q4*g[0])*(0.5*m.SamplePeriod)
 	m.q[3] = q4 + (q1*g[2]+q2*g[1]-q3*g[0])*(0.5*m.SamplePeriod)
 
-	m.q.NormalFast()
+	m.q = m.q.NormalFast().(vec.Quaternion)
 
 	return m
 }

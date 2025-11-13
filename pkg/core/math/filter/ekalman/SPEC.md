@@ -64,12 +64,16 @@ type EKF struct {
     S mat.Matrix  // Innovation covariance (m x m)
     F mat.Matrix  // State transition Jacobian (n x n)
     H mat.Matrix  // Measurement Jacobian (m x n)
-    tempP mat.Matrix  // Temporary for P_pred
-    tempM mat.Matrix  // Temporary for matrix operations
+    tempP mat.Matrix  // Temporary for P_pred (n x n)
+    tempM mat.Matrix  // Temporary for matrix operations (n x n)
+    tempHP mat.Matrix // Temporary for H * P (m x n)
+    tempHT mat.Matrix // Temporary for Hᵀ (n x m)
+    tempPH mat.Matrix // Temporary for P * Hᵀ (n x m)
     tempN mat.Matrix  // Temporary for matrix operations
     tempN2 mat.Matrix // Temporary for matrix operations (n x n)
     tempV vec.Vector  // Temporary for vector operations
     tempV2 vec.Vector // Temporary for vector operations
+    tempV3 vec.Vector // Temporary for vector operations
     
     // Dimensions
     n int // State dimension

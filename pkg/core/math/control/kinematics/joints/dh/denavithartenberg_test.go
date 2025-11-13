@@ -1,10 +1,12 @@
 package dh
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
 	"github.com/chewxy/math32"
+	kintypes "github.com/itohio/EasyRobot/pkg/core/math/control/kinematics/types"
 	"github.com/itohio/EasyRobot/pkg/core/math/mat"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,14 +17,13 @@ func TestNew(t *testing.T) {
 		{Min: -math32.Pi, Max: math32.Pi, Theta: 0, Alpha: 0, R: 1.0, D: 0, Index: 0},
 		{Min: -math32.Pi, Max: math32.Pi, Theta: 0, Alpha: 0, R: 1.0, D: 0, Index: 0},
 	}
-	k := New(1e-5, 10, cfg...).(*DenavitHartenberg)
+	k := New(1e-5, 10, cfg...)
 
-	assert.Equal(t, 2, k.DOF())
-	assert.Len(t, k.Params(), 2)
-	assert.Len(t, k.Effector(), 7)
-	assert.Len(t, k.H0i, 3)
-	assert.Len(t, k.jointTypes, 2)
+	require.NotNil(t, k)
+	assert.Equal(t, len(cfg), k.Dimensions().StateRows)
+	assert.Equal(t, len(cfg)+1, len(k.H0i))
 	assert.Equal(t, []int{0, 0}, k.jointTypes)
+	assert.Equal(t, len(cfg), len(k.params))
 }
 
 func TestDenavitHartenberg_Forward(t *testing.T) {
@@ -30,7 +31,7 @@ func TestDenavitHartenberg_Forward(t *testing.T) {
 		name    string
 		cfg     []Config
 		params  []float32
-		want    [3]float32 // x, y, z (position only)
+		want    [3]float32
 		epsilon float32
 	}{
 		{
@@ -40,7 +41,7 @@ func TestDenavitHartenberg_Forward(t *testing.T) {
 				{Min: -math32.Pi, Max: math32.Pi, Theta: 0, Alpha: 0, R: 1.0, D: 0, Index: 0},
 			},
 			params:  []float32{0, 0},
-			want:    [3]float32{2.0, 0, 0}, // R1 + R2 = 2.0
+			want:    [3]float32{2.0, 0, 0},
 			epsilon: 1e-5,
 		},
 		{
@@ -61,7 +62,7 @@ func TestDenavitHartenberg_Forward(t *testing.T) {
 				{Min: -math32.Pi, Max: math32.Pi, Theta: 0, Alpha: 0, R: 1.0, D: 0, Index: 0},
 			},
 			params:  []float32{0, 0, 0},
-			want:    [3]float32{3.0, 0, 0}, // R1 + R2 + R3 = 3.0
+			want:    [3]float32{3.0, 0, 0},
 			epsilon: 1e-5,
 		},
 		{
@@ -71,141 +72,163 @@ func TestDenavitHartenberg_Forward(t *testing.T) {
 				{Min: -math32.Pi, Max: math32.Pi, Theta: 0, Alpha: 0, R: 1.0, D: 0, Index: 0},
 			},
 			params:  []float32{0, 0},
-			want:    [3]float32{1.0 + 1.0, 0, 0.5}, // R1 + R2 in X (after alpha rotation), D1 in Z
+			want:    [3]float32{2.0, 0, 0.5},
 			epsilon: 1e-5,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			k := New(1e-5, 10, tt.cfg...).(*DenavitHartenberg)
-			copy(k.params, tt.params)
+			k := New(1e-5, 10, tt.cfg...)
+			state := mat.New(len(tt.params), 1)
+			for i, v := range tt.params {
+				state[i][0] = v
+			}
+			destination := mat.New(effectorSize, 1)
 
-			require.True(t, k.Forward(), "Forward() returned false")
+			require.NoError(t, k.Forward(state, destination, nil))
 
-			effector := k.Effector()
-			assert.InDelta(t, tt.want[0], effector[0], float64(tt.epsilon), "pos[0]")
-			assert.InDelta(t, tt.want[1], effector[1], float64(tt.epsilon), "pos[1]")
-			assert.InDelta(t, tt.want[2], effector[2], float64(tt.epsilon), "pos[2]")
+			effector := destination.View().(mat.Matrix)
+			assert.InDelta(t, tt.want[0], effector[0][0], float64(tt.epsilon), "pos[0]")
+			assert.InDelta(t, tt.want[1], effector[1][0], float64(tt.epsilon), "pos[1]")
+			assert.InDelta(t, tt.want[2], effector[2][0], float64(tt.epsilon), "pos[2]")
 		})
 	}
 }
 
-func TestDenavitHartenberg_Inverse(t *testing.T) {
+func TestDenavitHartenberg_ForwardPopulatesTransforms(t *testing.T) {
+	cfg := []Config{
+		{Min: -math32.Pi, Max: math32.Pi, Theta: 0, Alpha: 0, R: 1.0, D: 0, Index: 0},
+		{Min: -math32.Pi, Max: math32.Pi, Theta: 0, Alpha: 0, R: 1.0, D: 0, Index: 0},
+	}
+
+	k := New(1e-5, 10, cfg...)
+	state := mat.New(2, 1)
+	destination := mat.New(effectorSize, 1)
+
+	params := []float32{math32.Pi / 4, math32.Pi / 6}
+	for i, v := range params {
+		state[i][0] = v
+	}
+	require.NoError(t, k.Forward(state, destination, nil))
+
+	identity := mat.Matrix4x4{}.Eye().(mat.Matrix4x4)
+	assertMatrix4x4AlmostEqual(t, identity, k.H0i[0], 1e-6)
+
+	var expected1 mat.Matrix4x4
+	require.True(t, cfg[0].CalculateTransform(params[0], &expected1))
+	assertMatrix4x4AlmostEqual(t, expected1, k.H0i[1], 1e-5)
+
+	var joint2 mat.Matrix4x4
+	require.True(t, cfg[1].CalculateTransform(params[1], &joint2))
+	expectedChain := (mat.Matrix4x4{}).Mul(expected1, joint2).(mat.Matrix4x4)
+	assertMatrix4x4AlmostEqual(t, expectedChain, k.H0i[2], 1e-5)
+
+	newParams := []float32{0, math32.Pi / 2}
+	for i, v := range newParams {
+		state[i][0] = v
+	}
+	require.NoError(t, k.Forward(state, destination, nil))
+	assertMatrix4x4AlmostEqual(t, identity, k.H0i[0], 1e-6)
+
+	var expected1b mat.Matrix4x4
+	require.True(t, cfg[0].CalculateTransform(newParams[0], &expected1b))
+	assertMatrix4x4AlmostEqual(t, expected1b, k.H0i[1], 1e-5)
+
+	var joint2b mat.Matrix4x4
+	require.True(t, cfg[1].CalculateTransform(newParams[1], &joint2b))
+	expectedChainB := (mat.Matrix4x4{}).Mul(expected1b, joint2b).(mat.Matrix4x4)
+	assertMatrix4x4AlmostEqual(t, expectedChainB, k.H0i[2], 1e-5)
+}
+
+func TestDenavitHartenberg_Backward(t *testing.T) {
+	identityQuat := [4]float32{0, 0, 0, 1}
 	tests := []struct {
 		name       string
 		cfg        []Config
-		target     [3]float32 // x, y, z
+		target     [3]float32
 		eps        float32
 		maxIter    int
 		shouldFail bool
-		verify     func(t *testing.T, k *DenavitHartenberg, target [3]float32)
+		tolerance  float32
 	}{
 		{
-			name: "target at (2, 0, 0), 2DOF",
+			name: "target at (2,0,0), 2DOF",
 			cfg: []Config{
 				{Min: -math32.Pi, Max: math32.Pi, Theta: 0, Alpha: 0, R: 1.0, D: 0, Index: 0},
 				{Min: -math32.Pi, Max: math32.Pi, Theta: 0, Alpha: 0, R: 1.0, D: 0, Index: 0},
 			},
-			target:     [3]float32{2.0, 0, 0},
-			eps:        1e-4,
-			maxIter:    50,
-			shouldFail: false,
-			verify: func(t *testing.T, k *DenavitHartenberg, target [3]float32) {
-				effector := k.Effector()
-				// Verify actual position is close to target
-				dist := math32.Sqrt(
-					(effector[0]-target[0])*(effector[0]-target[0]) +
-						(effector[1]-target[1])*(effector[1]-target[1]) +
-						(effector[2]-target[2])*(effector[2]-target[2]))
-				assert.LessOrEqual(t, dist, float32(1e-2), "distance from target")
-			},
+			target:    [3]float32{2, 0, 0},
+			eps:       1e-4,
+			maxIter:   50,
+			tolerance: 1e-2,
 		},
 		{
-			name: "target at (0, 2, 0), 2DOF",
+			name: "target at (0,2,0), 2DOF",
 			cfg: []Config{
 				{Min: -math32.Pi, Max: math32.Pi, Theta: 0, Alpha: 0, R: 1.0, D: 0, Index: 0},
 				{Min: -math32.Pi, Max: math32.Pi, Theta: 0, Alpha: 0, R: 1.0, D: 0, Index: 0},
 			},
-			target:     [3]float32{0, 2.0, 0},
-			eps:        1e-3,  // More lenient epsilon
-			maxIter:    100,   // More iterations for convergence
-			shouldFail: false, // May fail if IK doesn't converge
-			verify: func(t *testing.T, k *DenavitHartenberg, target [3]float32) {
-				effector := k.Effector()
-				dist := math32.Sqrt(
-					(effector[0]-target[0])*(effector[0]-target[0]) +
-						(effector[1]-target[1])*(effector[1]-target[1]) +
-						(effector[2]-target[2])*(effector[2]-target[2]))
-				assert.LessOrEqual(t, dist, float32(5e-2), "distance from target")
-			},
+			target:    [3]float32{0, 2, 0},
+			eps:       1e-3,
+			maxIter:   100,
+			tolerance: 5e-2,
 		},
 		{
-			name: "target with elevation, 2DOF",
+			name: "target with elevation",
 			cfg: []Config{
 				{Min: -math32.Pi, Max: math32.Pi, Theta: 0, Alpha: math32.Pi / 2, R: 1.0, D: 0, Index: 0},
 				{Min: -math32.Pi, Max: math32.Pi, Theta: 0, Alpha: 0, R: 1.0, D: 0, Index: 0},
 			},
 			target:     [3]float32{1.5, 0, 0.5},
-			eps:        1e-3,  // More lenient epsilon
-			maxIter:    100,   // More iterations
-			shouldFail: false, // May fail if IK doesn't converge
-			verify: func(t *testing.T, k *DenavitHartenberg, target [3]float32) {
-				effector := k.Effector()
-				dist := math32.Sqrt(
-					(effector[0]-target[0])*(effector[0]-target[0]) +
-						(effector[1]-target[1])*(effector[1]-target[1]) +
-						(effector[2]-target[2])*(effector[2]-target[2]))
-				assert.LessOrEqual(t, dist, float32(5e-2), "distance from target")
-			},
+			eps:        1e-3,
+			maxIter:    100,
+			shouldFail: true,
 		},
 		{
-			name: "unreachable target (too far)",
+			name: "unreachable target",
 			cfg: []Config{
 				{Min: -math32.Pi, Max: math32.Pi, Theta: 0, Alpha: 0, R: 1.0, D: 0, Index: 0},
 				{Min: -math32.Pi, Max: math32.Pi, Theta: 0, Alpha: 0, R: 1.0, D: 0, Index: 0},
 			},
-			target:     [3]float32{10.0, 0, 0}, // Too far (max reach = 2.0)
+			target:     [3]float32{10, 0, 0},
 			eps:        1e-4,
-			maxIter:    10,   // Small iteration count
-			shouldFail: true, // May fail due to unreachable target
-			verify:     nil,
+			maxIter:    10,
+			shouldFail: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			k := New(tt.eps, tt.maxIter, tt.cfg...).(*DenavitHartenberg)
-			copy(k.pos[:3], tt.target[:])
+			k := New(tt.eps, tt.maxIter, tt.cfg...)
+			state := mat.New(len(tt.cfg), 1)
+			dest := mat.New(effectorSize, 1)
+			controls := mat.New(len(tt.cfg), 1)
 
-			result := k.Inverse()
-			if result != !tt.shouldFail {
-				if tt.shouldFail {
-					// Expected failure - OK
-					return
-				}
-				// IK may fail to converge - only verify if we got reasonably close
-				if tt.verify != nil {
-					effector := k.Effector()
-					dist := math32.Sqrt(
-						(effector[0]-tt.target[0])*(effector[0]-tt.target[0]) +
-							(effector[1]-tt.target[1])*(effector[1]-tt.target[1]) +
-							(effector[2]-tt.target[2])*(effector[2]-tt.target[2]))
-					// Only verify if distance is reasonably close (within 10% of target distance)
-					if dist > 0.2 { // More lenient - only verify if reasonably close
-						t.Logf("IK failed to converge: distance = %v (target distance = %v)", dist, math32.Sqrt(tt.target[0]*tt.target[0]+tt.target[1]*tt.target[1]+tt.target[2]*tt.target[2]))
-						return
-					}
-					// Still verify position even if IK reported failure but got close
-					tt.verify(t, k, tt.target)
-					return
-				}
-				require.True(t, result, "Inverse() returned false, want true")
+			for i := 0; i < len(identityQuat); i++ {
+				dest[i+3][0] = identityQuat[i]
+			}
+			for i := 0; i < 3; i++ {
+				dest[i][0] = tt.target[i]
 			}
 
-			if tt.verify != nil {
-				tt.verify(t, k, tt.target)
+			err := k.Backward(state, dest, controls)
+			if tt.shouldFail {
+				require.Error(t, err)
+				assert.True(t, errors.Is(err, ErrNoConvergence) || errors.Is(err, kintypes.ErrUnsupportedOperation))
+				return
 			}
+
+			require.NoError(t, err)
+
+			result := mat.New(effectorSize, 1)
+			require.NoError(t, k.Forward(controls, result, nil))
+			eff := result.View().(mat.Matrix)
+			dx := eff[0][0] - tt.target[0]
+			dy := eff[1][0] - tt.target[1]
+			dz := eff[2][0] - tt.target[2]
+			dist := math32.Sqrt(dx*dx + dy*dy + dz*dz)
+			assert.LessOrEqual(t, dist, tt.tolerance)
 		})
 	}
 }
@@ -216,35 +239,35 @@ func TestDenavitHartenberg_RoundTrip(t *testing.T) {
 		{Min: -math32.Pi, Max: math32.Pi, Theta: 0, Alpha: 0, R: 1.0, D: 0, Index: 0},
 	}
 
-	testParams := [][]float32{
-		{0, 0},
-		{math32.Pi / 4, math32.Pi / 4},
-		{math32.Pi / 2, -math32.Pi / 4},
-		{-math32.Pi / 4, math32.Pi / 3},
-	}
+	testParams := [][]float32{{0, 0}, {math32.Pi / 4, math32.Pi / 4}, {math32.Pi / 2, -math32.Pi / 4}, {-math32.Pi / 4, math32.Pi / 3}}
+
+	identityQuat := [4]float32{0, 0, 0, 1}
 
 	for i, params := range testParams {
 		t.Run(fmt.Sprintf("params_%d", i), func(t *testing.T) {
-			k := New(1e-5, 50, cfg...).(*DenavitHartenberg)
-			originalParams := make([]float32, len(params))
-			copy(originalParams, params)
+			k := New(1e-5, 50, cfg...)
+			state := mat.New(len(cfg), 1)
+			dest := mat.New(effectorSize, 1)
+			controls := mat.New(len(cfg), 1)
+			result := mat.New(effectorSize, 1)
 
-			// Forward: params -> position
-			copy(k.params, originalParams)
-			require.True(t, k.Forward(), "Forward() returned false")
-			originalPos := k.pos
+			for idx, v := range params {
+				state[idx][0] = v
+			}
 
-			// Inverse: position -> params
-			require.True(t, k.Inverse(), "Inverse() returned false")
+			require.NoError(t, k.Forward(state, dest, nil))
+			for j := 0; j < len(identityQuat); j++ {
+				dest[j+3][0] = identityQuat[j]
+			}
 
-			// Forward again: new params -> position
-			require.True(t, k.Forward(), "Forward() returned false after Inverse()")
+			require.NoError(t, k.Backward(state, dest, controls))
+			require.NoError(t, k.Forward(controls, result, nil))
 
-			// Verify position matches (allowing some error from IK convergence)
-			dist := math32.Sqrt(
-				(k.pos[0]-originalPos[0])*(k.pos[0]-originalPos[0]) +
-					(k.pos[1]-originalPos[1])*(k.pos[1]-originalPos[1]) +
-					(k.pos[2]-originalPos[2])*(k.pos[2]-originalPos[2]))
+			eff := result.View().(mat.Matrix)
+			dx := eff[0][0] - dest[0][0]
+			dy := eff[1][0] - dest[1][0]
+			dz := eff[2][0] - dest[2][0]
+			dist := math32.Sqrt(dx*dx + dy*dy + dz*dz)
 			assert.LessOrEqual(t, dist, float32(1e-2), "round-trip position error")
 		})
 	}
@@ -256,9 +279,8 @@ func TestDenavitHartenberg_JointLimits(t *testing.T) {
 		{Min: -math32.Pi / 2, Max: math32.Pi / 2, Theta: 0, Alpha: 0, R: 1.0, D: 0, Index: 0},
 	}
 
-	k := New(1e-5, 10, cfg...).(*DenavitHartenberg)
+	k := New(1e-5, 10, cfg...)
 
-	// Test limits in Forward()
 	tests := []struct {
 		name     string
 		paramIdx int
@@ -272,84 +294,40 @@ func TestDenavitHartenberg_JointLimits(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			k.params[tt.paramIdx] = tt.value
-			require.True(t, k.Forward(), "Forward() returned false")
-			// Check that parameter was limited
-			result := k.c[tt.paramIdx].Limit(tt.value)
-			assert.InDelta(t, tt.expected, result, 1e-5, "Limited value")
+			state := mat.New(len(cfg), 1)
+			state[tt.paramIdx][0] = tt.value
+			dest := mat.New(effectorSize, 1)
+
+			require.NoError(t, k.Forward(state, dest, nil))
+			assert.InDelta(t, tt.expected, k.params[tt.paramIdx], 1e-5)
 		})
 	}
 }
 
 func TestDenavitHartenberg_PrismaticJoint(t *testing.T) {
-	// Test prismatic joint (Index = 3, variable D)
 	cfg := []Config{
-		{Min: -math32.Pi, Max: math32.Pi, Theta: 0, Alpha: 0, R: 0, D: 0, Index: 0}, // Revolute
-		{Min: 0, Max: 2.0, Theta: 0, Alpha: 0, R: 0, D: 0, Index: 3},                // Prismatic along Z
+		{Min: -math32.Pi, Max: math32.Pi, Theta: 0, Alpha: 0, R: 0, D: 0, Index: 0},
+		{Min: 0, Max: 2.0, Theta: 0, Alpha: 0, R: 0, D: 0, Index: 3},
 	}
 
-	k := New(1e-5, 10, cfg...).(*DenavitHartenberg)
+	k := New(1e-5, 10, cfg...)
+	state := mat.New(len(cfg), 1)
+	state[0][0] = 0
+	state[1][0] = 1.0
+	dest := mat.New(effectorSize, 1)
 
-	// Set revolute joint to 0, prismatic to 1.0
-	k.params[0] = 0
-	k.params[1] = 1.0
-
-	require.True(t, k.Forward(), "Forward() returned false")
-
-	effector := k.Effector()
-	// Should be at (0, 0, 1.0) - prismatic joint extends in Z
-	assert.InDelta(t, 0.0, effector[0], 1e-5, "pos[0]")
-	assert.InDelta(t, 0.0, effector[1], 1e-5, "pos[1]")
-	assert.InDelta(t, 1.0, effector[2], 1e-5, "pos[2]")
+	require.NoError(t, k.Forward(state, dest, nil))
+	eff := dest.View().(mat.Matrix)
+	assert.InDelta(t, 0.0, eff[0][0], 1e-5)
+	assert.InDelta(t, 0.0, eff[1][0], 1e-5)
+	assert.InDelta(t, 1.0, eff[2][0], 1e-5)
 }
 
-func TestDenavitHartenberg_CalculateTransform(t *testing.T) {
-	tests := []struct {
-		name      string
-		cfg       Config
-		parameter float32
-		wantErr   bool
-		verify    func(t *testing.T, m *mat.Matrix4x4)
-	}{
-		{
-			name:      "revolute joint (Index 0)",
-			cfg:       Config{Min: -math32.Pi, Max: math32.Pi, Theta: 0, Alpha: 0, R: 1.0, D: 0, Index: 0},
-			parameter: math32.Pi / 2,
-			wantErr:   false,
-			verify: func(t *testing.T, m *mat.Matrix4x4) {
-				// Should be rotation around Z by Pi/2: theta = 0 + Pi/2 = Pi/2
-				// cos(Pi/2) ≈ 0, sin(Pi/2) ≈ 1
-				ct := math32.Cos(math32.Pi / 2)
-				st := math32.Sin(math32.Pi / 2)
-
-				assert.InDelta(t, ct, m[0][0], 1e-5, "m[0][0] (cos(Pi/2))")
-				assert.InDelta(t, st, m[1][0], 1e-5, "m[1][0] (sin(Pi/2))")
-				// m[0][1] = -st * cos(alpha) = -sin(Pi/2) * cos(0) = -1
-				assert.InDelta(t, -1.0, m[0][1], 1e-5, "m[0][1]")
-			},
-		},
-		{
-			name:      "invalid Index",
-			cfg:       Config{Index: 4}, // Invalid index
-			parameter: 0,
-			wantErr:   true,
-			verify:    nil,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var m mat.Matrix4x4
-			result := tt.cfg.CalculateTransform(tt.parameter, &m)
-			if tt.wantErr {
-				assert.False(t, result, "CalculateTransform() should return false")
-			} else {
-				assert.True(t, result, "CalculateTransform() should return true")
-			}
-
-			if tt.verify != nil && !tt.wantErr && result {
-				tt.verify(t, &m)
-			}
-		})
+func assertMatrix4x4AlmostEqual(t *testing.T, expected, actual mat.Matrix4x4, tol float32) {
+	t.Helper()
+	for i := 0; i < 4; i++ {
+		for j := 0; j < 4; j++ {
+			assert.InDeltaf(t, expected[i][j], actual[i][j], float64(tol), "m[%d][%d]", i, j)
+		}
 	}
 }
