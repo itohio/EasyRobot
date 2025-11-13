@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/chewxy/math32"
+	"github.com/itohio/EasyRobot/pkg/core/math/vec"
 )
 
 func TestMatrix_SVD(t *testing.T) {
@@ -22,7 +23,7 @@ func TestMatrix_SVD(t *testing.T) {
 			},
 			wantErr: false,
 			verify: func(m Matrix, result *SVDResult, t *testing.T) {
-				values := ensureVector(result.S, "SVDTest.S")
+				values := result.S.View().(vec.Vector)
 				// Identity should have singular values of 1
 				if len(values) != 3 {
 					t.Errorf("SVD: singular values should have length 3, got %d", len(values))
@@ -49,7 +50,7 @@ func TestMatrix_SVD(t *testing.T) {
 			},
 			wantErr: false,
 			verify: func(m Matrix, result *SVDResult, t *testing.T) {
-				values := ensureVector(result.S, "SVDTest.S")
+				values := result.S.View().(vec.Vector)
 				// Diagonal matrix should have singular values equal to diagonal elements
 				// Note: singular values may not be in the same order, just check reconstruction
 				if len(values) != 3 {
@@ -81,7 +82,7 @@ func TestMatrix_SVD(t *testing.T) {
 			},
 			wantErr: false,
 			verify: func(m Matrix, result *SVDResult, t *testing.T) {
-				values := ensureVector(result.S, "SVDTest.S")
+				values := result.S.View().(vec.Vector)
 				if len(values) != 3 {
 					t.Errorf("SVD: singular values should have length 3, got %d", len(values))
 					return
@@ -107,7 +108,7 @@ func TestMatrix_SVD(t *testing.T) {
 			},
 			wantErr: false,
 			verify: func(m Matrix, result *SVDResult, t *testing.T) {
-				values := ensureVector(result.S, "SVDTest.S")
+				values := result.S.View().(vec.Vector)
 				for i := range values {
 					if math32.Abs(values[i]) > 1e-5 {
 						t.Errorf("SVD: singular value %d should be ~0, got %v", i, values[i])
@@ -182,7 +183,7 @@ func verifySVDReconstruction(m Matrix, result *SVDResult, t *testing.T) {
 
 	// Create Σ matrix (diagonal matrix with singular values)
 	sigma := New(rows, cols)
-	values := ensureVector(result.S, "SVDTest.S")
+	values := result.S.View().(vec.Vector)
 	for i := 0; i < rows && i < cols; i++ {
 		if i < len(values) {
 			sigma[i][i] = values[i]
@@ -190,12 +191,12 @@ func verifySVDReconstruction(m Matrix, result *SVDResult, t *testing.T) {
 	}
 
 	// Compute U * Σ
-	U := ensureMatrix(result.U, "SVDTest.U")
+	U := result.U.View().(Matrix)
 	uSigma := New(rows, cols)
 	uSigma.Mul(U, sigma)
 
 	// Compute (U * Σ) * V^T
-	Vt := ensureMatrix(result.Vt, "SVDTest.Vt")
+	Vt := result.Vt.View().(Matrix)
 	reconstructed := New(rows, cols)
 	reconstructed.Mul(uSigma, Vt)
 

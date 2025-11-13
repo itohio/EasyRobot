@@ -65,7 +65,7 @@ func (m *Matrix4x4) HomogenousFromEuler(rot vec.Vector3D, trans vec.Vector3D) *M
 //	[0 1]                   [0       1  ]
 //
 // Uses efficient formula instead of full matrix inverse.
-func (m *Matrix4x4) HomogenousInverse(dst *Matrix4x4) *Matrix4x4 {
+func (m *Matrix4x4) HomogenousInverse(dst *Matrix4x4) {
 	// Extract rotation and translation
 	var rot Matrix3x3
 	var trans vec.Vector3D
@@ -78,11 +78,10 @@ func (m *Matrix4x4) HomogenousInverse(dst *Matrix4x4) *Matrix4x4 {
 
 	// Compute -R^T * t
 	var negRotTt vec.Vector3D
-	tempVec := make(vec.Vector, 3)
-	rotT.MulVec(vec.Vector(trans[:]), tempVec)
-	negRotTt[0] = -tempVec[0]
-	negRotTt[1] = -tempVec[1]
-	negRotTt[2] = -tempVec[2]
+	product := rotT.MulVec(trans, nil).(vec.Vector3D)
+	negRotTt[0] = -product[0]
+	negRotTt[1] = -product[1]
+	negRotTt[2] = -product[2]
 
 	// Construct inverse
 	dst.SetRotation(&rotT)
@@ -92,7 +91,6 @@ func (m *Matrix4x4) HomogenousInverse(dst *Matrix4x4) *Matrix4x4 {
 		dst[3][j] = 0
 	}
 	dst[3][3] = 1.0
-	return dst
 }
 
 // SetRotation sets the 3x3 rotation submatrix of 4x4 homogeneous matrix.

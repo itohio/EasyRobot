@@ -74,7 +74,7 @@ func TestMatrix3x4_Matrix(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			receiver := tt.init(t)
-			got1 := receiver.Matrix()
+			got1 := receiver.View()
 
 			if tt.inspect != nil {
 				tt.inspect(receiver, t)

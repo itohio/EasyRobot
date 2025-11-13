@@ -2,6 +2,7 @@ package mat
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/chewxy/math32"
 	matTypes "github.com/itohio/EasyRobot/pkg/core/math/mat/types"
@@ -33,7 +34,23 @@ func (m Matrix) Inverse(dst matTypes.Matrix) error {
 		return ErrNotSquare
 	}
 
-	dstMat := ensureMatrix(dst, "Inverse.dst")
+	var dstMat Matrix
+	switch out := dst.(type) {
+	case *Matrix2x2:
+		dstMat = out.View().(Matrix)
+	case *Matrix3x3:
+		dstMat = out.View().(Matrix)
+	case *Matrix4x4:
+		dstMat = out.View().(Matrix)
+	case *Matrix4x3:
+		dstMat = out.View().(Matrix)
+	case *Matrix3x4:
+		dstMat = out.View().(Matrix)
+	case Matrix:
+		dstMat = out
+	default:
+		panic(fmt.Sprintf("Matrix2x2.Inverse: unsupported destination type %T", dst))
+	}
 
 	mFlat := m.Flat()
 	dstFlat := dstMat.Flat()
@@ -56,66 +73,73 @@ func (m Matrix) Inverse(dst matTypes.Matrix) error {
 }
 
 // Inverse calculates the inverse of a Matrix2x2 using direct formula.
-func (m *Matrix2x2) Inverse(dst matTypes.Matrix) error {
+func (m Matrix2x2) Inverse(dst matTypes.Matrix) error {
 	det := m.Det()
 	if math32.Abs(det) < SingularityTolerance {
 		return ErrSingular
 	}
 
-	out := ensureMatrix(dst, "Matrix2x2.Inverse.dst")
+	inv := Matrix2x2{
+		{m[1][1] / det, -m[0][1] / det},
+		{-m[1][0] / det, m[0][0] / det},
+	}
 
-	invDet := 1.0 / det
-	out[0][0] = m[1][1] * invDet
-	out[0][1] = -m[0][1] * invDet
-	out[1][0] = -m[1][0] * invDet
-	out[1][1] = m[0][0] * invDet
+	switch out := dst.(type) {
+	case *Matrix2x2:
+		*out = inv
+	case Matrix2x2:
+		panic("Matrix2x2.Inverse: destination must be *Matrix2x2")
+	default:
+		panic(fmt.Sprintf("Matrix2x2.Inverse: unsupported destination type %T", dst))
+	}
 
 	return nil
 }
 
 // Inverse calculates the inverse of a Matrix3x3 using direct formula.
-func (m *Matrix3x3) Inverse(dst matTypes.Matrix) error {
+func (m Matrix3x3) Inverse(dst matTypes.Matrix) error {
 	det := m.Det()
 	if math32.Abs(det) < SingularityTolerance {
 		return ErrSingular
 	}
 
-	out := ensureMatrix(dst, "Matrix3x3.Inverse.dst")
-
 	invDet := 1.0 / det
 
-	// Cofactor matrix (adjugate transpose)
-	out[0][0] = (m[1][1]*m[2][2] - m[1][2]*m[2][1]) * invDet
-	out[0][1] = (m[0][2]*m[2][1] - m[0][1]*m[2][2]) * invDet
-	out[0][2] = (m[0][1]*m[1][2] - m[0][2]*m[1][1]) * invDet
+	inv := Matrix3x3{
+		{(m[1][1]*m[2][2] - m[1][2]*m[2][1]) * invDet, (m[0][2]*m[2][1] - m[0][1]*m[2][2]) * invDet, (m[0][1]*m[1][2] - m[0][2]*m[1][1]) * invDet},
+		{(m[1][2]*m[2][0] - m[1][0]*m[2][2]) * invDet, (m[0][0]*m[2][2] - m[0][2]*m[2][0]) * invDet, (m[0][2]*m[1][0] - m[0][0]*m[1][2]) * invDet},
+		{(m[1][0]*m[2][1] - m[1][1]*m[2][0]) * invDet, (m[0][1]*m[2][0] - m[0][0]*m[2][1]) * invDet, (m[0][0]*m[1][1] - m[0][1]*m[1][0]) * invDet},
+	}
 
-	out[1][0] = (m[1][2]*m[2][0] - m[1][0]*m[2][2]) * invDet
-	out[1][1] = (m[0][0]*m[2][2] - m[0][2]*m[2][0]) * invDet
-	out[1][2] = (m[0][2]*m[1][0] - m[0][0]*m[1][2]) * invDet
-
-	out[2][0] = (m[1][0]*m[2][1] - m[1][1]*m[2][0]) * invDet
-	out[2][1] = (m[0][1]*m[2][0] - m[0][0]*m[2][1]) * invDet
-	out[2][2] = (m[0][0]*m[1][1] - m[0][1]*m[1][0]) * invDet
+	switch out := dst.(type) {
+	case *Matrix3x3:
+		*out = inv
+	case Matrix:
+		out.CopyFrom(inv.View())
+	case Matrix3x3:
+		panic("Matrix3x3.Inverse: destination must be *Matrix3x3")
+	default:
+		panic(fmt.Sprintf("Matrix3x3.Inverse: unsupported destination type %T", dst))
+	}
 
 	return nil
 }
 
 // Inverse calculates the inverse of a Matrix4x4 using LU decomposition.
-func (m *Matrix4x4) Inverse(dst matTypes.Matrix) error {
+func (m Matrix4x4) Inverse(dst matTypes.Matrix) error {
 	det := m.Det()
 	if math32.Abs(det) < SingularityTolerance {
 		return ErrSingular
 	}
 
-	out := ensureMatrix(dst, "Matrix4x4.Inverse.dst")
+	out := dst.(*Matrix4x4)
 
 	// LU decomposition
 	var L, U Matrix4x4
 	m.LU(&L, &U)
 
 	// Identity matrix
-	I := Matrix4x4{}
-	I.Eye()
+	I := Matrix4x4{}.Eye().(Matrix4x4)
 
 	// Solve L * Y = I for Y (forward substitution)
 	var Y Matrix4x4

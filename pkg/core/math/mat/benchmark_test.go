@@ -51,7 +51,7 @@ func BenchmarkCloneMatrix4x4(b *testing.B) {
 func BenchmarkMatrixMatrix4x4(b *testing.B) {
 	v := &Matrix4x4{}
 	for i := 0; i < b.N; i++ {
-		_ = v.Matrix()
+		_ = v.View()
 	}
 }
 

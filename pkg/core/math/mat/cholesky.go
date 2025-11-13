@@ -30,7 +30,7 @@ func (m Matrix) Cholesky(dst matTypes.Matrix) error {
 		return errors.New("cholesky: matrix must be square")
 	}
 
-	dstMat := ensureMatrix(dst, "Cholesky.dst")
+	dstMat := dst.View().(Matrix)
 
 	if len(dstMat) != rows || len(dstMat[0]) != cols {
 		return errors.New("cholesky: destination matrix size mismatch")
@@ -80,8 +80,8 @@ func (m Matrix) CholeskySolve(b vecTypes.Vector, dst vecTypes.Vector) error {
 	}
 
 	n := len(m)
-	srcVec := ensureVector(b, "CholeskySolve.b")
-	dstVec := ensureVector(dst, "CholeskySolve.dst")
+	srcVec := b.View().(vec.Vector)
+	dstVec := dst.View().(vec.Vector)
 	if len(srcVec) != n || len(dstVec) != n {
 		return errors.New("cholesky solve: vector size mismatch")
 	}

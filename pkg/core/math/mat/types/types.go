@@ -8,9 +8,13 @@ import (
 type Core interface {
 	IsContiguous() bool
 	Flat() []float32
-	Matrix() Matrix
+	View() Matrix
+	Rows() int
+	Cols() int
+	Rank() int
 	Eye() Matrix
 	Clone() Matrix
+	CopyFrom(src Matrix)
 
 	Row(row int) vec.Vector
 	Col(col int, v vec.Vector) vec.Vector

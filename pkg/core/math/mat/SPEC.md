@@ -59,6 +59,7 @@ type Matrix [][]float32
 - Backed by `[][]float32`
 - Can be non-contiguous (rows may not be adjacent in memory)
 - Supports `Flat()` method for flattening (zero-copy when contiguous)
+- Provides structural queries (`Rows()`, `Cols()`) and `Rank()` derived via row-reduction
 
 ### Fixed-Size Matrices
 
@@ -174,6 +175,9 @@ func (m Matrix) IsContiguous() bool
 | `SetCol(col int, v vec.Vector)` | All | Sets column from vector |
 | `Diagonal(dst vec.Vector) vec.Vector` | All | Extracts diagonal elements |
 | `SetDiagonal(v vec.Vector)` | All | Sets diagonal elements |
+| `Rows() int` | All | Returns number of matrix rows |
+| `Cols() int` | All | Returns number of matrix columns |
+| `Rank() int` | All | Returns numerical rank (epsilon-based row-reduction) |
 
 ### Arithmetic Operations
 
@@ -344,7 +348,8 @@ Fixed-size matrices use explicit copy to provided vector:
 
 - Unit tests for all operations
 - Benchmark tests for performance critical paths
-- Edge case tests (empty matrices, dimension mismatches, etc.)
+- Edge case tests (zero rows, zero columns, singular matrices)
 - Fixed-size vs. variable-size performance comparisons
+- Behavioural parity tests verifying slice-backed `Matrix` operations mutate receivers in-place while fixed-size variants (`Matrix2x2`, `Matrix3x3`, `Matrix4x4`, `Matrix3x4`, `Matrix4x3`) return updated copies
 - Contiguous vs. non-contiguous matrix tests
 

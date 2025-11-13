@@ -74,7 +74,7 @@ func TestMatrix4x3_Matrix(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			receiver := tt.init(t)
-			got1 := receiver.Matrix()
+			got1 := receiver.View()
 
 			if tt.inspect != nil {
 				tt.inspect(receiver, t)
@@ -726,7 +726,7 @@ func TestMatrix4x3_MulVec(t *testing.T) {
 			tArgs := tt.args(t)
 
 			receiver := tt.init(t)
-			got1 := receiver.MulVec(tArgs.v.Vector(), tArgs.dst)
+			got1 := receiver.MulVec(tArgs.v.View(), tArgs.dst)
 
 			if tt.inspect != nil {
 				tt.inspect(receiver, t)
@@ -761,7 +761,7 @@ func TestMatrix4x3_MulVecT(t *testing.T) {
 			tArgs := tt.args(t)
 
 			receiver := tt.init(t)
-			got1 := receiver.MulVecT(tArgs.v.Vector(), tArgs.dst)
+			got1 := receiver.MulVecT(tArgs.v.View(), tArgs.dst)
 
 			if tt.inspect != nil {
 				tt.inspect(receiver, t)

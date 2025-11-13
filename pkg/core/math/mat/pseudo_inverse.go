@@ -25,7 +25,7 @@ func (m Matrix) PseudoInverse(dst matTypes.Matrix) error {
 		return ErrPseudoInverseFailed
 	}
 
-	dstMat := ensureMatrix(dst, "PseudoInverse.dst")
+	dstMat := dst.View().(Matrix)
 
 	// Flatten matrices (zero-copy if contiguous)
 	mFlat := m.Flat()
@@ -55,7 +55,7 @@ func (m Matrix) DampedLeastSquares(lambda float32, dst matTypes.Matrix) error {
 		return ErrPseudoInverseFailed
 	}
 
-	dstMat := ensureMatrix(dst, "DampedLeastSquares.dst")
+	dstMat := dst.View().(Matrix)
 
 	// Transpose
 	mT := New(cols, rows)

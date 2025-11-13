@@ -1,7 +1,6 @@
 package mat
 
 import (
-	"fmt"
 	"unsafe"
 
 	"github.com/chewxy/math32"
@@ -15,70 +14,6 @@ import (
 type Matrix [][]float32
 
 var _ matTypes.Matrix = Matrix(nil)
-
-type vectorView interface {
-	Vector() vecTypes.Vector
-}
-
-func ensureMatrix(arg matTypes.Matrix, op string) Matrix {
-	if arg == nil {
-		panic("mat.Matrix." + op + ": nil matrix")
-	}
-	if concrete, ok := arg.(Matrix); ok {
-		return concrete
-	}
-	if view := arg.Matrix(); view != nil {
-		if concrete, ok := view.(Matrix); ok {
-			return concrete
-		}
-	}
-	panic(fmt.Sprintf("mat.Matrix.%s: unsupported matrix type %T", op, arg))
-}
-
-func ensureVector(arg vecTypes.Vector, op string) vec.Vector {
-	if arg == nil {
-		panic("mat.Matrix." + op + ": nil vector")
-	}
-	if concrete, ok := arg.(vec.Vector); ok {
-		return concrete
-	}
-	if view, ok := arg.(vectorView); ok {
-		provided := view.Vector()
-		if provided == nil {
-			panic(fmt.Sprintf("mat.Matrix.%s: vector provider returned nil", op))
-		}
-		if concrete, ok := provided.(vec.Vector); ok {
-			return concrete
-		}
-		return ensureVector(provided, op)
-	}
-	if clone := arg.Clone(); clone != nil {
-		if concrete, ok := clone.(vec.Vector); ok {
-			return concrete
-		}
-		if view, ok := clone.(vectorView); ok {
-			provided := view.Vector()
-			if provided == nil {
-				panic(fmt.Sprintf("mat.Matrix.%s: cloned vector provider returned nil", op))
-			}
-			if concrete, ok := provided.(vec.Vector); ok {
-				return concrete
-			}
-			return ensureVector(provided, op)
-		}
-	}
-	panic(fmt.Sprintf("mat.Matrix.%s: unsupported vector type %T", op, arg))
-}
-
-func ensureQuaternion(arg vecTypes.Quaternion, op string) *vec.Quaternion {
-	if arg == nil {
-		panic("mat.Matrix." + op + ": nil quaternion")
-	}
-	if concrete, ok := arg.(*vec.Quaternion); ok {
-		return concrete
-	}
-	panic(fmt.Sprintf("mat.Matrix.%s: unsupported quaternion type %T", op, arg))
-}
 
 func cloneFlat(flat []float32) []float32 {
 	if flat == nil {
@@ -159,12 +94,126 @@ func (m Matrix) Flat() []float32 {
 // Returns a Matrix view of this matrix.
 // The view actually contains slices of original matrix rows.
 // This way original matrix can be modified.
-func (m Matrix) Matrix() matTypes.Matrix {
+func (m Matrix) View() matTypes.Matrix {
 	m1 := make(Matrix, len(m))
 	for i := range m {
 		m1[i] = m[i][:]
 	}
 	return m1
+}
+
+func (m Matrix) Rows() int {
+	return len(m)
+}
+
+func (m Matrix) Cols() int {
+	if len(m) == 0 {
+		return 0
+	}
+	return len(m[0])
+}
+
+func (m Matrix) Rank() int {
+	rows := len(m)
+	if rows == 0 {
+		return 0
+	}
+	cols := len(m[0])
+	if cols == 0 {
+		return 0
+	}
+
+	if rows <= maxRankSmall && cols <= maxRankSmall {
+		return rankSmall(rows, cols, func(i, j int) float32 { return m[i][j] })
+	}
+
+	data := make([]float32, rows*cols)
+	for i := 0; i < rows; i++ {
+		copy(data[i*cols:(i+1)*cols], m[i][:cols])
+	}
+	return rankFromDense(data, rows, cols)
+}
+
+const (
+	rankEpsilon  = 1e-6
+	maxRankSmall = 4
+)
+
+func rankFromDense(data []float32, rows, cols int) int {
+	rank := 0
+	row := 0
+	for col := 0; col < cols && row < rows; col++ {
+		pivot := row
+		maxVal := float32(0)
+		for i := row; i < rows; i++ {
+			v := math32.Abs(data[i*cols+col])
+			if v > maxVal {
+				maxVal = v
+				pivot = i
+			}
+		}
+
+		if maxVal <= rankEpsilon {
+			continue
+		}
+
+		if pivot != row {
+			for j := col; j < cols; j++ {
+				pi := pivot*cols + j
+				ri := row*cols + j
+				data[pi], data[ri] = data[ri], data[pi]
+			}
+		}
+
+		pivotVal := data[row*cols+col]
+		invPivot := 1 / pivotVal
+		for j := col; j < cols; j++ {
+			idx := row*cols + j
+			data[idx] *= invPivot
+		}
+
+		for i := 0; i < rows; i++ {
+			if i == row {
+				continue
+			}
+			factor := data[i*cols+col]
+			if math32.Abs(factor) <= rankEpsilon {
+				continue
+			}
+			for j := col; j < cols; j++ {
+				idx := i*cols + j
+				data[idx] -= factor * data[row*cols+j]
+			}
+		}
+
+		rank++
+		row++
+	}
+
+	return rank
+}
+
+func rankSmall(rows, cols int, fetch func(int, int) float32) int {
+	var buffer [maxRankSmall * maxRankSmall]float32
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
+			buffer[i*cols+j] = fetch(i, j)
+		}
+	}
+	return rankFromDense(buffer[:rows*cols], rows, cols)
+}
+
+func (m Matrix) CopyFrom(src matTypes.Matrix) {
+	if src == nil || len(m) == 0 {
+		return
+	}
+
+	rows := len(m)
+	srcMat := src.View().(Matrix)
+	rows = min(rows, len(srcMat))
+	for i := 0; i < rows; i++ {
+		copy(m[i], srcMat[i])
+	}
 }
 
 func (m Matrix) Rotation2D(a float32) matTypes.Matrix {
@@ -207,12 +256,11 @@ func (m Matrix) RotationZ(a float32) matTypes.Matrix {
 }
 
 func (m Matrix) Orientation(q vecTypes.Quaternion) matTypes.Matrix {
-	quat := ensureQuaternion(q, "Orientation")
-	theta := quat.Theta() / 2
+	qVal := q.(vec.Quaternion)
+	theta := qVal.Theta() / 2
 
 	qr := math32.Cos(theta)
 	s := math32.Sin(theta)
-	qVal := *quat
 	qi := qVal[0] * s
 	qj := qVal[1] * s
 	qk := qVal[2] * s
@@ -257,7 +305,7 @@ func (m Matrix) Row(row int) vecTypes.Vector {
 }
 
 func (m Matrix) Col(col int, v vecTypes.Vector) vecTypes.Vector {
-	dst := ensureVector(v, "Col")
+	dst := v.View().(vec.Vector)
 	for i, row := range m {
 		dst[i] = row[col]
 	}
@@ -265,13 +313,13 @@ func (m Matrix) Col(col int, v vecTypes.Vector) vecTypes.Vector {
 }
 
 func (m Matrix) SetRow(row int, v vecTypes.Vector) matTypes.Matrix {
-	src := ensureVector(v, "SetRow")
+	src := v.View().(vec.Vector)
 	copy(m[row][:], src)
 	return m
 }
 
 func (m Matrix) SetCol(col int, v vecTypes.Vector) matTypes.Matrix {
-	src := ensureVector(v, "SetCol")
+	src := v.View().(vec.Vector)
 	for i, val := range src {
 		m[i][col] = val
 	}
@@ -279,7 +327,7 @@ func (m Matrix) SetCol(col int, v vecTypes.Vector) matTypes.Matrix {
 }
 
 func (m Matrix) SetColFromRow(col int, rowStart int, v vecTypes.Vector) matTypes.Matrix {
-	src := ensureVector(v, "SetColFromRow")
+	src := v.View().(vec.Vector)
 	for i, val := range src {
 		if rowStart+i < len(m) {
 			m[rowStart+i][col] = val
@@ -289,7 +337,7 @@ func (m Matrix) SetColFromRow(col int, rowStart int, v vecTypes.Vector) matTypes
 }
 
 func (m Matrix) GetCol(col int, dst vecTypes.Vector) vecTypes.Vector {
-	out := ensureVector(dst, "GetCol")
+	out := dst.View().(vec.Vector)
 	for i := range m {
 		if i < len(out) {
 			out[i] = m[i][col]
@@ -299,7 +347,7 @@ func (m Matrix) GetCol(col int, dst vecTypes.Vector) vecTypes.Vector {
 }
 
 func (m Matrix) Diagonal(dst vecTypes.Vector) vecTypes.Vector {
-	out := ensureVector(dst, "Diagonal")
+	out := dst.View().(vec.Vector)
 	for i, row := range m {
 		out[i] = row[i]
 	}
@@ -307,7 +355,7 @@ func (m Matrix) Diagonal(dst vecTypes.Vector) vecTypes.Vector {
 }
 
 func (m Matrix) SetDiagonal(v vecTypes.Vector) matTypes.Matrix {
-	src := ensureVector(v, "SetDiagonal")
+	src := v.View().(vec.Vector)
 	for i, val := range src {
 		m[i][i] = val
 	}
@@ -333,7 +381,7 @@ func FromDiagonal(diagonal ...float32) Matrix {
 // The vector elements become the diagonal elements of the matrix.
 // Returns a matrix with zeros everywhere except the diagonal.
 func FromVector(v vecTypes.Vector) Matrix {
-	vecSrc := ensureVector(v, "FromVector")
+	vecSrc := v.View().(vec.Vector)
 	if len(vecSrc) == 0 {
 		return nil
 	}
@@ -346,7 +394,7 @@ func FromVector(v vecTypes.Vector) Matrix {
 }
 
 func (m Matrix) Submatrix(row, col int, m1 matTypes.Matrix) matTypes.Matrix {
-	dst := ensureMatrix(m1, "Submatrix")
+	dst := m1.View().(Matrix)
 	cols := len(dst[0])
 	for i := range dst {
 		copy(dst[i], m[row+i][col:cols+col])
@@ -355,7 +403,7 @@ func (m Matrix) Submatrix(row, col int, m1 matTypes.Matrix) matTypes.Matrix {
 }
 
 func (m Matrix) SetSubmatrix(row, col int, m1 matTypes.Matrix) matTypes.Matrix {
-	src := ensureMatrix(m1, "SetSubmatrix")
+	src := m1.View().(Matrix)
 	for i := range m[row : row+len(src)] {
 		copy(m[row+i][col:col+len(src[i])], src[i])
 	}
@@ -381,7 +429,7 @@ func (m Matrix) Clone() matTypes.Matrix {
 }
 
 func (m Matrix) Transpose(m1 matTypes.Matrix) matTypes.Matrix {
-	src := ensureMatrix(m1, "Transpose")
+	src := m1.View().(Matrix)
 	rows := len(src)
 	cols := len(src[0])
 	for i := 0; i < rows; i++ {
@@ -400,7 +448,7 @@ func (m Matrix) Add(m1 matTypes.Matrix) matTypes.Matrix {
 	cols := len(m[0])
 	total := rows * cols
 	mFlat := m.Flat()
-	m1Flat := ensureMatrix(m1, "Add").Flat()
+	m1Flat := m1.Flat()
 	fp32.ElemAdd(mFlat, mFlat, m1Flat, []int{total}, []int{1}, []int{1}, []int{1})
 	return m
 }
@@ -413,7 +461,7 @@ func (m Matrix) Sub(m1 matTypes.Matrix) matTypes.Matrix {
 	cols := len(m[0])
 	total := rows * cols
 	mFlat := m.Flat()
-	m1Flat := ensureMatrix(m1, "Sub").Flat()
+	m1Flat := m1.Flat()
 	fp32.ElemSub(mFlat, mFlat, m1Flat, []int{total}, []int{1}, []int{1}, []int{1})
 	return m
 }
@@ -443,8 +491,8 @@ func (m Matrix) DivC(c float32) matTypes.Matrix {
 }
 
 func (m Matrix) Mul(a matTypes.Matrix, b matTypes.Matrix) matTypes.Matrix {
-	aMat := ensureMatrix(a, "Mul.left")
-	bMat := ensureMatrix(b, "Mul.right")
+	aMat := a.View().(Matrix)
+	bMat := b.View().(Matrix)
 	M := len(aMat)
 	if M == 0 {
 		return m
@@ -465,8 +513,8 @@ func (m Matrix) Mul(a matTypes.Matrix, b matTypes.Matrix) matTypes.Matrix {
 }
 
 func (m Matrix) MulDiag(a matTypes.Matrix, b vecTypes.Vector) matTypes.Matrix {
-	aMat := ensureMatrix(a, "MulDiag")
-	vecB := ensureVector(b, "MulDiag")
+	aMat := a.View().(Matrix)
+	vecB := b.View().(vec.Vector)
 	rows := len(aMat)
 	cols := len(aMat[0])
 	for i := 0; i < rows; i++ {
@@ -482,8 +530,8 @@ func (m Matrix) MulVec(v vecTypes.Vector, dst vecTypes.Vector) vecTypes.Vector {
 	}
 	cols := len(m[0])
 	matFlat := m.Flat()
-	srcVec := ensureVector(v, "MulVec")
-	dstVec := ensureVector(dst, "MulVec.dst")
+	srcVec := v.View().(vec.Vector)
+	dstVec := dst.View().(vec.Vector)
 	fp32.Gemv_N(dstVec, matFlat, srcVec, cols, rows, cols, 1.0, 0.0)
 	return dstVec
 }
@@ -495,8 +543,8 @@ func (m Matrix) MulVecT(v vecTypes.Vector, dst vecTypes.Vector) vecTypes.Vector 
 	}
 	cols := len(m[0])
 	matFlat := m.Flat()
-	srcVec := ensureVector(v, "MulVecT")
-	dstVec := ensureVector(dst, "MulVecT.dst")
+	srcVec := v.View().(vec.Vector)
+	dstVec := dst.View().(vec.Vector)
 	fp32.Gemv_T(dstVec, matFlat, srcVec, cols, rows, cols, 1.0, 0.0)
 	return dstVec
 }
@@ -504,7 +552,7 @@ func (m Matrix) MulVecT(v vecTypes.Vector, dst vecTypes.Vector) vecTypes.Vector 
 // Determinant only valid for square matrix
 // Undefined behavior for non square matrices
 func (m Matrix) Det() float32 {
-	tmp := ensureMatrix(m.Clone(), "Det.clone")
+	tmp := m.Clone().(Matrix)
 
 	var ratio float32
 	var det float32 = 1
@@ -530,8 +578,8 @@ func (m Matrix) Det() float32 {
 // NOTE: Assume, that l&u matrices are set to zero
 // Matrix must be square and M, L and U matrix sizes must be equal
 func (m Matrix) LU(L, U matTypes.Matrix) {
-	LMat := ensureMatrix(L, "LU.L")
-	UMat := ensureMatrix(U, "LU.U")
+	LMat := L.View().(Matrix)
+	UMat := U.View().(Matrix)
 	size := len(m)
 
 	mFlat := m.Flat()

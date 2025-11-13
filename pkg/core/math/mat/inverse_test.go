@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/chewxy/math32"
+	matTypes "github.com/itohio/EasyRobot/pkg/core/math/mat/types"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -110,9 +111,8 @@ func TestMatrix2x2_Inverse(t *testing.T) {
 		{
 			name: "identity",
 			init: func(t *testing.T) *Matrix2x2 {
-				m := &Matrix2x2{}
-				m.Eye()
-				return m
+				mat := Matrix2x2{}.Eye().(Matrix2x2)
+				return &mat
 			},
 			wantErr: false,
 			verify: func(m, inv *Matrix2x2, t *testing.T) {
@@ -180,9 +180,8 @@ func TestMatrix3x3_Inverse(t *testing.T) {
 		{
 			name: "identity",
 			init: func(t *testing.T) *Matrix3x3 {
-				m := &Matrix3x3{}
-				m.Eye()
-				return m
+				mat := Matrix3x3{}.Eye().(Matrix3x3)
+				return &mat
 			},
 			wantErr: false,
 			verify: func(m, inv *Matrix3x3, t *testing.T) {
@@ -196,9 +195,8 @@ func TestMatrix3x3_Inverse(t *testing.T) {
 		{
 			name: "rotation matrix",
 			init: func(t *testing.T) *Matrix3x3 {
-				m := &Matrix3x3{}
-				m.RotationZ(math32.Pi / 4)
-				return m
+				mat := Matrix3x3{}.RotationZ(math32.Pi / 4).(Matrix3x3)
+				return &mat
 			},
 			wantErr: false,
 			verify: func(m, inv *Matrix3x3, t *testing.T) {
@@ -233,24 +231,21 @@ func TestMatrix3x3_Inverse(t *testing.T) {
 func TestMatrix4x4_Inverse(t *testing.T) {
 	tests := []struct {
 		name    string
-		init    func(t *testing.T) *Matrix4x4
+		init    func(t *testing.T) Matrix4x4
 		wantErr bool
-		verify  func(m, inv *Matrix4x4, t *testing.T)
+		verify  func(m, inv Matrix4x4, t *testing.T)
 	}{
 		{
 			name: "identity",
-			init: func(t *testing.T) *Matrix4x4 {
-				m := &Matrix4x4{}
-				m.Eye()
-				return m
+			init: func(t *testing.T) Matrix4x4 {
+				mat := Matrix4x4{}.Eye().(Matrix4x4)
+				return mat
 			},
 			wantErr: false,
-			verify: func(m, inv *Matrix4x4, t *testing.T) {
-				product := &Matrix4x4{}
-				product.Mul(m, inv)
-				identity := &Matrix4x4{}
-				identity.Eye()
-				assert.True(t, matrices4x4Equal(product, identity, 1e-5), "M * M^-1 should equal identity")
+			verify: func(m, inv Matrix4x4, t *testing.T) {
+				product := Matrix4x4{}.Mul(m, inv)
+				identity := Matrix4x4{}.Eye()
+				matrices4x4Equal(t, product, identity, 1e-5, "M * M^-1 should equal identity")
 			},
 		},
 	}
@@ -268,7 +263,7 @@ func TestMatrix4x4_Inverse(t *testing.T) {
 			}
 
 			if tt.verify != nil && err == nil {
-				tt.verify(m, &dst, t)
+				tt.verify(m, dst, t)
 			}
 		})
 	}
@@ -311,13 +306,14 @@ func matrices3x3Equal(a, b *Matrix3x3, eps float32) bool {
 	return true
 }
 
-func matrices4x4Equal(a, b *Matrix4x4, eps float32) bool {
+func matrices4x4Equal(t *testing.T, aM, bM matTypes.Matrix, eps float32, msg string) bool {
+	a := aM.View().(Matrix)
+	b := bM.View().(Matrix)
 	for i := range a {
 		for j := range a[i] {
-			if math32.Abs(a[i][j]-b[i][j]) > eps {
-				return false
-			}
+			assert.InDelta(t, a[i][j], b[i][j], float64(eps), msg)
 		}
 	}
+	t.Logf("%s: passed", msg)
 	return true
 }

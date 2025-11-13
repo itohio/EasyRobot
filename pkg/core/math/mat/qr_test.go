@@ -2,6 +2,8 @@ package mat
 
 import (
 	"testing"
+
+	"github.com/itohio/EasyRobot/pkg/core/math/vec"
 )
 
 func TestMatrix_QRDecompose(t *testing.T) {
@@ -105,7 +107,7 @@ func verifyQRDecomposition(m Matrix, result *QRResult, t *testing.T) {
 	if result.Q == nil {
 		t.Fatalf("QR: Q not set")
 	}
-	Q := ensureMatrix(result.Q, "QRTest.Q")
+	Q := result.Q.View().(Matrix)
 	if len(Q) != len(m) {
 		t.Errorf("QR: Q should have %d rows, got %d", len(m), len(Q))
 	}
@@ -115,7 +117,7 @@ func verifyQRDecomposition(m Matrix, result *QRResult, t *testing.T) {
 	if result.D == nil {
 		t.Fatalf("QR: D not set")
 	}
-	D := ensureVector(result.D, "QRTest.D")
+	D := result.D.View().(vec.Vector)
 	if len(D) != cols {
 		t.Errorf("QR: D should have length %d, got %d", cols, len(D))
 	}
@@ -123,7 +125,7 @@ func verifyQRDecomposition(m Matrix, result *QRResult, t *testing.T) {
 	if result.C == nil {
 		t.Fatalf("QR: C not set")
 	}
-	C := ensureVector(result.C, "QRTest.C")
+	C := result.C.View().(vec.Vector)
 	if len(C) != cols {
 		t.Errorf("QR: C should have length %d, got %d", cols, len(C))
 	}

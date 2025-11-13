@@ -86,8 +86,8 @@ func (m Matrix) QRDecompose(dst *mattypes.QRResult) error {
 // QR reconstructs Q and R from decomposition.
 // Must call QRDecompose first.
 func (m Matrix) QR(dst *mattypes.QRResult) error {
-	cVec := ensureVector(dst.C, "QR.C")
-	dVec := ensureVector(dst.D, "QR.D")
+	cVec := dst.C.View().(vec.Vector)
+	dVec := dst.D.View().(vec.Vector)
 	if len(cVec) == 0 || len(dVec) == 0 {
 		return errors.New("qr: must call QRDecompose first")
 	}
@@ -120,7 +120,7 @@ func (m Matrix) QR(dst *mattypes.QRResult) error {
 
 	// Allocate R matrix
 	dst.R = New(cols, cols)
-	R := ensureMatrix(dst.R, "QR.R")
+	R := dst.R.View().(Matrix)
 
 	// Extract R from modified matrix (upper triangular part)
 	for i := 0; i < cols; i++ {
