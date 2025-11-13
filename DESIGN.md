@@ -285,6 +285,8 @@ Source → [Processor1] → [FanOut] → [Processor2] → [FanIn] → [Sink]
    - Missing comprehensive test coverage
    - Limited integration tests
    - No performance benchmarks
+   - Vector module requires explicit coverage for slice-backed in-place behaviour vs fixed-size value semantics (see `pkg/core/math/vec/TEST_PLAN.md`)
+   - Matrix module requires the same in-place vs value-semantics coverage across all fixed-size variants (see `pkg/core/math/mat/TEST_PLAN.md`)
 
 4. **Documentation**:
    - Incomplete API documentation

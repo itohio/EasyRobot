@@ -17,14 +17,16 @@ func New(p, i, d, min, max vec.Vector) PID {
 		panic(-1)
 	}
 	return PID{
-		P:      p,
-		I:      i,
-		D:      d,
-		min:    min,
-		max:    max,
-		Input:  vec.New(N),
-		Output: vec.New(N),
-		Target: vec.New(N),
+		P:         p,
+		I:         i,
+		D:         d,
+		min:       min,
+		max:       max,
+		Input:     vec.New(N),
+		lastInput: vec.New(N),
+		Output:    vec.New(N),
+		Target:    vec.New(N),
+		iTerm:     vec.New(N),
 	}
 }
 
