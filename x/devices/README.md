@@ -127,4 +127,88 @@ Proper use of Go/TinyGo build tags is **strongly recommended** to ensure code is
 
 Refer to per-device docs in this directory for specific instructions for TinyGo, Raspberry Pi, and general computers.
 
+---
+
+## Device Implementation Status
+
+This section tracks which devices are implemented in this directory versus those available in `tinygo.org/x/drivers`.
+
+### Devices Implemented in This Directory
+
+The following devices have been implemented in `/home/andrius/projects/itohio/EasyRobot/x/devices`:
+
+| Device | Package | Interface | Status | Notes |
+|--------|---------|-----------|--------|-------|
+| **ADNS3080** | `adns3080` | SPI | ✅ Implemented | Optical mouse sensor - unlikely to exist in tinygo.org/x/drivers |
+| **Encoder** | `encoder` | GPIO/Interrupts | ✅ Implemented | Quadrature encoder with position (int64) and RPM calculation - unlikely to exist in tinygo.org/x/drivers |
+| **MPU6050** | `mpu6050` | I2C | ✅ Implemented | 6-axis IMU - may exist in tinygo.org/x/drivers (check before use) |
+| **PCA9685** | `pca9685` | I2C | ✅ Implemented | 16-channel PWM driver - may exist in tinygo.org/x/drivers (check before use) |
+| **PCF8574** | `pcf8574` | I2C | ✅ Implemented | 8-bit GPIO expander - unlikely to exist in tinygo.org/x/drivers |
+| **TCA9548A** | `tca9548a` | I2C | ✅ Implemented | 8-channel I2C multiplexer - unlikely to exist in tinygo.org/x/drivers |
+| **VL53L0X** | `vl53l0x` | I2C | ✅ Implemented | Time-of-flight distance sensor - may exist in tinygo.org/x/drivers (check before use) |
+
+### Devices in tinygo.org/x/drivers
+
+Before using the implementations in this directory, check if the device is already available in `tinygo.org/x/drivers`:
+
+- **MPU6050**: Very likely exists (common IMU sensor)
+- **PCA9685**: May exist (common PWM driver)
+- **VL53L0X**: May exist (time-of-flight sensors are common)
+- **PCF8574**: Unlikely to exist
+- **TCA9548A**: Unlikely to exist
+- **ADNS3080**: Very unlikely to exist (niche optical mouse sensor)
+
+### Usage Recommendations
+
+1. **Check tinygo.org/x/drivers first**: Before using implementations from this directory, verify if the device is already available in the official TinyGo drivers repository.
+
+2. **Contribution goal**: The ultimate goal is to create Merge Requests (MRs) into `tinygo.org/x/drivers` with these device implementations.
+
+3. **Implementation notes**:
+   - All implementations follow TinyGo patterns and use `machine.I2C` or `machine.SPI` interfaces
+   - Devices are designed to work with TinyGo on microcontrollers
+   - Some implementations may be simplified versions - full functionality can be added as needed
+   - ADNS3080 SPI implementation may need adjustments for proper SPI Transfer usage
+
+4. **Testing**: These implementations should be tested on actual hardware before contributing to tinygo.org/x/drivers.
+
+### Package Structure
+
+Each device is implemented as a separate package:
+```
+x/devices/
+├── adns3080/     # ADNS3080 optical mouse sensor (SPI)
+├── encoder/      # Quadrature encoder with position and RPM (GPIO/Interrupts)
+├── mpu6050/      # MPU6050 6-axis IMU (I2C)
+├── pca9685/      # PCA9685 16-channel PWM driver (I2C)
+├── pcf8574/      # PCF8574 8-bit GPIO expander (I2C)
+├── tca9548a/     # TCA9548A 8-channel I2C mux (I2C)
+└── vl53l0x/      # VL53L0X time-of-flight sensor (I2C)
+    ├── vl53l0x.go
+    └── tuning.go
+```
+
+### Example Usage
+
+```go
+import (
+    "machine"
+    "github.com/itohio/EasyRobot/x/devices/mpu6050"
+)
+
+// Initialize I2C bus
+i2c := machine.I2C0
+i2c.Configure(machine.I2CConfig{})
+
+// Create device
+imu := mpu6050.New(i2c, 0x68)
+imu.Configure()
+
+// Read accelerometer
+accel, err := imu.ReadAccelerometer()
+if err != nil {
+    // handle error
+}
+```
+
 
