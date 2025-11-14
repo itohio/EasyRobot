@@ -10,8 +10,16 @@ import (
 // ExampleEncoder demonstrates how to use a quadrature encoder.
 func ExampleEncoder() {
 	// Define encoder pins (A and B channels)
-	pinA := devices.NewPin(2)
-	pinB := devices.NewPin(3)
+	pinA, err := devices.NewPin(2)
+	if err != nil {
+		// handle error
+		return
+	}
+	pinB, err := devices.NewPin(3)
+	if err != nil {
+		// handle error
+		return
+	}
 
 	// Create encoder with default configuration
 	// Default: 2048 counts per revolution (512 PPR * 4x decoding)
