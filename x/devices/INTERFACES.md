@@ -109,6 +109,47 @@ pin := devices.NewTinyGoPin(machinePin)
 pin, err := devices.NewLinuxPin(18)
 ```
 
+### PWM Interface
+
+```go
+type PWM interface {
+    Set(duty float32) error          // duty cycle 0.0 to 1.0
+    SetMicroseconds(us uint32) error // pulse width in microseconds
+    Stop() error                      // stop PWM output
+}
+
+type PWMDevice interface {
+    Channel(pin Pin) (PWM, error)
+    Configure(frequency uint32) error
+    SetFrequency(frequency uint32) error
+}
+```
+
+**Implementations:**
+- `xiao.NewPWMDevice()` - XIAO board using TCC peripherals (TinyGo, SAM D21)
+- Other platform-specific implementations can be added
+
+**Usage:**
+```go
+// XIAO board
+import "github.com/itohio/EasyRobot/x/devices/xiao"
+
+pwm := xiao.NewPWMDevice()
+pwm.Configure(50) // 50Hz for servos
+
+pin := devices.NewTinyGoPin(machine.D8)
+channel, err := pwm.Channel(pin)
+if err != nil {
+    // Handle error
+}
+
+// Set duty cycle (0.0 to 1.0)
+channel.Set(0.5) // 50% duty cycle
+
+// Or set pulse width for servos (500-2500 microseconds)
+channel.SetMicroseconds(1500) // 1.5ms = center position
+```
+
 ## Device Driver Usage
 
 Device drivers should accept these interfaces instead of `machine.*` types directly:

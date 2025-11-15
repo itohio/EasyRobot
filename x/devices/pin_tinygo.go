@@ -17,3 +17,9 @@ const (
 
 	PinToggle = machine.PinToggle
 )
+
+// NewTinyGoPin wraps a machine.Pin to implement devices.Pin interface.
+// This allows using machine.Pin directly with device drivers.
+func NewTinyGoPin(pin machine.Pin) Pin {
+	return pin
+}
