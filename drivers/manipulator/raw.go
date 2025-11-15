@@ -1,30 +1,19 @@
-//go:build !planar || !dh
-// +build !planar !dh
+//go:build sam && xiao && !planar && !dh
 
 package main
 
 import (
-	servos "github.com/itohio/EasyRobot/pkg/control/actuator/servos/fw"
-	"github.com/itohio/EasyRobot/pkg/control/transport"
+	types "github.com/itohio/EasyRobot/types/control"
 )
 
-func setState(packet transport.PacketData) {
-	var state servos.State
-	err := state.Unmarshal(packet.Data)
-	if err != nil {
-		return
-	}
-	if len(state.Params) != len(manipulatorConfig) {
-		return
-	}
+// Raw mode - no kinematics, direct joint angle control
 
-	motionLock.Lock()
-	defer motionLock.Unlock()
-	for i := range state.Params {
-		motion[i].Target = state.Params[i]
-	}
+func handleKinematicsConfig(config *types.ManipulatorConfig) {
+	// Raw mode: ignore joints config, only use motors
+	// No kinematics initialization needed
+	kinematics = nil
 }
 
-func configKinematics(packet transport.PacketData) {
-	configMotionKinematics(packet)
+func getIntentPathImpl() string {
+	return "easyrobot.manipulator.raw"
 }

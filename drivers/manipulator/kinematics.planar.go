@@ -1,36 +1,57 @@
-//go:build planar
-// +build planar
+//go:build sam && xiao && planar && !dh
 
 package main
 
 import (
-	"github.com/itohio/EasyRobot/pkg/control/kinematics"
-	"github.com/itohio/EasyRobot/pkg/control/transport"
+	"fmt"
+
+	types "github.com/itohio/EasyRobot/types/control"
+	types_kinematics "github.com/itohio/EasyRobot/types/control/kinematics"
+	// TODO: Update when kinematics code is migrated from pkg to x
+	// "github.com/itohio/EasyRobot/x/math/control/kinematics/joints/planar"
 )
 
-var (
-	kine kinematics.Kinematics
-)
-
-func setState(packet transport.PacketData) {
+type planarKinematics struct {
+	config *types_kinematics.JointsConfig
 }
 
-func configKinematics(packet transport.PacketData) {
-	defer configMotionKinematics(packet)
-
-	var cfg kinematics.Config
-	err := cfg.Unmarshal(packet.Data)
-	if err != nil {
-		return
-	}
-	if cfg.Planar == nil || len(cfg.Planar) != len(manipulatorConfig) {
+func handleKinematicsConfig(config *types.ManipulatorConfig) {
+	if config.Joints == nil {
+		println("Joints config required for planar mode")
 		return
 	}
 
-	cfg := [3]Config{
-		{Min: -90, Max: -90, Length: 0},
-		{Min: -90, Max: -90, Length: 0},
-		{Min: -90, Max: -90, Length: 0},
+	// Create planar kinematics instance
+	// TODO: Implement actual planar kinematics initialization
+	// This is a placeholder - needs to be implemented using x/math/control/kinematics/joints/planar
+	kinematics = &planarKinematics{
+		config: config.Joints,
 	}
-	kine = planar.New3DOF()
+
+	println("Planar kinematics configured")
+}
+
+func getIntentPathImpl() string {
+	return "easyrobot.manipulator.planar"
+}
+
+func (p *planarKinematics) Inverse(targetX, targetY, targetZ float32, orientation *types.MathQuaternion) ([]float32, error) {
+	if p.config == nil || len(p.config.PlanarJoints) == 0 {
+		return nil, fmt.Errorf("planar joints not configured")
+	}
+
+	// TODO: Implement inverse kinematics using planar kinematics solver
+	// This should use the planar kinematics code from x/math/control/kinematics/joints/planar
+	// For now, return error as placeholder
+	return nil, fmt.Errorf("planar IK not yet implemented - needs integration with x/math/control/kinematics/joints/planar")
+}
+
+func (p *planarKinematics) Forward(jointAngles []float32) (x, y, z float32, err error) {
+	if p.config == nil {
+		return 0, 0, 0, fmt.Errorf("planar joints not configured")
+	}
+
+	// TODO: Implement forward kinematics
+	// This should use the planar kinematics code from x/math/control/kinematics/joints/planar
+	return 0, 0, 0, fmt.Errorf("planar FK not yet implemented - needs integration with x/math/control/kinematics/joints/planar")
 }
