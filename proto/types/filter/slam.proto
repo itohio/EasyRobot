@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package types.filter;
+
+option go_package = "github.com/itohio/EasyRobot/types/filter";
+
+import "types/math/tensor.proto";
+import "types/math/vectors.proto";
+
+// OccupancyGrid represents an occupancy grid map
+message OccupancyGrid {
+  int32 rows = 1;              // Number of rows
+  int32 cols = 2;              // Number of columns
+  float resolution = 3;        // Grid cell size in meters
+  float origin_x = 4;          // X coordinate of map origin (meters)
+  float origin_y = 5;         // Y coordinate of map origin (meters)
+  types.math.Tensor grid = 6;  // Occupancy values (0=free, 1=occupied, 0.5=unknown)
+}
+
+// SLAMPose represents robot pose for SLAM
+message SLAMPose {
+  types.math.Vector3D position = 1;  // [px, py, 0] for 2D, [px, py, pz] for 3D
+  float heading = 2;                 // Heading angle in radians (for 2D)
+  types.math.Quaternion orientation = 3; // Full orientation quaternion (for 3D)
+}
+
+// SLAMConfig represents SLAM filter configuration
+message SLAMConfig {
+  repeated float ray_angles = 1;     // Ray angles in radians relative to robot heading
+  OccupancyGrid map = 2;             // Occupancy grid map
+  float max_range = 3;               // Maximum sensor range in meters
+  bool enable_mapping = 4;           // Enable online map building
+  bool use_optimized_raycast = 5;    // Use optimized ray casting
+}
+
+// SLAMMeasurement represents distance measurements from ray-based sensors
+message SLAMMeasurement {
+  repeated float distances = 1;     // Distance measurements for each ray (meters)
+  int64 timestamp = 2;               // Timestamp in nanoseconds
+}
+
+// SLAMState represents SLAM filter state
+message SLAMState {
+  SLAMPose pose = 1;                 // Estimated robot pose
+  types.math.Tensor covariance = 2;  // Pose covariance matrix
+  int64 timestamp = 3;                // Timestamp in nanoseconds
+}
+

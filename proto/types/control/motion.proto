@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package types.control;
+
+option go_package = "github.com/itohio/EasyRobot/types/control";
+
+import "types/math/vectors.proto";
+
+// State represents the robot pose and velocity at a specific timestamp
+message State {
+  types.math.Vector3D position = 1;
+  float yaw = 2;              // Yaw angle in radians
+  float speed = 3;             // Speed in m/s
+  float timestamp = 4;         // Timestamp in seconds
+}
+
+// Controls represents aggregate control commands issued to the robot
+message Controls {
+  float linear = 1;            // Linear velocity command
+  float angular = 2;          // Angular velocity command
+  types.math.Vector effort = 3; // Additional effort vector
+}
+
+// Trajectory encapsulates future states the robot should follow and corresponding nominal controls
+message Trajectory {
+  repeated State states = 1;
+  repeated Controls controls = 2;
+}
+
+// Constraints defines the physical limits the planner must respect
+message Constraints {
+  float max_speed = 1;
+  float max_acceleration = 2;
+  float max_deceleration = 3;
+  float max_jerk = 4;
+  float max_turn_rate = 5;
+  float max_turn_acceleration = 6;
+  float max_lateral_acceleration = 7;
+}
+
+// PIDGains holds proportional-integral-derivative coefficients
+message PIDGains {
+  float p = 1;
+  float i = 2;
+  float d = 3;
+}
+
+// Parameters configures the planner tuning knobs
+message Parameters {
+  float sample_period = 1;
+  float lookahead_distance = 2;
+  PIDGains speed_pid = 3;
+  PIDGains heading_pid = 4;
+  PIDGains lateral_pid = 5;
+}
+

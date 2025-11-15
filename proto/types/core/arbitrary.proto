@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package types.core;
+
+option go_package = "github.com/itohio/EasyRobot/types/core";
+
+// ArbitraryValue encapsulates arbitrary types for local data transfer between modules.
+// This is used for zero-copy, no-marshalling scenarios where data is passed
+// within the same process or via shared memory.
+//
+// The actual data is not serialized - only type information and a reference
+// is stored. The receiver must have access to the original data structure.
+message ArbitraryValue {
+  string type_name = 1;        // Fully qualified type name (e.g., "github.com/itohio/EasyRobot/x/math/vec.Vector3D")
+  string kind = 2;            // Kind discriminator: "vector", "matrix", "tensor", "layer", "model", "custom"
+  uint64 reference = 3;       // Reference/pointer value (platform-specific, not portable)
+  map<string, string> metadata = 4; // Additional metadata about the value
+}
+
+// ArbitraryMessage wraps an ArbitraryValue with context for local transfer
+message ArbitraryMessage {
+  string source = 1;           // Source module/component name
+  string destination = 2;     // Destination module/component name
+  ArbitraryValue value = 3;   // The arbitrary value
+  int64 timestamp = 4;        // Timestamp when value was created
+}
+

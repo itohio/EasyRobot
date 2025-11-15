@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package types.core;
+
+option go_package = "github.com/itohio/EasyRobot/types/core";
+
+import "types/math/tensor.proto";
+
+// Frame represents a collection of tensors and metadata produced by streaming
+// sources such as image sequences or video captures.
+message Frame {
+  int64 index = 1;                              // Frame index in sequence
+  int64 timestamp = 2;                          // Timestamp in nanoseconds
+  map<string, string> metadata = 3;            // Additional metadata
+  repeated types.math.Tensor tensors = 4;       // Tensor data (e.g., images, features)
+}
+

@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package types.interaction;
+
+option go_package = "github.com/itohio/EasyRobot/types/interaction";
+
+import "google/protobuf/any.proto";
+
+// RequestType represents the type of user request
+enum RequestType {
+  // Unknown/unspecified request type
+  REQUEST_TYPE_UNSPECIFIED = 0;
+  // Action request
+  REQUEST_TYPE_ACTION = 1;
+  // Query request
+  REQUEST_TYPE_QUERY = 2;
+  // Configuration request
+  REQUEST_TYPE_CONFIG = 3;
+  // Data request
+  REQUEST_TYPE_DATA = 4;
+}
+
+// UserRequest represents a user request with any kind of data
+message UserRequest {
+  string request_id = 1;        // Unique request identifier
+  RequestType type = 2;
+  string command = 3;           // Command or action name
+  string description = 4;       // Human-readable description
+  google.protobuf.Any data = 5; // Request payload (any type)
+  int64 timestamp = 6;          // Timestamp in nanoseconds
+  string user_id = 7;           // User identifier
+  string session_id = 8;       // Session identifier
+  map<string, string> metadata = 9; // Additional metadata
+}
+
+// ResponseStatus represents the status of a response
+enum ResponseStatus {
+  // Unknown/unspecified status
+  RESPONSE_STATUS_UNSPECIFIED = 0;
+  // Success
+  RESPONSE_STATUS_SUCCESS = 1;
+  // Error
+  RESPONSE_STATUS_ERROR = 2;
+  // Partial success
+  RESPONSE_STATUS_PARTIAL = 3;
+  // Pending
+  RESPONSE_STATUS_PENDING = 4;
+}
+
+// UserResponse represents a response with text, timestamp, and any kind of data
+message UserResponse {
+  string request_id = 1;        // Associated request identifier
+  ResponseStatus status = 2;
+  string text = 3;              // Response text message
+  google.protobuf.Any data = 4; // Response payload (any type)
+  int64 timestamp = 6;          // Timestamp in nanoseconds
+  string error_message = 7;     // Error message (if status is ERROR)
+  string error_code = 8;        // Error code (if status is ERROR)
+  map<string, string> metadata = 9; // Additional metadata
+}
+

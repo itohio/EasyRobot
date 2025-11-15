@@ -1,0 +1,86 @@
+syntax = "proto3";
+
+package types.math;
+
+option go_package = "github.com/itohio/EasyRobot/types/math";
+
+// Matrix2x2 represents a 2x2 matrix (row-major order)
+message Matrix2x2 {
+  float m00 = 1;
+  float m01 = 2;
+  float m10 = 3;
+  float m11 = 4;
+}
+
+// Matrix3x3 represents a 3x3 matrix (row-major order)
+message Matrix3x3 {
+  float m00 = 1;
+  float m01 = 2;
+  float m02 = 3;
+  float m10 = 4;
+  float m11 = 5;
+  float m12 = 6;
+  float m20 = 7;
+  float m21 = 8;
+  float m22 = 9;
+}
+
+// Matrix4x4 represents a 4x4 matrix (row-major order)
+message Matrix4x4 {
+  float m00 = 1;
+  float m01 = 2;
+  float m02 = 3;
+  float m03 = 4;
+  float m10 = 5;
+  float m11 = 6;
+  float m12 = 7;
+  float m13 = 8;
+  float m20 = 9;
+  float m21 = 10;
+  float m22 = 11;
+  float m23 = 12;
+  float m30 = 13;
+  float m31 = 14;
+  float m32 = 15;
+  float m33 = 16;
+}
+
+// Matrix3x4 represents a 3x4 matrix (row-major order)
+message Matrix3x4 {
+  float m00 = 1;
+  float m01 = 2;
+  float m02 = 3;
+  float m03 = 4;
+  float m10 = 5;
+  float m11 = 6;
+  float m12 = 7;
+  float m13 = 8;
+  float m20 = 9;
+  float m21 = 10;
+  float m22 = 11;
+  float m23 = 12;
+}
+
+// Matrix4x3 represents a 4x3 matrix (row-major order)
+message Matrix4x3 {
+  float m00 = 1;
+  float m01 = 2;
+  float m02 = 3;
+  float m10 = 4;
+  float m11 = 5;
+  float m12 = 6;
+  float m20 = 7;
+  float m21 = 8;
+  float m22 = 9;
+  float m30 = 10;
+  float m31 = 11;
+  float m32 = 12;
+}
+
+// Matrix represents a generic variable-size matrix (row-major order)
+message Matrix {
+  int32 rows = 1;
+  int32 cols = 2;
+  repeated float data = 3; // Flattened row-major data
+}
+

@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package types.control;
+
+option go_package = "github.com/itohio/EasyRobot/types/control";
+
+import "types/math/vectors.proto";
+
+// Path represents a path with position and orientation
+message Path {
+  // Position in 3D space (meters)
+  types.math.Vector3D position = 1;
+  // Orientation as quaternion [w, x, y, z]
+  types.math.Quaternion orientation = 2;
+}
+
+// PathSegment represents a segment of a path
+message PathSegment {
+  Path start = 1;
+  Path end = 2;
+  float duration = 3;  // Duration in seconds
+}
+
+// PathPlan represents a complete path plan
+message PathPlan {
+  repeated PathSegment segments = 1;
+  float total_duration = 2;
+  map<string, string> metadata = 3;
+}
+

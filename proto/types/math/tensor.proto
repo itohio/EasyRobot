@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package types.math;
+
+option go_package = "github.com/itohio/EasyRobot/types/math";
+
+// DataType represents the underlying element type stored by a tensor
+enum DataType {
+  // Unknown/unspecified data type
+  DATA_TYPE_UNSPECIFIED = 0;
+  // 64-bit integer tensors
+  DATA_TYPE_INT64 = 1;
+  // 64-bit floating point tensors
+  DATA_TYPE_FP64 = 2;
+  // 32-bit integer tensors
+  DATA_TYPE_INT32 = 3;
+  // 32-bit floating point tensors (default)
+  DATA_TYPE_FP32 = 4;
+  // native integer tensors (32bit or 64bit)
+  DATA_TYPE_INT = 5;
+  // 16-bit integer tensors
+  DATA_TYPE_INT16 = 6;
+  // 16-bit floating point tensors
+  DATA_TYPE_FP16 = 7;
+  // 8-bit integer tensors
+  DATA_TYPE_INT8 = 8;
+  // 4-bit integer tensors unpacked into 8bit
+  DATA_TYPE_INT48 = 9;
+  // 8-bit unsigned tensors (image data)
+  DATA_TYPE_UINT8 = 10;
+}
+
+// Tensor represents a multi-dimensional array
+message Tensor {
+  DataType dtype = 1;
+  repeated int32 shape = 2;        // Shape dimensions [dim0, dim1, ...]
+  repeated float data_f32 = 3;     // float32 data (for FP32)
+  repeated double data_f64 = 4;   // float64 data (for FP64)
+  repeated int32 data_i32 = 5;    // int32 data (for INT32)
+  repeated int64 data_i64 = 6;    // int64 data (for INT64)
+  repeated int32 data_i16 = 7;    // int16 data (for INT16)
+  repeated int32 data_i8 = 8;     // int8 data (for INT8)
+  repeated int32 data_ui8 = 9;    // uint8 data (for UINT8, image data)
+  bytes data_bytes = 10;          // Raw bytes for compact storage
+}
+

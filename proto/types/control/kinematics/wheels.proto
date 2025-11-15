@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package types.control.kinematics;
+
+option go_package = "github.com/itohio/EasyRobot/types/control/kinematics";
+
+import "types/math/vectors.proto";
+
+// DifferentialConfig represents differential drive configuration
+message DifferentialConfig {
+  float wheel_radius = 1;      // Wheel radius in meters
+  float base_width = 2;        // Distance between wheels in meters
+  float max_linear_vel = 3;    // Maximum linear velocity (m/s)
+  float max_angular_vel = 4;   // Maximum angular velocity (rad/s)
+  uint32 encoder_cpr = 5;     // Encoder counts per revolution
+  float max_acceleration = 6;  // Maximum linear acceleration (m/s²)
+  float max_angular_accel = 7; // Maximum angular acceleration (rad/s²)
+}
+
+// Wheel represents wheel configuration
+message Wheel {
+  float radius = 1;
+  types.math.Vector2D position = 2;  // Wheel position relative to base (x, y)
+}
+
+// MecanumConfig represents mecanum drive configuration
+message MecanumConfig {
+  repeated Wheel wheels = 1;   // 4 wheels: front-left, front-right, rear-left, rear-right
+  float max_linear_vel = 2;
+  float max_angular_vel = 3;
+}
+
+// Steer4Config represents 4-wheel steering configuration
+message Steer4Config {
+  repeated Wheel wheels = 1;   // 4 wheels
+  float max_steering_angle = 2; // Maximum steering angle (radians)
+  float max_linear_vel = 3;
+  float max_angular_vel = 4;
+  bool front_steer_only = 5;   // If true, only front wheels steer
+}
+
+// Steer4DualConfig represents 4-wheel dual steering configuration (front and rear)
+message Steer4DualConfig {
+  repeated Wheel wheels = 1;   // 4 wheels
+  float max_steering_angle = 2;
+  float max_linear_vel = 3;
+  float max_angular_vel = 4;
+}
+
+// Steer6Config represents 6-wheel articulated steering configuration
+message Steer6Config {
+  repeated Wheel wheels = 1;   // 6 wheels: front-left, front-right, mid-left, mid-right, rear-left, rear-right
+  float max_steering_angle = 2;
+  float max_linear_vel = 3;
+  float max_angular_vel = 4;
+}
+
+// WheelsConfig is a union type for different wheel configurations.
+// Selects one of the supported wheel drive types.
+message WheelsConfig {
+  // Type selector for the wheel configuration
+  oneof type {
+    // Differential drive configuration
+    DifferentialConfig differential = 1;
+    // Mecanum drive configuration
+    MecanumConfig mecanum = 2;
+    // 4-wheel steering configuration
+    Steer4Config steer4 = 3;
+    // 4-wheel dual steering configuration
+    Steer4DualConfig steer4_dual = 4;
+    // 6-wheel articulated steering configuration
+    Steer6Config steer6 = 5;
+  }
+}
+

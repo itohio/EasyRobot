@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package types.interaction;
+
+option go_package = "github.com/itohio/EasyRobot/types/interaction";
+
+// MessageType represents the type of user message
+enum MessageType {
+  // Unknown/unspecified message type
+  MESSAGE_TYPE_UNSPECIFIED = 0;
+  // Text message/command
+  MESSAGE_TYPE_TEXT = 1;
+  // Command message
+  MESSAGE_TYPE_COMMAND = 2;
+  // Query message
+  MESSAGE_TYPE_QUERY = 3;
+  // Notification message
+  MESSAGE_TYPE_NOTIFICATION = 4;
+}
+
+// UserMessage represents a user message or command in text form
+message UserMessage {
+  MessageType type = 1;
+  string text = 2;              // Message text content
+  string command = 3;           // Command name (if type is COMMAND)
+  repeated string arguments = 4; // Command arguments
+  int64 timestamp = 5;         // Timestamp in nanoseconds
+  string user_id = 6;           // User identifier
+  string session_id = 7;       // Session identifier
+  map<string, string> metadata = 8; // Additional metadata
+}
+

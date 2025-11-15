@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package types.math;
+
+option go_package = "github.com/itohio/EasyRobot/types/math";
+
+// Vector2D represents a 2D vector [x, y]
+message Vector2D {
+  float x = 1;
+  float y = 2;
+}
+
+// Vector3D represents a 3D vector [x, y, z]
+message Vector3D {
+  float x = 1;
+  float y = 2;
+  float z = 3;
+}
+
+// Vector4D represents a 4D vector [x, y, z, w]
+message Vector4D {
+  float x = 1;
+  float y = 2;
+  float z = 3;
+  float w = 4;
+}
+
+// Quaternion represents a quaternion [w, x, y, z] for rotations
+message Quaternion {
+  float w = 1;
+  float x = 2;
+  float y = 3;
+  float z = 4;
+}
+
+// Vector represents a generic variable-length vector
+message Vector {
+  repeated float data = 1;
+}
+

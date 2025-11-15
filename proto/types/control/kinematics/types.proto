@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package types.control.kinematics;
+
+option go_package = "github.com/itohio/EasyRobot/types/control/kinematics";
+
+import "types/control/kinematics/joints.proto";
+import "types/control/kinematics/wheels.proto";
+import "types/control/kinematics/rigidbody.proto";
+
+// Config groups immutable configuration parameters required to instantiate a kinematic model
+message Config {
+  string name = 1;
+  int32 degrees_of_freedom = 2;
+  int32 actuator_count = 3;
+  int32 state_dimension = 4;
+  int32 control_dimension = 5;
+  float mass = 6;
+  map<string, float> metadata = 7;
+}
+
+// Dimensions describes the state/control dimensionality exposed by a model
+message Dimensions {
+  int32 state_rows = 1;
+  int32 state_cols = 2;
+  int32 control_size = 3;
+  int32 actuator_size = 4;
+}
+
+// Capabilities encodes coarse-grained kinematic properties
+message Capabilities {
+  bool holonomic = 1;
+  bool omnidirectional = 2;
+  bool underactuated = 3;
+  bool supports_lateral = 4;
+  bool supports_vertical = 5;
+  int32 constraint_rank = 6;
+}
+
+// KinematicsConfig is a union type for different kinematics configurations.
+// Selects one of the supported kinematics model types.
+message KinematicsConfig {
+  // Type selector for the kinematics configuration
+  oneof type {
+    // Joint-based kinematics (DH parameters, planar joints)
+    JointsConfig joints = 1;
+    // Wheel-based kinematics
+    WheelsConfig wheels = 2;
+    // Rigid body kinematics
+    RigidBodyConfig rigidbody = 3;
+  }
+}
+

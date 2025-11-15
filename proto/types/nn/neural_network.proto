@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package types.nn;
+
+option go_package = "github.com/itohio/EasyRobot/types/nn";
+
+import "types/math/tensor.proto";
+
+// Parameter represents a trainable parameter (weight or bias)
+message Parameter {
+  types.math.Tensor data = 1;
+  types.math.Tensor grad = 2;
+  bool requires_grad = 3;
+}
+
+// Layer represents a neural network layer
+message Layer {
+  string name = 1;
+  string type = 2;                    // Layer type: "dense", "conv2d", "relu", etc.
+  bool can_learn = 3;                 // Whether layer computes gradients
+  repeated int32 input_shape = 4;     // Input shape for this layer
+  repeated int32 output_shape = 5;    // Output shape for this layer
+  map<int32, Parameter> parameters = 6; // Parameters indexed by ParamIndex (1=weights, 2=biases, 3=kernels, etc.)
+  map<string, string> config = 7;     // Layer-specific configuration (e.g., activation, padding)
+}
+
+// Model represents a neural network model
+message Model {
+  string name = 1;
+  string type = 2;                    // Model type: "sequential", "functional", etc.
+  bool can_learn = 3;                 // Whether model computes gradients
+  repeated Layer layers = 4;           // Layers in the model
+  map<int32, Parameter> parameters = 5; // Global parameters (if any)
+  map<string, string> metadata = 6;    // Model metadata (version, author, etc.)
+}
+

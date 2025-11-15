@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package types.control.kinematics;
+
+option go_package = "github.com/itohio/EasyRobot/types/control/kinematics";
+
+import "types/math/matrices.proto";
+
+// RigidBodyConfig represents rigid body kinematics configuration
+message RigidBodyConfig {
+  float mass = 1;                    // Mass in kg
+  types.math.Matrix3x3 inertia = 2;  // Inertia tensor (3x3 matrix)
+  float linear_gain = 3;             // Linear velocity to force gain
+  float angular_gain = 4;            // Angular velocity to torque gain
+}
+

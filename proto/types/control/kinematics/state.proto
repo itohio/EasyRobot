@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package types.control.kinematics;
+
+option go_package = "github.com/itohio/EasyRobot/types/control/kinematics";
+
+import "types/math/vectors.proto";
+
+// IMUData represents IMU sensor data
+message IMUData {
+  repeated float acceleration = 1;    // [ax, ay, az] (m/s²)
+  repeated float angular_vel = 2;    // [ωx, ωy, ωz] (rad/s)
+  repeated float magnetic_field = 3; // [mx, my, mz] (µT)
+  float temperature = 4;             // Temperature (°C)
+}
+
+// BodyPose represents body pose for legged robots
+message BodyPose {
+  float height = 1;  // Body height (m)
+  float roll = 2;    // Roll angle (rad)
+  float pitch = 3;   // Pitch angle (rad)
+  float yaw = 4;     // Yaw angle (rad)
+}
+
+// Target represents a locomotion target
+message Target {
+  repeated float linear_velocity = 1;  // [vx, vy, vz] (m/s)
+  repeated float angular_velocity = 2; // [ωx, ωy, ωz] (rad/s)
+  repeated float position = 3;        // [x, y, z] (m)
+  types.math.Quaternion orientation = 4; // Quaternion [w, x, y, z]
+  BodyPose body_pose = 5;
+}
+
+// SensorData represents sensor data for locomotion
+message SensorData {
+  repeated int32 encoder_ticks = 1;   // Wheel encoder readings
+  repeated float joint_angles = 2;    // Joint angles (radians)
+  IMUData imu = 3;
+  repeated bool touch_sensors = 4;    // Contact sensors
+  repeated float force_sensors = 5;   // Force/torque readings
+}
+
+// State represents locomotion state
+message State {
+  repeated float position = 1;        // [x, y, z] (m)
+  types.math.Quaternion orientation = 2; // Quaternion [w, x, y, z]
+  repeated float velocity = 3;        // [vx, vy, vz] (m/s)
+  repeated float joint_angles = 4;    // Joint angles (radians)
+  repeated bool contact_state = 5;    // Contact states
+  float stability = 6;               // Stability metric (0-1)
+  string error = 7;                   // Error message
+}
+

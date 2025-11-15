@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package types.control.kinematics;
+
+option go_package = "github.com/itohio/EasyRobot/types/control/kinematics";
+
+// JointType represents the type of joint
+enum JointType {
+  // Unknown/unspecified joint type
+  JOINT_TYPE_UNSPECIFIED = 0;
+  // Rotational joint
+  JOINT_TYPE_REVOLUTE = 1;
+  // Linear/prismatic joint
+  JOINT_TYPE_PRISMATIC = 2;
+}
+
+// DenavitHartenberg represents DH parameters for a joint
+message DenavitHartenberg {
+  float min = 1;          // Minimum joint value
+  float max = 2;          // Maximum joint value
+  float theta = 3;        // Joint angle (revolute) or offset (prismatic)
+  float alpha = 4;        // Link twist angle
+  float r = 5;            // Link length
+  float d = 6;            // Link offset
+  int32 index = 7;        // Parameter index (0=theta, 1=alpha, 2=r, 3=d)
+}
+
+// PlanarJoint represents a planar joint configuration
+message PlanarJoint {
+  float min_angle = 1;
+  float max_angle = 2;
+  float length = 3;
+}
+
+// JointConstraint represents limits and constraints for a joint
+message JointConstraint {
+  float min = 1;          // Minimum joint value
+  float max = 2;          // Maximum joint value
+  float max_vel = 3;      // Maximum joint velocity
+  float max_accel = 4;    // Maximum joint acceleration
+}
+
+// JointsConfig represents configuration for joint-based kinematics
+message JointsConfig {
+  repeated DenavitHartenberg dh_params = 1;
+  repeated PlanarJoint planar_joints = 2;
+  repeated JointConstraint constraints = 3;
+}
+

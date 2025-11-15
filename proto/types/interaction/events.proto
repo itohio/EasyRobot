@@ -1,0 +1,171 @@
+syntax = "proto3";
+
+package types.interaction;
+
+option go_package = "github.com/itohio/EasyRobot/types/interaction";
+
+import "types/math/vectors.proto";
+
+// MouseButton represents a mouse button
+enum MouseButton {
+  // Unknown/unspecified button
+  MOUSE_BUTTON_UNSPECIFIED = 0;
+  // Left mouse button
+  MOUSE_BUTTON_LEFT = 1;
+  // Right mouse button
+  MOUSE_BUTTON_RIGHT = 2;
+  // Middle mouse button
+  MOUSE_BUTTON_MIDDLE = 3;
+  // Additional button 1 (e.g., side button)
+  MOUSE_BUTTON_EXTRA_1 = 4;
+  // Additional button 2 (e.g., side button)
+  MOUSE_BUTTON_EXTRA_2 = 5;
+}
+
+// MouseEventType represents the type of mouse event
+enum MouseEventType {
+  // Unknown/unspecified event type
+  MOUSE_EVENT_TYPE_UNSPECIFIED = 0;
+  // Mouse button pressed
+  MOUSE_EVENT_TYPE_PRESS = 1;
+  // Mouse button released
+  MOUSE_EVENT_TYPE_RELEASE = 2;
+  // Mouse moved
+  MOUSE_EVENT_TYPE_MOVE = 3;
+  // Mouse wheel scrolled
+  MOUSE_EVENT_TYPE_SCROLL = 4;
+  // Mouse entered area
+  MOUSE_EVENT_TYPE_ENTER = 5;
+  // Mouse left area
+  MOUSE_EVENT_TYPE_LEAVE = 6;
+}
+
+// MouseEvent represents a mouse input event
+message MouseEvent {
+  MouseEventType type = 1;
+  MouseButton button = 2;
+  float x = 3;              // X coordinate
+  float y = 4;              // Y coordinate
+  float scroll_x = 5;       // Horizontal scroll delta
+  float scroll_y = 6;       // Vertical scroll delta
+  int64 timestamp = 7;      // Timestamp in nanoseconds
+  map<string, string> metadata = 8; // Additional metadata
+}
+
+// KeyboardEventType represents the type of keyboard event
+enum KeyboardEventType {
+  // Unknown/unspecified event type
+  KEYBOARD_EVENT_TYPE_UNSPECIFIED = 0;
+  // Key pressed
+  KEYBOARD_EVENT_TYPE_PRESS = 1;
+  // Key released
+  KEYBOARD_EVENT_TYPE_RELEASE = 2;
+  // Key typed (character input)
+  KEYBOARD_EVENT_TYPE_TYPE = 3;
+}
+
+// KeyboardEvent represents a keyboard input event
+message KeyboardEvent {
+  KeyboardEventType type = 1;
+  string key = 2;            // Key identifier as string (e.g., "a", "A", "Enter", "Space", "F1", "ArrowUp", etc.)
+                             // Can be platform-specific key codes or standard names
+  string character = 3;      // Character representation (for TYPE events, e.g., "a", "A", "1", "!")
+  bool shift = 4;            // Shift modifier pressed
+  bool ctrl = 5;             // Ctrl modifier pressed
+  bool alt = 6;              // Alt modifier pressed
+  bool meta = 7;             // Meta modifier pressed (Windows/Command key)
+  int64 timestamp = 8;       // Timestamp in nanoseconds
+  map<string, string> metadata = 9; // Additional metadata
+}
+
+// TouchEventType represents the type of touch event
+enum TouchEventType {
+  // Unknown/unspecified event type
+  TOUCH_EVENT_TYPE_UNSPECIFIED = 0;
+  // Touch started (finger down)
+  TOUCH_EVENT_TYPE_DOWN = 1;
+  // Touch moved (finger motion)
+  TOUCH_EVENT_TYPE_MOVE = 2;
+  // Touch ended (finger up)
+  TOUCH_EVENT_TYPE_UP = 3;
+  // Touch cancelled (system cancelled the touch)
+  TOUCH_EVENT_TYPE_CANCEL = 4;
+}
+
+// TouchPoint represents a single touch point on a multi-touch screen with motion data
+message TouchPoint {
+  int32 id = 1;                          // Unique identifier for this touch point
+  types.math.Vector2D position = 2;      // Position coordinates (x, y)
+  float pressure = 3;                     // Pressure/force (0.0 to 1.0, or device-specific range)
+  float size = 4;                         // Touch area size (diameter or area)
+  float orientation = 5;                   // Orientation angle in radians (for elliptical touches)
+  float major_axis = 6;                   // Major axis of touch ellipse
+  float minor_axis = 7;                   // Minor axis of touch ellipse
+  types.math.Vector2D velocity = 8;      // Velocity vector (pixels/second)
+  types.math.Vector2D acceleration = 9;  // Acceleration vector (pixels/second²)
+  types.math.Vector2D displacement = 10;  // Displacement from previous position
+  float speed = 11;                      // Overall speed (magnitude of velocity vector)
+  float angle = 12;                      // Motion angle in radians
+  float distance = 13;                    // Distance traveled from previous position
+  int64 timestamp = 14;                   // Timestamp in nanoseconds for this touch point
+}
+
+// TouchEvent represents a multi-touch screen input event
+message TouchEvent {
+  TouchEventType type = 1;
+  repeated TouchPoint points = 2;         // All active touch points with motion data
+  int32 touch_count = 3;                  // Number of active touch points
+  int64 timestamp = 4;                    // Timestamp in nanoseconds
+  types.math.Vector2D screen_size = 5;    // Screen dimensions (width, height) in pixels
+  map<string, string> metadata = 6;       // Additional metadata
+}
+
+// Control represents a control input (stick, axis, button group, etc.) with axis values, buttons, velocities, and accelerations
+message Control {
+  repeated float axis = 1;                   // Axis values (normalized [-1, 1] or [0, 1])
+  repeated bool buttons = 2;                 // Button states
+  repeated float velocities = 3;             // Velocities for each axis (change rate)
+  repeated float accelerations = 4;           // Accelerations for each axis (change rate of velocity)
+  int64 timestamp = 5;                       // Timestamp in nanoseconds
+}
+
+// Trim represents a trim control (e.g., trim wheel, trim dial)
+message Trim {
+  float value = 1;                           // Trim value normalized [-1, 1] or [0, 1]
+  float velocity = 2;                        // Trim velocity (change rate)
+  int64 timestamp = 3;                       // Timestamp in nanoseconds
+}
+
+// ControlEventType represents the type of controller event
+enum ControlEventType {
+  // Unknown/unspecified event type
+  CONTROL_EVENT_TYPE_UNSPECIFIED = 0;
+  // Axis/value changed
+  CONTROL_EVENT_TYPE_VALUE_CHANGED = 1;
+  // Button pressed/released
+  CONTROL_EVENT_TYPE_BOOLEAN_CHANGED = 2;
+  // Trim changed
+  CONTROL_EVENT_TYPE_TRIM_CHANGED = 3;
+  // Controller connected
+  CONTROL_EVENT_TYPE_CONNECTED = 4;
+  // Controller disconnected
+  CONTROL_EVENT_TYPE_DISCONNECTED = 5;
+}
+
+// ControllerState represents the complete state of a controller with multiple controls and trims
+message ControllerState {
+  string id = 1;                             // Controller device identifier
+  map<string, Control> controls = 2;         // All controls on the controller (control name/ID -> Control)
+  map<string, Trim> trims = 3;               // All trim controls on the controller (trim name/ID -> Trim)
+  int64 timestamp = 4;                       // Timestamp in nanoseconds
+}
+
+// ControllerEvent represents a controller input event
+message ControllerEvent {
+  ControlEventType type = 1;
+  string controller_id = 2;                  // Controller device identifier
+  ControllerState state = 3;                  // Complete controller state
+  int64 timestamp = 4;                       // Timestamp in nanoseconds
+  map<string, string> metadata = 5;          // Additional metadata
+}
+
