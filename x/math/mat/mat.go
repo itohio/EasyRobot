@@ -39,6 +39,9 @@ func New(rows, cols int, backing ...float32) Matrix {
 	return m
 }
 
+func (m Matrix) Release() {
+}
+
 func (m Matrix) IsContiguous() bool {
 	if len(m) <= 1 {
 		return true

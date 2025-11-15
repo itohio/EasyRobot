@@ -14,6 +14,9 @@ func (v Vector2D) Sum() float32 {
 	return v[0] + v[1]
 }
 
+func (v Vector2D) Release() {
+}
+
 func (v Vector2D) View() vecTypes.Vector {
 	return Vector(v[:])
 }

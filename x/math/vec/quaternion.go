@@ -12,6 +12,8 @@ var _ vecTypes.Vector = Quaternion{}
 
 type Quaternion [4]float32
 
+func (v Quaternion) Release() {}
+
 func (v Quaternion) View() vecTypes.Vector {
 	return Vector(v[:])
 }

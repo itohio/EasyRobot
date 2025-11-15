@@ -29,6 +29,8 @@ type Accessors interface {
 	Distance(v1 Vector) float32
 	// Clone returns a deep copy (slice backed) or value copy (array backed).
 	Clone() Vector
+	// Release releases the underlying data.
+	Release()
 	// View returns a `vec.Vector` view/copy of the receiver.
 	View() Vector
 	// CopyFrom copies from v1 into this vector starting at index start.

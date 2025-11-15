@@ -13,6 +13,9 @@ type Matrix4x3 [4][3]float32
 
 var _ matTypes.Matrix = Matrix4x3{}
 
+func (m Matrix4x3) Release() {
+}
+
 func (m Matrix4x3) View() matTypes.Matrix {
 	return Matrix{
 		[]float32{m[0][0], m[0][1], m[0][2]},

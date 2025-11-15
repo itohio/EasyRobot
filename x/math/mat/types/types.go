@@ -24,6 +24,7 @@ type Core interface {
 	Eye() Matrix
 	Clone() Matrix
 	CopyFrom(src Matrix)
+	Release()
 
 	Row(row int) vec.Vector
 	Col(col int, v vec.Vector) vec.Vector

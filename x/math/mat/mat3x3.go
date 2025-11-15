@@ -24,6 +24,9 @@ func asMatrix3x3(arg matTypes.Matrix, op string) Matrix3x3 {
 	}
 }
 
+func (m Matrix3x3) Release() {
+}
+
 func (m Matrix3x3) View() matTypes.Matrix {
 	return Matrix{
 		[]float32{m[0][0], m[0][1], m[0][2]},

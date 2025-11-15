@@ -12,6 +12,9 @@ const vector4DSize = 4
 
 type Vector4D [4]float32
 
+func (v Vector4D) Release() {
+}
+
 func (v Vector4D) Sum() float32 {
 	return v[0] + v[1] + v[2] + v[3]
 }

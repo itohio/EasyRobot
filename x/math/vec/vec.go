@@ -21,6 +21,9 @@ func NewFrom(v ...float32) Vector {
 	return v[:]
 }
 
+func (v Vector) Release() {
+}
+
 func (v Vector) View() vecTypes.Vector {
 	return Vector(v[:])
 }
