@@ -2,40 +2,26 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
-	"path"
-	"strings"
-	"time"
+	"os/signal"
+	"syscall"
 
-	"github.com/itohio/EasyRobot/pkg/core/options"
-	"github.com/itohio/EasyRobot/pkg/core/pipeline"
-	"github.com/itohio/EasyRobot/pkg/core/pipeline/steps"
-	"github.com/itohio/EasyRobot/pkg/core/pipeline/steps/fps"
-	"github.com/itohio/EasyRobot/pkg/core/plugin"
-	"github.com/itohio/EasyRobot/pkg/core/store"
-	"github.com/itohio/EasyRobot/pkg/vision/display"
-	"github.com/itohio/EasyRobot/pkg/vision/reader"
-	"github.com/itohio/EasyRobot/pkg/vision/writer"
+	"github.com/itohio/EasyRobot/cmd/display/destination"
+	"github.com/itohio/EasyRobot/cmd/display/source"
 )
 
 func main() {
-	help := flag.Bool("help", false, "Help")
-	hide := flag.Bool("hide", false, "Hide image preview")
-	block := flag.Bool("block", false, "Block on send")
-	device := flag.Int("dev", 0, "Camera device")
-	out := flag.String("out", "", "Output path")
-	ext := flag.String("ext", "png", "Output file extension")
-	file := flag.String("file", "", "Video file")
-	width := flag.Int("width", 640, "Width")
-	height := flag.Int("height", 480, "Height")
-	imagesPath := flag.String("images", "", "Path to either image list or folder with images")
+	// Register flags
+	source.RegisterAllFlags()
+	destination.RegisterAllFlags()
+	// Register DNDM flags if needed (currently optional)
+	source.RegisterInterestFlags()
+	destination.RegisterIntentFlags()
+	help := flag.Bool("help", false, "Show help message")
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
+	// Parse flags
 	flag.Parse()
 
 	if *help {
@@ -43,166 +29,79 @@ func main() {
 		return
 	}
 
-	pipe := pipeline.New()
-
-	var input pipeline.Step
-	var output pipeline.Step
-	var sink pipeline.Step
-	var err error
-
-	opts := []options.Option{}
-
-	if len(*imagesPath) != 0 {
-		paths := ReadFileList(*imagesPath)
-		opts = append(opts, reader.WithReaderGoCV(paths))
-	} else if len(*file) != 0 {
-		opts = append(opts, reader.WithVideoReaderGoCV(*file))
-	} else {
-		opts = append(opts, reader.WithDeviceReaderGoCVResolution(*device, *width, *height))
-	}
-
-	opts = append(opts, plugin.WithBlocking(*block))
-	input, err = steps.NewReader(opts...)
+	// Create source from flags
+	src, err := source.NewFromFlags()
 	if err != nil {
-		panic(err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		flag.PrintDefaults()
+		os.Exit(1)
 	}
 
-	fps, err := fps.New(fps.WithNumFrames(10), plugin.WithBlocking(*block))
-	if err != nil {
-		panic(err)
-	}
+	// Create destinations from flags
+	dests := destination.NewAllDestinations()
 
-	fout, err := steps.NewFanOut(plugin.WithBlocking(*block), plugin.WithClose(false))
-	if err != nil {
-		panic(err)
-	}
+	// Setup context with cancellation
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	if !*hide {
-		output, err = display.NewGoCV(
-			plugin.WithClose(*out != ""),
-			display.WithKey(store.IMAGE),
-			plugin.WithBlocking(*block),
-		)
-		if err != nil {
-			panic(err)
+	// Handle signals
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		cancel()
+	}()
+
+	// Start source
+	if err := src.Start(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "Error starting source: %v\n", err)
+		os.Exit(1)
+	}
+	defer src.Close()
+
+	// Start destinations
+	for _, dest := range dests {
+		if err := dest.Start(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "Error starting destination: %v\n", err)
+			os.Exit(1)
 		}
+		defer dest.Close()
 	}
 
-	keys, err := pipe.ConnectSteps(input, fps, fout, output)
-	if err != nil {
-		panic(err)
-	}
-
-	if *out == "" {
-		sink, err = writer.NewNull(plugin.WithClose(*hide))
-	} else {
-		sink, err = writer.NewGoCV(plugin.WithClose(*hide), writer.WithKey(store.IMAGE), writer.WithExtension(*ext), writer.WithPrefix(*out))
-	}
-	_, err = pipe.ConnectSteps(fout, sink)
-	if err != nil {
-		panic(err)
-	}
-
-	pipe.Run(ctx)
-
-	/*
-
-		***** Feedback proposal
-		add store.RESPONSE - locally a channel, remotely - a pb message
-		there should be a step that would accept the response and would be able to act on it
-
-		***** API Proposal
-
-		pipeline.New(
-			reader.NewReader(...),
-			fps.New(...),
-			pipeline.WithFanOut(
-				display.NewGoCV(...),
-				pipeline.WithLinear(
-					somestep.New(...),
-					writer.NewNul(...),
-				),
-			),
-		)
-
-
-		***** Extreme proposal
-		Actually implement a processing graph instead of a pipeline. Or maybe implement it side-by-side.
-		steps would have input and output ports. input port would connect to output port.
-		ports would be named.
-
-	*/
-
-	for data := range keys {
-		if *hide {
-			continue
-		}
-
-		v, ok := data.Get(store.USER_KEY_CODE)
-		if !ok {
-			continue
-		}
-
-		key := v.(int)
-
-		if key != -1 {
-			fmt.Println(key)
-		}
-		if key == 27 {
-			cancel()
-			time.Sleep(time.Second * 3)
+	// Process frames
+	for {
+		// Check context cancellation
+		select {
+		case <-ctx.Done():
 			return
+		default:
+		}
+
+		// Read frame from source
+		frame, err := src.ReadFrame()
+		if err != nil {
+			if err == source.ErrSourceExhausted {
+				// Source exhausted, exit gracefully
+				return
+			}
+			fmt.Fprintf(os.Stderr, "Error reading frame: %v\n", err)
+			// Continue processing if error is recoverable
+			continue
+		}
+
+		// Send frame to all destinations
+		for _, dest := range dests {
+			if err := dest.AddFrame(frame); err != nil {
+				fmt.Fprintf(os.Stderr, "Error adding frame to destination: %v\n", err)
+				// Continue to other destinations
+			}
+		}
+
+		// Check if display was closed (ESC key pressed)
+		select {
+		case <-ctx.Done():
+			return
+		default:
 		}
 	}
-}
-
-func ReadFileList(path string) []string {
-	info, err := os.Stat(path)
-	if err != nil {
-		panic(err)
-	}
-
-	if !info.IsDir() {
-		return ReadList(path)
-	}
-
-	files, err := OSReadDir(path)
-	if err != nil {
-		panic(err)
-	}
-	return files
-}
-
-func OSReadDir(root string) ([]string, error) {
-	var files []string
-	f, err := os.Open(root)
-	if err != nil {
-		return files, err
-	}
-	fileInfo, err := f.Readdir(-1)
-	f.Close()
-	if err != nil {
-		return files, err
-	}
-
-	for _, file := range fileInfo {
-		name := file.Name()
-		if isImagePath(name) {
-
-		}
-		files = append(files, path.Join(root, name))
-	}
-	return files, nil
-}
-
-func ReadList(file string) []string {
-	panic(errors.New("not supported"))
-	return nil
-}
-
-func isImagePath(name string) bool {
-	return strings.HasSuffix(name, ".bmp") ||
-		strings.HasSuffix(name, ".jpg") ||
-		strings.HasSuffix(name, ".png") ||
-		strings.HasSuffix(name, ".jpeg")
 }

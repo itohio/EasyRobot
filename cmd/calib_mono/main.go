@@ -1,0 +1,331 @@
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"image"
+	"os"
+	"os/signal"
+	"strconv"
+	"strings"
+	"syscall"
+
+	"github.com/itohio/EasyRobot/cmd/display/destination"
+	"github.com/itohio/EasyRobot/cmd/display/source"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
+	tensorgocv "github.com/itohio/EasyRobot/x/math/tensor/gocv"
+	cv "gocv.io/x/gocv"
+)
+
+func main() {
+	// Register source and destination flags
+	source.RegisterAllFlags()
+	destination.RegisterAllFlags()
+
+	// Calibration-specific flags
+	gridStr := flag.String("grid", "9,7", "Calibration grid shape (width,height)")
+	samples := flag.Int("samples", 30, "Number of calibration samples to collect")
+	output := flag.String("output", "camera.json", "Output file path")
+	format := flag.String("format", "json", "Output format: json, yaml, gocv")
+	testMode := flag.Bool("test", false, "Test mode - load existing calibration file")
+	help := flag.Bool("help", false, "Show help message")
+
+	flag.Parse()
+
+	if *help {
+		flag.PrintDefaults()
+		return
+	}
+
+	// Validate monocular calibration (exactly one camera if camera source is used)
+	// Check source flags to ensure only one camera is specified
+	cameraIDs := source.GetCameraIDs()
+	if len(cameraIDs) > 1 {
+		fmt.Fprintf(os.Stderr, "Error: monocular calibration requires exactly one camera\n")
+		flag.PrintDefaults()
+		os.Exit(1)
+	}
+
+	// Parse grid size
+	gridWidth, gridHeight, err := parseGrid(*gridStr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing grid: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Create source from flags
+	src, err := source.NewFromFlags()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		flag.PrintDefaults()
+		os.Exit(1)
+	}
+
+	// Create destinations from flags
+	dests := destination.NewAllDestinations()
+
+	// Setup context with cancellation
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Handle signals
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		cancel()
+	}()
+
+	// Start source
+	if err := src.Start(ctx); err != nil {
+		fmt.Fprintf(os.Stderr, "Error starting source: %v\n", err)
+		os.Exit(1)
+	}
+	defer src.Close()
+
+	// Start destinations
+	for _, dest := range dests {
+		if err := dest.Start(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "Error starting destination: %v\n", err)
+			os.Exit(1)
+		}
+		defer dest.Close()
+	}
+
+	// Process frames
+	if *testMode {
+		if err := testCalibration(ctx, src, dests, *output); err != nil {
+			fmt.Fprintf(os.Stderr, "Error testing calibration: %v\n", err)
+			os.Exit(1)
+		}
+	} else {
+		processor := NewCalibrationProcessor(image.Point{X: gridWidth, Y: gridHeight}, *samples)
+		defer processor.Close()
+		if err := calibrateCamera(ctx, src, processor, dests, *output, *format); err != nil {
+			fmt.Fprintf(os.Stderr, "Error calibrating camera: %v\n", err)
+			os.Exit(1)
+		}
+	}
+}
+
+func parseGrid(gridStr string) (width, height int, err error) {
+	parts := strings.Split(gridStr, ",")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("invalid grid format: %s (expected width,height)", gridStr)
+	}
+	width, err = strconv.Atoi(strings.TrimSpace(parts[0]))
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid width: %w", err)
+	}
+	height, err = strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid height: %w", err)
+	}
+	return width, height, nil
+}
+
+func calibrateCamera(ctx context.Context, src source.Source, processor *CalibrationProcessor, dests []destination.Destination, outputPath, format string) error {
+	fmt.Printf("Starting camera calibration...\n")
+	fmt.Printf("Grid size: %dx%d\n", processor.gridSize.X, processor.gridSize.Y)
+	fmt.Printf("Target samples: %d\n", processor.targetSamples)
+
+	for {
+		// Check context cancellation
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		// Read frame from source
+		frame, err := src.ReadFrame()
+		if err != nil {
+			if err == source.ErrSourceExhausted {
+				break
+			}
+			fmt.Fprintf(os.Stderr, "Warning: failed to read frame: %v\n", err)
+			continue
+		}
+
+		if len(frame.Tensors) == 0 {
+			continue
+		}
+
+		// Convert tensor to Mat
+		mat, err := tensorToMat(frame.Tensors[0])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to convert tensor: %v\n", err)
+			continue
+		}
+
+		// Process frame for calibration
+		found, err := processor.ProcessFrame(mat)
+		if err != nil {
+			mat.Close()
+			fmt.Fprintf(os.Stderr, "Warning: failed to process frame: %v\n", err)
+			continue
+		}
+
+		// Draw calibration visualization
+		visMat := mat.Clone()
+		processor.DrawCorners(visMat, found)
+
+		// Convert back to tensor for display
+		visTensor, err := matToTensor(visMat)
+		if err != nil {
+			mat.Close()
+			visMat.Close()
+			fmt.Fprintf(os.Stderr, "Warning: failed to convert mat to tensor: %v\n", err)
+			continue
+		}
+
+		// Create display frame with visualization
+		displayFrame := types.Frame{
+			Tensors:  []types.Tensor{visTensor},
+			Metadata: frame.Metadata,
+		}
+
+		// Send to all destinations
+		for _, dest := range dests {
+			if err := dest.AddFrame(displayFrame); err != nil {
+				// If display destination closed (ESC pressed), check context
+				select {
+				case <-ctx.Done():
+					// Context cancelled, exit loop
+					mat.Close()
+					visMat.Close()
+					return ctx.Err()
+				default:
+					// Continue processing
+				}
+			}
+		}
+
+		// Check context cancellation after processing frame
+		select {
+		case <-ctx.Done():
+			mat.Close()
+			visMat.Close()
+			return ctx.Err()
+		default:
+		}
+
+		mat.Close()
+		visMat.Close()
+
+		// Check if we have enough samples
+		if processor.numSamples >= processor.targetSamples {
+			fmt.Printf("\nCollected %d samples, computing calibration...\n", processor.numSamples)
+			break
+		}
+
+		if processor.numSamples%5 == 0 {
+			fmt.Printf("Collected %d/%d samples\n", processor.numSamples, processor.targetSamples)
+		}
+	}
+
+	// Compute calibration
+	calibration, err := processor.Calibrate()
+	if err != nil {
+		return fmt.Errorf("calibration failed: %w", err)
+	}
+	defer calibration.Close()
+
+	// Save calibration
+	if err := saveCalibration(calibration, outputPath, format); err != nil {
+		return fmt.Errorf("failed to save calibration: %w", err)
+	}
+
+	fmt.Printf("Calibration saved to %s\n", outputPath)
+	fmt.Printf("Reprojection error: %.4f\n", calibration.ReprojectionError)
+
+	return nil
+}
+
+func testCalibration(ctx context.Context, src source.Source, dests []destination.Destination, calibPath string) error {
+	// Load calibration file
+	calibration, err := loadCalibration(calibPath)
+	if err != nil {
+		return fmt.Errorf("failed to load calibration: %w", err)
+	}
+	defer calibration.Close()
+
+	fmt.Printf("Loaded calibration from %s\n", calibPath)
+	fmt.Printf("Grid size: %dx%d\n", calibration.GridShape.X, calibration.GridShape.Y)
+	fmt.Printf("Image size: %dx%d\n", calibration.ImageSize.X, calibration.ImageSize.Y)
+	fmt.Printf("Samples used: %d\n", calibration.NumSamples)
+	fmt.Printf("Reprojection error: %.4f\n", calibration.ReprojectionError)
+
+	// Process frames and undistort
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		// Read frame from source
+		frame, err := src.ReadFrame()
+		if err != nil {
+			if err == source.ErrSourceExhausted {
+				return nil
+			}
+			fmt.Fprintf(os.Stderr, "Warning: failed to read frame: %v\n", err)
+			continue
+		}
+
+		if len(frame.Tensors) == 0 {
+			continue
+		}
+
+		// Convert tensor to Mat
+		mat, err := tensorToMat(frame.Tensors[0])
+		if err != nil {
+			continue
+		}
+
+		// Undistort
+		undistorted := cv.NewMat()
+		emptyMat := cv.NewMat()
+		defer emptyMat.Close()
+		if err := cv.Undistort(mat, &undistorted, calibration.CameraMatrix, calibration.DistortionCoeffs, emptyMat); err != nil {
+			mat.Close()
+			continue
+		}
+
+		// Convert back to tensor
+		undistortedTensor, err := matToTensor(undistorted)
+		if err != nil {
+			mat.Close()
+			undistorted.Close()
+			continue
+		}
+
+		// Create display frame
+		displayFrame := types.Frame{
+			Tensors:  []types.Tensor{undistortedTensor},
+			Metadata: frame.Metadata,
+		}
+
+		// Send to all destinations
+		for _, dest := range dests {
+			if err := dest.AddFrame(displayFrame); err != nil {
+				// Ignore destination errors
+			}
+		}
+
+		mat.Close()
+		undistorted.Close()
+	}
+}
+
+// tensorToMat converts a tensor to gocv.Mat using the destination package helper
+func tensorToMat(tensor types.Tensor) (cv.Mat, error) {
+	return destination.TensorToMat(tensor)
+}
+
+// matToTensor converts a gocv.Mat to a tensor
+func matToTensor(mat cv.Mat) (types.Tensor, error) {
+	return tensorgocv.FromMat(mat, tensorgocv.WithAdoptedMat())
+}
