@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package types.control;
+
+option go_package = "github.com/itohio/EasyRobot/types/control";
+
+import "types/control/motion.proto";
+
+// MotorType represents the motor driver type
+enum MotorType {
+  MOTOR_TYPE_UNSPECIFIED = 0;
+  MOTOR_TYPE_DIR_PWM = 1;     // One direction pin + one PWM pin
+  MOTOR_TYPE_AB_PWM = 2;      // Two pins (A and B) both with PWM
+  MOTOR_TYPE_AB_DIR_PWM = 3;  // Two direction pins (A, B) + one PWM pin
+}
+
+// MotorConfig represents configuration for a single motor
+message MotorConfig {
+  MotorType type = 1;          // Motor driver type
+  
+  // Pin configuration (depends on type)
+  uint32 dir_pin = 2;          // Direction pin (TypeDirPWM)
+  uint32 pwm_pin = 3;          // PWM pin (TypeDirPWM, TypeABDirPWM)
+  uint32 pin_a = 4;            // Pin A (TypeABPWM, TypeABDirPWM)
+  uint32 pin_b = 5;            // Pin B (TypeABPWM, TypeABDirPWM)
+  
+  // Encoder pins
+  uint32 encoder_pin_a = 6;    // Encoder pin A
+  uint32 encoder_pin_b = 7;    // Encoder pin B
+  
+  // PID configuration
+  PIDGains pid_gains = 8;      // PID gains for speed control
+  
+  // Control parameters
+  float max_output = 9;        // Maximum PID output (default: 1.0)
+  float sample_period = 10;    // PID update period in seconds (default: 0.01)
+  float max_rpm = 11;          // Maximum motor speed in RPM
+  
+  // Encoder configuration
+  int64 counts_per_revolution = 12; // Encoder counts per revolution (default: 2048)
+}
+
+// MotorState represents current state of a motor
+message MotorState {
+  float current_speed = 1;     // Current speed in RPM (from encoder)
+  float target_speed = 2;      // Target speed in RPM
+  float pid_output = 3;        // Current PID controller output
+  int64 position = 4;          // Encoder position in counts
+  int64 timestamp = 5;         // Timestamp in nanoseconds
+}
+
+// MotorArrayConfig represents configuration for an array of motors
+message MotorArrayConfig {
+  repeated MotorConfig motors = 1; // Motor configurations
+}
+
+// MotorArrayState represents current state of an array of motors
+message MotorArrayState {
+  repeated MotorState motors = 1;  // Motor states
+  int64 timestamp = 2;             // Timestamp in nanoseconds
+}
+

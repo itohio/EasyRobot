@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package types.devices;
+
+option go_package = "github.com/itohio/EasyRobot/types/devices";
+
+// ServoConfig represents configuration for a single servo motor
+message ServoConfig {
+  uint32 pin = 1;                    // GPIO pin number
+  float min_us = 2;                  // Minimum pulse width in microseconds
+  float max_us = 3;                  // Maximum pulse width in microseconds
+  float default_us = 4;              // Default/center pulse width in microseconds
+  float max_angle = 5;               // Maximum angle in degrees
+  float default_angle = 6;           // Default angle in degrees
+}
+
+// ServoState represents current state of a servo motor
+message ServoState {
+  float current_angle = 1;           // Current angle in degrees
+  float target_angle = 2;            // Target angle in degrees
+  float pulse_width_us = 3;          // Current pulse width in microseconds
+  int64 timestamp = 4;               // Timestamp in nanoseconds
+}
+
+// ServoAngleCommand represents an angle command for a servo
+message ServoAngleCommand {
+  float angle = 1;                   // Target angle in degrees (0 to MaxAngle)
+  int64 timestamp = 2;               // Timestamp in nanoseconds
+}
+
+// ServoArrayConfig represents configuration for an array of servos
+message ServoArrayConfig {
+  repeated ServoConfig servos = 1;   // Servo configurations
+}
+
+// ServoArrayState represents current state of an array of servos
+message ServoArrayState {
+  repeated ServoState servos = 1;    // Servo states
+  int64 timestamp = 2;               // Timestamp in nanoseconds
+}
+
+// ServoArrayAngleCommand represents angle commands for an array of servos
+message ServoArrayAngleCommand {
+  repeated float angles = 1;         // Target angles in degrees (one per servo)
+  int64 timestamp = 2;               // Timestamp in nanoseconds
+}
+

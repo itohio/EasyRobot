@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package types.devices;
+
+option go_package = "github.com/itohio/EasyRobot/types/devices";
+
+// EncoderReading represents encoder sensor readings
+message EncoderReading {
+  int64 position = 1;                // Encoder position in counts
+  float speed_rpm = 2;               // Current speed in RPM
+  int64 counts_per_revolution = 3;   // Encoder counts per revolution
+  int64 timestamp = 4;               // Timestamp in nanoseconds
+}
+
+// EncoderConfig represents configuration for an encoder
+message EncoderConfig {
+  uint32 pin_a = 1;                  // Encoder pin A
+  uint32 pin_b = 2;                  // Encoder pin B
+  int64 counts_per_revolution = 3;   // Encoder counts per revolution (default: 2048)
+}
+

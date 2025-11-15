@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package types.control;
+
+option go_package = "github.com/itohio/EasyRobot/types/control";
+
+import "types/control/kinematics/joints.proto";
+import "types/control/motion.proto";
+import "types/math/vectors.proto";
+
+// ServoMotorConfig represents configuration for a single servo motor
+// Note: This is for servos, not motors. Motor configs are in types/devices/motor.proto
+message ServoMotorConfig {
+  uint32 pin = 1;                    // GPIO pin number
+  float min_us = 2;                  // Minimum pulse width in microseconds
+  float max_us = 3;                  // Maximum pulse width in microseconds
+  float default_us = 4;              // Default/center pulse width in microseconds
+  float max_angle = 5;               // Maximum angle in degrees
+  float default_angle = 6;           // Default angle in degrees
+}
+
+// ManipulatorConfig represents configuration for a manipulator
+message ManipulatorConfig {
+  repeated ServoMotorConfig motors = 1;   // Servo motor configurations (always required)
+  // For kinematics modes (planar/DH): kinematics configuration
+  // For raw mode: this should be empty or ignored
+  types.control.kinematics.JointsConfig joints = 2;
+  // Motion constraints per joint (velocity, acceleration, jerk limits)
+  repeated Constraints motion = 3;
+}
+
+// ManipulatorTarget represents target for the manipulator
+// Depending on build mode:
+// - Raw mode: uses joint_angles (direct servo control)
+// - Planar/DH mode: uses end_effector_position (kinematics calculates joint angles)
+message ManipulatorTarget {
+  // For raw mode: direct joint angle targets in degrees
+  repeated float joint_angles = 1;
+  
+  // For kinematics modes (planar/DH): end effector position target
+  // Position in 3D space (meters)
+  types.math.Vector3D end_effector_position = 2;
+  // Orientation as quaternion [w, x, y, z] (optional for planar)
+  types.math.Quaternion end_effector_orientation = 3;
+}
+
+// ManipulatorState represents current state of the manipulator
+message ManipulatorState {
+  repeated float joint_angles = 1;   // Current joint angles in degrees
+  repeated float joint_velocities = 2; // Current joint velocities (degrees/sec)
+  int64 timestamp = 3;               // Timestamp in nanoseconds
+}
+

@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package types.devices;
+
+option go_package = "github.com/itohio/EasyRobot/types/devices";
+
+import "types/math/vectors.proto";
+import "types/devices/encoder.proto";
+
+// IMUReading represents IMU sensor readings
+message IMUReading {
+  types.math.Vector3D acceleration = 1;    // Acceleration [ax, ay, az] (m/s²)
+  types.math.Vector3D angular_velocity = 2; // Angular velocity [ωx, ωy, ωz] (rad/s)
+  types.math.Vector3D magnetic_field = 3;  // Magnetic field [mx, my, mz] (µT)
+  float temperature = 4;                   // Temperature (°C)
+  int64 timestamp = 5;                     // Timestamp in nanoseconds
+}
+
+// DistanceReading represents distance sensor readings
+message DistanceReading {
+  float distance_mm = 1;              // Distance in millimeters
+  bool valid = 2;                     // Whether reading is valid
+  int64 timestamp = 3;                // Timestamp in nanoseconds
+}
+
+// TemperatureReading represents temperature sensor readings
+message TemperatureReading {
+  float temperature_c = 1;            // Temperature in Celsius
+  int64 timestamp = 2;                // Timestamp in nanoseconds
+}
+
+// PressureReading represents pressure sensor readings
+message PressureReading {
+  float pressure_pa = 1;              // Pressure in Pascals
+  float altitude_m = 2;               // Altitude in meters (calculated)
+  int64 timestamp = 3;                // Timestamp in nanoseconds
+}
+
+// GPSReading represents GPS sensor readings
+message GPSReading {
+  double latitude = 1;           // Latitude in decimal degrees
+  double longitude = 2;          // Longitude in decimal degrees
+  double altitude_m = 3;         // Altitude in meters
+  float accuracy_m = 4;          // Horizontal position accuracy estimate (meters)
+  float speed_mps = 5;           // Speed over ground (m/s)
+  float bearing_deg = 6;         // Course/bearing (degrees from north)
+  int64 timestamp = 7;           // Timestamp in nanoseconds
+  uint32 satellites = 8;         // Number of satellites used
+  bool fix_valid = 9;            // Fix is valid (true if GPS fix acquired)
+}
+
+// LIDARReading represents LIDAR sensor readings (single scan)
+message LIDARReading {
+  repeated float distances_mm = 1;    // Distance readings (mm) for each angle step
+  repeated float angles_deg = 2;      // Corresponding angles (degrees)
+  int64 timestamp = 3;                // Timestamp in nanoseconds
+  bool valid = 4;                     // If reading is valid
+}
+
+// SensorReading represents a generic sensor reading (oneof all sensor types)
+message SensorReading {
+  // The type of sensor reading
+  oneof reading {
+    EncoderReading encoder = 1;
+    IMUReading imu = 2;
+    DistanceReading distance = 3;
+    TemperatureReading temperature = 4;
+    PressureReading pressure = 5;
+    GPSReading gps = 6;
+    LIDARReading lidar = 7;
+  }
+}
+
+
