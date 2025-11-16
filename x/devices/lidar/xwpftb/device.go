@@ -118,6 +118,25 @@ func (d *Device) Read(dst matTypes.Matrix) int {
 	return k
 }
 
+// GetMinAngle returns the minimum angle (in degrees) that this LiDAR can measure.
+// XWPFTB scans 360° continuously.
+func (d *Device) GetMinAngle() float32 {
+	return 0.0
+}
+
+// GetMaxAngle returns the maximum angle (in degrees) that this LiDAR can measure.
+// XWPFTB scans 360° continuously.
+func (d *Device) GetMaxAngle() float32 {
+	return 360.0
+}
+
+// GetPointCount returns the number of points in the current/latest scan.
+func (d *Device) GetPointCount() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.count
+}
+
 // Configure starts the internal read loop. If motor is not nil, also starts motor control loops.
 // init is ignored for now, kept for consistency with other device drivers.
 func (d *Device) Configure(_ bool) error {
