@@ -32,6 +32,10 @@ var _ I2C = (*LinuxI2C)(nil)
 
 // NewI2C creates a new I2C bus for Linux (Raspberry Pi).
 // device should be like "/dev/i2c-1" for I2C bus 1.
+// Common Raspberry Pi I2C buses:
+//   - /dev/i2c-1 - Primary I2C (GPIO 2/3, SDA/SCL) - most common
+//   - /dev/i2c-0 - Secondary I2C (if available)
+// Note: I2C must be enabled via raspi-config (Interfacing Options -> I2C).
 func NewI2C(device string) (*LinuxI2C, error) {
 	fd, err := os.OpenFile(device, os.O_RDWR, 0)
 	if err != nil {

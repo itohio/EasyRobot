@@ -1,3 +1,3 @@
-//go:build !tinygo && !linux
+//go:build !tinygo && !linux && !windows
 
 package devices

@@ -2,7 +2,9 @@
 
 package encoder
 
-func configurePins(pinA, pinB devices.Pin) {
+import "github.com/itohio/EasyRobot/x/devices"
+
+func configurePins(pinA, pinB devices.Pin) error {
 	// Configure pins as inputs with pull-up (encoders typically have pull-ups)
 	if err := pinA.Configure(devices.PinConfig{
 		Mode: devices.PinInputPullup,
@@ -14,4 +16,5 @@ func configurePins(pinA, pinB devices.Pin) {
 	}); err != nil {
 		return err
 	}
+	return nil
 }

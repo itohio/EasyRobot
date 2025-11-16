@@ -23,35 +23,35 @@ func ExampleEncoder() {
 
 	// Create encoder with default configuration
 	// Default: 2048 counts per revolution (512 PPR * 4x decoding)
-	enc := encoder.New(pinA, pinB, encoder.DefaultConfig())
+	dev := encoder.New(pinA, pinB, encoder.DefaultConfig())
 
 	// Or use custom configuration
-	// enc := encoder.New(pinA, pinB, encoder.Config{
+	// dev := encoder.New(pinA, pinB, encoder.Config{
 	// 	CountsPerRevolution: 4096, // 1024 PPR * 4x decoding
 	// 	UpdateInterval:     50 * time.Millisecond,
 	// })
 
 	// Configure the encoder (sets up pins and interrupts)
-	if err := enc.Configure(); err != nil {
+	if err := dev.Configure(); err != nil {
 		// handle error
 		return
 	}
 
 	// Reset position to zero
-	enc.Reset()
+	dev.Reset()
 
 	// In your main loop, periodically read position and RPM
 	for {
 		// Read current position in counts
-		position := enc.Position()
+		position := dev.Position()
 		println("Position:", position)
 
 		// Read current RPM
-		rpm := enc.RPM()
+		rpm := dev.RPM()
 		println("RPM:", rpm)
 
 		// Calculate revolutions from position
-		revolutions := float64(position) / float64(enc.CountsPerRevolution())
+		revolutions := float64(position) / float64(dev.CountsPerRevolution())
 		println("Revolutions:", revolutions)
 
 		time.Sleep(100 * time.Millisecond)

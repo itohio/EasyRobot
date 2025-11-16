@@ -43,7 +43,7 @@ type Config struct {
 	PinB devices.Pin // Pin B (TypeABPWM, TypeABDirPWM)
 
 	// Encoder for feedback
-	Encoder *encoder.Encoder
+	Encoder *encoder.Device
 
 	// PID gains for speed control
 	PIDGains struct {
@@ -65,11 +65,10 @@ type Config struct {
 // DefaultConfig returns a default configuration.
 func DefaultConfig() Config {
 	return Config{
-		Type:        TypeDirPWM,
-		PIDGains:    struct{ P, I, D float32 }{P: 1.0, I: 0.1, D: 0.01},
-		MaxOutput:   1.0,
+		Type:         TypeDirPWM,
+		PIDGains:     struct{ P, I, D float32 }{P: 1.0, I: 0.1, D: 0.01},
+		MaxOutput:    1.0,
 		SamplePeriod: 0.01, // 10ms
-		MaxRPM:      100,
+		MaxRPM:       100,
 	}
 }
-
