@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	devio "github.com/itohio/EasyRobot/x/devices"
 	mat "github.com/itohio/EasyRobot/x/math/mat"
 	matTypes "github.com/itohio/EasyRobot/x/math/mat/types"
 )
@@ -108,4 +107,3 @@ func TestParseAndAssembleFullRotation(t *testing.T) {
 		t.Fatal("timeout waiting for scan")
 	}
 }
-
