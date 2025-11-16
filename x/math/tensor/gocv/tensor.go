@@ -25,6 +25,41 @@ type tensorHandle struct {
 
 var _ types.Tensor = Tensor{}
 
+// NewImage creates a new image tensor with the specified dimensions and channels.
+// The tensor is initialized with zeros (black image).
+// rows and cols specify the image dimensions, channels must be 1, 3, or 4.
+func NewImage(rows, cols, channels int, opts ...Option) (types.Tensor, error) {
+	if rows <= 0 || cols <= 0 {
+		return nil, fmt.Errorf("gocv tensor: invalid dimensions: rows=%d cols=%d", rows, cols)
+	}
+	if channels < 1 || channels > 4 {
+		return nil, fmt.Errorf("gocv tensor: invalid channels: %d (must be 1-4)", channels)
+	}
+
+	matType, err := dataTypeToMatType(types.UINT8, channels)
+	if err != nil {
+		return nil, err
+	}
+
+	mat := cv.NewMatWithSize(rows, cols, matType)
+	mat.SetTo(cv.NewScalar(0, 0, 0, 0))
+
+	cfg := constructorConfig{ownership: ownershipAdopt}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	shape := types.Shape{rows, cols, channels}
+	return Tensor{
+		handle: &tensorHandle{
+			mat:   &mat,
+			shape: shape,
+			dtype: types.UINT8,
+			owns:  cfg.ownership == ownershipAdopt,
+		},
+	}, nil
+}
+
 // FromMat constructs a tensor from an existing Mat. By default the Mat is
 // cloned so the tensor owns its memory. Use WithAdoptedMat or WithSharedMat to
 // override.
