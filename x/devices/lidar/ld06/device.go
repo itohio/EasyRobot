@@ -243,23 +243,39 @@ func (d *Device) consumeOnePacket() int {
 	startAngleDeg = normalizeAngle(startAngleDeg)
 	endAngleDeg = normalizeAngle(endAngleDeg)
 
-	// Check for rotation completion: if end angle < start angle (wraparound)
-	// LD06 sends packets continuously; a full rotation is detected when
-	// the end angle wraps around (e.g., end=10°, start=350°)
+	// Check for rotation completion (matching reference implementation)
+	// Reference uses: if (n.angle - last_angle < (-350.f)) in AssemblePacket()
+	// We check if the angle has wrapped around significantly
 	rotationComplete := false
 	if d.rotationStarted && d.lastEndAngleDeg >= 0 {
 		// Check for wraparound: if end angle is significantly less than last end angle
-		// and we're near 360°, or if start angle is much larger than end angle
-		angleDiff := endAngleDeg - d.lastEndAngleDeg
-		if angleDiff < -180 {
-			// Wrapped around (e.g., lastEnd=350°, end=10°)
-			rotationComplete = true
-		} else if startAngleDeg > endAngleDeg+180 {
-			// Start angle is much larger than end angle (wraparound in this packet)
+		// Reference threshold is -350°, meaning we've wrapped around
+		lastAngleDiff := endAngleDeg - d.lastEndAngleDeg
+		if lastAngleDiff < -350.0 {
+			// Wrapped around (e.g., lastEnd=359°, end=5°)
 			rotationComplete = true
 		}
 	} else {
 		d.rotationStarted = true
+	}
+
+	// Calculate angle span for this packet (matching reference implementation)
+	// Reference: diff = (end_angle / 100 - start_angle / 100 + 360) % 360
+	angleSpan := endAngleDeg - startAngleDeg
+	if angleSpan < -180 {
+		angleSpan += 360 // handle wraparound
+	}
+	if angleSpan < 0 {
+		angleSpan += 360
+	}
+
+	// Validate angle span against speed (matches reference implementation)
+	// Reference checks: diff > (double)pkg->speed*POINT_PER_PACK / 4500 * 3 / 2
+	radarSpeedHz := float64(radarSpeedCentiHz) * 0.01
+	maxExpectedDiff := radarSpeedHz * float64(dataLen) / 4500.0 * 3.0 / 2.0
+	if angleSpan > maxExpectedDiff {
+		// Invalid packet - angle span too large for given speed
+		return 1 // skip header
 	}
 
 	// Process data points
@@ -267,11 +283,9 @@ func (d *Device) consumeOnePacket() int {
 	angRow := d.mat2xN[1][:]
 
 	// Linear interpolation of angles between start and end
-	angleSpan := endAngleDeg - startAngleDeg
-	if angleSpan < -180 {
-		angleSpan += 360 // handle wraparound
-	}
-	angleStep := angleSpan / float64(dataLen)
+	// Reference implementation: step = diff / (POINT_PER_PACK - 1) / 100.0
+	// Use (dataLen - 1) for interpolation, matching reference
+	angleStep := angleSpan / float64(dataLen-1)
 
 	for i := 0; i < dataLen; i++ {
 		if d.writeIdx >= d.maxSamples {
@@ -287,9 +301,21 @@ func (d *Device) consumeOnePacket() int {
 		distMm := uint16(packet[offset]) | (uint16(packet[offset+1]) << 8)
 		_ = packet[offset+2] // intensity, ignored for now
 
-		// Angle interpolation
-		angle := startAngleDeg + angleStep*float64(i)
-		angle = normalizeAngle(angle)
+		// Angle interpolation (matching reference implementation)
+		var angle float64
+		if i == dataLen-1 {
+			// Last point uses exact end angle (matches reference: mOnePkg.back().angle = end)
+			angle = endAngleDeg
+		} else {
+			angle = startAngleDeg + angleStep*float64(i)
+		}
+		// Normalize to [0, 360)
+		if angle >= 360.0 {
+			angle -= 360.0
+		}
+		if angle < 0 {
+			angle += 360.0
+		}
 
 		distRow[d.writeIdx] = float32(distMm)
 		angRow[d.writeIdx] = float32(angle)
