@@ -13,6 +13,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"machine"
 	"sync"
 	"time"
@@ -25,6 +26,7 @@ import (
 	"github.com/itohio/dndm/x/bus"
 
 	types "github.com/itohio/EasyRobot/types/control"
+	types_math "github.com/itohio/EasyRobot/types/math"
 	"github.com/itohio/EasyRobot/x/devices/servo"
 	"github.com/itohio/EasyRobot/x/devices/xiao"
 	vaj "github.com/itohio/EasyRobot/x/math/control/motion"
@@ -44,7 +46,7 @@ var (
 
 	manipulator *servo.ServoArray
 	motionLock  sync.Mutex
-	kinematics  kinematicsInterface // Set in handleConfig for planar/dh modes
+	kinematics  kinematicsInterface // Set in handleKinematicsConfig for planar/dh modes
 )
 
 // getIntentPath returns the DNDM intent path based on build tags
@@ -61,7 +63,7 @@ func getIntentPath() string {
 type kinematicsInterface interface {
 	// Inverse calculates joint angles from end effector position
 	// Returns joint angles in radians
-	Inverse(targetX, targetY, targetZ float32, orientation *types.MathQuaternion) ([]float32, error)
+	Inverse(targetX, targetY, targetZ float32, orientation *types_math.Quaternion) ([]float32, error)
 	// Forward calculates end effector position from joint angles (for validation)
 	Forward(jointAngles []float32) (x, y, z float32, err error)
 }
@@ -208,39 +210,49 @@ func setupRouter(ctx context.Context) (*dndm.Router, error) {
 		return nil, err
 	}
 
-	// For embedded device, we act as the server
-	rwc, err := factory.Dial(ctx, embeddedPeer)
-	if err != nil {
-		return nil, err
-	}
+	// Create container endpoint that can accept endpoints dynamically
+	containerEP := dndm.NewContainer("manipulator", 10)
 
-	// Create stream connection
-	hostPeer, err := dndm.PeerFromString("serial:///easyrobot.host")
-	if err != nil {
-		return nil, err
-	}
-
-	conn := stream.NewWithContext(ctx, embeddedPeer, hostPeer, rwc, nil)
-
-	// Create remote endpoint
-	remoteEP := remote.New(embeddedPeer, conn, 10, time.Second*10, time.Second*3)
-	err = remoteEP.Init(ctx, nil, // TinyGo may not have slog
-		func(intent dndm.Intent, ep dndm.Endpoint) error { return nil },
-		func(interest dndm.Interest, ep dndm.Endpoint) error { return nil },
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	// Create router
+	// Create router with container endpoint
 	router, err := dndm.New(
 		dndm.WithContext(ctx),
 		dndm.WithQueueSize(10),
-		dndm.WithEndpoint(remoteEP),
+		dndm.WithEndpoint(containerEP),
 	)
 	if err != nil {
 		return nil, err
 	}
+
+	// Serve (accept connections from host)
+	// For serial, this opens the port and waits for host to connect
+	go func() {
+		err := factory.Serve(ctx, func(connectedPeer dndm.Peer, rwc io.ReadWriteCloser) error {
+			// Create stream connection
+			conn := stream.NewWithContext(ctx, embeddedPeer, connectedPeer, rwc, nil)
+
+			// Create remote endpoint
+			remoteEP := remote.New(embeddedPeer, conn, 10, time.Second*10, time.Second*3)
+			err := remoteEP.Init(ctx, nil, // TinyGo may not have slog
+				func(intent dndm.Intent, ep dndm.Endpoint) error { return nil },
+				func(interest dndm.Interest, ep dndm.Endpoint) error { return nil },
+			)
+			if err != nil {
+				return err
+			}
+
+			// Add remote endpoint to container
+			if err := containerEP.Add(remoteEP); err != nil {
+				println("Failed to add remote endpoint:", err.Error())
+				return err
+			}
+
+			println("Connection established from:", connectedPeer.String())
+			return nil
+		})
+		if err != nil {
+			println("Serve error:", err.Error())
+		}
+	}()
 
 	return router, nil
 }

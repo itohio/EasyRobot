@@ -7,6 +7,7 @@ import (
 
 	types "github.com/itohio/EasyRobot/types/control"
 	types_kinematics "github.com/itohio/EasyRobot/types/control/kinematics"
+	types_math "github.com/itohio/EasyRobot/types/math"
 	// TODO: Update when kinematics code is migrated from pkg to x
 	// "github.com/itohio/EasyRobot/x/math/control/kinematics/joints/dh"
 )
@@ -35,7 +36,7 @@ func getIntentPathImpl() string {
 	return "easyrobot.manipulator.dh"
 }
 
-func (d *dhKinematics) Inverse(targetX, targetY, targetZ float32, orientation *types.MathQuaternion) ([]float32, error) {
+func (d *dhKinematics) Inverse(targetX, targetY, targetZ float32, orientation *types_math.Quaternion) ([]float32, error) {
 	if d.config == nil || len(d.config.DhParams) == 0 {
 		return nil, fmt.Errorf("DH parameters not configured")
 	}
