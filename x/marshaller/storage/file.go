@@ -6,32 +6,55 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"sync"
 
-	"github.com/edsrzf/mmap-go"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
 )
 
 // fileRegion implements MappedRegion for file-based storage
 type fileRegion struct {
-	mmap mmap.MMap
+	segment  *mappedSegment
+	readOnly bool
+}
+
+func newFileRegion(file *os.File, offset, length int64, readOnly bool) (*fileRegion, error) {
+	if length <= 0 {
+		return nil, fmt.Errorf("file storage: invalid map length %d", length)
+	}
+	if length > int64(math.MaxInt) {
+		return nil, fmt.Errorf("file storage: region too large (%d bytes)", length)
+	}
+
+	seg, err := mapFileSegment(file, offset, int(length), readOnly)
+	if err != nil {
+		return nil, fmt.Errorf("file storage: failed to map region: %w", err)
+	}
+
+	return &fileRegion{
+		segment:  seg,
+		readOnly: readOnly,
+	}, nil
 }
 
 func (r *fileRegion) Bytes() []byte {
-	return r.mmap
+	return r.segment.view
 }
 
 func (r *fileRegion) Size() int64 {
-	return int64(len(r.mmap))
+	return int64(len(r.segment.view))
 }
 
 func (r *fileRegion) Sync() error {
-	return r.mmap.Flush()
+	if r.readOnly {
+		return nil
+	}
+	return syncSegment(r.segment)
 }
 
 func (r *fileRegion) Unmap() error {
-	return r.mmap.Unmap()
+	return unmapSegment(r.segment)
 }
 
 // fileStorage implements MappedStorage for file-based storage
@@ -40,7 +63,7 @@ type fileStorage struct {
 	file     *os.File
 	readOnly bool
 	size     int64
-	regions  map[int64]*fileRegion // Track mapped regions for cleanup
+	regions  map[*fileRegion]struct{} // Track mapped regions for cleanup
 }
 
 func newFileStorage(file *os.File, readOnly bool) (*fileStorage, error) {
@@ -53,7 +76,7 @@ func newFileStorage(file *os.File, readOnly bool) (*fileStorage, error) {
 		file:     file,
 		readOnly: readOnly,
 		size:     info.Size(),
-		regions:  make(map[int64]*fileRegion),
+		regions:  make(map[*fileRegion]struct{}),
 	}, nil
 }
 
@@ -77,23 +100,15 @@ func (s *fileStorage) Map(offset, length int64) (types.MappedRegion, error) {
 		return nil, fmt.Errorf("file storage: region extends beyond file (offset: %d, length: %d, size: %d)", offset, length, s.size)
 	}
 
-	// Map the region with appropriate protection flags
-	// prot: protection flags (RDONLY or RDWR)
-	// flags: mapping flags (0 for normal mapping)
-	var prot int
-	if s.readOnly {
-		prot = mmap.RDONLY
-	} else {
-		prot = mmap.RDWR
+	if length <= 0 {
+		return nil, errors.New("file storage: cannot map empty region")
 	}
 
-	m, err := mmap.MapRegion(s.file, int(length), prot, 0, offset)
+	region, err := newFileRegion(s.file, offset, length, s.readOnly)
 	if err != nil {
-		return nil, fmt.Errorf("file storage: failed to map region: %w", err)
+		return nil, err
 	}
-
-	region := &fileRegion{mmap: m}
-	s.regions[offset] = region
+	s.regions[region] = struct{}{}
 
 	return region, nil
 }
@@ -163,7 +178,7 @@ func (s *fileStorage) Close() error {
 	}
 
 	// Unmap all regions
-	for _, region := range s.regions {
+	for region := range s.regions {
 		_ = region.Unmap()
 	}
 	s.regions = nil
