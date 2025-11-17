@@ -220,6 +220,84 @@ func (g *StoredGraph) Neighbors(n graph.Node) []graph.Node
 func (g *StoredGraph) Cost(from, to graph.Node) float32
 ```
 
+### Specialized Graph Types
+
+The marshaller supports specialized graph types beyond generic graphs:
+
+#### StoredTree
+
+`StoredTree` implements `graph.Tree[any, any]` for tree structures:
+
+```go
+// StoredTree provides tree-specific helpers on top of StoredGraph.
+type StoredTree struct {
+    *StoredGraph
+    rootID   int64
+    treeType string
+}
+
+// Root returns the stored root node.
+func (t *StoredTree) Root() graph.Node[any, any]
+
+// GetHeight computes the longest path length from root to leaves.
+func (t *StoredTree) GetHeight() int
+
+// NodeCount returns the total number of nodes in the tree.
+func (t *StoredTree) NodeCount() int
+```
+
+#### StoredDecisionTree
+
+`StoredDecisionTree` implements `graph.DecisionTree[any, any, any, any]` for decision trees with registered operations:
+
+```go
+// StoredDecisionTree executes decision operations directly from storage.
+type StoredDecisionTree struct {
+    *StoredTree
+    nodeOps map[int64]decisionNodeOpInfo
+    edgeOps map[string]decisionEdgeOpInfo
+}
+
+// Decide evaluates decision tree starting at provided node (nil uses root).
+func (t *StoredDecisionTree) Decide(start graph.Node[any, any], inputs ...any) ([]any, error)
+```
+
+**Operation Registration:**
+- Decision node operations are registered via `WithDecisionOp(fns ...any)`
+- Decision edge operations (criteria evaluators) are registered via `WithDecisionEdge(fns ...any)`
+- Operations are identified by their function name via reflection (`runtime.FuncForPC`)
+- During marshalling, operation names are stored in metadata
+- During unmarshalling, registered operations are bound to nodes/edges by name
+- If an operation name is not registered, unmarshalling fails with a descriptive error
+
+#### StoredExpressionGraph
+
+`StoredExpressionGraph` implements `graph.ExpressionGraph[any, any, any, any]` for expression graphs with computation operations:
+
+```go
+// StoredExpressionGraph evaluates expression graphs directly from storage.
+type StoredExpressionGraph struct {
+    *StoredGraph
+    rootID  int64
+    nodeOps map[int64]expressionOpInfo
+}
+
+// Compute evaluates expression graph for all inputs (nil start uses default root).
+func (g *StoredExpressionGraph) Compute(start graph.Node[any, any], inputs ...any) ([]any, error)
+```
+
+**Operation Registration:**
+- Expression operations are registered via `WithExpressionOp(fns ...any)`
+- Operations are identified by their function name via reflection
+- During marshalling, operation names are stored in metadata along with root node ID
+- During unmarshalling, registered operations are bound to nodes by name
+- If an operation name is not registered, unmarshalling fails with a descriptive error
+
+**Graph Metadata:**
+- Graph kind (generic, tree, decision_tree, expression_graph) is stored in file headers
+- Additional metadata (root IDs, operation mappings) is stored in the data file
+- Metadata allows proper reconstruction of specialized graph types during unmarshalling
+
 ### Graph Modification API
 
 The marshaller provides methods for modifying graphs directly in storage:
@@ -351,20 +429,20 @@ func WithCost(fn func(from, to graph.Node[any, any]) float32) types.Option
 // Can be provided multiple times to register multiple message types.
 func WithType(example proto.Message) types.Option
 
-// WithEqual registers a custom equality callback used by StoredGraph nodes.
-func WithEqual(fn func(a, b graph.Node[any, any]) bool) types.Option
+// WithDecisionOp registers one or more decision node operations by reflection-derived name.
+// Each function must have signature `func(Input) (Output, bool)`.
+// Operations are identified by their function name via reflection.
+func WithDecisionOp(fns ...any) types.Option
 
-// WithCompare registers a custom comparison callback used by StoredGraph nodes.
-func WithCompare(fn func(a, b graph.Node[any, any]) int) types.Option
+// WithDecisionEdge registers one or more decision edge operations (criteria evaluators).
+// Each function must have signature `func(Input) bool`.
+// Operations are identified by their function name via reflection.
+func WithDecisionEdge(fns ...any) types.Option
 
-// WithCost registers a custom cost callback used by StoredGraph and StoredEdge.
-func WithCost(fn func(from, to graph.Node[any, any]) float32) types.Option
-
-// WithNodeDataType registers the proto.Message type for node data deserialization.
-func WithNodeDataType(example proto.Message) types.Option
-
-// WithEdgeDataType registers the proto.Message type for edge data deserialization.
-func WithEdgeDataType(example proto.Message) types.Option
+// WithExpressionOp registers one or more expression node operations.
+// Each function must have signature `func(Input, map[int64]Output) (Output, bool)`.
+// Operations are identified by their function name via reflection.
+func WithExpressionOp(fns ...any) types.Option
 ```
 
 ### Storage Architecture
@@ -868,6 +946,151 @@ err = tx.Commit()
 // All changes are now written to storage and reflected in linked graph
 ```
 
+### Decision Tree Marshalling
+
+```go
+import (
+    graphlib "github.com/itohio/EasyRobot/x/math/graph"
+    graphmarshaller "github.com/itohio/EasyRobot/x/marshaller/graph"
+)
+
+// Define decision operations
+func decisionLeafLow(input int) (string, bool) {
+    if input < 5 {
+        return "low", true
+    }
+    return "", false
+}
+
+func decisionLeafHigh(input int) (string, bool) {
+    if input >= 5 {
+        return "high", true
+    }
+    return "", false
+}
+
+func decisionEdgeLessThanFive(input int) bool { return input < 5 }
+func decisionEdgeGreaterEqFive(input int) bool { return input >= 5 }
+
+// Create decision tree
+tree := graphlib.NewGenericDecisionTree[string, float32, int, string]("root")
+rootIdx := tree.RootIdx()
+leftIdx := tree.AddChild(rootIdx, "left")
+rightIdx := tree.AddChild(rootIdx, "right")
+
+tree.SetEdgeOpByIndex(rootIdx, leftIdx, decisionEdgeLessThanFive)
+tree.SetEdgeOpByIndex(rootIdx, rightIdx, decisionEdgeGreaterEqFive)
+tree.SetNodeOpByIndex(leftIdx, decisionLeafLow)
+tree.SetNodeOpByIndex(rightIdx, decisionLeafHigh)
+
+// Marshal with operation registration (variadic - can register multiple ops)
+factory := graphmarshaller.NewFileMap()
+mar, err := graphmarshaller.NewMarshaller(factory,
+    graphmarshaller.WithPath("decision.nodes"),
+    graphmarshaller.WithEdgesPath("decision.edges"),
+    graphmarshaller.WithLabelsPath("decision.data"),
+    graphmarshaller.WithDecisionOp(decisionLeafLow, decisionLeafHigh),
+    graphmarshaller.WithDecisionEdge(decisionEdgeLessThanFive, decisionEdgeGreaterEqFive),
+)
+if err != nil {
+    return err
+}
+err = mar.Marshal(nil, tree)
+
+// Unmarshal with same operation registration
+unmar, err := graphmarshaller.NewUnmarshaller(factory,
+    graphmarshaller.WithPath("decision.nodes"),
+    graphmarshaller.WithEdgesPath("decision.edges"),
+    graphmarshaller.WithLabelsPath("decision.data"),
+    graphmarshaller.WithDecisionOp(decisionLeafLow, decisionLeafHigh),
+    graphmarshaller.WithDecisionEdge(decisionEdgeLessThanFive, decisionEdgeGreaterEqFive),
+)
+if err != nil {
+    return err
+}
+
+var storedTree graphmarshaller.StoredDecisionTree
+err = unmar.Unmarshal(nil, &storedTree)
+if err != nil {
+    return err
+}
+defer storedTree.Close()
+
+// Use the stored decision tree
+results, err := storedTree.Decide(nil, 2, 7, 4, 9)
+// Results: ["low", "high", "low", "high"]
+```
+
+### Expression Graph Marshalling
+
+```go
+import (
+    graphlib "github.com/itohio/EasyRobot/x/math/graph"
+    graphmarshaller "github.com/itohio/EasyRobot/x/marshaller/graph"
+)
+
+// Define expression operations
+func exprInput(input float64, _ map[int64]float64) (float64, bool) {
+    return input, true
+}
+
+func exprDouble(input float64, _ map[int64]float64) (float64, bool) {
+    return input * 2, true
+}
+
+func exprSum(_ float64, childOutputs map[int64]float64) (float64, bool) {
+    var total float64
+    for _, v := range childOutputs {
+        total += v
+    }
+    return total, true
+}
+
+// Create expression graph
+expr := graphlib.NewGenericExpressionGraph[string, float32, float64, float64]()
+inputNode, _ := expr.AddNode("input", exprInput)
+doubleNode, _ := expr.AddNode("double", exprDouble)
+sumNode, _ := expr.AddNode("sum", exprSum)
+expr.AddEdge(sumNode, inputNode, 0)
+expr.AddEdge(sumNode, doubleNode, 0)
+expr.SetRoot(sumNode)
+
+// Marshal with operation registration (variadic - can register multiple ops)
+factory := graphmarshaller.NewFileMap()
+mar, err := graphmarshaller.NewMarshaller(factory,
+    graphmarshaller.WithPath("expr.nodes"),
+    graphmarshaller.WithEdgesPath("expr.edges"),
+    graphmarshaller.WithLabelsPath("expr.data"),
+    graphmarshaller.WithExpressionOp(exprInput, exprDouble, exprSum),
+)
+if err != nil {
+    return err
+}
+err = mar.Marshal(nil, expr)
+
+// Unmarshal with same operation registration
+unmar, err := graphmarshaller.NewUnmarshaller(factory,
+    graphmarshaller.WithPath("expr.nodes"),
+    graphmarshaller.WithEdgesPath("expr.edges"),
+    graphmarshaller.WithLabelsPath("expr.data"),
+    graphmarshaller.WithExpressionOp(exprInput, exprDouble, exprSum),
+)
+if err != nil {
+    return err
+}
+
+var storedExpr graphmarshaller.StoredExpressionGraph
+err = unmar.Unmarshal(nil, &storedExpr)
+if err != nil {
+    return err
+}
+defer storedExpr.Close()
+
+// Use the stored expression graph
+results, err := storedExpr.Compute(nil, 1.0, 2.5, -3.0)
+// Results computed based on expression graph evaluation
+```
+
 ## Testing Strategy
 
 1. **Unit Tests**:
@@ -979,23 +1202,31 @@ func (s *GraphStorage) Defragment() error {
 
 ```
 x/marshaller/graph/
-├── SPEC.md              # This document
-├── ANALYSIS.md          # Analysis and design decisions
-├── marshaller.go        # Marshaller implementation (types.Marshaller)
-├── unmarshaller.go      # Unmarshaller implementation (types.Unmarshaller)
-├── storage.go           # GraphStorage implementation
-├── stored_graph.go      # StoredGraph implementation (efficient graph)
-├── transaction.go       # Transaction management (GORM-style)
-├── options.go           # Options (WithPath, WithEdgesPath, etc.)
-├── config.go            # Config struct and option application
-├── file_format.go        # File format handling using types.MappedStorage
-├── storage_impl.go      # Storage implementations (NewFileMap, NewMemoryMap)
-├── types.go             # Type definitions and constraints
-├── header.go            # File header encoding/decoding
-├── records.go           # Node/edge record handling
-├── defrag.go            # Defragmentation placeholder
-├── checksum.go          # Checksum calculation and verification
-└── register_graph.go    # Registration with marshaller system
+├── SPEC.md                      # This document
+├── DESIGN_DECISION_EXPRESSION.md # Design for decision/expression support
+├── SOLID_PLAN.md                # SOLID refactor plan and execution
+├── marshaller.go                # Marshaller implementation (types.Marshaller)
+├── unmarshaller.go              # Unmarshaller implementation (types.Unmarshaller)
+├── graph.go                     # StoredGraph struct definition and callbacks
+├── stored_graph.go              # StoredGraph core implementation
+├── stored_node.go               # storedNode implementation (SOLID refactor)
+├── stored_edge.go               # storedEdge implementation (SOLID refactor)
+├── stored_tree.go               # StoredTree implementation
+├── stored_decision_tree.go      # StoredDecisionTree implementation
+├── stored_expression_graph.go   # StoredExpressionGraph implementation
+├── graph_capture.go             # Graph structure capture via reflection
+├── graph_metadata.go             # Graph metadata (kind, operations, root IDs)
+├── ops_registry.go              # Operation registry and invocation helpers
+├── edge_keys.go                 # Edge key utilities
+├── options.go                   # Options (WithPath, WithDecisionOp, etc.)
+├── format.go                    # File format definitions and encoding
+├── writer.go                    # File writing implementation
+├── reader.go                    # File reading implementation
+├── data.go                      # Data serialization/deserialization
+├── data_read.go                 # Data reading helpers
+├── storage.go                   # Storage factory helpers
+└── marshaller_e2e_test.go       # End-to-end tests
+    decision_expression_e2e_test.go # Decision/expression e2e tests
 ```
 
 **Subpackages (following SOLID principles):**
@@ -1088,4 +1319,7 @@ func init() {
 - **Checksums**: Corruption detection in file headers
 - **ID Generation**: Incremental (maxID tracked in headers)
 - **Interface Segregation**: Split storage interfaces following SOLID principles
+- **SOLID Refactor**: Runtime implementation split into focused files (`stored_graph.go`, `stored_node.go`, `stored_edge.go`) with helper methods to avoid exposing internal structures
+- **Specialized Graph Types**: Support for trees, decision trees, and expression graphs with operation registration via reflection
+- **Variadic Options**: `WithDecisionOp`, `WithDecisionEdge`, and `WithExpressionOp` accept multiple operations in a single call
 

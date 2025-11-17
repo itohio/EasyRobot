@@ -84,7 +84,7 @@ func (m *GraphMarshaller) marshalGraph(value any, nodeStorage, edgeStorage, data
 	if metaBytes, err := serializeGraphMetadata(meta); err != nil {
 		return types.NewError("marshal", "graph", "failed to encode graph metadata", err)
 	} else if len(metaBytes) > 0 {
-		entry, err := newSerializedDataEntry(DataTypeBytes, metadataTypeName, metaBytes)
+		entry, err := newSerializedDataEntry(DataTypeProtobuf, metadataTypeName, metaBytes)
 		if err != nil {
 			return types.NewError("marshal", "graph", "invalid metadata payload", err)
 		}

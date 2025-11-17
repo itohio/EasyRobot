@@ -1,12 +1,13 @@
 package graph
 
 import (
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
 
+	marshalpb "github.com/itohio/EasyRobot/types/marshaller"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
+	"google.golang.org/protobuf/proto"
 )
 
 type graphKind string
@@ -46,31 +47,41 @@ func graphKindFromByte(code byte) graphKind {
 	}
 }
 
-type graphMetadata struct {
-	Kind       graphKind           `json:"kind"`
-	RootID     int64               `json:"rootId,omitempty"`
-	TreeType   string              `json:"treeType,omitempty"`
-	Decision   *decisionMetadata   `json:"decision,omitempty"`
-	Expression *expressionMetadata `json:"expression,omitempty"`
+func protoKindFromGraphKind(kind graphKind) marshalpb.GraphKind {
+	switch kind {
+	case graphKindTree:
+		return marshalpb.GraphKind_GRAPH_KIND_TREE
+	case graphKindDecisionTree:
+		return marshalpb.GraphKind_GRAPH_KIND_DECISION_TREE
+	case graphKindExpressionGraph:
+		return marshalpb.GraphKind_GRAPH_KIND_EXPRESSION_GRAPH
+	default:
+		return marshalpb.GraphKind_GRAPH_KIND_GENERIC
+	}
 }
 
-type decisionMetadata struct {
-	NodeOps map[int64]string  `json:"nodeOps,omitempty"`
-	EdgeOps map[string]string `json:"edgeOps,omitempty"`
+func graphKindFromProtoKind(kind marshalpb.GraphKind) graphKind {
+	switch kind {
+	case marshalpb.GraphKind_GRAPH_KIND_TREE:
+		return graphKindTree
+	case marshalpb.GraphKind_GRAPH_KIND_DECISION_TREE:
+		return graphKindDecisionTree
+	case marshalpb.GraphKind_GRAPH_KIND_EXPRESSION_GRAPH:
+		return graphKindExpressionGraph
+	default:
+		return graphKindGeneric
+	}
 }
 
-type expressionMetadata struct {
-	NodeOps map[int64]string `json:"nodeOps,omitempty"`
-	RootID  int64            `json:"rootId,omitempty"`
-}
-
-func buildGraphMetadata(value any, nodes []capturedNode, edges []capturedEdge) (graphKind, *graphMetadata, error) {
+func buildGraphMetadata(value any, nodes []capturedNode, edges []capturedEdge) (graphKind, *marshalpb.GraphMetadata, error) {
 	if value == nil {
 		return graphKindGeneric, nil, fmt.Errorf("graph value is nil")
 	}
 	graphVal := reflect.ValueOf(value)
 	kind := detectGraphKind(graphVal)
-	meta := &graphMetadata{Kind: kind}
+	meta := &marshalpb.GraphMetadata{
+		Kind: protoKindFromGraphKind(kind),
+	}
 
 	switch kind {
 	case graphKindDecisionTree:
@@ -78,7 +89,7 @@ func buildGraphMetadata(value any, nodes []capturedNode, edges []capturedEdge) (
 		if err != nil {
 			return kind, nil, err
 		}
-		meta.RootID = rootID
+		meta.RootId = rootID
 		meta.TreeType = detectTreeType(graphVal)
 		decisionMeta, err := captureDecisionMetadata(graphVal)
 		if err != nil {
@@ -90,7 +101,7 @@ func buildGraphMetadata(value any, nodes []capturedNode, edges []capturedEdge) (
 		if err != nil {
 			return kind, nil, err
 		}
-		meta.RootID = rootID
+		meta.RootId = rootID
 		meta.TreeType = detectTreeType(graphVal)
 	case graphKindExpressionGraph:
 		exprMeta, err := captureExpressionMetadata(graphVal, nodes, edges)
@@ -99,7 +110,7 @@ func buildGraphMetadata(value any, nodes []capturedNode, edges []capturedEdge) (
 		}
 		meta.Expression = exprMeta
 		if exprMeta != nil {
-			meta.RootID = exprMeta.RootID
+			meta.RootId = exprMeta.RootId
 		}
 	default:
 		// Generic graph needs no additional metadata beyond kind
@@ -127,6 +138,7 @@ func concreteValue(val reflect.Value) reflect.Value {
 	}
 	return val
 }
+
 func hasMethod(val reflect.Value, name string) bool {
 	return val.MethodByName(name).IsValid()
 }
@@ -162,10 +174,9 @@ func detectTreeType(graphVal reflect.Value) string {
 	return "generic"
 }
 
-func captureDecisionMetadata(graphVal reflect.Value) (*decisionMetadata, error) {
-	meta := &decisionMetadata{
+func captureDecisionMetadata(graphVal reflect.Value) (*marshalpb.DecisionMetadata, error) {
+	meta := &marshalpb.DecisionMetadata{
 		NodeOps: make(map[int64]string),
-		EdgeOps: make(map[string]string),
 	}
 	if err := visitNodes(graphVal, func(nodeVal reflect.Value, id int64) error {
 		nodeVal = concreteValue(nodeVal)
@@ -191,6 +202,7 @@ func captureDecisionMetadata(graphVal reflect.Value) (*decisionMetadata, error) 
 		return nil, err
 	}
 
+	edgeOps := make([]*marshalpb.DecisionEdgeOp, 0)
 	if err := visitEdges(graphVal, func(edgeVal reflect.Value, fromID, toID int64, _ any) error {
 		edgeVal = concreteValue(edgeVal)
 		method := edgeVal.MethodByName("CriteriaFunction")
@@ -209,11 +221,17 @@ func captureDecisionMetadata(graphVal reflect.Value) (*decisionMetadata, error) 
 		if err != nil {
 			return err
 		}
-		key := edgeKey(fromID, toID)
-		meta.EdgeOps[key] = name
+		edgeOps = append(edgeOps, &marshalpb.DecisionEdgeOp{
+			ParentId: fromID,
+			ChildId:  toID,
+			OpName:   name,
+		})
 		return nil
 	}); err != nil {
 		return nil, err
+	}
+	if len(edgeOps) > 0 {
+		meta.EdgeOps = edgeOps
 	}
 
 	if len(meta.NodeOps) == 0 && len(meta.EdgeOps) == 0 {
@@ -222,8 +240,8 @@ func captureDecisionMetadata(graphVal reflect.Value) (*decisionMetadata, error) 
 	return meta, nil
 }
 
-func captureExpressionMetadata(graphVal reflect.Value, nodes []capturedNode, edges []capturedEdge) (*expressionMetadata, error) {
-	meta := &expressionMetadata{
+func captureExpressionMetadata(graphVal reflect.Value, nodes []capturedNode, edges []capturedEdge) (*marshalpb.ExpressionMetadata, error) {
+	meta := &marshalpb.ExpressionMetadata{
 		NodeOps: make(map[int64]string),
 	}
 	if err := visitNodes(graphVal, func(nodeVal reflect.Value, id int64) error {
@@ -251,10 +269,10 @@ func captureExpressionMetadata(graphVal reflect.Value, nodes []capturedNode, edg
 	}
 
 	if rootID := deriveRootID(nodes, edges); rootID != 0 {
-		meta.RootID = rootID
+		meta.RootId = rootID
 	}
 
-	if len(meta.NodeOps) == 0 && meta.RootID == 0 {
+	if len(meta.NodeOps) == 0 && meta.RootId == 0 {
 		return nil, nil
 	}
 	return meta, nil
@@ -284,14 +302,14 @@ func deriveRootID(nodes []capturedNode, edges []capturedEdge) int64 {
 	return nodes[0].id
 }
 
-func serializeGraphMetadata(meta *graphMetadata) ([]byte, error) {
+func serializeGraphMetadata(meta *marshalpb.GraphMetadata) ([]byte, error) {
 	if meta == nil {
 		return nil, nil
 	}
-	return json.Marshal(meta)
+	return proto.Marshal(meta)
 }
 
-func readGraphMetadata(storage types.MappedStorage, offset uint64) (*graphMetadata, error) {
+func readGraphMetadata(storage types.MappedStorage, offset uint64) (*marshalpb.GraphMetadata, error) {
 	if offset == 0 {
 		return nil, nil
 	}
@@ -302,19 +320,19 @@ func readGraphMetadata(storage types.MappedStorage, offset uint64) (*graphMetada
 	if typeName != metadataTypeName {
 		return nil, fmt.Errorf("unexpected metadata entry %q", typeName)
 	}
-	if dataType != DataTypeBytes {
+	if dataType != DataTypeProtobuf {
 		return nil, fmt.Errorf("invalid metadata data type: %d", dataType)
 	}
 	return parseGraphMetadata(payload)
 }
 
-func parseGraphMetadata(data []byte) (*graphMetadata, error) {
+func parseGraphMetadata(data []byte) (*marshalpb.GraphMetadata, error) {
 	if len(data) == 0 {
 		return nil, nil
 	}
-	var meta graphMetadata
-	if err := json.Unmarshal(data, &meta); err != nil {
+	meta := &marshalpb.GraphMetadata{}
+	if err := proto.Unmarshal(data, meta); err != nil {
 		return nil, err
 	}
-	return &meta, nil
+	return meta, nil
 }

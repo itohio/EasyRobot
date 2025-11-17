@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package types.marshaller;
+
+option go_package = "github.com/itohio/EasyRobot/types/marshaller";
+
+// GraphKind enumerates the supported stored graph types.
+enum GraphKind {
+  GRAPH_KIND_GENERIC = 0;
+  GRAPH_KIND_TREE = 1;
+  GRAPH_KIND_DECISION_TREE = 2;
+  GRAPH_KIND_EXPRESSION_GRAPH = 3;
+}
+
+// DecisionEdgeOp describes a decision edge operation between parent and child nodes.
+message DecisionEdgeOp {
+  int64 parent_id = 1;
+  int64 child_id = 2;
+  string op_name = 3;
+}
+
+// DecisionMetadata stores operation names for decision trees.
+message DecisionMetadata {
+  map<int64, string> node_ops = 1;
+  repeated DecisionEdgeOp edge_ops = 2;
+}
+
+// ExpressionMetadata stores operation names and root ID for expression graphs.
+message ExpressionMetadata {
+  map<int64, string> node_ops = 1;
+  int64 root_id = 2;
+}
+
+// GraphMetadata encapsulates persisted metadata for stored graphs.
+message GraphMetadata {
+  GraphKind kind = 1;
+  int64 root_id = 2;
+  string tree_type = 3;
+  DecisionMetadata decision = 4;
+  ExpressionMetadata expression = 5;
+}

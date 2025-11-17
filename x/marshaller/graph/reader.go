@@ -150,6 +150,9 @@ func validateProtobufTypes(storage types.MappedStorage, registry map[string]prot
 		if typeName == "" {
 			return fmt.Errorf("protobuf data entry missing type name")
 		}
+		if typeName == metadataTypeName {
+			return nil
+		}
 		if registry == nil {
 			return fmt.Errorf("protobuf type %q not registered", typeName)
 		}

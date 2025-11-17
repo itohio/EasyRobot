@@ -3,6 +3,7 @@ package graph
 import (
 	"fmt"
 
+	marshalpb "github.com/itohio/EasyRobot/types/marshaller"
 	"github.com/itohio/EasyRobot/x/math/graph"
 )
 
@@ -15,21 +16,22 @@ type StoredExpressionGraph struct {
 	nodeOps map[int64]expressionOpInfo
 }
 
-func newStoredExpressionGraph(base *StoredGraph, meta *graphMetadata, cfg config) (*StoredExpressionGraph, error) {
+func newStoredExpressionGraph(base *StoredGraph, meta *marshalpb.GraphMetadata, cfg config) (*StoredExpressionGraph, error) {
 	if meta == nil || meta.Expression == nil {
 		return nil, fmt.Errorf("expression metadata missing")
 	}
-	nodeOps := make(map[int64]expressionOpInfo, len(meta.Expression.NodeOps))
-	for id, name := range meta.Expression.NodeOps {
+	exprMeta := meta.Expression
+	nodeOps := make(map[int64]expressionOpInfo, len(exprMeta.GetNodeOps()))
+	for id, name := range exprMeta.GetNodeOps() {
 		info, ok := cfg.expressionOps[name]
 		if !ok {
 			return nil, fmt.Errorf("expression op %q not registered", name)
 		}
 		nodeOps[id] = info
 	}
-	rootID := meta.Expression.RootID
+	rootID := exprMeta.GetRootId()
 	if rootID == 0 {
-		rootID = meta.RootID
+		rootID = meta.GetRootId()
 	}
 	if rootID == 0 {
 		return nil, fmt.Errorf("expression root not specified")

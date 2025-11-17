@@ -86,8 +86,8 @@ func (u *GraphUnmarshaller) Unmarshal(r io.Reader, dst any, opts ...types.Option
 		closeStorages(storages)
 		return types.NewError("unmarshal", "graph", err.Error(), err)
 	}
-	if meta != nil && meta.Kind != "" {
-		graphKind = meta.Kind
+	if meta != nil {
+		graphKind = graphKindFromProtoKind(meta.GetKind())
 	}
 
 	if err := validateProtobufTypes(dataStorage, localCfg.registeredTypes); err != nil {

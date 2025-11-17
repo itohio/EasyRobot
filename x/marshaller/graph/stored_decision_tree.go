@@ -3,6 +3,7 @@ package graph
 import (
 	"fmt"
 
+	marshalpb "github.com/itohio/EasyRobot/types/marshaller"
 	"github.com/itohio/EasyRobot/x/math/graph"
 )
 
@@ -15,7 +16,7 @@ type StoredDecisionTree struct {
 	edgeOps map[string]decisionEdgeOpInfo
 }
 
-func newStoredDecisionTree(base *StoredGraph, meta *graphMetadata, cfg config) (*StoredDecisionTree, error) {
+func newStoredDecisionTree(base *StoredGraph, meta *marshalpb.GraphMetadata, cfg config) (*StoredDecisionTree, error) {
 	if meta == nil || meta.Decision == nil {
 		return nil, fmt.Errorf("decision tree metadata missing")
 	}
@@ -24,8 +25,9 @@ func newStoredDecisionTree(base *StoredGraph, meta *graphMetadata, cfg config) (
 		return nil, err
 	}
 
-	nodeOps := make(map[int64]decisionNodeOpInfo, len(meta.Decision.NodeOps))
-	for id, name := range meta.Decision.NodeOps {
+	decision := meta.Decision
+	nodeOps := make(map[int64]decisionNodeOpInfo, len(decision.GetNodeOps()))
+	for id, name := range decision.GetNodeOps() {
 		info, ok := cfg.decisionNodeOps[name]
 		if !ok {
 			return nil, fmt.Errorf("decision op %q not registered", name)
@@ -33,12 +35,13 @@ func newStoredDecisionTree(base *StoredGraph, meta *graphMetadata, cfg config) (
 		nodeOps[id] = info
 	}
 
-	edgeOps := make(map[string]decisionEdgeOpInfo, len(meta.Decision.EdgeOps))
-	for key, name := range meta.Decision.EdgeOps {
-		info, ok := cfg.decisionEdgeOps[name]
+	edgeOps := make(map[string]decisionEdgeOpInfo, len(decision.GetEdgeOps()))
+	for _, edge := range decision.GetEdgeOps() {
+		info, ok := cfg.decisionEdgeOps[edge.GetOpName()]
 		if !ok {
-			return nil, fmt.Errorf("decision edge op %q not registered", name)
+			return nil, fmt.Errorf("decision edge op %q not registered", edge.GetOpName())
 		}
+		key := edgeKey(edge.GetParentId(), edge.GetChildId())
 		edgeOps[key] = info
 	}
 

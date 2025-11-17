@@ -3,6 +3,7 @@ package graph
 import (
 	"fmt"
 
+	marshalpb "github.com/itohio/EasyRobot/types/marshaller"
 	"github.com/itohio/EasyRobot/x/math/graph"
 )
 
@@ -15,17 +16,17 @@ type StoredTree struct {
 	treeType string
 }
 
-func newStoredTree(base *StoredGraph, meta *graphMetadata) (*StoredTree, error) {
+func newStoredTree(base *StoredGraph, meta *marshalpb.GraphMetadata) (*StoredTree, error) {
 	if meta == nil {
 		return nil, fmt.Errorf("tree metadata missing")
 	}
-	if meta.RootID == 0 {
+	if meta.GetRootId() == 0 {
 		return nil, fmt.Errorf("tree root not specified")
 	}
 	return &StoredTree{
 		StoredGraph: base,
-		rootID:      meta.RootID,
-		treeType:    meta.TreeType,
+		rootID:      meta.GetRootId(),
+		treeType:    meta.GetTreeType(),
 	}, nil
 }
 
