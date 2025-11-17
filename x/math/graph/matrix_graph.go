@@ -72,7 +72,7 @@ func (n MatrixNode) Neighbors() iter.Seq[Node[MatrixNode, float32]] {
 		}
 		row := n.Graph.Matrix[n.Index]
 		for j, val := range row {
-			if j != n.Index && val > n.Graph.Obstacle {
+			if val > n.Graph.Obstacle {
 				neighbor := MatrixNode{Index: j, Graph: n.Graph}
 				if !yield(neighbor) {
 					return
@@ -90,7 +90,7 @@ func (n MatrixNode) Edges() iter.Seq[Edge[MatrixNode, float32]] {
 		}
 		row := n.Graph.Matrix[n.Index]
 		for j, val := range row {
-			if j != n.Index && val > n.Graph.Obstacle {
+			if val > n.Graph.Obstacle {
 				toNode := MatrixNode{Index: j, Graph: n.Graph}
 				edge := MatrixEdge{
 					from: n,
@@ -112,8 +112,8 @@ func (n MatrixNode) NumNeighbors() int {
 	}
 	count := 0
 	row := n.Graph.Matrix[n.Index]
-	for j, val := range row {
-		if j != n.Index && val > n.Graph.Obstacle {
+	for _, val := range row {
+		if val > n.Graph.Obstacle {
 			count++
 		}
 	}
@@ -191,7 +191,7 @@ func (g *MatrixGraph) Edges() iter.Seq[Edge[MatrixNode, float32]] {
 				continue
 			}
 			for j := 0; j < len(g.Matrix[i]); j++ {
-				if j != i && g.Matrix[i][j] > g.Obstacle {
+				if g.Matrix[i][j] > g.Obstacle {
 					toNode := MatrixNode{Index: j, Graph: g}
 					edge := MatrixEdge{
 						from: fromNode,
@@ -217,7 +217,7 @@ func (g *MatrixGraph) NumEdges() int {
 	count := 0
 	for i := 0; i < len(g.Matrix); i++ {
 		for j := 0; j < len(g.Matrix[i]); j++ {
-			if j != i && g.Matrix[i][j] > g.Obstacle {
+			if g.Matrix[i][j] > g.Obstacle {
 				count++
 			}
 		}

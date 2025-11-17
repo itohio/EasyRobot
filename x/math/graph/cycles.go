@@ -7,28 +7,34 @@ func LoopDetection[N any, E any](g Graph[N, E], start Node[N, E]) bool {
 		return false
 	}
 
-	visited := make(map[Node[N, E]]bool)
-	recStack := make(map[Node[N, E]]bool)
-
-	return loopDetectionDFS(g, start, visited, recStack)
+	state := make(map[int64]int) // 0 = unvisited, 1 = visiting, 2 = done
+	return loopDetectionDFS(g, start, -1, state)
 }
 
-func loopDetectionDFS[N any, E any](g Graph[N, E], node Node[N, E], visited, recStack map[Node[N, E]]bool) bool {
-	visited[node] = true
-	recStack[node] = true
+func loopDetectionDFS[N any, E any](g Graph[N, E], node Node[N, E], parentID int64, state map[int64]int) bool {
+	nodeID := node.ID()
+	if state[nodeID] == 1 {
+		return true
+	}
+	if state[nodeID] == 2 {
+		return false
+	}
 
+	state[nodeID] = 1
 	for neighbor := range node.Neighbors() {
-		if !visited[neighbor] {
-			if loopDetectionDFS(g, neighbor, visited, recStack) {
-				return true
-			}
-		} else if recStack[neighbor] {
-			// Found back edge - cycle detected
+		if neighbor == nil {
+			continue
+		}
+		neighborID := neighbor.ID()
+		if neighborID == parentID {
+			continue
+		}
+		if loopDetectionDFS(g, neighbor, nodeID, state) {
 			return true
 		}
 	}
 
-	recStack[node] = false // Remove from recursion stack
+	state[nodeID] = 2
 	return false
 }
 

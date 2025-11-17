@@ -34,27 +34,12 @@ type DecisionEdge[N any, E any, Input any] interface {
 	CriteriaFunction() func(Input) bool
 }
 
-// DecisionGraph extends Graph with decision computation capabilities.
-// Any graph implementing this interface can compute decisions.
-// Input: Type of input data for decision evaluation
-// Output: Type of output/outcome from decision
-type DecisionGraph[N any, E any, Input any, Output any] interface {
-	Graph[N, E]
-	// ComputeDecision evaluates a decision starting from the given node.
-	// Traverses the graph based on decision criteria and returns the outcome.
-	// Returns the output and true if computation succeeded, false otherwise.
-	ComputeDecision(start Node[N, E], input Input) (Output, bool)
-}
-
 // DecisionTree extends Tree with decision computation capabilities.
 // Trees are ideal for decision computation as they have a clear root and hierarchical structure.
 // Input: Type of input data for decision evaluation
 // Output: Type of output/outcome from decision
 type DecisionTree[N any, E any, Input any, Output any] interface {
 	Tree[N, E]
-	// ComputeDecision evaluates a decision starting from the root.
-	// Traverses the tree based on decision criteria and returns the outcome.
-	// Returns the output and true if computation succeeded, false otherwise.
-	ComputeDecision(input Input) (Output, bool)
+	// Decide evaluates a decision starting from the provided node (nil uses the root) for all inputs.
+	Decide(start Node[N, E], inputs ...Input) ([]Output, error)
 }
-

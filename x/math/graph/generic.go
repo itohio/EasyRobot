@@ -343,123 +343,129 @@ func (g *GenericGraph[N, E]) AddNode(node Node[N, E]) error {
 
 // AddEdge adds an edge to the graph
 func (g *GenericGraph[N, E]) AddEdge(edge Edge[N, E]) error {
-	ge, ok := edge.(*GenericEdge[N, E])
-	if !ok {
-		// Create a new GenericEdge from the provided edge
-		edgeID := edge.ID()
-		if edgeID == 0 {
-			edgeID = g.nextEdgeID
-			g.nextEdgeID++
-		}
-		if _, exists := g.edgeMap[edgeID]; exists {
-			return nil // Edge already exists
-		}
-
-		from := edge.From()
-		to := edge.To()
-		if from == nil || to == nil {
-			return nil
-		}
-
-		// Ensure nodes are in graph
-		g.AddNode(from)
-		g.AddNode(to)
-
-		// Find node indices
-		fromIdx := -1
-		toIdx := -1
-		if fromGN, ok := from.(*GenericNode[N, E]); ok {
-			fromIdx = fromGN.nodeIdx
-		} else {
-			// Find by ID
-			fromID := from.ID()
-			if idx, exists := g.nodeMap[fromID]; exists {
-				fromIdx = idx
-			}
-		}
-		if toGN, ok := to.(*GenericNode[N, E]); ok {
-			toIdx = toGN.nodeIdx
-		} else {
-			// Find by ID
-			toID := to.ID()
-			if idx, exists := g.nodeMap[toID]; exists {
-				toIdx = idx
-			}
-		}
-
-		if fromIdx < 0 || toIdx < 0 {
-			return nil // Nodes not in graph
-		}
-
-		idx := len(g.edges)
-		g.edges = append(g.edges, GenericEdge[N, E]{
-			id:      edgeID,
-			fromIdx: fromIdx,
-			toIdx:   toIdx,
-			data:    edge.Data(),
-			graph:   g,
-		})
-		g.edgeMap[edgeID] = idx
-
-		// Update node's edge and neighbor lists
-		g.nodes[fromIdx].edgeIdxs = append(g.nodes[fromIdx].edgeIdxs, idx)
-		g.nodes[fromIdx].AddNeighbor(&g.nodes[toIdx])
-
+	if edge == nil {
 		return nil
 	}
 
-	// If it's already a GenericEdge, check if it's in this graph
-	if ge.graph == g {
-		return nil // Already in graph
+	if ge, ok := edge.(*GenericEdge[N, E]); ok {
+		return g.addGenericEdge(ge)
 	}
 
-	// Add to graph
-	edgeID := ge.id
+	return g.addEdgeFromInterface(edge)
+}
+
+func (g *GenericGraph[N, E]) addEdgeFromInterface(edge Edge[N, E]) error {
+	edgeID := edge.ID()
 	if edgeID == 0 {
 		edgeID = g.nextEdgeID
 		g.nextEdgeID++
-		ge.id = edgeID
-	}
-	if _, exists := g.edgeMap[edgeID]; exists {
-		return nil // Edge already exists
+	} else if _, exists := g.edgeMap[edgeID]; exists {
+		return nil
 	}
 
-	from := ge.From()
-	to := ge.To()
+	from := edge.From()
+	to := edge.To()
 	if from == nil || to == nil {
 		return nil
 	}
 
-	// Ensure nodes are in graph
 	g.AddNode(from)
 	g.AddNode(to)
 
-	// Find node indices
-	fromIdx := -1
-	toIdx := -1
-	if fromGN, ok := from.(*GenericNode[N, E]); ok {
-		fromIdx = fromGN.nodeIdx
+	fromIdx, ok := g.nodeIndex(from)
+	if !ok {
+		return nil
 	}
-	if toGN, ok := to.(*GenericNode[N, E]); ok {
-		toIdx = toGN.nodeIdx
-	}
-
-	if fromIdx < 0 || toIdx < 0 {
-		return nil // Nodes not in graph
+	toIdx, ok := g.nodeIndex(to)
+	if !ok {
+		return nil
 	}
 
 	idx := len(g.edges)
-	ge.fromIdx = fromIdx
-	ge.toIdx = toIdx
-	ge.graph = g
-	g.edges = append(g.edges, *ge)
+	g.edges = append(g.edges, GenericEdge[N, E]{
+		id:      edgeID,
+		fromIdx: fromIdx,
+		toIdx:   toIdx,
+		data:    edge.Data(),
+		graph:   g,
+	})
 	g.edgeMap[edgeID] = idx
-
-	// Update node's edge and neighbor lists
 	g.nodes[fromIdx].edgeIdxs = append(g.nodes[fromIdx].edgeIdxs, idx)
 	g.nodes[fromIdx].AddNeighbor(&g.nodes[toIdx])
-
 	return nil
+}
+
+func (g *GenericGraph[N, E]) addGenericEdge(edge *GenericEdge[N, E]) error {
+	edgeID := edge.id
+	if edgeID == 0 {
+		edgeID = g.nextEdgeID
+		g.nextEdgeID++
+	} else if _, exists := g.edgeMap[edgeID]; exists {
+		return nil
+	}
+
+	fromIdx := edge.fromIdx
+	toIdx := edge.toIdx
+
+	if edge.graph != nil && edge.graph != g {
+		if from := edge.From(); from != nil {
+			g.AddNode(from)
+			if idx, ok := g.nodeIndex(from); ok {
+				fromIdx = idx
+			}
+		}
+		if to := edge.To(); to != nil {
+			g.AddNode(to)
+			if idx, ok := g.nodeIndex(to); ok {
+				toIdx = idx
+			}
+		}
+	} else {
+		if from := edge.From(); from != nil {
+			g.AddNode(from)
+			if idx, ok := g.nodeIndex(from); ok {
+				fromIdx = idx
+			}
+		}
+		if to := edge.To(); to != nil {
+			g.AddNode(to)
+			if idx, ok := g.nodeIndex(to); ok {
+				toIdx = idx
+			}
+		}
+	}
+
+	if fromIdx < 0 || fromIdx >= len(g.nodes) || toIdx < 0 || toIdx >= len(g.nodes) {
+		return nil
+	}
+
+	idx := len(g.edges)
+	g.edges = append(g.edges, GenericEdge[N, E]{
+		id:      edgeID,
+		fromIdx: fromIdx,
+		toIdx:   toIdx,
+		data:    edge.data,
+		graph:   g,
+	})
+	g.edgeMap[edgeID] = idx
+	g.nodes[fromIdx].edgeIdxs = append(g.nodes[fromIdx].edgeIdxs, idx)
+	g.nodes[fromIdx].AddNeighbor(&g.nodes[toIdx])
+	return nil
+}
+
+func (g *GenericGraph[N, E]) nodeIndex(node Node[N, E]) (int, bool) {
+	if node == nil {
+		return -1, false
+	}
+	if gn, ok := node.(*GenericNode[N, E]); ok && gn.graph == g {
+		if gn.nodeIdx >= 0 && gn.nodeIdx < len(g.nodes) {
+			return gn.nodeIdx, true
+		}
+	}
+	if idx, ok := g.nodeMap[node.ID()]; ok {
+		return idx, true
+	}
+	return -1, false
 }
 
 // DeleteNode removes a node from the graph

@@ -77,6 +77,19 @@ func TestAStar_ReuseInstance(t *testing.T) {
 	g.AddNode(&GenericNode[GridNode, float32]{data: nodeB, id: 2})
 	g.AddNode(&GenericNode[GridNode, float32]{data: nodeC, id: 3})
 
+	edgeAB := &GenericEdge[GridNode, float32]{
+		fromIdx: 0,
+		toIdx:   1,
+		data:    1.0,
+	}
+	edgeBC := &GenericEdge[GridNode, float32]{
+		fromIdx: 1,
+		toIdx:   2,
+		data:    1.0,
+	}
+	g.AddEdge(edgeAB)
+	g.AddEdge(edgeBC)
+
 	heuristic := func(from, to Node[GridNode, float32]) float32 { return 0 }
 	astar := NewAStar(g, heuristic)
 

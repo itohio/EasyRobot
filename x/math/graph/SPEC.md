@@ -28,7 +28,7 @@ This package provides:
 
 ### Node[N, E]
 
-Represents a node in a graph. All nodes must implement `Comparable[N, E]`.
+Represents a node in a graph. Node implementations MAY implement `Comparable[N, E]` when ordering is required (trees, KD-trees, etc.).
 
 ```go
 type Node[N any, E any] interface {
@@ -37,6 +37,7 @@ type Node[N any, E any] interface {
     Data() N
     Neighbors() iter.Seq[Node[N, E]]
     Edges() iter.Seq[Edge[N, E]]
+    NumNeighbors() int
     Cost(toOther Node[N, E]) float32
 }
 ```
@@ -44,8 +45,9 @@ type Node[N any, E any] interface {
 **Key Methods:**
 - `ID()`: Unique identifier for the node
 - `Data()`: Returns the node's data (type `N`)
-- `Neighbors()`: Iterator over neighboring nodes
+- `Neighbors()`: Iterator over neighboring nodes (call directly on the node)
 - `Edges()`: Iterator over edges from this node
+- `NumNeighbors()`: Quick access to neighbor count
 - `Cost(toOther)`: Calculates cost to another node (algorithm-dependent)
 
 ### Edge[N, E]
@@ -67,13 +69,14 @@ type Edge[N any, E any] interface {
 
 ### Graph[N, E]
 
-Core graph interface providing traversal operations.
+Core graph interface providing traversal and metadata.
 
 ```go
 type Graph[N any, E any] interface {
     Nodes() iter.Seq[Node[N, E]]
     Edges() iter.Seq[Edge[N, E]]
-    Neighbors(n Node[N, E]) iter.Seq[Node[N, E]]
+    NumNodes() int
+    NumEdges() int
 }
 ```
 
@@ -85,7 +88,7 @@ for node := range graph.Nodes() {
 for edge := range graph.Edges() {
     // Process edge
 }
-for neighbor := range graph.Neighbors(node) {
+for neighbor := range node.Neighbors() {
     // Process neighbor
 }
 ```
@@ -114,7 +117,7 @@ type Comparable[N any, E any] interface {
 }
 ```
 
-**Note**: Node implementations MAY implement this interface if they want to be used in searches and trees.
+**Note**: Node implementations MAY implement this interface if they want to be used in searches and trees. Generic graph implementations accept non-comparable nodes, but tree structures and insertion strategies rely on these methods when present.
 
 ### Accessor[N, E]
 
@@ -188,6 +191,7 @@ Adapter that treats a matrix as an adjacency matrix.
 - Each column is a node
 - `matrix[i][j]` = weight from node i to node j
 - Values <= Obstacle are considered non-existent edges
+- `ToMatrix` helper converts any `Graph[N, E]` into the provided matrix (zeros it first, maps arbitrary node IDs to indices)
 
 ### GenericTree[N, E]
 
@@ -197,12 +201,15 @@ Hierarchical tree structure with arbitrary branching.
 - Value-based storage (arrays, not pointers)
 - Supports multiple children per node
 - Implements `Tree[N, E]` interface
+- Provides ordered insertion (`AddChildAtPosition`, `ReorderChildren`, `SwapChildren`)
+- Balancing helpers (`Balance`, `BalancedInsertionStrategy`)
 
 **Usage:**
 ```go
 tree := NewGenericTree[int, float32](1)  // Root with data 1
 rootIdx := tree.RootIdx()
 childIdx := tree.AddChild(rootIdx, 2)
+tree.Balance()
 ```
 
 ### GenericBinaryTree[N, E]
@@ -213,6 +220,7 @@ Binary tree with left/right children.
 - Value-based storage
 - Supports left/right child operations
 - Implements `Tree[N, E]` interface
+- Accepts insertion/comparison strategies (e.g. `BinarySearchTreeStrategy`, `IntComparison`)
 
 **Usage:**
 ```go
@@ -220,6 +228,7 @@ tree := NewGenericBinaryTree[int, float32](1)
 rootIdx := tree.RootIdx()
 leftIdx := tree.SetLeft(rootIdx, 2)
 rightIdx := tree.SetRight(rootIdx, 3)
+tree.ApplyInsertionStrategy(BinarySearchTreeStrategy[int, float32](IntComparison()), 5)
 ```
 
 ### GenericKDTree[V, E]
@@ -259,6 +268,59 @@ tree2 := NewGenericBinaryTree[int, float32](10)
 treeIdx1 := forest.AddTree(tree1)
 treeIdx2 := forest.AddTree(tree2)
 ```
+
+### Decision & Expression Stack
+
+Decision/Expression helpers layer behaviour on top of core graph/tree storage so
+layout stays serializable while operations remain in user code.
+
+#### Decision Interfaces & Operations
+
+- `DecisionNode`, `DecisionEdge`, and `DecisionTree` extend the base contracts.
+- `DecisionOp[Input, Output]` (`func(Input) (Output, bool)`) register per-node,
+  while `DecisionEdgeOp[Input]` gate traversal (`func(Input) bool`).
+- `GenericDecisionTree` embeds a `*GenericTree` and wraps `TreeGraphNode/Edge`
+  so traversals yield decision-aware implementations without copying storage.
+- Node/edge operations live in `map[int64]DecisionOp` and
+  `map[parentID,childID]DecisionEdgeOp`; helpers bind ops by index or ID
+  (`SetNodeOpByIndex`, `SetNodeOpByID`, `SetEdgeOpByID`, etc.).
+- `Decide(start, inputs...)` walks the tree recursively per input, honoring edge
+  criteria, and stops at the first successful path (errors bubble for nil roots,
+  missing ops, or blocked paths).
+- `decisionTreeNode` / `decisionTreeEdge` wrappers delegate traversal to the
+  underlying tree, keeping iterators allocation-free.
+
+#### VectorDecisionTree
+
+`vector_decision_tree.go` is a specialized decision tree for `vec/types.Vector`
+inputs:
+
+- Stores `VectorDecisionNodeData` inside `GenericTree`, pairing optional
+  `DecisionCriteria` predicates with `DecisionOutcome` leaf metadata.
+- Provides `AddDecisionChild`, `AddLeafChild`, `ReorderChildren`,
+  `SwapChildren`, and `Balance`, mirroring `GenericTree` ergonomics.
+- `ComputeDecision(vec)` evaluates criteria (commonly binary true/false
+  branches) until reaching a leaf outcome.
+- Helper builders (`VectorDimensionThreshold`, `VectorNormThreshold`,
+  `VectorDotProductThreshold`) cover typical robotics predicates such as
+  dimensional slices, magnitude limits, or dot-product comparisons.
+
+#### Expression Graph
+
+- `ExpressionNode` adds `EvaluateExpression`/`ExpressionFunction`, consuming
+  child outputs.
+- `ExpressionOp[Input, Output]` functions bind via `SetNodeOpByID`.
+- `GenericExpressionGraph` wraps a `*GenericGraph`, tracks a default root ID,
+  and surfaces iterators that yield expression-aware wrappers while delegating
+  storage to the base graph.
+- `Compute(start, inputs...)` builds a reverse topological order of all nodes
+  reachable from `start`, then for each input:
+  1. Evaluates nodes bottom-up, caching results by node ID.
+  2. Invokes the registered `ExpressionOp` with the current input plus child
+     outputs.
+  3. Returns the cached value for the requested start ID.
+- Explicit errors cover missing inputs, absent start nodes, or nodes without an
+  attached operation, keeping failure modes predictable.
 
 ## Algorithms
 
@@ -395,11 +457,11 @@ tree := NewGenericTree[int, float32](42)
 - Edges: constraints/measurements
 - Update graph dynamically as robot moves
 
-### Decision Trees
-- Use `GenericTree` or `GenericBinaryTree` for decision trees
-- Nodes: decision criteria
-- Edges: outcomes
-- Store in flash using graph marshaller
+### Decision / Expression Logic
+- Use `GenericTree` or `GenericBinaryTree` plus `DecisionNode`/`DecisionEdge` interfaces for decision trees
+- Evaluate logic via `DecisionTree.Decide`
+- Use `ExpressionGraph` to evaluate expression DAGs such as `(x + 2) * 3`
+- Store compiled decision/expr graphs in flash via the marshaller for deterministic behavior
 
 ### Visual Odometry
 - Use `GenericGraph` for scene graph
@@ -443,13 +505,18 @@ tree := NewGenericTree[int, float32](42)
 - `matrix_graph.go`: MatrixGraph adapter
 - `tree.go`: GenericTree implementation
 - `binary_tree.go`: GenericBinaryTree implementation
+- `tree_strategies.go`: Insertion/balancing strategies for trees
 - `kd_tree.go`: GenericKDTree implementation
 - `forest.go`: GenericForest implementation
+- `decision_interfaces.go`, `decision_tree.go`: Decision abstractions and runtime wrappers
+- `vector_decision_tree.go`: Vector-specialized decision tree helpers
+- `expression_interfaces.go`, `expression_graph.go`: Expression graph support
 - `astar.go`: A* algorithm
 - `dijkstra.go`: Dijkstra algorithm
 - `bfs.go`, `dfs.go`: Traversal algorithms
 - `cycles.go`: Cycle detection
 - `path.go`: Path utilities
+- `DECISION_EXPRESSION_TREE_PLAN.md`: Design plan for decision/expression stack
 
 ## Testing
 

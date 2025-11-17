@@ -1,122 +1,144 @@
 package graph
 
-// ExpressionNode extends Node with expression evaluation capabilities.
-// Expression nodes compute values from their children (bottom-up evaluation).
-// This is used for computation graphs, neural networks, and data flow graphs.
-// Input: Type of input data for expression evaluation
-// Output: Type of output from expression computation
-type ExpressionNode[N any, E any, Input any, Output any] interface {
-	Node[N, E]
-	// EvaluateExpression computes the expression value from child node outputs.
-	// This is called during bottom-up evaluation after all children have been evaluated.
-	// input: Input data for the expression
-	// childOutputs: Map of child node ID to their computed output values
-	// Returns the computed output and true if evaluation succeeded, false otherwise.
-	EvaluateExpression(input Input, childOutputs map[int64]Output) (Output, bool)
-	// ExpressionFunction returns the expression function for this node, if available.
-	// The function receives input and child outputs, returns computed output.
-	// Returns nil if the node doesn't have an explicit expression function.
-	ExpressionFunction() func(Input, map[int64]Output) (Output, bool)
-	// IsLeaf returns true if this is a leaf node (has no children or is an input node).
-	// Leaf nodes typically return their own value without depending on children.
-	IsLeaf() bool
+import (
+	"fmt"
+	"iter"
+)
+
+// GenericExpressionGraph is a concrete implementation of ExpressionGraph.
+// It stores nodes and edges using GenericGraph for cache-friendly storage
+// and augments each node with an ExpressionOp for evaluation.
+type GenericExpressionGraph[N any, E any, Input any, Output any] struct {
+	base    *GenericGraph[N, E]
+	nodeOps map[int64]ExpressionOp[Input, Output]
+	rootID  int64
 }
 
-// ExpressionGraph manages expression evaluation on a graph.
-// Expressions are evaluated bottom-up: leaf nodes compute first, then their parents,
-// continuing until the root is reached.
-//
-// This is useful for:
-// - Neural network computation graphs
-// - Mathematical expression trees
-// - Data flow graphs
-// - Pipeline processing
-type ExpressionGraph[N any, E any, Input any, Output any] struct {
-	graph Graph[N, E]
-	// Cache for computed node outputs (node ID -> output value)
-	computed map[int64]Output
-	// Track evaluation order (for debugging)
-	evaluationOrder []Node[N, E]
-}
-
-// NewExpressionGraph creates a new expression graph evaluator.
-func NewExpressionGraph[N any, E any, Input any, Output any](
-	g Graph[N, E],
-) *ExpressionGraph[N, E, Input, Output] {
-	return &ExpressionGraph[N, E, Input, Output]{
-		graph:           g,
-		computed:        make(map[int64]Output),
-		evaluationOrder: make([]Node[N, E], 0),
+// NewGenericExpressionGraph creates an empty expression graph.
+func NewGenericExpressionGraph[N any, E any, Input any, Output any]() *GenericExpressionGraph[N, E, Input, Output] {
+	return &GenericExpressionGraph[N, E, Input, Output]{
+		base:    NewGenericGraph[N, E](),
+		nodeOps: make(map[int64]ExpressionOp[Input, Output]),
 	}
 }
 
-// Compute evaluates the expression graph bottom-up from leaves to root.
-// The algorithm:
-// 1. Identify leaf nodes (nodes with no outgoing edges or marked as leaves)
-// 2. Evaluate leaf nodes first (they have no dependencies)
-// 3. Evaluate parent nodes after all their children are evaluated
-// 4. Continue until all nodes are evaluated
-// 5. Return the output from the root node (or specified start node)
-//
-// Returns the computed output and true if evaluation succeeded, false otherwise.
-func (eg *ExpressionGraph[N, E, Input, Output]) Compute(
-	input Input,
-	start Node[N, E],
-) (Output, bool) {
-	if eg.graph == nil {
-		var zero Output
-		return zero, false
+// AddNode creates a new node with the provided data and optional operation.
+func (g *GenericExpressionGraph[N, E, Input, Output]) AddNode(data N, op ExpressionOp[Input, Output]) (Node[N, E], error) {
+	node := &GenericNode[N, E]{data: data}
+	if err := g.base.AddNode(node); err != nil {
+		return nil, err
 	}
-
-	// Reset state
-	eg.computed = make(map[int64]Output)
-	eg.evaluationOrder = make([]Node[N, E], 0)
-
-	// Build dependency graph and identify evaluation order
-	evalOrder, err := eg.buildEvaluationOrder(start)
-	if err != nil {
-		var zero Output
-		return zero, false
+	if op != nil {
+		g.nodeOps[node.ID()] = op
 	}
+	if g.rootID == 0 {
+		g.rootID = node.ID()
+	}
+	return g.wrapNode(node), nil
+}
 
-	// Evaluate nodes in order (bottom-up)
-	for _, node := range evalOrder {
-		output, ok := eg.evaluateNode(node, input)
-		if !ok {
-			var zero Output
-			return zero, false
+// SetRoot updates the default root node used when Compute is called with a nil start.
+func (g *GenericExpressionGraph[N, E, Input, Output]) SetRoot(node Node[N, E]) bool {
+	baseNode := g.baseNode(node)
+	if baseNode == nil {
+		return false
+	}
+	g.rootID = baseNode.ID()
+	return true
+}
+
+// AddEdge creates a directed edge from -> to with the given data.
+func (g *GenericExpressionGraph[N, E, Input, Output]) AddEdge(from, to Node[N, E], data E) error {
+	baseFrom := g.baseNode(from)
+	baseTo := g.baseNode(to)
+	if baseFrom == nil || baseTo == nil {
+		return nil
+	}
+	return g.base.AddEdge(&expressionGraphInputEdge[N, E]{from: baseFrom, to: baseTo, data: data})
+}
+
+// SetNodeOpByID assigns or removes an ExpressionOp for the provided node ID.
+func (g *GenericExpressionGraph[N, E, Input, Output]) SetNodeOpByID(nodeID int64, op ExpressionOp[Input, Output]) {
+	if op == nil {
+		delete(g.nodeOps, nodeID)
+		return
+	}
+	g.nodeOps[nodeID] = op
+}
+
+// Nodes implements Graph.
+func (g *GenericExpressionGraph[N, E, Input, Output]) Nodes() iter.Seq[Node[N, E]] {
+	return func(yield func(Node[N, E]) bool) {
+		for node := range g.base.Nodes() {
+			if !yield(g.wrapNode(node)) {
+				return
+			}
 		}
-		eg.computed[node.ID()] = output
-		eg.evaluationOrder = append(eg.evaluationOrder, node)
 	}
-
-	// Return output from start node
-	if output, ok := eg.computed[start.ID()]; ok {
-		return output, true
-	}
-
-	var zero Output
-	return zero, false
 }
 
-// buildEvaluationOrder determines the order in which nodes should be evaluated.
-// Uses topological sort to ensure children are evaluated before parents.
-// In a tree/graph, edges go from parent to child, so we need to:
-// 1. Find nodes with no outgoing edges (leaves) - these are evaluated first
-// 2. Then evaluate their parents, and so on
-func (eg *ExpressionGraph[N, E, Input, Output]) buildEvaluationOrder(
+// Edges implements Graph.
+func (g *GenericExpressionGraph[N, E, Input, Output]) Edges() iter.Seq[Edge[N, E]] {
+	return func(yield func(Edge[N, E]) bool) {
+		for edge := range g.base.Edges() {
+			if !yield(g.wrapEdge(edge)) {
+				return
+			}
+		}
+	}
+}
+
+// NumNodes implements Graph.
+func (g *GenericExpressionGraph[N, E, Input, Output]) NumNodes() int {
+	return g.base.NumNodes()
+}
+
+// NumEdges implements Graph.
+func (g *GenericExpressionGraph[N, E, Input, Output]) NumEdges() int {
+	return g.base.NumEdges()
+}
+
+// Compute evaluates the graph starting from the provided node for each input.
+func (g *GenericExpressionGraph[N, E, Input, Output]) Compute(
+	start Node[N, E],
+	inputs ...Input,
+) ([]Output, error) {
+	if len(inputs) == 0 {
+		return nil, fmt.Errorf("no inputs provided")
+	}
+	if start == nil {
+		start = g.nodeByID(g.rootID)
+	}
+	if start == nil {
+		return nil, fmt.Errorf("no start node available")
+	}
+
+	evalOrder, err := g.buildEvaluationOrder(start)
+	if err != nil {
+		return nil, err
+	}
+
+	startID := start.ID()
+	results := make([]Output, 0, len(inputs))
+	for _, input := range inputs {
+		output, err := g.computeOnce(evalOrder, startID, input)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, output)
+	}
+	return results, nil
+}
+
+// Evaluation helpers ---------------------------------------------------------
+
+func (g *GenericExpressionGraph[N, E, Input, Output]) buildEvaluationOrder(
 	start Node[N, E],
 ) ([]Node[N, E], error) {
-	// Collect all nodes reachable from start
 	nodeSet := make(map[int64]Node[N, E])
-	eg.collectReachableNodes(start, nodeSet)
+	g.collectReachableNodes(start, nodeSet)
 
-	// Build reverse dependency map: for each node, track its parents
-	// In a tree, edges go from parent to child, so we need to find which nodes are parents
 	parents := make(map[int64][]Node[N, E])
-
-	// Count outgoing edges for each node (how many children it has)
-	// Nodes with 0 outgoing edges are leaves and should be evaluated first
 	outDegree := make(map[int64]int)
 	for _, node := range nodeSet {
 		count := 0
@@ -124,15 +146,12 @@ func (eg *ExpressionGraph[N, E, Input, Output]) buildEvaluationOrder(
 			to := edge.To()
 			if to != nil {
 				count++
-				toID := to.ID()
-				// Build reverse map: to is a child of node, so node is a parent of to
-				parents[toID] = append(parents[toID], node)
+				parents[to.ID()] = append(parents[to.ID()], node)
 			}
 		}
 		outDegree[node.ID()] = count
 	}
 
-	// Topological sort: start with nodes that have no outgoing edges (leaves)
 	queue := make([]Node[N, E], 0)
 	for _, node := range nodeSet {
 		if outDegree[node.ID()] == 0 {
@@ -146,13 +165,10 @@ func (eg *ExpressionGraph[N, E, Input, Output]) buildEvaluationOrder(
 		queue = queue[1:]
 		result = append(result, node)
 
-		// Find all parents of this node and decrease their out-degree
-		nodeID := node.ID()
-		for _, parent := range parents[nodeID] {
+		for _, parent := range parents[node.ID()] {
 			parentID := parent.ID()
 			outDegree[parentID]--
 			if outDegree[parentID] == 0 {
-				// All children of parent have been evaluated
 				queue = append(queue, parent)
 			}
 		}
@@ -161,84 +177,220 @@ func (eg *ExpressionGraph[N, E, Input, Output]) buildEvaluationOrder(
 	return result, nil
 }
 
-// collectReachableNodes collects all nodes reachable from the start node.
-func (eg *ExpressionGraph[N, E, Input, Output]) collectReachableNodes(
+func (g *GenericExpressionGraph[N, E, Input, Output]) collectReachableNodes(
 	start Node[N, E],
 	nodeSet map[int64]Node[N, E],
 ) {
 	if start == nil {
 		return
 	}
-
-	startID := start.ID()
-	if _, visited := nodeSet[startID]; visited {
+	if _, visited := nodeSet[start.ID()]; visited {
 		return
 	}
 
-	nodeSet[startID] = start
-
+	nodeSet[start.ID()] = start
 	for edge := range start.Edges() {
-		to := edge.To()
-		if to != nil {
-			eg.collectReachableNodes(to, nodeSet)
+		if to := edge.To(); to != nil {
+			g.collectReachableNodes(to, nodeSet)
 		}
 	}
 }
 
-// evaluateNode evaluates a single node in the expression graph.
-func (eg *ExpressionGraph[N, E, Input, Output]) evaluateNode(
+func (g *GenericExpressionGraph[N, E, Input, Output]) evaluateNode(
 	node Node[N, E],
 	input Input,
-) (Output, bool) {
-	// Check if node implements ExpressionNode
+	outputs map[int64]Output,
+) (Output, error) {
+	var zero Output
 	if en, ok := node.(ExpressionNode[N, E, Input, Output]); ok {
-		// If it's a leaf, it should compute its own value
-		if en.IsLeaf() {
-			// For leaf nodes, childOutputs will be empty
-			childOutputs := make(map[int64]Output)
-			return en.EvaluateExpression(input, childOutputs)
-		}
-
-		// Collect outputs from child nodes
 		childOutputs := make(map[int64]Output)
 		for edge := range node.Edges() {
 			to := edge.To()
-			if to != nil {
-				if output, computed := eg.computed[to.ID()]; computed {
-					childOutputs[to.ID()] = output
-				}
+			if to == nil {
+				continue
+			}
+			val, ok := outputs[to.ID()]
+			if !ok {
+				return zero, fmt.Errorf("missing value for node %d", to.ID())
+			}
+			childOutputs[to.ID()] = val
+		}
+
+		if fn := en.ExpressionFunction(); fn != nil {
+			if out, ok := fn(input, childOutputs); ok {
+				return out, nil
+			}
+			return zero, fmt.Errorf("expression function failed")
+		}
+		if out, ok := en.EvaluateExpression(input, childOutputs); ok {
+			return out, nil
+		}
+		return zero, fmt.Errorf("expression evaluation failed")
+	}
+	return zero, fmt.Errorf("node does not implement ExpressionNode")
+}
+
+func (g *GenericExpressionGraph[N, E, Input, Output]) nodeByID(id int64) Node[N, E] {
+	if id == 0 {
+		return nil
+	}
+	if idx, ok := g.base.nodeMap[id]; ok && idx >= 0 && idx < len(g.base.nodes) {
+		return g.wrapNode(&g.base.nodes[idx])
+	}
+	return nil
+}
+
+// Wrapping helpers ----------------------------------------------------------
+
+func (g *GenericExpressionGraph[N, E, Input, Output]) computeOnce(
+	order []Node[N, E],
+	startID int64,
+	input Input,
+) (Output, error) {
+	values := make(map[int64]Output, len(order))
+	var zero Output
+	for _, node := range order {
+		output, err := g.evaluateNode(node, input, values)
+		if err != nil {
+			return zero, err
+		}
+		values[node.ID()] = output
+	}
+	if output, ok := values[startID]; ok {
+		return output, nil
+	}
+	return zero, fmt.Errorf("start node %d not evaluated", startID)
+}
+func (g *GenericExpressionGraph[N, E, Input, Output]) wrapNode(node Node[N, E]) Node[N, E] {
+	if node == nil {
+		return nil
+	}
+	if en, ok := node.(*expressionGraphNode[N, E, Input, Output]); ok && en.graph == g {
+		return en
+	}
+	return &expressionGraphNode[N, E, Input, Output]{
+		inner: g.baseNode(node),
+		graph: g,
+	}
+}
+
+func (g *GenericExpressionGraph[N, E, Input, Output]) wrapEdge(edge Edge[N, E]) Edge[N, E] {
+	if edge == nil {
+		return nil
+	}
+	if ee, ok := edge.(*expressionGraphEdge[N, E, Input, Output]); ok && ee.graph == g {
+		return ee
+	}
+	return &expressionGraphEdge[N, E, Input, Output]{
+		inner: g.baseEdge(edge),
+		graph: g,
+	}
+}
+
+func (g *GenericExpressionGraph[N, E, Input, Output]) baseNode(node Node[N, E]) Node[N, E] {
+	switch n := node.(type) {
+	case *expressionGraphNode[N, E, Input, Output]:
+		return n.inner
+	default:
+		return node
+	}
+}
+
+func (g *GenericExpressionGraph[N, E, Input, Output]) baseEdge(edge Edge[N, E]) Edge[N, E] {
+	switch e := edge.(type) {
+	case *expressionGraphEdge[N, E, Input, Output]:
+		return e.inner
+	default:
+		return edge
+	}
+}
+
+// expressionGraphNode implements ExpressionNode by delegating to the underlying
+// graph node and the operation registered in GenericExpressionGraph.
+type expressionGraphNode[N any, E any, Input any, Output any] struct {
+	inner Node[N, E]
+	graph *GenericExpressionGraph[N, E, Input, Output]
+}
+
+func (n *expressionGraphNode[N, E, Input, Output]) ID() int64         { return n.inner.ID() }
+func (n *expressionGraphNode[N, E, Input, Output]) Data() N           { return n.inner.Data() }
+func (n *expressionGraphNode[N, E, Input, Output]) NumNeighbors() int { return n.inner.NumNeighbors() }
+func (n *expressionGraphNode[N, E, Input, Output]) Cost(to Node[N, E]) float32 {
+	return n.inner.Cost(to)
+}
+func (n *expressionGraphNode[N, E, Input, Output]) Equal(o Node[N, E]) bool { return n.inner.Equal(o) }
+func (n *expressionGraphNode[N, E, Input, Output]) Compare(o Node[N, E]) int {
+	return n.inner.Compare(o)
+}
+
+func (n *expressionGraphNode[N, E, Input, Output]) Neighbors() iter.Seq[Node[N, E]] {
+	base := n.inner.Neighbors()
+	return func(yield func(Node[N, E]) bool) {
+		for neighbor := range base {
+			if !yield(n.graph.wrapNode(neighbor)) {
+				return
 			}
 		}
-
-		// Use expression function if available
-		if fn := en.ExpressionFunction(); fn != nil {
-			return fn(input, childOutputs)
-		}
-
-		// Otherwise use EvaluateExpression
-		return en.EvaluateExpression(input, childOutputs)
 	}
+}
 
-	// No expression capability
+func (n *expressionGraphNode[N, E, Input, Output]) Edges() iter.Seq[Edge[N, E]] {
+	base := n.inner.Edges()
+	return func(yield func(Edge[N, E]) bool) {
+		for edge := range base {
+			if !yield(n.graph.wrapEdge(edge)) {
+				return
+			}
+		}
+	}
+}
+
+func (n *expressionGraphNode[N, E, Input, Output]) EvaluateExpression(input Input, childOutputs map[int64]Output) (Output, bool) {
+	if op, ok := n.graph.nodeOps[n.ID()]; ok && op != nil {
+		return op(input, childOutputs)
+	}
 	var zero Output
 	return zero, false
 }
 
-// GetComputedOutput returns the computed output for a node, if available.
-func (eg *ExpressionGraph[N, E, Input, Output]) GetComputedOutput(
-	nodeID int64,
-) (Output, bool) {
-	output, ok := eg.computed[nodeID]
-	return output, ok
+func (n *expressionGraphNode[N, E, Input, Output]) ExpressionFunction() func(Input, map[int64]Output) (Output, bool) {
+	if op, ok := n.graph.nodeOps[n.ID()]; ok {
+		return op
+	}
+	return nil
 }
 
-// GetEvaluationOrder returns the order in which nodes were evaluated.
-func (eg *ExpressionGraph[N, E, Input, Output]) GetEvaluationOrder() []Node[N, E] {
-	return eg.evaluationOrder
+func (n *expressionGraphNode[N, E, Input, Output]) IsLeaf() bool {
+	return n.NumNeighbors() == 0
 }
 
-// ClearCache clears the computed outputs cache.
-func (eg *ExpressionGraph[N, E, Input, Output]) ClearCache() {
-	eg.computed = make(map[int64]Output)
-	eg.evaluationOrder = make([]Node[N, E], 0)
+// expressionGraphEdge wraps GenericEdge so From/To return expression-aware nodes.
+type expressionGraphEdge[N any, E any, Input any, Output any] struct {
+	inner Edge[N, E]
+	graph *GenericExpressionGraph[N, E, Input, Output]
 }
+
+func (e *expressionGraphEdge[N, E, Input, Output]) ID() int64     { return e.inner.ID() }
+func (e *expressionGraphEdge[N, E, Input, Output]) Data() E       { return e.inner.Data() }
+func (e *expressionGraphEdge[N, E, Input, Output]) Cost() float32 { return e.inner.Cost() }
+
+func (e *expressionGraphEdge[N, E, Input, Output]) From() Node[N, E] {
+	return e.graph.wrapNode(e.inner.From())
+}
+
+func (e *expressionGraphEdge[N, E, Input, Output]) To() Node[N, E] {
+	return e.graph.wrapNode(e.inner.To())
+}
+
+// expressionGraphInputEdge is a lightweight Edge used when inserting edges.
+type expressionGraphInputEdge[N any, E any] struct {
+	from, to Node[N, E]
+	data     E
+	id       int64
+}
+
+func (e *expressionGraphInputEdge[N, E]) ID() int64        { return e.id }
+func (e *expressionGraphInputEdge[N, E]) Data() E          { return e.data }
+func (e *expressionGraphInputEdge[N, E]) Cost() float32    { return 0 }
+func (e *expressionGraphInputEdge[N, E]) From() Node[N, E] { return e.from }
+func (e *expressionGraphInputEdge[N, E]) To() Node[N, E]   { return e.to }
