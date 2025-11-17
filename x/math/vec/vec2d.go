@@ -10,6 +10,10 @@ var _ vecTypes.Vector = Vector2D{}
 
 type Vector2D [2]float32
 
+func (v Vector2D) Len() int {
+	return 2
+}
+
 func (v Vector2D) Sum() float32 {
 	return v[0] + v[1]
 }

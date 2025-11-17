@@ -10,6 +10,10 @@ var _ vecTypes.Vector = Vector3D{}
 
 type Vector3D [3]float32
 
+func (v Vector3D) Len() int {
+	return 3
+}
+
 func (v Vector3D) Sum() float32 {
 	return v[0] + v[1] + v[2]
 }

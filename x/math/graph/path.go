@@ -4,18 +4,18 @@ import (
 	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
+// Path represents a path through the graph
+type Path[N any, E any] []Node[N, E]
+
 // GridPathToVector2D converts a Path containing GridNode to []vec.Vector2D
-func GridPathToVector2D(path Path) []vec.Vector2D {
+func GridPathToVector2D[E any](path Path[GridNode, E]) []vec.Vector2D {
 	if path == nil {
 		return nil
 	}
 
 	result := make([]vec.Vector2D, len(path))
 	for i, n := range path {
-		gn, ok := n.(GridNode)
-		if !ok {
-			return nil
-		}
+		gn := n.Data()
 		result[i] = vec.Vector2D{float32(gn.Col), float32(gn.Row)}
 	}
 
@@ -23,25 +23,21 @@ func GridPathToVector2D(path Path) []vec.Vector2D {
 }
 
 // MatrixPathToVector converts a Path containing MatrixNode to []vec.Vector (indices)
-func MatrixPathToVector(path Path) []vec.Vector {
+func MatrixPathToVector[E any](path Path[MatrixNode, E]) []vec.Vector {
 	if path == nil {
 		return nil
 	}
 
 	result := make([]vec.Vector, len(path))
 	for i, n := range path {
-		mn, ok := n.(MatrixNode)
-		if !ok {
-			return nil
-		}
-		// Convert MatrixNode (int) to Vector ([]float32)
-		result[i] = vec.Vector{float32(mn)}
+		mn := n.Data()
+		result[i] = vec.Vector{float32(mn.Index)}
 	}
 
 	return result
 }
 
 // TreePathToNodes returns Path as []Node (already is)
-func TreePathToNodes(path Path) []Node {
-	return []Node(path)
+func TreePathToNodes[N any, E any](path Path[N, E]) []Node[N, E] {
+	return []Node[N, E](path)
 }

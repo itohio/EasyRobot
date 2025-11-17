@@ -14,6 +14,10 @@ type Quaternion [4]float32
 
 func (v Quaternion) Release() {}
 
+func (v Quaternion) Len() int {
+	return 4
+}
+
 func (v Quaternion) View() vecTypes.Vector {
 	return Vector(v[:])
 }

@@ -2,23 +2,22 @@ package graph
 
 // LoopDetection detects if there are cycles (loops) in the graph
 // Returns true if cycle exists, false otherwise
-func LoopDetection(g Graph, start Node) bool {
+func LoopDetection[N any, E any](g Graph[N, E], start Node[N, E]) bool {
 	if start == nil {
 		return false
 	}
 
-	visited := make(map[Node]bool)
-	recStack := make(map[Node]bool)
+	visited := make(map[Node[N, E]]bool)
+	recStack := make(map[Node[N, E]]bool)
 
 	return loopDetectionDFS(g, start, visited, recStack)
 }
 
-func loopDetectionDFS(g Graph, node Node, visited, recStack map[Node]bool) bool {
+func loopDetectionDFS[N any, E any](g Graph[N, E], node Node[N, E], visited, recStack map[Node[N, E]]bool) bool {
 	visited[node] = true
 	recStack[node] = true
 
-	neighbors := g.Neighbors(node)
-	for _, neighbor := range neighbors {
+	for neighbor := range node.Neighbors() {
 		if !visited[neighbor] {
 			if loopDetectionDFS(g, neighbor, visited, recStack) {
 				return true
@@ -35,13 +34,13 @@ func loopDetectionDFS(g Graph, node Node, visited, recStack map[Node]bool) bool 
 
 // ConnectedComponents finds all connected components in the graph
 // Returns a slice of slices, where each inner slice contains nodes in one component
-func ConnectedComponents(g Graph, nodes []Node) [][]Node {
+func ConnectedComponents[N any, E any](g Graph[N, E], nodes []Node[N, E]) [][]Node[N, E] {
 	if len(nodes) == 0 {
 		return nil
 	}
 
-	visited := make(map[Node]bool)
-	var components [][]Node
+	visited := make(map[Node[N, E]]bool)
+	var components [][]Node[N, E]
 
 	for _, node := range nodes {
 		if visited[node] {
@@ -58,9 +57,9 @@ func ConnectedComponents(g Graph, nodes []Node) [][]Node {
 	return components
 }
 
-func findComponent(g Graph, start Node, visited map[Node]bool) []Node {
-	var component []Node
-	queue := []Node{start}
+func findComponent[N any, E any](g Graph[N, E], start Node[N, E], visited map[Node[N, E]]bool) []Node[N, E] {
+	var component []Node[N, E]
+	queue := []Node[N, E]{start}
 	visited[start] = true
 
 	for len(queue) > 0 {
@@ -68,8 +67,7 @@ func findComponent(g Graph, start Node, visited map[Node]bool) []Node {
 		queue = queue[1:]
 		component = append(component, current)
 
-		neighbors := g.Neighbors(current)
-		for _, neighbor := range neighbors {
+		for neighbor := range current.Neighbors() {
 			if !visited[neighbor] {
 				visited[neighbor] = true
 				queue = append(queue, neighbor)

@@ -12,6 +12,10 @@ const vector4DSize = 4
 
 type Vector4D [4]float32
 
+func (v Vector4D) Len() int {
+	return 4
+}
+
 func (v Vector4D) Release() {
 }
 

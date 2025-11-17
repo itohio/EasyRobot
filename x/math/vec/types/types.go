@@ -33,6 +33,7 @@ type Accessors interface {
 	Release()
 	// View returns a `vec.Vector` view/copy of the receiver.
 	View() Vector
+	Len() int
 	// CopyFrom copies from v1 into this vector starting at index start.
 	CopyFrom(start int, v1 Vector) Vector
 	// CopyTo copies this vector into v1 starting at index start.

@@ -10,7 +10,7 @@ import (
 // AStarOptions configures A* algorithm behavior
 type AStarOptions struct {
 	AllowDiagonal bool
-	Heuristic     graph.Heuristic
+	Heuristic     graph.Heuristic[graph.GridNode, float32]
 	ObstacleValue float32
 }
 
@@ -48,8 +48,8 @@ func AStar(
 		Obstacle:  opts.ObstacleValue,
 	}
 
-	start := graph.GridNode{Row: startRow, Col: startCol}
-	goal := graph.GridNode{Row: goalRow, Col: goalCol}
+	start := graph.NewGridNode(g, startRow, startCol)
+	goal := graph.NewGridNode(g, goalRow, goalCol)
 
 	astar := graph.NewAStar(g, opts.Heuristic)
 	path := astar.Search(start, goal)
@@ -75,12 +75,9 @@ func validateInput(matrix mat.Matrix, startRow, startCol, goalRow, goalCol int) 
 }
 
 // EuclideanHeuristic uses Euclidean distance
-func EuclideanHeuristic(from, to graph.Node) float32 {
-	fromNode, ok1 := from.(graph.GridNode)
-	toNode, ok2 := to.(graph.GridNode)
-	if !ok1 || !ok2 {
-		return 0
-	}
+func EuclideanHeuristic(from, to graph.Node[graph.GridNode, float32]) float32 {
+	fromNode := from.Data()
+	toNode := to.Data()
 
 	dx := float32(toNode.Col - fromNode.Col)
 	dy := float32(toNode.Row - fromNode.Row)
@@ -88,12 +85,9 @@ func EuclideanHeuristic(from, to graph.Node) float32 {
 }
 
 // ManhattanHeuristic uses Manhattan distance
-func ManhattanHeuristic(from, to graph.Node) float32 {
-	fromNode, ok1 := from.(graph.GridNode)
-	toNode, ok2 := to.(graph.GridNode)
-	if !ok1 || !ok2 {
-		return 0
-	}
+func ManhattanHeuristic(from, to graph.Node[graph.GridNode, float32]) float32 {
+	fromNode := from.Data()
+	toNode := to.Data()
 
 	dx := float32(toNode.Col - fromNode.Col)
 	dy := float32(toNode.Row - fromNode.Row)
@@ -101,6 +95,6 @@ func ManhattanHeuristic(from, to graph.Node) float32 {
 }
 
 // ZeroHeuristic returns 0 (equivalent to Dijkstra)
-func ZeroHeuristic(from, to graph.Node) float32 {
+func ZeroHeuristic(from, to graph.Node[graph.GridNode, float32]) float32 {
 	return 0
 }

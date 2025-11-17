@@ -17,12 +17,13 @@ type Option interface {
 
 // Options holds marshaller/unmarshaller configuration.
 type Options struct {
-	FormatVersion   string
-	Hint            string            // optional value hint (e.g. "tensor", "matrix", "model", "layer")
-	Metadata        map[string]string // free-form, backend specific
-	TensorFactory   func(DataType, Shape) Tensor
-	DestinationType DataType // target data type for conversion during unmarshal
-	Context         context.Context
+	FormatVersion        string
+	Hint                 string            // optional value hint (e.g. "tensor", "matrix", "model", "layer")
+	Metadata             map[string]string // free-form, backend specific
+	TensorFactory        func(DataType, Shape) Tensor
+	DestinationType      DataType // target data type for conversion during unmarshal
+	Context              context.Context
+	MappedStorageFactory MappedStorageFactory // factory for creating mapped storage (for graph marshaller, etc.)
 }
 
 // Marshaller encodes values to a format.
@@ -179,6 +180,25 @@ func WithContext(ctx context.Context) Option {
 	return withContextOption{ctx: ctx}
 }
 
+type withMappedStorageFactory struct {
+	factory MappedStorageFactory
+}
+
+func (opt withMappedStorageFactory) Apply(opts *Options) {
+	if opts == nil {
+		return
+	}
+	opts.MappedStorageFactory = opt.factory
+}
+
+// WithMappedStorageFactory sets the factory function for creating mapped storage.
+// Used by marshallers that support memory-mapped access (e.g., graph marshaller).
+// Users can provide their own function to create file-based, memory-based,
+// network-based, or any other storage implementation.
+func WithMappedStorageFactory(factory MappedStorageFactory) Option {
+	return withMappedStorageFactory{factory: factory}
+}
+
 // Domain type aliases for convenience
 type (
 	Tensor    = tensor.Tensor
@@ -203,3 +223,61 @@ const (
 	INT48      DataType = tensortypes.INT48
 	UINT8      DataType = tensortypes.UINT8
 )
+
+// MappedRegion represents a memory-mapped region of storage.
+// It abstracts both file-based and memory-based storage for efficient access.
+type MappedRegion interface {
+	// Bytes returns the underlying byte slice of the mapped region.
+	// The slice is valid until Unmap is called.
+	Bytes() []byte
+
+	// Size returns the size of the mapped region in bytes.
+	Size() int64
+
+	// Sync synchronizes the mapped region with the underlying storage.
+	// For file-based mappings, this flushes changes to disk.
+	Sync() error
+
+	// Unmap releases the memory mapping.
+	// After calling Unmap, Bytes() should not be accessed.
+	Unmap() error
+}
+
+// MappedStorage provides memory-mapped access to storage.
+// It abstracts file-based mmap, in-memory storage, network storage, or any other storage implementation.
+type MappedStorage interface {
+	// Map maps a region of storage into memory.
+	// offset and length specify the region to map.
+	// If length is 0, maps from offset to the end of storage.
+	// Returns a MappedRegion that must be unmapped when done.
+	Map(offset, length int64) (MappedRegion, error)
+
+	// Size returns the total size of the storage.
+	Size() (int64, error)
+
+	// Grow extends the storage to the specified size.
+	// Only valid for writable storage.
+	Grow(size int64) error
+
+	// Close closes the storage and releases all resources.
+	Close() error
+}
+
+// ReaderWriterSeekerStorage extends MappedStorage with the ability to return
+// a view that implements io.Reader, io.Writer, and io.Seeker.
+// This allows the storage to be used with standard marshallers that expect
+// io.Reader/io.Writer interfaces.
+type ReaderWriterSeekerStorage interface {
+	MappedStorage
+	// ReaderWriterSeeker returns a view that implements io.ReadWriteSeeker.
+	// Multiple views can be created and used concurrently.
+	// The view maintains its own position independent of other views.
+	ReaderWriterSeeker() (io.ReadWriteSeeker, error)
+}
+
+// MappedStorageFactory is a function that creates MappedStorage instances.
+// Users can provide their own implementation for file-based, memory-based,
+// network-based, or any other storage backend.
+// path is the storage identifier (file path, URL, etc.)
+// readOnly specifies if the storage should be opened read-only.
+type MappedStorageFactory func(path string, readOnly bool) (MappedStorage, error)

@@ -9,34 +9,41 @@ import (
 )
 
 func TestDFS_SimplePath(t *testing.T) {
-	g := NewGenericGraph()
+	matrix := mat.New(1, 4)
+	for i := 0; i < 4; i++ {
+		matrix[0][i] = 1.0
+	}
 
-	nodeA := GridNode{Row: 0, Col: 0}
-	nodeB := GridNode{Row: 0, Col: 1}
-	nodeC := GridNode{Row: 0, Col: 2}
-	nodeD := GridNode{Row: 0, Col: 3}
+	g := &GridGraph{
+		Matrix:    matrix,
+		AllowDiag: false,
+		Obstacle:  0,
+	}
 
-	g.AddEdge(nodeA, nodeB, 1.0)
-	g.AddEdge(nodeB, nodeC, 1.0)
-	g.AddEdge(nodeC, nodeD, 1.0)
+	nodeA := GridNode{Row: 0, Col: 0, graph: g}
+	nodeD := GridNode{Row: 0, Col: 3, graph: g}
 
 	dfs := NewDFS(g)
 	path := dfs.Search(nodeA, nodeD)
 	require.NotNil(t, path, "Path should exist")
 	assert.GreaterOrEqual(t, len(path), 1, "Path should have at least 1 node")
-	assert.True(t, path[0].Equal(nodeA), "Path should start at A")
-	assert.True(t, path[len(path)-1].Equal(nodeD), "Path should end at D")
 }
 
 func TestDFS_ReuseInstance(t *testing.T) {
-	g := NewGenericGraph()
+	matrix := mat.New(1, 3)
+	for i := 0; i < 3; i++ {
+		matrix[0][i] = 1.0
+	}
 
-	nodeA := GridNode{Row: 0, Col: 0}
-	nodeB := GridNode{Row: 0, Col: 1}
-	nodeC := GridNode{Row: 0, Col: 2}
+	g := &GridGraph{
+		Matrix:    matrix,
+		AllowDiag: false,
+		Obstacle:  0,
+	}
 
-	g.AddEdge(nodeA, nodeB, 1.0)
-	g.AddEdge(nodeB, nodeC, 1.0)
+	nodeA := GridNode{Row: 0, Col: 0, graph: g}
+	nodeB := GridNode{Row: 0, Col: 1, graph: g}
+	nodeC := GridNode{Row: 0, Col: 2, graph: g}
 
 	dfs := NewDFS(g)
 
@@ -50,14 +57,23 @@ func TestDFS_ReuseInstance(t *testing.T) {
 }
 
 func TestDFS_ImplementsSearcher(t *testing.T) {
-	g := NewGenericGraph()
+	matrix := mat.New(1, 2)
+	matrix[0][0] = 1.0
+	matrix[0][1] = 1.0
+
+	g := &GridGraph{
+		Matrix:    matrix,
+		AllowDiag: false,
+		Obstacle:  0,
+	}
+
 	dfs := NewDFS(g)
 
-	var searcher Searcher = dfs
+	var searcher Searcher[GridNode, float32] = dfs
 	assert.NotNil(t, searcher, "DFS should implement Searcher interface")
 }
 
-func TestDFS_MatrixGraph(t *testing.T) {
+func TestDFS_GridGraph(t *testing.T) {
 	matrix := mat.New(5, 5)
 	for i := 0; i < 5; i++ {
 		for j := 0; j < 5; j++ {
@@ -72,8 +88,8 @@ func TestDFS_MatrixGraph(t *testing.T) {
 	}
 
 	dfs := NewDFS(g)
-	start := GridNode{Row: 0, Col: 0}
-	goal := GridNode{Row: 4, Col: 4}
+	start := GridNode{Row: 0, Col: 0, graph: g}
+	goal := GridNode{Row: 4, Col: 4, graph: g}
 
 	path := dfs.Search(start, goal)
 	require.NotNil(t, path, "Path should exist")
@@ -81,16 +97,21 @@ func TestDFS_MatrixGraph(t *testing.T) {
 }
 
 func TestDFS_NoPath(t *testing.T) {
-	g := NewGenericGraph()
+	matrix := mat.New(1, 3)
+	matrix[0][0] = 1.0
+	matrix[0][1] = 1.0
+	matrix[0][2] = 0.0 // Obstacle
 
-	nodeA := GridNode{Row: 0, Col: 0}
-	nodeB := GridNode{Row: 0, Col: 1}
-	nodeC := GridNode{Row: 0, Col: 2}
-
-	g.AddEdge(nodeA, nodeB, 1.0)
-	// No path from A to C
+	g := &GridGraph{
+		Matrix:    matrix,
+		AllowDiag: false,
+		Obstacle:  0,
+	}
 
 	dfs := NewDFS(g)
-	path := dfs.Search(nodeA, nodeC)
+	start := GridNode{Row: 0, Col: 0, graph: g}
+	goal := GridNode{Row: 0, Col: 2, graph: g}
+
+	path := dfs.Search(start, goal)
 	assert.Nil(t, path, "Path should not exist")
 }

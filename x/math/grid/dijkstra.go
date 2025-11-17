@@ -48,8 +48,8 @@ func Dijkstra(
 		Obstacle:  opts.ObstacleValue,
 	}
 
-	start := graph.GridNode{Row: startRow, Col: startCol}
-	goal := graph.GridNode{Row: goalRow, Col: goalCol}
+	start := graph.NewGridNode(g, startRow, startCol)
+	goal := graph.NewGridNode(g, goalRow, goalCol)
 
 	d := graph.NewDijkstra(g)
 	path := d.Search(start, goal)

@@ -14,7 +14,7 @@ type FastAStar struct {
 	matrix    mat.Matrix
 	allowDiag bool
 	obstacle  float32
-	heuristic graph.Heuristic
+	heuristic graph.Heuristic[graph.GridNode, float32]
 
 	// Reusable buffers
 	openSet   fastPriorityQueue
@@ -32,7 +32,7 @@ func (c cell) toVector2D() vec.Vector2D {
 }
 
 // NewFastAStar creates a new optimized A* searcher for matrices
-func NewFastAStar(matrix mat.Matrix, allowDiag bool, obstacle float32, heuristic graph.Heuristic) *FastAStar {
+func NewFastAStar(matrix mat.Matrix, allowDiag bool, obstacle float32, heuristic graph.Heuristic[graph.GridNode, float32]) *FastAStar {
 	return &FastAStar{
 		matrix:    matrix,
 		allowDiag: allowDiag,
@@ -163,8 +163,14 @@ func (f *FastAStar) getCost(from, to cell) float32 {
 }
 
 func (f *FastAStar) fastHeuristic(from, to cell) float32 {
-	fromNode := graph.GridNode{Row: from.row, Col: from.col}
-	toNode := graph.GridNode{Row: to.row, Col: to.col}
+	// Create temporary grid graph for node creation
+	g := &graph.GridGraph{
+		Matrix:    f.matrix,
+		AllowDiag: f.allowDiag,
+		Obstacle:  f.obstacle,
+	}
+	fromNode := graph.NewGridNode(g, from.row, from.col)
+	toNode := graph.NewGridNode(g, to.row, to.col)
 	return f.heuristic(fromNode, toNode)
 }
 

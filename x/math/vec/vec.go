@@ -21,6 +21,10 @@ func NewFrom(v ...float32) Vector {
 	return v[:]
 }
 
+func (v Vector) Len() int {
+	return len(v)
+}
+
 func (v Vector) Release() {
 }
 

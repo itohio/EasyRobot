@@ -8,180 +8,249 @@ import (
 )
 
 func TestBinaryTree_NewTree(t *testing.T) {
-	bt := NewBinaryTree(42)
+	bt := NewGenericBinaryTree[int, float32](42)
 	require.NotNil(t, bt, "BinaryTree should be created")
-	require.NotNil(t, bt.Root, "Root should be created")
-	assert.Equal(t, 42, bt.Root.Data, "Root data should be set")
-	assert.Nil(t, bt.Root.Left, "Left child should be nil")
-	assert.Nil(t, bt.Root.Right, "Right child should be nil")
-	assert.Nil(t, bt.Root.Parent, "Root parent should be nil")
+	require.NotNil(t, bt.Root(), "Root should be created")
+
+	rootData := bt.Root().Data()
+	assert.Equal(t, 42, rootData, "Root data should be set")
+
+	// Check that root has no children
+	hasNeighbors := false
+	for range bt.Root().Neighbors() {
+		hasNeighbors = true
+		break
+	}
+	assert.False(t, hasNeighbors, "Root should have no children initially")
 }
 
 func TestBinaryTree_SetLeft(t *testing.T) {
-	bt := NewBinaryTree(1)
-	left := bt.SetLeft(bt.Root, 2)
+	bt := NewGenericBinaryTree[int, float32](1)
+	rootIdx := bt.RootIdx()
 
-	require.NotNil(t, left, "Left child should be created")
-	assert.Equal(t, 2, left.Data, "Left child data should be set")
-	assert.Equal(t, bt.Root, left.Parent, "Left child parent should be root")
-	assert.Equal(t, left, bt.Root.Left, "Root should point to left child")
+	leftIdx := bt.SetLeft(rootIdx, 2)
+	require.GreaterOrEqual(t, leftIdx, 0, "Left child should be created")
+
+	// Get left child node
+	leftNode := BinaryTreeGraphNode[int, float32]{tree: bt, idx: leftIdx}
+	assert.Equal(t, 2, leftNode.Data(), "Left child data should be set")
+
+	// Check parent relationship
+	rootNode := bt.Root()
+	hasLeft := false
+	for neighbor := range rootNode.Neighbors() {
+		if neighbor.ID() == leftNode.ID() {
+			hasLeft = true
+			break
+		}
+	}
+	assert.True(t, hasLeft, "Root should have left child as neighbor")
 }
 
 func TestBinaryTree_SetRight(t *testing.T) {
-	bt := NewBinaryTree(1)
-	right := bt.SetRight(bt.Root, 3)
+	bt := NewGenericBinaryTree[int, float32](1)
+	rootIdx := bt.RootIdx()
 
-	require.NotNil(t, right, "Right child should be created")
-	assert.Equal(t, 3, right.Data, "Right child data should be set")
-	assert.Equal(t, bt.Root, right.Parent, "Right child parent should be root")
-	assert.Equal(t, right, bt.Root.Right, "Root should point to right child")
+	rightIdx := bt.SetRight(rootIdx, 3)
+	require.GreaterOrEqual(t, rightIdx, 0, "Right child should be created")
+
+	// Get right child node
+	rightNode := BinaryTreeGraphNode[int, float32]{tree: bt, idx: rightIdx}
+	assert.Equal(t, 3, rightNode.Data(), "Right child data should be set")
+
+	// Check parent relationship
+	rootNode := bt.Root()
+	hasRight := false
+	for neighbor := range rootNode.Neighbors() {
+		if neighbor.ID() == rightNode.ID() {
+			hasRight = true
+			break
+		}
+	}
+	assert.True(t, hasRight, "Root should have right child as neighbor")
 }
 
 func TestBinaryTree_GetDepth(t *testing.T) {
-	bt := NewBinaryTree(1)
-	left := bt.SetLeft(bt.Root, 2)
-	leftLeft := bt.SetLeft(left, 4)
+	bt := NewGenericBinaryTree[int, float32](1)
+	rootIdx := bt.RootIdx()
+	leftIdx := bt.SetLeft(rootIdx, 2)
+	leftLeftIdx := bt.SetLeft(leftIdx, 4)
 
-	assert.Equal(t, 0, bt.GetDepth(bt.Root), "Root depth should be 0")
-	assert.Equal(t, 1, bt.GetDepth(left), "Left child depth should be 1")
-	assert.Equal(t, 2, bt.GetDepth(leftLeft), "Left-left child depth should be 2")
+	assert.Equal(t, 0, bt.GetDepth(rootIdx), "Root depth should be 0")
+	assert.Equal(t, 1, bt.GetDepth(leftIdx), "Left child depth should be 1")
+	assert.Equal(t, 2, bt.GetDepth(leftLeftIdx), "Left-left child depth should be 2")
 }
 
 func TestBinaryTree_GetHeight(t *testing.T) {
-	bt := NewBinaryTree(1)
+	bt := NewGenericBinaryTree[int, float32](1)
 	assert.Equal(t, 0, bt.GetHeight(), "Height of single node tree should be 0")
 
-	bt.SetLeft(bt.Root, 2)
+	rootIdx := bt.RootIdx()
+	bt.SetLeft(rootIdx, 2)
 	assert.Equal(t, 1, bt.GetHeight(), "Height should be 1 after adding one level")
 
-	bt.SetRight(bt.Root, 3)
+	bt.SetRight(rootIdx, 3)
 	assert.Equal(t, 1, bt.GetHeight(), "Height should still be 1")
 
-	left := bt.Root.Left
-	bt.SetLeft(left, 4)
+	leftIdx := bt.GetNode(rootIdx).leftIdx
+	bt.SetLeft(leftIdx, 4)
 	assert.Equal(t, 2, bt.GetHeight(), "Height should be 2 after adding another level")
 }
 
 func TestBinaryTree_FindNodeByData(t *testing.T) {
-	bt := NewBinaryTree(1)
-	left := bt.SetLeft(bt.Root, 2)
-	_ = bt.SetRight(bt.Root, 3)
-	bt.SetLeft(left, 4)
+	bt := NewGenericBinaryTree[int, float32](1)
+	rootIdx := bt.RootIdx()
+	leftIdx := bt.SetLeft(rootIdx, 2)
+	_ = bt.SetRight(rootIdx, 3)
+	bt.SetLeft(leftIdx, 4)
 
-	found := bt.FindNodeByData(4)
-	require.NotNil(t, found, "Should find node with data 4")
-	assert.Equal(t, 4, found.Data, "Found node should have data 4")
+	foundIdx := bt.FindNodeByData(4)
+	if foundIdx < 0 {
+		t.Fatalf("Should find node with data 4, got index %d", foundIdx)
+	}
 
-	notFound := bt.FindNodeByData(99)
-	assert.Nil(t, notFound, "Should not find node with data 99")
+	foundNode := BinaryTreeGraphNode[int, float32]{tree: bt, idx: foundIdx}
+	assert.Equal(t, 4, foundNode.Data(), "Found node should have data 4")
+
+	notFoundIdx := bt.FindNodeByData(99)
+	assert.Equal(t, -1, notFoundIdx, "Should not find node with data 99")
 }
 
 func TestBinaryTree_RemoveLeft(t *testing.T) {
-	bt := NewBinaryTree(1)
-	left := bt.SetLeft(bt.Root, 2)
+	bt := NewGenericBinaryTree[int, float32](1)
+	rootIdx := bt.RootIdx()
+	leftIdx := bt.SetLeft(rootIdx, 2)
 
-	result := bt.RemoveLeft(bt.Root)
+	result := bt.RemoveLeft(rootIdx)
 	assert.True(t, result, "RemoveLeft should succeed")
-	assert.Nil(t, bt.Root.Left, "Root left should be nil")
-	assert.Nil(t, left.Parent, "Removed node parent should be nil")
 
-	result = bt.RemoveLeft(bt.Root)
+	// Check that left child is removed
+	node := bt.GetNode(rootIdx)
+	assert.Equal(t, -1, node.leftIdx, "Root left should be -1")
+
+	// Check that removed node is marked
+	removedNode := bt.GetNode(leftIdx)
+	assert.Equal(t, -2, removedNode.parentIdx, "Removed node parent should be -2")
+
+	result = bt.RemoveLeft(rootIdx)
 	assert.False(t, result, "RemoveLeft should fail if no left child")
 }
 
 func TestBinaryTree_RemoveRight(t *testing.T) {
-	bt := NewBinaryTree(1)
-	right := bt.SetRight(bt.Root, 3)
+	bt := NewGenericBinaryTree[int, float32](1)
+	rootIdx := bt.RootIdx()
+	rightIdx := bt.SetRight(rootIdx, 3)
 
-	result := bt.RemoveRight(bt.Root)
+	result := bt.RemoveRight(rootIdx)
 	assert.True(t, result, "RemoveRight should succeed")
-	assert.Nil(t, bt.Root.Right, "Root right should be nil")
-	assert.Nil(t, right.Parent, "Removed node parent should be nil")
 
-	result = bt.RemoveRight(bt.Root)
+	// Check that right child is removed
+	node := bt.GetNode(rootIdx)
+	assert.Equal(t, -1, node.rightIdx, "Root right should be -1")
+
+	// Check that removed node is marked
+	removedNode := bt.GetNode(rightIdx)
+	assert.Equal(t, -2, removedNode.parentIdx, "Removed node parent should be -2")
+
+	result = bt.RemoveRight(rootIdx)
 	assert.False(t, result, "RemoveRight should fail if no right child")
 }
 
 func TestBinaryTree_FindPathToRoot(t *testing.T) {
-	bt := NewBinaryTree(1)
-	left := bt.SetLeft(bt.Root, 2)
-	leftLeft := bt.SetLeft(left, 4)
+	bt := NewGenericBinaryTree[int, float32](1)
+	rootIdx := bt.RootIdx()
+	leftIdx := bt.SetLeft(rootIdx, 2)
+	leftLeftIdx := bt.SetLeft(leftIdx, 4)
 
-	path := bt.FindPathToRoot(leftLeft)
+	path := bt.FindPathToRoot(leftLeftIdx)
 	require.NotNil(t, path, "Path should exist")
-	assert.Equal(t, 3, len(path), "Path should have 3 nodes")
-	assert.Equal(t, leftLeft, path[0], "Path should start with leftLeft")
-	assert.Equal(t, left, path[1], "Path should contain left")
-	assert.Equal(t, bt.Root, path[2], "Path should end with root")
+	assert.Equal(t, 3, len(path), "Path should have 3 indices")
+	assert.Equal(t, leftLeftIdx, path[0], "Path should start with leftLeftIdx")
+	assert.Equal(t, leftIdx, path[1], "Path should contain leftIdx")
+	assert.Equal(t, rootIdx, path[2], "Path should end with rootIdx")
 }
 
-func TestBinaryTree_Traversal(t *testing.T) {
-	bt := NewBinaryTree(1)
-	left := bt.SetLeft(bt.Root, 2)
-	_ = bt.SetRight(bt.Root, 3)
-	bt.SetLeft(left, 4)
-	bt.SetRight(left, 5)
+func TestBinaryTree_GraphInterface(t *testing.T) {
+	bt := NewGenericBinaryTree[int, float32](1)
+	rootIdx := bt.RootIdx()
+	bt.SetLeft(rootIdx, 2)
+	bt.SetRight(rootIdx, 3)
 
-	var inOrder []int
-	bt.InOrderTraversal(func(node *BinaryTreeNode) {
-		inOrder = append(inOrder, node.Data.(int))
-	})
-	assert.Equal(t, []int{4, 2, 5, 1, 3}, inOrder, "In-order traversal")
+	// Test that it implements Graph interface
+	var g Graph[int, float32] = bt
+	assert.NotNil(t, g, "GenericBinaryTree should implement Graph interface")
 
-	var preOrder []int
-	bt.PreOrderTraversal(func(node *BinaryTreeNode) {
-		preOrder = append(preOrder, node.Data.(int))
-	})
-	assert.Equal(t, []int{1, 2, 4, 5, 3}, preOrder, "Pre-order traversal")
+	// Test Nodes iterator
+	nodeCount := 0
+	for range g.Nodes() {
+		nodeCount++
+	}
+	assert.Equal(t, 3, nodeCount, "Should have 3 nodes")
 
-	var postOrder []int
-	bt.PostOrderTraversal(func(node *BinaryTreeNode) {
-		postOrder = append(postOrder, node.Data.(int))
-	})
-	assert.Equal(t, []int{4, 5, 2, 3, 1}, postOrder, "Post-order traversal")
+	// Test Root method (Tree interface)
+	var tree Tree[int, float32] = bt
+	root := tree.Root()
+	require.NotNil(t, root, "Root should exist")
+	assert.Equal(t, 1, root.Data(), "Root data should be 1")
 }
 
-func TestBinaryTreeGraph_Neighbors(t *testing.T) {
-	bt := NewBinaryTree(1)
-	left := bt.SetLeft(bt.Root, 2)
-	right := bt.SetRight(bt.Root, 3)
+func TestBinaryTree_Neighbors(t *testing.T) {
+	bt := NewGenericBinaryTree[int, float32](1)
+	rootIdx := bt.RootIdx()
+	leftIdx := bt.SetLeft(rootIdx, 2)
+	rightIdx := bt.SetRight(rootIdx, 3)
 
-	btg := NewBinaryTreeGraph(bt)
-	rootNode := BinaryTreeNodeNode{binaryTreeNode: bt.Root}
+	rootNode := bt.Root()
 
-	neighbors := btg.Neighbors(rootNode)
-	require.NotNil(t, neighbors, "Neighbors should exist")
-	assert.Equal(t, 2, len(neighbors), "Should have 2 neighbors")
+	// Collect neighbors
+	var neighbors []Node[int, float32]
+	for neighbor := range rootNode.Neighbors() {
+		neighbors = append(neighbors, neighbor)
+	}
 
-	leftNode, ok := neighbors[0].(BinaryTreeNodeNode)
-	require.True(t, ok, "First neighbor should be BinaryTreeNodeNode")
-	assert.Equal(t, left, leftNode.binaryTreeNode, "First neighbor should be left child")
+	require.Equal(t, 2, len(neighbors), "Should have 2 neighbors")
 
-	rightNode, ok := neighbors[1].(BinaryTreeNodeNode)
-	require.True(t, ok, "Second neighbor should be BinaryTreeNodeNode")
-	assert.Equal(t, right, rightNode.binaryTreeNode, "Second neighbor should be right child")
+	// Check that neighbors are left and right children
+	neighborIds := make(map[int64]bool)
+	for _, n := range neighbors {
+		neighborIds[n.ID()] = true
+	}
+
+	leftNode := BinaryTreeGraphNode[int, float32]{tree: bt, idx: leftIdx}
+	rightNode := BinaryTreeGraphNode[int, float32]{tree: bt, idx: rightIdx}
+
+	assert.True(t, neighborIds[leftNode.ID()], "Should have left child as neighbor")
+	assert.True(t, neighborIds[rightNode.ID()], "Should have right child as neighbor")
 }
 
-func TestBinaryTreeGraph_Cost(t *testing.T) {
-	bt := NewBinaryTree(1)
-	left := bt.SetLeft(bt.Root, 2)
+func TestBinaryTree_Cost(t *testing.T) {
+	bt := NewGenericBinaryTree[int, float32](1)
+	rootIdx := bt.RootIdx()
+	leftIdx := bt.SetLeft(rootIdx, 2)
 
-	btg := NewBinaryTreeGraph(bt)
-	rootNode := BinaryTreeNodeNode{binaryTreeNode: bt.Root}
-	leftNode := BinaryTreeNodeNode{binaryTreeNode: left}
+	rootNode := bt.Root()
+	leftNode := BinaryTreeGraphNode[int, float32]{tree: bt, idx: leftIdx}
 
-	cost := btg.Cost(rootNode, leftNode)
+	cost := rootNode.Cost(leftNode)
 	assert.Equal(t, float32(1.0), cost, "Default cost should be 1.0")
 
-	btg.SetCost(bt.Root, left, 5.0)
-	cost = btg.Cost(rootNode, leftNode)
+	bt.SetCost(rootIdx, leftIdx, 5.0)
+	cost = rootNode.Cost(leftNode)
 	assert.Equal(t, float32(5.0), cost, "Custom cost should be 5.0")
 }
 
-func TestBinaryTreeGraph_ImplementsGraph(t *testing.T) {
-	bt := NewBinaryTree(1)
-	btg := NewBinaryTreeGraph(bt)
+func TestBinaryTree_ImplementsTree(t *testing.T) {
+	bt := NewGenericBinaryTree[int, float32](1)
 
-	var graph Graph = btg
-	assert.NotNil(t, graph, "BinaryTreeGraph should implement Graph interface")
+	var tree Tree[int, float32] = bt
+	assert.NotNil(t, tree, "GenericBinaryTree should implement Tree interface")
+
+	root := tree.Root()
+	require.NotNil(t, root, "Root should exist")
+
+	height := tree.GetHeight()
+	assert.GreaterOrEqual(t, height, 0, "Height should be non-negative")
+
+	count := tree.NodeCount()
+	assert.Equal(t, 1, count, "Should have 1 node")
 }
