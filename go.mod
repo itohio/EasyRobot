@@ -12,6 +12,7 @@ require (
 	github.com/rs/zerolog v1.23.0
 	github.com/stretchr/testify v1.11.1
 	gocv.io/x/gocv v0.42.0
+	golang.org/x/sys v0.37.0
 	google.golang.org/protobuf v1.36.10
 	gopkg.in/yaml.v3 v3.0.1
 	gorgonia.org/gorgonia v0.9.18
@@ -25,7 +26,6 @@ require (
 	github.com/awalterschulze/gographviz v2.0.3+incompatible // indirect
 	github.com/chewxy/hm v1.0.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/edsrzf/mmap-go v1.2.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/flatbuffers v2.0.6+incompatible // indirect
@@ -40,7 +40,6 @@ require (
 	github.com/xtgo/set v1.0.0 // indirect
 	go4.org/unsafe/assume-no-moving-gc v0.0.0-20220617031537-928513b29760 // indirect
 	golang.org/x/sync v0.7.0 // indirect
-	golang.org/x/sys v0.37.0 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	gonum.org/v1/gonum v0.11.0 // indirect
 	gorgonia.org/cu v0.9.4 // indirect
