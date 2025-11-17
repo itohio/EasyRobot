@@ -51,12 +51,12 @@ func (m *Marshaller) Marshal(w io.Writer, value any, opts ...types.Option) error
 		}
 		return m.writeMat(w, *v)
 	case image.Image:
-		return m.writeImage(w, v, localCfg.imageEncoding)
+		return m.writeImage(w, v, localCfg.codec.imageEncoding)
 	case *image.Image:
 		if v == nil || *v == nil {
 			return types.NewError("marshal", "gocv", "nil *image.Image", nil)
 		}
-		return m.writeImage(w, *v, localCfg.imageEncoding)
+		return m.writeImage(w, *v, localCfg.codec.imageEncoding)
 	case types.Tensor:
 		return m.writeTensor(w, v)
 	case types.FrameStream:
@@ -76,7 +76,7 @@ func (m *Marshaller) Marshal(w io.Writer, value any, opts ...types.Option) error
 }
 
 func (m *Marshaller) writeMat(w io.Writer, mat cv.Mat) error {
-	data, err := encodeMatBytes(mat, m.cfg.imageEncoding)
+	data, err := encodeMatBytes(mat, m.cfg.codec.imageEncoding)
 	if err != nil {
 		return types.NewError("marshal", "gocv", "encode mat", err)
 	}
@@ -111,6 +111,15 @@ func (m *Marshaller) writeTensor(w io.Writer, tensor types.Tensor) error {
 }
 
 func (m *Marshaller) writeFrameStream(w io.Writer, stream types.FrameStream, cfg config) error {
+	// Write manifest if writer is provided (for serialization)
+	// If w is nil, this is a side-effect operation (file/display only)
+	if w != nil {
+		manifest := configToManifest(cfg)
+		if err := writeManifest(w, manifest); err != nil {
+			return err
+		}
+	}
+
 	targets, err := resolveOutputDirs(cfg)
 	if err != nil {
 		return err
@@ -134,7 +143,7 @@ func (m *Marshaller) writeFrameStream(w io.Writer, stream types.FrameStream, cfg
 		writers = append(writers, fw)
 	}
 
-	if cfg.displayEnabled {
+	if cfg.display.enabled {
 		dw, err := newDisplayWriter(cfg)
 		if err != nil {
 			return err
@@ -160,7 +169,7 @@ func (m *Marshaller) writeFrameStream(w io.Writer, stream types.FrameStream, cfg
 			if stop {
 				break
 			}
-			if err := writer.Write(frame); err != nil {
+			if err := writer.WriteFrame(frame); err != nil {
 				if errors.Is(err, errStopLoop) {
 					stop = true
 				} else {
@@ -173,7 +182,7 @@ func (m *Marshaller) writeFrameStream(w io.Writer, stream types.FrameStream, cfg
 		return !stop
 	}
 
-	loop := cfg.eventLoop
+	loop := cfg.display.eventLoop
 	if loop == nil {
 		loop = defaultEventLoop
 	}

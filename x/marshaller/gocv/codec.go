@@ -90,7 +90,7 @@ func decodeImageBytes(data []byte) (image.Image, error) {
 }
 
 func matToTensor(mat cv.Mat, cfg config, dtype tensortypes.DataType) (types.Tensor, error) {
-	opts := append([]tensorgocv.Option{}, cfg.tensorOpts...)
+	opts := append([]tensorgocv.Option{}, cfg.codec.tensorOpts...)
 	opts = append(opts, tensorgocv.WithAdoptedMat())
 	tensor, err := tensorgocv.FromMat(mat, opts...)
 	if err != nil {

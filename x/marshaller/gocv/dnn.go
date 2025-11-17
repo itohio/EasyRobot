@@ -11,7 +11,7 @@ import (
 )
 
 func loadNetFromBytes(data []byte, cfg config) (cv.Net, error) {
-	format := cfg.dnnFormat
+	format := cfg.dnn.format
 	if format == "" {
 		format = "onnx"
 	}
@@ -44,11 +44,11 @@ func loadNetUsingTemp(data []byte, ext string, cfg config, loader func(modelPath
 		return cv.Net{}, types.NewError("unmarshal", "gocv", "load network", fmt.Errorf("empty net"))
 	}
 
-	if cfg.netBackend != cv.NetBackendDefault {
-		net.SetPreferableBackend(cfg.netBackend)
+	if cfg.dnn.backend != cv.NetBackendDefault {
+		net.SetPreferableBackend(cfg.dnn.backend)
 	}
-	if cfg.netTarget != cv.NetTargetCPU {
-		net.SetPreferableTarget(cfg.netTarget)
+	if cfg.dnn.target != cv.NetTargetCPU {
+		net.SetPreferableTarget(cfg.dnn.target)
 	}
 
 	return net, nil

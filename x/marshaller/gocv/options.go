@@ -40,38 +40,20 @@ type sourceSpec struct {
 type fileSorter func([]string) []string
 
 type config struct {
-	ctx             context.Context
-	imageEncoding   string
-	tensorOpts      []tensorgocv.Option
-	sources         []sourceSpec
-	dnnFormat       string
-	netBackend      cv.NetBackendType
-	netTarget       cv.NetTargetType
-	allowBestEffort bool
-	sequential      bool
-	sorter          fileSorter
-	displayEnabled  bool
-	displayTitle    string
-	displayWidth    int
-	displayHeight   int
-	onKey           func(int) bool
-	onMouse         func(int, int, int, int) bool
-	eventLoop       func(context.Context, func() bool)
+	ctx     context.Context
+	codec   codecConfig
+	stream  streamConfig
+	display displayConfig
+	dnn     dnnConfig
 }
 
 func defaultConfig() config {
 	return config{
-		ctx:             context.Background(),
-		imageEncoding:   "png",
-		tensorOpts:      nil,
-		sources:         nil,
-		dnnFormat:       "",
-		netBackend:      cv.NetBackendDefault,
-		netTarget:       cv.NetTargetCPU,
-		allowBestEffort: true,
-		sequential:      false,
-		sorter:          defaultSorter,
-		displayTitle:    "GoCV Display",
+		ctx:     context.Background(),
+		codec:   defaultCodecConfig(),
+		stream:  defaultStreamConfig(),
+		display: defaultDisplayConfig(),
+		dnn:     defaultDNNConfig(),
 	}
 }
 
@@ -121,14 +103,14 @@ func WithPath(path string) types.Option {
 		if path == "" {
 			return
 		}
-		cfg.sources = append(cfg.sources, sourceSpec{Kind: sourceKindUnknown, Path: path})
+		cfg.stream.sources = append(cfg.stream.sources, sourceSpec{Kind: sourceKindUnknown, Path: path})
 	})
 }
 
 // WithVideoDevice registers a video capture device.
 func WithVideoDevice(id int, width, height int) types.Option {
 	return newOption(func(cfg *config) {
-		cfg.sources = append(cfg.sources, sourceSpec{
+		cfg.stream.sources = append(cfg.stream.sources, sourceSpec{
 			Kind: sourceKindVideoDevice,
 			Device: &deviceSpec{
 				ID:     id,
@@ -146,12 +128,12 @@ func WithImageEncoding(format string) types.Option {
 	return newOption(func(cfg *config) {
 		switch format {
 		case "", "png":
-			cfg.imageEncoding = "png"
+			cfg.codec.imageEncoding = "png"
 		case "jpg", "jpeg":
-			cfg.imageEncoding = "jpeg"
+			cfg.codec.imageEncoding = "jpeg"
 		default:
 			// unsupported formats fall back to default but we retain hint.
-			cfg.imageEncoding = format
+			cfg.codec.imageEncoding = format
 		}
 	})
 }
@@ -159,35 +141,35 @@ func WithImageEncoding(format string) types.Option {
 // WithTensorOptions configures options propagated to gocv tensor helpers.
 func WithTensorOptions(opts ...tensorgocv.Option) types.Option {
 	return newOption(func(cfg *config) {
-		cfg.tensorOpts = append(cfg.tensorOpts, opts...)
+		cfg.codec.tensorOpts = append(cfg.codec.tensorOpts, opts...)
 	})
 }
 
 // WithNetBackend selects preferred backend for gocv.Net instances.
 func WithNetBackend(backend cv.NetBackendType) types.Option {
 	return newOption(func(cfg *config) {
-		cfg.netBackend = backend
+		cfg.dnn.backend = backend
 	})
 }
 
 // WithNetTarget selects preferred target for gocv.Net instances.
 func WithNetTarget(target cv.NetTargetType) types.Option {
 	return newOption(func(cfg *config) {
-		cfg.netTarget = target
+		cfg.dnn.target = target
 	})
 }
 
 // WithDNNFormat provides a hint about the DNN payload format (onnx, caffe, etc).
 func WithDNNFormat(format string) types.Option {
 	return newOption(func(cfg *config) {
-		cfg.dnnFormat = strings.TrimSpace(strings.ToLower(format))
+		cfg.dnn.format = strings.TrimSpace(strings.ToLower(format))
 	})
 }
 
 // WithBestEffortDevices toggles best-effort synchronization for video devices.
 func WithBestEffortDevices(enable bool) types.Option {
 	return newOption(func(cfg *config) {
-		cfg.allowBestEffort = enable
+		cfg.stream.allowBestEffort = enable
 	})
 }
 
@@ -196,17 +178,17 @@ func WithBestEffortDevices(enable bool) types.Option {
 // sources are consumed in lockstep (parallel).
 func WithSequential(enable bool) types.Option {
 	return newOption(func(cfg *config) {
-		cfg.sequential = enable
+		cfg.stream.sequential = enable
 	})
 }
 
 // WithDisplay enables display output using default window parameters.
 func WithDisplay(ctx context.Context) types.Option {
 	return newOption(func(cfg *config) {
-		cfg.displayEnabled = true
+		cfg.display.enabled = true
 		cfg.ctx = ctx
-		if strings.TrimSpace(cfg.displayTitle) == "" {
-			cfg.displayTitle = "GoCV Display"
+		if strings.TrimSpace(cfg.display.title) == "" {
+			cfg.display.title = "GoCV Display"
 		}
 	})
 }
@@ -214,10 +196,11 @@ func WithDisplay(ctx context.Context) types.Option {
 // WithTitle sets the display window title and enables display output.
 func WithTitle(title string) types.Option {
 	return newOption(func(cfg *config) {
-		cfg.displayEnabled = true
-		cfg.displayTitle = strings.TrimSpace(title)
-		if cfg.displayTitle == "" {
-			cfg.displayTitle = "GoCV Display"
+		title = strings.TrimSpace(title)
+		cfg.display.enabled = true
+		cfg.display.title = title
+		if cfg.display.title == "" {
+			cfg.display.title = "GoCV Display"
 		}
 	})
 }
@@ -225,12 +208,12 @@ func WithTitle(title string) types.Option {
 // WithWindowSize configures the display window size and enables display output.
 func WithWindowSize(width, height int) types.Option {
 	return newOption(func(cfg *config) {
-		cfg.displayEnabled = true
+		cfg.display.enabled = true
 		if width > 0 {
-			cfg.displayWidth = width
+			cfg.display.width = width
 		}
 		if height > 0 {
-			cfg.displayHeight = height
+			cfg.display.height = height
 		}
 	})
 }
@@ -239,23 +222,23 @@ func WithWindowSize(width, height int) types.Option {
 // false stops the display/event loop.
 func WithOnKey(handler func(int) bool) types.Option {
 	return newOption(func(cfg *config) {
-		cfg.displayEnabled = true
-		cfg.onKey = handler
+		cfg.display.enabled = true
+		cfg.display.onKey = handler
 	})
 }
 
 // WithOnMouse installs a mouse handler; returning false stops the display loop.
 func WithOnMouse(handler func(event, x, y, flags int) bool) types.Option {
 	return newOption(func(cfg *config) {
-		cfg.displayEnabled = true
-		cfg.onMouse = handler
+		cfg.display.enabled = true
+		cfg.display.onMouse = handler
 	})
 }
 
 // WithEventLoop overrides the default event loop used for display rendering.
 func WithEventLoop(loop func(context.Context, func() bool)) types.Option {
 	return newOption(func(cfg *config) {
-		cfg.eventLoop = loop
+		cfg.display.eventLoop = loop
 	})
 }
 
@@ -263,21 +246,22 @@ func WithEventLoop(loop func(context.Context, func() bool)) types.Option {
 func WithSorter(sorter func([]string) []string) types.Option {
 	return newOption(func(cfg *config) {
 		if sorter == nil {
-			cfg.sorter = defaultSorter
+			cfg.stream.sorter = defaultSorter
 			return
 		}
-		cfg.sorter = sorter
+		cfg.stream.sorter = sorter
 	})
 }
 
 func applyOptions(base types.Options, cfg config, opts []types.Option) (types.Options, config) {
 	local := base
 	localCfg := cfg
-	if len(cfg.sources) > 0 {
-		localCfg.sources = append([]sourceSpec(nil), cfg.sources...)
+	// Copy focused configs
+	if len(cfg.stream.sources) > 0 {
+		localCfg.stream.sources = append([]sourceSpec(nil), cfg.stream.sources...)
 	}
-	if len(cfg.tensorOpts) > 0 {
-		localCfg.tensorOpts = append([]tensorgocv.Option(nil), cfg.tensorOpts...)
+	if len(cfg.codec.tensorOpts) > 0 {
+		localCfg.codec.tensorOpts = append([]tensorgocv.Option(nil), cfg.codec.tensorOpts...)
 	}
 	for _, opt := range opts {
 		if opt == nil {
@@ -291,11 +275,12 @@ func applyOptions(base types.Options, cfg config, opts []types.Option) (types.Op
 	if local.Context != nil {
 		localCfg.ctx = local.Context
 	}
-	if localCfg.sorter == nil {
-		localCfg.sorter = defaultSorter
+	// Apply defaults
+	if localCfg.stream.sorter == nil {
+		localCfg.stream.sorter = defaultSorter
 	}
-	if localCfg.displayEnabled && strings.TrimSpace(localCfg.displayTitle) == "" {
-		localCfg.displayTitle = "GoCV Display"
+	if localCfg.display.enabled && strings.TrimSpace(localCfg.display.title) == "" {
+		localCfg.display.title = "GoCV Display"
 	}
 	return local, localCfg
 }
@@ -315,12 +300,13 @@ func classifyPath(path string) sourceKind {
 }
 
 func resolveSources(cfg config) ([]sourceSpec, error) {
-	resolved := make([]sourceSpec, 0, len(cfg.sources))
-	sorter := cfg.sorter
+	sources := cfg.stream.sources
+	resolved := make([]sourceSpec, 0, len(sources))
+	sorter := cfg.stream.sorter
 	if sorter == nil {
 		sorter = defaultSorter
 	}
-	for _, spec := range cfg.sources {
+	for _, spec := range sources {
 		if spec.Kind == sourceKindVideoDevice {
 			if spec.Device == nil {
 				return nil, fmt.Errorf("gocv: video device option missing configuration")
@@ -378,8 +364,9 @@ func isGlobPattern(path string) bool {
 }
 
 func resolveOutputDirs(cfg config) ([]string, error) {
-	dirs := make([]string, 0, len(cfg.sources))
-	for _, spec := range cfg.sources {
+	sources := cfg.stream.sources
+	dirs := make([]string, 0, len(sources))
+	for _, spec := range sources {
 		if spec.Kind != sourceKindUnknown {
 			continue
 		}

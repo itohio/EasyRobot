@@ -50,7 +50,7 @@ func (l *videoDeviceLoader) Next(ctx context.Context) (frameItem, bool, error) {
 		frame := cv.NewMat()
 		if ok := l.capture.Read(&frame); !ok {
 			frame.Close()
-			if l.cfg.allowBestEffort {
+			if l.cfg.stream.allowBestEffort {
 				time.Sleep(10 * time.Millisecond)
 				continue
 			}
@@ -58,7 +58,7 @@ func (l *videoDeviceLoader) Next(ctx context.Context) (frameItem, bool, error) {
 		}
 		if frame.Empty() {
 			frame.Close()
-			if l.cfg.allowBestEffort {
+			if l.cfg.stream.allowBestEffort {
 				time.Sleep(5 * time.Millisecond)
 				continue
 			}

@@ -19,8 +19,8 @@ func newFileListLoader(label string, files []string, cfg config) (sourceStream, 
 		return nil, fmt.Errorf("gocv: empty file list for %s", label)
 	}
 	sorted := append([]string(nil), files...)
-	if cfg.sorter != nil {
-		sorted = cfg.sorter(sorted)
+	if cfg.stream.sorter != nil {
+		sorted = cfg.stream.sorter(sorted)
 	} else {
 		sort.Strings(sorted)
 	}

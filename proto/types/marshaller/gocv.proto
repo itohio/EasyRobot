@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package types.marshaller;
+
+option go_package = "github.com/itohio/EasyRobot/types/marshaller";
+
+import "types/core/frame.proto";
+
+// FrameStreamManifest describes a FrameStream configuration for serialization.
+// This is used to transport stream metadata and source specifications.
+// Actual frame pixel data remains in GoCV-managed formats (PNG/JPEG).
+message FrameStreamManifest {
+  repeated SourceSpec sources = 1;
+  string sync_mode = 2;   // "parallel", "sequential"
+  bool best_effort = 3;   // Best-effort synchronization for devices
+  map<string, string> metadata = 4;
+}
+
+// SourceSpec describes a frame source configuration.
+message SourceSpec {
+  SourceKind kind = 1;
+  string path = 2;        // File path, directory, or glob pattern
+  DeviceSpec device = 3;  // Device configuration (if kind is VIDEO_DEVICE)
+  repeated string files = 4; // Pre-resolved file list (if kind is FILE_LIST)
+}
+
+// SourceKind enumerates the types of frame sources.
+enum SourceKind {
+  SOURCE_KIND_UNKNOWN = 0;
+  SOURCE_KIND_SINGLE = 1;        // Single image file
+  SOURCE_KIND_VIDEO_FILE = 2;    // Video file
+  SOURCE_KIND_VIDEO_DEVICE = 3;  // Video capture device
+  SOURCE_KIND_FILE_LIST = 4;     // List of files (directory/glob)
+}
+
+// DeviceSpec describes a video capture device configuration.
+message DeviceSpec {
+  int32 id = 1;      // Device ID
+  int32 width = 2;  // Preferred width (0 = default)
+  int32 height = 3; // Preferred height (0 = default)
+}
+
+// MatMetadata provides optional metadata about a Mat without embedding pixel data.
+// This can be used as a sidecar file alongside GoCV-encoded images.
+message MatMetadata {
+  int32 rows = 1;              // Number of rows
+  int32 cols = 2;              // Number of columns
+  int32 channels = 3;          // Number of channels
+  int32 mat_type = 4;         // OpenCV MatType (cv.MatType)
+  bool continuous = 5;        // Continuous flag
+  map<string, string> annotations = 6; // Additional annotations
+}
+

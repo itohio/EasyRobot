@@ -23,17 +23,17 @@ func newDisplayWriter(cfg config) (frameWriter, error) {
 
 func (dw *displayWriter) ensureWindow() {
 	dw.once.Do(func() {
-		title := dw.cfg.displayTitle
+		title := dw.cfg.display.title
 		if title == "" {
 			title = "GoCV Display"
 		}
 		dw.window = cv.NewWindow(title)
-		if dw.cfg.displayWidth > 0 && dw.cfg.displayHeight > 0 {
-			dw.window.ResizeWindow(dw.cfg.displayWidth, dw.cfg.displayHeight)
+		if dw.cfg.display.width > 0 && dw.cfg.display.height > 0 {
+			dw.window.ResizeWindow(dw.cfg.display.width, dw.cfg.display.height)
 		}
-		if dw.cfg.onMouse != nil {
+		if dw.cfg.display.onMouse != nil {
 			dw.window.SetMouseHandler(func(event int, x int, y int, flags int, _ interface{}) {
-				if !dw.cfg.onMouse(event, x, y, flags) {
+				if !dw.cfg.display.onMouse(event, x, y, flags) {
 					dw.stopped = true
 				}
 			}, nil)
@@ -41,6 +41,12 @@ func (dw *displayWriter) ensureWindow() {
 	})
 }
 
+// WriteFrame implements StreamSink interface.
+func (dw *displayWriter) WriteFrame(frame types.Frame) error {
+	return dw.Write(frame)
+}
+
+// Write displays a frame (legacy method name, kept for backward compatibility).
 func (dw *displayWriter) Write(frame types.Frame) error {
 	if dw.stopped {
 		return errStopLoop
@@ -69,12 +75,12 @@ func (dw *displayWriter) Write(frame types.Frame) error {
 	}
 
 	key := dw.window.WaitKey(1)
-	if key >= 0 && dw.cfg.onKey != nil {
-		if !dw.cfg.onKey(key) {
+	if key >= 0 && dw.cfg.display.onKey != nil {
+		if !dw.cfg.display.onKey(key) {
 			dw.stopped = true
 			return errStopLoop
 		}
-	} else if key == 27 && dw.cfg.onKey == nil {
+	} else if key == 27 && dw.cfg.display.onKey == nil {
 		dw.stopped = true
 		return errStopLoop
 	}

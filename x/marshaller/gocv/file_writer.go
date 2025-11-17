@@ -33,6 +33,12 @@ func newFileWriter(targets []string, cfg config) (*fileWriter, error) {
 	}, nil
 }
 
+// WriteFrame implements StreamSink interface.
+func (fw *fileWriter) WriteFrame(frame types.Frame) error {
+	return fw.Write(frame)
+}
+
+// Write writes a frame to disk (legacy method name, kept for backward compatibility).
 func (fw *fileWriter) Write(frame types.Frame) error {
 	if len(fw.targets) == 0 || len(frame.Tensors) == 0 {
 		return nil
@@ -58,7 +64,7 @@ func (fw *fileWriter) Write(frame types.Frame) error {
 		}
 		filename := name
 		if filepath.Ext(filename) == "" {
-			filename += normalizeImageFormat(fw.cfg.imageEncoding)
+			filename += normalizeImageFormat(fw.cfg.codec.imageEncoding)
 		}
 
 		destDir := fw.targets[i]
@@ -68,7 +74,7 @@ func (fw *fileWriter) Write(frame types.Frame) error {
 		if err != nil {
 			return err
 		}
-		data, err := encodeMatBytes(mat, fw.cfg.imageEncoding)
+		data, err := encodeMatBytes(mat, fw.cfg.codec.imageEncoding)
 		mat.Close()
 		if err != nil {
 			return err

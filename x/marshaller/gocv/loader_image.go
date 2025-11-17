@@ -75,7 +75,7 @@ func loadImageFile(path string, cfg config) (frameItem, error) {
 		return frameItem{}, fmt.Errorf("gocv: failed to load image %s", path)
 	}
 
-	opts := append([]tensorgocv.Option{}, cfg.tensorOpts...)
+	opts := append([]tensorgocv.Option{}, cfg.codec.tensorOpts...)
 	opts = append(opts, tensorgocv.WithAdoptedMat())
 
 	tensor, err := tensorgocv.FromMat(mat, opts...)

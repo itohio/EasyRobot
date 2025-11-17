@@ -159,13 +159,29 @@ func (u *Unmarshaller) unmarshalTensor(r io.Reader, cfg config, dstType tensorty
 }
 
 func (u *Unmarshaller) unmarshalStream(r io.Reader, cfg config) (types.FrameStream, error) {
-	if len(cfg.sources) == 0 && r != nil {
-		paths, err := readPaths(r)
+	// Try to read protobuf manifest first
+	if r != nil {
+		// Use a buffered reader that can be used for both manifest and text paths
+		bufReader := bufio.NewReader(r)
+		
+		manifest, err := readManifest(bufReader)
 		if err != nil {
 			return types.FrameStream{}, err
 		}
-		for _, p := range paths {
-			cfg.sources = append(cfg.sources, sourceSpec{Path: p})
+		
+		// If manifest was read, use it to configure the stream
+		if manifest != nil {
+			manifestToConfig(manifest, &cfg)
+		} else if len(cfg.stream.sources) == 0 {
+			// Fall back to legacy text format if no manifest and no configured sources
+			// Use the buffered reader which still has all the data
+			paths, err := readPaths(bufReader)
+			if err != nil {
+				return types.FrameStream{}, err
+			}
+			for _, p := range paths {
+				cfg.stream.sources = append(cfg.stream.sources, sourceSpec{Path: p})
+			}
 		}
 	}
 
@@ -173,7 +189,7 @@ func (u *Unmarshaller) unmarshalStream(r io.Reader, cfg config) (types.FrameStre
 	if err != nil {
 		return types.FrameStream{}, err
 	}
-	return newFrameStream(cfg.ctx, streams, cfg.allowBestEffort, cfg.sequential)
+	return newFrameStream(cfg.ctx, streams, cfg.stream.allowBestEffort, cfg.stream.sequential)
 }
 
 func (u *Unmarshaller) unmarshalNet(r io.Reader, cfg config) (cv.Net, error) {
