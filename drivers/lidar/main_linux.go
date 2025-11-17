@@ -15,8 +15,6 @@ import (
 
 	pbdevices "github.com/itohio/EasyRobot/types/devices"
 	devio "github.com/itohio/EasyRobot/x/devices"
-	"github.com/itohio/EasyRobot/x/devices/lidar/ld06"
-	"github.com/itohio/EasyRobot/x/devices/lidar/xwpftb"
 	mat "github.com/itohio/EasyRobot/x/math/mat"
 	matTypes "github.com/itohio/EasyRobot/x/math/mat/types"
 
@@ -24,9 +22,7 @@ import (
 	"image/color"
 	"math"
 
-	"github.com/itohio/EasyRobot/x/marshaller/gocv"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
-	tensorgocv "github.com/itohio/EasyRobot/x/math/tensor/gocv"
 	cv "gocv.io/x/gocv"
 )
 
@@ -45,8 +41,20 @@ var (
 func main() {
 	flag.Parse()
 
-	if *serialPort == "" {
-		fmt.Fprintf(os.Stderr, "Serial port required (--serial)\n")
+	cfg := &Config{
+		SerialPort:   *serialPort,
+		LidarType:    *lidarType,
+		TargetPts:    *targetPts,
+		Display:      *display,
+		WindowWidth:  *windowWidth,
+		WindowHeight: *windowHeight,
+		ImageWidth:   *imageWidth,
+		ImageHeight:  *imageHeight,
+		ScaleFactor:  *scaleFactor,
+	}
+
+	if err := cfg.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -54,143 +62,71 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Setup DNDM router (direct endpoint for local use)
+	if err := run(ctx, cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context, cfg *Config) error {
 	router, err := setupRouter(ctx)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to setup router: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("setup router: %w", err)
 	}
 	defer router.Close()
 
-	// Create LiDAR reading producer
-	intentPath := "LIDARReading@lidar.scan"
-	producer, err := bus.NewProducer[*pbdevices.LIDARReading](ctx, router, intentPath)
+	producer, err := setupProducer(ctx, router)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create producer: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("setup producer: %w", err)
 	}
 	defer producer.Close()
 
-	fmt.Printf("LiDAR driver initialized with intent: %s\n", intentPath)
-
-	// Setup serial
-	ser, err := devio.NewSerial(*serialPort)
+	ser, err := devio.NewSerial(cfg.SerialPort)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to open serial port: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("open serial port: %w", err)
 	}
 
-	// Create LiDAR device (no motor control on Linux/Windows)
-	var lidar lidarDevice
-	switch *lidarType {
-	case "xwpftb":
-		dev := xwpftb.New(ctx, ser, nil, *targetPts, 2048)
-		if err := dev.Configure(true); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to configure XWPFTB: %v\n", err)
-			os.Exit(1)
-		}
-		lidar = dev
-	case "ld06":
-		dev := ld06.New(ctx, ser, nil, *targetPts, 3600)
-		if err := dev.Configure(true); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to configure LD06: %v\n", err)
-			os.Exit(1)
-		}
-		lidar = dev
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown LiDAR type: %s\n", *lidarType)
-		os.Exit(1)
+	factory := NewDeviceFactory()
+	lidar, err := factory.CreateDevice(ctx, cfg, ser)
+	if err != nil {
+		return fmt.Errorf("create device: %w", err)
 	}
 	defer lidar.Close()
 
-	// Validate display parameters
-	if *display {
-		if *imageWidth <= 0 || *imageHeight <= 0 {
-			fmt.Fprintf(os.Stderr, "Image dimensions must be positive\n")
-			os.Exit(1)
-		}
-		if *scaleFactor <= 0 {
-			fmt.Fprintf(os.Stderr, "Scale factor must be positive\n")
-			os.Exit(1)
-		}
-		if *windowWidth < 0 || *windowHeight < 0 {
-			fmt.Fprintf(os.Stderr, "Window dimensions must be non-negative\n")
-			os.Exit(1)
-		}
+	displaySetup, err := SetupDisplay(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("setup display: %w", err)
 	}
+	defer displaySetup.Close()
 
-	// Setup display if requested
-	var displayStream types.FrameStream
-	var frameChan chan types.Frame
-	if *display {
-		frameChan = make(chan types.Frame, 1)
-		displayStream = types.NewFrameStream(frameChan, func() {
-			close(frameChan)
-		})
+	setupCallback(ctx, lidar, producer, displaySetup)
 
-		// Determine window size (use image size if not specified)
-		winW := *windowWidth
-		winH := *windowHeight
-		if winW == 0 {
-			winW = *imageWidth
-		}
-		if winH == 0 {
-			winH = *imageHeight
-		}
+	<-ctx.Done()
+	return nil
+}
 
-		// Create gocv marshaller with display
-		marshaller := gocv.NewMarshaller(
-			gocv.WithDisplay(ctx),
-			gocv.WithTitle("LiDAR Scan Visualization (Press ESC to exit)"),
-			gocv.WithWindowSize(winW, winH),
-		)
-
-		// Start marshaller in background
-		go func() {
-			if err := marshaller.Marshal(nil, displayStream); err != nil {
-				fmt.Fprintf(os.Stderr, "Display marshaller error: %v\n", err)
-			}
-		}()
+func setupProducer(ctx context.Context, router *dndm.Router) (*bus.Producer[*pbdevices.LIDARReading], error) {
+	intentPath := "LIDARReading@lidar.scan"
+	producer, err := bus.NewProducer[*pbdevices.LIDARReading](ctx, router, intentPath)
+	if err != nil {
+		return nil, err
 	}
+	fmt.Printf("LiDAR driver initialized with intent: %s\n", intentPath)
+	return producer, nil
+}
 
-	// Preallocate image tensor for visualization
-	var displayTensor types.Tensor
-	var displayMat *cv.Mat
-	if *display {
-		var err error
-		displayTensor, err = tensorgocv.NewImage(*imageHeight, *imageWidth, 3)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to create display tensor: %v\n", err)
-			os.Exit(1)
-		}
-		defer displayTensor.Release()
-
-		accessor, ok := displayTensor.(tensorgocv.Accessor)
-		if !ok {
-			fmt.Fprintf(os.Stderr, "Display tensor does not implement Accessor\n")
-			os.Exit(1)
-		}
-
-		displayMat, err = accessor.MatRef()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to get Mat reference: %v\n", err)
-			os.Exit(1)
-		}
-	}
-
-	// Register callback to publish readings and optionally display
+func setupCallback(ctx context.Context, lidar lidarDevice, producer *bus.Producer[*pbdevices.LIDARReading], display *DisplaySetup) {
 	lidar.OnRead(func(m matTypes.Matrix) {
 		reading := matrixToLIDARReading(m)
 		if err := producer.Send(ctx, reading); err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to send reading: %v\n", err)
 		}
 
-		// Display visualization if enabled
-		if *display && displayTensor != nil && displayMat != nil && frameChan != nil {
-			drawLIDARReading(displayMat, reading, *imageWidth, *imageHeight, *scaleFactor)
+		if display != nil && display.FrameChan != nil {
+			drawLIDARReading(display.Mat, reading, display.ImageWidth, display.ImageHeight, display.ScaleFactor)
 			select {
-			case frameChan <- types.Frame{
-				Tensors:   []types.Tensor{displayTensor},
+			case display.FrameChan <- types.Frame{
+				Tensors:   []types.Tensor{display.Tensor},
 				Index:     0,
 				Timestamp: time.Now().UnixNano(),
 			}:
@@ -199,14 +135,6 @@ func main() {
 			}
 		}
 	})
-
-	// Keep running
-	<-ctx.Done()
-
-	// Cleanup display stream
-	if displayStream.C != nil {
-		displayStream.Close()
-	}
 }
 
 type lidarDevice interface {

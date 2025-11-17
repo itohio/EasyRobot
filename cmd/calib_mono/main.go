@@ -130,109 +130,16 @@ func calibrateCamera(ctx context.Context, src source.Source, processor *Calibrat
 	fmt.Printf("Grid size: %dx%d\n", processor.gridSize.X, processor.gridSize.Y)
 	fmt.Printf("Target samples: %d\n", processor.targetSamples)
 
-	for {
-		// Check context cancellation
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		// Read frame from source
-		frame, err := src.ReadFrame()
-		if err != nil {
-			if err == source.ErrSourceExhausted {
-				break
-			}
-			fmt.Fprintf(os.Stderr, "Warning: failed to read frame: %v\n", err)
-			continue
-		}
-
-		if len(frame.Tensors) == 0 {
-			continue
-		}
-
-		// Convert tensor to Mat
-		mat, err := tensorToMat(frame.Tensors[0])
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to convert tensor: %v\n", err)
-			continue
-		}
-
-		// Process frame for calibration
-		found, err := processor.ProcessFrame(mat)
-		if err != nil {
-			mat.Close()
-			fmt.Fprintf(os.Stderr, "Warning: failed to process frame: %v\n", err)
-			continue
-		}
-
-		// Draw calibration visualization
-		visMat := mat.Clone()
-		processor.DrawCorners(visMat, found)
-
-		// Convert back to tensor for display
-		visTensor, err := matToTensor(visMat)
-		if err != nil {
-			mat.Close()
-			visMat.Close()
-			fmt.Fprintf(os.Stderr, "Warning: failed to convert mat to tensor: %v\n", err)
-			continue
-		}
-
-		// Create display frame with visualization
-		displayFrame := types.Frame{
-			Tensors:  []types.Tensor{visTensor},
-			Metadata: frame.Metadata,
-		}
-
-		// Send to all destinations
-		for _, dest := range dests {
-			if err := dest.AddFrame(displayFrame); err != nil {
-				// If display destination closed (ESC pressed), check context
-				select {
-				case <-ctx.Done():
-					// Context cancelled, exit loop
-					mat.Close()
-					visMat.Close()
-					return ctx.Err()
-				default:
-					// Continue processing
-				}
-			}
-		}
-
-		// Check context cancellation after processing frame
-		select {
-		case <-ctx.Done():
-			mat.Close()
-			visMat.Close()
-			return ctx.Err()
-		default:
-		}
-
-		mat.Close()
-		visMat.Close()
-
-		// Check if we have enough samples
-		if processor.numSamples >= processor.targetSamples {
-			fmt.Printf("\nCollected %d samples, computing calibration...\n", processor.numSamples)
-			break
-		}
-
-		if processor.numSamples%5 == 0 {
-			fmt.Printf("Collected %d/%d samples\n", processor.numSamples, processor.targetSamples)
-		}
+	if err := processCalibrationLoop(ctx, src, processor, dests); err != nil {
+		return err
 	}
 
-	// Compute calibration
 	calibration, err := processor.Calibrate()
 	if err != nil {
 		return fmt.Errorf("calibration failed: %w", err)
 	}
 	defer calibration.Close()
 
-	// Save calibration
 	if err := saveCalibration(calibration, outputPath, format); err != nil {
 		return fmt.Errorf("failed to save calibration: %w", err)
 	}

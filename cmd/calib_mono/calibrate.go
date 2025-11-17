@@ -23,6 +23,16 @@ type CalibrationProcessor struct {
 	lastFound     bool         // Whether last frame had detected corners
 }
 
+// NumSamples returns the number of collected samples.
+func (cp *CalibrationProcessor) NumSamples() int {
+	return cp.numSamples
+}
+
+// TargetSamples returns the target number of samples.
+func (cp *CalibrationProcessor) TargetSamples() int {
+	return cp.targetSamples
+}
+
 // NewCalibrationProcessor creates a new calibration processor
 func NewCalibrationProcessor(gridSize image.Point, targetSamples int) *CalibrationProcessor {
 	return &CalibrationProcessor{
