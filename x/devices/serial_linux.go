@@ -7,6 +7,8 @@ import (
 	"os"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 // LinuxSerial implements Serial interface using Linux serial port.
@@ -45,10 +47,115 @@ func NewSerialWithConfig(device string, config SerialConfig) (*LinuxSerial, erro
 		return nil, fmt.Errorf("failed to set blocking mode: %v", errno)
 	}
 
+	// Configure serial port parameters using termios
+	termios, err := unix.IoctlGetTermios(int(file.Fd()), unix.TCGETS)
+	if err != nil {
+		file.Close()
+		return nil, fmt.Errorf("failed to get termios: %w", err)
+	}
+
+	// Set baud rate
+	baudRate := config.BaudRate
+	if baudRate == 0 {
+		baudRate = 115200 // Default if not set
+	}
+	baudConst := baudRateToConstant(baudRate)
+	if baudConst == 0 {
+		file.Close()
+		return nil, fmt.Errorf("unsupported baud rate: %d", baudRate)
+	}
+	termios.Ispeed = baudConst
+	termios.Ospeed = baudConst
+
+	// Set 8N1 (8 data bits, no parity, 1 stop bit)
+	termios.Cflag &^= unix.CSIZE | unix.PARENB | unix.CSTOPB
+	termios.Cflag |= unix.CS8
+	termios.Cflag |= unix.CREAD | unix.CLOCAL // Enable receiver, ignore modem control lines
+
+	// Disable canonical mode and echo
+	termios.Lflag &^= unix.ICANON | unix.ECHO | unix.ECHOE | unix.ISIG
+
+	// Set minimum characters and timeout
+	termios.Cc[unix.VMIN] = 0
+	termios.Cc[unix.VTIME] = 0
+
+	if err := unix.IoctlSetTermios(int(file.Fd()), unix.TCSETS, termios); err != nil {
+		file.Close()
+		return nil, fmt.Errorf("failed to set termios: %w", err)
+	}
+
 	return &LinuxSerial{
 		file:   file,
 		config: config,
 	}, nil
+}
+
+// baudRateToConstant converts a baud rate to the corresponding termios constant.
+func baudRateToConstant(baud int) uint32 {
+	switch baud {
+	case 50:
+		return unix.B50
+	case 75:
+		return unix.B75
+	case 110:
+		return unix.B110
+	case 134:
+		return unix.B134
+	case 150:
+		return unix.B150
+	case 200:
+		return unix.B200
+	case 300:
+		return unix.B300
+	case 600:
+		return unix.B600
+	case 1200:
+		return unix.B1200
+	case 1800:
+		return unix.B1800
+	case 2400:
+		return unix.B2400
+	case 4800:
+		return unix.B4800
+	case 9600:
+		return unix.B9600
+	case 19200:
+		return unix.B19200
+	case 38400:
+		return unix.B38400
+	case 57600:
+		return unix.B57600
+	case 115200:
+		return unix.B115200
+	case 230400:
+		return unix.B230400
+	case 460800:
+		return unix.B460800
+	case 500000:
+		return unix.B500000
+	case 576000:
+		return unix.B576000
+	case 921600:
+		return unix.B921600
+	case 1000000:
+		return unix.B1000000
+	case 1152000:
+		return unix.B1152000
+	case 1500000:
+		return unix.B1500000
+	case 2000000:
+		return unix.B2000000
+	case 2500000:
+		return unix.B2500000
+	case 3000000:
+		return unix.B3000000
+	case 3500000:
+		return unix.B3500000
+	case 4000000:
+		return unix.B4000000
+	default:
+		return 0
+	}
 }
 
 // Read reads data from the serial port.

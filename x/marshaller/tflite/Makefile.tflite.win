@@ -1,0 +1,170 @@
+# Makefile.tflite.win
+#
+# Usage:
+#   mingw32-make -f Makefile.tflite.win all
+#   mingw32-make -f Makefile.tflite.win install PREFIX=C:/usr/local
+#   mingw32-make -f Makefile.tflite.win docker
+#   mingw32-make -f Makefile.tflite.win buildkit
+#
+# Requirements:
+#   * curl (or use PowerShell's Invoke-WebRequest)
+#   * tar (or 7zip)
+#   * bazel (or bazelisk) available on PATH (for native build)
+#   * docker (for docker target)
+#   * MinGW-W64 toolchain (gcc, g++, etc.)
+#   * Python 3 (for configure script)
+
+SHELL := cmd.exe
+
+# 2.2.0-rc3 does not exist
+# And lacks TfLiteInterpreterOptionsSetUseNNAPI
+TF_VERSION      := 2.6.0
+TF_ARCHIVE      := tensorflow-$(TF_VERSION).tar.gz
+TF_URL          := https://github.com/tensorflow/tensorflow/archive/refs/tags/v$(TF_VERSION).tar.gz
+WORK_DIR        := $(abspath .)/build
+DOWNLOAD_DIR    := $(WORK_DIR)/downloads
+SRC_DIR         := $(WORK_DIR)/src
+TF_SRC_DIR      := $(SRC_DIR)/tensorflow-$(TF_VERSION)
+BAZEL_BIN_DIR   := $(TF_SRC_DIR)/bazel-bin/tensorflow/lite/c
+OUTPUT_LIB      := $(WORK_DIR)/lib/libtensorflowlite_c.dll
+OUTPUT_HDR_DIR  := $(WORK_DIR)/include/tensorflow/lite
+BUILDKIT_ARCHIVE := go-tflite-buildkit-20240529.tar.gz
+BUILDKIT_URL     := https://github.com/mattn/go-tflite/releases/download/v1.0.5/$(BUILDKIT_ARCHIVE)
+BUILDKIT_DIR     := $(WORK_DIR)/buildkit
+
+PREFIX ?= C:/usr/local
+DOCKER_IMAGE := tflite-builder-$(TF_VERSION)
+DOCKER_OUT_DIR := $(WORK_DIR)/docker
+
+all: build
+
+build: $(OUTPUT_LIB) $(OUTPUT_HDR_DIR)/c_api.h
+
+$(DOWNLOAD_DIR)/$(TF_ARCHIVE):
+	@if not exist "$(DOWNLOAD_DIR)" mkdir "$(DOWNLOAD_DIR)"
+	@echo Downloading TensorFlow $(TF_VERSION)...
+	curl -L $(TF_URL) -o $@
+	@if errorlevel 1 (
+		@echo ERROR: Failed to download TensorFlow archive
+		@echo Trying PowerShell alternative...
+		powershell -Command "Invoke-WebRequest -Uri '$(TF_URL)' -OutFile '$@'"
+	)
+
+$(TF_SRC_DIR)/.extracted: $(DOWNLOAD_DIR)/$(TF_ARCHIVE)
+	@if not exist "$(SRC_DIR)" mkdir "$(SRC_DIR)"
+	@echo Extracting TensorFlow archive...
+	tar -C $(SRC_DIR) -xzf $<
+	@if errorlevel 1 (
+		@echo ERROR: tar failed, trying 7zip...
+		7z x $< -o$(SRC_DIR) -y
+	)
+	@echo. > $@
+
+$(TF_SRC_DIR)/.configured: $(TF_SRC_DIR)/.extracted
+	@echo Configuring TensorFlow...
+	@REM Ensure .bazelrc exists (GitHub releases omit dotfiles)
+	@if not exist "$(TF_SRC_DIR)\.bazelrc" (
+		curl -L https://raw.githubusercontent.com/tensorflow/tensorflow/v$(TF_VERSION)/.bazelrc -o $(TF_SRC_DIR)/.bazelrc
+	)
+	@REM Generate .tf_configure.bazelrc by running configure non-interactively
+	@cd $(TF_SRC_DIR)
+	@set PYTHON_BIN_PATH=python
+	@set USE_DEFAULT_PYTHON_LIB_PATH=1
+	@set TF_ENABLE_XLA=0
+	@set TF_NEED_ROCM=0
+	@set TF_NEED_CUDA=0
+	@set TF_DOWNLOAD_CLANG=0
+	@set TF_SET_ANDROID_WORKSPACE=0
+	@if exist configure.bat (
+		(echo. & echo. & echo. & echo. & echo. & echo. & echo. & echo. & echo. & echo.) | configure.bat
+	) else if exist configure.py (
+		(echo. & echo. & echo. & echo. & echo. & echo. & echo. & echo. & echo. & echo.) | python configure.py
+	) else (
+		@echo WARNING: No configure script found, skipping configuration
+	)
+	@echo. > $@
+
+$(OUTPUT_LIB): $(TF_SRC_DIR)/.configured
+	@echo Building TensorFlow Lite C library...
+	@cd $(TF_SRC_DIR) && bazel build --config opt --config monolithic //tensorflow/lite:libtensorflowlite.so
+	@cd $(TF_SRC_DIR) && bazel build --config=opt --config monolithic //tensorflow/lite/c:tensorflowlite_c
+	@if not exist "$(WORK_DIR)/lib" mkdir "$(WORK_DIR)/lib"
+	@REM On Windows with MinGW, Bazel may produce .so files instead of .dll
+	@if exist "$(BAZEL_BIN_DIR)/libtensorflowlite_c.dll" (
+		@copy /Y $(BAZEL_BIN_DIR)/libtensorflowlite_c.dll $(OUTPUT_LIB)
+	) else if exist "$(BAZEL_BIN_DIR)/libtensorflowlite_c.so" (
+		@copy /Y $(BAZEL_BIN_DIR)/libtensorflowlite_c.so $(OUTPUT_LIB:.dll=.so)
+		@echo NOTE: Library built as .so (MinGW), not .dll
+	) else (
+		@echo ERROR: Library not found in $(BAZEL_BIN_DIR)
+		@exit /b 1
+	)
+
+$(OUTPUT_HDR_DIR)/c_api.h: $(TF_SRC_DIR)/.configured
+	@if not exist "$(OUTPUT_HDR_DIR)" mkdir "$(OUTPUT_HDR_DIR)"
+	@if not exist "$(OUTPUT_HDR_DIR)/c" mkdir "$(OUTPUT_HDR_DIR)/c"
+	@copy /Y $(TF_SRC_DIR)/tensorflow/lite/c/*.h $(OUTPUT_HDR_DIR)/c/
+	@copy /Y $(TF_SRC_DIR)/tensorflow/lite/*.h $(OUTPUT_HDR_DIR)/
+
+install: build
+	@if not exist "$(PREFIX)/lib" mkdir "$(PREFIX)/lib"
+	@if exist "$(OUTPUT_LIB)" (
+		@copy /Y $(OUTPUT_LIB) $(PREFIX)/lib/
+	) else if exist "$(OUTPUT_LIB:.dll=.so)" (
+		@copy /Y $(OUTPUT_LIB:.dll=.so) $(PREFIX)/lib/
+	) else (
+		@echo ERROR: Library file not found
+		@exit /b 1
+	)
+	@if not exist "$(PREFIX)/include/tensorflow/lite/c" mkdir "$(PREFIX)/include/tensorflow/lite/c"
+	@copy /Y $(OUTPUT_HDR_DIR)/*.h $(PREFIX)/include/tensorflow/lite/
+	@copy /Y $(OUTPUT_HDR_DIR)/c/*.h $(PREFIX)/include/tensorflow/lite/c/
+	@echo Installation complete!
+	@echo.
+	@echo IMPORTANT: Add $(PREFIX)/lib to your PATH environment variable
+	@echo IMPORTANT: Add $(PREFIX)/include to your CGO_CPPFLAGS if needed
+
+$(DOWNLOAD_DIR)/$(BUILDKIT_ARCHIVE):
+	@if not exist "$(DOWNLOAD_DIR)" mkdir "$(DOWNLOAD_DIR)"
+	@echo Downloading buildkit archive...
+	curl -L $(BUILDKIT_URL) -o $@
+	@if errorlevel 1 (
+		powershell -Command "Invoke-WebRequest -Uri '$(BUILDKIT_URL)' -OutFile '$@'"
+	)
+
+buildkit: $(DOWNLOAD_DIR)/$(BUILDKIT_ARCHIVE)
+	@if not exist "$(BUILDKIT_DIR)" mkdir "$(BUILDKIT_DIR)"
+	@echo Extracting buildkit archive...
+	tar -xf $< -C $(BUILDKIT_DIR)
+	@if errorlevel 1 (
+		7z x $< -o$(BUILDKIT_DIR) -y
+	)
+	@if not exist "$(WORK_DIR)/lib" mkdir "$(WORK_DIR)/lib"
+	@if not exist "$(OUTPUT_HDR_DIR)" mkdir "$(OUTPUT_HDR_DIR)"
+	@if not exist "$(OUTPUT_HDR_DIR)/c" mkdir "$(OUTPUT_HDR_DIR)/c"
+	@copy /Y $(BUILDKIT_DIR)/usr/local/lib/libtensorflowlite_c.dll $(WORK_DIR)/lib/ 2>nul || copy /Y $(BUILDKIT_DIR)/usr/local/lib/libtensorflowlite_c.so $(WORK_DIR)/lib/
+	@copy /Y $(BUILDKIT_DIR)/usr/local/include/tensorflow/lite/c/*.h $(OUTPUT_HDR_DIR)/c/
+	@copy /Y $(BUILDKIT_DIR)/usr/local/include/tensorflow/lite/*.h $(OUTPUT_HDR_DIR)/
+	@echo Buildkit artifacts are available under $(BUILDKIT_DIR)/usr/local.
+	@echo To install manually run:
+	@echo   copy $(BUILDKIT_DIR)/usr/local/lib/libtensorflowlite_c.dll $(PREFIX)/lib/
+	@echo   copy $(BUILDKIT_DIR)/usr/local/include/tensorflow/lite/c/*.h $(PREFIX)/include/tensorflow/lite/c/
+	@echo   Add $(PREFIX)/lib to your PATH
+
+docker:
+	@echo Building Docker image...
+	docker build -f Dockerfile.tflite --build-arg TF_VERSION=$(TF_VERSION) -t $(DOCKER_IMAGE) .
+	@if not exist "$(DOCKER_OUT_DIR)" mkdir "$(DOCKER_OUT_DIR)"
+	@echo Running Docker container...
+	docker run --rm -v $(DOCKER_OUT_DIR):/out $(DOCKER_IMAGE)
+	@if not exist "$(WORK_DIR)/lib" mkdir "$(WORK_DIR)/lib"
+	@if not exist "$(OUTPUT_HDR_DIR)" mkdir "$(OUTPUT_HDR_DIR)"
+	@if not exist "$(OUTPUT_HDR_DIR)/c" mkdir "$(OUTPUT_HDR_DIR)/c"
+	@copy /Y $(DOCKER_OUT_DIR)/lib/libtensorflowlite_c.dll $(WORK_DIR)/lib/ 2>nul || copy /Y $(DOCKER_OUT_DIR)/lib/libtensorflowlite_c.so $(WORK_DIR)/lib/
+	@copy /Y $(DOCKER_OUT_DIR)/include/tensorflow/lite/c/*.h $(OUTPUT_HDR_DIR)/c/
+
+clean:
+	@if exist "$(WORK_DIR)" rmdir /s /q "$(WORK_DIR)"
+
+.PHONY: all build install docker buildkit clean
+

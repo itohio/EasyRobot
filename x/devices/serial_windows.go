@@ -5,8 +5,6 @@ package devices
 import (
 	"fmt"
 	"os"
-	"syscall"
-	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -63,8 +61,11 @@ func NewSerialWithConfig(device string, config SerialConfig) (*WindowsSerial, er
 		return nil, fmt.Errorf("failed to get serial state: %w", err)
 	}
 
-	// Set common defaults (115200 baud, 8N1)
-	dcb.BaudRate = 115200
+	// Set serial port parameters (8N1)
+	dcb.BaudRate = uint32(config.BaudRate)
+	if dcb.BaudRate == 0 {
+		dcb.BaudRate = 115200 // Default if not set
+	}
 	dcb.ByteSize = 8
 	dcb.Parity = windows.NOPARITY
 	dcb.StopBits = windows.ONESTOPBIT
@@ -76,11 +77,11 @@ func NewSerialWithConfig(device string, config SerialConfig) (*WindowsSerial, er
 
 	// Set timeouts (no timeout for reads, immediate return)
 	timeouts := &windows.CommTimeouts{
-		ReadIntervalTimeout:        0xFFFFFFFF, // No interval timeout
-		ReadTotalTimeoutMultiplier: 0,
-		ReadTotalTimeoutConstant:   0,
+		ReadIntervalTimeout:         0xFFFFFFFF, // No interval timeout
+		ReadTotalTimeoutMultiplier:  0,
+		ReadTotalTimeoutConstant:    0,
 		WriteTotalTimeoutMultiplier: 0,
-		WriteTotalTimeoutConstant:  0,
+		WriteTotalTimeoutConstant:   0,
 	}
 	if err := windows.SetCommTimeouts(handle, timeouts); err != nil {
 		windows.CloseHandle(handle)
@@ -117,7 +118,7 @@ func (s *WindowsSerial) Buffered() int {
 	if err := windows.ClearCommError(s.handle, nil, &stat); err != nil {
 		return 0
 	}
-	return int(stat.InQue)
+	return int(stat.CBInQue)
 }
 
 // Close closes the serial port.
@@ -133,4 +134,3 @@ func (s *WindowsSerial) Close() error {
 func (s *WindowsSerial) File() *os.File {
 	return s.file
 }
-

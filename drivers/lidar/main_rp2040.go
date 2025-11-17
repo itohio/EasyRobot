@@ -55,7 +55,9 @@ func main() {
 		TX:       uartTX,
 		RX:       uartRX,
 	})
-	ser := devio.NewTinyGoSerial(uart)
+	// For TinyGo, machine.UART implements io.Reader/Writer directly
+	// Create a simple wrapper that implements the Serial interface
+	ser := &tinyGoSerialWrapper{uart: uart}
 
 	// Setup PWM if pin is configured (optional)
 	var motor devio.PWM
@@ -120,6 +122,23 @@ type lidarDevice interface {
 	Configure(init bool) error
 	OnRead(fn func(matTypes.Matrix))
 	Close()
+}
+
+// tinyGoSerialWrapper wraps machine.UART to implement devio.Serial interface
+type tinyGoSerialWrapper struct {
+	uart machine.UART
+}
+
+func (s *tinyGoSerialWrapper) Read(p []byte) (n int, err error) {
+	return s.uart.Read(p)
+}
+
+func (s *tinyGoSerialWrapper) Write(p []byte) (n int, err error) {
+	return s.uart.Write(p)
+}
+
+func (s *tinyGoSerialWrapper) Buffered() int {
+	return s.uart.Buffered()
 }
 
 // createLIDAR creates the appropriate LiDAR device based on build tags

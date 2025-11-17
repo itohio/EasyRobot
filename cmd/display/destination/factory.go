@@ -29,11 +29,8 @@ func NewAllDestinations() []Destination {
 		dests = append(dests, NewVideo())
 	}
 
-	// DNDM intent destination (enabled if --intent routes are set)
-	if intentDest := NewIntentFromFlags(); intentDest != nil {
-		dests = append(dests, intentDest)
-	}
+	// DNDM intent destination is not created here - it requires a router
+	// Callers should use NewIntentFromFlags(router) separately
 
 	return dests
 }
-

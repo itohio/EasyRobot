@@ -1,0 +1,291 @@
+# Helper Makefile for building OpenCV for GoCV integration on Windows
+# Based on: https://gocv.io/getting-started/windows/
+# Requires: CMake and a compatible build system (auto-detected)
+#
+# This Makefile builds OpenCV with contrib modules enabled.
+# Contrib modules are automatically downloaded and configured.
+# CMake will auto-detect your build system, or you can specify one with:
+#   make configure CMAKE_GENERATOR="MinGW Makefiles"
+
+SHELL := cmd.exe
+
+OPENCV_VERSION ?= 4.12.0
+OPENCV_REPO ?= https://github.com/opencv/opencv.git
+OPENCV_CONTRIB_REPO ?= https://github.com/opencv/opencv_contrib.git
+
+# Default installation path as per GoCV guide
+PREFIX ?= C:/opencv/build/install
+SRC_DIR ?= $(CURDIR)/third_party/src
+BUILD_DIR ?= $(CURDIR)/build/opencv
+
+# Number of parallel jobs (override with: make -jN or set NUM_JOBS=N)
+# Defaults to 4, but you can override: make NUM_JOBS=8 install
+NUM_JOBS ?= 4
+
+# CMake generator (optional - CMake will auto-detect if not specified)
+# Examples: "MinGW Makefiles", "Unix Makefiles", "Ninja", "Visual Studio 17 2022", etc.
+# Set to empty string to let CMake fully auto-detect (will prefer Visual Studio if installed)
+CMAKE_GENERATOR ?=
+
+# BLAS/LAPACK support (optional)
+# Set to 1 to enable BLAS/LAPACK support (requires OpenBLAS or similar)
+# Build OpenBLAS from source with: make blas
+# Or set OPENBLAS_ROOT to point to OpenBLAS installation directory
+WITH_BLAS ?= 1
+OPENBLAS_ROOT ?= C:/openblas
+OPENBLAS_SRC_DIR ?= $(CURDIR)/third_party/src/openblas
+OPENBLAS_BUILD_DIR ?= $(CURDIR)/build/openblas
+
+OPENCV_SRC := $(SRC_DIR)/opencv
+OPENCV_CONTRIB_SRC := $(SRC_DIR)/opencv_contrib
+
+.PHONY: checkout configure build install clean distclean info blas
+
+info:
+	@echo OpenCV Build Configuration
+	@echo ============================
+	@echo OpenCV version: $(OPENCV_VERSION)
+	@echo OpenCV repo: $(OPENCV_REPO)
+	@echo OpenCV contrib repo: $(OPENCV_CONTRIB_REPO)
+	@echo Source directory: $(SRC_DIR)
+	@echo   - OpenCV: $(OPENCV_SRC)
+	@echo   - Contrib: $(OPENCV_CONTRIB_SRC)
+	@echo Build directory:  $(BUILD_DIR)
+	@echo Install prefix:   $(PREFIX)
+	@echo Number of jobs:   $(NUM_JOBS)
+	@echo BLAS/LAPACK:      $(WITH_BLAS)
+	@if not "$(OPENBLAS_ROOT)"=="" echo OpenBLAS root: $(OPENBLAS_ROOT)
+	@if not "$(OPENBLAS_ROOT)"=="" echo OpenBLAS src:  $(OPENBLAS_SRC_DIR)
+
+checkout: $(OPENCV_SRC)/.git $(OPENCV_CONTRIB_SRC)/.git
+	git -C $(OPENCV_SRC) fetch --tags
+	git -C $(OPENCV_SRC) checkout $(OPENCV_VERSION)
+	git -C $(OPENCV_CONTRIB_SRC) fetch --tags
+	git -C $(OPENCV_CONTRIB_SRC) checkout $(OPENCV_VERSION)
+
+$(OPENCV_SRC)/.git:
+	@if not exist "$(SRC_DIR)" mkdir "$(SRC_DIR)"
+	git clone $(OPENCV_REPO) $(OPENCV_SRC)
+
+$(OPENCV_CONTRIB_SRC)/.git:
+	@if not exist "$(SRC_DIR)" mkdir "$(SRC_DIR)"
+	git clone $(OPENCV_CONTRIB_REPO) $(OPENCV_CONTRIB_SRC)
+
+configure: checkout
+	@if not exist "$(BUILD_DIR)" mkdir "$(BUILD_DIR)"
+	@echo Configuring OpenCV with contrib modules...
+	@echo Contrib modules path: $(OPENCV_CONTRIB_SRC)/modules
+ifeq ($(CMAKE_GENERATOR),)
+	@echo Using MinGW Makefiles generator (CMake will verify tools are available)...
+ifeq ($(WITH_BLAS),1)
+	@echo Enabling BLAS/LAPACK support...
+	@if not "$(OPENBLAS_ROOT)"=="" (
+		@echo Using OpenBLAS from: $(OPENBLAS_ROOT)
+		@cmake -S $(OPENCV_SRC) -B $(BUILD_DIR) \
+			-DCMAKE_BUILD_TYPE=Release \
+			-DCMAKE_INSTALL_PREFIX="$(PREFIX)" \
+			-G "MinGW Makefiles" \
+			-DOPENCV_GENERATE_PKGCONFIG=ON \
+			-DOPENCV_EXTRA_MODULES_PATH=$(OPENCV_CONTRIB_SRC)/modules \
+			-DWITH_LAPACK=ON \
+			-DWITH_EIGEN=ON \
+			-DOpenBLAS_DIR="$(OPENBLAS_ROOT)" \
+			-DBUILD_EXAMPLES=OFF \
+			-DBUILD_TESTS=OFF \
+			-DBUILD_PERF_TESTS=OFF \
+			-DBUILD_JAVA=OFF \
+			-DBUILD_opencv_python3=OFF \
+			-DBUILD_opencv_python2=OFF \
+			-DBUILD_opencv_js=OFF \
+			-DBUILD_SHARED_LIBS=ON
+	) else (
+		@cmake -S $(OPENCV_SRC) -B $(BUILD_DIR) \
+			-DCMAKE_BUILD_TYPE=Release \
+			-DCMAKE_INSTALL_PREFIX="$(PREFIX)" \
+			-G "MinGW Makefiles" \
+			-DOPENCV_GENERATE_PKGCONFIG=ON \
+			-DOPENCV_EXTRA_MODULES_PATH=$(OPENCV_CONTRIB_SRC)/modules \
+			-DWITH_LAPACK=ON \
+			-DWITH_EIGEN=ON \
+			-DBUILD_EXAMPLES=OFF \
+			-DBUILD_TESTS=OFF \
+			-DBUILD_PERF_TESTS=OFF \
+			-DBUILD_JAVA=OFF \
+			-DBUILD_opencv_python3=OFF \
+			-DBUILD_opencv_python2=OFF \
+			-DBUILD_opencv_js=OFF \
+			-DBUILD_SHARED_LIBS=ON
+	)
+else
+	@cmake -S $(OPENCV_SRC) -B $(BUILD_DIR) \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX="$(PREFIX)" \
+		-G "MinGW Makefiles" \
+		-DOPENCV_GENERATE_PKGCONFIG=ON \
+		-DOPENCV_EXTRA_MODULES_PATH=$(OPENCV_CONTRIB_SRC)/modules \
+		-DBUILD_EXAMPLES=OFF \
+		-DBUILD_TESTS=OFF \
+		-DBUILD_PERF_TESTS=OFF \
+		-DBUILD_JAVA=OFF \
+		-DBUILD_opencv_python3=OFF \
+		-DBUILD_opencv_python2=OFF \
+		-DBUILD_opencv_js=OFF \
+		-DBUILD_SHARED_LIBS=ON
+endif
+else
+	@echo Using specified CMake generator: $(CMAKE_GENERATOR)
+ifeq ($(WITH_BLAS),1)
+	@echo Enabling BLAS/LAPACK support...
+	@if not "$(OPENBLAS_ROOT)"=="" (
+		@echo Using OpenBLAS from: $(OPENBLAS_ROOT)
+		@cmake -S $(OPENCV_SRC) -B $(BUILD_DIR) \
+			-DCMAKE_BUILD_TYPE=Release \
+			-DCMAKE_INSTALL_PREFIX="$(PREFIX)" \
+			-G "$(CMAKE_GENERATOR)" \
+			-DOPENCV_GENERATE_PKGCONFIG=ON \
+			-DOPENCV_EXTRA_MODULES_PATH=$(OPENCV_CONTRIB_SRC)/modules \
+			-DWITH_LAPACK=ON \
+			-DWITH_EIGEN=ON \
+			-DOpenBLAS_DIR="$(OPENBLAS_ROOT)" \
+			-DBUILD_EXAMPLES=OFF \
+			-DBUILD_TESTS=OFF \
+			-DBUILD_PERF_TESTS=OFF \
+			-DBUILD_JAVA=OFF \
+			-DBUILD_opencv_python3=OFF \
+			-DBUILD_opencv_python2=OFF \
+			-DBUILD_opencv_js=OFF \
+			-DBUILD_SHARED_LIBS=ON
+	) else (
+		@cmake -S $(OPENCV_SRC) -B $(BUILD_DIR) \
+			-DCMAKE_BUILD_TYPE=Release \
+			-DCMAKE_INSTALL_PREFIX="$(PREFIX)" \
+			-G "$(CMAKE_GENERATOR)" \
+			-DOPENCV_GENERATE_PKGCONFIG=ON \
+			-DOPENCV_EXTRA_MODULES_PATH=$(OPENCV_CONTRIB_SRC)/modules \
+			-DWITH_LAPACK=ON \
+			-DWITH_EIGEN=ON \
+			-DBUILD_EXAMPLES=OFF \
+			-DBUILD_TESTS=OFF \
+			-DBUILD_PERF_TESTS=OFF \
+			-DBUILD_JAVA=OFF \
+			-DBUILD_opencv_python3=OFF \
+			-DBUILD_opencv_python2=OFF \
+			-DBUILD_opencv_js=OFF \
+			-DBUILD_SHARED_LIBS=ON
+	)
+else
+	@cmake -S $(OPENCV_SRC) -B $(BUILD_DIR) \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX="$(PREFIX)" \
+		-G "$(CMAKE_GENERATOR)" \
+		-DOPENCV_GENERATE_PKGCONFIG=ON \
+		-DOPENCV_EXTRA_MODULES_PATH=$(OPENCV_CONTRIB_SRC)/modules \
+		-DBUILD_EXAMPLES=OFF \
+		-DBUILD_TESTS=OFF \
+		-DBUILD_PERF_TESTS=OFF \
+		-DBUILD_JAVA=OFF \
+		-DBUILD_opencv_python3=OFF \
+		-DBUILD_opencv_python2=OFF \
+		-DBUILD_opencv_js=OFF \
+		-DBUILD_SHARED_LIBS=ON
+endif
+endif
+	@echo.
+	@echo NOTE: Ensure CGO uses the same toolchain (MinGW) for Go builds.
+	@if "$(WITH_BLAS)"=="1" (
+		@echo NOTE: BLAS/LAPACK enabled. If build fails, install OpenBLAS:
+		@echo   scoop install openblas
+		@echo   Or set OPENBLAS_ROOT to point to OpenBLAS installation.
+	)
+
+build: configure
+	cmake --build $(BUILD_DIR) --target all -- -j$(NUM_JOBS)
+
+install: build
+	cmake --build $(BUILD_DIR) --target install
+	@echo.
+	@echo ========================================
+	@echo OpenCV installation complete!
+	@echo.
+	@echo IMPORTANT: Add the following to your System PATH:
+ifeq ($(CMAKE_GENERATOR),)
+	@echo   $(PREFIX)/x64/mingw/bin
+	@set OPENCV_LIB_PATH=$(PREFIX)/x64/mingw/lib
+	@set OPENCV_INCLUDE_PATH=$(PREFIX)/include
+else
+	@if "$(CMAKE_GENERATOR)"=="MinGW Makefiles" (
+		@echo   $(PREFIX)/x64/mingw/bin
+		@set OPENCV_LIB_PATH=$(PREFIX)/x64/mingw/lib
+		@set OPENCV_INCLUDE_PATH=$(PREFIX)/include
+	) else (
+		@echo   $(PREFIX)/x64/vc16/bin (or check CMake output for exact path)
+		@set OPENCV_LIB_PATH=$(PREFIX)/x64/vc16/lib
+		@set OPENCV_INCLUDE_PATH=$(PREFIX)/include
+	)
+endif
+	@echo.
+	@echo IMPORTANT: Set CGO environment variables for building GoCV:
+	@echo   Run: x\math\tensor\gocv\setup_cgo.bat
+	@echo   Or manually set:
+	@echo   set CGO_CXXFLAGS=--std=c++11
+	@echo   set CGO_CPPFLAGS=-I$(PREFIX)/include
+	@echo   set CGO_LDFLAGS=-L$(OPENCV_LIB_PATH) -lopencv_core4120 -lopencv_imgproc4120 -lopencv_imgcodecs4120 -lopencv_videoio4120 -lopencv_highgui4120 -lopencv_features2d4120 -lopencv_calib3d4120 -lopencv_objdetect4120 -lopencv_dnn4120 -lopencv_video4120
+	@echo.
+	@echo Or use the customenv build tag (requires setting CGO vars):
+	@echo   go build -tags customenv ./drivers/lidar
+	@echo.
+	@echo After adding to PATH, restart your terminal or run:
+	@echo   refreshenv
+	@echo.
+	@echo You can verify the installation by running:
+	@echo   go run c:\Users\Foxis\go\pkg\mod\gocv.io\x\gocv@v0.42.0\cmd\version\main.go
+	@echo.
+	@echo If you get error 0xc0000135 (DLL not found), make sure:
+	@echo   1. The OpenCV bin directory is in your PATH
+	@echo   2. You've restarted your terminal after adding to PATH
+	@echo   3. All required DLLs are present in the bin directory
+	@echo ========================================
+
+clean:
+	@if exist "$(BUILD_DIR)" rmdir /s /q "$(BUILD_DIR)"
+	@if exist "$(OPENBLAS_BUILD_DIR)" rmdir /s /q "$(OPENBLAS_BUILD_DIR)"
+
+distclean: clean
+	@if exist "$(SRC_DIR)" rmdir /s /q "$(SRC_DIR)"
+	@if exist "$(PREFIX)" rmdir /s /q "$(PREFIX)"
+
+blas: $(OPENBLAS_ROOT)/lib/libopenblas.dll
+
+$(OPENBLAS_SRC_DIR)/.git:
+	@if not exist "$(CURDIR)/third_party/src" mkdir "$(CURDIR)/third_party/src"
+	@echo Cloning OpenBLAS repository...
+	git clone https://github.com/xianyi/OpenBLAS.git $(OPENBLAS_SRC_DIR)
+
+$(OPENBLAS_BUILD_DIR)/.built: $(OPENBLAS_SRC_DIR)/.git
+	@if not exist "$(OPENBLAS_BUILD_DIR)" mkdir "$(OPENBLAS_BUILD_DIR)"
+	@echo Building OpenBLAS from source...
+	@echo This may take 30-60 minutes...
+	@cd $(OPENBLAS_SRC_DIR)
+	@make clean 2>nul
+	@make DYNAMIC_ARCH=1 NO_SHARED=0 USE_THREAD=1
+	@if errorlevel 1 (
+		@echo ERROR: OpenBLAS build failed
+		@exit /b 1
+	)
+	@echo. > $(OPENBLAS_BUILD_DIR)/.built
+
+$(OPENBLAS_ROOT)/lib/libopenblas.dll: $(OPENBLAS_BUILD_DIR)/.built
+	@echo Installing OpenBLAS to $(OPENBLAS_ROOT)...
+	@if not exist "$(OPENBLAS_ROOT)" mkdir "$(OPENBLAS_ROOT)"
+	@if not exist "$(OPENBLAS_ROOT)/lib" mkdir "$(OPENBLAS_ROOT)/lib"
+	@if not exist "$(OPENBLAS_ROOT)/include" mkdir "$(OPENBLAS_ROOT)/include"
+	@cd $(OPENBLAS_SRC_DIR)
+	@make install PREFIX=$(OPENBLAS_ROOT)
+	@if errorlevel 1 (
+		@echo ERROR: OpenBLAS installation failed
+		@exit /b 1
+	)
+	@echo.
+	@echo OpenBLAS built and installed successfully to $(OPENBLAS_ROOT)!
+	@echo Make sure to set OPENBLAS_ROOT=$(OPENBLAS_ROOT) when building OpenCV.
+	@echo Or add $(OPENBLAS_ROOT)/lib to your PATH.
