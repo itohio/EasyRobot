@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log/slog"
 )
 
 var interestRoutes FlagArray
@@ -27,8 +28,11 @@ func (s *interestSource) RegisterFlags() {
 
 func (s *interestSource) Start(ctx context.Context) error {
 	if len(s.routes) == 0 {
+		slog.Error("No interest routes specified")
 		return fmt.Errorf("no interest routes specified")
 	}
+
+	slog.Info("Starting interest source", "routes", s.routes, "count", len(s.routes))
 
 	// TODO: Implement DNDM interest consumer
 	// 1. Connect to DNDM network
@@ -37,6 +41,7 @@ func (s *interestSource) Start(ctx context.Context) error {
 	// 4. Convert proto Frame → types.Frame
 	// 5. Create FrameStream from received frames
 
+	slog.Error("DNDM interest source not yet implemented")
 	return fmt.Errorf("DNDM interest source not yet implemented")
 }
 
@@ -51,8 +56,10 @@ func RegisterInterestFlags() {
 // Returns (nil, nil) if no interest routes are specified (not an error).
 func NewInterestFromFlags() (Source, error) {
 	if len(interestRoutes) == 0 {
+		slog.Debug("No interest routes specified")
 		return nil, nil // Not an error, just not specified
 	}
+	slog.Debug("Creating interest source from flags", "routes", interestRoutes)
 	src := NewInterest().(*interestSource)
 	src.routes = []string(interestRoutes)
 	return src, nil
