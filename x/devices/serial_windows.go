@@ -96,8 +96,29 @@ func NewSerialWithConfig(device string, config SerialConfig) (*WindowsSerial, er
 }
 
 // Read reads data from the serial port.
+// On Windows, os.File.Read() can incorrectly return EOF for serial ports.
+// We use ReadFile directly to avoid this issue.
 func (s *WindowsSerial) Read(p []byte) (n int, err error) {
-	return s.file.Read(p)
+	if len(p) == 0 {
+		return 0, nil
+	}
+	var bytesRead uint32
+	err = windows.ReadFile(s.handle, p, &bytesRead, nil)
+	if err != nil {
+		// Check for specific Windows errors
+		if err == windows.ERROR_IO_PENDING {
+			// I/O is pending, wait for completion (shouldn't happen with blocking reads)
+			return 0, err
+		}
+		// For other errors, return them as-is
+		return int(bytesRead), err
+	}
+	if bytesRead == 0 {
+		// No data read, but not an error - this shouldn't happen with blocking reads
+		// but we'll return 0, nil to indicate no data available
+		return 0, nil
+	}
+	return int(bytesRead), nil
 }
 
 // Write writes data to the serial port.

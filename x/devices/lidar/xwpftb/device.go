@@ -3,7 +3,10 @@ package xwpftb
 import (
 	"context"
 	"encoding/binary"
+	"encoding/hex"
+	"fmt"
 	"io"
+	"log/slog"
 	"math"
 	"sync"
 	"time"
@@ -161,113 +164,270 @@ func (d *Device) Configure(_ bool) error {
 
 func (d *Device) readLoop() {
 	tmp := make([]byte, 1024)
+	readCount := 0
 	for {
 		select {
 		case <-d.ctx.Done():
+			slog.Info("XWPFTB readLoop stopping", "reason", "context cancelled")
 			return
 		default:
 		}
 		n, err := d.ser.Read(tmp)
 		if n > 0 {
+			readCount++
+			hexDump := hex.EncodeToString(tmp[:n])
+			slog.Debug("XWPFTB raw read",
+				"bytes", n,
+				"read_count", readCount,
+				"buffer_size", len(d.buf),
+				"hex", hexDump,
+			)
 			d.buf = append(d.buf, tmp[:n]...)
+			slog.Info("XWPFTB buffer after append",
+				"buffer_size", len(d.buf),
+				"first_16_bytes_hex", hex.EncodeToString(d.buf[:min(16, len(d.buf))]),
+			)
 			for {
 				consumed := d.consumeOneFrame()
 				if consumed == 0 {
 					break
 				}
+				slog.Debug("XWPFTB consumed frame",
+					"consumed_bytes", consumed,
+					"remaining_buffer_size", len(d.buf)-consumed,
+				)
 				copy(d.buf, d.buf[consumed:])
 				d.buf = d.buf[:len(d.buf)-consumed]
 			}
 		}
 		if err != nil {
 			if err == io.EOF {
+				slog.Warn("XWPFTB readLoop EOF", "read_count", readCount)
 				return
 			}
+			slog.Warn("XWPFTB readLoop error", "err", err, "read_count", readCount)
 			// continue on transient errors
 		}
 	}
 }
 
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 func (d *Device) consumeOneFrame() int {
-	const header = 0xAA
+	const (
+		headerByte1 = 0x55
+		headerByte2 = 0xAA
+		frameSize   = 60 // Fixed frame size per protocol
+	)
+
+	// Find the 2-byte header (0x55 0xAA)
 	i := 0
-	for i < len(d.buf) && d.buf[i] != header {
+	for i < len(d.buf)-1 {
+		if d.buf[i] == headerByte1 && d.buf[i+1] == headerByte2 {
+			break
+		}
 		i++
 	}
 	if i > 0 {
+		slog.Debug("XWPFTB skipping bytes before header",
+			"skipped_bytes", i,
+			"skipped_hex", hex.EncodeToString(d.buf[:i]),
+		)
 		return i
 	}
-	if len(d.buf) < 4 {
+	if i >= len(d.buf)-1 {
+		// Header not found or incomplete
+		if len(d.buf) >= 2 {
+			// Skip first byte and try again next time
+			return 1
+		}
 		return 0
 	}
-	totalLen := int(binary.LittleEndian.Uint16(d.buf[1:3]))
-	if totalLen <= 0 || totalLen > 8192 {
-		return 1
-	}
-	if len(d.buf) < totalLen {
+
+	// Check if we have enough data for a complete frame
+	if len(d.buf) < i+frameSize {
+		slog.Debug("XWPFTB waiting for more data",
+			"needed", i+frameSize,
+			"have", len(d.buf),
+		)
 		return 0
 	}
-	frame := d.buf[:totalLen]
-	expectedCRC := binary.LittleEndian.Uint16(frame[totalLen-2:])
-	if crc16Cumulative(frame[:totalLen-2]) != expectedCRC {
-		return 1
+
+	frame := d.buf[i : i+frameSize]
+
+	// Verify frame structure
+	if frame[0] != headerByte1 || frame[1] != headerByte2 {
+		slog.Warn("XWPFTB header mismatch after sync",
+			"byte0", fmt.Sprintf("0x%02X", frame[0]),
+			"byte1", fmt.Sprintf("0x%02X", frame[1]),
+		)
+		return i + 1
 	}
-	version := frame[3]
-	ftype := frame[4]
-	cmd := frame[5]
-	payloadLen := int(binary.LittleEndian.Uint16(frame[6:8]))
-	if 8+payloadLen+2 != totalLen {
-		return totalLen
+
+	ftype := frame[2]
+	dataLen := frame[3]
+
+	if ftype != 0x23 {
+		slog.Warn("XWPFTB unexpected frame type",
+			"type", fmt.Sprintf("0x%02X", ftype),
+			"expected", "0x23",
+		)
+		return i + 1
 	}
-	payload := frame[8 : 8+payloadLen]
-	if version != 0x01 || ftype != 0x61 {
-		return totalLen
+
+	if dataLen != 0x10 {
+		slog.Warn("XWPFTB unexpected data length",
+			"data_len", dataLen,
+			"expected", 0x10,
+		)
+		return i + 1
 	}
-	if cmd == 0xAD {
-		d.consumeMeasurement(payload)
+
+	// Verify CRC (last 2 bytes)
+	expectedCRC := binary.LittleEndian.Uint16(frame[frameSize-2:])
+	calculatedCRC := crc16Cumulative(frame[:frameSize-2])
+	if calculatedCRC != expectedCRC {
+		slog.Warn("XWPFTB CRC mismatch",
+			"expected", fmt.Sprintf("0x%04X", expectedCRC),
+			"calculated", fmt.Sprintf("0x%04X", calculatedCRC),
+			"frame_hex", hex.EncodeToString(frame),
+		)
+		return i + 1
 	}
-	return totalLen
+
+	slog.Debug("XWPFTB frame parsed",
+		"type", fmt.Sprintf("0x%02X", ftype),
+		"data_len", dataLen,
+		"frame_hex", hex.EncodeToString(frame),
+	)
+
+	// Process the measurement data (bytes 2-59, excluding CRC)
+	// frame[2] = TYPE, frame[3] = DATA_LENGTH, frame[4+] = measurement data
+	d.consumeMeasurement(frame[2:])
+
+	return i + frameSize
 }
 
-func (d *Device) consumeMeasurement(payload []byte) {
-	if len(payload) < 5 {
+func (d *Device) consumeMeasurement(data []byte) {
+	// Protocol format (after header 0x55 0xAA):
+	// [0] = TYPE (0x23)
+	// [1] = DATA_LENGTH (0x10)
+	// [2-3] = speed_L, speed_H
+	// [4-5] = start_angle_L, start_angle_H
+	// [6-53] = 16 measurements, each 3 bytes: distance_L, distance_H, intensity
+	// [54-55] = end_angle_L, end_angle_H
+	// [56-57] = crc16_L, crc16_H (already verified)
+
+	const (
+		expectedDataLen = 0x10 // 16 measurements
+		measurements    = 16
+		bytesPerPoint   = 3
+	)
+
+	if len(data) < 56 {
+		slog.Warn("XWPFTB measurement data too short",
+			"data_len", len(data),
+			"expected", 56,
+		)
 		return
 	}
-	// payload[0]: rpm (unused)
-	startAngleCenti := binary.LittleEndian.Uint16(payload[3:5])
-	startAngleDeg := float64(startAngleCenti) * 0.01
-	if (len(payload)-5)%3 != 0 {
-		return
-	}
-	m := (len(payload) - 5) / 3
-	if m <= 0 {
-		return
-	}
-	const sliceSpan = 24.0
-	stepDeg := sliceSpan / float64(m)
+
+	// Extract speed (bytes 2-3, little-endian)
+	speed := binary.LittleEndian.Uint16(data[2:4])
+
+	// Extract start angle using the formula from README:
+	// uint16_t start_angle = (((data[7] & 0x7F) << 8) + data[6]) - 0x2000;
+	// In README, data[6] = start_angle_L, data[7] = start_angle_H
+	// In our data array: data[4] = start_angle_L, data[5] = start_angle_H
+	// So we use: data[4] (L) and data[5] (H) which corresponds to README's data[6] and data[7]
+	startAngleRaw := uint16(data[4]) | (uint16(data[5]&0x7F) << 8)
+	startAngleDeg := float64(int16(startAngleRaw)-0x2000) / 100.0 // Convert to degrees
+
+	// Extract end angle (same formula, but at different position)
+	// In README's data array, end_angle would be at data[56] and data[57]
+	// In our data array (which starts at frame[2]), end_angle is at data[54] and data[55]
+	endAngleRaw := uint16(data[54]) | (uint16(data[55]&0x7F) << 8)
+	endAngleDeg := float64(int16(endAngleRaw)-0x2000) / 100.0
+
+	slog.Debug("XWPFTB measurement header",
+		"speed", speed,
+		"start_angle_deg", startAngleDeg,
+		"end_angle_deg", endAngleDeg,
+	)
 
 	distRow := d.mat2xN[0][:]
 	angRow := d.mat2xN[1][:]
 
-	for i := 0; i < m; i++ {
+	pointsAdded := 0
+	angleSpan := endAngleDeg - startAngleDeg
+	if angleSpan < 0 {
+		angleSpan += 360.0
+	}
+	stepDeg := angleSpan / float64(measurements)
+
+	for i := 0; i < measurements; i++ {
 		if d.writeIdx >= d.maxSamples {
-			// overflow, reset current rotation to avoid out-of-bounds
+			slog.Warn("XWPFTB write index overflow",
+				"write_idx", d.writeIdx,
+				"max_samples", d.maxSamples,
+				"points_in_slice", measurements,
+				"slices_in_rotate", d.slicesInRotate,
+			)
 			d.slicesInRotate = 0
 			d.writeIdx = 0
 			return
 		}
-		p := 5 + i*3
-		distRaw := binary.LittleEndian.Uint16(payload[p+1 : p+3])
-		distMm := float64(distRaw) * 0.25
+
+		// Measurement data starts at byte 6 in our data array
+		// In README's data array (starting from TYPE byte), measurements start at byte 8
+		// Each measurement: distance_L, distance_H, intensity
+		// README formula: distance = (((data[9+offset] & 0x3F) << 8) | data[8+offset]) * 0.1
+		// where offset = i*3 for measurement i
+		// In our data array: data[6+i*3] = distance_L, data[7+i*3] = distance_H, data[8+i*3] = intensity
+		// This corresponds to README's data[8+i*3] and data[9+i*3]
+		offset := 6 + i*bytesPerPoint
+		if offset+bytesPerPoint > len(data) {
+			slog.Warn("XWPFTB measurement point out of bounds",
+				"point_index", i,
+				"offset", offset,
+				"data_len", len(data),
+			)
+			break
+		}
+
+		// Distance calculation matching README formula:
+		// README: (((data[9+offset] & 0x3F) << 8) | data[8+offset])
+		// Our data: data[6+i*3] = distance_L (README's data[8+i*3])
+		//           data[7+i*3] = distance_H (README's data[9+i*3])
+		distanceRaw := uint16(data[offset]) | ((uint16(data[offset+1]) & 0x3F) << 8)
+		distMm := float64(distanceRaw) * 0.1 // Scale factor is 0.1mm per unit
+
+		// Calculate angle for this point
 		angle := startAngleDeg + stepDeg*float64(i)
 		angle = math.Mod(angle, 360.0)
 		if angle < 0 {
 			angle += 360.0
 		}
+
 		distRow[d.writeIdx] = float32(distMm)
 		angRow[d.writeIdx] = float32(angle)
 		d.writeIdx++
+		pointsAdded++
 	}
+
+	slog.Debug("XWPFTB measurement processed",
+		"points_added", pointsAdded,
+		"total_points", measurements,
+		"write_idx", d.writeIdx,
+		"start_angle_deg", startAngleDeg,
+		"end_angle_deg", endAngleDeg,
+		"step_deg", stepDeg,
+	)
 
 	d.slicesInRotate++
 	if d.slicesInRotate >= 15 {
@@ -287,8 +447,17 @@ func (d *Device) consumeMeasurement(payload []byte) {
 		calibrating := d.calibrating
 		d.mu.Unlock()
 
+		slog.Info("XWPFTB rotation complete",
+			"points", points,
+			"slices", d.slicesInRotate,
+			"rotation_dt_ms", rotationDt.Milliseconds(),
+			"calibrating", calibrating,
+		)
+
 		if cb != nil {
 			cb(view)
+		} else {
+			slog.Warn("XWPFTB no callback registered for rotation complete")
 		}
 
 		if d.motor != nil && rotationDt > 0 {
@@ -302,6 +471,12 @@ func (d *Device) consumeMeasurement(payload []byte) {
 		// reset rotation
 		d.slicesInRotate = 0
 		d.writeIdx = 0
+	} else {
+		slog.Debug("XWPFTB slice added to rotation",
+			"slices_in_rotate", d.slicesInRotate,
+			"points_so_far", d.writeIdx,
+			"slices_needed", 15,
+		)
 	}
 }
 

@@ -61,11 +61,16 @@ func NewSerialWithConfig(device string, config SerialConfig) (*LinuxSerial, erro
 	}
 	baudConst := baudRateToConstant(baudRate)
 	if baudConst == 0 {
-		file.Close()
-		return nil, fmt.Errorf("unsupported baud rate: %d", baudRate)
+		// Try to set arbitrary baud rate using BOTHER
+		// Clear old baud rate flags
+		termios.Cflag &^= unix.CBAUD
+		termios.Cflag |= unix.BOTHER
+		termios.Ispeed = uint32(baudRate)
+		termios.Ospeed = uint32(baudRate)
+	} else {
+		termios.Ispeed = baudConst
+		termios.Ospeed = baudConst
 	}
-	termios.Ispeed = baudConst
-	termios.Ospeed = baudConst
 
 	// Set 8N1 (8 data bits, no parity, 1 stop bit)
 	termios.Cflag &^= unix.CSIZE | unix.PARENB | unix.CSTOPB
@@ -159,8 +164,26 @@ func baudRateToConstant(baud int) uint32 {
 }
 
 // Read reads data from the serial port.
+// On Linux, os.File.Read() can incorrectly return EOF for serial ports.
+// We use syscall.Read directly to avoid this issue.
 func (s *LinuxSerial) Read(p []byte) (n int, err error) {
-	return s.file.Read(p)
+	if len(p) == 0 {
+		return 0, nil
+	}
+	n, err = syscall.Read(int(s.file.Fd()), p)
+	if err != nil {
+		// syscall.Read returns syscall.Errno, convert to error
+		if err == syscall.EAGAIN || err == syscall.EWOULDBLOCK {
+			// No data available, return 0, nil (not an error)
+			return 0, nil
+		}
+		return n, err
+	}
+	if n == 0 {
+		// No data read, but not an error
+		return 0, nil
+	}
+	return n, nil
 }
 
 // Write writes data to the serial port.

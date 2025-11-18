@@ -115,7 +115,7 @@ func main() {
 	if actualBaudRate == 0 {
 		switch *lidarType {
 		case "xwpftb":
-			actualBaudRate = 115200
+			actualBaudRate = 250000
 			slog.Info("Auto-detected baud rate for XWPFTB", "baud", actualBaudRate)
 		case "ld06":
 			actualBaudRate = 230400
@@ -148,8 +148,8 @@ func main() {
 	var lidar lidarDevice
 	switch *lidarType {
 	case "xwpftb":
-		slog.Info("Initializing XWPFTB LiDAR", "target_points", *targetPts, "max_points", 2048)
-		dev := xwpftb.New(ctx, ser, nil, *targetPts, 2048)
+		slog.Info("Initializing XWPFTB LiDAR", "target_points", *targetPts, "max_points", 3600)
+		dev := xwpftb.New(ctx, ser, nil, *targetPts, 3600)
 		slog.Info("Configuring XWPFTB LiDAR")
 		if err := dev.Configure(true); err != nil {
 			slog.Error("Failed to configure XWPFTB", "err", err)
