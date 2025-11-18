@@ -7,6 +7,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/itohio/EasyRobot/x/marshaller/types"
+	"github.com/itohio/EasyRobot/x/math/graph"
 )
 
 // Marshaller implements YAML-based marshalling.
@@ -91,6 +92,22 @@ func (m *Marshaller) valueToYAML(value any) (*yamlValue, error) {
 		return &yamlValue{
 			Kind:   "tensor",
 			Tensor: yt,
+		}, nil
+	}
+
+	// Check for Graph
+	if graph, ok := value.(graph.Graph[any, any]); ok {
+		yg, err := graphToYAML(graph)
+		if err != nil {
+			return nil, types.NewError("marshal", "yaml", "graph conversion", err)
+		}
+		kind := "graph"
+		if yg.Metadata != nil {
+			kind = yg.Metadata.Kind
+		}
+		return &yamlValue{
+			Kind:  kind,
+			Graph: yg,
 		}, nil
 	}
 

@@ -1,0 +1,29 @@
+kind: decision_tree
+graph:
+  nodes:
+    - id: 1
+      data: root
+    - id: 2
+      data: left
+    - id: 3
+      data: right
+  edges:
+    - from_id: 1
+      to_id: 2
+    - from_id: 1
+      to_id: 3
+  metadata:
+    kind: decision_tree
+    root_id: 1
+    tree_type: string
+    node_ops:
+      2: decisionLeafLow
+      3: decisionLeafHigh
+    edge_ops:
+      - parent_id: 1
+        child_id: 2
+        op_name: decisionEdgeLessThanFive
+      - parent_id: 1
+        child_id: 3
+        op_name: decisionEdgeGreaterEqFive
+

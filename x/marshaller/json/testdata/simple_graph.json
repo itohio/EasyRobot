@@ -1,0 +1,15 @@
+{
+  "kind": "graph",
+  "graph": {
+    "nodes": [
+      {"id": 1, "data": "A"},
+      {"id": 2, "data": "B"},
+      {"id": 3, "data": "C"}
+    ],
+    "edges": [
+      {"from_id": 1, "to_id": 2, "data": 1.5},
+      {"from_id": 2, "to_id": 3, "data": 2.0}
+    ]
+  }
+}
+

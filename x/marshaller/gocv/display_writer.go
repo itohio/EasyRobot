@@ -69,6 +69,11 @@ func (dw *displayWriter) Write(frame types.Frame) error {
 		return err
 	}
 	defer mat.Close()
+	
+	// Release tensor after converting to Mat (tensor is no longer needed)
+	// The Mat clone is independent, so we can release the tensor
+	// Note: If using smart tensors, this will decrement the ref count
+	defer frame.Tensors[0].Release()
 
 	if err := dw.window.IMShow(mat); err != nil {
 		return err

@@ -1,0 +1,31 @@
+kind: tree
+graph:
+  nodes:
+    - id: 1
+      data: root
+    - id: 2
+      data: left
+    - id: 3
+      data: right
+    - id: 4
+      data: left-left
+    - id: 5
+      data: left-right
+    - id: 6
+      data: right-left
+  edges:
+    - from_id: 1
+      to_id: 2
+    - from_id: 1
+      to_id: 3
+    - from_id: 2
+      to_id: 4
+    - from_id: 2
+      to_id: 5
+    - from_id: 3
+      to_id: 6
+  metadata:
+    kind: tree
+    root_id: 1
+    tree_type: string
+

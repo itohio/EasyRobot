@@ -1,0 +1,24 @@
+{
+  "kind": "expression_graph",
+  "graph": {
+    "nodes": [
+      {"id": 1, "data": "input"},
+      {"id": 2, "data": "double"},
+      {"id": 3, "data": "sum"}
+    ],
+    "edges": [
+      {"from_id": 3, "to_id": 1, "data": 0},
+      {"from_id": 3, "to_id": 2, "data": 0}
+    ],
+    "metadata": {
+      "kind": "expression_graph",
+      "expression_root_id": 3,
+      "node_ops": {
+        "1": "exprInput",
+        "2": "exprDouble",
+        "3": "exprSum"
+      }
+    }
+  }
+}
+

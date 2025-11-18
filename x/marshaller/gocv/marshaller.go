@@ -11,6 +11,7 @@ import (
 
 	"github.com/itohio/EasyRobot/x/marshaller/types"
 	tensorgocv "github.com/itohio/EasyRobot/x/math/tensor/gocv"
+	"github.com/itohio/EasyRobot/x/math/tensor"
 )
 
 // Marshaller encodes GoCV-friendly values using gob envelopes.
@@ -156,32 +157,6 @@ func (m *Marshaller) writeFrameStream(w io.Writer, stream types.FrameStream, cfg
 		stepErr error
 	)
 
-	step := func() bool {
-		if stop {
-			return false
-		}
-		frame, ok := <-frames
-		if !ok {
-			return false
-		}
-
-		for _, writer := range writers {
-			if stop {
-				break
-			}
-			if err := writer.WriteFrame(frame); err != nil {
-				if errors.Is(err, errStopLoop) {
-					stop = true
-				} else {
-					stepErr = err
-					stop = true
-				}
-			}
-		}
-
-		return !stop
-	}
-
 	loop := cfg.display.eventLoop
 	if loop == nil {
 		loop = defaultEventLoop
@@ -190,6 +165,154 @@ func (m *Marshaller) writeFrameStream(w io.Writer, stream types.FrameStream, cfg
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	// Store cancel function in context if available
+	var cancelFn context.CancelFunc
+	if cancel, ok := ctx.Value("cancel").(context.CancelFunc); ok {
+		cancelFn = cancel
+		ctx = context.WithValue(ctx, "cancel", cancel)
+	}
+
+	step := func() bool {
+		if stop {
+			return false
+		}
+		
+		// Check context cancellation before reading frame
+		select {
+		case <-ctx.Done():
+			stop = true
+			return false
+		default:
+		}
+		
+		frame, ok := <-frames
+		if !ok {
+			return false
+		}
+
+		// Use smart tensors with reference counting for fan-out to multiple writers
+		// Wrap each tensor with reference counting and create views for additional writers
+		numWriters := len(writers)
+		if numWriters > 1 && len(frame.Tensors) > 0 {
+			// Wrap all tensors with reference counting
+			smartTensors := make([]*tensor.SmartTensor, len(frame.Tensors))
+			for i, t := range frame.Tensors {
+				smartTensors[i] = tensor.WithRefcount(t)
+			}
+			
+			// Create views for each writer (N-1 views needed)
+			viewFrames := make([]types.Frame, numWriters-1)
+			for i := 0; i < numWriters-1; i++ {
+				viewTensors := make([]types.Tensor, len(smartTensors))
+				for j, st := range smartTensors {
+					viewTensors[j] = st.View()
+				}
+				viewFrames[i] = types.Frame{
+					Index:     frame.Index,
+					Timestamp: frame.Timestamp,
+					Metadata:  frame.Metadata,
+					Tensors:   viewTensors,
+				}
+			}
+			
+			// Create frame with smart tensors for first writer
+			smartFrame := types.Frame{
+				Index:     frame.Index,
+				Timestamp: frame.Timestamp,
+				Metadata:  frame.Metadata,
+				Tensors:   make([]types.Tensor, len(smartTensors)),
+			}
+			for i, st := range smartTensors {
+				smartFrame.Tensors[i] = st
+			}
+			
+			// Send to first writer with smart tensors
+			if numWriters > 0 {
+				if stop {
+					return false
+				}
+				// Check context cancellation
+				select {
+				case <-ctx.Done():
+					stop = true
+					return false
+				default:
+				}
+				if err := writers[0].WriteFrame(smartFrame); err != nil {
+					if errors.Is(err, errStopLoop) {
+						stop = true
+						if cancelFn != nil {
+							cancelFn()
+						}
+					} else {
+						stepErr = err
+						stop = true
+					}
+				}
+			}
+			
+			// Send views to remaining writers
+			for i := 1; i < numWriters; i++ {
+				if stop {
+					break
+				}
+				// Check context cancellation between writers
+				select {
+				case <-ctx.Done():
+					stop = true
+					break
+				default:
+				}
+				if err := writers[i].WriteFrame(viewFrames[i-1]); err != nil {
+					if errors.Is(err, errStopLoop) {
+						stop = true
+						if cancelFn != nil {
+							cancelFn()
+						}
+					} else {
+						stepErr = err
+						stop = true
+					}
+				}
+			}
+		} else {
+			// Single writer or no tensors - send frame as-is
+			for _, writer := range writers {
+				if stop {
+					break
+				}
+				// Check context cancellation between writers
+				select {
+				case <-ctx.Done():
+					stop = true
+					break
+				default:
+				}
+				if err := writer.WriteFrame(frame); err != nil {
+					if errors.Is(err, errStopLoop) {
+						stop = true
+						// Cancel context to propagate stop signal
+						if cancelFn != nil {
+							cancelFn()
+						}
+					} else {
+						stepErr = err
+						stop = true
+					}
+				}
+			}
+			
+			// Release tensors if single writer (smart tensors handle it automatically for multiple writers)
+			if numWriters == 1 {
+				for _, t := range frame.Tensors {
+					t.Release()
+				}
+			}
+		}
+
+		return !stop
+	}
+
 	loop(ctx, step)
 
 	for _, writer := range writers {

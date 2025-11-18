@@ -3,11 +3,13 @@ package yaml
 import (
 	"fmt"
 	"io"
+	"iter"
 	"reflect"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/itohio/EasyRobot/x/marshaller/types"
+	"github.com/itohio/EasyRobot/x/math/graph"
 	"github.com/itohio/EasyRobot/x/math/tensor"
 )
 
@@ -93,6 +95,12 @@ func (u *Unmarshaller) yamlToValue(yv *yamlValue, opts types.Options) (any, erro
 			return nil, fmt.Errorf("nil model in yamlValue")
 		}
 		return *yv.Model, nil
+
+	case "graph", "tree", "decision_tree", "expression_graph":
+		if yv.Graph == nil {
+			return nil, fmt.Errorf("nil graph in yamlValue")
+		}
+		return yamlToGraph(yv.Graph, opts)
 
 	case "slice":
 		// For slices, YAML already decoded the data, but we need to convert types
@@ -248,4 +256,304 @@ func (u *Unmarshaller) assignToDst(dst any, value any) error {
 
 	dstElem.Set(valueVal)
 	return nil
+}
+
+// yamlToGraph reconstructs a graph from YAML representation.
+// Returns GenericGraph, GenericTree, GenericDecisionTree, or GenericExpressionGraph
+// based on the metadata kind. Unmarshals into Generic* types with any for node and edge data.
+func yamlToGraph(yg *yamlGraph, opts types.Options) (any, error) {
+	if yg == nil {
+		return nil, fmt.Errorf("nil yamlGraph")
+	}
+
+	kind := "graph"
+	if yg.Metadata != nil {
+		kind = yg.Metadata.Kind
+	}
+
+	switch kind {
+	case "tree":
+		return yamlToTree(yg)
+	case "decision_tree":
+		return yamlToDecisionTree(yg, opts)
+	case "expression_graph":
+		return yamlToExpressionGraph(yg, opts)
+	default:
+		return yamlToGenericGraph(yg)
+	}
+}
+
+// tempYamlGraphNode is a temporary node implementation for graph reconstruction.
+type tempYamlGraphNode[N any, E any] struct {
+	id   int64
+	data N
+}
+
+func (n *tempYamlGraphNode[N, E]) ID() int64 { return n.id }
+func (n *tempYamlGraphNode[N, E]) Data() N   { return n.data }
+func (n *tempYamlGraphNode[N, E]) Equal(other graph.Node[N, E]) bool {
+	if other == nil {
+		return false
+	}
+	return n.id == other.ID()
+}
+func (n *tempYamlGraphNode[N, E]) Compare(other graph.Node[N, E]) int {
+	if other == nil {
+		return 1
+	}
+	if n.id < other.ID() {
+		return -1
+	}
+	if n.id > other.ID() {
+		return 1
+	}
+	return 0
+}
+func (n *tempYamlGraphNode[N, E]) Neighbors() iter.Seq[graph.Node[N, E]] {
+	return func(yield func(graph.Node[N, E]) bool) {}
+}
+func (n *tempYamlGraphNode[N, E]) Edges() iter.Seq[graph.Edge[N, E]] {
+	return func(yield func(graph.Edge[N, E]) bool) {}
+}
+func (n *tempYamlGraphNode[N, E]) NumNeighbors() int                     { return 0 }
+func (n *tempYamlGraphNode[N, E]) Cost(toOther graph.Node[N, E]) float32 { return 0 }
+
+// tempYamlGraphEdge is a temporary edge implementation for graph reconstruction.
+type tempYamlGraphEdge[N any, E any] struct {
+	from graph.Node[N, E]
+	to   graph.Node[N, E]
+	data E
+	id   int64
+}
+
+func (e *tempYamlGraphEdge[N, E]) ID() int64 {
+	if e.id == 0 {
+		e.id = e.from.ID()*1000000 + e.to.ID()
+	}
+	return e.id
+}
+
+func (e *tempYamlGraphEdge[N, E]) From() graph.Node[N, E] { return e.from }
+func (e *tempYamlGraphEdge[N, E]) To() graph.Node[N, E]   { return e.to }
+func (e *tempYamlGraphEdge[N, E]) Data() E                { return e.data }
+func (e *tempYamlGraphEdge[N, E]) Cost() float32 {
+	switch v := any(e.data).(type) {
+	case float32:
+		return v
+	case float64:
+		return float32(v)
+	case int:
+		return float32(v)
+	case int64:
+		return float32(v)
+	default:
+		return 0
+	}
+}
+
+// yamlToGenericGraph reconstructs a GenericGraph[any, any].
+func yamlToGenericGraph(yg *yamlGraph) (*graph.GenericGraph[any, any], error) {
+	g := graph.NewGenericGraph[any, any]()
+
+	// Create node map for quick lookup (stores the actual nodes from the graph)
+	nodeMap := make(map[int64]graph.Node[any, any])
+
+	// Add nodes
+	for _, yn := range yg.Nodes {
+		tempNode := &tempYamlGraphNode[any, any]{
+			id:   yn.ID,
+			data: yn.Data,
+		}
+		if err := g.AddNode(tempNode); err != nil {
+			return nil, fmt.Errorf("failed to add node %d: %w", yn.ID, err)
+		}
+		// Retrieve the actual node from the graph
+		for node := range g.Nodes() {
+			if node.ID() == yn.ID {
+				nodeMap[yn.ID] = node
+				break
+			}
+		}
+	}
+
+	// Add edges
+	for _, ye := range yg.Edges {
+		fromNode, okFrom := nodeMap[ye.FromID]
+		toNode, okTo := nodeMap[ye.ToID]
+		if !okFrom || !okTo {
+			continue // Skip invalid edges
+		}
+
+		// Create a temporary edge that implements Edge interface
+		tempEdge := &tempYamlGraphEdge[any, any]{
+			from: fromNode,
+			to:   toNode,
+			data: ye.Data,
+		}
+		if err := g.AddEdge(tempEdge); err != nil {
+			return nil, fmt.Errorf("failed to add edge %d->%d: %w", ye.FromID, ye.ToID, err)
+		}
+	}
+
+	return g, nil
+}
+
+// yamlToTree reconstructs a GenericTree[any, any].
+func yamlToTree(yg *yamlGraph) (*graph.GenericTree[any, any], error) {
+	if yg.Metadata == nil || yg.Metadata.RootID == 0 {
+		return nil, fmt.Errorf("tree requires root ID in metadata")
+	}
+
+	// Find root node
+	var rootData any
+	for _, yn := range yg.Nodes {
+		if yn.ID == yg.Metadata.RootID {
+			rootData = yn.Data
+			break
+		}
+	}
+	if rootData == nil {
+		return nil, fmt.Errorf("root node %d not found", yg.Metadata.RootID)
+	}
+
+	tree := graph.NewGenericTree[any, any](rootData)
+
+	// Create node map
+	nodeMap := make(map[int64]int) // ID -> index
+	nodeMap[yg.Metadata.RootID] = tree.RootIdx()
+
+	// Add child nodes (we need to build parent-child relationships from edges)
+	// For trees, edges represent parent->child relationships
+	for _, ye := range yg.Edges {
+		parentIdx, ok := nodeMap[ye.FromID]
+		if !ok {
+			continue
+		}
+
+		// Find child data
+		var childData any
+		for _, yn := range yg.Nodes {
+			if yn.ID == ye.ToID {
+				childData = yn.Data
+				break
+			}
+		}
+		if childData == nil {
+			continue
+		}
+
+		// Add child
+		childIdx := tree.AddChild(parentIdx, childData)
+		nodeMap[ye.ToID] = childIdx
+
+		// Set edge cost if provided
+		if ye.Data != nil {
+			tree.SetCost(parentIdx, childIdx, ye.Data)
+		}
+	}
+
+	return tree, nil
+}
+
+// yamlToDecisionTree reconstructs a GenericDecisionTree[any, any, any, any].
+// Operations must be registered via options (similar to graph marshaller).
+func yamlToDecisionTree(yg *yamlGraph, opts types.Options) (*graph.GenericDecisionTree[any, any, any, any], error) {
+	if yg.Metadata == nil || yg.Metadata.RootID == 0 {
+		return nil, fmt.Errorf("decision tree requires root ID in metadata")
+	}
+
+	// Find root node
+	var rootData any
+	for _, yn := range yg.Nodes {
+		if yn.ID == yg.Metadata.RootID {
+			rootData = yn.Data
+			break
+		}
+	}
+	if rootData == nil {
+		return nil, fmt.Errorf("root node %d not found", yg.Metadata.RootID)
+	}
+
+	dt := graph.NewGenericDecisionTree[any, any, any, any](rootData)
+
+	// Build tree structure first (same as yamlToTree)
+	nodeMap := make(map[int64]int)
+	nodeMap[yg.Metadata.RootID] = dt.RootIdx()
+
+	for _, ye := range yg.Edges {
+		parentIdx, ok := nodeMap[ye.FromID]
+		if !ok {
+			continue
+		}
+
+		var childData any
+		for _, yn := range yg.Nodes {
+			if yn.ID == ye.ToID {
+				childData = yn.Data
+				break
+			}
+		}
+		if childData == nil {
+			continue
+		}
+
+		childIdx := dt.AddChild(parentIdx, childData)
+		nodeMap[ye.ToID] = childIdx
+
+		if ye.Data != nil {
+			dt.SetCost(parentIdx, childIdx, ye.Data)
+		}
+	}
+
+	// Register operations from metadata (if available)
+	// Operations should be registered via options similar to graph marshaller
+	// For now, we'll leave this as a placeholder - operations need to be
+	// registered via reflection-based options similar to graph marshaller
+
+	return dt, nil
+}
+
+// yamlToExpressionGraph reconstructs a GenericExpressionGraph[any, any, any, any].
+// Operations must be registered via options (similar to graph marshaller).
+func yamlToExpressionGraph(yg *yamlGraph, opts types.Options) (*graph.GenericExpressionGraph[any, any, any, any], error) {
+	eg := graph.NewGenericExpressionGraph[any, any, any, any]()
+
+	// Create node map
+	nodeMap := make(map[int64]graph.Node[any, any])
+
+	// Add nodes
+	for _, yn := range yg.Nodes {
+		node, err := eg.AddNode(yn.Data, nil) // Operations registered separately
+		if err != nil {
+			return nil, fmt.Errorf("failed to add node %d: %w", yn.ID, err)
+		}
+		nodeMap[yn.ID] = node
+
+		// Set as root if it's the expression root
+		if yg.Metadata != nil && yg.Metadata.ExpressionRootID == yn.ID {
+			eg.SetRoot(node)
+		}
+	}
+
+	// Add edges
+	for _, ye := range yg.Edges {
+		fromNode, okFrom := nodeMap[ye.FromID]
+		toNode, okTo := nodeMap[ye.ToID]
+		if !okFrom || !okTo {
+			continue
+		}
+
+		var edgeData any
+		if ye.Data != nil {
+			edgeData = ye.Data
+		}
+		if err := eg.AddEdge(fromNode, toNode, edgeData); err != nil {
+			return nil, fmt.Errorf("failed to add edge %d->%d: %w", ye.FromID, ye.ToID, err)
+		}
+	}
+
+	// Register operations from metadata (if available)
+	// Similar to decision tree, operations need to be registered via options
+
+	return eg, nil
 }

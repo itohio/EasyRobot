@@ -1,7 +1,11 @@
 package yaml
 
 import (
+	"fmt"
+	"reflect"
+
 	"github.com/itohio/EasyRobot/x/marshaller/types"
+	"github.com/itohio/EasyRobot/x/math/graph"
 )
 
 // Internal structs for YAML encoding/decoding.
@@ -40,14 +44,52 @@ type yamlModel struct {
 	Parameters map[string]yamlParameter `yaml:"parameters,omitempty"`
 }
 
+// yamlGraphNode represents a node in a graph for YAML encoding/decoding.
+type yamlGraphNode struct {
+	ID   int64 `yaml:"id"`
+	Data any   `yaml:"data,omitempty"`
+}
+
+// yamlGraphEdge represents an edge in a graph for YAML encoding/decoding.
+type yamlGraphEdge struct {
+	FromID int64 `yaml:"from_id"`
+	ToID   int64 `yaml:"to_id"`
+	Data   any   `yaml:"data,omitempty"`
+}
+
+// yamlGraphMetadata represents graph metadata (kind, operations, root IDs).
+type yamlGraphMetadata struct {
+	Kind             string               `yaml:"kind"` // "graph", "tree", "decision_tree", "expression_graph"
+	RootID           int64                `yaml:"root_id,omitempty"`
+	TreeType         string               `yaml:"tree_type,omitempty"`
+	NodeOps          map[int64]string     `yaml:"node_ops,omitempty"`           // For decision/expression trees
+	EdgeOps          []yamlDecisionEdgeOp `yaml:"edge_ops,omitempty"`           // For decision trees
+	ExpressionRootID int64                `yaml:"expression_root_id,omitempty"` // For expression graphs
+}
+
+// yamlDecisionEdgeOp represents a decision edge operation.
+type yamlDecisionEdgeOp struct {
+	ParentID int64  `yaml:"parent_id"`
+	ChildID  int64  `yaml:"child_id"`
+	OpName   string `yaml:"op_name"`
+}
+
+// yamlGraph represents a graph for YAML encoding/decoding.
+type yamlGraph struct {
+	Nodes    []yamlGraphNode    `yaml:"nodes"`
+	Edges    []yamlGraphEdge    `yaml:"edges"`
+	Metadata *yamlGraphMetadata `yaml:"metadata,omitempty"`
+}
+
 // yamlValue is a discriminated union for different value types.
 type yamlValue struct {
-	Kind string `yaml:"kind"`
+	Kind string `yaml:"kind"` // "tensor", "layer", "model", "slice", "graph", "tree", "decision_tree", "expression_graph", "generic"
 
 	// Type-specific fields
 	Tensor *yamlTensor `yaml:"tensor,omitempty"`
 	Layer  *yamlLayer  `yaml:"layer,omitempty"`
 	Model  *yamlModel  `yaml:"model,omitempty"`
+	Graph  *yamlGraph  `yaml:"graph,omitempty"`
 
 	// For slices/arrays
 	SliceType string `yaml:"slice_type,omitempty"`
@@ -179,4 +221,156 @@ func modelToYAML(model types.Model) yamlModel {
 	}
 
 	return result
+}
+
+// graphToYAML converts a graph to YAML representation.
+func graphToYAML(value any) (*yamlGraph, error) {
+	// Check if it's a graph interface
+	var g graph.Graph[any, any]
+	switch v := value.(type) {
+	case graph.Graph[any, any]:
+		g = v
+	default:
+		// Try to detect via reflection
+		return captureGraphViaReflection(value)
+	}
+
+	// Capture nodes and edges
+	nodes := make([]yamlGraphNode, 0)
+	edges := make([]yamlGraphEdge, 0)
+
+	// Iterate nodes
+	for node := range g.Nodes() {
+		if node == nil {
+			continue
+		}
+		nodes = append(nodes, yamlGraphNode{
+			ID:   node.ID(),
+			Data: node.Data(),
+		})
+	}
+
+	// Iterate edges
+	for edge := range g.Edges() {
+		if edge == nil {
+			continue
+		}
+		from := edge.From()
+		to := edge.To()
+		if from == nil || to == nil {
+			continue
+		}
+		edges = append(edges, yamlGraphEdge{
+			FromID: from.ID(),
+			ToID:   to.ID(),
+			Data:   edge.Data(),
+		})
+	}
+
+	// Capture metadata
+	metadata, err := captureGraphMetadata(value)
+	if err != nil {
+		return nil, err
+	}
+
+	return &yamlGraph{
+		Nodes:    nodes,
+		Edges:    edges,
+		Metadata: metadata,
+	}, nil
+}
+
+func captureGraphViaReflection(value any) (*yamlGraph, error) {
+	val := reflect.ValueOf(value)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	// Check if it has Nodes() and Edges() methods
+	nodesMethod := val.MethodByName("Nodes")
+	edgesMethod := val.MethodByName("Edges")
+	if !nodesMethod.IsValid() || !edgesMethod.IsValid() {
+		return nil, fmt.Errorf("value does not implement graph.Graph")
+	}
+
+	// Capture nodes
+	nodes := make([]yamlGraphNode, 0)
+	seqNodes := nodesMethod.Call(nil)
+	if len(seqNodes) == 1 {
+		// Iterate sequence
+		seqVal := seqNodes[0]
+		if seqVal.Kind() == reflect.Func {
+			// This is an iter.Seq - we need to call it with a callback
+			// For now, return error - we'll handle this properly in marshaller
+			return nil, fmt.Errorf("reflection-based graph capture requires graph.Graph interface")
+		}
+	}
+
+	// Capture edges
+	edges := make([]yamlGraphEdge, 0)
+	seqEdges := edgesMethod.Call(nil)
+	if len(seqEdges) == 1 {
+		// Similar to nodes
+	}
+
+	// Capture metadata
+	metadata, err := captureGraphMetadata(value)
+	if err != nil {
+		return nil, err
+	}
+
+	return &yamlGraph{
+		Nodes:    nodes,
+		Edges:    edges,
+		Metadata: metadata,
+	}, nil
+}
+
+func captureGraphMetadata(value any) (*yamlGraphMetadata, error) {
+	// Detect graph kind and capture metadata
+	val := reflect.ValueOf(value)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	meta := &yamlGraphMetadata{}
+
+	// Detect kind
+	if hasMethod(val, "Decide") {
+		meta.Kind = "decision_tree"
+	} else if hasMethod(val, "Compute") {
+		meta.Kind = "expression_graph"
+	} else if hasMethod(val, "Root") {
+		meta.Kind = "tree"
+	} else {
+		meta.Kind = "graph"
+	}
+
+	// Capture root ID if tree
+	if meta.Kind == "tree" || meta.Kind == "decision_tree" {
+		rootMethod := val.MethodByName("Root")
+		if rootMethod.IsValid() {
+			results := rootMethod.Call(nil)
+			if len(results) == 1 && !results[0].IsNil() {
+				rootVal := results[0]
+				idMethod := rootVal.MethodByName("ID")
+				if idMethod.IsValid() {
+					idResults := idMethod.Call(nil)
+					if len(idResults) == 1 {
+						meta.RootID = idResults[0].Int()
+					}
+				}
+			}
+		}
+	}
+
+	// Capture operations for decision/expression trees
+	// This would require more complex reflection similar to graph marshaller
+	// For now, we'll leave it empty and let unmarshaller handle it via options
+
+	return meta, nil
+}
+
+func hasMethod(val reflect.Value, name string) bool {
+	return val.MethodByName(name).IsValid()
 }

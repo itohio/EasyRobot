@@ -6,6 +6,7 @@ import (
 	"reflect"
 
 	"github.com/itohio/EasyRobot/x/marshaller/types"
+	"github.com/itohio/EasyRobot/x/math/graph"
 )
 
 // Marshaller implements JSON-based marshalling.
@@ -89,6 +90,22 @@ func (m *Marshaller) valueToJSON(value any) (*jsonValue, error) {
 		return &jsonValue{
 			Kind:   "tensor",
 			Tensor: jt,
+		}, nil
+	}
+
+	// Check for Graph
+	if graph, ok := value.(graph.Graph[any, any]); ok {
+		jg, err := graphToJSON(graph)
+		if err != nil {
+			return nil, types.NewError("marshal", "json", "graph conversion", err)
+		}
+		kind := "graph"
+		if jg.Metadata != nil {
+			kind = jg.Metadata.Kind
+		}
+		return &jsonValue{
+			Kind:  kind,
+			Graph: jg,
 		}, nil
 	}
 
