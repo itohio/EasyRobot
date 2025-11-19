@@ -1,10 +1,12 @@
 package gocv
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
 
+	cv "gocv.io/x/gocv"
 	corepb "github.com/itohio/EasyRobot/types/core"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"google.golang.org/protobuf/proto"
@@ -105,9 +107,38 @@ func NewDisplaySink(cfg config) (*DisplaySink, error) {
 	return nil, fmt.Errorf("gocv: unexpected display writer type")
 }
 
+// NewDisplaySinkFromOptions creates a new DisplaySink from marshaller options.
+// This is a convenience function for creating a DisplaySink without needing direct access to config.
+func NewDisplaySinkFromOptions(ctx context.Context, title string, width, height int) (*DisplaySink, error) {
+	opts := []types.Option{
+		WithDisplay(ctx),
+		WithTitle(title),
+	}
+	if width > 0 && height > 0 {
+		opts = append(opts, WithWindowSize(width, height))
+	}
+	
+	// Apply options to get config
+	_, cfg := applyOptions(types.Options{}, defaultConfig(), opts)
+	return NewDisplaySink(cfg)
+}
+
 // WriteFrame displays a frame in the GoCV window.
 func (s *DisplaySink) WriteFrame(frame types.Frame) error {
 	return s.writer.Write(frame)
+}
+
+// RunEventLoop runs a continuous event loop that keeps the window responsive
+// even when no frames are being written. This should be called in a goroutine.
+// The loop will exit when ctx is cancelled or the window is closed.
+func (s *DisplaySink) RunEventLoop(ctx context.Context) {
+	s.writer.RunEventLoop(ctx)
+}
+
+// Window returns the underlying gocv window. This allows external code
+// to access the window for additional operations if needed.
+func (s *DisplaySink) Window() *cv.Window {
+	return s.writer.Window()
 }
 
 // Close closes the display window.

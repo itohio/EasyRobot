@@ -20,3 +20,4 @@
 *.jpeg
 temporary_for_reference_only/
 tmp/
+coverage
