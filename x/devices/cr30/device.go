@@ -10,11 +10,17 @@ import (
 	"time"
 
 	"github.com/itohio/EasyRobot/x/devices"
+	"github.com/itohio/EasyRobot/x/math/mat"
+	matTypes "github.com/itohio/EasyRobot/x/math/mat/types"
+	"github.com/itohio/EasyRobot/x/math/vec"
+	vecTypes "github.com/itohio/EasyRobot/x/math/vec/types"
 )
+
+// Ensure Device implements devices.Spectrometer interface
+var _ devices.Spectrometer = (*Device)(nil)
 
 const (
 	defaultBaudRate = 19200
-	packetSize      = 60
 
 	// Command bytes
 	cmdDeviceInfo = 0x0A
@@ -37,16 +43,16 @@ const (
 	subcmdChunk13       = 0x13
 
 	// Default timeouts
-	defaultTimeout      = 1 * time.Second
-	defaultMeasureTimeout = 1.5 * time.Second
-	defaultWaitTimeout  = 15 * time.Second
+	defaultTimeout        = 1 * time.Second
+	defaultMeasureTimeout = 1500 * time.Millisecond
+	defaultWaitTimeout    = 15 * time.Second
 )
 
 var (
-	ErrNotConnected     = errors.New("cr30: device not connected")
-	ErrTimeout          = errors.New("cr30: operation timed out")
-	ErrInvalidResponse  = errors.New("cr30: invalid response")
-	ErrIncompleteData   = errors.New("cr30: incomplete data")
+	ErrNotConnected    = errors.New("cr30: device not connected")
+	ErrTimeout         = errors.New("cr30: operation timed out")
+	ErrInvalidResponse = errors.New("cr30: invalid response")
+	ErrIncompleteData  = errors.New("cr30: incomplete data")
 )
 
 // Info contains device identification and version information.
@@ -85,10 +91,10 @@ type Measurement struct {
 
 // Device wraps a serial connection to a CR30 colorimeter.
 type Device struct {
-	serial devices.Serial
-	builder *PacketBuilder
-	parser  *PacketParser
-	info    Info
+	serial    devices.Serial
+	builder   *PacketBuilder
+	parser    *PacketParser
+	info      Info
 	connected bool
 	verbose   bool
 }
@@ -96,9 +102,9 @@ type Device struct {
 // New creates a new CR30 device connection.
 func New(serial devices.Serial) *Device {
 	return &Device{
-		serial:   serial,
-		builder:  NewPacketBuilder(),
-		parser:   NewPacketParser(),
+		serial:    serial,
+		builder:   NewPacketBuilder(),
+		parser:    NewPacketParser(),
 		connected: false,
 		verbose:   false,
 	}
@@ -195,66 +201,81 @@ func (d *Device) Handshake() error {
 	return nil
 }
 
-// Measure triggers a PC-initiated measurement and reads the data.
-func (d *Device) Measure(ctx context.Context) (*Measurement, error) {
+const (
+	numWavelengths = 31
+	minWavelength  = 400.0
+	maxWavelength  = 700.0
+	wavelengthStep = 10.0
+)
+
+// NumWavelengths returns the number of wavelength bands.
+func (d *Device) NumWavelengths() int {
+	return numWavelengths
+}
+
+// Wavelengths writes the wavelength values to the destination vector.
+func (d *Device) Wavelengths(dst vecTypes.Vector) vecTypes.Vector {
+	wl := dst.View().(vec.Vector)
+	if len(wl) < numWavelengths {
+		// Destination too small, return what we can
+		for i := 0; i < len(wl); i++ {
+			wl[i] = minWavelength + float32(i)*wavelengthStep
+		}
+		return dst
+	}
+	for i := 0; i < numWavelengths; i++ {
+		wl[i] = minWavelength + float32(i)*wavelengthStep
+	}
+	return dst
+}
+
+// Measure triggers a PC-initiated measurement and reads the data into the destination matrix.
+// If dst has 1 row, writes only SPD values.
+// If dst has 2 rows, writes row0 = wavelengths, row1 = SPD values.
+func (d *Device) Measure(ctx context.Context, dst matTypes.Matrix) error {
 	if !d.connected {
-		return nil, ErrNotConnected
+		return ErrNotConnected
 	}
 
 	// Send measurement trigger
 	headerPacket, err := d.sendRecvCtx(ctx, startBB, cmdMeasure, 0x00, 0x00, nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return d.readMeasurementCtx(ctx, headerPacket)
+	return d.readMeasurementCtx(ctx, headerPacket, dst)
 }
 
-// WaitMeasurement waits for a button press and reads the measurement.
-func (d *Device) WaitMeasurement(ctx context.Context) (*Measurement, error) {
+// WaitMeasurement waits for a button press and reads the measurement into the destination matrix.
+// If dst has 1 row, writes only SPD values.
+// If dst has 2 rows, writes row0 = wavelengths, row1 = SPD values.
+func (d *Device) WaitMeasurement(ctx context.Context, dst matTypes.Matrix) error {
 	if !d.connected {
-		return nil, ErrNotConnected
+		return ErrNotConnected
 	}
 
 	// Wait for button press (device sends measurement header)
 	headerPacket, err := d.recvCtx(ctx)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// Verify it's a measurement header
 	packet, err := d.parser.ParsePacket(headerPacket)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if packet.Subcmd() != subcmdMeasureHeader {
-		return nil, ErrInvalidResponse
+		return ErrInvalidResponse
 	}
 
-	return d.readMeasurementCtx(ctx, headerPacket)
+	return d.readMeasurementCtx(ctx, headerPacket, dst)
 }
 
-// readMeasurementCtx reads a complete measurement after receiving the header.
-func (d *Device) readMeasurementCtx(ctx context.Context, headerPacket []byte) (*Measurement, error) {
+// readMeasurementCtx reads a complete measurement after receiving the header and writes to destination matrix.
+func (d *Device) readMeasurementCtx(ctx context.Context, headerPacket []byte, dst matTypes.Matrix) error {
 	// Flush receive buffer
 	d.flush()
-
-	// Parse header
-	packet, err := d.parser.ParsePacket(headerPacket)
-	if err != nil {
-		return nil, err
-	}
-
-	measurement := &Measurement{
-		Header: Header{
-			Cmd:     packet.Cmd(),
-			Subcmd:  packet.Subcmd(),
-			Param:   packet.Param(),
-			Payload: make([]byte, len(packet.Payload())),
-		},
-		Chunks: make([]Chunk, 0),
-	}
-	copy(measurement.Header.Payload, packet.Payload())
 
 	// Reset parser state for new measurement
 	d.parser.ResetSPDCollection()
@@ -264,53 +285,60 @@ func (d *Device) readMeasurementCtx(ctx context.Context, headerPacket []byte) (*
 	for _, subcmd := range chunkSubcmds {
 		// Check context before each chunk
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return err
 		}
 
 		chunkPacket, err := d.sendRecvCtx(ctx, startBB, cmdMeasure, subcmd, 0x00, nil)
 		if err != nil {
-			if d.verbose {
-				// Log but continue
-			}
-			measurement.Chunks = append(measurement.Chunks, Chunk{
-				Subcmd: subcmd,
-				Error:  err.Error(),
-			})
+			// Log but continue
 			continue
 		}
 
-		chunkInfo, err := d.parser.ParseSPDChunk(chunkPacket)
+		_, err = d.parser.ParseSPDChunk(chunkPacket)
 		if err != nil {
-			if d.verbose {
-				// Log but continue
-			}
-			measurement.Chunks = append(measurement.Chunks, Chunk{
-				Subcmd: subcmd,
-				Error:  err.Error(),
-			})
+			// Log but continue
 			continue
 		}
-
-		measurement.Chunks = append(measurement.Chunks, Chunk{
-			Subcmd:    chunkInfo.Subcmd,
-			Payload:   chunkInfo.Payload,
-			SPDBytes:  chunkInfo.SPDBytes,
-			SPDFloats: chunkInfo.SPDFloats,
-		})
 	}
 
 	// Get accumulated SPD bytes
 	spdBytes := d.parser.GetAccumulatedSPD()
-	measurement.Raw = spdBytes
 
 	// Parse SPD data (124 bytes = 31 floats)
-	if len(spdBytes) >= 124 {
-		measurement.Spectrum = parseSPDFloats(spdBytes[:124])
-	} else {
-		return nil, ErrIncompleteData
+	if len(spdBytes) < 124 {
+		return ErrIncompleteData
 	}
 
-	return measurement, nil
+	spectrum := parseSPDFloats(spdBytes[:124])
+	if len(spectrum) != numWavelengths {
+		return ErrIncompleteData
+	}
+
+	// Write to destination matrix
+	dstMat := dst.View().(mat.Matrix)
+	rows := dstMat.Rows()
+	cols := dstMat.Cols()
+
+	if cols < numWavelengths {
+		return errors.New("cr30: destination matrix columns too small")
+	}
+
+	if rows == 1 {
+		// Write only SPD values to row 0
+		spdVec := vec.Vector(spectrum)
+		dstMat.SetRow(0, spdVec)
+	} else if rows >= 2 {
+		// Write row0 = wavelengths, row1 = SPD values
+		wlVec := vec.New(numWavelengths)
+		d.Wavelengths(wlVec)
+		dstMat.SetRow(0, wlVec)
+		spdVec := vec.Vector(spectrum)
+		dstMat.SetRow(1, spdVec)
+	} else {
+		return errors.New("cr30: destination matrix must have at least 1 row")
+	}
+
+	return nil
 }
 
 // parseSPDFloats parses 31 float32 values from SPD bytes.
@@ -469,4 +497,3 @@ func (d *Device) flush() {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
-

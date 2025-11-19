@@ -7,11 +7,11 @@ import (
 )
 
 const (
-	packetSize    = 60
-	payloadStart  = 4
-	payloadEnd    = 56
-	payloadSize   = 52
-	markerOffset  = 58
+	packetSize     = 60
+	payloadStart   = 4
+	payloadEnd     = 56
+	payloadSize    = 52
+	markerOffset   = 58
 	checksumOffset = 59
 
 	startAA = 0xAA
@@ -226,16 +226,16 @@ func (b *PacketBuilder) BuildCommandPacket(cmd, subcmd, param byte, data []byte)
 
 // PacketParser parses CR30 protocol packets and maintains state for multi-packet operations.
 type PacketParser struct {
-	spdBytes      []byte
+	spdBytes       []byte
 	chunksReceived map[byte]bool
-	chunkInfo     []ChunkInfo
+	chunkInfo      []ChunkInfo
 }
 
 // NewPacketParser creates a new packet parser.
 func NewPacketParser() *PacketParser {
 	return &PacketParser{
 		chunksReceived: make(map[byte]bool),
-		chunkInfo:     make([]ChunkInfo, 0),
+		chunkInfo:      make([]ChunkInfo, 0),
 	}
 }
 
@@ -284,12 +284,12 @@ func (p *PacketParser) ExtractPayload(data []byte) ([]byte, error) {
 
 // ChunkInfo contains information about a parsed SPD chunk.
 type ChunkInfo struct {
-	Subcmd      byte
-	Payload     []byte
-	SPDBytes    []byte
-	SPDFloats   []float32
-	SPDStart    int
-	SPDCount    int
+	Subcmd    byte
+	Payload   []byte
+	SPDBytes  []byte
+	SPDFloats []float32
+	SPDStart  int
+	SPDCount  int
 }
 
 // ParseSPDChunk parses an SPD chunk packet and accumulates data.
@@ -376,4 +376,3 @@ func parseFloats(data []byte) []float32 {
 	}
 	return floats
 }
-

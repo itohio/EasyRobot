@@ -188,3 +188,60 @@ These interfaces are compatible with `tinygo.org/x/drivers` patterns:
 
 This means device drivers can work with both `tinygo.org/x/drivers` and this package's implementations.
 
+### Spectrometer Interface
+
+```go
+type Spectrometer interface {
+    NumWavelengths() int
+    Wavelengths(dst vecTypes.Vector) vecTypes.Vector
+    Measure(ctx context.Context, dst matTypes.Matrix) error
+    WaitMeasurement(ctx context.Context, dst matTypes.Matrix) error
+}
+```
+
+**Implementations:**
+- `cr30.Device` - CR30 colorimeter/spectrometer (via serial port)
+
+**Usage:**
+```go
+import (
+    "github.com/itohio/EasyRobot/x/devices"
+    "github.com/itohio/EasyRobot/x/devices/cr30"
+    "github.com/itohio/EasyRobot/x/math/mat"
+    "github.com/itohio/EasyRobot/x/math/vec"
+)
+
+// Create serial connection
+serial, err := devices.NewSerialWithConfig("/dev/ttyUSB0", config)
+if err != nil {
+    // Handle error
+}
+
+// Create spectrometer device
+dev := cr30.New(serial)
+if err := dev.Connect(); err != nil {
+    // Handle error
+}
+
+// Get number of wavelengths
+numWl := dev.NumWavelengths()
+
+// Get wavelengths
+wlVec := vec.New(numWl)
+dev.Wavelengths(wlVec)
+
+// Measure with 1-row matrix (SPD values only)
+dst := mat.New(1, numWl)
+err := dev.Measure(ctx, dst)
+spd := dst.Row(0).(vec.Vector)
+
+// Measure with 2-row matrix (wavelengths + SPD)
+dst2 := mat.New(2, numWl)
+err = dev.Measure(ctx, dst2)
+wavelengths := dst2.Row(0).(vec.Vector)
+spd := dst2.Row(1).(vec.Vector)
+
+// Wait for user-initiated measurement
+err = dev.WaitMeasurement(ctx, dst)
+```
+
