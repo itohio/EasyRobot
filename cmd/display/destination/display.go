@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
+	"github.com/itohio/EasyRobot/x/marshaller/gocv"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
-	cv "gocv.io/x/gocv"
 )
 
 var (
@@ -18,13 +19,15 @@ var (
 )
 
 // displayDestination implements Destination for displaying frames in a window.
+// It uses the marshaller's display writer to handle window management and event processing.
 type displayDestination struct {
-	ctx     context.Context
-	cancel  context.CancelFunc
-	window  *cv.Window
-	started bool
-	once    sync.Once
-	stopped bool
+	ctx          context.Context
+	cancel       context.CancelFunc
+	parentCtx    context.Context
+	parentCancel context.CancelFunc
+	displaySink  *gocv.DisplaySink
+	started      bool
+	eventLoopWg  sync.WaitGroup
 }
 
 // NewDisplay creates a new display destination.
@@ -49,33 +52,54 @@ func (d *displayDestination) Start(ctx context.Context) error {
 	}
 
 	slog.Info("Starting display destination", "title", title, "width", width, "height", height)
-	d.ctx = ctx
-	// Store cancel function if available (from context.WithCancel)
-	if cancel, ok := ctx.Value("cancel").(context.CancelFunc); ok {
-		d.cancel = cancel
+
+	// Store parent context and create a cancellable context for the display destination
+	d.parentCtx = ctx
+	// Try to get parent cancel function if available
+	if parentCancel, ok := ctx.Value("cancel").(context.CancelFunc); ok {
+		d.parentCancel = parentCancel
 	}
+	d.ctx, d.cancel = context.WithCancel(ctx)
+
+	// Create display sink using marshaller's display writer
+	// The window is created immediately so the event loop can start right away
+	displaySink, err := gocv.NewDisplaySinkFromOptions(d.ctx, title, width, height)
+	if err != nil {
+		return fmt.Errorf("failed to create display sink: %w", err)
+	}
+	d.displaySink = displaySink
+
+	// The global event loop is started automatically when DisplaySink is created
+	// We just need to monitor for window close events
+	slog.Info("Display sink created, global event loop will handle window events")
+
+	// Monitor for window close (poll window state)
+	d.eventLoopWg.Add(1)
+	go func() {
+		defer d.eventLoopWg.Done()
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-d.ctx.Done():
+				return
+			case <-ticker.C:
+				window := d.displaySink.Window()
+				if window == nil || !window.IsOpen() {
+					slog.Info("Display window closed, cancelling parent context")
+					if d.parentCancel != nil {
+						d.parentCancel()
+					}
+					return
+				}
+			}
+		}
+	}()
+
 	d.started = true
 	slog.Info("Display destination started (window will be created on first frame)")
 	return nil
-}
-
-func (d *displayDestination) ensureWindow() {
-	if noDisplay {
-		return
-	}
-	d.once.Do(func() {
-		winTitle := title
-		if winTitle == "" {
-			winTitle = "Display"
-		}
-		slog.Info("Creating display window", "title", winTitle, "width", width, "height", height)
-		d.window = cv.NewWindow(winTitle)
-		if width > 0 && height > 0 {
-			slog.Debug("Resizing window", "width", width, "height", height)
-			d.window.ResizeWindow(width, height)
-		}
-		slog.Info("Display window created", "is_open", d.window.IsOpen())
-	})
 }
 
 func (d *displayDestination) AddFrame(frame types.Frame) error {
@@ -83,72 +107,47 @@ func (d *displayDestination) AddFrame(frame types.Frame) error {
 		return nil // Display is disabled or not started
 	}
 
-	if d.stopped {
-		slog.Debug("Display destination stopped, ignoring frame", "frame_index", frame.Index)
-		return nil
+	if d.displaySink == nil {
+		return fmt.Errorf("display sink not initialized")
 	}
 
-	if len(frame.Tensors) == 0 {
-		slog.Debug("Frame has no tensors, skipping display", "frame_index", frame.Index)
-		return nil
-	}
-
-	d.ensureWindow()
-	if d.window == nil || !d.window.IsOpen() {
-		slog.Warn("Display window is not open, stopping", "frame_index", frame.Index)
-		d.stopped = true
-		// Cancel context to signal stop to main loop
-		if d.cancel != nil {
-			slog.Info("Cancelling context due to window closed")
-			d.cancel()
-		}
-		return nil
-	}
-
-	// Convert tensor to Mat
-	slog.Debug("Converting tensor to Mat for display", "frame_index", frame.Index)
-	mat, err := tensorToMat(frame.Tensors[0])
-	if err != nil {
-		slog.Error("Failed to convert tensor to mat", "frame_index", frame.Index, "err", err)
-		return fmt.Errorf("failed to convert tensor to mat: %w", err)
-	}
-	defer mat.Close()
-	
-	// Release tensor after converting to Mat (tensor is no longer needed)
-	// The Mat clone is independent, so we can release the tensor
-	// Note: If using smart tensors, this will decrement the ref count
-	defer frame.Tensors[0].Release()
-
-	slog.Debug("Displaying frame", "frame_index", frame.Index, "mat_size", mat.Size())
-	if err := d.window.IMShow(mat); err != nil {
-		slog.Error("Failed to display frame", "frame_index", frame.Index, "err", err)
-		return err
-	}
-
-	// Check for keyboard input
-	key := d.window.WaitKey(1)
-	if key == 27 { // ESC
-		slog.Info("ESC key pressed, stopping display", "frame_index", frame.Index)
-		d.stopped = true
-		// Cancel context to signal stop to main loop
-		if d.cancel != nil {
-			slog.Info("Cancelling context due to ESC key")
-			d.cancel()
-		}
-	}
-
-	return nil
+	// Use marshaller's display sink to write the frame
+	// The event loop is already running in a goroutine
+	return d.displaySink.WriteFrame(frame)
 }
 
 func (d *displayDestination) Close() error {
 	slog.Info("Closing display destination")
-	if d.window != nil {
-		slog.Debug("Closing display window")
-		d.window.Close()
-		d.window = nil
+
+	// Stop monitoring goroutine first
+	if d.cancel != nil {
+		d.cancel()
 	}
+
+	// Wait for monitoring goroutine to finish (with timeout)
+	done := make(chan struct{})
+	go func() {
+		d.eventLoopWg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Monitoring goroutine finished
+	case <-time.After(200 * time.Millisecond):
+		slog.Debug("Monitoring goroutine did not finish within timeout")
+	}
+
+	// Close display sink (which closes the window)
+	// This is non-blocking and won't hang even if event loop is shutting down
+	if d.displaySink != nil {
+		if err := d.displaySink.Close(); err != nil {
+			slog.Error("Error closing display sink", "err", err)
+		}
+		d.displaySink = nil
+	}
+
 	d.started = false
 	slog.Info("Display destination closed")
 	return nil
 }
-
