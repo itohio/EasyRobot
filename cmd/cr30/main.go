@@ -20,6 +20,7 @@ import (
 	"github.com/itohio/EasyRobot/x/devices"
 	"github.com/itohio/EasyRobot/x/devices/cr30"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
+	"github.com/itohio/EasyRobot/x/math/colorscience"
 	"github.com/itohio/EasyRobot/x/math/mat"
 	matTypes "github.com/itohio/EasyRobot/x/math/mat/types"
 	tensorgocv "github.com/itohio/EasyRobot/x/math/tensor/gocv"
@@ -120,6 +121,13 @@ func main() {
 		dev.Disconnect()
 	}()
 
+	// Create ColorScience instance for color calculations
+	cs, err := colorscience.New()
+	if err != nil {
+		slog.Error("Failed to create ColorScience instance", "err", err)
+		os.Exit(1)
+	}
+
 	// Print device info as CSV comments
 	info := dev.DeviceInfo()
 	slog.Info("Device connected",
@@ -163,19 +171,19 @@ func main() {
 	// Handle measurement modes
 	if *measure > 0 && *samples > 0 {
 		// Both flags: N measurements, each averages M samples
-		if err := performMeasurements(ctx, dev, *measure, *samples, dest); err != nil {
+		if err := performMeasurements(ctx, dev, cs, *measure, *samples, dest); err != nil {
 			slog.Error("Measurement failed", "err", err)
 			os.Exit(1)
 		}
 	} else if *measure > 0 {
 		// -measure=N: N measurements, each is 1 sample (no averaging)
-		if err := performMeasurements(ctx, dev, *measure, 1, dest); err != nil {
+		if err := performMeasurements(ctx, dev, cs, *measure, 1, dest); err != nil {
 			slog.Error("Measurement failed", "err", err)
 			os.Exit(1)
 		}
 	} else if *samples > 0 {
 		// -samples=M: 1 measurement that is average of M samples
-		if err := performMeasurements(ctx, dev, 1, *samples, dest); err != nil {
+		if err := performMeasurements(ctx, dev, cs, 1, *samples, dest); err != nil {
 			slog.Error("Additional samples measurement failed", "err", err)
 			os.Exit(1)
 		}
@@ -225,7 +233,7 @@ func performCalibration(ctx context.Context, dev *cr30.Device) error {
 // performMeasurements orchestrates multiple measurements, prints to stdout, and draws to image.
 // measurementCount: number of measurements to perform
 // samplesPerMeasurement: number of samples to average for each measurement
-func performMeasurements(ctx context.Context, dev *cr30.Device, measurementCount, samplesPerMeasurement int, dest destination.Destination) error {
+func performMeasurements(ctx context.Context, dev *cr30.Device, cs *colorscience.ColorScience, measurementCount, samplesPerMeasurement int, dest destination.Destination) error {
 	if measurementCount < 1 {
 		return fmt.Errorf("measurement count must be at least 1")
 	}
@@ -265,8 +273,31 @@ func performMeasurements(ctx context.Context, dev *cr30.Device, measurementCount
 			continue
 		}
 
-		// Print to stdout
+		// Compute and print color values (XYZ and LAB)
+		numWl := dev.NumWavelengths()
+		wavelengths := vec.New(numWl)
+		dev.Wavelengths(wavelengths)
 		avgSpectrum := avgMatrix.Row(0).(vec.Vector)
+
+		// Create SPD matrix (2 rows: wavelengths, values)
+		spd := colorscience.NewSPD(wavelengths, avgSpectrum)
+		xyz, err := cs.ComputeXYZ(spd.Matrix)
+		if err == nil {
+			// Convert to LAB
+			lab := xyz.ToLAB(cs.WhitePoint())
+			X, Y, Z := vec.Vector3D(xyz).XYZ()
+			L, a, b := vec.Vector3D(lab).XYZ()
+
+			slog.Info("Color values",
+				"measurement", i+1,
+				"XYZ", fmt.Sprintf("X=%.3f Y=%.3f Z=%.3f", X, Y, Z),
+				"LAB", fmt.Sprintf("L=%.3f a=%.3f b=%.3f", L, a, b),
+			)
+		} else {
+			slog.Debug("Failed to compute color values", "err", err)
+		}
+
+		// Print to stdout
 		printCSVRow(avgSpectrum)
 		if stddevMatrix != nil {
 			stddevSpectrum := stddevMatrix.Row(0).(vec.Vector)
