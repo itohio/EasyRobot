@@ -157,7 +157,7 @@ func (p *expressionParser) parseEquality() (expression, error) {
 }
 
 func (p *expressionParser) parseComparison() (expression, error) {
-	left, err := p.parseAddSub()
+	left, err := p.parseBitwiseOr()
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +166,7 @@ func (p *expressionParser) parseComparison() (expression, error) {
 	if op == "" {
 		return left, nil
 	}
-	right, err := p.parseAddSub()
+	right, err := p.parseBitwiseOr()
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +178,7 @@ func (p *expressionParser) parseComparison() (expression, error) {
 		if nextOp == "" {
 			break
 		}
-		nextRight, err := p.parseAddSub()
+		nextRight, err := p.parseBitwiseOr()
 		if err != nil {
 			return nil, err
 		}
@@ -194,6 +194,102 @@ func (p *expressionParser) parseComparison() (expression, error) {
 		current = nextRight
 	}
 	return expr, nil
+}
+
+func (p *expressionParser) parseBitwiseOr() (expression, error) {
+	left, err := p.parseBitwiseXor()
+	if err != nil {
+		return nil, err
+	}
+	for {
+		p.skipSpaces()
+		// Check for logical OR first (||) - if found, don't consume, break
+		if p.pos+1 < len(p.input) && p.input[p.pos] == '|' && p.input[p.pos+1] == '|' {
+			break // Let parseOr() handle this
+		}
+		if p.match('|') { // Single | for bitwise OR
+			right, err := p.parseBitwiseXor()
+			if err != nil {
+				return nil, err
+			}
+			left = &binaryExpr{op: "|", left: left, right: right}
+			continue
+		}
+		break
+	}
+	return left, nil
+}
+
+func (p *expressionParser) parseBitwiseXor() (expression, error) {
+	left, err := p.parseBitwiseAnd()
+	if err != nil {
+		return nil, err
+	}
+	for {
+		p.skipSpaces()
+		if p.match('^') {
+			right, err := p.parseBitwiseAnd()
+			if err != nil {
+				return nil, err
+			}
+			left = &binaryExpr{op: "^", left: left, right: right}
+			continue
+		}
+		break
+	}
+	return left, nil
+}
+
+func (p *expressionParser) parseBitwiseAnd() (expression, error) {
+	left, err := p.parseAddSub()
+	if err != nil {
+		return nil, err
+	}
+	for {
+		p.skipSpaces()
+		// Check for logical AND first (&&) - if found, don't consume, break
+		if p.pos+1 < len(p.input) && p.input[p.pos] == '&' && p.input[p.pos+1] == '&' {
+			break // Let parseAnd() handle this
+		}
+		if p.match('&') { // Single & for bitwise AND
+			right, err := p.parseAddSub()
+			if err != nil {
+				return nil, err
+			}
+			left = &binaryExpr{op: "&", left: left, right: right}
+			continue
+		}
+		break
+	}
+	return left, nil
+}
+
+func (p *expressionParser) parseShift() (expression, error) {
+	left, err := p.parseMulDiv()
+	if err != nil {
+		return nil, err
+	}
+	for {
+		p.skipSpaces()
+		if p.matchString("<<") {
+			right, err := p.parseMulDiv()
+			if err != nil {
+				return nil, err
+			}
+			left = &binaryExpr{op: "<<", left: left, right: right}
+			continue
+		}
+		if p.matchString(">>") {
+			right, err := p.parseMulDiv()
+			if err != nil {
+				return nil, err
+			}
+			left = &binaryExpr{op: ">>", left: left, right: right}
+			continue
+		}
+		break
+	}
+	return left, nil
 }
 
 func (p *expressionParser) matchRelOp() string {
@@ -213,14 +309,14 @@ func (p *expressionParser) matchRelOp() string {
 }
 
 func (p *expressionParser) parseAddSub() (expression, error) {
-	left, err := p.parseMulDiv()
+	left, err := p.parseShift()
 	if err != nil {
 		return nil, err
 	}
 	for {
 		p.skipSpaces()
 		if p.match('+') {
-			right, err := p.parseMulDiv()
+			right, err := p.parseShift()
 			if err != nil {
 				return nil, err
 			}
@@ -228,7 +324,7 @@ func (p *expressionParser) parseAddSub() (expression, error) {
 			continue
 		}
 		if p.match('-') {
-			right, err := p.parseMulDiv()
+			right, err := p.parseShift()
 			if err != nil {
 				return nil, err
 			}
@@ -306,17 +402,42 @@ func (p *expressionParser) parsePrimary() (expression, error) {
 	if p.peek() == 0 {
 		return nil, fmt.Errorf("unexpected end of expression")
 	}
+	// Check for hex constant (0x...)
+	if p.peek() == '0' && p.pos+1 < len(p.input) && (p.input[p.pos+1] == 'x' || p.input[p.pos+1] == 'X') {
+		return p.parseNumber()
+	}
 	if unicode.IsDigit(p.peek()) || p.peek() == '.' {
 		return p.parseNumber()
 	}
 	if isIdentStart(p.peek()) {
 		return p.parseIdentifier()
 	}
-	return nil, fmt.Errorf("unexpected token at %d", p.pos)
+	return nil, fmt.Errorf("unexpected token %s at %d", p.input[p.pos:], p.pos)
 }
 
 func (p *expressionParser) parseNumber() (expression, error) {
 	start := p.pos
+
+	// Check for hex constant (0x...)
+	if p.peek() == '0' && p.pos+1 < len(p.input) && (p.input[p.pos+1] == 'x' || p.input[p.pos+1] == 'X') {
+		p.pos += 2 // skip "0x" or "0X"
+		hasHexDigits := false
+		for p.isHexDigit(p.peek()) {
+			p.pos++
+			hasHexDigits = true
+		}
+		if !hasHexDigits {
+			return nil, fmt.Errorf("invalid hex constant at %d", start)
+		}
+		hexStr := p.input[start+2 : p.pos] // skip "0x" prefix
+		value, err := strconv.ParseUint(hexStr, 16, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid hex constant %s", p.input[start:p.pos])
+		}
+		return &numberExpr{value: float64(value)}, nil
+	}
+
+	// Decimal number parsing
 	hasDigits := false
 	for unicode.IsDigit(p.peek()) {
 		p.pos++
@@ -381,6 +502,12 @@ func (p *expressionParser) peek() rune {
 		return 0
 	}
 	return rune(p.input[p.pos])
+}
+
+func (p *expressionParser) isHexDigit(ch rune) bool {
+	return (ch >= '0' && ch <= '9') ||
+		(ch >= 'a' && ch <= 'f') ||
+		(ch >= 'A' && ch <= 'F')
 }
 
 type numberExpr struct {
@@ -474,6 +601,53 @@ func (b *binaryExpr) eval(env *exprEnv) (exprValue, error) {
 			}
 			return exprValue{num: l / r}, nil
 		}
+	case "<<", ">>":
+		// Shift operations require integer operands
+		l, ok := leftVal.asNumber()
+		if !ok {
+			return exprValue{}, fmt.Errorf("left operand is not numeric")
+		}
+		r, ok := rightVal.asNumber()
+		if !ok {
+			return exprValue{}, fmt.Errorf("right operand is not numeric")
+		}
+		leftInt := int64(l)
+		rightInt := int64(r)
+		if rightInt < 0 {
+			return exprValue{}, fmt.Errorf("shift count must be non-negative")
+		}
+		if rightInt >= 64 {
+			return exprValue{}, fmt.Errorf("shift count too large")
+		}
+		var result int64
+		if b.op == "<<" {
+			result = leftInt << uint(rightInt)
+		} else {
+			result = leftInt >> uint(rightInt)
+		}
+		return exprValue{num: float64(result)}, nil
+	case "&", "^", "|":
+		// Bitwise operations require integer operands
+		l, ok := leftVal.asNumber()
+		if !ok {
+			return exprValue{}, fmt.Errorf("left operand is not numeric")
+		}
+		r, ok := rightVal.asNumber()
+		if !ok {
+			return exprValue{}, fmt.Errorf("right operand is not numeric")
+		}
+		leftInt := int64(l)
+		rightInt := int64(r)
+		var result int64
+		switch b.op {
+		case "&":
+			result = leftInt & rightInt
+		case "^":
+			result = leftInt ^ rightInt
+		case "|":
+			result = leftInt | rightInt
+		}
+		return exprValue{num: float64(result)}, nil
 	case "<", "<=", ">", ">=":
 		l, ok := leftVal.asNumber()
 		if !ok {

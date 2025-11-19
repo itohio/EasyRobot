@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestGroupAlternation tests groups with alternation (A|B)
+// TestGroupAlternation tests groups with alternation (A,B) - comma separator
 func TestGroupAlternation(t *testing.T) {
 	require := require.New(t)
 	tests := []struct {
@@ -18,35 +18,35 @@ func TestGroupAlternation(t *testing.T) {
 	}{
 		{
 			name:     "match first branch",
-			pattern:  "^(55AA|BBCC)%u$",
+			pattern:  "^(55AA,BBCC)%u$",
 			data:     []byte{0x55, 0xAA, 0x42},
 			expected: DecisionEmit,
 			fields:   1,
 		},
 		{
 			name:     "match second branch",
-			pattern:  "^(55AA|BBCC)%u$",
+			pattern:  "^(55AA,BBCC)%u$",
 			data:     []byte{0xBB, 0xCC, 0x42},
 			expected: DecisionEmit,
 			fields:   1,
 		},
 		{
 			name:     "no match",
-			pattern:  "^(55AA|BBCC)%u$",
+			pattern:  "^(55AA,BBCC)%u$",
 			data:     []byte{0x11, 0x22, 0x42},
 			expected: DecisionDrop,
 			fields:   0,
 		},
 		{
 			name:     "three branches",
-			pattern:  "^(AA|BB|CC)%u$",
+			pattern:  "^(AA,BB,CC)%u$",
 			data:     []byte{0xBB, 0x42},
 			expected: DecisionEmit,
 			fields:   1,
 		},
 		{
 			name:     "group with fields",
-			pattern:  "^(55AA%u|BBCC%uu)$",
+			pattern:  "^(55AA%u,BBCC%uu)$",
 			data:     []byte{0x55, 0xAA, 0x42},
 			expected: DecisionEmit,
 			fields:   1,

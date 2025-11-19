@@ -18,14 +18,14 @@
     - `Decision() Decision`, `SetDecision(Decision)`
   - `Decision` enum: `DecisionKeep`, `DecisionDrop`, `DecisionEmit`.
 - Grammar highlights:
-  - Literals/alternation `(55AA|123A)`
+  - Literals/alternation `(55AA,123A)` (comma separator, changed from `|` to avoid confusion with bitwise OR)
   - Wildcards `*N`, `*(expr)`, future `*?pattern?`
   - Offset jumps `#N`, `#(expr)`
   - Anchors `$N` (max length), `$ (expr)`
   - Typed fields `%u`, `%uu`, `%f`, `%s`, `%S`, `%Ns`
   - Arrays `%Ntype`, `%*{struct}`
   - Structs `%{field:%uu, status:%u}`
-  - Arithmetic expressions `%(uu/360.0)`
+  - Arithmetic expressions `%(uu/360.0)` with hex constants `%(uu-0x2000)`, shift `%(uu>>1)`, bitwise `%(uu&0xFF)`
 
 ## Non-Goals
 - No regex backtracking semantics; evaluation is deterministic and sequential.
@@ -106,7 +106,7 @@ pattern      := "^"? sequence "$"?               # anchors optional
 sequence     := element*
 element      := literal | wildcard | group | field | array | struct | anchor | offset | separator
 separator    := ";" element             # Separator allows matching at specific offsets
-group        := "(" sequence ("|" sequence)+ ")"
+group        := "(" sequence ("," sequence)+ ")"  # Groups use comma separator (changed from | to avoid confusion with bitwise OR |)
 literal      := HEXBYTE+
 wildcard     := "*" NUMBER?              # *N skips N bytes, * alone matches until MaxLength
 offset       := "#" ("+" | "-")? NUMBER  # #N (absolute), #+N (forward), #-N (backward)
@@ -117,6 +117,23 @@ string       := "s" | "S" | NUMBER "s"
 array_prefix := NUMBER | "*"
 struct       := "{" (field ("," field)*) "}"
 expr_field   := "(" base typed_expr ")"
+expr         := or_expr
+or_expr      := and_expr ("||" and_expr)*
+and_expr     := equality_expr ("&&" equality_expr)*
+equality_expr:= comparison_expr (("==" | "!=") comparison_expr)*
+comparison_expr := bitwise_or_expr (("<" | "<=" | ">" | ">=") bitwise_or_expr)*
+bitwise_or_expr := bitwise_xor_expr ("|" bitwise_xor_expr)*
+bitwise_xor_expr := bitwise_and_expr ("^" bitwise_and_expr)*
+bitwise_and_expr := shift_expr ("&" shift_expr)*
+shift_expr   := add_sub_expr (("<<" | ">>") add_sub_expr)*
+add_sub_expr := mul_div_expr (("+" | "-") mul_div_expr)*
+mul_div_expr := unary_expr (("*" | "/") unary_expr)*
+unary_expr   := ("+" | "-" | "!") unary_expr | primary_expr
+primary_expr := "(" expr ")" | number | identifier
+number       := DECIMAL | HEX_CONSTANT
+DECIMAL      := [0-9]+ ("." [0-9]+)?
+HEX_CONSTANT := "0x" [0-9a-fA-F]+  # Hexadecimal constant (e.g., 0x2000, 0xFF)
+identifier   := [a-zA-Z_][a-zA-Z0-9_]*
 ```
 
 ## Testing
@@ -166,14 +183,58 @@ The following grammar elements are part of the original requirements but are not
 - **Plan**: Parser to build nested sequences, runtime to namespace field names, tests for simple/nested structs.
 
 ### 5. Arithmetic Expressions (`%(uu/360.0)`)
-- **Operators**: `+`, `-`, `*`, `/`, parentheses, integer or float literals.
+- **Operators**: 
+  - Arithmetic: `+`, `-`, `*`, `/`
+  - Comparison: `<`, `<=`, `>`, `>=`, `==`, `!=`
+  - Logical: `&&`, `||`
+  - **Bitwise**: `&` (AND), `^` (XOR), `|` (OR) - **NEW**
+  - **Shift**: `<<` (left shift), `>>` (right shift) - **NEW**
+  - Unary: `+`, `-`, `!`
+- **Constants**: 
+  - Decimal: `123`, `45.67`
+  - **Hexadecimal**: `0x2000`, `0xFF`, `0x1A2B` (case-insensitive) - **NEW**
+- **Precedence** (highest to lowest):
+  1. Parentheses `()`, unary operators `+`, `-`, `!`
+  2. Multiplicative `*`, `/`
+  3. **Shift `<<`, `>>`** - **NEW**
+  4. Additive `+`, `-`
+  5. **Bitwise AND `&`** - **NEW**
+  6. **Bitwise XOR `^`** - **NEW**
+  7. **Bitwise OR `|`** - **NEW**
+  8. Comparison `<`, `<=`, `>`, `>=`
+  9. Equality `==`, `!=`
+  10. Logical AND `&&`
+  11. Logical OR `||`
 - **Semantics**: Evaluate expression using previously decoded field(s) or inline field; result stored as derived field.
-- **Plan**: Reuse `x/math/graph/GenericExpressionGraph` nodes, add expression parser, tests covering precedence and type conversion.
+- **Examples**:
+  - `%(uu-0x2000)` - subtract hex constant 0x2000 (evaluates to field value minus 8192)
+  - `%(uu>>1)` - right shift by 1 bit (divide by 2)
+  - `%(uu<<2)` - left shift by 2 bits (multiply by 4)
+  - `%(uu&0xFF)` - mask lower 8 bits (extract byte)
+  - `%(uu|0x8000)` - set bit 15 (set MSB of uint16)
+  - `%(uu^0xFFFF)` - bitwise XOR (invert all bits)
+  - `%((uu>>8)&0xFF)` - extract high byte (shift right 8, mask lower 8)
+- **Implementation Notes**:
+  - **Hex Constants**: Parse `0x` prefix followed by hex digits (case-insensitive). Parsed as unsigned integer, converted to float64 for expression evaluation.
+  - **Bitwise Operations**: Operate on integer values (float64 converted to int64 for bitwise ops, result converted back to float64).
+  - **Shift Operations**: Left and right operands must be integers. Right operand must be non-negative for right shift.
+  - **Group Separator Change**: Changed from `|` to `,` to avoid ambiguity with bitwise OR operator `|`.
+    - Old syntax: `(AA|BB|CC)` → New syntax: `(AA,BB,CC)`
+    - This matches struct field separator pattern: `%{x:uu,y:u}`
+- **Status**: Partially implemented - currently supports arithmetic, comparison, and logical operators. Needs: hex constant parsing, shift operations, bitwise operators, and group separator change from `|` to `,`.
+- **Plan**: 
+  1. Update `expressionParser.parseNumber()` to recognize `0x` prefix and parse hexadecimal digits.
+  2. Add shift expression parsing and evaluation (`<<`, `>>`) at appropriate precedence level.
+  3. Add bitwise expression parsing and evaluation (`&`, `^`, `|`) at appropriate precedence levels.
+  4. Update `parser.parseGroup()` to use `,` instead of `|` as separator.
+  5. Add comprehensive tests for hex constants, shift operations, bitwise operations, and group separator.
+  6. Update all existing tests that use `|` in groups to use `,` instead.
 
 ### Delivery Strategy
 1. **Phase 1**: Offset jumps + skip-until (enables FIFO buffer stability).
 2. **Phase 2**: Structs + arrays (fixed + star + stride).
 3. **Phase 3**: Arithmetic expressions and expression-based jumps.
+4. **Phase 4**: Expression enhancements (hex constants, shift, bitwise) + group separator change from `|` to `,`.
 Each phase adds parser support, AST/runtime logic, and table-driven tests that were previously skipped.
 
 ## Integration Notes

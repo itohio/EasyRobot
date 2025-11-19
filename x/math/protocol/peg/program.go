@@ -83,6 +83,27 @@ func newProgram(pattern string, root node, anchorStart, anchorEnd bool, maxLen i
 				for _, f := range fields {
 					// Calculate field end offset
 					fieldEnd := f.Offset
+					// Expression-derived fields (FieldFloat64) don't consume bytes themselves.
+					// Their offset points to where the base field was decoded, but they don't
+					// add to the byte count. Skip them - we only care about actually decoded fields.
+					if f.Type == FieldFloat64 {
+						// Check if this is a derived expression field by looking for a matching
+						// base field at the same offset. If no base field exists, this is just
+						// a regular float64 field that does consume bytes.
+						hasBaseField := false
+						for _, other := range fields {
+							if other != f && other.Offset == f.Offset {
+								// Found another field at same offset - likely the base field
+								// The expression field is derived, don't count its size
+								hasBaseField = true
+								break
+							}
+						}
+						if hasBaseField {
+							// This is a derived expression field - don't count it
+							continue
+						}
+					}
 					switch f.Type {
 					case FieldUint8, FieldInt8:
 						fieldEnd += 1

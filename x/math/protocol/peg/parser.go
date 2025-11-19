@@ -70,7 +70,7 @@ func (p *parser) parseSequence() (node, error) {
 
 	for !p.eof() {
 		switch ch := p.peek(); ch {
-		case ')', '|', '$':
+		case ')', ',', '$': // Changed from '|' to ',' for group separator
 			goto DONE
 		default:
 			elem, err := p.parseElement()
@@ -139,7 +139,7 @@ func (p *parser) parseGroup() (node, error) {
 		}
 		branches = append(branches, seq)
 
-		if p.peek() == '|' {
+		if p.peek() == ',' { // Changed from '|' to ',' for group separator
 			p.pos++
 			continue
 		}
