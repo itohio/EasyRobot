@@ -302,8 +302,9 @@ func (m *Marshaller) writeFrameStream(w io.Writer, stream types.FrameStream, cfg
 				}
 			}
 			
-			// Release tensors if single writer (smart tensors handle it automatically for multiple writers)
-			if numWriters == 1 {
+			// Release tensors if AutoRelease is enabled or single writer
+			// (smart tensors handle it automatically for multiple writers when AutoRelease is false)
+			if localCfg.AutoRelease || numWriters == 1 {
 				for _, t := range frame.Tensors {
 					t.Release()
 				}

@@ -29,7 +29,7 @@ func isTFLiteUnavailable(err error) bool {
 }
 
 func TestTFLiteUnmarshallerMNISTInference(t *testing.T) {
-	u, err := marshaller.NewUnmarshaller("tflite")
+	u := tflite.NewUnmarshaller()
 	if err != nil {
 		t.Fatalf("failed to create tflite unmarshaller: %v", err)
 	}

@@ -52,9 +52,17 @@ func sourceSpecToProto(spec sourceSpec) *marshallerpb.SourceSpec {
 	
 	if spec.Device != nil {
 		pbSpec.Device = &marshallerpb.DeviceSpec{
-			Id:     int32(spec.Device.ID),
-			Width:  int32(spec.Device.Width),
-			Height: int32(spec.Device.Height),
+			Id:         int32(spec.Device.ID),
+			Width:      int32(spec.Device.Width),
+			Height:     int32(spec.Device.Height),
+			FrameRate:  int32(spec.Device.FrameRate),
+			PixelFormat: spec.Device.PixelFormat,
+		}
+		if len(spec.Device.Controls) > 0 {
+			pbSpec.Device.Controls = make(map[string]int32)
+			for k, v := range spec.Device.Controls {
+				pbSpec.Device.Controls[k] = v
+			}
 		}
 	}
 	
@@ -74,9 +82,17 @@ func protoToSourceSpec(pbSpec *marshallerpb.SourceSpec) sourceSpec {
 	
 	if pbSpec.Device != nil {
 		spec.Device = &deviceSpec{
-			ID:     int(pbSpec.Device.Id),
-			Width:  int(pbSpec.Device.Width),
-			Height: int(pbSpec.Device.Height),
+			ID:          int(pbSpec.Device.Id),
+			Width:       int(pbSpec.Device.Width),
+			Height:      int(pbSpec.Device.Height),
+			FrameRate:   int(pbSpec.Device.FrameRate),
+			PixelFormat: pbSpec.Device.PixelFormat,
+		}
+		if len(pbSpec.Device.Controls) > 0 {
+			spec.Device.Controls = make(map[string]int32)
+			for k, v := range pbSpec.Device.Controls {
+				spec.Device.Controls[k] = v
+			}
 		}
 	}
 	

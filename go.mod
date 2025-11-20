@@ -1,8 +1,6 @@
 module github.com/itohio/EasyRobot
 
-go 1.24.1
-
-toolchain go1.24.9
+go 1.25
 
 require (
 	github.com/chewxy/math32 v1.11.1
@@ -11,6 +9,7 @@ require (
 	github.com/mr-tron/base58 v1.2.0
 	github.com/rs/zerolog v1.23.0
 	github.com/stretchr/testify v1.11.1
+	github.com/vladimirvivien/go4vl v0.3.0
 	gocv.io/x/gocv v0.42.0
 	golang.org/x/sys v0.37.0
 	google.golang.org/protobuf v1.36.10

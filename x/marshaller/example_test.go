@@ -4,17 +4,15 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/itohio/EasyRobot/x/marshaller"
+	"github.com/itohio/EasyRobot/x/marshaller/gob"
+	"github.com/itohio/EasyRobot/x/marshaller/text"
 	"github.com/itohio/EasyRobot/x/math/tensor"
 )
 
 // Example_textMarshaller demonstrates the text marshaller with a tensor.
 func Example_textMarshaller() {
-	// Create a text marshaller
-	m, err := marshaller.NewMarshaller("text")
-	if err != nil {
-		panic(err)
-	}
+	// Create a text marshaller directly
+	m := text.NewMarshaller()
 
 	// Create a test tensor
 	t := tensor.New(tensor.DTFP32, tensor.NewShape(3, 4, 5))
@@ -32,16 +30,9 @@ func Example_textMarshaller() {
 
 // Example_gobMarshaller demonstrates round-trip marshalling with gob.
 func Example_gobMarshaller() {
-	// Create marshaller and unmarshaller
-	m, err := marshaller.NewMarshaller("gob")
-	if err != nil {
-		panic(err)
-	}
-
-	u, err := marshaller.NewUnmarshaller("gob")
-	if err != nil {
-		panic(err)
-	}
+	// Create marshaller and unmarshaller directly
+	m := gob.NewMarshaller()
+	u := gob.NewUnmarshaller()
 
 	// Create a test tensor with some data
 	original := tensor.New(tensor.DTFP32, tensor.NewShape(2, 3))

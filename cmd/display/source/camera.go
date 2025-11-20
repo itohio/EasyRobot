@@ -13,9 +13,11 @@ import (
 // cameraSource implements Source for camera devices.
 type cameraSource struct {
 	baseSource
-	deviceIDs FlagArray
-	width     int
-	height    int
+	deviceIDs   FlagArray
+	width       int
+	height      int
+	pixelFormat string
+	frameRate   int
 }
 
 // NewCameraSource creates a new camera source.
@@ -40,6 +42,8 @@ func (s *cameraSource) Start(ctx context.Context) error {
 		"count", len(s.deviceIDs),
 		"width", s.width,
 		"height", s.height,
+		"pixel_format", s.pixelFormat,
+		"frame_rate", s.frameRate,
 	)
 
 	opts := []types.Option{
@@ -52,8 +56,13 @@ func (s *cameraSource) Start(ctx context.Context) error {
 			slog.Error("Invalid camera device ID", "device_id", devStr, "err", err)
 			return fmt.Errorf("invalid camera device ID '%s': %w", devStr, err)
 		}
-		slog.Debug("Adding camera device", "device_id", deviceID, "width", s.width, "height", s.height)
-		opts = append(opts, gocv.WithVideoDevice(deviceID, s.width, s.height))
+		slog.Debug("Adding camera device",
+			"device_id", deviceID,
+			"width", s.width,
+			"height", s.height,
+			"pixel_format", s.pixelFormat,
+			"frame_rate", s.frameRate)
+		opts = append(opts, gocv.WithVideoDeviceEx(deviceID, s.width, s.height, s.frameRate, s.pixelFormat))
 	}
 
 	slog.Debug("Creating gocv unmarshaller for camera")

@@ -39,15 +39,15 @@ import (
     _ "github.com/itohio/EasyRobot/x/marshaller/proto"  // Register protobuf marshaller
 )
 
-// Create marshaller
-m, _ := marshaller.NewMarshaller("protobuf")
+// Create marshaller directly
+m := protobuf.NewMarshaller()
 
 // Marshal data
 var buf bytes.Buffer
 err := m.Marshal(&buf, tensor)
 
 // Unmarshal data
-u, _ := marshaller.NewUnmarshaller("protobuf")
+u := protobuf.NewUnmarshaller()
 var restored types.Tensor
 err = u.Unmarshal(&buf, &restored)
 ```

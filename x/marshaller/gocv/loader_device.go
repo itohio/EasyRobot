@@ -17,17 +17,134 @@ type videoDeviceLoader struct {
 	index   int
 }
 
+// cameraController implements types.CameraController for GoCV VideoCapture
+type cameraController struct {
+	capture *cv.VideoCapture
+}
+
+// Controls returns available camera controls (simplified for GoCV limitations)
+func (c *cameraController) Controls() []types.ControlInfo {
+	return []types.ControlInfo{
+		{Name: "brightness", Description: "Brightness", Type: "integer", Min: 0, Max: 255, Default: 128, Step: 1},
+		{Name: "contrast", Description: "Contrast", Type: "integer", Min: 0, Max: 255, Default: 128, Step: 1},
+		{Name: "saturation", Description: "Saturation", Type: "integer", Min: 0, Max: 255, Default: 128, Step: 1},
+		{Name: "hue", Description: "Hue", Type: "integer", Min: -180, Max: 180, Default: 0, Step: 1},
+		{Name: "gain", Description: "Gain", Type: "integer", Min: 0, Max: 255, Default: 0, Step: 1},
+		{Name: "exposure", Description: "Exposure", Type: "integer", Min: -1, Max: -1, Default: -1, Step: 1}, // Auto
+	}
+}
+
+// GetControl gets a camera control value
+func (c *cameraController) GetControl(name string) (int32, error) {
+	if c.capture == nil {
+		return 0, fmt.Errorf("gocv: camera not available")
+	}
+
+	var prop cv.VideoCaptureProperties
+	switch name {
+	case "brightness":
+		prop = cv.VideoCaptureBrightness
+	case "contrast":
+		prop = cv.VideoCaptureContrast
+	case "saturation":
+		prop = cv.VideoCaptureSaturation
+	case "hue":
+		prop = cv.VideoCaptureHue
+	case "gain":
+		prop = cv.VideoCaptureGain
+	case "exposure":
+		prop = cv.VideoCaptureExposure
+	default:
+		return 0, fmt.Errorf("gocv: unknown control %s", name)
+	}
+
+	value := c.capture.Get(prop)
+	return int32(value), nil
+}
+
+// SetControl sets a camera control value
+func (c *cameraController) SetControl(name string, value int32) error {
+	if c.capture == nil {
+		return fmt.Errorf("gocv: camera not available")
+	}
+
+	var prop cv.VideoCaptureProperties
+	switch name {
+	case "brightness":
+		prop = cv.VideoCaptureBrightness
+	case "contrast":
+		prop = cv.VideoCaptureContrast
+	case "saturation":
+		prop = cv.VideoCaptureSaturation
+	case "hue":
+		prop = cv.VideoCaptureHue
+	case "gain":
+		prop = cv.VideoCaptureGain
+	case "exposure":
+		prop = cv.VideoCaptureExposure
+	default:
+		return fmt.Errorf("gocv: unknown control %s", name)
+	}
+
+	c.capture.Set(prop, float64(value))
+	return nil
+}
+
+// GetControls gets multiple control values
+func (c *cameraController) GetControls() (map[string]int32, error) {
+	controls := make(map[string]int32)
+	controlInfos := c.Controls()
+
+	for _, info := range controlInfos {
+		value, err := c.GetControl(info.Name)
+		if err != nil {
+			continue // Skip controls that can't be read
+		}
+		controls[info.Name] = value
+	}
+
+	return controls, nil
+}
+
+// SetControls sets multiple control values
+func (c *cameraController) SetControls(controls map[string]int32) error {
+	for name, value := range controls {
+		if err := c.SetControl(name, value); err != nil {
+			return fmt.Errorf("gocv: set control %s: %w", name, err)
+		}
+	}
+	return nil
+}
+
+// CameraController returns the camera controller for runtime control
+func (l *videoDeviceLoader) CameraController() types.CameraController {
+	if l.capture == nil {
+		return nil
+	}
+	return &cameraController{capture: l.capture}
+}
+
 func newVideoDeviceLoader(spec deviceSpec, cfg config) (sourceStream, error) {
 	cap, err := cv.OpenVideoCapture(spec.ID)
 	if err != nil {
 		return nil, fmt.Errorf("gocv: open video device %d: %w", spec.ID, err)
 	}
+
+	// Configure capture properties
 	if spec.Width > 0 {
 		cap.Set(cv.VideoCaptureFrameWidth, float64(spec.Width))
 	}
 	if spec.Height > 0 {
 		cap.Set(cv.VideoCaptureFrameHeight, float64(spec.Height))
 	}
+	if spec.FrameRate > 0 {
+		cap.Set(cv.VideoCaptureFPS, float64(spec.FrameRate))
+	}
+
+	// Note: GoCV doesn't directly expose pixel format setting via VideoCapture
+	// The pixel format is typically set through the resolution/frame rate configuration
+	// or through lower-level V4L2 APIs if needed
+
 	return &videoDeviceLoader{
 		spec:    spec,
 		cfg:     cfg,

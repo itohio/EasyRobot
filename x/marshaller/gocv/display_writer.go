@@ -13,7 +13,7 @@ import (
 	"github.com/itohio/EasyRobot/x/marshaller/types"
 )
 
-// Window event types
+// Window event types (legacy - use types.WindowEvent instead)
 type windowEventType int
 
 const (
@@ -22,7 +22,7 @@ const (
 	eventClose
 )
 
-// WindowEvent represents an event from a window
+// WindowEvent represents an event from a window (legacy - use types.WindowEvent)
 type WindowEvent struct {
 	WindowID string
 	Type     windowEventType
@@ -55,11 +55,15 @@ type GUICommand struct {
 }
 
 type windowConfig struct {
-	Title   string
-	Width   int
-	Height  int
+	Title  string
+	Width  int
+	Height int
+	// Legacy handlers (for backward compatibility)
 	OnKey   func(int) bool
 	OnMouse func(event, x, y, flags int) bool
+	// New shared interface handlers
+	KeyHandler   func(types.KeyEvent) bool
+	MouseHandler func(types.MouseEvent) bool
 }
 
 // WindowInfo tracks a window in the event loop
@@ -67,8 +71,11 @@ type windowInfo struct {
 	id      string
 	window  *cv.Window
 	config  windowConfig
-	onKey   func(int) bool
-	onMouse func(event, x, y, flags int) bool
+	onKey   func(int) bool                    // Legacy handler
+	onMouse func(event, x, y, flags int) bool // Legacy handler
+	// New shared interface handlers
+	keyHandler   func(types.KeyEvent) bool
+	mouseHandler func(types.MouseEvent) bool
 }
 
 // Global event loop - single thread for all GUI operations
@@ -125,11 +132,13 @@ func newDisplayWriter(cfg config) (frameWriter, error) {
 		Type:     cmdCreateWindow,
 		WindowID: windowID,
 		Config: &windowConfig{
-			Title:   title,
-			Width:   cfg.display.width,
-			Height:  cfg.display.height,
-			OnKey:   cfg.display.onKey,
-			OnMouse: cfg.display.onMouse,
+			Title:        title,
+			Width:        cfg.display.width,
+			Height:       cfg.display.height,
+			OnKey:        cfg.display.onKey,
+			OnMouse:      cfg.display.onMouse,
+			KeyHandler:   cfg.display.onKey,
+			MouseHandler: cfg.display.onMouse,
 		},
 		Result: result,
 	}
@@ -255,11 +264,13 @@ func handleCreateWindow(cmd GUICommand) error {
 	}
 
 	winInfo := &windowInfo{
-		id:      cmd.WindowID,
-		window:  window,
-		config:  *cmd.Config,
-		onKey:   cmd.Config.OnKey,
-		onMouse: cmd.Config.OnMouse,
+		id:           cmd.WindowID,
+		window:       window,
+		config:       *cmd.Config,
+		onKey:        cmd.Config.OnKey,
+		onMouse:      cmd.Config.OnMouse,
+		keyHandler:   cmd.Config.KeyHandler,
+		mouseHandler: cmd.Config.MouseHandler,
 	}
 
 	// Set mouse handler if provided
@@ -371,6 +382,23 @@ func processWindowEvents() {
 		windowsMapMu.RLock()
 		for _, winInfo := range windowsMap {
 			if winInfo.window != nil && winInfo.window.IsOpen() {
+				// Call new key handler if available
+				if winInfo.keyHandler != nil {
+					keyEvent := types.KeyEvent{
+						Key:       key,
+						Action:    types.KeyPress,
+						Timestamp: time.Now().UnixNano(),
+					}
+					if !winInfo.keyHandler(keyEvent) {
+						// Handler returned false, stop
+						windowsMapMu.RUnlock()
+						if eventLoopCancel != nil {
+							eventLoopCancel()
+						}
+						return
+					}
+				}
+				// Call legacy key handler for backward compatibility
 				if winInfo.onKey != nil {
 					if !winInfo.onKey(key) {
 						// Handler returned false, stop
@@ -404,13 +432,32 @@ func processWindowEvents() {
 			winInfo, exists := windowsMap[evt.WindowID]
 			windowsMapMu.RUnlock()
 
-			if exists && winInfo.onMouse != nil {
-				if !winInfo.onMouse(evt.Mouse.Event, evt.Mouse.X, evt.Mouse.Y, evt.Mouse.Flags) {
-					// Handler returned false, stop
-					if eventLoopCancel != nil {
-						eventLoopCancel()
+			if exists {
+				// Call new mouse handler if available
+				if winInfo.mouseHandler != nil {
+					mouseEvent := types.MouseEvent{
+						X:         evt.Mouse.X,
+						Y:         evt.Mouse.Y,
+						Action:    types.MouseMove, // Default to move, could be enhanced
+						Timestamp: time.Now().UnixNano(),
 					}
-					return
+					if !winInfo.mouseHandler(mouseEvent) {
+						// Handler returned false, stop
+						if eventLoopCancel != nil {
+							eventLoopCancel()
+						}
+						return
+					}
+				}
+				// Call legacy mouse handler for backward compatibility
+				if winInfo.onMouse != nil {
+					if !winInfo.onMouse(evt.Mouse.Event, evt.Mouse.X, evt.Mouse.Y, evt.Mouse.Flags) {
+						// Handler returned false, stop
+						if eventLoopCancel != nil {
+							eventLoopCancel()
+						}
+						return
+					}
 				}
 			}
 		default:
@@ -463,8 +510,10 @@ func (dw *displayWriter) Write(frame types.Frame) error {
 	}
 	// Don't close mat here - it will be closed in the event loop after IMShow
 
-	// Release tensor after converting to Mat
-	defer frame.Tensors[0].Release()
+	// Release tensor after converting to Mat if AutoRelease is enabled
+	if dw.cfg.autoRelease {
+		defer frame.Tensors[0].Release()
+	}
 
 	// Send show image command to event loop
 	result := make(chan error, 1)

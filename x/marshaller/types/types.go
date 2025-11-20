@@ -24,6 +24,7 @@ type Options struct {
 	DestinationType      DataType // target data type for conversion during unmarshal
 	Context              context.Context
 	MappedStorageFactory MappedStorageFactory // factory for creating mapped storage (for graph marshaller, etc.)
+	AutoRelease          bool // automatically call Release() on tensors after processing
 }
 
 // Marshaller encodes values to a format.

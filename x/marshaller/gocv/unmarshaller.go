@@ -17,22 +17,29 @@ import (
 
 // Unmarshaller decodes GoCV payloads.
 type Unmarshaller struct {
-	opts types.Options
-	cfg  config
+	opts              types.Options
+	cfg               config
+	activeControllers map[int]types.CameraController // device ID -> controller
 }
 
 // NewUnmarshaller constructs a GoCV unmarshaller.
 func NewUnmarshaller(opts ...types.Option) types.Unmarshaller {
 	baseOpts, baseCfg := applyOptions(types.Options{}, defaultConfig(), opts)
 	return &Unmarshaller{
-		opts: baseOpts,
-		cfg:  baseCfg,
+		opts:              baseOpts,
+		cfg:               baseCfg,
+		activeControllers: make(map[int]CameraController),
 	}
 }
 
 // Format identifies the unmarshaller.
 func (u *Unmarshaller) Format() string {
 	return "gocv"
+}
+
+// CameraController returns the camera controller for the specified device ID.
+func (u *Unmarshaller) CameraController(deviceID int) types.CameraController {
+	return u.activeControllers[deviceID]
 }
 
 // Unmarshal decodes into the provided destination.
@@ -113,6 +120,13 @@ func (u *Unmarshaller) Unmarshal(r io.Reader, dst any, opts ...types.Option) err
 		}
 		*out = &net
 		return nil
+	case *[]CameraInfo:
+		devices, err := u.unmarshalCameraList(r)
+		if err != nil {
+			return err
+		}
+		*out = devices
+		return nil
 	default:
 		return types.NewError("unmarshal", "gocv", fmt.Sprintf("unsupported destination %T", dst), nil)
 	}
@@ -189,6 +203,10 @@ func (u *Unmarshaller) unmarshalStream(r io.Reader, cfg config) (types.FrameStre
 	if err != nil {
 		return types.FrameStream{}, err
 	}
+
+	// Register camera controllers for video devices
+	u.registerCameraControllers(streams)
+
 	return newFrameStream(cfg.ctx, streams, cfg.stream.allowBestEffort, cfg.stream.sequential)
 }
 
@@ -205,6 +223,39 @@ func (u *Unmarshaller) unmarshalNet(r io.Reader, cfg config) (cv.Net, error) {
 		return cv.Net{}, err
 	}
 	return net, nil
+}
+
+func (u *Unmarshaller) unmarshalCameraList(r io.Reader) ([]types.CameraInfo, error) {
+	// Check if this is a "list" command
+	if r != nil {
+		buf := make([]byte, 4)
+		n, err := r.Read(buf)
+		if err != nil && err != io.EOF {
+			return nil, types.NewError("unmarshal", "gocv", "read list command", err)
+		}
+		command := strings.TrimSpace(string(buf[:n]))
+		if command != "list" {
+			return nil, types.NewError("unmarshal", "gocv", "expected 'list' command, got: "+command, nil)
+		}
+	}
+
+	// Enumerate video devices
+	devices, err := enumerateVideoDevices()
+	if err != nil {
+		return nil, types.NewError("unmarshal", "gocv", "enumerate devices", err)
+	}
+
+	return devices, nil
+}
+
+func (u *Unmarshaller) registerCameraControllers(streams []sourceStream) {
+	for _, stream := range streams {
+		if loader, ok := stream.(*videoDeviceLoader); ok {
+			if controller := loader.CameraController(); controller != nil {
+				u.activeControllers[loader.spec.ID] = controller
+			}
+		}
+	}
 }
 
 func readPaths(r io.Reader) ([]string, error) {

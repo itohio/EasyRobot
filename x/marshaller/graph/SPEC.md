@@ -824,12 +824,12 @@ import (
     "github.com/itohio/EasyRobot/x/marshaller/types"
 )
 
-// Create marshaller using the standard factory with file-based storage
-mar, err := marshaller.NewMarshaller("graph",
+// Create marshaller directly with file-based storage
+factory := graphmarshaller.NewFileMap()
+mar, err := graphmarshaller.NewMarshaller(factory,
     graphmarshaller.WithPath("graph.dat"),
     graphmarshaller.WithEdgesPath("edges.dat"),      // Optional
     graphmarshaller.WithLabelsPath("labels.dat"),     // Optional
-    types.WithMappedStorageFactory(graphmarshaller.NewFileMap()), // Use provided file-based storage
 )
 
 // Create graph
@@ -847,7 +847,7 @@ err = mar.Marshal(&buf, g)
 
 ```go
 // Create unmarshaller with file-based storage
-unmar, err := marshaller.NewUnmarshaller("graph",
+unmar, err := graphmarshaller.NewUnmarshaller(factory,
     graphmarshaller.WithPath("graph.dat"),
     graphmarshaller.WithEdgesPath("edges.dat"),       // Optional
     graphmarshaller.WithLabelsPath("labels.dat"),      // Optional
@@ -883,7 +883,7 @@ networkStorageFactory := func(path string, readOnly bool) (types.MappedStorage, 
 }
 
 // Use custom storage
-mar, err := marshaller.NewMarshaller("graph",
+mar, err := graphmarshaller.NewMarshaller(factory,
     graphmarshaller.WithPath("graph.dat"),
     types.WithMappedStorageFactory(networkStorageFactory), // Use custom storage
 )
@@ -893,7 +893,7 @@ mar, err := marshaller.NewMarshaller("graph",
 
 ```go
 // Unmarshal without linking to storage
-unmar, err := marshaller.NewUnmarshaller("graph",
+unmar, err := graphmarshaller.NewUnmarshaller(factory,
     graphmarshaller.WithPath("graph.dat"),
     graphmarshaller.WithMirror(false), // Don't link to storage
 )
@@ -1288,23 +1288,6 @@ The graph marshaller registers itself with the main marshaller system:
 //go:build !no_graph
 // +build !no_graph
 
-package marshaller
-
-import (
-    graphmarshaller "github.com/itohio/EasyRobot/x/marshaller/graph"
-    "github.com/itohio/EasyRobot/x/marshaller/types"
-)
-
-func init() {
-    registerMarshaller("graph", func(opts ...types.Option) types.Marshaller {
-        return graphmarshaller.NewMarshaller(opts...)
-    })
-    
-    registerUnmarshaller("graph", func(opts ...types.Option) types.Unmarshaller {
-        return graphmarshaller.NewUnmarshaller(opts...)
-    })
-}
-```
 
 ## Notes
 

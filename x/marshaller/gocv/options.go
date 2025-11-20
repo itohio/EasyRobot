@@ -14,6 +14,20 @@ import (
 	tensorgocv "github.com/itohio/EasyRobot/x/math/tensor/gocv"
 )
 
+// Re-export shared types for convenience
+type CameraInfo = types.CameraInfo
+type VideoFormat = types.VideoFormat
+type ControlInfo = types.ControlInfo
+type CameraController = types.CameraController
+
+// Display types (re-exported from shared types)
+type DisplayOptions = types.DisplayOptions
+type DisplayOption = types.DisplayOption
+type KeyEvent = types.KeyEvent
+type MouseEvent = types.MouseEvent
+type WindowEvent = types.WindowEvent
+type EventLoop = types.EventLoop
+
 type sourceKind int
 
 const (
@@ -25,9 +39,12 @@ const (
 )
 
 type deviceSpec struct {
-	ID     int
-	Width  int
-	Height int
+	ID           int
+	Width        int
+	Height       int
+	FrameRate    int
+	PixelFormat  string
+	Controls     map[string]int32
 }
 
 type sourceSpec struct {
@@ -39,21 +56,25 @@ type sourceSpec struct {
 
 type fileSorter func([]string) []string
 
+// Camera types are now defined in the shared types package
+
 type config struct {
-	ctx     context.Context
-	codec   codecConfig
-	stream  streamConfig
-	display displayConfig
-	dnn     dnnConfig
+	ctx         context.Context
+	codec       codecConfig
+	stream      streamConfig
+	display     displayConfig
+	dnn         dnnConfig
+	autoRelease bool
 }
 
 func defaultConfig() config {
 	return config{
-		ctx:     context.Background(),
-		codec:   defaultCodecConfig(),
-		stream:  defaultStreamConfig(),
-		display: defaultDisplayConfig(),
-		dnn:     defaultDNNConfig(),
+		ctx:         context.Background(),
+		codec:       defaultCodecConfig(),
+		stream:      defaultStreamConfig(),
+		display:     defaultDisplayConfig(),
+		dnn:         defaultDNNConfig(),
+		autoRelease: false,
 	}
 }
 
@@ -107,7 +128,7 @@ func WithPath(path string) types.Option {
 	})
 }
 
-// WithVideoDevice registers a video capture device.
+// WithVideoDevice registers a video capture device with basic configuration.
 func WithVideoDevice(id int, width, height int) types.Option {
 	return newOption(func(cfg *config) {
 		cfg.stream.sources = append(cfg.stream.sources, sourceSpec{
@@ -118,6 +139,63 @@ func WithVideoDevice(id int, width, height int) types.Option {
 				Height: height,
 			},
 		})
+	})
+}
+
+// WithVideoDeviceEx registers a video capture device with extended configuration.
+func WithVideoDeviceEx(id int, width, height, fps int, pixelFormat string) types.Option {
+	return newOption(func(cfg *config) {
+		cfg.stream.sources = append(cfg.stream.sources, sourceSpec{
+			Kind: sourceKindVideoDevice,
+			Device: &deviceSpec{
+				ID:          id,
+				Width:       width,
+				Height:      height,
+				FrameRate:   fps,
+				PixelFormat: pixelFormat,
+			},
+		})
+	})
+}
+
+// WithFrameRate sets the desired frame rate for video devices.
+func WithFrameRate(fps int) types.Option {
+	return newOption(func(cfg *config) {
+		// Apply to all video device sources
+		for i := range cfg.stream.sources {
+			if cfg.stream.sources[i].Kind == sourceKindVideoDevice && cfg.stream.sources[i].Device != nil {
+				cfg.stream.sources[i].Device.FrameRate = fps
+			}
+		}
+	})
+}
+
+// WithPixelFormat sets the desired pixel format for video devices.
+func WithPixelFormat(format string) types.Option {
+	return newOption(func(cfg *config) {
+		// Apply to all video device sources
+		for i := range cfg.stream.sources {
+			if cfg.stream.sources[i].Kind == sourceKindVideoDevice && cfg.stream.sources[i].Device != nil {
+				cfg.stream.sources[i].Device.PixelFormat = format
+			}
+		}
+	})
+}
+
+// WithCameraControls sets initial camera control values.
+func WithCameraControls(controls map[string]int32) types.Option {
+	return newOption(func(cfg *config) {
+		// Apply to all video device sources
+		for i := range cfg.stream.sources {
+			if cfg.stream.sources[i].Kind == sourceKindVideoDevice && cfg.stream.sources[i].Device != nil {
+				if cfg.stream.sources[i].Device.Controls == nil {
+					cfg.stream.sources[i].Device.Controls = make(map[string]int32)
+				}
+				for k, v := range controls {
+					cfg.stream.sources[i].Device.Controls[k] = v
+				}
+			}
+		}
 	})
 }
 
@@ -220,7 +298,7 @@ func WithWindowSize(width, height int) types.Option {
 
 // WithOnKey installs a key handler invoked on each WaitKey event. Returning
 // false stops the display/event loop.
-func WithOnKey(handler func(int) bool) types.Option {
+func WithOnKey(handler func(types.KeyEvent) bool) types.Option {
 	return newOption(func(cfg *config) {
 		cfg.display.enabled = true
 		cfg.display.onKey = handler
@@ -228,7 +306,7 @@ func WithOnKey(handler func(int) bool) types.Option {
 }
 
 // WithOnMouse installs a mouse handler; returning false stops the display loop.
-func WithOnMouse(handler func(event, x, y, flags int) bool) types.Option {
+func WithOnMouse(handler func(types.MouseEvent) bool) types.Option {
 	return newOption(func(cfg *config) {
 		cfg.display.enabled = true
 		cfg.display.onMouse = handler
@@ -236,7 +314,7 @@ func WithOnMouse(handler func(event, x, y, flags int) bool) types.Option {
 }
 
 // WithEventLoop overrides the default event loop used for display rendering.
-func WithEventLoop(loop func(context.Context, func() bool)) types.Option {
+func WithEventLoop(loop types.EventLoop) types.Option {
 	return newOption(func(cfg *config) {
 		cfg.display.eventLoop = loop
 	})
@@ -275,6 +353,7 @@ func applyOptions(base types.Options, cfg config, opts []types.Option) (types.Op
 	if local.Context != nil {
 		localCfg.ctx = local.Context
 	}
+	localCfg.autoRelease = local.AutoRelease
 	// Apply defaults
 	if localCfg.stream.sorter == nil {
 		localCfg.stream.sorter = defaultSorter

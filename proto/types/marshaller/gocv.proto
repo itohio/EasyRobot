@@ -35,9 +35,12 @@ enum SourceKind {
 
 // DeviceSpec describes a video capture device configuration.
 message DeviceSpec {
-  int32 id = 1;      // Device ID
-  int32 width = 2;  // Preferred width (0 = default)
-  int32 height = 3; // Preferred height (0 = default)
+  int32 id = 1;           // Device ID
+  int32 width = 2;        // Preferred width (0 = default)
+  int32 height = 3;       // Preferred height (0 = default)
+  int32 frame_rate = 4;   // Preferred frame rate (0 = default)
+  string pixel_format = 5; // Preferred pixel format (empty = default)
+  map<string, int32> controls = 6; // Initial control values
 }
 
 // MatMetadata provides optional metadata about a Mat without embedding pixel data.

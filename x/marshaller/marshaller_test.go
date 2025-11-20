@@ -4,17 +4,15 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/itohio/EasyRobot/x/marshaller"
+	"github.com/itohio/EasyRobot/x/marshaller/gob"
+	"github.com/itohio/EasyRobot/x/marshaller/text"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"github.com/itohio/EasyRobot/x/math/tensor"
 )
 
 func TestTextMarshaller(t *testing.T) {
-	// Create a text marshaller
-	m, err := marshaller.NewMarshaller("text")
-	if err != nil {
-		t.Fatalf("Failed to create text marshaller: %v", err)
-	}
+	// Create a text marshaller directly
+	m := text.NewMarshaller()
 
 	if m.Format() != "text" {
 		t.Errorf("Expected format 'text', got %q", m.Format())
@@ -52,16 +50,9 @@ func TestTextMarshaller(t *testing.T) {
 }
 
 func TestGobMarshallerTensor(t *testing.T) {
-	// Create gob marshaller and unmarshaller
-	m, err := marshaller.NewMarshaller("gob")
-	if err != nil {
-		t.Fatalf("Failed to create gob marshaller: %v", err)
-	}
-
-	u, err := marshaller.NewUnmarshaller("gob")
-	if err != nil {
-		t.Fatalf("Failed to create gob unmarshaller: %v", err)
-	}
+	// Create gob marshaller and unmarshaller directly
+	m := gob.NewMarshaller()
+	u := gob.NewUnmarshaller()
 
 	if m.Format() != "gob" {
 		t.Errorf("Expected marshaller format 'gob', got %q", m.Format())
@@ -113,16 +104,9 @@ func TestGobMarshallerTensor(t *testing.T) {
 }
 
 func TestGobMarshallerSlice(t *testing.T) {
-	// Create gob marshaller and unmarshaller
-	m, err := marshaller.NewMarshaller("gob")
-	if err != nil {
-		t.Fatalf("Failed to create gob marshaller: %v", err)
-	}
-
-	u, err := marshaller.NewUnmarshaller("gob")
-	if err != nil {
-		t.Fatalf("Failed to create gob unmarshaller: %v", err)
-	}
+	// Create gob marshaller and unmarshaller directly
+	m := gob.NewMarshaller()
+	u := gob.NewUnmarshaller()
 
 	// Create a test slice
 	testSlice := []float32{1.0, 2.0, 3.0, 4.0, 5.0}
@@ -153,33 +137,29 @@ func TestGobMarshallerSlice(t *testing.T) {
 	}
 }
 
-func TestMarshallerRegistration(t *testing.T) {
-	// Test that we can create text marshaller (verify it's registered)
-	_, err := marshaller.NewMarshaller("text")
-	if err != nil {
-		t.Errorf("Failed to create text marshaller: %v", err)
+func TestDirectCreation(t *testing.T) {
+	// Test that we can create marshallers directly
+	textMarshaller := text.NewMarshaller()
+	if textMarshaller == nil {
+		t.Error("Failed to create text marshaller")
+	}
+	if textMarshaller.Format() != "text" {
+		t.Errorf("Expected format 'text', got %q", textMarshaller.Format())
 	}
 
-	// Test that we can create gob marshaller (verify it's registered)
-	_, err = marshaller.NewMarshaller("gob")
-	if err != nil {
-		t.Errorf("Failed to create gob marshaller: %v", err)
+	gobMarshaller := gob.NewMarshaller()
+	if gobMarshaller == nil {
+		t.Error("Failed to create gob marshaller")
+	}
+	if gobMarshaller.Format() != "gob" {
+		t.Errorf("Expected format 'gob', got %q", gobMarshaller.Format())
 	}
 
-	// Test that we can create gob unmarshaller (verify it's registered)
-	_, err = marshaller.NewUnmarshaller("gob")
-	if err != nil {
-		t.Errorf("Failed to create gob unmarshaller: %v", err)
+	gobUnmarshaller := gob.NewUnmarshaller()
+	if gobUnmarshaller == nil {
+		t.Error("Failed to create gob unmarshaller")
 	}
-
-	// Test that unknown format returns error
-	_, err = marshaller.NewMarshaller("unknown")
-	if err == nil {
-		t.Error("Expected error for unknown marshaller format")
-	}
-
-	_, err = marshaller.NewUnmarshaller("unknown")
-	if err == nil {
-		t.Error("Expected error for unknown unmarshaller format")
+	if gobUnmarshaller.Format() != "gob" {
+		t.Errorf("Expected format 'gob', got %q", gobUnmarshaller.Format())
 	}
 }

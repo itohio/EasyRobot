@@ -44,9 +44,9 @@ type displayConfig struct {
 	title     string
 	width     int
 	height    int
-	onKey     func(int) bool
-	onMouse   func(int, int, int, int) bool
-	eventLoop func(context.Context, func() bool)
+	onKey     func(types.KeyEvent) bool
+	onMouse   func(types.MouseEvent) bool
+	eventLoop types.EventLoop
 }
 
 func defaultDisplayConfig() displayConfig {

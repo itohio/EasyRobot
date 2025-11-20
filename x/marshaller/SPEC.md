@@ -2,19 +2,18 @@
 
 ## Overview
 
-The marshaller subsystem in EasyRobot `pkg/core/marshaller` replaces the previous serializer-focused design. It provides a unified way to encode (`Marshal`) and decode (`Unmarshal`) EasyRobot domain objects such as tensors, matrices, vectors, neural network components, and arbitrary Go data structures. Each backend (e.g., gob, JSON, YAML) supplies concrete implementations that plug into a shared registry while the core package exposes format-agnostic factory.
+The marshaller subsystem provides a unified way to encode (`Marshal`) and decode (`Unmarshal`) EasyRobot domain objects such as tensors, matrices, vectors, neural network components, and arbitrary Go data structures. Each backend (e.g., gob, JSON, YAML, GoCV) supplies concrete implementations that users create directly.
 
 Key properties:
-- **Format Agnostic**: Backends register themselves; callers request formats by name. callers can enumerate registered backend names.
-- **Domain Aware**: Known mathematical structures are normalised before encoding and reconstructed after decoding.
-- **Streaming Friendly**: APIs use `io.Writer` / `io.Reader` to avoid unnecessary buffering.
-- **Extensible**: New backends self-register through `register_<name>.go` without modifying the core. the backend lives in dedicated folder and is imported by `register_<name>.go`. inside this file should be build tag !no_<name>.
-- There are two registries - Marshallers and Unmarshallers. The registry is not exposed and factory is not exposed either.
-- User only interacts with NewMarshaller, and NewUnmarshaller methods that return Marshaller and Unmarshaller interfaces respectively.
+- **Format Specific**: Each backend provides its own constructor (e.g., `gob.NewMarshaller()`)
+- **Domain Aware**: Known mathematical structures are normalised before encoding and reconstructed after decoding
+- **Streaming Friendly**: APIs use `io.Writer` / `io.Reader` to avoid unnecessary buffering
+- **Direct Creation**: Users create marshallers directly without registry lookups
+- **Consistent Interface**: All marshallers implement the same `Marshaller`/`Unmarshaller` interfaces
 
-## Core Interfaces (types subpackage)
+## Core Types (types subpackage)
 
-All exported contracts reside in `pkg/core/marshaller/types`:
+The `marshaller/types` package provides shared types and interfaces:
 
 ```go
 type Option interface {
@@ -26,33 +25,31 @@ type Options struct {
     Hint          string            // optional value hint (e.g. "tensor", "matrix")
     Metadata      map[string]string // free-form, backend specific
 }
-
-type Marshaller interface {
-    Format() string
-    Marshal(w io.Writer, value any, opts ...Option) error
-}
-
-type Unmarshaller interface {
-    Format() string
-    Unmarshal(r io.Reader, dst any, opts ...Option) error
-}
 ```
 
-Backends may declare additional helper options as long as they satisfy `Option`.
+## Direct Construction
 
-## Registry and Factory
+Each backend provides direct constructors that return concrete types:
 
-- A global registry keyed by format name stores constructors that produce marshaller/unmarshaller.
-- Registration occurs via `registerMarshaller(name string, ctor func(opts ...Option) Marshaller)` within `init()` functions housed in `register_<name>.go` files under each backend directory.
-- Access is guarded by `sync.RWMutex` to ensure concurrent reads and writes remain safe.
-- The registry stays internal to the `marshaller` package. Public entry points are:
-  - `NewMarshaller(name string, opts ...types.Option) (types.Marshaller, error)`
-  - `NewUnmarshaller(name string, opts ...types.Option) (types.Unmarshaller, error)`
-- Factories apply shared default options, clone instances when necessary, and propagate the supplied options to both marshaller and unmarshaller instances.
+```go
+// Standard pattern: separate Marshaller/Unmarshaller constructors
+gobMarshaller := gob.NewMarshaller()
+gobUnmarshaller := gob.NewUnmarshaller()
+
+// Simplified pattern: single constructor when only one direction is supported
+textMarshaller := text.New()           // Text only marshals
+v4lUnmarshaller := v4l.New()           // V4L only unmarshals
+
+// Use immediately
+err := gobMarshaller.Marshal(writer, myTensor)
+err := gobUnmarshaller.Unmarshal(reader, &result)
+```
+
+No registry or factory functions - users create marshallers directly.
 
 ## Domain Object Handling
 
-Every backend should recognise and correctly encode/decode the following categories:
+Each backend should recognise and correctly encode/decode the following categories:
 
 - `tensor.Tensor` - Full round-trip support required
 - Matrix types from `mat.Matrix` - Full round-trip support required
@@ -76,7 +73,7 @@ When unmarshalling tensors:
 
 ### Layer and Model Reconstruction
 
-Gob marshaller should:
+Marshallers should:
 - Store layer/model structure (type, parameters, configuration)
 - NOT attempt full reconstruction (requires type registry)
 - Allow parameter extraction and restoration into compatible architectures
@@ -85,26 +82,26 @@ Gob marshaller should:
 ## Options
 
 - Shared helpers (e.g., `types.WithFormatVersion`, `types.WithHint`, `types.WithMetadata`) live in the `types` package and implement `Option`.
-- Options are applied immediately after constructing marshaller/unmarshaller instances.
+- Options are passed directly to marshaller/unmarshaller constructors.
 - Backend-specific options should also implement `types.Option` so they can be passed through the same APIs.
 - `types.WithTensorFactory` provides `func(DataType, Shape) Tensor` tensor constructor (defaults to `tensor.New`)
 - `types.WithDestinationType` sets target data type for type conversion during unmarshal
+- `types.WithRelease()` enables automatic calling of `Release()` on tensors after processing by sink marshallers
 
 ## Error Handling
 
 - The `types` package exposes helpers such as `types.NewError(op, format, message, cause error)` to wrap backend failures with consistent context.
-- Core factories surface lookup failures as `fmt.Errorf("marshaller: %w", err)` while preserving the original error for `errors.Is` / `errors.As`.
 - Backend implementations should wrap domain failures with `types.Error` to retain operation, format, and layer/value context.
 
-## Registration Pattern
+## Directory Structure
 
 ```
-pkg/core/marshaller/
-├── serialize.go           # Registry, factory helpers, option defaults
+marshaller/
 ├── types/
-│   └── types.go           # Interfaces, option contracts, error helpers
-├── text/
-│   └── marshaller.go      # Text marshaller (output only)
+│   ├── camera.go          # Camera/display/input interfaces
+│   ├── display.go         # Display/input interfaces
+│   ├── types.go           # Core interfaces, options, error helpers
+│   └── SPEC.md            # Interface documentation
 ├── gob/
 │   ├── internal.go        # Internal structs
 │   ├── convert.go         # Conversion helpers
@@ -118,68 +115,171 @@ pkg/core/marshaller/
 │   ├── internal.go        # Internal structs
 │   ├── marshaller.go      # YAML marshaller
 │   └── unmarshaller.go    # YAML unmarshaller
-├── proto/
-│   ├── marshaller.proto   # Protobuf schema
-│   └── README.md          # Protobuf generation instructions
-├── register_text.go       # Text registration
-├── register_gob.go        # Gob registration (build tag: !no_gob)
-├── register_json.go       # JSON registration (build tag: !no_json)
-├── register_yaml.go       # YAML registration (build tag: !no_yaml)
-└── ...
+├── gocv/
+│   ├── codec.go           # Image encoding/decoding
+│   ├── config.go          # Configuration structs
+│   ├── DESIGN.md          # Architecture documentation
+│   ├── FILE_FORMAT.md     # File format specifications
+│   ├── loader_*.go        # Data source loaders
+│   ├── marshaller.go      # GoCV marshaller
+│   ├── options.go         # GoCV-specific options
+│   ├── sink.go            # Output sinks
+│   ├── SPEC.md            # GoCV marshaller documentation
+│   ├── streams.go         # Stream coordination
+│   ├── unmarshaller.go    # GoCV unmarshaller
+│   └── ...
+└── v4l/
+    ├── types.go           # V4L types and interfaces
+    ├── device.go          # Device management
+    ├── stream.go          # Stream handling
+    ├── options.go         # V4L-specific options
+    └── ...
 ```
 
-`register_<name>.go` files import their backend implementation and invoke `register*` during package initialisation. Build tags gate optional formats.
+## Implementation Details
 
-There are two registers: for marshallers and unmarshallers.
+### Core Architecture
 
-## Implemented Formats
+All marshallers follow a consistent internal structure:
 
-### Text (output only)
-- Human-readable output for debugging/logging
-- TensorFlow-style model summaries
-- No unmarshaller
+```go
+type Marshaller struct {
+    opts types.Options    // Base options
+    cfg  backendConfig   // Backend-specific configuration
+}
 
-### Gob (binary, Go-specific)
-- Efficient binary format
-- Full round-trip support for tensors, arrays
-- Native Go encoding
+// Constructor pattern (standard)
+func NewMarshaller(opts ...types.Option) types.Marshaller {
+    m := &Marshaller{opts: types.Options{}}
+    for _, opt := range opts {
+        opt.Apply(&m.opts)
+    }
+    // Backend-specific initialization
+    return m
+}
+```
 
-### JSON (human-readable)
-- Standard JSON format
-- Full round-trip support for tensors, arrays
-- Pretty-printed output
-- Type conversion for numeric arrays
+**Marshal Flow:**
+1. Apply options (merge instance + call options)
+2. Type-switch on value to determine handling
+3. Convert domain objects to backend-specific format
+4. Write to io.Writer
 
-### YAML (human-readable)
-- YAML format (superset of JSON)
-- Full round-trip support for tensors, arrays
-- Indented output
-- Type conversion for numeric arrays
+**Unmarshal Flow:**
+1. Apply options (merge instance + call options)
+2. Read from io.Reader
+3. Parse backend-specific format
+4. Reconstruct domain objects
 
-### Protobuf (binary, cross-language) [Optional]
-- Efficient cross-language format
-- Requires `buf generate` for code generation
-- Build without `-tags no_protobuf` (protobuf is enabled by default)
-- See `proto/README.md` for setup
-- Directly marshals `proto.Message` types
-- Converts domain types (Tensor, Layer, Model) to protobuf messages
+### Domain Object Handling Strategy
 
-### TFLite (model loader) [Optional]
-- Loads TensorFlow Lite `.tflite` models
-- Converts to EasyRobot `models.Sequential`
-- Supports training and fine-tuning
-- Requires TensorFlow Lite C library
-- Build with `-tags tflite`
-- See `tflite/README.md` for setup
+**Tensor Support:**
+- All marshallers handle `types.Tensor` interface
+- Convert to backend-specific representation (gobValue, jsonValue, etc.)
+- Preserve shape, dtype, and data
 
-### Keras H5 (model loader) [Optional]
-- Loads Keras `.h5` models
-- Converts to EasyRobot `models.Sequential`
-- Supports training and fine-tuning
-- Includes CNN layers (Conv2D, Pooling)
-- Requires HDF5 C library
-- Build with `-tags keras`
-- See `keras/README.md` for setup
+**Model/Layer Support:**
+- Handle `types.Model` and `types.Layer` interfaces
+- Store parameter tensors and metadata
+- Support for reconstruction (limited by Go's type system)
+
+**Slice/Array Support:**
+- Direct encoding for primitive arrays
+- Reflection-based handling for complex types
+- Fallback to generic encoding
+
+### Implemented Backends
+
+#### Text Marshaller (Output Only)
+- **Constructor:** `text.New(opts ...types.Option) types.Marshaller`
+- **Features:** Human-readable summaries, TensorFlow-style model inspection
+- **Limitations:** No unmarshaller (by design)
+- **Use Case:** Debugging, logging, development
+
+**Implementation Notes:**
+- Uses reflection for type inspection
+- Generates formatted summaries for tensors, models, layers
+- Single-pass writing with no intermediate structures
+
+#### Gob Marshaller (Binary, Go-specific)
+- **Constructor:** `gob.NewMarshaller(opts ...types.Option) types.Marshaller`
+- **Features:** Native Go encoding, full round-trip support
+- **Use Case:** Efficient Go-to-Go data transfer
+
+**Implementation Notes:**
+- Wraps domain objects in `gobValue` struct for encoding
+- Handles type reconstruction during unmarshal
+- Uses Go's built-in gob package
+
+#### JSON Marshaller (Human-readable)
+- **Constructor:** `json.NewMarshaller(opts ...types.Option) types.Marshaller`
+- **Features:** Standard JSON format, pretty-printed output
+- **Use Case:** Configuration files, APIs, debugging
+
+**Implementation Notes:**
+- Wraps domain objects in `jsonValue` struct
+- Uses `encoding/json` with custom marshaling
+- Supports graph structures (unique to JSON backend)
+
+#### YAML Marshaller (Human-readable)
+- **Constructor:** `yaml.NewMarshaller(opts ...types.Option) types.Marshaller`
+- **Features:** YAML format, indented output, JSON superset
+- **Use Case:** Configuration files, complex nested structures
+
+**Implementation Notes:**
+- Similar structure to JSON marshaller
+- Uses YAML-specific encoding library
+- Better for human-edited configuration
+
+#### GoCV Marshaller (Computer Vision)
+- **Constructor:** `gocv.NewMarshaller(opts ...types.Option) types.Marshaller`
+- **Features:** Image/tensor conversion, video capture, display
+- **Use Case:** Computer vision pipelines, camera integration
+
+**Implementation Notes:**
+- Delegates to OpenCV for image encoding/decoding
+- Handles `gocv.Mat`, `image.Image`, `types.Tensor`, `types.FrameStream`
+- Complex configuration with display and stream options
+
+#### V4L Marshaller (Video Devices)
+- **Constructor:** `v4l.NewMarshaller(opts ...types.Option) types.Marshaller`
+- **Features:** Camera device enumeration, stream configuration
+- **Use Case:** Hardware video capture, device management
+
+**Implementation Notes:**
+- Marshals device info and stream configurations to JSON
+- Unmarshals to `types.FrameStream` for device access
+- Hardware-specific with V4L2 integration
+
+#### Graph Marshaller (Persistent Storage)
+- **Constructor:** `graph.NewMarshaller(factory types.MappedStorageFactory, opts ...types.Option) (*GraphMarshaller, error)`
+- **Features:** Memory-mapped storage, graph persistence
+- **Use Case:** Large graph storage, database-like operations
+
+**Implementation Notes:**
+- Requires storage factory parameter
+- Returns concrete type (not interface) due to factory requirement
+- Advanced: append-only updates, defragmentation
+
+#### Protobuf Marshaller (Cross-language) [Optional]
+- **Constructor:** `protobuf.NewMarshaller(opts ...types.Option) *Marshaller`
+- **Features:** Language-agnostic binary format
+- **Use Case:** Multi-language systems, network protocols
+
+**Implementation Notes:**
+- Returns concrete type (breaks interface pattern)
+- Requires code generation via `buf generate`
+- Uses protobuf wire format
+
+#### TFLite Unmarshaller (Model Loading) [Optional]
+- **Constructor:** `tflite.NewUnmarshaller(opts ...types.Option) *Unmarshaller`
+- **Features:** TensorFlow Lite model loading
+- **Use Case:** ML model deployment, inference
+
+**Implementation Notes:**
+- Unmarshaller only (no marshal support)
+- Returns concrete type
+- Loads models into EasyRobot format
 
 ## Model Format Support
 
@@ -192,14 +292,52 @@ This document covers:
 - Format comparison and recommendations
 - Implementation roadmap
 
+## Usage Recommendations
+
+### Choosing the Right Marshaller
+
+| Use Case | Recommended Marshaller | Rationale |
+|----------|------------------------|-----------|
+| Go-to-Go data transfer | Gob | Most efficient, native Go types |
+| Configuration files | YAML | Human-readable, supports complex structures |
+| API responses | JSON | Standard web format, widely supported |
+| Debugging/Logging | Text | Human-readable summaries, no unmarshal needed |
+| Cross-language | Protobuf | Language-agnostic, efficient |
+| Computer vision | GoCV | Native image/tensor support |
+| Hardware devices | V4L | Camera enumeration and control |
+| Large graphs | Graph | Memory-mapped storage, persistence |
+
+### Best Practices
+
+#### Performance Considerations
+- **Gob** for high-performance Go applications
+- **Protobuf** for cross-language communication
+- **JSON/YAML** for human-edited configurations
+- **Text** only for debugging (no unmarshal capability)
+
+#### Memory Usage
+- **Graph marshaller** for large persistent datasets
+- **Streaming** for large tensors to avoid memory spikes
+- **Reference counting** in multi-consumer scenarios
+
+#### Error Handling
+- Always check for errors from Marshal/Unmarshal
+- Use `types.NewError` for consistent error messages
+- Wrap backend errors with context using `types.NewError`
+
+#### Options Usage
+- Set options at construction for instance-level defaults
+- Pass options to Marshal/Unmarshal for call-specific overrides
+- Use `types.WithMetadata` for backend-specific configuration
+
 ## Usage Examples
 
 ### Basic Tensor Marshalling
 
 ```go
-// Create marshaller and unmarshaller
-mar, err := marshaller.NewMarshaller("gob")
-unmar, err := marshaller.NewUnmarshaller("gob")
+// Create marshaller and unmarshaller directly
+mar := gob.NewMarshaller()
+unmar := gob.NewUnmarshaller()
 
 // Marshal tensor
 var buf bytes.Buffer
@@ -215,9 +353,8 @@ err = unmar.Unmarshal(&buf, &restored)
 
 ```go
 // Marshal FP32 tensor, unmarshal as FP64
-mar, _ := marshaller.NewMarshaller("gob")
-unmar, _ := marshaller.NewUnmarshaller("gob", 
-    types.WithDestinationType(types.FP64))
+mar := gob.NewMarshaller()
+unmar := gob.NewUnmarshaller(types.WithDestinationType(types.FP64))
 
 var buf bytes.Buffer
 t := tensor.New(tensor.DTFP32, tensor.NewShape(2, 3))
@@ -226,6 +363,59 @@ mar.Marshal(&buf, t)
 var restored tensor.Tensor
 unmar.Unmarshal(&buf, &restored)
 // restored is now FP64 type
+```
+
+### Computer Vision Pipeline
+
+```go
+// GoCV marshaller for image processing
+marshaller := gocv.NewMarshaller()
+unmarshaller := gocv.NewUnmarshaller()
+
+// Process camera stream
+streamUnmarshaller := gocv.NewUnmarshaller(
+    gocv.WithVideoDevice(0, 1920, 1080),
+    gocv.WithPixelFormat("MJPEG"),
+)
+
+var frameStream types.FrameStream
+err := streamUnmarshaller.Unmarshal(nil, &frameStream)
+// Camera controller available for runtime adjustments
+controller := streamUnmarshaller.CameraController(0)
+```
+
+### Automatic Resource Management
+
+```go
+// Display marshaller with automatic tensor cleanup
+displayMarshaller := gocv.NewMarshaller(
+    gocv.WithDisplay(ctx),
+    types.WithRelease(), // Automatically release tensors after display
+)
+
+// Tensors will be released after being displayed, preventing memory leaks
+var frameStream types.FrameStream
+err := unmarshaller.Unmarshal(nil, &frameStream)
+```
+
+### Device Management
+
+```go
+// V4L marshaller for camera enumeration
+unmarshaller := v4l.NewUnmarshaller()
+
+// List available cameras
+var devices []types.CameraInfo
+err := unmarshaller.Unmarshal(strings.NewReader("list"), &devices)
+
+// Configure specific camera
+streamUnmarshaller := v4l.NewUnmarshaller(
+    v4l.WithVideoDeviceEx(0, 1920, 1080, 30, "YUYV"),
+    v4l.WithCameraControls(map[string]int32{
+        "brightness": 128,
+        "exposure": 500,
+    }),
+)
 ```
 
 ### Model Parameters
@@ -258,7 +448,6 @@ for idx, buf := range paramBuffers {
 
 ## Testing Strategy
 
-- Registry concurrency tests (concurrent register/lookup).
 - Option propagation tests (ensuring options reach implementations).
 - Round-trip coverage per backend:
   - Tensor (`tensor.Tensor`)
@@ -268,13 +457,325 @@ for idx, buf := range paramBuffers {
   - Generic structs with nested fields
 - Error propagation tests (malformed payloads, unsupported hints).
 
+## Device/Camera Marshallers (New Category)
+
+**Latest Addition**: Based on V4L and GoCV implementations, a new category of marshallers handles real-time hardware devices (cameras, sensors, etc.). These follow different patterns than traditional data marshallers.
+
+### Key Characteristics
+
+- **Real-time streaming**: Handle continuous data streams rather than static data
+- **Hardware management**: Control physical devices with runtime parameters
+- **Synchronization**: Coordinate multiple devices for synchronized capture
+- **Buffer pooling**: Efficient memory reuse for high-throughput data
+- **Controller access**: Runtime device control during operation
+
+### Implementation Patterns
+
+#### 1. Direct Creation
+```go
+// Device marshallers are created directly
+unmarshaller := v4l.NewUnmarshaller(
+    // Configure sources via options
+    v4l.WithVideoDeviceEx(0, 1920, 1080, 30, "MJPEG"),
+    v4l.WithCameraControls(map[string]int32{...}),
+)
+
+// Unmarshal to FrameStream for automatic device management
+var stream types.FrameStream
+err := unmarshaller.Unmarshal(nil, &stream)
+```
+
+#### 2. Controller Management
+```go
+// Provide runtime access to device controls
+type UnmarshallerWithControllers interface {
+    types.Unmarshaller
+    CameraController(devicePath string) types.CameraController
+    Cameras() []CameraDevice // Optional: device enumeration
+}
+```
+
+#### 3. Shared Types Integration
+```go
+// Use shared types from marshaller/types
+type CameraInfo = types.CameraInfo
+type CameraController = types.CameraController
+type VideoFormat = types.VideoFormat
+type ControlInfo = types.ControlInfo
+
+// Standard control names
+types.CameraControlBrightness
+types.CameraControlExposure
+types.CameraControlContrast
+```
+
+#### 4. Controller Registration Pattern
+```go
+// Unmarshaller manages active controllers
+type Unmarshaller struct {
+    activeControllers map[string]types.CameraController // device path -> controller
+    activeStreams     map[string]types.CameraStream     // device path -> stream
+}
+
+// Register controllers when streams are created
+func (u *Unmarshaller) registerController(devicePath string, controller types.CameraController) {
+    u.activeControllers[devicePath] = controller
+}
+
+// Provide access to controllers
+func (u *Unmarshaller) CameraController(devicePath string) types.CameraController {
+    return u.activeControllers[devicePath]
+}
+```
+
+#### 4. Option Patterns
+```go
+// Device-specific options
+WithVideoDeviceEx(id, width, height, fps, format) // Extended config
+WithCameraControls(controls map[string]int32)     // Initial settings
+WithDevicePath(path)                              // Device selection
+```
+
+### Best Practices from V4L Implementation
+
+**Key Lesson**: Device marshallers should follow the **gocv pattern** where the unmarshaller is the entry point and configuration happens via options.
+
+#### API Design Evolution
+1. **Initial Approach**: Manual device/stream creation (`v4l.NewDevice()`, `device.Open()`)
+2. **Learned from GoCV**: Unmarshaller-centric design with option-based configuration
+3. **Final Result**: Simple, consistent API matching existing marshallers
+
+#### Memory Management
+- **Buffer pooling**: Use `helpers.Pool[T]` for efficient memory reuse
+- **Tensor wrappers**: Create pooled tensor implementations with automatic cleanup
+- **Reference counting**: Use smart tensors for multi-consumer scenarios
+
+#### Error Handling
+- **Device errors**: Wrap hardware failures with context
+- **Stream errors**: Handle real-time streaming failures gracefully
+- **Recovery**: Implement best-effort synchronization for robustness
+
+#### Performance Optimization
+- **Zero-copy**: Memory-map buffers when possible
+- **Synchronization**: Efficient multi-device coordination
+- **Resource cleanup**: Proper device/stream lifecycle management
+
+#### Code Organization
+```
+v4l/
+├── types.go           # Shared type definitions & conversions
+├── tensor.go          # Pooled tensor implementation
+├── device.go          # Device enumeration & management
+├── stream.go          # Stream creation & synchronization
+├── options.go         # Option handling & configuration
+├── marshaller.go      # Basic marshal/unmarshal (minimal)
+├── unmarshaller.go    # Main entry point with controllers
+├── SPEC.md           # Implementation details
+├── README.md         # User documentation
+└── example_test.go   # Usage examples
+```
+
+## Implementation Guidelines for New Marshallers
+
+### 1. Study Existing Implementations First
+
+**Critical Lesson from V4L**: Always examine successful implementations (like GoCV) before starting your own. The V4L marshaller went through multiple iterations:
+
+1. **Initial**: Complex manual API (`NewDevice()`, `Open()`, `Start()`)
+2. **After studying GoCV**: Simple unmarshaller-centric API with options
+3. **Final**: Consistent with existing marshaller patterns
+
+**Recommendation**: Read GoCV's implementation thoroughly before implementing device marshallers.
+
+### 2. Choose the Right Pattern
+
+**For Data Marshallers** (traditional):
+- Focus on `Marshal`/`Unmarshal` of static data
+- Handle domain objects (tensors, models, etc.)
+- Use standard options pattern
+
+**For Device Marshallers** (new pattern):
+- Use unmarshaller as entry point for device management
+- Implement streaming via `types.FrameStream`
+- Provide controller access for runtime control
+- Use shared camera types from `marshaller/types`
+
+### 2. Integration with Shared Types
+
+```go
+// Always use shared interfaces when available
+type MyMarshaller struct {
+    opts types.Options
+    cfg  MyConfig
+}
+
+// Implement shared interfaces
+func (m *MyMarshaller) Format() string { return "myformat" }
+func (m *MyMarshaller) Marshal(w io.Writer, value any, opts ...types.Option) error { /*...*/ }
+func (m *MyMarshaller) Unmarshal(r io.Reader, dst any, opts ...types.Option) error { /*...*/ }
+
+// For device marshallers, also implement:
+func (u *MyUnmarshaller) CameraController(id string) types.CameraController { /*...*/ }
+```
+
+### 3. Option Handling Best Practices
+
+```go
+// Create focused option structs
+type myConfig struct {
+    codec   codecConfig
+    stream  streamConfig
+    display displayConfig
+}
+
+// Apply options through focused configs
+func applyOptions(baseOpts types.Options, baseCfg myConfig, opts ...types.Option) (types.Options, myConfig) {
+    finalOpts := baseOpts
+    finalCfg := baseCfg
+
+    for _, opt := range opts {
+        opt.Apply(&finalOpts)
+        // Apply to focused configs if applicable
+    }
+
+    return finalOpts, finalCfg
+}
+```
+
+### 4. Error Handling Patterns
+
+```go
+// Use types.NewError for consistent error messages
+return types.NewError("unmarshal", "v4l", "failed to open device", err)
+
+// Wrap hardware-specific errors
+if err := device.Open(); err != nil {
+    return types.NewError("unmarshal", "v4l", fmt.Sprintf("device %s open failed", devicePath), err)
+}
+```
+
+### 5. Testing Strategy
+
+```go
+// Test device enumeration
+func TestDeviceEnumeration(t *testing.T) {
+    unmarshaller := v4l.NewUnmarshaller()
+    var devices []types.CameraInfo
+    err := unmarshaller.Unmarshal(strings.NewReader("list"), &devices)
+    // Test device discovery logic
+}
+
+// Test stream creation
+func TestStreamCreation(t *testing.T) {
+    unmarshaller := v4l.NewUnmarshaller(v4l.WithVideoDeviceEx(0, 640, 480, 30, "MJPEG"))
+    var stream types.FrameStream
+    err := unmarshaller.Unmarshal(nil, &stream)
+    // Test stream initialization
+}
+
+// Test controller access
+func TestControllerAccess(t *testing.T) {
+    // Setup stream first
+    controller := unmarshaller.CameraController("/dev/video0")
+    assert.NotNil(t, controller)
+    // Test control operations
+}
+```
+
+### 6. Documentation Requirements
+
+- **README.md**: Include usage examples showing both simple and advanced usage
+- **SPEC.md**: Document any device-specific features and limitations
+- **Example tests**: Provide comprehensive examples in `*_test.go` files
+- **API compatibility**: Ensure examples work across different implementations
+
+## API Discrepancies & Unification Recommendations
+
+### Current API Inconsistencies
+
+Analysis of the implemented marshallers reveals several API inconsistencies that should be addressed for better uniformity:
+
+#### 1. Constructor Function Names
+**Standard Pattern:** `NewMarshaller(opts ...types.Option) types.Marshaller`
+- ✅ **Used by:** gob, json, yaml, gocv, v4l
+- ❌ **Text marshaller:** `New(opts ...types.Option) types.Marshaller` (inconsistent naming)
+
+**Recommendation:** Standardize on `NewMarshaller` and `NewUnmarshaller` for all backends.
+
+#### 2. Return Types
+**Interface Pattern:** Return `types.Marshaller` / `types.Unmarshaller` interfaces
+- ✅ **Used by:** gob, json, yaml, gocv, v4l
+- ❌ **Graph marshaller:** Returns `(*GraphMarshaller, error)` - concrete type + error
+- ❌ **Protobuf marshaller:** Returns `*Marshaller` - concrete type
+- ❌ **TFLite unmarshaller:** Returns `*Unmarshaller` - concrete type
+
+**Recommendation:** All constructors should return interface types. Special cases requiring additional parameters should use option pattern.
+
+#### 3. Error Handling in Constructors
+**No Error Pattern:** Constructors don't return errors
+- ✅ **Used by:** gob, json, yaml, gocv, v4l, text
+- ❌ **Graph marshaller:** Returns `(*GraphMarshaller, error)` - includes error
+
+**Recommendation:** Use options pattern for required parameters instead of constructor errors.
+
+#### 4. Required Parameters
+**No Parameters Pattern:** Standard constructors take only options
+- ✅ **Used by:** gob, json, yaml, gocv, v4l, text
+- ❌ **Graph marshaller:** Requires `storageFactory types.MappedStorageFactory` parameter
+
+**Recommendation:** Graph marshaller should accept storage factory via options pattern.
+
+### Unification Strategy
+
+#### Phase 1: Immediate Fixes
+1. **Rename text.New to text.NewMarshaller** for consistency
+2. **Add options for required parameters:**
+   - Graph marshaller: `WithStorageFactory(factory types.MappedStorageFactory)`
+   - Any other required parameters should use options
+
+#### Phase 2: Interface Compliance
+1. **Update concrete type returns to interfaces:**
+   - Protobuf: Change to return `types.Marshaller` interface
+   - TFLite: Change to return `types.Unmarshaller` interface
+   - Graph: Change to return `types.Marshaller` interface
+
+#### Phase 3: Constructor Standardization
+1. **Ensure all constructors follow the pattern:**
+   ```go
+   func NewMarshaller(opts ...types.Option) types.Marshaller
+   func NewUnmarshaller(opts ...types.Option) types.Unmarshaller
+   ```
+
+#### Phase 4: Testing & Documentation
+1. **Update all examples and documentation**
+2. **Add tests ensuring interface compliance**
+3. **Create migration guide for API changes**
+
+### Benefits of Unification
+
+- **Consistent Developer Experience:** Same constructor patterns across all backends
+- **Easier Testing:** Interface-based testing works uniformly
+- **Better Documentation:** Single pattern to document and teach
+- **Future Maintenance:** Easier to add new marshallers following established patterns
+- **Type Safety:** Interface compliance ensures proper implementation
+
+### Backward Compatibility
+
+API changes should maintain backward compatibility where possible:
+- Keep existing constructors as deprecated but functional
+- Add new standardized constructors alongside old ones
+- Update documentation to recommend new patterns
+- Provide clear migration timeline
+
 ## Future Enhancements
 
 1. Typed helper methods (`UnmarshalModel`, `MarshalTensor`) layered on top of the generic API.
 2. Streaming chunk encoders for large tensors to reduce memory usage.
 3. Cross-format conversion utilities that chain marshaller/unmarshaller pairs.
-4. Negotiation helpers that discover supported formats at runtime.
-5. Schema/version compatibility checks driven by `Options.FormatVersion`.
-# Marshaller Specification
+4. Schema/version compatibility checks driven by `Options.FormatVersion`.
+5. **Device marshaller standardization**: Common patterns for camera/sensor marshallers.
+6. **Hardware abstraction**: Unified interfaces for different device types.
+7. **Performance monitoring**: Built-in metrics for marshaller performance.
+8. **API unification**: Complete standardization of constructor patterns across all marshallers.
 
 pkg/core/marshaller/SPEC.md
