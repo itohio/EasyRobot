@@ -1,7 +1,6 @@
 package ekalman
 
 import (
-	"github.com/itohio/EasyRobot/x/math/filter"
 	"github.com/itohio/EasyRobot/x/math/mat"
 	"github.com/itohio/EasyRobot/x/math/vec"
 )
@@ -68,9 +67,9 @@ type EKF struct {
 	JacobianEpsilon float32 // Step size for numerical differentiation
 
 	// Filter interface
-	Input  vec.Vector // Measurement input
-	Output vec.Vector // Estimated state output
-	Target vec.Vector // Target state (optional)
+	inputVec  vec.Vector // Measurement input
+	outputVec vec.Vector // Estimated state output
+	targetVec vec.Vector // Target state (optional)
 }
 
 const (
@@ -129,9 +128,9 @@ func New(
 		tempV2:          vec.New(n),
 		tempV3:          vec.New(n),
 		JacobianEpsilon: DefaultJacobianEpsilon,
-		Input:           vec.New(m),
-		Output:          vec.New(n),
-		Target:          vec.New(n),
+		inputVec:        vec.New(m),
+		outputVec:       vec.New(n),
+		targetVec:       vec.New(n),
 	}
 
 	// Initialize P as identity
@@ -193,9 +192,9 @@ func NewWithControl(
 		tempV2:          vec.New(n),
 		tempV3:          vec.New(n),
 		JacobianEpsilon: DefaultJacobianEpsilon,
-		Input:           vec.New(m),
-		Output:          vec.New(n),
-		Target:          vec.New(n),
+		inputVec:        vec.New(m),
+		outputVec:       vec.New(n),
+		targetVec:       vec.New(n),
 	}
 
 	// Initialize P as identity
@@ -211,7 +210,7 @@ func (e *EKF) SetState(x vec.Vector) *EKF {
 		panic("ekf: state vector dimension mismatch")
 	}
 	copy(e.x, x)
-	copy(e.Output, x)
+	copy(e.outputVec, x)
 	return e
 }
 
@@ -233,13 +232,12 @@ func (e *EKF) SetJacobianEpsilon(epsilon float32) *EKF {
 }
 
 // Reset resets the filter state to zero.
-func (e *EKF) Reset() filter.Filter {
+func (e *EKF) Reset() {
 	e.x.FillC(0)
 	e.P.Eye()
-	copy(e.Input, e.x)
-	copy(e.Output, e.x)
-	copy(e.Target, e.x)
-	return e
+	copy(e.inputVec, e.x)
+	copy(e.outputVec, e.x)
+	copy(e.targetVec, e.x)
 }
 
 // computeStateJacobian computes the Jacobian of the state transition function.
@@ -354,7 +352,7 @@ func (e *EKF) Predict(dt float32) *EKF {
 
 	// Add Q: P_pred = F * P * F^T + Q
 	e.P.Add(e.Q)
-	copy(e.Output, e.x)
+	copy(e.outputVec, e.x)
 
 	return e
 }
@@ -386,7 +384,7 @@ func (e *EKF) PredictWithControl(u vec.Vector, dt float32) *EKF {
 
 	// Add Q: P_pred = F * P * F^T + Q
 	e.P.Add(e.Q)
-	copy(e.Output, e.x)
+	copy(e.outputVec, e.x)
 
 	return e
 }
@@ -400,7 +398,7 @@ func (e *EKF) UpdateMeasurement(z vec.Vector) *EKF {
 	}
 
 	// Copy measurement to Input for Filter interface
-	copy(e.Input, z)
+	copy(e.inputVec, z)
 
 	// Predicted measurement: z_pred = h(x_pred)
 	zPred := e.hFunc(e.x)
@@ -461,44 +459,47 @@ func (e *EKF) UpdateMeasurement(z vec.Vector) *EKF {
 	copy(e.P, e.tempM)
 
 	// Copy state to Output for Filter interface
-	copy(e.Output, e.x)
+	copy(e.outputVec, e.x)
 
 	return e
 }
 
 // Update implements the Filter interface.
-// This method performs prediction and expects measurement to be set in Input.
-func (e *EKF) Update(timestep float32) filter.Filter {
+// This method performs prediction and update with the given measurement.
+func (e *EKF) Update(timestep float32, measurement vec.Vector) {
 	// Predict step
 	e.Predict(timestep)
 
-	// If measurement is available (non-zero), perform update
-	hasMeasurement := false
-	for i := range e.Input {
-		if e.Input[i] != 0 {
-			hasMeasurement = true
-			break
+	// If measurement is provided and non-zero, perform update
+	if measurement != nil {
+		hasMeasurement := false
+		for i := range measurement {
+			if measurement[i] != 0 {
+				hasMeasurement = true
+				break
+			}
+		}
+
+		if hasMeasurement {
+			e.UpdateMeasurement(measurement)
 		}
 	}
 
-	if hasMeasurement {
-		e.UpdateMeasurement(e.Input)
-	}
-
-	return e
+	// Update output
+	copy(e.outputVec, e.x)
 }
 
-// GetInput returns the measurement input vector.
-func (e *EKF) GetInput() vec.Vector {
-	return e.Input
+// Input returns the measurement input vector.
+func (e *EKF) Input() vec.Vector {
+	return e.inputVec
 }
 
-// GetOutput returns the estimated state vector.
-func (e *EKF) GetOutput() vec.Vector {
-	return e.Output
+// Output returns the estimated state vector.
+func (e *EKF) Output() vec.Vector {
+	return e.outputVec
 }
 
 // GetTarget returns the target state vector.
 func (e *EKF) GetTarget() vec.Vector {
-	return e.Target
+	return e.targetVec
 }

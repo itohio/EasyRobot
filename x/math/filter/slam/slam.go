@@ -2,7 +2,6 @@ package slam
 
 import (
 	"github.com/chewxy/math32"
-	"github.com/itohio/EasyRobot/x/math/filter"
 	"github.com/itohio/EasyRobot/x/math/filter/ekalman"
 	"github.com/itohio/EasyRobot/x/math/grid"
 	"github.com/itohio/EasyRobot/x/math/mat"
@@ -45,9 +44,9 @@ type SLAM struct {
 	useOptimizedRaycast bool    // Use optimized ray casting (default: true)
 
 	// Filter interface
-	Input  vec.Vector // Measured distances input
-	Output vec.Vector // Estimated pose output [px, py, heading]
-	Target vec.Vector // Target pose (optional)
+	inputVec  vec.Vector // Measured distances input
+	outputVec vec.Vector // Estimated pose output [px, py, heading]
+	targetVec vec.Vector // Target pose (optional)
 
 	// Dimensions
 	numRays int // Number of rays
@@ -140,9 +139,9 @@ func New(
 		maxRange:            DefaultMaxRange,
 		enableMapping:       false, // Disabled by default
 		useOptimizedRaycast: true,  // Use optimized ray casting by default
-		Input:               vec.New(numRays),
-		Output:              vec.New(3),
-		Target:              vec.New(3),
+		inputVec:            vec.New(numRays),
+		outputVec:           vec.New(3),
+		targetVec:           vec.New(3),
 		numRays:             numRays,
 		mapRows:             mapRows,
 		mapCols:             mapCols,
@@ -153,7 +152,7 @@ func New(
 	s.pose[1] = mapOriginY
 	s.pose[2] = 0.0
 
-	copy(s.Output, s.pose)
+	copy(s.outputVec, s.pose)
 
 	// Set initial pose in EKF
 	s.ekf.SetState(s.pose)
@@ -183,7 +182,7 @@ func (s *SLAM) SetPose(pose vec.Vector) *SLAM {
 		panic("slam: pose must have at least 3 elements [px, py, heading]")
 	}
 	copy(s.pose, pose)
-	copy(s.Output, pose)
+	copy(s.outputVec, pose)
 	s.ekf.SetState(pose)
 	return s
 }
@@ -191,7 +190,7 @@ func (s *SLAM) SetPose(pose vec.Vector) *SLAM {
 // GetPose returns the current robot pose estimate.
 // Returns: [px, py, heading] in world coordinates
 func (s *SLAM) GetPose() vec.Vector {
-	return s.Output
+	return s.outputVec
 }
 
 // SetMappingEnabled enables or disables online map building.
@@ -233,7 +232,7 @@ func (s *SLAM) UpdateMeasurement(distances vec.Vector) *SLAM {
 
 	// Copy measurements
 	copy(s.measuredDistances, distances)
-	copy(s.Input, distances)
+	copy(s.inputVec, distances)
 
 	// Update map if mapping is enabled (before pose update for better map)
 	if s.enableMapping && s.logOddsMap != nil {
@@ -248,9 +247,9 @@ func (s *SLAM) UpdateMeasurement(distances vec.Vector) *SLAM {
 	s.ekf.UpdateMeasurement(distances)
 
 	// Get updated pose from EKF
-	pose := s.ekf.GetOutput()
+	pose := s.ekf.Output()
 	copy(s.pose, pose)
-	copy(s.Output, pose)
+	copy(s.outputVec, pose)
 
 	// Compute expected distances for reference (use optimized version)
 	if s.useOptimizedRaycast {
@@ -264,55 +263,56 @@ func (s *SLAM) UpdateMeasurement(distances vec.Vector) *SLAM {
 }
 
 // Reset resets the filter state to the map origin.
-func (s *SLAM) Reset() filter.Filter {
+func (s *SLAM) Reset() {
 	s.pose[0] = s.mapOriginX
 	s.pose[1] = s.mapOriginY
 	s.pose[2] = 0.0
-	copy(s.Output, s.pose)
-	copy(s.Input, vec.New(s.numRays))
-	copy(s.Target, s.pose)
+	copy(s.outputVec, s.pose)
+	copy(s.inputVec, vec.New(s.numRays))
+	copy(s.targetVec, s.pose)
 
 	s.ekf.SetState(s.pose)
 	initialP := mat.New(3, 3)
 	initialP.Eye()
 	initialP.MulC(1.0)
 	s.ekf.SetCovariance(initialP)
-
-	return s
 }
 
 // Update implements the Filter interface.
-// This method performs pose update and expects distances to be set in Input.
-func (s *SLAM) Update(timestep float32) filter.Filter {
-	// Check if measurement is available
-	hasMeasurement := false
-	for i := range s.Input {
-		if s.Input[i] != 0 {
-			hasMeasurement = true
-			break
+// This method performs pose update with the given measurement.
+func (s *SLAM) Update(timestep float32, measurement vec.Vector) {
+	// If measurement is provided, use it
+	if measurement != nil {
+		hasMeasurement := false
+		for i := range measurement {
+			if measurement[i] != 0 {
+				hasMeasurement = true
+				break
+			}
+		}
+
+		if hasMeasurement {
+			s.UpdateMeasurement(measurement)
 		}
 	}
 
-	if hasMeasurement {
-		s.UpdateMeasurement(s.Input)
-	}
-
-	return s
+	// Update output
+	copy(s.outputVec, s.pose)
 }
 
-// GetInput returns the measurement input vector (distances).
-func (s *SLAM) GetInput() vec.Vector {
-	return s.Input
+// Input returns the measurement input vector (distances).
+func (s *SLAM) Input() vec.Vector {
+	return s.inputVec
 }
 
-// GetOutput returns the estimated pose vector [px, py, heading].
-func (s *SLAM) GetOutput() vec.Vector {
-	return s.Output
+// Output returns the estimated pose vector [px, py, heading].
+func (s *SLAM) Output() vec.Vector {
+	return s.outputVec
 }
 
 // GetTarget returns the target pose vector.
 func (s *SLAM) GetTarget() vec.Vector {
-	return s.Target
+	return s.targetVec
 }
 
 // GetExpectedDistances returns the expected distances computed from the current pose estimate.

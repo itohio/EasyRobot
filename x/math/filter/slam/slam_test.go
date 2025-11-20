@@ -222,8 +222,8 @@ func TestSLAM_FilterInterface(t *testing.T) {
 	slam := New(rayAngles, mapGrid, mapResolution, mapOriginX, mapOriginY)
 
 	// Test Filter interface methods
-	input := slam.GetInput()
-	output := slam.GetOutput()
+	input := slam.Input()
+	output := slam.Output()
 	target := slam.GetTarget()
 
 	if len(input) != 1 {
@@ -237,11 +237,11 @@ func TestSLAM_FilterInterface(t *testing.T) {
 	}
 
 	// Test Update method (Filter interface)
-	copy(slam.GetInput(), vec.NewFrom(0.5))
-	slam.Update(0.01) // timestep
+	measurement := vec.NewFrom(0.5)
+	slam.Update(0.01, measurement) // timestep and measurement
 
 	// Pose should have been updated
-	pose := slam.GetOutput()
+	pose := slam.Output()
 	if pose[0] < -10 || pose[0] > 10 {
 		t.Errorf("Expected reasonable pose after update, got [%f, %f, %f]", pose[0], pose[1], pose[2])
 	}

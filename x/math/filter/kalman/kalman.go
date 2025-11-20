@@ -1,7 +1,6 @@
 package kalman
 
 import (
-	"github.com/itohio/EasyRobot/x/math/filter"
 	"github.com/itohio/EasyRobot/x/math/mat"
 	"github.com/itohio/EasyRobot/x/math/vec"
 )
@@ -40,9 +39,9 @@ type Kalman struct {
 	k int // Control input dimension (0 if not used)
 
 	// Filter interface
-	Input  vec.Vector // Measurement input
-	Output vec.Vector // Estimated state output
-	Target vec.Vector // Target state (optional)
+	inputVec  vec.Vector // Measurement input
+	outputVec vec.Vector // Estimated state output
+	targetVec vec.Vector // Target state (optional)
 }
 
 // New creates a new Kalman filter without control input.
@@ -67,28 +66,28 @@ func New(n, m int, F, H, Q, R mat.Matrix) *Kalman {
 	}
 
 	kf := &Kalman{
-		n:      n,
-		m:      m,
-		k:      0,
-		F:      F,
-		H:      H,
-		B:      nil,
-		Q:      Q,
-		R:      R,
-		x:      vec.New(n),
-		P:      mat.New(n, n),
-		K:      mat.New(n, m),
-		S:      mat.New(m, m),
-		tempP:  mat.New(n, n),
-		tempM:  mat.New(n, n),
-		tempHP: mat.New(m, n),
-		tempHT: mat.New(n, m),
-		tempN:  mat.New(m, m),
-		tempN2: mat.New(n, n),
-		tempV:  vec.New(n),
-		Input:  vec.New(m),
-		Output: vec.New(n),
-		Target: vec.New(n),
+		n:         n,
+		m:         m,
+		k:         0,
+		F:         F,
+		H:         H,
+		B:         nil,
+		Q:         Q,
+		R:         R,
+		x:         vec.New(n),
+		P:         mat.New(n, n),
+		K:         mat.New(n, m),
+		S:         mat.New(m, m),
+		tempP:     mat.New(n, n),
+		tempM:     mat.New(n, n),
+		tempHP:    mat.New(m, n),
+		tempHT:    mat.New(n, m),
+		tempN:     mat.New(m, m),
+		tempN2:    mat.New(n, n),
+		tempV:     vec.New(n),
+		inputVec:  vec.New(m),
+		outputVec: vec.New(n),
+		targetVec: vec.New(n),
 	}
 
 	// Initialize P as identity
@@ -125,29 +124,29 @@ func NewWithControl(n, m, k int, F, H, B, Q, R mat.Matrix) *Kalman {
 	}
 
 	kf := &Kalman{
-		n:      n,
-		m:      m,
-		k:      k,
-		F:      F,
-		H:      H,
-		B:      B,
-		Q:      Q,
-		R:      R,
-		x:      vec.New(n),
-		P:      mat.New(n, n),
-		K:      mat.New(n, m),
-		S:      mat.New(m, m),
-		tempP:  mat.New(n, n),
-		tempM:  mat.New(n, n),
-		tempHP: mat.New(m, n),
-		tempHT: mat.New(n, m),
-		tempN:  mat.New(m, m),
-		tempN2: mat.New(n, n),
-		tempV:  vec.New(n),
-		tempV2: vec.New(k),
-		Input:  vec.New(m),
-		Output: vec.New(n),
-		Target: vec.New(n),
+		n:         n,
+		m:         m,
+		k:         k,
+		F:         F,
+		H:         H,
+		B:         B,
+		Q:         Q,
+		R:         R,
+		x:         vec.New(n),
+		P:         mat.New(n, n),
+		K:         mat.New(n, m),
+		S:         mat.New(m, m),
+		tempP:     mat.New(n, n),
+		tempM:     mat.New(n, n),
+		tempHP:    mat.New(m, n),
+		tempHT:    mat.New(n, m),
+		tempN:     mat.New(m, m),
+		tempN2:    mat.New(n, n),
+		tempV:     vec.New(n),
+		tempV2:    vec.New(k),
+		inputVec:  vec.New(m),
+		outputVec: vec.New(n),
+		targetVec: vec.New(n),
 	}
 
 	// Initialize P as identity
@@ -172,7 +171,7 @@ func (k *Kalman) SetState(x vec.Vector) *Kalman {
 		panic("kalman: state vector dimension mismatch")
 	}
 	copy(k.x, x)
-	copy(k.Output, x)
+	copy(k.outputVec, x)
 	return k
 }
 
@@ -188,13 +187,12 @@ func (k *Kalman) SetCovariance(P mat.Matrix) *Kalman {
 }
 
 // Reset resets the filter state to zero.
-func (k *Kalman) Reset() filter.Filter {
+func (k *Kalman) Reset() {
 	k.x.FillC(0)
 	k.P.Eye()
-	copy(k.Input, k.x)
-	copy(k.Output, k.x)
-	copy(k.Target, k.x)
-	return k
+	copy(k.inputVec, k.x)
+	copy(k.outputVec, k.x)
+	copy(k.targetVec, k.x)
 }
 
 // Predict performs the prediction step without control input.
@@ -220,7 +218,7 @@ func (k *Kalman) Predict() *Kalman {
 	k.P.Add(k.Q)
 
 	// Expose predicted state via Filter interface
-	copy(k.Output, k.x)
+	copy(k.outputVec, k.x)
 
 	return k
 }
@@ -260,7 +258,7 @@ func (k *Kalman) PredictWithControl(u vec.Vector) *Kalman {
 	k.P.Add(k.Q)
 
 	// Expose predicted state via Filter interface
-	copy(k.Output, k.x)
+	copy(k.outputVec, k.x)
 
 	return k
 }
@@ -278,7 +276,7 @@ func (k *Kalman) update(z vec.Vector) *Kalman {
 	}
 
 	// Copy measurement to Input for Filter interface
-	copy(k.Input, z)
+	copy(k.inputVec, z)
 
 	// Innovation: y = z - H * x_pred
 	// First compute H * x_pred
@@ -340,44 +338,47 @@ func (k *Kalman) update(z vec.Vector) *Kalman {
 	copy(k.P, k.tempM)
 
 	// Copy state to Output for Filter interface
-	copy(k.Output, k.x)
+	copy(k.outputVec, k.x)
 
 	return k
 }
 
 // Update implements the Filter interface.
-// This method performs prediction and expects measurement to be set in Input.
-func (k *Kalman) Update(timestep float32) filter.Filter {
+// This method performs prediction and update with the given measurement.
+func (k *Kalman) Update(timestep float32, measurement vec.Vector) {
 	// Predict step
 	k.Predict()
 
-	// If measurement is available (non-zero), perform update
-	hasMeasurement := false
-	for i := range k.Input {
-		if k.Input[i] != 0 {
-			hasMeasurement = true
-			break
+	// If measurement is provided and non-zero, perform update
+	if measurement != nil {
+		hasMeasurement := false
+		for i := range measurement {
+			if measurement[i] != 0 {
+				hasMeasurement = true
+				break
+			}
+		}
+
+		if hasMeasurement {
+			k.UpdateMeasurement(measurement)
 		}
 	}
 
-	if hasMeasurement {
-		k.UpdateMeasurement(k.Input)
-	}
-
-	return k
+	// Update output
+	copy(k.outputVec, k.x)
 }
 
-// GetInput returns the measurement input vector.
-func (k *Kalman) GetInput() vec.Vector {
-	return k.Input
+// Input returns the measurement input vector.
+func (k *Kalman) Input() vec.Vector {
+	return k.inputVec
 }
 
-// GetOutput returns the estimated state vector.
-func (k *Kalman) GetOutput() vec.Vector {
-	return k.Output
+// Output returns the estimated state vector.
+func (k *Kalman) Output() vec.Vector {
+	return k.outputVec
 }
 
 // GetTarget returns the target state vector.
 func (k *Kalman) GetTarget() vec.Vector {
-	return k.Target
+	return k.targetVec
 }

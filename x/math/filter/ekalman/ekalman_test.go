@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/chewxy/math32"
+	"github.com/itohio/EasyRobot/x/math/filter"
 	"github.com/itohio/EasyRobot/x/math/mat"
 	"github.com/itohio/EasyRobot/x/math/vec"
 )
@@ -78,7 +79,7 @@ func TestEKF_SimplePendulum(t *testing.T) {
 
 	// Predict
 	ekf.Predict(dt)
-	state := ekf.GetOutput()
+	state := ekf.Output()
 
 	// State should have advanced
 	if state[0] < -1 || state[0] > 1 {
@@ -88,7 +89,7 @@ func TestEKF_SimplePendulum(t *testing.T) {
 	// Update with measurement
 	measurement := vec.NewFrom(0.09) // slightly smaller angle
 	ekf.UpdateMeasurement(measurement)
-	state = ekf.GetOutput()
+	state = ekf.Output()
 
 	// State should be updated toward measurement
 	if state[0] < -1 || state[0] > 1 {
@@ -131,7 +132,7 @@ func TestEKF_NumericalJacobian(t *testing.T) {
 
 	// Predict should work with numerical Jacobian
 	ekf.Predict(dt)
-	state := ekf.GetOutput()
+	state := ekf.Output()
 
 	if state[0] < -10 || state[0] > 10 {
 		t.Errorf("Expected state reasonable, got %f", state[0])
@@ -140,7 +141,7 @@ func TestEKF_NumericalJacobian(t *testing.T) {
 	// Update should work with numerical Jacobian
 	measurement := vec.NewFrom(1.2)
 	ekf.UpdateMeasurement(measurement)
-	state = ekf.GetOutput()
+	state = ekf.Output()
 
 	if state[0] < -10 || state[0] > 10 {
 		t.Errorf("Expected state reasonable after update, got %f", state[0])
@@ -201,7 +202,7 @@ func TestEKF_WithControl(t *testing.T) {
 	ekf.PredictWithControl(control, dt)
 
 	// State should advance with control
-	state := ekf.GetOutput()
+	state := ekf.Output()
 	expectedVelocity := control[0] * dt
 	if diff := math32.Abs(state[1] - expectedVelocity); diff > 1e-3 {
 		t.Errorf("Expected velocity ~%0.2f after control, got %f", expectedVelocity, state[1])
@@ -246,8 +247,8 @@ func TestEKF_FilterInterface(t *testing.T) {
 	ekf := New(n, m, fFunc, hFunc, fJacobian, hJacobian, Q, R)
 
 	// Test Filter interface methods
-	input := ekf.GetInput()
-	output := ekf.GetOutput()
+	input := ekf.Input()
+	output := ekf.Output()
 	target := ekf.GetTarget()
 
 	if len(input) != m {
@@ -261,11 +262,11 @@ func TestEKF_FilterInterface(t *testing.T) {
 	}
 
 	// Test Update method (Filter interface)
-	copy(ekf.GetInput(), vec.NewFrom(1.0))
-	ekf.Update(0.01) // timestep
+	measurement := vec.NewFrom(1.0)
+	ekf.Update(0.01, measurement) // timestep and measurement
 
 	// State should have been updated
-	state := ekf.GetOutput()
+	state := ekf.Output()
 	if state[0] < -10 || state[0] > 10 {
 		t.Errorf("Expected state reasonable after Update, got %f", state[0])
 	}
@@ -319,7 +320,7 @@ func TestEKF_Reset(t *testing.T) {
 	ekf.Reset()
 
 	// State should be zero after reset
-	state := ekf.GetOutput()
+	state := ekf.Output()
 	for i := range state {
 		if state[i] != 0 {
 			t.Errorf("Expected state[%d] = 0 after reset, got %f", i, state[i])
@@ -339,4 +340,8 @@ func TestEKF_Reset(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestEKFInterface(t *testing.T) {
+	var _ filter.Filter[vec.Vector] = (*EKF)(nil)
 }

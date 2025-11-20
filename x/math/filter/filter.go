@@ -2,18 +2,22 @@ package filter
 
 import "github.com/itohio/EasyRobot/x/math/vec"
 
-type Filter interface {
-	Reset() Filter
-	Update(timestep float32) Filter
-	GetInput() vec.Vector
-	GetOutput() vec.Vector
-	GetTarget() vec.Vector
+type Resetter interface {
+	Reset()
 }
 
-type Filter1D interface {
-	Reset() Filter1D
-	Update(timestep float32) Filter1D
-	GetInput() *float32
-	GetOutput() *float32
-	GetTarget() *float32
+type Updater[T any] interface {
+	Update(timestep float32, input T)
+}
+
+type Filter[T any] interface {
+	Updater[T]
+	Resetter
+	Input() vec.Vector
+	Output() vec.Vector
+}
+
+type Processor[T any] interface {
+	Resetter
+	Process(T) T
 }

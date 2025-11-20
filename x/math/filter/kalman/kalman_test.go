@@ -3,6 +3,7 @@ package kalman
 import (
 	"testing"
 
+	"github.com/itohio/EasyRobot/x/math/filter"
 	"github.com/itohio/EasyRobot/x/math/mat"
 	"github.com/itohio/EasyRobot/x/math/vec"
 )
@@ -51,7 +52,7 @@ func TestKalmanFilter_Simple1D(t *testing.T) {
 
 	// Predict: state should advance
 	filter.Predict()
-	state := filter.GetOutput()
+	state := filter.Output()
 
 	// After prediction: position should be 1 (0 + 1), velocity should be 1
 	if state[0] < 0.9 || state[0] > 1.1 {
@@ -64,7 +65,7 @@ func TestKalmanFilter_Simple1D(t *testing.T) {
 	// Update with measurement: position = 1.0
 	measurement := vec.NewFrom(1.0)
 	filter.UpdateMeasurement(measurement)
-	state = filter.GetOutput()
+	state = filter.Output()
 
 	// State should be updated toward measurement
 	if state[0] < 0.8 || state[0] > 1.2 {
@@ -95,7 +96,7 @@ func TestKalmanFilter_PredictUpdate(t *testing.T) {
 	filter.UpdateMeasurement(measurement)
 
 	// State should move toward measurement
-	state := filter.GetOutput()
+	state := filter.Output()
 	if state[0] < 0.5 || state[0] > 1.0 {
 		t.Errorf("Expected state between 0.5 and 1.0, got %f", state[0])
 	}
@@ -121,7 +122,7 @@ func TestKalmanFilter_Reset(t *testing.T) {
 	filter.Reset()
 
 	// State should be zero after reset
-	state := filter.GetOutput()
+	state := filter.Output()
 	for i := range state {
 		if state[i] != 0 {
 			t.Errorf("Expected state[%d] = 0 after reset, got %f", i, state[i])
@@ -155,8 +156,8 @@ func TestKalmanFilter_FilterInterface(t *testing.T) {
 	filter := New(n, m, F, H, Q, R)
 
 	// Test Filter interface methods
-	input := filter.GetInput()
-	output := filter.GetOutput()
+	input := filter.Input()
+	output := filter.Output()
 	target := filter.GetTarget()
 
 	if len(input) != m {
@@ -170,11 +171,11 @@ func TestKalmanFilter_FilterInterface(t *testing.T) {
 	}
 
 	// Test Update method (Filter interface)
-	copy(filter.GetInput(), vec.NewFrom(1.0))
-	filter.Update(1.0) // timestep
+	measurement := vec.NewFrom(1.0)
+	filter.Update(1.0, measurement) // timestep and measurement
 
 	// State should have been updated
-	state := filter.GetOutput()
+	state := filter.Output()
 	if state[0] < 0.5 || state[0] > 1.0 {
 		t.Errorf("Expected state between 0.5 and 1.0 after Update, got %f", state[0])
 	}
@@ -202,8 +203,12 @@ func TestKalmanFilter_WithControl(t *testing.T) {
 	filter.PredictWithControl(control)
 
 	// State should advance
-	state := filter.GetOutput()
+	state := filter.Output()
 	if state[0] < 0.9 || state[0] > 1.1 {
 		t.Errorf("Expected position ~1 after control prediction, got %f", state[0])
 	}
+}
+
+func TestKalmanFilterInterface(t *testing.T) {
+	var _ filter.Filter[vec.Vector] = (*Kalman)(nil)
 }
