@@ -1,3 +1,4 @@
+// go:build linux
 package v4l
 
 import (
@@ -15,7 +16,7 @@ type Marshaller struct {
 }
 
 // NewMarshaller creates a new V4L marshaller
-func NewMarshaller(opts ...types.Option) types.Marshaller {
+func NewMarshaller(opts ...types.Option) *Marshaller {
 	baseOpts, baseCfg := applyOptions(types.Options{}, Options{}, opts...)
 	return &Marshaller{
 		opts: baseOpts,
@@ -80,7 +81,7 @@ func (m *Marshaller) marshalStreamConfig(w io.Writer, stream Stream, cfg Options
 			}
 			return "unknown"
 		}(),
-		"format": stream.Format(),
+		"format":  stream.Format(),
 		"options": cfg,
 	}
 
@@ -104,7 +105,7 @@ func (m *Marshaller) marshalMultiStreamConfig(w io.Writer, multiStream MultiStre
 	}
 
 	config := map[string]any{
-		"type": "multi_stream",
+		"type":    "multi_stream",
 		"devices": devices,
 		"options": cfg,
 	}

@@ -21,7 +21,7 @@ type Marshaller struct {
 }
 
 // NewMarshaller constructs a GoCV marshaller instance.
-func NewMarshaller(opts ...types.Option) types.Marshaller {
+func NewMarshaller(opts ...types.Option) *Marshaller {
 	baseOpts, baseCfg := applyOptions(types.Options{}, defaultConfig(), opts)
 	return &Marshaller{
 		opts: baseOpts,
@@ -302,11 +302,12 @@ func (m *Marshaller) writeFrameStream(w io.Writer, stream types.FrameStream, cfg
 				}
 			}
 			
-			// Release tensors if AutoRelease is enabled or single writer
-			// (smart tensors handle it automatically for multiple writers when AutoRelease is false)
-			if localCfg.AutoRelease || numWriters == 1 {
-				for _, t := range frame.Tensors {
-					t.Release()
+			// Release objects that implement Releaser if WithRelease is enabled or single writer
+			if cfg.autoRelease || numWriters == 1 {
+				for _, obj := range frame.Tensors {
+					if releaser, ok := obj.(types.Releaser); ok {
+						releaser.Release()
+					}
 				}
 			}
 		}

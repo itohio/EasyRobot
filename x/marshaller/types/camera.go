@@ -1,5 +1,7 @@
 package types
 
+import "context"
+
 // CameraInfo contains information about a video capture device
 type CameraInfo struct {
 	// ID is the device identifier (implementation-specific)
@@ -114,7 +116,7 @@ type CameraDevice interface {
 // CameraStream represents an active camera capture stream
 type CameraStream interface {
 	// Start begins frame capture
-	Start(ctx Context) error
+	Start(ctx context.Context) error
 
 	// Stop halts frame capture
 	Stop() error
@@ -166,7 +168,7 @@ const (
 	CameraControlAutoWhiteBalance      = "auto_white_balance"
 	CameraControlAutogain              = "autogain"
 	CameraControlBacklightCompensation = "backlight_compensation"
-	CameraControlPowerLineFrequency     = "power_line_frequency"
+	CameraControlPowerLineFrequency    = "power_line_frequency"
 	CameraControlHFlip                 = "horizontal_flip"
 	CameraControlVFlip                 = "vertical_flip"
 )

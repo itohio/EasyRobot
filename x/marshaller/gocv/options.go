@@ -353,7 +353,7 @@ func applyOptions(base types.Options, cfg config, opts []types.Option) (types.Op
 	if local.Context != nil {
 		localCfg.ctx = local.Context
 	}
-	localCfg.autoRelease = local.AutoRelease
+	localCfg.autoRelease = local.ReleaseAfterProcessing
 	// Apply defaults
 	if localCfg.stream.sorter == nil {
 		localCfg.stream.sorter = defaultSorter

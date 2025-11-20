@@ -1,11 +1,11 @@
 package gocv
 
 import (
-	"context"
-
 	cv "gocv.io/x/gocv"
 
 	tensorgocv "github.com/itohio/EasyRobot/x/math/tensor/gocv"
+
+	"github.com/itohio/EasyRobot/x/marshaller/types"
 )
 
 // codecConfig holds codec-related configuration.

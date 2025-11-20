@@ -24,7 +24,7 @@ type Options struct {
 	DestinationType      DataType // target data type for conversion during unmarshal
 	Context              context.Context
 	MappedStorageFactory MappedStorageFactory // factory for creating mapped storage (for graph marshaller, etc.)
-	AutoRelease          bool // automatically call Release() on tensors after processing
+	ReleaseAfterProcessing bool // for sink marshallers: call Release() on tensors after processing
 }
 
 // Marshaller encodes values to a format.
@@ -198,6 +198,27 @@ func (opt withMappedStorageFactory) Apply(opts *Options) {
 // network-based, or any other storage implementation.
 func WithMappedStorageFactory(factory MappedStorageFactory) Option {
 	return withMappedStorageFactory{factory: factory}
+}
+
+type withRelease struct{}
+
+func (opt withRelease) Apply(opts *Options) {
+	if opts == nil {
+		return
+	}
+	opts.ReleaseAfterProcessing = true
+}
+
+// WithRelease enables calling Release() on Releaser objects after processing.
+// This is mandatory for all marshallers to accept, but only meaningful for
+// sink marshallers (display, file writers) that consume objects.
+func WithRelease() Option {
+	return withRelease{}
+}
+
+// Releaser is an interface for objects that need cleanup after use.
+type Releaser interface {
+	Release()
 }
 
 // Domain type aliases for convenience

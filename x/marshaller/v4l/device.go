@@ -1,15 +1,14 @@
+// go:build linux
 package v4l
 
 import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/vladimirvivien/go4vl/v4l2"
 
 	"github.com/itohio/EasyRobot/x/marshaller/types"
-	"github.com/itohio/EasyRobot/x/math/primitive/generics/helpers"
 )
 
 // v4lDevice implements the CameraDevice interface using go4vl

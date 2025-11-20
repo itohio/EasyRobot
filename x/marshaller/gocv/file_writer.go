@@ -76,11 +76,11 @@ func (fw *fileWriter) Write(frame types.Frame) error {
 		}
 		data, err := encodeMatBytes(mat, fw.cfg.codec.imageEncoding)
 		mat.Close()
-		// Release tensor after converting to Mat if AutoRelease is enabled
-		// The Mat clone is independent, so we can release the tensor
-		// Note: If using smart tensors, this will decrement the ref count
+		// Release objects that implement Releaser after writing if WithRelease is enabled
 		if fw.cfg.autoRelease {
-			frame.Tensors[i].Release()
+			if releaser, ok := frame.Tensors[i].(types.Releaser); ok {
+				releaser.Release()
+			}
 		}
 		if err != nil {
 			return err

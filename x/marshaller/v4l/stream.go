@@ -1,3 +1,4 @@
+// go:build linux
 package v4l
 
 import (
@@ -210,10 +211,10 @@ func (s *v4lStream) captureLoop(ctx context.Context) {
 			Tensor:    tensor,
 			Tensors:   []types.Tensor{tensor},
 			Metadata: map[string]any{
-				"device":      s.device.Path(),
-				"format":      s.format,
-				"frame_size":  len(frame),
-				"timestamp":   time.Now().UnixNano(),
+				"device":     s.device.Path(),
+				"format":     s.format,
+				"frame_size": len(frame),
+				"timestamp":  time.Now().UnixNano(),
 			},
 		}
 

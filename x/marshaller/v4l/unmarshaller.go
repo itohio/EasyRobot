@@ -1,3 +1,4 @@
+// go:build linux
 package v4l
 
 import (
@@ -18,8 +19,8 @@ type Unmarshaller struct {
 	activeStreams      map[string]types.CameraStream     // device path -> stream
 }
 
-// NewUnmarshaller creates a new V4L unmarshaller
-func NewUnmarshaller(opts ...types.Option) types.Unmarshaller {
+// New creates a new V4L unmarshaller
+func New(opts ...types.Option) *Unmarshaller {
 	baseOpts, baseCfg := applyOptions(types.Options{}, Options{}, opts...)
 	return &Unmarshaller{
 		opts:              baseOpts,

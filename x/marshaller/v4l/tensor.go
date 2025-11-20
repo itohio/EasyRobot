@@ -1,9 +1,10 @@
+// go:build linux
 package v4l
 
 import (
 	"github.com/itohio/EasyRobot/x/marshaller/types"
-	tensortypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 	"github.com/itohio/EasyRobot/x/math/primitive/generics/helpers"
+	tensortypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 )
 
 // PooledTensor wraps uint8 data with buffer pool integration

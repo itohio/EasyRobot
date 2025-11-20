@@ -16,7 +16,7 @@ type Marshaller struct {
 }
 
 // NewMarshaller creates a new YAML marshaller.
-func NewMarshaller(opts ...types.Option) types.Marshaller {
+func NewMarshaller(opts ...types.Option) *Marshaller {
 	m := &Marshaller{
 		opts: types.Options{},
 	}
@@ -119,6 +119,20 @@ func (m *Marshaller) valueToYAML(value any) (*yamlValue, error) {
 			SliceType: rv.Type().String(),
 			SliceData: value,
 		}, nil
+	}
+
+	// Check for graphs using reflection
+	if reflect.TypeOf(value).String() != "" { // Always true, just to use reflection
+		if yg, err := graphToYAML(value); err == nil && yg != nil {
+			kind := "graph"
+			if yg.Metadata != nil {
+				kind = yg.Metadata.Kind
+			}
+			return &yamlValue{
+				Kind:  kind,
+				Graph: yg,
+			}, nil
+		}
 	}
 
 	// Fallback to generic encoding

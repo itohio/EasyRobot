@@ -14,8 +14,8 @@ type Marshaller struct {
 	opts types.Options
 }
 
-// New creates a new text marshaller.
-func New(opts ...types.Option) types.Marshaller {
+// NewMarshaller creates a new text marshaller.
+func NewMarshaller(opts ...types.Option) *Marshaller {
 	m := &Marshaller{
 		opts: types.Options{},
 	}

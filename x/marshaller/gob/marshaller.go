@@ -14,7 +14,7 @@ type Marshaller struct {
 }
 
 // NewMarshaller creates a new gob marshaller.
-func NewMarshaller(opts ...types.Option) types.Marshaller {
+func NewMarshaller(opts ...types.Option) *Marshaller {
 	m := &Marshaller{
 		opts: types.Options{},
 	}

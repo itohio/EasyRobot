@@ -37,7 +37,7 @@ gobMarshaller := gob.NewMarshaller()
 gobUnmarshaller := gob.NewUnmarshaller()
 
 // Simplified pattern: single constructor when only one direction is supported
-textMarshaller := text.New()           // Text only marshals
+textMarshaller := text.NewMarshaller()           // Text only marshals
 v4lUnmarshaller := v4l.New()           // V4L only unmarshals
 
 // Use immediately
@@ -149,7 +149,7 @@ type Marshaller struct {
 }
 
 // Constructor pattern (standard)
-func NewMarshaller(opts ...types.Option) types.Marshaller {
+func NewMarshaller(opts ...types.Option) *Marshaller {
     m := &Marshaller{opts: types.Options{}}
     for _, opt := range opts {
         opt.Apply(&m.opts)
@@ -191,7 +191,7 @@ func NewMarshaller(opts ...types.Option) types.Marshaller {
 ### Implemented Backends
 
 #### Text Marshaller (Output Only)
-- **Constructor:** `text.New(opts ...types.Option) types.Marshaller`
+- **Constructor:** `text.NewMarshaller(opts ...types.Option) *Marshaller`
 - **Features:** Human-readable summaries, TensorFlow-style model inspection
 - **Limitations:** No unmarshaller (by design)
 - **Use Case:** Debugging, logging, development
@@ -202,7 +202,7 @@ func NewMarshaller(opts ...types.Option) types.Marshaller {
 - Single-pass writing with no intermediate structures
 
 #### Gob Marshaller (Binary, Go-specific)
-- **Constructor:** `gob.NewMarshaller(opts ...types.Option) types.Marshaller`
+- **Constructor:** `gob.NewMarshaller(opts ...types.Option) *Marshaller`
 - **Features:** Native Go encoding, full round-trip support
 - **Use Case:** Efficient Go-to-Go data transfer
 
@@ -212,27 +212,29 @@ func NewMarshaller(opts ...types.Option) types.Marshaller {
 - Uses Go's built-in gob package
 
 #### JSON Marshaller (Human-readable)
-- **Constructor:** `json.NewMarshaller(opts ...types.Option) types.Marshaller`
+- **Constructor:** `json.NewMarshaller(opts ...types.Option) *Marshaller`
 - **Features:** Standard JSON format, pretty-printed output
+- **Limitations:** Limited graph/tree support (reflection-based, may not capture all data)
 - **Use Case:** Configuration files, APIs, debugging
 
 **Implementation Notes:**
 - Wraps domain objects in `jsonValue` struct
 - Uses `encoding/json` with custom marshaling
-- Supports graph structures (unique to JSON backend)
+- Graph support via reflection (may not work for all graph implementations)
 
 #### YAML Marshaller (Human-readable)
-- **Constructor:** `yaml.NewMarshaller(opts ...types.Option) types.Marshaller`
+- **Constructor:** `yaml.NewMarshaller(opts ...types.Option) *Marshaller`
 - **Features:** YAML format, indented output, JSON superset
+- **Limitations:** Limited graph/tree support (reflection-based, may not capture all data)
 - **Use Case:** Configuration files, complex nested structures
 
 **Implementation Notes:**
 - Similar structure to JSON marshaller
 - Uses YAML-specific encoding library
-- Better for human-edited configuration
+- Graph support via reflection (may not work for all graph implementations)
 
 #### GoCV Marshaller (Computer Vision)
-- **Constructor:** `gocv.NewMarshaller(opts ...types.Option) types.Marshaller`
+- **Constructor:** `gocv.NewMarshaller(opts ...types.Option) *Marshaller`
 - **Features:** Image/tensor conversion, video capture, display
 - **Use Case:** Computer vision pipelines, camera integration
 
@@ -242,7 +244,7 @@ func NewMarshaller(opts ...types.Option) types.Marshaller {
 - Complex configuration with display and stream options
 
 #### V4L Marshaller (Video Devices)
-- **Constructor:** `v4l.NewMarshaller(opts ...types.Option) types.Marshaller`
+- **Constructor:** `v4l.NewMarshaller(opts ...types.Option) *Marshaller`
 - **Features:** Camera device enumeration, stream configuration
 - **Use Case:** Hardware video capture, device management
 
@@ -329,6 +331,7 @@ This document covers:
 - Set options at construction for instance-level defaults
 - Pass options to Marshal/Unmarshal for call-specific overrides
 - Use `types.WithMetadata` for backend-specific configuration
+- Use `types.WithRelease()` on sink marshallers to enable automatic cleanup of Releaser objects
 
 ## Usage Examples
 
@@ -387,13 +390,13 @@ controller := streamUnmarshaller.CameraController(0)
 ### Automatic Resource Management
 
 ```go
-// Display marshaller with automatic tensor cleanup
+// Display marshaller with automatic cleanup
 displayMarshaller := gocv.NewMarshaller(
     gocv.WithDisplay(ctx),
-    types.WithRelease(), // Automatically release tensors after display
+    types.WithRelease(), // Automatically release Releaser objects after display
 )
 
-// Tensors will be released after being displayed, preventing memory leaks
+// Objects implementing Releaser will be released after being displayed
 var frameStream types.FrameStream
 err := unmarshaller.Unmarshal(nil, &frameStream)
 ```
@@ -402,7 +405,7 @@ err := unmarshaller.Unmarshal(nil, &frameStream)
 
 ```go
 // V4L marshaller for camera enumeration
-unmarshaller := v4l.NewUnmarshaller()
+unmarshaller := v4l.New()
 
 // List available cameras
 var devices []types.CameraInfo
@@ -659,7 +662,7 @@ if err := device.Open(); err != nil {
 ```go
 // Test device enumeration
 func TestDeviceEnumeration(t *testing.T) {
-    unmarshaller := v4l.NewUnmarshaller()
+    unmarshaller := v4l.New()
     var devices []types.CameraInfo
     err := unmarshaller.Unmarshal(strings.NewReader("list"), &devices)
     // Test device discovery logic
@@ -696,14 +699,14 @@ func TestControllerAccess(t *testing.T) {
 Analysis of the implemented marshallers reveals several API inconsistencies that should be addressed for better uniformity:
 
 #### 1. Constructor Function Names
-**Standard Pattern:** `NewMarshaller(opts ...types.Option) types.Marshaller`
+**Standard Pattern:** `NewMarshaller(opts ...types.Option) *Marshaller`
 - ✅ **Used by:** gob, json, yaml, gocv, v4l
-- ❌ **Text marshaller:** `New(opts ...types.Option) types.Marshaller` (inconsistent naming)
+- ✅ **Text marshaller:** `NewMarshaller(opts ...types.Option) *Marshaller`
 
 **Recommendation:** Standardize on `NewMarshaller` and `NewUnmarshaller` for all backends.
 
 #### 2. Return Types
-**Interface Pattern:** Return `types.Marshaller` / `types.Unmarshaller` interfaces
+**Concrete Pattern:** Return concrete `*Marshaller` / `*Unmarshaller` types
 - ✅ **Used by:** gob, json, yaml, gocv, v4l
 - ❌ **Graph marshaller:** Returns `(*GraphMarshaller, error)` - concrete type + error
 - ❌ **Protobuf marshaller:** Returns `*Marshaller` - concrete type
@@ -728,22 +731,22 @@ Analysis of the implemented marshallers reveals several API inconsistencies that
 ### Unification Strategy
 
 #### Phase 1: Immediate Fixes
-1. **Rename text.New to text.NewMarshaller** for consistency
+1. **✓ Rename text.New to text.NewMarshaller** for consistency
 2. **Add options for required parameters:**
    - Graph marshaller: `WithStorageFactory(factory types.MappedStorageFactory)`
    - Any other required parameters should use options
 
 #### Phase 2: Interface Compliance
 1. **Update concrete type returns to interfaces:**
-   - Protobuf: Change to return `types.Marshaller` interface
-   - TFLite: Change to return `types.Unmarshaller` interface
-   - Graph: Change to return `types.Marshaller` interface
+   - Protobuf: Returns `*Marshaller` concrete type ✅
+   - TFLite: Returns `*Unmarshaller` concrete type ✅
+   - Graph: Returns `*GraphMarshaller` concrete type ✅
 
 #### Phase 3: Constructor Standardization
 1. **Ensure all constructors follow the pattern:**
    ```go
-   func NewMarshaller(opts ...types.Option) types.Marshaller
-   func NewUnmarshaller(opts ...types.Option) types.Unmarshaller
+  func NewMarshaller(opts ...types.Option) *Marshaller
+  func NewUnmarshaller(opts ...types.Option) *Unmarshaller
    ```
 
 #### Phase 4: Testing & Documentation

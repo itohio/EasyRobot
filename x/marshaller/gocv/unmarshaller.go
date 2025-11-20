@@ -23,7 +23,7 @@ type Unmarshaller struct {
 }
 
 // NewUnmarshaller constructs a GoCV unmarshaller.
-func NewUnmarshaller(opts ...types.Option) types.Unmarshaller {
+func NewUnmarshaller(opts ...types.Option) *Unmarshaller {
 	baseOpts, baseCfg := applyOptions(types.Options{}, defaultConfig(), opts)
 	return &Unmarshaller{
 		opts:              baseOpts,

@@ -19,7 +19,7 @@ type Unmarshaller struct {
 }
 
 // NewUnmarshaller creates a new YAML unmarshaller.
-func NewUnmarshaller(opts ...types.Option) types.Unmarshaller {
+func NewUnmarshaller(opts ...types.Option) *Unmarshaller {
 	u := &Unmarshaller{
 		opts: types.Options{},
 	}
@@ -96,7 +96,7 @@ func (u *Unmarshaller) yamlToValue(yv *yamlValue, opts types.Options) (any, erro
 		}
 		return *yv.Model, nil
 
-	case "graph", "tree", "decision_tree", "expression_graph":
+	case "graph", "tree", "decision_tree", "expression_graph", "generic":
 		if yv.Graph == nil {
 			return nil, fmt.Errorf("nil graph in yamlValue")
 		}
@@ -105,9 +105,6 @@ func (u *Unmarshaller) yamlToValue(yv *yamlValue, opts types.Options) (any, erro
 	case "slice":
 		// For slices, YAML already decoded the data, but we need to convert types
 		return convertSliceData(yv.SliceData, yv.SliceType)
-
-	case "generic":
-		return nil, fmt.Errorf("cannot reconstruct generic value")
 
 	default:
 		return nil, fmt.Errorf("unknown yamlValue kind: %s", yv.Kind)

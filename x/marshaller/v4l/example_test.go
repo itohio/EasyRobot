@@ -1,12 +1,10 @@
+// go:build linux
 package v4l_test
 
 import (
-	"context"
 	"fmt"
 	"strings"
-	"time"
 
-	"github.com/itohio/EasyRobot/x/marshaller"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"github.com/itohio/EasyRobot/x/marshaller/v4l"
 )
@@ -200,7 +198,7 @@ func ExampleUnmarshaller_CameraController() {
 
 	// Set multiple controls
 	err = controller.SetControls(map[string]int32{
-		types.CameraControlContrast: 32,
+		types.CameraControlContrast:   32,
 		types.CameraControlSaturation: 64,
 	})
 	if err != nil {

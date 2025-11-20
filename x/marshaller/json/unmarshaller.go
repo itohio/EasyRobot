@@ -18,7 +18,7 @@ type Unmarshaller struct {
 }
 
 // NewUnmarshaller creates a new JSON unmarshaller.
-func NewUnmarshaller(opts ...types.Option) types.Unmarshaller {
+func NewUnmarshaller(opts ...types.Option) *Unmarshaller {
 	u := &Unmarshaller{
 		opts: types.Options{},
 	}
@@ -97,7 +97,7 @@ func (u *Unmarshaller) jsonToValue(jv *jsonValue, opts types.Options) (any, erro
 		// For models, similar to layers, we cannot fully reconstruct them
 		return *jv.Model, nil
 
-	case "graph", "tree", "decision_tree", "expression_graph":
+	case "graph", "tree", "decision_tree", "expression_graph", "generic":
 		if jv.Graph == nil {
 			return nil, fmt.Errorf("nil graph in jsonValue")
 		}
@@ -106,9 +106,6 @@ func (u *Unmarshaller) jsonToValue(jv *jsonValue, opts types.Options) (any, erro
 	case "slice":
 		// For slices, JSON already decoded the data, but we need to convert types
 		return convertSliceData(jv.SliceData, jv.SliceType)
-
-	case "generic":
-		return nil, fmt.Errorf("cannot reconstruct generic value")
 
 	default:
 		return nil, fmt.Errorf("unknown jsonValue kind: %s", jv.Kind)

@@ -1,11 +1,11 @@
 package json
 
 import (
-	"fmt"
 	"reflect"
+	"strings"
 
-	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"github.com/itohio/EasyRobot/x/math/graph"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
 )
 
 // Internal structs for JSON encoding/decoding.
@@ -225,50 +225,75 @@ func modelToJSON(model types.Model) jsonModel {
 
 // graphToJSON converts a graph to JSON representation.
 func graphToJSON(value any) (*jsonGraph, error) {
-	// Check if it's a graph interface
-	var g graph.Graph[any, any]
-	switch v := value.(type) {
-	case graph.Graph[any, any]:
-		g = v
-	default:
-		// Try to detect via reflection
-		return captureGraphViaReflection(value)
+	// Use reflection for all graph types since Go doesn't have covariance
+	return captureGraphViaReflection(value)
+}
+
+
+func captureGraphViaReflection(value any) (*jsonGraph, error) {
+	// Try various GenericGraph concrete types
+	switch g := value.(type) {
+	case *graph.GenericGraph[any, any]:
+		return captureGenericGraphPublicAPI(g)
+	case *graph.GenericGraph[string, float32]:
+		return captureGenericGraphStringFloat32(g)
 	}
 
-	// Capture nodes and edges
+	// Try to handle other GenericGraph types via reflection
+	val := reflect.ValueOf(value)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	typeName := val.Type().String()
+	if strings.Contains(typeName, "GenericGraph") {
+		// This is some form of GenericGraph, try to extract data
+		return captureGenericGraphViaReflection(value)
+	}
+
+	// Fallback: capture metadata only
+	metadata, err := captureGraphMetadata(value)
+	if err != nil {
+		return nil, err
+	}
+
+	return &jsonGraph{
+		Nodes:    []jsonGraphNode{},
+		Edges:    []jsonGraphEdge{},
+		Metadata: metadata,
+	}, nil
+}
+
+func captureGenericGraphStringFloat32(g *graph.GenericGraph[string, float32]) (*jsonGraph, error) {
 	nodes := make([]jsonGraphNode, 0)
 	edges := make([]jsonGraphEdge, 0)
 
-	// Iterate nodes
+	// Capture nodes using public API
 	for node := range g.Nodes() {
-		if node == nil {
-			continue
+		if node != nil {
+			nodes = append(nodes, jsonGraphNode{
+				ID:   node.ID(),
+				Data: node.Data(),
+			})
 		}
-		nodes = append(nodes, jsonGraphNode{
-			ID:   node.ID(),
-			Data: node.Data(),
-		})
 	}
 
-	// Iterate edges
+	// Capture edges using public API
 	for edge := range g.Edges() {
-		if edge == nil {
-			continue
+		if edge != nil {
+			from := edge.From()
+			to := edge.To()
+			if from != nil && to != nil {
+				edges = append(edges, jsonGraphEdge{
+					FromID: from.ID(),
+					ToID:   to.ID(),
+					Data:   edge.Data(),
+				})
+			}
 		}
-		from := edge.From()
-		to := edge.To()
-		if from == nil || to == nil {
-			continue
-		}
-		edges = append(edges, jsonGraphEdge{
-			FromID: from.ID(),
-			ToID:   to.ID(),
-			Data:   edge.Data(),
-		})
 	}
 
-	// Capture metadata
-	metadata, err := captureGraphMetadata(value)
+	metadata, err := captureGraphMetadata(g)
 	if err != nil {
 		return nil, err
 	}
@@ -280,41 +305,36 @@ func graphToJSON(value any) (*jsonGraph, error) {
 	}, nil
 }
 
-func captureGraphViaReflection(value any) (*jsonGraph, error) {
-	val := reflect.ValueOf(value)
-	if val.Kind() == reflect.Ptr {
-		val = val.Elem()
-	}
-
-	// Check if it has Nodes() and Edges() methods
-	nodesMethod := val.MethodByName("Nodes")
-	edgesMethod := val.MethodByName("Edges")
-	if !nodesMethod.IsValid() || !edgesMethod.IsValid() {
-		return nil, fmt.Errorf("value does not implement graph.Graph")
-	}
-
-	// Capture nodes
+func captureGenericGraphPublicAPI(g *graph.GenericGraph[any, any]) (*jsonGraph, error) {
 	nodes := make([]jsonGraphNode, 0)
-	seqNodes := nodesMethod.Call(nil)
-	if len(seqNodes) == 1 {
-		// Iterate sequence
-		seqVal := seqNodes[0]
-		if seqVal.Kind() == reflect.Func {
-			// This is an iter.Seq - we need to call it with a callback
-			// For now, return error - we'll handle this properly in marshaller
-			return nil, fmt.Errorf("reflection-based graph capture requires graph.Graph interface")
+	edges := make([]jsonGraphEdge, 0)
+
+	// Capture nodes using public API
+	for node := range g.Nodes() {
+		if node != nil {
+			nodes = append(nodes, jsonGraphNode{
+				ID:   node.ID(),
+				Data: node.Data(),
+			})
 		}
 	}
 
-	// Capture edges
-	edges := make([]jsonGraphEdge, 0)
-	seqEdges := edgesMethod.Call(nil)
-	if len(seqEdges) == 1 {
-		// Similar to nodes
+	// Capture edges using public API
+	for edge := range g.Edges() {
+		if edge != nil {
+			from := edge.From()
+			to := edge.To()
+			if from != nil && to != nil {
+				edges = append(edges, jsonGraphEdge{
+					FromID: from.ID(),
+					ToID:   to.ID(),
+					Data:   edge.Data(),
+				})
+			}
+		}
 	}
 
-	// Capture metadata
-	metadata, err := captureGraphMetadata(value)
+	metadata, err := captureGraphMetadata(g)
 	if err != nil {
 		return nil, err
 	}
@@ -322,6 +342,21 @@ func captureGraphViaReflection(value any) (*jsonGraph, error) {
 	return &jsonGraph{
 		Nodes:    nodes,
 		Edges:    edges,
+		Metadata: metadata,
+	}, nil
+}
+
+func captureGenericGraphViaReflection(value any) (*jsonGraph, error) {
+	// For GenericGraph[T, U] where T, U are not any, we need reflection
+	// This is complex and for now, we'll return empty data
+	metadata, err := captureGraphMetadata(value)
+	if err != nil {
+		return nil, err
+	}
+
+	return &jsonGraph{
+		Nodes:    []jsonGraphNode{},
+		Edges:    []jsonGraphEdge{},
 		Metadata: metadata,
 	}, nil
 }

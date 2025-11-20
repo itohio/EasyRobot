@@ -1,3 +1,4 @@
+// go:build linux
 package v4l
 
 import (
@@ -5,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/itohio/EasyRobot/x/marshaller/types"
-	tensortypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 )
 
 // CameraDevice implements the shared CameraDevice interface
@@ -103,16 +103,16 @@ const (
 // V4L-specific constants for internal use
 const (
 	// Common pixel formats (for internal mapping)
-	PixelFmtRGB24  PixelFormat = 'R' | 'G'<<8 | 'B'<<16 | '3'<<24  // RGB24
-	PixelFmtBGR24  PixelFormat = 'B' | 'G'<<8 | 'R'<<16 | '3'<<24  // BGR24
-	PixelFmtYUYV   PixelFormat = 'Y' | 'U'<<8 | 'Y'<<16 | 'V'<<24  // YUYV
-	PixelFmtUYVY   PixelFormat = 'U' | 'Y'<<8 | 'V'<<16 | 'Y'<<24  // UYVY
-	PixelFmtYUV420 PixelFormat = 'Y' | 'U'<<8 | '1'<<16 | '2'<<24  // YU12
+	PixelFmtRGB24   PixelFormat = 'R' | 'G'<<8 | 'B'<<16 | '3'<<24 // RGB24
+	PixelFmtBGR24   PixelFormat = 'B' | 'G'<<8 | 'R'<<16 | '3'<<24 // BGR24
+	PixelFmtYUYV    PixelFormat = 'Y' | 'U'<<8 | 'Y'<<16 | 'V'<<24 // YUYV
+	PixelFmtUYVY    PixelFormat = 'U' | 'Y'<<8 | 'V'<<16 | 'Y'<<24 // UYVY
+	PixelFmtYUV420  PixelFormat = 'Y' | 'U'<<8 | '1'<<16 | '2'<<24 // YU12
 	PixelFmtYUV422P PixelFormat = '4' | '2'<<8 | '2'<<16 | 'P'<<24 // 422P
-	PixelFmtMJPEG  PixelFormat = 'M' | 'J'<<8 | 'P'<<16 | 'G'<<24  // MJPEG
-	PixelFmtH264   PixelFormat = 'H' | '2'<<8 | '6'<<16 | '4'<<24  // H264
-	PixelFmtNV12   PixelFormat = 'N' | 'V'<<8 | '1'<<16 | '2'<<24  // NV12
-	PixelFmtGREY   PixelFormat = 'G' | 'R'<<8 | 'E'<<16 | 'Y'<<24  // GREY
+	PixelFmtMJPEG   PixelFormat = 'M' | 'J'<<8 | 'P'<<16 | 'G'<<24 // MJPEG
+	PixelFmtH264    PixelFormat = 'H' | '2'<<8 | '6'<<16 | '4'<<24 // H264
+	PixelFmtNV12    PixelFormat = 'N' | 'V'<<8 | '1'<<16 | '2'<<24 // NV12
+	PixelFmtGREY    PixelFormat = 'G' | 'R'<<8 | 'E'<<16 | 'Y'<<24 // GREY
 )
 
 // Format describes video stream format (internal V4L-specific)
@@ -175,16 +175,16 @@ func (f Format) ToVideoFormat() types.VideoFormat {
 
 // Common pixel formats
 const (
-	PixelFmtRGB24  PixelFormat = 'R' | 'G'<<8 | 'B'<<16 | '3'<<24  // RGB24
-	PixelFmtBGR24  PixelFormat = 'B' | 'G'<<8 | 'R'<<16 | '3'<<24  // BGR24
-	PixelFmtYUYV   PixelFormat = 'Y' | 'U'<<8 | 'Y'<<16 | 'V'<<24  // YUYV
-	PixelFmtUYVY   PixelFormat = 'U' | 'Y'<<8 | 'V'<<16 | 'Y'<<24  // UYVY
-	PixelFmtYUV420 PixelFormat = 'Y' | 'U'<<8 | '1'<<16 | '2'<<24  // YU12
+	PixelFmtRGB24   PixelFormat = 'R' | 'G'<<8 | 'B'<<16 | '3'<<24 // RGB24
+	PixelFmtBGR24   PixelFormat = 'B' | 'G'<<8 | 'R'<<16 | '3'<<24 // BGR24
+	PixelFmtYUYV    PixelFormat = 'Y' | 'U'<<8 | 'Y'<<16 | 'V'<<24 // YUYV
+	PixelFmtUYVY    PixelFormat = 'U' | 'Y'<<8 | 'V'<<16 | 'Y'<<24 // UYVY
+	PixelFmtYUV420  PixelFormat = 'Y' | 'U'<<8 | '1'<<16 | '2'<<24 // YU12
 	PixelFmtYUV422P PixelFormat = '4' | '2'<<8 | '2'<<16 | 'P'<<24 // 422P
-	PixelFmtMJPEG  PixelFormat = 'M' | 'J'<<8 | 'P'<<16 | 'G'<<24  // MJPEG
-	PixelFmtH264   PixelFormat = 'H' | '2'<<8 | '6'<<16 | '4'<<24  // H264
-	PixelFmtNV12   PixelFormat = 'N' | 'V'<<8 | '1'<<16 | '2'<<24  // NV12
-	PixelFmtGREY   PixelFormat = 'G' | 'R'<<8 | 'E'<<16 | 'Y'<<24  // GREY
+	PixelFmtMJPEG   PixelFormat = 'M' | 'J'<<8 | 'P'<<16 | 'G'<<24 // MJPEG
+	PixelFmtH264    PixelFormat = 'H' | '2'<<8 | '6'<<16 | '4'<<24 // H264
+	PixelFmtNV12    PixelFormat = 'N' | 'V'<<8 | '1'<<16 | '2'<<24 // NV12
+	PixelFmtGREY    PixelFormat = 'G' | 'R'<<8 | 'E'<<16 | 'Y'<<24 // GREY
 )
 
 // ControlID represents V4L2 control identifiers

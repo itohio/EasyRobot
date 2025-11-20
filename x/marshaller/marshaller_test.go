@@ -23,7 +23,7 @@ func TestTextMarshaller(t *testing.T) {
 	testTensor.Fill(nil, 1.0)
 
 	var buf bytes.Buffer
-	err = m.Marshal(&buf, testTensor)
+	err := m.Marshal(&buf, testTensor)
 	if err != nil {
 		t.Fatalf("Failed to marshal tensor: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestGobMarshallerTensor(t *testing.T) {
 
 	// Marshal
 	var buf bytes.Buffer
-	err = m.Marshal(&buf, testTensor)
+	err := m.Marshal(&buf, testTensor)
 	if err != nil {
 		t.Fatalf("Failed to marshal tensor: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestGobMarshallerSlice(t *testing.T) {
 
 	// Marshal
 	var buf bytes.Buffer
-	err = m.Marshal(&buf, testSlice)
+	err := m.Marshal(&buf, testSlice)
 	if err != nil {
 		t.Fatalf("Failed to marshal slice: %v", err)
 	}

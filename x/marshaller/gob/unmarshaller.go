@@ -16,7 +16,7 @@ type Unmarshaller struct {
 }
 
 // NewUnmarshaller creates a new gob unmarshaller.
-func NewUnmarshaller(opts ...types.Option) types.Unmarshaller {
+func NewUnmarshaller(opts ...types.Option) *Unmarshaller {
 	u := &Unmarshaller{
 		opts: types.Options{},
 	}

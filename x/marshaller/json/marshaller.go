@@ -15,7 +15,7 @@ type Marshaller struct {
 }
 
 // NewMarshaller creates a new JSON marshaller.
-func NewMarshaller(opts ...types.Option) types.Marshaller {
+func NewMarshaller(opts ...types.Option) *Marshaller {
 	m := &Marshaller{
 		opts: types.Options{},
 	}
@@ -117,6 +117,20 @@ func (m *Marshaller) valueToJSON(value any) (*jsonValue, error) {
 			SliceType: rv.Type().String(),
 			SliceData: value,
 		}, nil
+	}
+
+	// Check for graphs using reflection
+	if reflect.TypeOf(value).String() != "" { // Always true, just to use reflection
+		if jg, err := graphToJSON(value); err == nil && jg != nil {
+			kind := "graph"
+			if jg.Metadata != nil {
+				kind = jg.Metadata.Kind
+			}
+			return &jsonValue{
+				Kind:  kind,
+				Graph: jg,
+			}, nil
+		}
 	}
 
 	// Fallback to generic encoding

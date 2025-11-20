@@ -46,7 +46,7 @@ func TestTensorDisplay(t *testing.T) {
 
 			// Marshal to text
 			var buf bytes.Buffer
-			m := New()
+			m := NewMarshaller()
 			if err := m.Marshal(&buf, tens); err != nil {
 				t.Fatalf("Marshal failed: %v", err)
 			}
@@ -90,7 +90,7 @@ func TestArrayDisplay(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			m := New()
+			m := NewMarshaller()
 			if err := m.Marshal(&buf, tt.data); err != nil {
 				t.Fatalf("Marshal failed: %v", err)
 			}

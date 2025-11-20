@@ -22,8 +22,8 @@ const (
 	eventClose
 )
 
-// WindowEvent represents an event from a window (legacy - use types.WindowEvent)
-type WindowEvent struct {
+// Internal window event for legacy gocv event handling
+type internalWindowEvent struct {
 	WindowID string
 	Type     windowEventType
 	Key      int
@@ -82,7 +82,7 @@ type windowInfo struct {
 var (
 	eventLoopOnce   sync.Once
 	guiCommands     chan GUICommand
-	windowEvents    chan WindowEvent
+	windowEvents    chan internalWindowEvent
 	windowsMap      map[string]*windowInfo
 	windowsMapMu    sync.RWMutex
 	eventLoopCtx    context.Context
@@ -106,7 +106,7 @@ func newDisplayWriter(cfg config) (frameWriter, error) {
 			eventLoopCtx = context.Background()
 		}
 		guiCommands = make(chan GUICommand, 100)
-		windowEvents = make(chan WindowEvent, 100)
+		windowEvents = make(chan internalWindowEvent, 100)
 		windowsMap = make(map[string]*windowInfo)
 		eventLoopWg.Add(1)
 		go runGUIEventLoop()
@@ -128,6 +128,58 @@ func newDisplayWriter(cfg config) (frameWriter, error) {
 	}
 
 	result := make(chan error, 1)
+	// Create adapter functions to convert between shared types and legacy gocv callbacks
+	var onKey func(int) bool
+	if cfg.display.onKey != nil {
+		onKey = func(key int) bool {
+			return cfg.display.onKey(types.KeyEvent{Key: key})
+		}
+	}
+	var onMouse func(event, x, y, flags int) bool
+	if cfg.display.onMouse != nil {
+		onMouse = func(event, x, y, flags int) bool {
+			// Convert gocv mouse event to shared MouseEvent
+			var action types.MouseAction
+			var button types.MouseButton
+
+			// Map gocv event types to shared actions (using OpenCV standard values)
+			// 0 = mouse move, 1 = left down, 2 = left up, 3 = right down, 4 = right up, etc.
+			switch event {
+			case 0: // CV_EVENT_MOUSEMOVE
+				action = types.MouseMove
+				button = types.MouseButtonNone
+			case 1: // CV_EVENT_LBUTTONDOWN
+				action = types.MousePress
+				button = types.MouseButtonLeft
+			case 2: // CV_EVENT_LBUTTONUP
+				action = types.MouseRelease
+				button = types.MouseButtonLeft
+			case 3: // CV_EVENT_RBUTTONDOWN
+				action = types.MousePress
+				button = types.MouseButtonRight
+			case 4: // CV_EVENT_RBUTTONUP
+				action = types.MouseRelease
+				button = types.MouseButtonRight
+			case 5: // CV_EVENT_MBUTTONDOWN
+				action = types.MousePress
+				button = types.MouseButtonMiddle
+			case 6: // CV_EVENT_MBUTTONUP
+				action = types.MouseRelease
+				button = types.MouseButtonMiddle
+			default:
+				action = types.MouseMove
+				button = types.MouseButtonNone
+			}
+
+			return cfg.display.onMouse(types.MouseEvent{
+				X:      x,
+				Y:      y,
+				Button: button,
+				Action: action,
+			})
+		}
+	}
+
 	cmd := GUICommand{
 		Type:     cmdCreateWindow,
 		WindowID: windowID,
@@ -135,8 +187,8 @@ func newDisplayWriter(cfg config) (frameWriter, error) {
 			Title:        title,
 			Width:        cfg.display.width,
 			Height:       cfg.display.height,
-			OnKey:        cfg.display.onKey,
-			OnMouse:      cfg.display.onMouse,
+			OnKey:        onKey,
+			OnMouse:      onMouse,
 			KeyHandler:   cfg.display.onKey,
 			MouseHandler: cfg.display.onMouse,
 		},
@@ -277,7 +329,7 @@ func handleCreateWindow(cmd GUICommand) error {
 	if cmd.Config.OnMouse != nil {
 		window.SetMouseHandler(func(event int, x int, y int, flags int, userData interface{}) {
 			winID := userData.(string)
-			evt := WindowEvent{
+			evt := internalWindowEvent{
 				WindowID: winID,
 				Type:     eventMouse,
 			}
@@ -510,9 +562,15 @@ func (dw *displayWriter) Write(frame types.Frame) error {
 	}
 	// Don't close mat here - it will be closed in the event loop after IMShow
 
-	// Release tensor after converting to Mat if AutoRelease is enabled
+	// Release objects that implement Releaser after displaying if WithRelease is enabled
 	if dw.cfg.autoRelease {
-		defer frame.Tensors[0].Release()
+		defer func() {
+			for _, tensor := range frame.Tensors {
+				if releaser, ok := tensor.(types.Releaser); ok {
+					releaser.Release()
+				}
+			}
+		}()
 	}
 
 	// Send show image command to event loop

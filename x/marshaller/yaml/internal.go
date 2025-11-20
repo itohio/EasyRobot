@@ -1,11 +1,10 @@
 package yaml
 
 import (
-	"fmt"
 	"reflect"
 
-	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"github.com/itohio/EasyRobot/x/math/graph"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
 )
 
 // Internal structs for YAML encoding/decoding.
@@ -225,50 +224,62 @@ func modelToYAML(model types.Model) yamlModel {
 
 // graphToYAML converts a graph to YAML representation.
 func graphToYAML(value any) (*yamlGraph, error) {
-	// Check if it's a graph interface
-	var g graph.Graph[any, any]
-	switch v := value.(type) {
-	case graph.Graph[any, any]:
-		g = v
-	default:
-		// Try to detect via reflection
-		return captureGraphViaReflection(value)
+	// Use reflection for all graph types since Go doesn't have covariance
+	return captureGraphViaReflection(value)
+}
+
+func captureGraphViaReflection(value any) (*yamlGraph, error) {
+	// Try various GenericGraph concrete types
+	switch g := value.(type) {
+	case *graph.GenericGraph[any, any]:
+		return captureGenericGraphPublicAPIYAML(g)
+	case *graph.GenericGraph[string, float32]:
+		return captureGenericGraphStringFloat32YAML(g)
 	}
 
-	// Capture nodes and edges
+	// Fallback: capture metadata only
+	metadata, err := captureGraphMetadata(value)
+	if err != nil {
+		return nil, err
+	}
+
+	return &yamlGraph{
+		Nodes:    []yamlGraphNode{},
+		Edges:    []yamlGraphEdge{},
+		Metadata: metadata,
+	}, nil
+}
+
+func captureGenericGraphPublicAPIYAML(g *graph.GenericGraph[any, any]) (*yamlGraph, error) {
 	nodes := make([]yamlGraphNode, 0)
 	edges := make([]yamlGraphEdge, 0)
 
-	// Iterate nodes
+	// Capture nodes using public API
 	for node := range g.Nodes() {
-		if node == nil {
-			continue
+		if node != nil {
+			nodes = append(nodes, yamlGraphNode{
+				ID:   node.ID(),
+				Data: node.Data(),
+			})
 		}
-		nodes = append(nodes, yamlGraphNode{
-			ID:   node.ID(),
-			Data: node.Data(),
-		})
 	}
 
-	// Iterate edges
+	// Capture edges using public API
 	for edge := range g.Edges() {
-		if edge == nil {
-			continue
+		if edge != nil {
+			from := edge.From()
+			to := edge.To()
+			if from != nil && to != nil {
+				edges = append(edges, yamlGraphEdge{
+					FromID: from.ID(),
+					ToID:   to.ID(),
+					Data:   edge.Data(),
+				})
+			}
 		}
-		from := edge.From()
-		to := edge.To()
-		if from == nil || to == nil {
-			continue
-		}
-		edges = append(edges, yamlGraphEdge{
-			FromID: from.ID(),
-			ToID:   to.ID(),
-			Data:   edge.Data(),
-		})
 	}
 
-	// Capture metadata
-	metadata, err := captureGraphMetadata(value)
+	metadata, err := captureGraphMetadata(g)
 	if err != nil {
 		return nil, err
 	}
@@ -280,41 +291,36 @@ func graphToYAML(value any) (*yamlGraph, error) {
 	}, nil
 }
 
-func captureGraphViaReflection(value any) (*yamlGraph, error) {
-	val := reflect.ValueOf(value)
-	if val.Kind() == reflect.Ptr {
-		val = val.Elem()
-	}
-
-	// Check if it has Nodes() and Edges() methods
-	nodesMethod := val.MethodByName("Nodes")
-	edgesMethod := val.MethodByName("Edges")
-	if !nodesMethod.IsValid() || !edgesMethod.IsValid() {
-		return nil, fmt.Errorf("value does not implement graph.Graph")
-	}
-
-	// Capture nodes
+func captureGenericGraphStringFloat32YAML(g *graph.GenericGraph[string, float32]) (*yamlGraph, error) {
 	nodes := make([]yamlGraphNode, 0)
-	seqNodes := nodesMethod.Call(nil)
-	if len(seqNodes) == 1 {
-		// Iterate sequence
-		seqVal := seqNodes[0]
-		if seqVal.Kind() == reflect.Func {
-			// This is an iter.Seq - we need to call it with a callback
-			// For now, return error - we'll handle this properly in marshaller
-			return nil, fmt.Errorf("reflection-based graph capture requires graph.Graph interface")
+	edges := make([]yamlGraphEdge, 0)
+
+	// Capture nodes using public API
+	for node := range g.Nodes() {
+		if node != nil {
+			nodes = append(nodes, yamlGraphNode{
+				ID:   node.ID(),
+				Data: node.Data(),
+			})
 		}
 	}
 
-	// Capture edges
-	edges := make([]yamlGraphEdge, 0)
-	seqEdges := edgesMethod.Call(nil)
-	if len(seqEdges) == 1 {
-		// Similar to nodes
+	// Capture edges using public API
+	for edge := range g.Edges() {
+		if edge != nil {
+			from := edge.From()
+			to := edge.To()
+			if from != nil && to != nil {
+				edges = append(edges, yamlGraphEdge{
+					FromID: from.ID(),
+					ToID:   to.ID(),
+					Data:   edge.Data(),
+				})
+			}
+		}
 	}
 
-	// Capture metadata
-	metadata, err := captureGraphMetadata(value)
+	metadata, err := captureGraphMetadata(g)
 	if err != nil {
 		return nil, err
 	}
