@@ -1,0 +1,225 @@
+syntax = "proto3";
+
+package types.spectrometer;
+
+option go_package = "github.com/itohio/EasyRobot/types/spectrometer";
+
+import "types/math/vectors.proto";
+import "types/math/matrices.proto";
+import "google/protobuf/timestamp.proto";
+
+// SpectrometerConfiguration contains all configuration settings for the spectrometer
+message SpectrometerConfiguration {
+  SourceSettings source = 1;          // Source configuration (camera or sensor)
+  Linearization linearization = 2;
+  SpectrumWindow window = 3;          // Window extraction (only for camera source, not for sensors)
+  WavelengthCalibration calibration = 4;
+  WavelengthRange wavelength = 5;
+  DisplaySettings display = 6;
+  DarkFrameCorrection dark_frame = 7;
+  ReferenceSpectrum reference = 8;
+  SignalProcessing processing = 9;
+  PeakDetection peaks = 10;
+  SpectrumMask mask = 11;
+  IlluminantSettings illuminant = 12;  // Hardware illuminant control settings
+  repeated ReferenceSpectrumEntry reference_spectrums = 13;  // List of reference spectrums (matrices or paths)
+}
+
+// SourceSettings configures the measurement source (camera or sensor)
+message SourceSettings {
+  SourceType type = 1;                // Source type: camera or sensor
+  oneof source {
+    CameraSettings camera = 2;        // Camera settings (if type == SOURCE_CAMERA)
+    SensorSettings sensor = 3;        // Sensor settings (if type == SOURCE_SENSOR)
+  }
+}
+
+// SourceType enumerates available source types
+enum SourceType {
+  SOURCE_UNSPECIFIED = 0;
+  SOURCE_CAMERA = 1;                  // Camera (extract spectrum from pixels)
+  SOURCE_SENSOR = 2;                  // Dedicated spectrum sensor (e.g., AS734x, reads bands directly)
+}
+
+// CameraSettings configures camera capture parameters
+message CameraSettings {
+  string id = 1;                      // Camera identifier (e.g., "0", "/dev/video0", "USB:bus/device")
+  int32 width = 2;                    // Resolution width
+  int32 height = 3;                   // Resolution height
+  string format = 4;                  // Pixel format: MJPEG, YUYV, RGB, etc.
+  int32 fps = 5;                      // Frame rate
+  optional float gain = 6;            // Linear gain
+  optional int64 exposure_us = 7;     // Exposure time in microseconds
+}
+
+// SensorSettings configures spectrum sensor parameters
+message SensorSettings {
+  string type = 1;                    // Sensor type (e.g., "as734x")
+  string device_path = 2;             // Device path (e.g., "/dev/i2c-1:0x39" for AS734x)
+  int32 integration_time_ms = 3;      // Integration time in milliseconds
+  int32 gain = 4;                     // Sensor gain setting
+  // Sensor-specific settings (future: calibration matrix for band reconstruction)
+}
+
+// Linearization contains polynomial coefficients for camera response linearization
+// intensity_linear = c0 + c1*intensity + c2*intensity^2 + ...
+message Linearization {
+  repeated double coefficients = 1;   // Polynomial coefficients
+}
+
+// SpectrumWindow defines the oriented bounding box for spectrum extraction
+message SpectrumWindow {
+  Point2D center = 1;                 // Center point (pixel coordinates)
+  Size2D size = 2;                    // Size (width, height)
+  double rotation_deg = 3;            // Rotation angle in degrees (typically 0 for horizontal)
+}
+
+// Point2D represents a 2D point
+message Point2D {
+  int32 x = 1;
+  int32 y = 2;
+}
+
+// Size2D represents 2D dimensions
+message Size2D {
+  int32 width = 1;
+  int32 height = 2;
+}
+
+// WavelengthCalibration contains polynomial calibration for pixel-to-wavelength mapping
+// wavelength = c0 + c1*pixel + c2*pixel^2 + c3*pixel^3
+message WavelengthCalibration {
+  types.math.Vector polynomial = 1;   // Polynomial coefficients
+  repeated CalibrationPoint points = 2; // Calibration points used
+  double r_squared = 3;               // R-squared quality metric
+  string method = 4;                  // polynomial_2nd_order or polynomial_3rd_order
+}
+
+// CalibrationPoint represents a pixel-to-wavelength mapping point
+message CalibrationPoint {
+  int32 pixel = 1;                    // Pixel index
+  double wavelength = 2;              // Wavelength in nanometers
+}
+
+// WavelengthRange defines the measurement range
+message WavelengthRange {
+  double min = 1;                     // Minimum wavelength (nm)
+  double max = 2;                     // Maximum wavelength (nm)
+}
+
+// DisplaySettings configures visualization parameters
+message DisplaySettings {
+  int32 width = 1;                    // Window width (pixels), -1 = fullscreen
+  int32 height = 2;                   // Window height (pixels), -1 = fullscreen
+  bool show_title = 3;                // Show window title bar
+  bool show_controls = 4;             // Show GUI controls (trackbars, buttons)
+  bool show_graticule = 5;            // Show graticule/grid
+  GraticuleSettings graticule = 6;    // Grid settings (if enabled)
+  ColorimetrySettings colorimetry = 7; // Colorimetry display settings
+  OverlaySettings overlays = 8;       // Overlay settings
+}
+
+// GraticuleSettings configures grid lines
+message GraticuleSettings {
+  int32 major_interval = 1;           // Major grid lines interval (nm)
+  int32 minor_interval = 2;           // Minor grid lines interval (nm)
+}
+
+// ColorimetrySettings configures colorimetry display toggles
+message ColorimetrySettings {
+  bool show_cct = 1;                  // Show CCT calculation
+  bool show_xyz_lab = 2;              // Show XYZ/LAB values
+}
+
+// OverlaySettings configures spectrum overlays
+message OverlaySettings {
+  bool enabled = 1;                   // Enable overlays
+  repeated string illuminants = 2;    // Illuminants to overlay (D65, D50, A, etc.)
+  bool calibration_lines = 3;         // Show calibration line positions
+}
+
+// DarkFrameCorrection settings for dark frame subtraction
+message DarkFrameCorrection {
+  bool enabled = 1;                   // Enable dark frame subtraction
+  string path = 2;                    // Path to saved dark frame SPD (if not captured)
+}
+
+// ReferenceSpectrum settings for single active reference spectrum
+message ReferenceSpectrum {
+  bool enabled = 1;                   // Enable reference spectrum normalization
+  string path = 2;                    // Path to saved reference SPD
+  string mode = 3;                    // Operation mode: subtract, normalize, or ratio
+}
+
+// ReferenceSpectrumEntry represents a reference spectrum in the library
+// Can be stored as inline matrix or file path (config loader resolves paths)
+message ReferenceSpectrumEntry {
+  string name = 1;                    // Name/identifier for this reference spectrum
+  string description = 2;             // Optional description
+  oneof data {
+    types.math.Matrix spectrum = 3;   // Inline spectrum matrix (row 0: wavelengths, row 1: values)
+    string path = 4;                  // Path to file containing spectrum (loaded by config loader)
+  }
+  string format = 5;                  // Format if path specified: "csv", "json", "proto", "yaml"
+}
+
+// SignalProcessing configures signal processing parameters
+message SignalProcessing {
+  SavitzkyGolayFilter savgol = 1;     // Savitzky-Golay filter settings
+  RowAveraging row_averaging = 2;     // Row averaging settings
+}
+
+// SavitzkyGolayFilter settings
+message SavitzkyGolayFilter {
+  bool enabled = 1;                   // Enable filter
+  int32 window_size = 2;              // Window size (must be odd)
+  int32 polynomial_order = 3;         // Polynomial order (must be < window_size - 1)
+}
+
+// RowAveraging settings
+message RowAveraging {
+  string method = 1;                  // Averaging method: mean, median, weighted_mean
+  int32 rows = 2;                     // Number of rows to average
+  string center_row = 3;              // Center row: "middle" or specific row index
+}
+
+// PeakDetection settings
+message PeakDetection {
+  bool enabled = 1;                   // Enable peak detection
+  double threshold = 2;               // Relative threshold (0-1)
+  int32 min_distance = 3;             // Minimum pixels between peaks
+  bool label = 4;                     // Show wavelength labels
+}
+
+// SpectrumMask defines region-of-interest filtering
+message SpectrumMask {
+  bool enabled = 1;                   // Enable masking
+  repeated WavelengthRegion regions = 2; // Wavelength regions to include/exclude
+}
+
+// WavelengthRegion defines a wavelength range for masking
+message WavelengthRegion {
+  double min = 1;                     // Minimum wavelength (nm)
+  double max = 2;                     // Maximum wavelength (nm)
+  bool include = 3;                   // true to include, false to exclude
+}
+
+// IlluminantSettings configures hardware illuminant control
+message IlluminantSettings {
+  IlluminantType type = 1;            // Current illuminant type
+  bool enabled = 2;                   // Hardware illuminant enabled
+  int32 intensity_percent = 3;        // Illuminant intensity (0-100%)
+  // Future: individual LED control, flash timing, etc.
+}
+
+// IlluminantType enumerates available illuminants
+enum IlluminantType {
+  ILLUMINANT_NONE = 0;                // No illuminant (emissivity measurements)
+  ILLUMINANT_D65 = 1;                 // D65 daylight (three LEDs)
+  ILLUMINANT_R = 2;                   // Red LED only
+  ILLUMINANT_G = 3;                   // Green LED only
+  ILLUMINANT_B = 4;                   // Blue LED only
+  ILLUMINANT_RGB = 5;                 // RGB LEDs simultaneously
+  ILLUMINANT_UV = 6;                  // Ultraviolet LED
+}
+

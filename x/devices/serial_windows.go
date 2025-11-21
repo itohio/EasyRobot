@@ -5,8 +5,11 @@ package devices
 import (
 	"fmt"
 	"os"
+	"sort"
+	"strings"
 
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
 )
 
 // WindowsSerial implements Serial interface using Windows COM ports.
@@ -154,4 +157,62 @@ func (s *WindowsSerial) Close() error {
 // File returns the underlying *os.File.
 func (s *WindowsSerial) File() *os.File {
 	return s.file
+}
+
+// ListSerialPorts enumerates COM ports on Windows using the registry.
+func ListSerialPorts() ([]string, error) {
+	// Open the registry key for COM ports
+	key, err := registry.OpenKey(
+		registry.LOCAL_MACHINE,
+		`HARDWARE\DEVICEMAP\SERIALCOMM`,
+		registry.QUERY_VALUE,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer key.Close()
+
+	// Get all value names
+	names, err := key.ReadValueNames(0)
+	if err != nil {
+		return nil, err
+	}
+
+	ports := make([]string, 0, len(names))
+	for _, name := range names {
+		value, _, err := key.GetStringValue(name)
+		if err != nil {
+			continue
+		}
+		// Windows COM ports are like "COM1", "COM2", etc.
+		if strings.HasPrefix(value, "COM") {
+			ports = append(ports, value)
+		}
+	}
+
+	sort.Slice(ports, func(i, j int) bool {
+		// Extract numeric part for sorting
+		numI := extractCOMNumber(ports[i])
+		numJ := extractCOMNumber(ports[j])
+		return numI < numJ
+	})
+
+	return ports, nil
+}
+
+// extractCOMNumber extracts the numeric part from COM port name (e.g., "COM3" -> 3).
+func extractCOMNumber(port string) int {
+	if len(port) <= 3 {
+		return 0
+	}
+	var num int
+	// Simple extraction - COM port names are like "COM1", "COM10", etc.
+	for i := 3; i < len(port); i++ {
+		if port[i] >= '0' && port[i] <= '9' {
+			num = num*10 + int(port[i]-'0')
+		} else {
+			break
+		}
+	}
+	return num
 }

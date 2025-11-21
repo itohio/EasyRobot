@@ -1,6 +1,8 @@
 package colorscience
 
-import "github.com/itohio/EasyRobot/x/math/vec"
+import (
+	"github.com/itohio/EasyRobot/x/math/vec"
+)
 
 // XYZ represents CIE XYZ tristimulus values.
 type XYZ vec.Vector3D
@@ -120,4 +122,11 @@ func (xyz XYZ) Adapt(Ws, Wd WhitePoint, method AdaptationMethod) (XYZ, error) {
 		return XYZ{}, err
 	}
 	return NewXYZ(Xa, Ya, Za), nil
+}
+
+// DeltaE76 calculates the CIE76 color difference (ΔE) between two LAB color values.
+// Formula: ΔE = sqrt((L1-L2)² + (a1-a2)² + (b1-b2)²)
+// Uses Vector3D.Distance() for efficient Euclidean distance calculation.
+func DeltaE76(lab1, lab2 LAB) float32 {
+	return vec.Vector3D(lab1).Distance(vec.Vector3D(lab2))
 }

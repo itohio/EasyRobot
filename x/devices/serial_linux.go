@@ -5,6 +5,8 @@ package devices
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"sort"
 	"syscall"
 	"unsafe"
 
@@ -217,4 +219,43 @@ func (s *LinuxSerial) Close() error {
 // File returns the underlying *os.File.
 func (s *LinuxSerial) File() *os.File {
 	return s.file
+}
+
+// ListSerialPorts enumerates serial ports on Linux/Unix by checking /dev/tty* devices.
+func ListSerialPorts() ([]string, error) {
+	ports := make([]string, 0)
+
+	// Common serial port patterns
+	patterns := []string{
+		"/dev/ttyUSB*", // USB-to-serial adapters
+		"/dev/ttyACM*", // USB CDC ACM devices
+		"/dev/ttyS*",   // Serial ports
+		"/dev/ttyAMA*", // Primary UART (Raspberry Pi)
+	}
+
+	seen := make(map[string]bool)
+
+	for _, pattern := range patterns {
+		matches, err := filepath.Glob(pattern)
+		if err != nil {
+			continue
+		}
+		for _, match := range matches {
+			// Check if it's actually accessible (not a directory)
+			info, err := os.Stat(match)
+			if err != nil {
+				continue
+			}
+			if info.Mode()&os.ModeType != 0 {
+				continue // Skip non-regular files (directories, symlinks to dirs)
+			}
+			if !seen[match] {
+				ports = append(ports, match)
+				seen[match] = true
+			}
+		}
+	}
+
+	sort.Strings(ports)
+	return ports, nil
 }

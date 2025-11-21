@@ -1,0 +1,96 @@
+syntax = "proto3";
+
+package types.spectrometer;
+
+option go_package = "github.com/itohio/EasyRobot/types/spectrometer";
+
+import "types/math/matrices.proto";
+import "types/math/vectors.proto";
+import "google/protobuf/timestamp.proto";
+import "types/spectrometer/config.proto";
+
+// SpectrumMeasurement represents a complete spectrum measurement with metadata
+message SpectrumMeasurement {
+  SpectrometerConfiguration config = 1;      // Configuration used for this measurement
+  MeasurementMetadata metadata = 2;          // Measurement metadata
+  types.math.Matrix spectrum = 3;            // Spectrum matrix (row 0: wavelengths, row 1: intensities)
+  optional ColorimetryData colorimetry = 4;  // Colorimetry data (if computed)
+  optional MeasurementType measurement_type = 5;  // Type of measurement (emissivity, transmission, etc.)
+  optional IlluminantType illuminant = 6;    // Illuminant used for this measurement
+  optional types.math.Matrix dark_spectrum = 7;  // Dark measurement spectrum (always included if dark correction enabled)
+  optional types.math.Matrix reference_spectrum = 8;  // Reference/calibration spectrum (for transmission/reflectance)
+  optional FluorescenceDecayData fluorescence_decay = 9;  // Decay data (for fluorescence measurements only)
+  // Note: For transmission/reflectance, reference_spectrum is the calibration spectrum
+  //       (e.g., illuminant-only for transmission, white reference for reflectance)
+}
+
+// MeasurementMetadata contains metadata about the measurement
+message MeasurementMetadata {
+  google.protobuf.Timestamp timestamp = 1;   // Measurement timestamp
+  string source_type = 2;                    // Source type: "camera" or "sensor" (e.g., "as734x")
+  oneof source_id {
+    string camera_id = 3;                    // Camera identifier (if source_type == "camera", e.g., "0", "/dev/video0")
+    string sensor_id = 4;                    // Sensor identifier (if source_type == "sensor", e.g., "as734x:/dev/i2c-1:0x39")
+  }
+  string config_file = 5;                    // Path to configuration file used
+  MeasurementMode mode = 6;                  // Measurement mode
+  int32 frame_count = 7;                     // Number of frames averaged (for averaged measurements)
+  double exposure_us = 8;                    // Exposure time used (microseconds)
+  double gain = 9;                           // Gain setting used
+}
+
+// MeasurementMode enumerates measurement capture modes
+enum MeasurementMode {
+  MODE_UNSPECIFIED = 0;
+  MODE_SINGLE = 1;                           // Single-shot measurement
+  MODE_AVERAGED = 2;                         // Averaged over multiple frames
+  MODE_TRANSIENT = 3;                        // Time-series capture
+  MODE_CONTINUOUS = 4;                       // Continuous streaming
+}
+
+// MeasurementType enumerates different measurement types
+enum MeasurementType {
+  MEASUREMENT_TYPE_UNSPECIFIED = 0;
+  MEASUREMENT_TYPE_EMISSIVITY = 1;           // Self-emitting source
+  MEASUREMENT_TYPE_TRANSMISSION = 2;         // Transmission through sample
+  MEASUREMENT_TYPE_REFLECTANCE = 3;          // Reflection from sample
+  MEASUREMENT_TYPE_RAMAN = 4;                // Raman scattering
+  MEASUREMENT_TYPE_FLUORESCENCE = 5;         // Fluorescence/luminescence
+}
+
+// ColorimetryData contains computed colorimetry values
+message ColorimetryData {
+  double cct = 1;                            // Correlated Color Temperature (Kelvin)
+  types.math.Vector xyz = 2;                 // XYZ color values (3-element vector)
+  types.math.Vector lab = 3;                 // LAB color values (3-element vector)
+  optional types.math.Vector rgb = 4;        // RGB color values (optional, 3-element vector)
+}
+
+// FluorescenceDecayData contains data for fluorescence decay measurements
+message FluorescenceDecayData {
+  google.protobuf.Timestamp flash_time = 1;  // Flash excitation time
+  int64 flash_duration_ms = 2;               // Flash duration in milliseconds
+  types.math.Matrix initial_spectrum = 3;    // Spectrum immediately after flash (row 0: wavelengths, row 1: intensities)
+  types.math.Matrix decay_series = 4;        // Time-series of spectra during decay (row 0: wavelengths, row 1+: timepoints)
+  repeated double decay_time_constants = 5;  // Fitted decay constants (τ values, multiple if multi-exponential)
+  repeated double decay_amplitudes = 6;      // Amplitudes for each decay component
+  double fit_r_squared = 7;                  // R-squared of decay fit
+}
+
+// ColorPatch represents a color patch with reference values for measurement comparison
+message ColorPatch {
+  string name = 1;                           // Patch name/identifier
+  optional string description = 2;            // Optional description
+  types.math.Vector xyz = 3;                 // Reference XYZ color values (3-element vector)
+  types.math.Vector lab = 4;                 // Reference LAB color values (3-element vector)
+  optional types.math.Matrix spectrum = 5;   // Reference spectrum (row 0: wavelengths, row 1: intensities)
+  // Spectrum is optional - if not provided, XYZ/LAB values are used for comparison only
+}
+
+// ColorPatches contains a collection of color patches for measurement comparison
+message ColorPatches {
+  repeated ColorPatch patches = 1;           // List of color patches
+  google.protobuf.Timestamp created_at = 2;  // Creation timestamp
+  optional string description = 3;            // Optional description for the patch set
+}
+

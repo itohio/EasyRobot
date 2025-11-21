@@ -146,6 +146,6 @@ func TestAlphaFromTimeConstant(t *testing.T) {
 }
 
 func TestMovingAverageProcessorInterface(t *testing.T) {
-	var _ filter.Processor[float32] = (*MovingAverage)(nil)
-	var _ filter.Processor[float32] = (*ExponentialMovingAverage)(nil)
+	var _ filter.Processor[float32] = (*Filter)(nil)
+	var _ filter.Processor[float32] = (*Exponential)(nil)
 }

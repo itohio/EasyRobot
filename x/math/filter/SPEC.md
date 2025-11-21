@@ -205,6 +205,20 @@ type BandSpec struct {
 
 ### Missing Features
 
+**High Priority (needed for spectrometer)**:
+- **Savitzky-Golay filter** (`savgol/` subpackage) - For smoothing while preserving peak shape
+  - Function: `SavitzkyGolay(signal, windowSize, polynomialOrder)`
+  - Streaming support via `SavitzkyGolayFilter` struct with `Process()` and `ProcessBuffer()` methods
+- **Gaussian filter** (`gaussian/` subpackage) - For Gaussian smoothing
+  - Function: `Gaussian(signal, sigma, windowSize)`
+  - Streaming support via `GaussianFilter` struct
+- **Median filter** (`median/` subpackage) - For noise reduction while preserving edges
+  - Function: `Median(signal, windowSize)`
+  - Streaming support via `MedianFilter` struct with efficient partial sorting
+
+**Note**: Moving Average filter already exists in `ma/` subpackage ✅
+
+**Future Enhancements**:
 - Advanced IIR designs (Chebyshev II, Elliptic)
 - Optimal FIR design (Remez algorithm)
 - Real-time filter reconfiguration

@@ -6,8 +6,8 @@ import (
 	"github.com/chewxy/math32"
 )
 
-// MovingAverage implements a simple moving average filter.
-type MovingAverage struct {
+// Filter implements a simple moving average filter.
+type Filter struct {
 	buffer []float32
 	index  int
 	sum    float32
@@ -16,19 +16,19 @@ type MovingAverage struct {
 }
 
 // New creates a new moving average filter with the specified window size.
-func New(size int) *MovingAverage {
+func New(size int) *Filter {
 	if size <= 0 {
 		panic("moving average window size must be > 0")
 	}
 
-	return &MovingAverage{
+	return &Filter{
 		buffer: make([]float32, size),
 		size:   size,
 	}
 }
 
 // Reset resets the moving average filter.
-func (ma *MovingAverage) Reset() {
+func (ma *Filter) Reset() {
 	ma.index = 0
 	ma.sum = 0
 	ma.count = 0
@@ -38,7 +38,7 @@ func (ma *MovingAverage) Reset() {
 }
 
 // Process adds a new sample and returns the current moving average.
-func (ma *MovingAverage) Process(sample float32) float32 {
+func (ma *Filter) Process(sample float32) float32 {
 	// Remove the oldest sample from sum
 	ma.sum -= ma.buffer[ma.index]
 
@@ -58,8 +58,8 @@ func (ma *MovingAverage) Process(sample float32) float32 {
 	return ma.sum / float32(ma.count)
 }
 
-// ExponentialMovingAverage implements an exponential moving average filter.
-type ExponentialMovingAverage struct {
+// Exponential implements an exponential moving average filter.
+type Exponential struct {
 	alpha       float32 // smoothing factor (0 < alpha <= 1)
 	value       float32 // current EMA value
 	initialized bool    // whether we have processed at least one sample
@@ -67,24 +67,24 @@ type ExponentialMovingAverage struct {
 
 // NewEMA creates a new EMA filter with the specified smoothing factor.
 // Alpha should be between 0 and 1, where smaller values give more smoothing.
-func NewEMA(alpha float32) *ExponentialMovingAverage {
+func NewEMA(alpha float32) *Exponential {
 	if alpha <= 0 || alpha > 1 {
 		panic("EMA alpha must be in range (0, 1]")
 	}
 
-	return &ExponentialMovingAverage{
+	return &Exponential{
 		alpha: alpha,
 	}
 }
 
 // Reset resets the EMA filter.
-func (ema *ExponentialMovingAverage) Reset() {
+func (ema *Exponential) Reset() {
 	ema.value = 0
 	ema.initialized = false
 }
 
 // Process processes a new sample and returns the updated EMA.
-func (ema *ExponentialMovingAverage) Process(sample float32) float32 {
+func (ema *Exponential) Process(sample float32) float32 {
 	if !ema.initialized {
 		// First sample
 		ema.value = sample
@@ -98,7 +98,7 @@ func (ema *ExponentialMovingAverage) Process(sample float32) float32 {
 }
 
 // SetAlpha changes the smoothing factor.
-func (ema *ExponentialMovingAverage) SetAlpha(alpha float32) {
+func (ema *Exponential) SetAlpha(alpha float32) {
 	if alpha <= 0 || alpha > 1 {
 		panic("EMA alpha must be in range (0, 1]")
 	}
@@ -106,7 +106,7 @@ func (ema *ExponentialMovingAverage) SetAlpha(alpha float32) {
 }
 
 // GetAlpha returns the current smoothing factor.
-func (ema *ExponentialMovingAverage) GetAlpha() float32 {
+func (ema *Exponential) GetAlpha() float32 {
 	return ema.alpha
 }
 
