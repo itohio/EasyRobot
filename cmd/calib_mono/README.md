@@ -1,1 +1,0 @@
-Uses vision algorithms together with GoCV, and calibrates monocular camera using checkerboard calibration pattern.

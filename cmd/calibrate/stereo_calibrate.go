@@ -1,13 +1,17 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"image"
 	"image/color"
 	"os"
 
-	"github.com/itohio/EasyRobot/cmd/calib_mono/corners"
+	"github.com/itohio/EasyRobot/cmd/calibrate/corners"
+	"github.com/itohio/EasyRobot/cmd/display/destination"
+	"github.com/itohio/EasyRobot/cmd/display/source"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
 	cv "gocv.io/x/gocv"
 )
 
@@ -25,6 +29,16 @@ type StereoCalibrationProcessor struct {
 	rightLastCorners []cv.Point2f
 	leftLastFound    bool
 	rightLastFound   bool
+}
+
+// NumSamples returns the number of collected samples
+func (scp *StereoCalibrationProcessor) NumSamples() int {
+	return scp.numSamples
+}
+
+// TargetSamples returns the target number of samples
+func (scp *StereoCalibrationProcessor) TargetSamples() int {
+	return scp.targetSamples
 }
 
 // NewStereoCalibrationProcessor creates a new stereo calibration processor
@@ -159,29 +173,7 @@ func (scp *StereoCalibrationProcessor) Calibrate() (*StereoCalibration, error) {
 	// Calibrate stereo cameras
 	// Note: GoCV may not have StereoCalibrate exposed directly
 	// TODO: Need to implement stereo calibration
-	// This could involve:
-	// 1. Calibrating each camera individually using CalibrateCamera
-	// 2. Computing stereo extrinsics (rotation/translation between cameras)
-	// 3. Computing Essential and Fundamental matrices
-	// For now, return an error - this needs proper implementation
 	return nil, fmt.Errorf("StereoCalibrate not yet fully implemented - GoCV bindings may not expose stereoCalibrate function. Implementation requires: 1) Individual camera calibration, 2) Stereo extrinsic computation (rotation/translation between cameras), 3) Essential/Fundamental matrix computation")
-
-	// TODO: The code below needs to be implemented once stereo calibration function is found:
-	// Once StereoCalibrate is available or we implement it using individual calibration:
-	// 1. Call StereoCalibrate (or equivalent) to get R, T, E, F
-	// 2. Call StereoRectify with R, T to get R1, R2, P1, P2, Q
-	// 3. Initialize rectification maps
-	// 4. Return calibration with all matrices
-	_ = leftCameraMatrix
-	_ = leftDistCoeffs
-	_ = rightCameraMatrix
-	_ = rightDistCoeffs
-	_ = R
-	_ = T
-	_ = E
-	_ = F
-
-	return nil, nil // This will never execute due to return above, but prevents compilation errors
 }
 
 // StereoCalibration holds stereo camera calibration parameters
@@ -260,8 +252,6 @@ func (sc *StereoCalibration) InitRectifyMaps() error {
 	}
 
 	// InitUndistortRectifyMap for left camera
-	// Signature: cameraMatrix, distCoeffs, R, newCameraMatrix, size, m1type, map1, map2
-	// Parameters are passed by value except map1 and map2 which are passed by pointer
 	cv.InitUndistortRectifyMap(
 		sc.LeftCameraMatrix,
 		sc.LeftDistortionCoeffs,
@@ -298,7 +288,6 @@ func (sc *StereoCalibration) Rectify(left, right cv.Mat) (cv.Mat, cv.Mat, error)
 	rightRect := cv.NewMat()
 
 	// Remap left image
-	// Remap signature: src, dst, map1, map2, interpolation, borderMode, borderValue
 	borderValue := color.RGBA{0, 0, 0, 0}
 	cv.Remap(left, &leftRect, &sc.LeftMap1, &sc.LeftMap2, cv.InterpolationLinear, cv.BorderConstant, borderValue)
 
@@ -306,6 +295,206 @@ func (sc *StereoCalibration) Rectify(left, right cv.Mat) (cv.Mat, cv.Mat, error)
 	cv.Remap(right, &rightRect, &sc.RightMap1, &sc.RightMap2, cv.InterpolationLinear, cv.BorderConstant, borderValue)
 
 	return leftRect, rightRect, nil
+}
+
+func calibrateStereoCamera(ctx context.Context, leftSrc, rightSrc source.Source, processor *StereoCalibrationProcessor, dests []destination.Destination, outputPath, format string) error {
+	fmt.Printf("Starting stereo camera calibration...\n")
+	fmt.Printf("Grid size: %dx%d\n", processor.gridSize.X, processor.gridSize.Y)
+	fmt.Printf("Target samples: %d\n", processor.targetSamples)
+
+	leftDetector := corners.NewDetector(processor.gridSize)
+	rightDetector := corners.NewDetector(processor.gridSize)
+
+	for {
+		// Check context cancellation
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		// Read frames from both sources
+		leftFrame, err := leftSrc.ReadFrame()
+		if err != nil {
+			if err == source.ErrSourceExhausted {
+				break
+			}
+			continue
+		}
+
+		rightFrame, err := rightSrc.ReadFrame()
+		if err != nil {
+			if err == source.ErrSourceExhausted {
+				break
+			}
+			continue
+		}
+
+		if len(leftFrame.Tensors) == 0 || len(rightFrame.Tensors) == 0 {
+			continue
+		}
+
+		// Convert tensors to Mat
+		leftMat, err := tensorToMat(leftFrame.Tensors[0])
+		if err != nil {
+			continue
+		}
+		defer leftMat.Close()
+
+		rightMat, err := tensorToMat(rightFrame.Tensors[0])
+		if err != nil {
+			continue
+		}
+		defer rightMat.Close()
+
+		// Process stereo frame for calibration
+		found, err := processor.ProcessStereoFrame(leftMat, rightMat, leftDetector, rightDetector)
+		if err != nil {
+			continue
+		}
+
+		// Draw calibration visualization
+		leftVis := leftMat.Clone()
+		defer leftVis.Close()
+		rightVis := rightMat.Clone()
+		defer rightVis.Close()
+		processor.DrawCorners(leftVis, rightVis, found)
+
+		// Combine frames side-by-side for display
+		combinedMat := combineFramesSideBySide(leftVis, rightVis)
+		defer combinedMat.Close()
+		combinedTensor, err := matToTensor(combinedMat)
+		if err != nil {
+			continue
+		}
+
+		// Create display frame
+		displayFrame := types.Frame{
+			Tensors:  []types.Tensor{combinedTensor},
+			Metadata: leftFrame.Metadata,
+		}
+
+		// Send to all destinations
+		for _, dest := range dests {
+			if err := dest.AddFrame(displayFrame); err != nil {
+				_ = err // Ignore destination errors
+			}
+		}
+
+		// Check if we have enough samples
+		if processor.numSamples >= processor.targetSamples {
+			fmt.Printf("\nCollected %d samples, computing calibration...\n", processor.numSamples)
+			break
+		}
+
+		if processor.numSamples%5 == 0 {
+			fmt.Printf("Collected %d/%d samples\n", processor.numSamples, processor.targetSamples)
+		}
+	}
+
+	// Compute calibration
+	calibration, err := processor.Calibrate()
+	if err != nil {
+		return fmt.Errorf("calibration failed: %w", err)
+	}
+	defer calibration.Close()
+
+	// Save calibration
+	if err := saveStereoCalibration(calibration, outputPath, format); err != nil {
+		return fmt.Errorf("failed to save calibration: %w", err)
+	}
+
+	fmt.Printf("Calibration saved to %s\n", outputPath)
+	fmt.Printf("Reprojection error: %.4f\n", calibration.ReprojectionError)
+
+	return nil
+}
+
+func testStereoCalibration(ctx context.Context, leftSrc, rightSrc source.Source, dests []destination.Destination, calibPath string, disparity bool) error {
+	// Load calibration file
+	calibration, err := loadStereoCalibration(calibPath)
+	if err != nil {
+		return fmt.Errorf("failed to load calibration: %w", err)
+	}
+	defer calibration.Close()
+
+	fmt.Printf("Loaded calibration from %s\n", calibPath)
+	fmt.Printf("Grid size: %dx%d\n", calibration.GridShape.X, calibration.GridShape.Y)
+	fmt.Printf("Image size: %dx%d\n", calibration.ImageSize.X, calibration.ImageSize.Y)
+	fmt.Printf("Samples used: %d\n", calibration.NumSamples)
+	fmt.Printf("Reprojection error: %.4f\n", calibration.ReprojectionError)
+
+	// Process frames and rectify
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		// Read frames from both sources
+		leftFrame, err := leftSrc.ReadFrame()
+		if err != nil {
+			if err == source.ErrSourceExhausted {
+				return nil
+			}
+			continue
+		}
+
+		rightFrame, err := rightSrc.ReadFrame()
+		if err != nil {
+			if err == source.ErrSourceExhausted {
+				return nil
+			}
+			continue
+		}
+
+		if len(leftFrame.Tensors) == 0 || len(rightFrame.Tensors) == 0 {
+			continue
+		}
+
+		// Convert tensors to Mat
+		leftMat, err := tensorToMat(leftFrame.Tensors[0])
+		if err != nil {
+			continue
+		}
+		defer leftMat.Close()
+
+		rightMat, err := tensorToMat(rightFrame.Tensors[0])
+		if err != nil {
+			continue
+		}
+		defer rightMat.Close()
+
+		// Rectify frames
+		leftRect, rightRect, err := calibration.Rectify(leftMat, rightMat)
+		if err != nil {
+			continue
+		}
+		defer leftRect.Close()
+		defer rightRect.Close()
+
+		// Combine frames side-by-side for display
+		combinedMat := combineFramesSideBySide(leftRect, rightRect)
+		defer combinedMat.Close()
+		combinedTensor, err := matToTensor(combinedMat)
+		if err != nil {
+			continue
+		}
+
+		// Create display frame
+		displayFrame := types.Frame{
+			Tensors:  []types.Tensor{combinedTensor},
+			Metadata: leftFrame.Metadata,
+		}
+
+		// Send to all destinations
+		for _, dest := range dests {
+			if err := dest.AddFrame(displayFrame); err != nil {
+				_ = err // Ignore destination errors
+			}
+		}
+	}
 }
 
 // saveStereoCalibration saves stereo calibration to a file
@@ -466,3 +655,4 @@ func slice1DToMat(data []float64) cv.Mat {
 	}
 	return mat
 }
+

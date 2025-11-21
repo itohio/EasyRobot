@@ -1,17 +1,21 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"image"
 	"os"
 
-	"github.com/itohio/EasyRobot/cmd/calib_mono/corners"
+	"github.com/itohio/EasyRobot/cmd/calibrate/corners"
+	"github.com/itohio/EasyRobot/cmd/display/destination"
+	"github.com/itohio/EasyRobot/cmd/display/source"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
 	cv "gocv.io/x/gocv"
 )
 
-// CalibrationProcessor handles the calibration process
-type CalibrationProcessor struct {
+// MonoCalibrationProcessor handles the monocular calibration process
+type MonoCalibrationProcessor struct {
 	gridSize      image.Point
 	targetSamples int
 	numSamples    int
@@ -24,18 +28,18 @@ type CalibrationProcessor struct {
 }
 
 // NumSamples returns the number of collected samples.
-func (cp *CalibrationProcessor) NumSamples() int {
+func (cp *MonoCalibrationProcessor) NumSamples() int {
 	return cp.numSamples
 }
 
 // TargetSamples returns the target number of samples.
-func (cp *CalibrationProcessor) TargetSamples() int {
+func (cp *MonoCalibrationProcessor) TargetSamples() int {
 	return cp.targetSamples
 }
 
-// NewCalibrationProcessor creates a new calibration processor
-func NewCalibrationProcessor(gridSize image.Point, targetSamples int) *CalibrationProcessor {
-	return &CalibrationProcessor{
+// NewMonoCalibrationProcessor creates a new monocular calibration processor
+func NewMonoCalibrationProcessor(gridSize image.Point, targetSamples int) *MonoCalibrationProcessor {
+	return &MonoCalibrationProcessor{
 		gridSize:      gridSize,
 		targetSamples: targetSamples,
 		objectPoints:  make([][]cv.Point3f, 0),
@@ -47,13 +51,13 @@ func NewCalibrationProcessor(gridSize image.Point, targetSamples int) *Calibrati
 }
 
 // Close releases resources held by the processor
-func (cp *CalibrationProcessor) Close() {
+func (cp *MonoCalibrationProcessor) Close() {
 	// No resources to close (corners are slices, not Mats)
 }
 
 // ProcessFrame processes a frame to detect calibration pattern
 // Returns true if pattern was found and sample was collected
-func (cp *CalibrationProcessor) ProcessFrame(mat cv.Mat) (bool, error) {
+func (cp *MonoCalibrationProcessor) ProcessFrame(mat cv.Mat) (bool, error) {
 	if mat.Empty() {
 		return false, fmt.Errorf("empty mat")
 	}
@@ -97,14 +101,14 @@ func (cp *CalibrationProcessor) ProcessFrame(mat cv.Mat) (bool, error) {
 }
 
 // DrawCorners draws detected corners on the image
-func (cp *CalibrationProcessor) DrawCorners(mat cv.Mat, found bool) {
+func (cp *MonoCalibrationProcessor) DrawCorners(mat cv.Mat, found bool) {
 	if found && cp.lastFound && len(cp.lastCorners) > 0 {
 		corners.Draw(mat, cp.gridSize, cp.lastCorners, true)
 	}
 }
 
 // Calibrate performs camera calibration using collected samples
-func (cp *CalibrationProcessor) Calibrate() (*CameraCalibration, error) {
+func (cp *MonoCalibrationProcessor) Calibrate() (*MonoCameraCalibration, error) {
 	if cp.numSamples < cp.targetSamples {
 		return nil, fmt.Errorf("insufficient samples: %d < %d", cp.numSamples, cp.targetSamples)
 	}
@@ -114,7 +118,6 @@ func (cp *CalibrationProcessor) Calibrate() (*CameraCalibration, error) {
 	}
 
 	// Convert to Points3fVector and Points2fVector (vector of vectors)
-	// Use NewPoints3fVectorFromPoints which accepts [][]Point3f directly
 	objectPointsVec := cv.NewPoints3fVectorFromPoints(cp.objectPoints)
 	defer objectPointsVec.Close()
 
@@ -132,8 +135,6 @@ func (cp *CalibrationProcessor) Calibrate() (*CameraCalibration, error) {
 	defer tvecs.Close()
 
 	// Calibrate camera
-	// CalibrateCamera signature: objectPoints, imagePoints, imageSize, cameraMatrix, distCoeffs, rvecs, tvecs, flags
-	// Use 0 for flags to use default behavior (no special flags)
 	rms := cv.CalibrateCamera(
 		objectPointsVec,
 		imagePointsVec,
@@ -149,7 +150,7 @@ func (cp *CalibrationProcessor) Calibrate() (*CameraCalibration, error) {
 	cameraMatrixCloned := cameraMatrix.Clone()
 	distCoeffsCloned := distCoeffs.Clone()
 
-	return &CameraCalibration{
+	return &MonoCameraCalibration{
 		CameraMatrix:      cameraMatrixCloned,
 		DistortionCoeffs:  distCoeffsCloned,
 		ImageSize:         cp.imageSize,
@@ -159,8 +160,8 @@ func (cp *CalibrationProcessor) Calibrate() (*CameraCalibration, error) {
 	}, nil
 }
 
-// CameraCalibration holds camera calibration parameters
-type CameraCalibration struct {
+// MonoCameraCalibration holds camera calibration parameters
+type MonoCameraCalibration struct {
 	CameraMatrix      cv.Mat      // 3x3 camera matrix (K)
 	DistortionCoeffs  cv.Mat      // Distortion coefficients (k1, k2, p1, p2, k3, ...)
 	ImageSize         image.Point // Width x Height
@@ -170,25 +171,126 @@ type CameraCalibration struct {
 }
 
 // Close releases resources held by calibration
-func (c *CameraCalibration) Close() {
+func (c *MonoCameraCalibration) Close() {
 	c.CameraMatrix.Close()
 	c.DistortionCoeffs.Close()
 }
 
-// saveCalibration saves calibration to a file
-func saveCalibration(cal *CameraCalibration, path, format string) error {
+func calibrateMonoCamera(ctx context.Context, src source.Source, processor *MonoCalibrationProcessor, dests []destination.Destination, outputPath, format string) error {
+	fmt.Printf("Starting camera calibration...\n")
+	fmt.Printf("Grid size: %dx%d\n", processor.gridSize.X, processor.gridSize.Y)
+	fmt.Printf("Target samples: %d\n", processor.targetSamples)
+
+	if err := processCalibrationLoop(ctx, src, processor, dests); err != nil {
+		return err
+	}
+
+	calibration, err := processor.Calibrate()
+	if err != nil {
+		return fmt.Errorf("calibration failed: %w", err)
+	}
+	defer calibration.Close()
+
+	if err := saveMonoCalibration(calibration, outputPath, format); err != nil {
+		return fmt.Errorf("failed to save calibration: %w", err)
+	}
+
+	fmt.Printf("Calibration saved to %s\n", outputPath)
+	fmt.Printf("Reprojection error: %.4f\n", calibration.ReprojectionError)
+
+	return nil
+}
+
+func testMonoCalibration(ctx context.Context, src source.Source, dests []destination.Destination, calibPath string) error {
+	// Load calibration file
+	calibration, err := loadMonoCalibration(calibPath)
+	if err != nil {
+		return fmt.Errorf("failed to load calibration: %w", err)
+	}
+	defer calibration.Close()
+
+	fmt.Printf("Loaded calibration from %s\n", calibPath)
+	fmt.Printf("Grid size: %dx%d\n", calibration.GridShape.X, calibration.GridShape.Y)
+	fmt.Printf("Image size: %dx%d\n", calibration.ImageSize.X, calibration.ImageSize.Y)
+	fmt.Printf("Samples used: %d\n", calibration.NumSamples)
+	fmt.Printf("Reprojection error: %.4f\n", calibration.ReprojectionError)
+
+	// Process frames and undistort
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		// Read frame from source
+		frame, err := src.ReadFrame()
+		if err != nil {
+			if err == source.ErrSourceExhausted {
+				return nil
+			}
+			fmt.Fprintf(os.Stderr, "Warning: failed to read frame: %v\n", err)
+			continue
+		}
+
+		if len(frame.Tensors) == 0 {
+			continue
+		}
+
+		// Convert tensor to Mat
+		mat, err := tensorToMat(frame.Tensors[0])
+		if err != nil {
+			if releaser, ok := frame.Tensors[0].(types.Releaser); ok {
+				releaser.Release()
+			}
+			continue
+		}
+		defer mat.Close()
+
+		// Undistort
+		undistorted := cv.NewMat()
+		defer undistorted.Close()
+		emptyMat := cv.NewMat()
+		defer emptyMat.Close()
+		if err := cv.Undistort(mat, &undistorted, calibration.CameraMatrix, calibration.DistortionCoeffs, emptyMat); err != nil {
+			continue
+		}
+
+		// Convert back to tensor
+		undistortedTensor, err := matToTensor(undistorted)
+		if err != nil {
+			continue
+		}
+
+		// Create display frame
+		displayFrame := types.Frame{
+			Tensors:  []types.Tensor{undistortedTensor},
+			Metadata: frame.Metadata,
+		}
+
+		// Send to all destinations
+		for _, dest := range dests {
+			if err := dest.AddFrame(displayFrame); err != nil {
+				_ = err // Ignore destination errors
+			}
+		}
+	}
+}
+
+// saveMonoCalibration saves calibration to a file
+func saveMonoCalibration(cal *MonoCameraCalibration, path, format string) error {
 	switch format {
 	case "json", "yaml":
-		return saveCalibrationJSON(cal, path, format == "yaml")
+		return saveMonoCalibrationJSON(cal, path, format == "yaml")
 	case "gocv":
-		return saveCalibrationGoCV(cal, path)
+		return saveMonoCalibrationGoCV(cal, path)
 	default:
 		return fmt.Errorf("unsupported format: %s (use json, yaml, or gocv)", format)
 	}
 }
 
-// CameraCalibrationJSON is the JSON representation of calibration
-type CameraCalibrationJSON struct {
+// MonoCameraCalibrationJSON is the JSON representation of calibration
+type MonoCameraCalibrationJSON struct {
 	CameraMatrix      [][]float64 `json:"camera_matrix"`
 	DistortionCoeffs  []float64   `json:"distortion_coefficients"`
 	ImageSize         [2]int      `json:"image_size"`
@@ -197,7 +299,7 @@ type CameraCalibrationJSON struct {
 	ReprojectionError float64     `json:"reprojection_error"`
 }
 
-func saveCalibrationJSON(cal *CameraCalibration, path string, yaml bool) error {
+func saveMonoCalibrationJSON(cal *MonoCameraCalibration, path string, yaml bool) error {
 	// Convert camera matrix to 2D slice
 	rows := cal.CameraMatrix.Rows()
 	cols := cal.CameraMatrix.Cols()
@@ -216,7 +318,7 @@ func saveCalibrationJSON(cal *CameraCalibration, path string, yaml bool) error {
 		distCoeffs[i] = cal.DistortionCoeffs.GetDoubleAt(i, 0)
 	}
 
-	data := CameraCalibrationJSON{
+	data := MonoCameraCalibrationJSON{
 		CameraMatrix:      camMat,
 		DistortionCoeffs:  distCoeffs,
 		ImageSize:         [2]int{cal.ImageSize.X, cal.ImageSize.Y},
@@ -225,15 +327,7 @@ func saveCalibrationJSON(cal *CameraCalibration, path string, yaml bool) error {
 		ReprojectionError: cal.ReprojectionError,
 	}
 
-	var bytes []byte
-	var err error
-	if yaml {
-		// For YAML, we'd need to import yaml package
-		// For now, use JSON indented
-		bytes, err = json.MarshalIndent(data, "", "  ")
-	} else {
-		bytes, err = json.MarshalIndent(data, "", "  ")
-	}
+	bytes, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal calibration: %w", err)
 	}
@@ -241,21 +335,21 @@ func saveCalibrationJSON(cal *CameraCalibration, path string, yaml bool) error {
 	return os.WriteFile(path, bytes, 0644)
 }
 
-func saveCalibrationGoCV(cal *CameraCalibration, path string) error {
+func saveMonoCalibrationGoCV(cal *MonoCameraCalibration, path string) error {
 	// For GoCV native format, we could use gob encoding
 	// For now, fall back to JSON
-	return saveCalibrationJSON(cal, path, false)
+	return saveMonoCalibrationJSON(cal, path, false)
 }
 
-// loadCalibration loads calibration from a file
-func loadCalibration(path string) (*CameraCalibration, error) {
+// loadMonoCalibration loads calibration from a file
+func loadMonoCalibration(path string) (*MonoCameraCalibration, error) {
 	// Try JSON first
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read calibration file: %w", err)
 	}
 
-	var jsonData CameraCalibrationJSON
+	var jsonData MonoCameraCalibrationJSON
 	if err := json.Unmarshal(data, &jsonData); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal calibration: %w", err)
 	}
@@ -275,7 +369,7 @@ func loadCalibration(path string) (*CameraCalibration, error) {
 		distCoeffs.SetDoubleAt(i, 0, jsonData.DistortionCoeffs[i])
 	}
 
-	return &CameraCalibration{
+	return &MonoCameraCalibration{
 		CameraMatrix:      cameraMatrix,
 		DistortionCoeffs:  distCoeffs,
 		ImageSize:         image.Point{X: jsonData.ImageSize[0], Y: jsonData.ImageSize[1]},
@@ -284,3 +378,4 @@ func loadCalibration(path string) (*CameraCalibration, error) {
 		ReprojectionError: jsonData.ReprojectionError,
 	}, nil
 }
+

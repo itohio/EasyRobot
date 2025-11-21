@@ -2,7 +2,6 @@ package source
 
 import (
 	"bufio"
-	"flag"
 	"fmt"
 	"log/slog"
 	"os"
@@ -10,36 +9,42 @@ import (
 	"strings"
 
 	"github.com/itohio/EasyRobot/x/marshaller/gocv"
+	"github.com/spf13/cobra"
 )
 
-// Package-level flag variables shared by all sources
-var (
-	imagePaths FlagArray
-	videoPaths FlagArray
-	cameraIDs  FlagArray
-	cameraWidth, cameraHeight int
-	generateFlag bool
-	enumerateCameras bool
-)
-
-// RegisterAllFlags registers flags for all source types.
-// Call this before flag.Parse().
-func RegisterAllFlags() {
-	flag.Var(&imagePaths, "images", "Image file or directory path (can repeat)")
-	flag.Var(&videoPaths, "video", "Video file path (can repeat)")
-	flag.Var(&cameraIDs, "camera", "Camera device ID or configuration (can repeat). Format: ID[:widthxheight[@fps[/format]]]. Examples: '0', '0:640x480', '0:640x480@30', '0:640x480@30/mjpeg', '0@30/mjpeg'")
-	flag.IntVar(&cameraWidth, "width", 640, "Frame width for cameras")
-	flag.IntVar(&cameraHeight, "height", 480, "Frame height for cameras")
-	flag.BoolVar(&generateFlag, "generate", false, "Generate test frames with spinning triangle")
-	flag.BoolVar(&enumerateCameras, "list-cameras", false, "List all available cameras with their parameters and exit (does not start streaming)")
+// AddSourceFlags adds source flags to a cobra command.
+// Call this on any command that needs source flags.
+func AddSourceFlags(cmd *cobra.Command) {
+	cmd.Flags().StringArray("images", nil, "Image file or directory path (can repeat)")
+	cmd.Flags().StringArray("video", nil, "Video file path (can repeat)")
+	cmd.Flags().StringArray("camera", nil, "Camera device ID or configuration (can repeat). Format: ID[:widthxheight[@fps[/format]]]. Examples: '0', '0:640x480', '0:640x480@30', '0:640x480@30/mjpeg', '0@30/mjpeg'")
+	cmd.Flags().Int("width", 640, "Frame width for cameras")
+	cmd.Flags().Int("height", 480, "Frame height for cameras")
+	cmd.Flags().Bool("generate", false, "Generate test frames with spinning triangle")
+	cmd.Flags().Bool("list-cameras", false, "List all available cameras with their parameters and exit (does not start streaming)")
+	
+	// Generator-specific flags
+	cmd.Flags().Int("generate-width", 640, "Width of generated frames")
+	cmd.Flags().Int("generate-height", 480, "Height of generated frames")
+	cmd.Flags().Int("generate-fps", 30, "Frames per second for generation")
+	cmd.Flags().Duration("generate-duration", 0, "Duration to generate frames (0 = infinite)")
+	
 	// Note: Interest source flags will be registered separately if DNDM is enabled
 }
 
-// NewFromFlags creates a source based on which flags are set.
-// Must be called after flag.Parse().
+// NewFromCobra creates a source based on flags from a cobra command.
 // Returns the selected source or an error if no source or multiple sources are specified.
-func NewFromFlags() (Source, error) {
-	slog.Info("Creating source from flags",
+func NewFromCobra(cmd *cobra.Command) (Source, error) {
+	// Read flags from cobra command
+	imagePaths, _ := cmd.Flags().GetStringArray("images")
+	videoPaths, _ := cmd.Flags().GetStringArray("video")
+	cameraIDs, _ := cmd.Flags().GetStringArray("camera")
+	cameraWidth, _ := cmd.Flags().GetInt("width")
+	cameraHeight, _ := cmd.Flags().GetInt("height")
+	generateFlag, _ := cmd.Flags().GetBool("generate")
+	enumerateCameras, _ := cmd.Flags().GetBool("list-cameras")
+
+	slog.Info("Creating source from cobra command",
 		"generate", generateFlag,
 		"image_paths", len(imagePaths),
 		"video_paths", len(videoPaths),
@@ -51,14 +56,14 @@ func NewFromFlags() (Source, error) {
 	var selected Source
 	var sourceType string
 
-	// Note: enumerateCameras (list-cameras) is now handled in main.go before this function
+	// Note: enumerateCameras (list-cameras) should be handled in main.go before this function
 	// It lists cameras and exits, so it should never reach here
 	if len(cameraIDs) > 0 {
 		// Regular camera source (not enumeration)
 		count++
 		sourceType = "camera"
 		camSrc := NewCameraSource().(*cameraSource)
-		camSrc.deviceIDs = cameraIDs
+		camSrc.deviceIDs = FlagArray(cameraIDs)
 		camSrc.width = cameraWidth
 		camSrc.height = cameraHeight
 		selected = camSrc
@@ -69,15 +74,27 @@ func NewFromFlags() (Source, error) {
 		count++
 		sourceType = "generator"
 		genSrc := NewGeneratorSource().(*generatorSource)
+		
+		// Set generator-specific flags
+		genWidth, _ := cmd.Flags().GetInt("generate-width")
+		genHeight, _ := cmd.Flags().GetInt("generate-height")
+		genFPS, _ := cmd.Flags().GetInt("generate-fps")
+		genDuration, _ := cmd.Flags().GetDuration("generate-duration")
+		
+		genSrc.width = genWidth
+		genSrc.height = genHeight
+		genSrc.fps = genFPS
+		genSrc.duration = genDuration
+		
 		selected = genSrc
-		slog.Info("Generator source selected")
+		slog.Info("Generator source selected", "width", genWidth, "height", genHeight, "fps", genFPS, "duration", genDuration)
 	}
 
 	if len(imagePaths) > 0 {
 		count++
 		sourceType = "images"
 		imgSrc := NewImageSource().(*imageSource)
-		imgSrc.paths = imagePaths
+		imgSrc.paths = FlagArray(imagePaths)
 		selected = imgSrc
 		slog.Info("Image source selected", "paths", imagePaths)
 	}
@@ -86,16 +103,15 @@ func NewFromFlags() (Source, error) {
 		count++
 		sourceType = "video"
 		vidSrc := NewVideoSource().(*videoSource)
-		vidSrc.paths = videoPaths
+		vidSrc.paths = FlagArray(videoPaths)
 		selected = vidSrc
 		slog.Info("Video source selected", "paths", videoPaths)
 	}
 
-
 	// Check for DNDM interest (must be exclusive)
-	intSrc, err := NewInterestFromFlags()
+	intSrc, err := NewInterestFromCobra(cmd)
 	if err != nil {
-		slog.Error("Failed to create interest source from flags", "err", err)
+		slog.Error("Failed to create interest source from cobra command", "err", err)
 		return nil, err
 	}
 	if intSrc != nil {
@@ -118,8 +134,9 @@ func NewFromFlags() (Source, error) {
 	return selected, nil
 }
 
-// IsListCamerasFlagSet returns true if the list-cameras flag is set
-func IsListCamerasFlagSet() bool {
+// IsListCamerasFlagSet returns true if the list-cameras flag is set in the cobra command.
+func IsListCamerasFlagSet(cmd *cobra.Command) bool {
+	enumerateCameras, _ := cmd.Flags().GetBool("list-cameras")
 	return enumerateCameras
 }
 
@@ -186,7 +203,7 @@ func ListCameras() error {
 
 // createEnumeratedCameraSource enumerates cameras and allows interactive configuration
 // DEPRECATED: This function is no longer used. Use ListCameras() instead for listing,
-// and use --camera flag with device IDs for streaming.
+// and use --camera flag with device IDs for streaming via cobra.
 func createEnumeratedCameraSource() (Source, error) {
 	fmt.Println("=== Camera Enumeration ===")
 
@@ -343,9 +360,10 @@ func createEnumeratedCameraSource() (Source, error) {
 	return camSrc, nil
 }
 
-// GetCameraIDs returns the list of camera IDs that were specified via flags.
+// GetCameraIDs returns the list of camera IDs from a cobra command.
 // This is useful for validation (e.g., ensuring exactly one camera for monocular calibration).
-func GetCameraIDs() []string {
-	return []string(cameraIDs)
+func GetCameraIDs(cmd *cobra.Command) []string {
+	cameraIDs, _ := cmd.Flags().GetStringArray("camera")
+	return cameraIDs
 }
 

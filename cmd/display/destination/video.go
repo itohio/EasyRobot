@@ -11,10 +11,6 @@ import (
 	cv "gocv.io/x/gocv"
 )
 
-var (
-	outputPath string
-)
-
 // videoDestination implements Destination for writing frames to a video file.
 type videoDestination struct {
 	ctx     context.Context
@@ -34,8 +30,13 @@ func NewVideo() Destination {
 }
 
 func (v *videoDestination) RegisterFlags() {
-	// Flags are registered by RegisterAllFlags() in factory.go
+	// Flags are registered by AddDestinationFlags() in factory.go
 	// This method exists for interface compliance but does nothing
+}
+
+// setVideoParams sets video parameters from cobra flags.
+func setVideoParams(v *videoDestination, outputPath string) {
+	v.path = outputPath
 }
 
 func (v *videoDestination) Start(ctx context.Context) error {
@@ -43,14 +44,13 @@ func (v *videoDestination) Start(ctx context.Context) error {
 		slog.Warn("Video destination already started")
 		return fmt.Errorf("video destination already started")
 	}
-	if outputPath == "" {
+	if v.path == "" {
 		slog.Info("Video destination disabled (no output path)")
 		return nil // Video output is disabled
 	}
 
-	slog.Info("Starting video destination", "path", outputPath, "fps", v.fps)
+	slog.Info("Starting video destination", "path", v.path, "fps", v.fps)
 	v.ctx = ctx
-	v.path = outputPath
 	v.started = true
 	slog.Info("Video destination started (writer will be created on first frame)")
 	return nil

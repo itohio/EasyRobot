@@ -335,22 +335,38 @@ This document tracks the high-level implementation progress for the spectrometer
 
 ---
 
-### Phase 9: CSV Marshaller (Week 13)
+### Phase 9: CSV Marshaller ✅ **COMPLETED**
 **Goal**: CSV export support
 
-- [ ] **CSV Marshaller** (`x/marshaller/csv/`)
-  - [ ] Vector marshalling/unmarshalling
-  - [ ] Matrix marshalling/unmarshalling
-  - [ ] Tensor marshalling/unmarshalling (1D/2D only)
-  - [ ] `WithHeader(true/false)` option
-  - [ ] `WithZeroRowHeader(true/false)` option
-  - [ ] Integration with measure export
+- [x] **CSV Marshaller** (`x/marshaller/csv/`) ✅
+  - [x] Vector marshalling/unmarshalling ✅
+  - [x] Matrix marshalling/unmarshalling ✅
+  - [x] Tensor marshalling/unmarshalling (1D/2D only) ✅
+  - [x] Primitive slice marshalling/unmarshalling ✅
+  - [x] `WithHeader(true/false)` option ✅
+  - [x] `WithOrientation("row"/"column")` option ✅
+  - [x] `WithDataType(dtype)` option ✅
+  - [x] Automatic data type detection from comments ✅
+  - [x] Integration with measure export ✅
 
 **Dependencies**: Phase 5 (measure export framework)
 
 **Deliverables**:
-- CSV marshaller implemented and tested
-- All measurement commands can export to CSV
+- ✅ CSV marshaller implemented and tested
+- ✅ All measurement commands can export to CSV
+- ✅ SPD save/load support via CSV
+- ✅ Known spectrum database support
+
+**Future Enhancement - SPD Matching Engine**:
+- **Matching Algorithms** (in `x/math/colorscience` or `x/math/dsp`):
+  - Spectral matching algorithms (correlation, distance metrics)
+  - Peak matching for calibration targets
+  - Wavelength alignment and interpolation
+- **Orchestration & Database** (in `cmd/spectrometer/internal/match`):
+  - In-memory database of known spectrums (loaded from CSV files)
+  - Matching workflow orchestration
+  - Database management (add, remove, search, match)
+  - Integration with config reference spectrum list
 
 ---
 
@@ -482,8 +498,11 @@ This document tracks the high-level implementation progress for the spectrometer
 ## Dependencies on External Packages
 
 ### Required Implementations
-- **CSV Marshaller** (`x/marshaller/csv`) - Phase 9
+- **CSV Marshaller** (`x/marshaller/csv`) - ✅ **COMPLETED** (Phase 9)
 - **Hardware Illuminant Control** (`x/devices/spectrometer`) - Future (for Phase 7+)
+- **SPD Matching Engine** - Future enhancement:
+  - Matching algorithms in `x/math/colorscience` or `x/math/dsp`
+  - Orchestration and database in `cmd/spectrometer/internal/match`
 
 ### Existing Packages (Reuse)
 
@@ -572,7 +591,7 @@ This document tracks the high-level implementation progress for the spectrometer
 
 Update this section as work progresses:
 
-- [ ] **Phase 0: CR30 Device Support & Framework** ⭐ **START HERE**
+- [x] **Phase 0: CR30 Device Support & Framework** ⭐ **COMPLETE** ✅
 - [ ] Phase 1: Foundation & Configuration
 - [ ] Phase 2: Core Extraction and Calibration
 - [ ] Phase 3: Correction and Processing
@@ -581,6 +600,7 @@ Update this section as work progresses:
 - [ ] Phase 6: Colorimetry and Advanced Features
 - [ ] Phase 7: Transmission and Reflectance
 - [ ] Phase 8: Advanced Measurement Modes
-- [ ] Phase 9: CSV Marshaller & Final Polish
+- [x] Phase 9: CSV Marshaller ✅ **COMPLETE**
 - [ ] Phase 10: Hardware Illuminant Control (Future)
+- [ ] Phase 11: SPD Matching Engine (Future Enhancement)
 

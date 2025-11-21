@@ -89,14 +89,10 @@ func Draw(mat cv.Mat, gridSize image.Point, corners []cv.Point2f, found bool) er
 	}
 
 	// Create Mat from corners slice
-	// DrawChessboardCorners expects corners as Mat in CV_32FC2 format (N x 1 x 2 channels)
-	// where N is the number of corners
 	cornersMat := cv.NewMatWithSize(len(corners), 1, cv.MatTypeCV32FC2)
 	defer cornersMat.Close()
 
 	// Fill the Mat with corner points
-	// For CV_32FC2, each element has 2 channels (x, y)
-	// We need to set channel 0 (x) and channel 1 (y) separately
 	for i, pt := range corners {
 		cornersMat.SetFloatAt3(i, 0, 0, pt.X) // row i, col 0, channel 0 (x)
 		cornersMat.SetFloatAt3(i, 0, 1, pt.Y) // row i, col 0, channel 1 (y)
@@ -104,7 +100,6 @@ func Draw(mat cv.Mat, gridSize image.Point, corners []cv.Point2f, found bool) er
 
 	patternSize := image.Point{X: gridSize.X, Y: gridSize.Y}
 
-	// DrawChessboardCorners expects corners as Mat
 	if err := cv.DrawChessboardCorners(&mat, patternSize, cornersMat, found); err != nil {
 		return fmt.Errorf("failed to draw corners: %w", err)
 	}
@@ -127,3 +122,4 @@ func GenerateObjectPoints(gridSize image.Point) []cv.Point3f {
 	}
 	return points
 }
+

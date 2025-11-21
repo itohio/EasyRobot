@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log/slog"
 	"os"
@@ -13,47 +12,50 @@ import (
 	"github.com/itohio/EasyRobot/cmd/display/source"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"github.com/itohio/EasyRobot/x/math/tensor"
+	"github.com/spf13/cobra"
 )
 
 func main() {
-	// Register flags
-	source.RegisterAllFlags()
-	destination.RegisterAllFlags()
-	// Register DNDM flags if needed (currently optional)
-	source.RegisterInterestFlags()
-	destination.RegisterIntentFlags()
-	help := flag.Bool("help", false, "Show help message")
-
-	// Parse flags
-	flag.Parse()
-
-	if *help {
-		flag.PrintDefaults()
-		return
+	rootCmd := &cobra.Command{
+		Use:   "display",
+		Short: "Display frames from various sources",
+		Long:  "Display frames from cameras, videos, images, or generated test patterns. Supports multiple output destinations including display windows and video files.",
+		RunE:  runDisplay,
 	}
 
-	// Handle list-cameras flag - list cameras and exit (don't start streaming)
-	if source.IsListCamerasFlagSet() {
-		if err := source.ListCameras(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error listing cameras: %v\n", err)
-			os.Exit(1)
-		}
-		return // Exit after listing cameras
-	}
+	// Add source flags
+	source.AddSourceFlags(rootCmd)
+	source.AddInterestFlags(rootCmd)
 
-	// Create source from flags
-	slog.Info("Creating source from flags")
-	src, err := source.NewFromFlags()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		flag.PrintDefaults()
+	// Add destination flags
+	destination.AddDestinationFlags(rootCmd)
+	destination.AddIntentFlags(rootCmd)
+
+	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
+	}
+}
+
+func runDisplay(cmd *cobra.Command, args []string) error {
+	// Handle list-cameras flag - list cameras and exit (don't start streaming)
+	if source.IsListCamerasFlagSet(cmd) {
+		if err := source.ListCameras(); err != nil {
+			return fmt.Errorf("error listing cameras: %w", err)
+		}
+		return nil // Exit after listing cameras
+	}
+
+	// Create source from cobra command
+	slog.Info("Creating source from cobra command")
+	src, err := source.NewFromCobra(cmd)
+	if err != nil {
+		return fmt.Errorf("error creating source: %w", err)
 	}
 	slog.Info("Source created successfully")
 
-	// Create destinations from flags
-	slog.Info("Creating destinations from flags")
-	dests := destination.NewAllDestinations()
+	// Create destinations from cobra command
+	slog.Info("Creating destinations from cobra command")
+	dests := destination.NewFromCobra(cmd)
 	slog.Info("Destinations created", "count", len(dests))
 
 	// Setup context with cancellation
@@ -72,8 +74,7 @@ func main() {
 	slog.Info("Starting source")
 	if err := src.Start(ctx); err != nil {
 		slog.Error("Error starting source", "err", err)
-		fmt.Fprintf(os.Stderr, "Error starting source: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("error starting source: %w", err)
 	}
 	slog.Info("Source started successfully")
 	defer func() {
@@ -94,8 +95,7 @@ func main() {
 		// context when the main window is closed.
 		if err := dest.Start(ctx); err != nil {
 			slog.Error("Error starting destination", "index", i, "err", err)
-			fmt.Fprintf(os.Stderr, "Error starting destination: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("error starting destination: %w", err)
 		}
 		slog.Info("Destination started", "index", i)
 		defer func(idx int, d destination.Destination) {
@@ -113,7 +113,7 @@ func main() {
 		select {
 		case <-ctx.Done():
 			slog.Info("Frame processing stopped", "reason", "context cancelled", "frames_processed", frameCount)
-			return
+			return nil
 		default:
 		}
 
@@ -124,10 +124,9 @@ func main() {
 			if err == source.ErrSourceExhausted {
 				slog.Info("Source exhausted", "frames_processed", frameCount)
 				// Source exhausted, exit gracefully
-				return
+				return nil
 			}
 			slog.Warn("Error reading frame", "err", err, "frames_processed", frameCount)
-			fmt.Fprintf(os.Stderr, "Error reading frame: %v\n", err)
 			// Continue processing if error is recoverable
 			continue
 		}
@@ -181,7 +180,6 @@ func main() {
 				slog.Debug("Sending frame to destination", "destination_index", 0, "frame_index", frame.Index)
 				if err := dests[0].AddFrame(smartFrame); err != nil {
 					slog.Warn("Error adding frame to destination", "destination_index", 0, "frame_index", frame.Index, "err", err)
-					fmt.Fprintf(os.Stderr, "Error adding frame to destination: %v\n", err)
 				} else {
 					slog.Debug("Frame sent to destination successfully", "destination_index", 0, "frame_index", frame.Index)
 				}
@@ -192,7 +190,6 @@ func main() {
 				slog.Debug("Sending frame to destination", "destination_index", i, "frame_index", frame.Index)
 				if err := dests[i].AddFrame(viewFrames[i-1]); err != nil {
 					slog.Warn("Error adding frame to destination", "destination_index", i, "frame_index", frame.Index, "err", err)
-					fmt.Fprintf(os.Stderr, "Error adding frame to destination: %v\n", err)
 				} else {
 					slog.Debug("Frame sent to destination successfully", "destination_index", i, "frame_index", frame.Index)
 				}
@@ -203,7 +200,6 @@ func main() {
 				slog.Debug("Sending frame to destination", "destination_index", i, "frame_index", frame.Index)
 				if err := dest.AddFrame(frame); err != nil {
 					slog.Warn("Error adding frame to destination", "destination_index", i, "frame_index", frame.Index, "err", err)
-					fmt.Fprintf(os.Stderr, "Error adding frame to destination: %v\n", err)
 				} else {
 					slog.Debug("Frame sent to destination successfully", "destination_index", i, "frame_index", frame.Index)
 				}
@@ -223,7 +219,7 @@ func main() {
 		select {
 		case <-ctx.Done():
 			slog.Info("Frame processing stopped", "reason", "context cancelled", "frames_processed", frameCount)
-			return
+			return nil
 		default:
 		}
 	}

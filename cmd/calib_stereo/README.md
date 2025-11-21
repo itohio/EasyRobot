@@ -1,1 +1,0 @@
-Uses vision algorithms together with GoCV, and calibrates stereo camera using checkerboard calibration pattern.

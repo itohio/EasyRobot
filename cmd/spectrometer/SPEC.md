@@ -112,7 +112,7 @@ The application integrates with EasyRobot packages:
 - **`x/marshaller/proto`**: Protobuf marshalling for configuration and measurements
 - **`x/marshaller/yaml`**: YAML marshalling for configuration (human-readable)
 - **`x/marshaller/json`**: JSON marshalling for configuration and measurements
-- **`x/marshaller/csv`**: CSV marshalling for measurements (vectors, matrices, tensors) - **Needs to be implemented**
+- **`x/marshaller/csv`**: CSV marshalling for measurements (vectors, matrices, tensors) - **✅ Implemented** (supports SPD save/load, known spectrum database)
 - **`x/devices/spectrometer`**: Hardware illuminant control (LED drivers) - **To be implemented for hardware integration**
 
 ### Data Flow
@@ -1247,14 +1247,15 @@ reference:
 reference_spectrums:
   # List of reference spectrums - can be inline matrices or file paths
   # Config loader will attempt to load paths if provided
+  # CSV format is now fully supported via x/marshaller/csv ✅
   - name: "D65_Standard"
     description: "CIE D65 Standard Illuminant"
     path: "data/illuminants/d65.csv"
-    format: "csv"
+    format: "csv"  # ✅ CSV marshaller supports SPD load/save
   - name: "White_Reference"
     description: "White reference standard calibration"
-    path: "data/references/white_reference.json"
-    format: "json"
+    path: "data/references/white_reference.csv"
+    format: "csv"  # ✅ Can use CSV for all reference spectrums
   # Inline example (if small enough):
   # - name: "Custom_Reference"
   #   description: "Custom reference spectrum"
@@ -1262,6 +1263,8 @@ reference_spectrums:
   #     rows: 2
   #     cols: 401
   #     data: [[380.0, 380.5, ...], [1.0, 1.0, ...]]
+  # Note: CSV format enables building a database of known spectrums
+  # Future: SPD matching engine (matching in colorscience/dsp, orchestration in internal/match)
 
 # Illuminant Hardware Control
 illuminant:
@@ -1594,35 +1597,54 @@ if videoOutput {
 
 ## Required Implementations
 
-### CSV Marshaller/Unmarshaller
+### CSV Marshaller/Unmarshaller ✅ **IMPLEMENTED**
 
-The CSV marshaller (`x/marshaller/csv`) needs to be implemented to support spectrometer measurements:
+The CSV marshaller (`x/marshaller/csv`) is now fully implemented and supports spectrometer measurements:
 
-**Requirements**:
-- Support for `vec.Vector` types (single column or multi-column vectors)
-- Support for `mat.Matrix` types (rows × cols)
-- Support for `tensor.Tensor` types (limited to 1D/2D tensors for CSV compatibility)
-- Options:
+**Features**:
+- ✅ Support for `vec.Vector` types (single row or single column via `WithOrientation()`)
+- ✅ Support for `mat.Matrix` types (rows × cols)
+- ✅ Support for `tensor.Tensor` types (1D/2D only)
+- ✅ Support for primitive slices (`[]float32`, `[]float64`, `[]int32`, `[]string`, etc.)
+- ✅ Options:
   - `WithHeader(true/false)`: Include column headers as first row
-  - `WithZeroRowHeader(true/false)`: For matrices, treat row 0 as header (otherwise row 0 is data)
+  - `WithOrientation("row"/"column")`: For vectors/slices, read/write as single row (horizontal) or single column (vertical)
+  - `WithDataType(dtype)`: Data type hint for unmarshalling (FP32, FP64, INT32, etc.)
+- ✅ Automatic data type detection from `# dtype:` comments in CSV files
+- ✅ Automatic header detection (numeric vs. text-based first row)
 
 **Usage Examples**:
 ```go
-// CSV marshaller with header
+// CSV marshaller with header (for SPD matrices)
 csvMarshaller := csv.NewMarshaller(csv.WithHeader(true))
 err := csvMarshaller.Marshal(writer, spectrumMatrix)  // Matrix with headers
 
-// CSV unmarshaller with header
+// CSV unmarshaller with header (for loading SPDs)
 csvUnmarshaller := csv.NewUnmarshaller(csv.WithHeader(true))
 var spectrumMatrix mat.Matrix
 err := csvUnmarshaller.Unmarshal(reader, &spectrumMatrix)
+
+// SPD save/load (2-row matrix: row 0 = wavelengths, row 1 = intensities)
+spdMatrix := spd.Matrix()  // Get 2-row matrix from colorscience.SPD
+err := csvMarshaller.Marshal(file, spdMatrix)
+
+// Load SPD from CSV
+var loadedMatrix mat.Matrix
+err := csvUnmarshaller.Unmarshal(file, &loadedMatrix)
+spd := colorscience.NewSPD(loadedMatrix.Row(0).(vec.Vector), loadedMatrix.Row(1).(vec.Vector))
 ```
 
-**CSV Format**:
-- Vector export: Single column or named columns (with header)
-- Matrix export: Rows × columns, optionally with row 0 as header
-- Header format: Column names in first row (if `WithHeader(true)`)
-- For matrices: If `WithZeroRowHeader(true)`, row 0 is header; if false, row 0 is data
+**CSV Format for SPDs**:
+- SPD matrices (2 rows: wavelengths, intensities) can be saved/loaded as CSV
+- Header row optional (e.g., `wavelength,intensity` or `col_0,col_1`)
+- Data type comments (`# dtype: FP32`) written automatically for type inference
+- Vectors/slices can be saved as single row (horizontal) or single column (vertical)
+
+**Known Spectrum Database**:
+- CSV marshaller enables building a database of known/reference spectrums
+- SPDs can be saved to CSV files for later matching and comparison
+- Reference spectrums can be loaded from CSV files (e.g., standard illuminants, calibration targets)
+- Supports both inline matrices in config and file paths (CSV format)
 
 ### Protobuf Definitions
 
@@ -1828,6 +1850,12 @@ See the Configuration section above for the complete protobuf schema definitions
    - Error handling
    - Documentation
    - Testing
+
+5. **Phase 9: CSV Marshaller** ✅ **COMPLETED**
+   - ✅ CSV marshaller implemented and tested
+   - ✅ SPD save/load support via CSV
+   - ✅ Known spectrum database support
+   - ✅ Integration with measure export
 
 ---
 

@@ -37,9 +37,8 @@ func NewCameraSource() Source {
 }
 
 func (s *cameraSource) RegisterFlags() {
-	// Flags are registered by RegisterAllFlags() in factory.go
+	// Flags are registered by AddSourceFlags() in factory.go
 	// This method exists for interface compliance but does nothing
-	// since flags are shared at package level
 }
 
 // parseCameraConfig parses a camera configuration string.

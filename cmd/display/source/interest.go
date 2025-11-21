@@ -2,12 +2,11 @@ package source
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log/slog"
-)
 
-var interestRoutes FlagArray
+	"github.com/spf13/cobra"
+)
 
 // interestSource implements Source for DNDM interest channels.
 // This is a placeholder implementation - full DNDM integration TBD.
@@ -22,7 +21,7 @@ func NewInterest() Source {
 }
 
 func (s *interestSource) RegisterFlags() {
-	// Flags are registered by RegisterInterestFlags() separately
+	// Flags are registered by AddInterestFlags() separately
 	// This method exists for interface compliance but does nothing
 }
 
@@ -45,23 +44,23 @@ func (s *interestSource) Start(ctx context.Context) error {
 	return fmt.Errorf("DNDM interest source not yet implemented")
 }
 
-// RegisterInterestFlags registers flags for DNDM interest source.
-// Call this before flag.Parse() if DNDM support is enabled.
-func RegisterInterestFlags() {
-	flag.Var(&interestRoutes, "interest", "DNDM interest route (can repeat)")
+// AddInterestFlags adds interest flags to a cobra command.
+// Call this on any command that needs interest flags (if DNDM support is enabled).
+func AddInterestFlags(cmd *cobra.Command) {
+	cmd.Flags().StringArray("interest", nil, "DNDM interest route (can repeat)")
 }
 
-// NewInterestFromFlags creates an interest source from flags.
-// Must be called after flag.Parse().
+// NewInterestFromCobra creates an interest source from flags in a cobra command.
 // Returns (nil, nil) if no interest routes are specified (not an error).
-func NewInterestFromFlags() (Source, error) {
+func NewInterestFromCobra(cmd *cobra.Command) (Source, error) {
+	interestRoutes, _ := cmd.Flags().GetStringArray("interest")
 	if len(interestRoutes) == 0 {
 		slog.Debug("No interest routes specified")
 		return nil, nil // Not an error, just not specified
 	}
-	slog.Debug("Creating interest source from flags", "routes", interestRoutes)
+	slog.Debug("Creating interest source from cobra command", "routes", interestRoutes)
 	src := NewInterest().(*interestSource)
-	src.routes = []string(interestRoutes)
+	src.routes = interestRoutes
 	return src, nil
 }
 

@@ -2,7 +2,6 @@ package source
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"image"
 	"image/color"
@@ -13,13 +12,6 @@ import (
 	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"github.com/itohio/EasyRobot/x/math/tensor/gocv"
 	cv "gocv.io/x/gocv"
-)
-
-var (
-	generateWidth    int
-	generateHeight   int
-	generateFPS      int
-	generateDuration time.Duration
 )
 
 // generatorSource implements Source for generating test frames with a spinning triangle.
@@ -40,17 +32,11 @@ func NewGeneratorSource() Source {
 }
 
 func (s *generatorSource) RegisterFlags() {
-	flag.IntVar(&generateWidth, "generate-width", 640, "Width of generated frames")
-	flag.IntVar(&generateHeight, "generate-height", 480, "Height of generated frames")
-	flag.IntVar(&generateFPS, "generate-fps", 30, "Frames per second for generation")
-	flag.DurationVar(&generateDuration, "generate-duration", 0, "Duration to generate frames (0 = infinite)")
+	// Flags are registered by AddSourceFlags() in factory.go
+	// This method exists for interface compliance but does nothing
 }
 
 func (s *generatorSource) Start(ctx context.Context) error {
-	s.width = generateWidth
-	s.height = generateHeight
-	s.fps = generateFPS
-	s.duration = generateDuration
 	s.startTime = time.Now()
 	s.frameIdx = 0
 

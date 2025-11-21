@@ -10,13 +10,6 @@ import (
 	cv "gocv.io/x/gocv"
 )
 
-var (
-	noDisplay bool
-	title     string
-	width     int
-	height    int
-)
-
 // CancelSetter is an interface for destinations that can accept a cancel function
 // to be called when certain events occur (e.g., window close).
 type CancelSetter interface {
@@ -32,6 +25,18 @@ type displayDestination struct {
 	parentCancel context.CancelFunc // Cancel function from parent context - called when main window closes
 	displaySink  *gocv.DisplaySink
 	started      bool
+	noDisplay    bool
+	title        string
+	width        int
+	height       int
+}
+
+// setDisplayParams sets display parameters from cobra flags.
+func setDisplayParams(d *displayDestination, title string, width, height int) {
+	d.title = title
+	d.width = width
+	d.height = height
+	d.noDisplay = false
 }
 
 // NewDisplay creates a new display destination.
@@ -48,7 +53,7 @@ func (d *displayDestination) SetCancelFunc(cancel context.CancelFunc) {
 }
 
 func (d *displayDestination) RegisterFlags() {
-	// Flags are registered by RegisterAllFlags() in factory.go
+	// Flags are registered by AddDestinationFlags() in factory.go
 	// This method exists for interface compliance but does nothing
 }
 
@@ -57,13 +62,13 @@ func (d *displayDestination) Start(ctx context.Context) error {
 		slog.Warn("Display destination already started")
 		return fmt.Errorf("display destination already started")
 	}
-	if noDisplay {
+	if d.noDisplay {
 		slog.Info("Display destination disabled (--no-display)")
 		d.started = true
 		return nil // Display is disabled
 	}
 
-	slog.Info("Starting display destination", "title", title, "width", width, "height", height)
+	slog.Info("Starting display destination", "title", d.title, "width", d.width, "height", d.height)
 
 	// Store parent context and create a cancellable context for the display destination
 	d.parentCtx = ctx
@@ -122,9 +127,9 @@ func (d *displayDestination) Start(ctx context.Context) error {
 
 	displaySink, err := gocv.NewDisplaySinkFromOptions(
 		d.ctx,
-		title,
-		width,
-		height,
+		d.title,
+		d.width,
+		d.height,
 		gocv.WithCancel(cancelFunc), // Cancel function called if callback returns true
 		gocv.WithOnClose(onClose),   // Callback decides when to terminate
 		gocv.WithOnKey(onKey),       // Key handler - ESC cancels context, other keys ignored
@@ -146,7 +151,7 @@ func (d *displayDestination) Start(ctx context.Context) error {
 }
 
 func (d *displayDestination) AddFrame(frame types.Frame) error {
-	if !d.started || noDisplay {
+	if !d.started || d.noDisplay {
 		return nil // Display is disabled or not started
 	}
 

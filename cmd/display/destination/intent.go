@@ -2,7 +2,6 @@ package destination
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log/slog"
 
@@ -10,33 +9,8 @@ import (
 	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"github.com/itohio/dndm"
 	"github.com/itohio/dndm/x/bus"
+	"github.com/spf13/cobra"
 )
-
-// FlagArray is a custom flag type for repeatable flags (used by DNDM).
-type FlagArray []string
-
-// String returns a string representation of the flag array.
-func (f *FlagArray) String() string {
-	if f == nil || len(*f) == 0 {
-		return ""
-	}
-	result := ""
-	for i, v := range *f {
-		if i > 0 {
-			result += ","
-		}
-		result += v
-	}
-	return result
-}
-
-// Set adds a value to the flag array.
-func (f *FlagArray) Set(value string) error {
-	*f = append(*f, value)
-	return nil
-}
-
-var intentRoutes FlagArray
 
 // IntentDestination implements Destination for DNDM intent channels.
 type IntentDestination struct {
@@ -65,7 +39,7 @@ func NewIntentWithRouter(router *dndm.Router) Destination {
 }
 
 func (i *IntentDestination) RegisterFlags() {
-	// Flags are registered by RegisterIntentFlags() separately
+	// Flags are registered by AddIntentFlags() separately
 	// This method exists for interface compliance but does nothing
 }
 
@@ -158,22 +132,22 @@ func (i *IntentDestination) Close() error {
 	return nil
 }
 
-// RegisterIntentFlags registers flags for DNDM intent destination.
-// Call this before flag.Parse() if DNDM support is enabled.
-func RegisterIntentFlags() {
-	flag.Var(&intentRoutes, "intent", "DNDM intent route (can repeat)")
+// AddIntentFlags adds intent flags to a cobra command.
+// Call this on any command that needs intent flags (if DNDM support is enabled).
+func AddIntentFlags(cmd *cobra.Command) {
+	cmd.Flags().StringArray("intent", nil, "DNDM intent route (can repeat)")
 }
 
-// NewIntentFromFlags creates an intent destination from flags.
-// Must be called after flag.Parse().
+// NewIntentFromCobra creates an intent destination from flags in a cobra command.
 // If router is nil, intent publishing will be disabled.
-func NewIntentFromFlags(router *dndm.Router) Destination {
+func NewIntentFromCobra(cmd *cobra.Command, router *dndm.Router) Destination {
+	intentRoutes, _ := cmd.Flags().GetStringArray("intent")
 	if len(intentRoutes) == 0 {
 		slog.Debug("No intent routes specified")
 		return nil
 	}
-	slog.Info("Creating intent destination from flags", "routes", intentRoutes, "router_provided", router != nil)
+	slog.Info("Creating intent destination from cobra command", "routes", intentRoutes, "router_provided", router != nil)
 	dest := NewIntentWithRouter(router).(*IntentDestination)
-	dest.routes = []string(intentRoutes)
+	dest.routes = intentRoutes
 	return dest
 }
