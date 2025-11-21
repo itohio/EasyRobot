@@ -214,7 +214,7 @@ This section captures learnings about code structure, API design, code conventio
 
 2. **Internal Packages**: Use `internal/` for application-specific code
    - ✅ `cmd/spectrometer/internal/config` - spectrometer-specific config handling
-   - ✅ `cmd/spectrometer/internal/obtainer` - spectrometer device abstraction
+   - ✅ `cmd/spectrometer/internal/acquirer` - spectrometer device abstraction
    - Reason: Clear separation between reusable and application-specific code
 
 ### Proto and Type Generation
@@ -298,21 +298,29 @@ This section captures learnings about code structure, API design, code conventio
 
 ### Phase 0: CR30 Device Support & Framework ⭐ **FIRST PHASE**
 
-**Progress: 100%** ✅ (Foundation complete, CR30 obtainer complete with callback pattern, ports command added, rendering complete, measure command complete with export and button support)
+**Progress: 100%** ✅ (Foundation complete, CR30 acquirer complete with callback pattern, ports command added, rendering complete, measure command complete with export and button support, patch measurement works with any acquirer)
 
 #### Modules:
 
-- **`internal/obtainer/`** (SPEC.md, PLAN.md): **100%** ✅
-  - [x] Obtainer interface definition ✅
-    - [x] `Measure()` for PC-initiated measurements ✅
+- **`internal/acquirer/`** (SPEC.md, PLAN.md): **100%** ✅
+  - [x] Acquirer interface definition ✅
+    - [x] `Measure()` for PC-initiated measurements (destination pattern) ✅
     - [x] `Start()` / `Stop()` with callbacks for button-initiated measurements ✅
-  - [x] Device registry ✅
-  - [x] Obtainer factory ✅
-  - [x] CR30 obtainer implementation ✅
-    - [x] `Measure()` using `cr30.Device.Measure()` ✅
+    - [x] `Connect()` / `Disconnect()` for device connection management ✅
+    - [x] `Wavelengths()`, `DeviceInfo()`, `NumWavelengths()` ✅
+  - [x] Device registry (thread-safe) ✅
+  - [x] Acquirer factory with configuration support ✅
+  - [x] CR30 acquirer implementation ✅
+    - [x] `Measure()` using `cr30.Device.Measure()` with destination pattern ✅
     - [x] `Start()` running `WaitMeasurement()` in goroutine loop ✅
-    - [x] `Stop()` with graceful shutdown ✅
+    - [x] `Stop()` with graceful shutdown and timeout ✅
     - [x] Callback pattern for async measurements ✅
+    - [x] Preallocated buffers for efficient memory usage ✅
+    - [x] Thread-safe listener management ✅
+    - [x] Device info from CR30 handshake ✅
+  - [x] Integration with measure command ✅
+  - [x] Patch measurement support (works with any acquirer) ✅
+  - [x] Device-agnostic validation ✅
 
 - **`internal/render/`** (SPEC.md, PLAN.md): **100%** ✅
   - [x] Delta E calculation (CIE76) ✅
@@ -340,14 +348,31 @@ This section captures learnings about code structure, API design, code conventio
   - [x] Integration with `Start()` callback pattern for button-initiated measurements (`--button` flag) ✅
   - [ ] Patch-based measurement (`--patches=path`) (optional, can be added later)
 
+- **`internal/calibrate/`** (SPEC.md, PLAN.md): **10%** (IN PROGRESS) ⭐ **CURRENT PRIORITY**
+  - [x] Camera calibration command structure ✅
+  - [x] Image capture from camera (using source package) ✅
+  - [x] Image display (using destination package) ✅
+  - [x] Strip bounding box detection (basic threshold + contour detection) ✅
+  - [ ] Enhanced strip detection algorithm (±45 degrees max, improved accuracy)
+  - [ ] Dual window display (camera + spectrum)
+  - [ ] Bounding box interaction (click to fix, right-click to flip, color coding)
+  - [ ] Exposure controls (trackbar, label, auto checkbox)
+  - [ ] Spectrum extraction from bounding box
+  - [ ] Reusable spectrum rendering with calibration targets
+  - [ ] Config integration (load/save bounding box)
+  - [ ] Keyboard commands for spectrum (in internal/measure)
+  - [ ] Calibration target database (Hg, Ar, Ne emission lines)
+  - [ ] Wavelength calibration workflow (peak detection, matching, calibration)
+  - [ ] Quality assessment (R² calculation)
+
 - **`main.go`** (CLI Entry Point): **100%** ✅
   - [x] CLI framework setup (flag parsing) ✅
   - [x] Command routing structure ✅
   - [x] Logging setup (slog with -v=N and -vv flags) ✅
   - [x] Integration with display/source and display/destination flags ✅
-  - [x] Command handlers: cameras ✅, ports ✅, measure ✅
+  - [x] Command handlers: cameras ✅, ports ✅, measure ✅, calibrate camera ✅
   - [x] Phase 0 command handlers complete ✅
-  - [ ] Command handler implementations (calibrate, freerun - Phase 1+)
+  - [ ] Command handler implementations (calibrate enhancements, freerun - Phase 1+)
 
 ### Phase 1: Foundation & Configuration
 
@@ -488,15 +513,15 @@ Implement missing filters, program structure, config loading/outputting, CR30 su
    - [ ] Update `cmd/spectrometer/internal/config/SPEC.md` and `PLAN.md` - Mark as implemented (pending)
 
 5. **Implement CR30 Support with Rendering**: **PARTIALLY COMPLETED** (50%)
-   - [x] **`cmd/spectrometer/internal/obtainer/obtainer.go`**: Obtainer interface ✅
-     - [x] Define `Obtainer` interface ✅
+   - [x] **`cmd/spectrometer/internal/acquirer/acquirer.go`**: Acquirer interface ✅
+     - [x] Define `Acquirer` interface ✅
      - [x] `Measure()` for PC-initiated measurements ✅
      - [x] `Start()` / `Stop()` with callbacks for button-initiated measurements ✅
      - [x] Device registry ✅
-     - [x] Obtainer factory ✅
-   - [x] **`cmd/spectrometer/internal/obtainer/cr30.go`**: CR30 obtainer ✅
+     - [x] Acquirer factory ✅
+   - [x] **`cmd/spectrometer/internal/acquirer/cr30.go`**: CR30 acquirer ✅
      - [x] Wrap `x/devices/cr30` ✅
-     - [x] Implement `Obtainer` interface ✅
+     - [x] Implement `Acquirer` interface ✅
      - [x] `Measure()` using `cr30.Device.Measure()` ✅
      - [x] `Start()` running `WaitMeasurement()` in goroutine loop ✅
      - [x] `Stop()` with graceful shutdown ✅
@@ -509,14 +534,14 @@ Implement missing filters, program structure, config loading/outputting, CR30 su
      - [x] Patch comparison rendering (half reference, half measured) ✅
      - [x] Delta E calculation and display (CIE76) ✅
      - [ ] Spectrum overlay toggle (press "s" key) (pending - requires keyboard event handling integration)
-   - [ ] **`cmd/spectrometer/measure/measure.go`**: Measure command
-     - [ ] Device selection via `-device` flag
-     - [ ] CR30 device initialization (`--port`, `--baud` flags)
-     - [ ] Measurement workflow
-     - [ ] Multiple readings support (`--readings=N`)
-     - [ ] Patch-based measurement (`--patches=path`)
-     - [ ] Export functionality (CSV, JSON, Proto)
-   - [ ] Update `cmd/spectrometer/internal/obtainer/SPEC.md` and `PLAN.md` - Mark as implemented
+   - [x] **`cmd/spectrometer/measure/measure.go`**: Measure command ✅
+     - [x] Device selection via `-device` flag ✅
+     - [x] CR30 device initialization (`--port`, `--baud` flags) ✅
+     - [x] Measurement workflow ✅
+     - [x] Multiple readings support (`--readings=N`) ✅
+     - [x] Patch-based measurement (`--patches=path`) ✅
+     - [x] Export functionality (CSV, JSON, Proto) ✅
+   - [ ] Update `cmd/spectrometer/internal/acquirer/SPEC.md` and `PLAN.md` - Mark as implemented
    - [ ] Update `cmd/spectrometer/internal/render/SPEC.md` and `PLAN.md` - Mark as implemented
 
 ### Notes for Current Session
@@ -537,9 +562,9 @@ Implement missing filters, program structure, config loading/outputting, CR30 su
 5. **Unused Variables**: Removed unused `centerRow` variable ✅
 6. **Serial Port Enumeration**: Moved from `cmd/spectrometer/ports` to `x/devices/serial_*.go` for reusability ✅
 7. **Build Tags**: Fixed build tag usage - implemented `ListSerialPorts()` directly in `serial_windows.go` and `serial_linux.go` ✅
-8. **Obtainer Interface**: Refactored to use `Start()` / `Stop()` with callbacks instead of exposing `WaitMeasurement()` ✅
+8. **Acquirer Interface**: Refactored to use `Start()` / `Stop()` with callbacks instead of exposing `WaitMeasurement()` ✅
 9. **Method Names**: Fixed verbose names - `StartMeasurementListener` → `Start`, `StopMeasurementListener` → `Stop` ✅
-10. **Destination Pattern**: Fixed Obtainer interface - `Measure(ctx, dst)` now uses destination pattern (no allocation). `Start()` uses preallocated internal matrix. `Wavelengths()` can allocate (called once). ✅
+10. **Destination Pattern**: Fixed Acquirer interface - `Measure(ctx, dst)` now uses destination pattern (no allocation). `Start()` uses preallocated internal matrix. `Wavelengths()` can allocate (called once). ✅
 11. **Reusability Violations**: Fixed `DeltaE76()` - moved from `internal/render` to `x/math/colorscience` (reusable color science calculation). Fixed `clamp255()` - removed unnecessary wrapper, use `math.Clamp()` directly where needed. Fixed `DeltaE76()` implementation - now uses `vec.Vector3D.Distance()` instead of manually extracting components and doing arithmetic. ✅
 
 ### Known Issues / TODOs
@@ -547,7 +572,7 @@ Implement missing filters, program structure, config loading/outputting, CR30 su
 1. ~~**Proto Generation Required**: Config loader/saver now uses protobuf types~~ ✅ **FIXED**
 2. **Savitzky-Golay Algorithm**: Needs unit tests to verify correctness
 3. **Filter Tests**: Unit tests needed for all filters (savgol, gaussian, median)
-4. **Obtainer Tests**: Unit tests needed for obtainer framework and CR30 obtainer
+4. **Acquirer Tests**: Unit tests needed for acquirer framework and CR30 acquirer
 5. **Ports Command Tests**: Unit tests needed for ports command
 
 ---
@@ -558,7 +583,72 @@ Implement missing filters, program structure, config loading/outputting, CR30 su
 
 ### Planned Next Steps (Prioritized)
 
-1. **Phase 0 - Render Module** (IN PROGRESS): ⭐ **HIGHEST PRIORITY**
+1. **Phase 1 - Camera Calibration** (IN PROGRESS): ⭐ **HIGHEST PRIORITY** - Camera-based spectrometer calibration
+   - [x] **Task**: Basic camera calibration command structure ✅
+     - [x] Create `calibrate/camera.go` with `RunCameraCalibration()` ✅
+     - [x] Integrate with `calibrate camera` command ✅
+     - [x] Register source and destination flags ✅
+   - [x] **Task**: Basic image capture and display ✅
+     - [x] Capture frame from camera using source package ✅
+     - [x] Display frame using destination package ✅
+   - [x] **Task**: Basic strip bounding box detection ✅
+     - [x] Threshold + contour detection algorithm ✅
+     - [x] Draw bounding box on image ✅
+   - [ ] **Task**: Enhanced strip detection algorithm
+     - [ ] Support ±45 degrees max (no vertical strips)
+     - [ ] Improve detection accuracy for different lighting conditions
+     - [ ] Handle rotated strips (up to 45 degrees)
+   - [ ] **Task**: Dual window display system
+     - [ ] Main window: Camera capture with bounding box
+     - [ ] Second window: Calculated spectrum with peaks and wavelengths
+     - [ ] Frame structure with two tensors (camera + spectrum)
+   - [ ] **Task**: Exposure controls on camera window
+     - [ ] Exposure trackbar (on the right of main display)
+     - [ ] Exposure label
+     - [ ] Auto exposure checkbox (on the right of main display)
+     - [ ] Integrate with camera source exposure control
+   - [ ] **Task**: Bounding box interaction
+     - [ ] Click on window to fix bounding box
+     - [ ] Red color when not fixed, green when fixed
+     - [ ] Right-click to flip bounding box (for reversed images)
+     - [ ] Store fixed bounding box state
+   - [ ] **Task**: Config integration for bounding box
+     - [ ] Load bounding box from config if provided
+     - [ ] Save bounding box to config
+     - [ ] Support fresh config (calibrate from scratch)
+     - [ ] Support existing config (recalibration)
+   - [ ] **Task**: Spectrum extraction from bounding box
+     - [ ] Extract image region using bounding box
+     - [ ] Decode spectrum from extracted region (row averaging)
+     - [ ] Convert to SPD format
+     - [ ] Handle rotated strips (±45 degrees)
+   - [ ] **Task**: Reusable spectrum rendering (in `internal/render`)
+     - [ ] Render spectrum graph with peaks
+     - [ ] Mark calibration target wavelengths (default: Hg lines)
+     - [ ] Support different calibration targets (Hg, Ar, Ne)
+     - [ ] Make rendering reusable by different acquirers
+   - [ ] **Task**: Keyboard commands for spectrum (in `internal/measure`)
+     - [ ] "b" - show black spectrum (toggle)
+     - [ ] "B" - FIX black spectrum (store current)
+     - [ ] "r" - show reference spectrum (toggle)
+     - [ ] "R" - FIX reference spectrum (store current)
+     - [ ] "c" - show calibration spectrum (toggle)
+     - [ ] "X" - show XYZ colorimetry
+     - [ ] "L" - show LAB colorimetry
+     - [ ] "A" - start averaging
+     - [ ] Logic: if "b" or "r" toggled, show current + corresponding spectrum; otherwise apply to current
+     - [ ] Logic: if "B" or "R" pressed, store measured spectrum into corresponding slot
+   - [ ] **Task**: Config save/reload functionality
+     - [ ] Save config with bounding box and calibration data
+     - [ ] Reload config from file
+     - [ ] Command-line argument for calibration target selection
+   - [ ] **Task**: Calibration target database
+     - [ ] Built-in Hg emission lines (default)
+     - [ ] Built-in Ar emission lines
+     - [ ] Built-in Ne emission lines
+     - [ ] Support custom calibration targets
+
+2. **Phase 0 - Render Module** (COMPLETED): ✅
    - [x] **Task**: Mark as in_progress ✅
    - [x] Read `cmd/display/destination` package API ✅
    - [x] Implement Delta E calculation (CIE76 formula) ✅
@@ -571,11 +661,14 @@ Implement missing filters, program structure, config loading/outputting, CR30 su
      - [x] Implement colorimetry overlay rendering (text overlay) ✅
      - [x] Implement patch comparison rendering (half/half patch display) ✅
    - [x] Mark as completed when done, verify implementation ✅
-   - [ ] **Task**: Implement patch comparison rendering
-     - [ ] Patch loading from YAML/JSON
-     - [ ] Half reference, half measured patch display
-     - [ ] Delta E calculation (CIE76)
-     - [ ] Spectrum overlay toggle (press "s" key)
+   - [x] **Task**: Implement patch loading and patch-based measurement ✅
+     - [x] Patch loading from YAML/JSON/Proto ✅
+     - [x] Integration with measure command (`--patches` flag) ✅
+     - [x] Colorimetry calculation (XYZ, LAB, RGB) ✅
+     - [x] Delta E calculation (CIE76) ✅
+     - [x] Export patch results (CSV, JSON) ✅
+     - [ ] Display patch comparison rendering (requires display integration - Phase 1+)
+     - [ ] Spectrum overlay toggle (press "s" key) (requires keyboard event handling - Phase 1+)
 
 2. **Phase 0 - Measure Command** (COMPLETED): ✅
    - [x] **Task**: Implement measure command with CR30 support ✅
@@ -584,14 +677,105 @@ Implement missing filters, program structure, config loading/outputting, CR30 su
      - [x] Multiple readings support (`--readings=N`) ✅
      - [x] Integration with `Start()` callback pattern (`--button` flag) ✅
      - [x] Export functionality (CSV, JSON, Proto) ✅
-     - [ ] Patch-based measurement (`--patches=path`) (optional, Phase 1+)
+     - [x] Patch-based measurement (`--patches=path`) ✅
 
 3. **Config Validator** (COMPLETED): ✅
    - [x] **Task**: Implement config validator ✅
      - [x] Validation logic ✅
      - [x] Error handling and reporting ✅
 
-4. **Phase 1 - Proto Verification** (Pending):
+4. **Phase 1 - Camera Calibration** (IN PROGRESS): ⭐ **CURRENT PRIORITY** - Camera-based spectrometer calibration
+   
+   **Task Group 1: Enhanced Display and Controls** (Priority: HIGH)
+   - [ ] **Task**: Dual window display system
+     - [ ] Main window: Camera capture with bounding box (title: "Camera Calibration")
+     - [ ] Second window: Calculated spectrum with peaks and wavelengths (title: "Spectrum")
+     - [ ] Frame structure with two tensors: [0] camera capture with BB, [1] decoded spectrum
+     - [ ] Continuous frame updates (loop reading from camera)
+   - [ ] **Task**: Exposure controls on camera window
+     - [ ] Exposure trackbar (positioned on the right side of main display)
+     - [ ] Exposure label showing current value
+     - [ ] Auto exposure checkbox (positioned on the right side of main display)
+     - [ ] Integrate with camera source exposure control API
+     - [ ] Update exposure in real-time when trackbar/checkbox changes
+   
+   **Task Group 2: Bounding Box Interaction** (Priority: HIGH)
+   - [ ] **Task**: Enhanced strip detection algorithm
+     - [ ] Support ±45 degrees max (no vertical strips)
+     - [ ] Improve detection accuracy for different lighting conditions
+     - [ ] Handle rotated strips (up to 45 degrees)
+     - [ ] Filter detections by aspect ratio and orientation
+   - [ ] **Task**: Bounding box interaction and state management
+     - [ ] Click on camera window to fix bounding box (store fixed state)
+     - [ ] Red color when bounding box is not fixed (detected but not confirmed)
+     - [ ] Green color when bounding box is fixed (user confirmed)
+     - [ ] Right-click to flip bounding box horizontally (for reversed images)
+     - [ ] Store fixed bounding box coordinates and flip state
+     - [ ] Visual feedback for fixed vs unfixed state
+   
+   **Task Group 3: Config Integration** (Priority: MEDIUM)
+   - [ ] **Task**: Config loading and saving for bounding box
+     - [ ] Load bounding box from config if provided (read from `types.spectrometer.SpectrometerConfiguration`)
+     - [ ] Save bounding box to config (write to config structure)
+     - [ ] Support fresh config workflow (calibrate from scratch, create new config)
+     - [ ] Support existing config workflow (recalibration, load existing bounding box)
+     - [ ] Command-line argument for config file path (`--config=path`)
+     - [ ] Command-line argument for calibration target selection (`--target=hg|ar|ne`)
+   
+   **Task Group 4: Spectrum Extraction** (Priority: HIGH)
+   - [ ] **Task**: Extract spectrum from bounding box region
+     - [ ] Extract image region using bounding box coordinates
+     - [ ] Handle rotated bounding boxes (±45 degrees)
+     - [ ] Rotate extracted region to horizontal if needed
+     - [ ] Average rows within bounding box to get intensity vector
+     - [ ] Convert intensity vector to SPD format (wavelengths + values)
+     - [ ] Handle flipped images (apply horizontal flip if bounding box was flipped)
+   
+   **Task Group 5: Reusable Spectrum Rendering** (Priority: HIGH)
+   - [ ] **Task**: Enhanced spectrum rendering in `internal/render`
+     - [ ] Render spectrum graph with detected peaks (use `colorscience.SPD.Peaks()`)
+     - [ ] Mark calibration target wavelengths on spectrum (default: Hg lines)
+     - [ ] Support different calibration targets (Hg, Ar, Ne) - configurable
+     - [ ] Draw vertical lines at calibration target wavelengths
+     - [ ] Label calibration wavelengths on spectrum
+     - [ ] Make rendering reusable by different acquirers (camera, CR30, etc.)
+     - [ ] Render to gocv.Mat for display in second window
+   
+   **Task Group 6: Keyboard Commands** (Priority: MEDIUM)
+   - [ ] **Task**: Keyboard commands for spectrum (implement in `internal/measure`)
+     - [ ] "b" - toggle show black spectrum (display current + black overlay)
+     - [ ] "B" - FIX black spectrum (store current measured spectrum as black reference)
+     - [ ] "r" - toggle show reference spectrum (display current + reference overlay)
+     - [ ] "R" - FIX reference spectrum (store current measured spectrum as reference)
+     - [ ] "c" - toggle show calibration spectrum (display calibration target wavelengths)
+     - [ ] "X" - toggle show XYZ colorimetry overlay
+     - [ ] "L" - toggle show LAB colorimetry overlay
+     - [ ] "A" - start/stop averaging mode
+     - [ ] Logic: if "b" or "r" toggled ON, show current spectrum + corresponding spectrum overlay
+     - [ ] Logic: if "b" or "r" toggled OFF, apply corresponding spectrum to current (subtract black, normalize by reference)
+     - [ ] Logic: if "B" or "R" pressed, store current measured spectrum into corresponding slot
+     - [ ] Handle keyboard events from display window (integrate with destination event handling)
+   
+   **Task Group 7: Calibration Target Database** (Priority: MEDIUM)
+   - [ ] **Task**: Built-in calibration target database
+     - [ ] Hg (Mercury) emission lines: 405.4, 436.6, 546.1, 577.0, 579.1, 623.4 nm (default)
+     - [ ] Ar (Argon) emission lines: 415.9, 427.2, 451.1, 459.0, 514.5 nm
+     - [ ] Ne (Neon) emission lines: 540.1, 585.2, 588.2, 594.5, 603.0, 616.4 nm
+     - [ ] Support custom calibration targets (user-provided wavelength list)
+     - [ ] Load target by name or command-line argument
+   
+   **Implementation Order**:
+   1. Enhanced strip detection (±45 degrees)
+   2. Dual window display system
+   3. Bounding box interaction (click to fix, right-click to flip, color coding)
+   4. Spectrum extraction from bounding box
+   5. Reusable spectrum rendering with calibration targets
+   6. Exposure controls
+   7. Config integration
+   8. Keyboard commands
+   9. Calibration target database
+
+5. **Phase 1 - Proto Verification** (Pending):
    - [ ] Verify generated Go code compiles correctly
    - [ ] Integration testing
 
@@ -637,7 +821,7 @@ Implement missing filters, program structure, config loading/outputting, CR30 su
 
 ## Progress Summary
 
-**Overall Progress**: **50%** (Filters ✅, CLI structure ✅, Config loader/saver ✅, Cameras command ✅, Ports command ✅, Obtainer framework ✅ with Start/Stop callbacks, Render module ✅, Measure command ✅ with export and button support, Phase 0 ✅ COMPLETE, CSV Marshaller ✅ COMPLETE - Phase 9)
+**Overall Progress**: **50%** (Filters ✅, CLI structure ✅, Config loader/saver ✅, Cameras command ✅, Ports command ✅, Acquirer framework ✅ with Start/Stop callbacks, Render module ✅, Measure command ✅ with export and button support, Patch measurement ✅ works with any acquirer, Phase 0 ✅ COMPLETE, CSV Marshaller ✅ COMPLETE - Phase 9)
 
 **Next Milestone**: Phase 0 (CR30 Device Support & Framework) - ✅ **COMPLETE** (100%)
 
@@ -663,8 +847,8 @@ Implement missing filters, program structure, config loading/outputting, CR30 su
 - [ ] Read `x/marshaller/proto/marshaller.go` (reference)
 
 ### Before Implementing CR30 Support
-- ✅ Read `cmd/spectrometer/internal/obtainer/SPEC.md`
-- ✅ Read `cmd/spectrometer/internal/obtainer/PLAN.md`
+- ✅ Read `cmd/spectrometer/internal/acquirer/SPEC.md`
+- ✅ Read `cmd/spectrometer/internal/acquirer/PLAN.md`
 - ✅ Read `cmd/spectrometer/internal/render/SPEC.md`
 - ✅ Read `cmd/spectrometer/internal/render/PLAN.md`
 - [ ] Read `cmd/cr30/main.go` (CR30 device usage)

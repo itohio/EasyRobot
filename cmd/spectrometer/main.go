@@ -10,7 +10,10 @@ import (
 
 	"log/slog"
 
+	"github.com/itohio/EasyRobot/cmd/display/destination"
+	"github.com/itohio/EasyRobot/cmd/display/source"
 	"github.com/itohio/EasyRobot/cmd/spectrometer/cameras"
+	"github.com/itohio/EasyRobot/cmd/spectrometer/internal/calibrate"
 	"github.com/itohio/EasyRobot/cmd/spectrometer/measure"
 	"github.com/itohio/EasyRobot/cmd/spectrometer/ports"
 	"github.com/spf13/cobra"
@@ -123,12 +126,19 @@ func newCalibrateCmd() *cobra.Command {
 	cameraCmd := &cobra.Command{
 		Use:   "camera",
 		Short: "Calibrate camera spectrometer",
-		Long:  "Calibrate a camera spectrometer using a calibration target.",
+		Long:  "Calibrate a camera spectrometer using a calibration target. Captures image, displays it, and detects spectral strip bounding box.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// TODO: Implement in calibrate/calibrate.go
-			return fmt.Errorf("not implemented yet")
+			ctx := cmd.Context()
+			if ctx == nil {
+				ctx, _ = signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			}
+			return calibrate.RunCameraCalibration(ctx, cmd)
 		},
 	}
+
+	// Register source and destination flags for camera calibration
+	source.AddSourceFlags(cameraCmd)
+	destination.AddDestinationFlags(cameraCmd)
 
 	cmd.AddCommand(cameraCmd)
 	return cmd

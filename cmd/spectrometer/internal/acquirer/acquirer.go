@@ -1,4 +1,4 @@
-package obtainer
+package acquirer
 
 import (
 	"context"
@@ -15,15 +15,15 @@ import (
 // If the callback returns an error, measurement listening may stop.
 type MeasurementCallback func(spd colorscience.SPD, err error) error
 
-// Obtainer represents a device that can obtain spectra directly
-type Obtainer interface {
+// Acquirer represents a device that can acquire spectra directly
+type Acquirer interface {
 	// Connect establishes connection with the device
 	Connect(ctx context.Context) error
 
 	// Disconnect closes the connection
 	Disconnect() error
 
-	// Measure obtains a spectrum measurement from the device (PC-initiated).
+	// Measure acquires a spectrum measurement from the device (PC-initiated).
 	// This triggers a measurement programmatically and writes to the destination matrix.
 	// The destination matrix must be 2 rows x NumWavelengths() columns:
 	//   - Row 0: wavelengths (nm)
@@ -61,29 +61,29 @@ type DeviceInfo struct {
 	Build    string
 }
 
-// ObtainerFactory is a function that creates a new Obtainer from configuration
-type ObtainerFactory func(ctx context.Context, config map[string]interface{}) (Obtainer, error)
+// AcquirerFactory is a function that creates a new Acquirer from configuration
+type AcquirerFactory func(ctx context.Context, config map[string]interface{}) (Acquirer, error)
 
 var (
-	registry     = make(map[string]ObtainerFactory)
+	registry     = make(map[string]AcquirerFactory)
 	registryLock sync.RWMutex
 )
 
-// RegisterObtainer registers a device obtainer factory
-func RegisterObtainer(deviceType string, factory ObtainerFactory) {
+// RegisterAcquirer registers a device acquirer factory
+func RegisterAcquirer(deviceType string, factory AcquirerFactory) {
 	registryLock.Lock()
 	defer registryLock.Unlock()
 	registry[deviceType] = factory
 }
 
-// NewObtainer creates a new obtainer for the specified device type
-func NewObtainer(ctx context.Context, deviceType string, config map[string]interface{}) (Obtainer, error) {
+// NewAcquirer creates a new acquirer for the specified device type
+func NewAcquirer(ctx context.Context, deviceType string, config map[string]interface{}) (Acquirer, error) {
 	registryLock.RLock()
 	factory, ok := registry[deviceType]
 	registryLock.RUnlock()
 
 	if !ok {
-		return nil, fmt.Errorf("obtainer: unknown device type %q (available: %v)", deviceType, AvailableDevices())
+		return nil, fmt.Errorf("acquirer: unknown device type %q (available: %v)", deviceType, AvailableDevices())
 	}
 
 	return factory(ctx, config)

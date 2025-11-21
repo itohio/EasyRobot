@@ -1,4 +1,4 @@
-package obtainer
+package acquirer
 
 import (
 	"context"
@@ -20,11 +20,11 @@ const (
 )
 
 func init() {
-	RegisterObtainer("cr30", NewCR30Obtainer)
+	RegisterAcquirer("cr30", NewCR30Acquirer)
 }
 
-// CR30Obtainer wraps the CR30 device to implement the Obtainer interface
-type CR30Obtainer struct {
+// CR30Acquirer wraps the CR30 device to implement the Acquirer interface
+type CR30Acquirer struct {
 	device *cr30.Device
 	serial devices.Serial
 	info   DeviceInfo
@@ -40,11 +40,11 @@ type CR30Obtainer struct {
 	listenerMu     sync.Mutex
 }
 
-// NewCR30Obtainer creates a new CR30 obtainer from configuration
-func NewCR30Obtainer(ctx context.Context, config map[string]interface{}) (Obtainer, error) {
+// NewCR30Acquirer creates a new CR30 acquirer from configuration
+func NewCR30Acquirer(ctx context.Context, config map[string]interface{}) (Acquirer, error) {
 	port, ok := config["port"].(string)
 	if !ok || port == "" {
-		return nil, fmt.Errorf("cr30 obtainer: port required in config")
+		return nil, fmt.Errorf("cr30 acquirer: port required in config")
 	}
 
 	baud := defaultCR30Baud
@@ -66,7 +66,7 @@ func NewCR30Obtainer(ctx context.Context, config map[string]interface{}) (Obtain
 	serialConfig.BaudRate = baud
 	serial, err := devices.NewSerialWithConfig(port, serialConfig)
 	if err != nil {
-		return nil, fmt.Errorf("cr30 obtainer: failed to open serial port %q: %w", port, err)
+		return nil, fmt.Errorf("cr30 acquirer: failed to open serial port %q: %w", port, err)
 	}
 
 	// Create CR30 device
@@ -77,31 +77,31 @@ func NewCR30Obtainer(ctx context.Context, config map[string]interface{}) (Obtain
 	numWl := device.NumWavelengths()
 	listenerMatrix := mat.New(2, numWl)
 
-	// Create obtainer
-	obtainer := &CR30Obtainer{
+	// Create acquirer
+	acquirer := &CR30Acquirer{
 		device:         device,
 		serial:         serial,
 		listenerMatrix: listenerMatrix,
 	}
 
 	// Connect and get device info
-	if err := obtainer.Connect(ctx); err != nil {
+	if err := acquirer.Connect(ctx); err != nil {
 		serial.Close()
-		return nil, fmt.Errorf("cr30 obtainer: failed to connect: %w", err)
+		return nil, fmt.Errorf("cr30 acquirer: failed to connect: %w", err)
 	}
 
-	return obtainer, nil
+	return acquirer, nil
 }
 
 // Connect establishes connection with the CR30 device
-func (o *CR30Obtainer) Connect(ctx context.Context) error {
-	if err := o.device.Connect(); err != nil {
-		return fmt.Errorf("cr30 obtainer: connect failed: %w", err)
+func (a *CR30Acquirer) Connect(ctx context.Context) error {
+	if err := a.device.Connect(); err != nil {
+		return fmt.Errorf("cr30 acquirer: connect failed: %w", err)
 	}
 
 	// Get device info from handshake
-	info := o.device.DeviceInfo()
-	o.info = DeviceInfo{
+	info := a.device.DeviceInfo()
+	a.info = DeviceInfo{
 		Name:     info.Name,
 		Model:    info.Model,
 		Serial:   info.Serial,
@@ -113,39 +113,39 @@ func (o *CR30Obtainer) Connect(ctx context.Context) error {
 }
 
 // Disconnect closes the connection
-func (o *CR30Obtainer) Disconnect() error {
+func (a *CR30Acquirer) Disconnect() error {
 	// Stop listener if running
-	_ = o.Stop(context.Background())
+	_ = a.Stop(context.Background())
 
 	// Disconnect device
-	if o.device != nil {
-		if err := o.device.Disconnect(); err != nil {
+	if a.device != nil {
+		if err := a.device.Disconnect(); err != nil {
 			return err
 		}
 	}
-	if o.serial != nil {
+	if a.serial != nil {
 		// Try to close via io.Closer interface
-		if closer, ok := o.serial.(io.Closer); ok {
+		if closer, ok := a.serial.(io.Closer); ok {
 			return closer.Close()
 		}
 	}
 	return nil
 }
 
-// Measure obtains a spectrum measurement from the CR30 device (PC-initiated).
+// Measure acquires a spectrum measurement from the CR30 device (PC-initiated).
 // For averaging: use Start() for the first sample (button-initiated),
 // then use Measure() for subsequent samples (PC-initiated).
 // Writes to destination matrix (2 rows: wavelengths, values).
-func (o *CR30Obtainer) Measure(ctx context.Context, dst matTypes.Matrix) error {
+func (a *CR30Acquirer) Measure(ctx context.Context, dst matTypes.Matrix) error {
 	// Validate destination matrix size
-	if dst.Rows() != 2 || dst.Cols() != o.NumWavelengths() {
-		return fmt.Errorf("cr30 obtainer: destination matrix must be 2 rows x %d columns, got %d rows x %d columns",
-			o.NumWavelengths(), dst.Rows(), dst.Cols())
+	if dst.Rows() != 2 || dst.Cols() != a.NumWavelengths() {
+		return fmt.Errorf("cr30 acquirer: destination matrix must be 2 rows x %d columns, got %d rows x %d columns",
+			a.NumWavelengths(), dst.Rows(), dst.Cols())
 	}
 
 	// Measure (triggers measurement and reads data directly into destination)
-	if err := o.device.Measure(ctx, dst); err != nil {
-		return fmt.Errorf("cr30 obtainer: measure failed: %w", err)
+	if err := a.device.Measure(ctx, dst); err != nil {
+		return fmt.Errorf("cr30 acquirer: measure failed: %w", err)
 	}
 
 	return nil
@@ -153,24 +153,24 @@ func (o *CR30Obtainer) Measure(ctx context.Context, dst matTypes.Matrix) error {
 
 // Start starts a background goroutine that waits for button presses
 // and calls the callback when measurements are available.
-func (o *CR30Obtainer) Start(ctx context.Context, callback MeasurementCallback) error {
-	o.listenerMu.Lock()
-	defer o.listenerMu.Unlock()
+func (a *CR30Acquirer) Start(ctx context.Context, callback MeasurementCallback) error {
+	a.listenerMu.Lock()
+	defer a.listenerMu.Unlock()
 
 	// Check if listener is already running
-	if o.listenerCancel != nil {
-		return fmt.Errorf("cr30 obtainer: measurement listener already running")
+	if a.listenerCancel != nil {
+		return fmt.Errorf("cr30 acquirer: measurement listener already running")
 	}
 
 	// Create cancellable context for the listener
 	listenerCtx, cancel := context.WithCancel(ctx)
-	o.listenerCtx = listenerCtx
-	o.listenerCancel = cancel
+	a.listenerCtx = listenerCtx
+	a.listenerCancel = cancel
 
 	// Start listener goroutine
-	o.listenerWg.Add(1)
+	a.listenerWg.Add(1)
 	go func() {
-		defer o.listenerWg.Done()
+		defer a.listenerWg.Done()
 
 		for {
 			// Check if we should stop
@@ -182,12 +182,12 @@ func (o *CR30Obtainer) Start(ctx context.Context, callback MeasurementCallback) 
 			}
 
 			// Use preallocated matrix (destination pattern, reused for all measurements)
-			dst := o.listenerMatrix
+			dst := a.listenerMatrix
 
 			// Wait for button press and read measurement
 			// Use a timeout to periodically check context cancellation
 			measureCtx, cancel := context.WithTimeout(listenerCtx, 30*time.Second)
-			err := o.device.WaitMeasurement(measureCtx, dst)
+			err := a.device.WaitMeasurement(measureCtx, dst)
 			cancel()
 
 			var spd colorscience.SPD
@@ -223,22 +223,22 @@ func (o *CR30Obtainer) Start(ctx context.Context, callback MeasurementCallback) 
 }
 
 // Stop stops the background measurement listener gracefully.
-func (o *CR30Obtainer) Stop(ctx context.Context) error {
-	o.listenerMu.Lock()
-	defer o.listenerMu.Unlock()
+func (a *CR30Acquirer) Stop(ctx context.Context) error {
+	a.listenerMu.Lock()
+	defer a.listenerMu.Unlock()
 
-	if o.listenerCancel == nil {
+	if a.listenerCancel == nil {
 		// Listener not running
 		return nil
 	}
 
 	// Cancel listener context
-	o.listenerCancel()
+	a.listenerCancel()
 
 	// Wait for goroutine to finish (with timeout)
 	done := make(chan struct{})
 	go func() {
-		o.listenerWg.Wait()
+		a.listenerWg.Wait()
 		close(done)
 	}()
 
@@ -248,12 +248,12 @@ func (o *CR30Obtainer) Stop(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-time.After(5 * time.Second):
-		return fmt.Errorf("cr30 obtainer: timeout waiting for listener to stop")
+		return fmt.Errorf("cr30 acquirer: timeout waiting for listener to stop")
 	}
 
 	// Reset listener state
-	o.listenerCancel = nil
-	o.listenerCtx = nil
+	a.listenerCancel = nil
+	a.listenerCtx = nil
 
 	return nil
 }
@@ -261,18 +261,18 @@ func (o *CR30Obtainer) Stop(ctx context.Context) error {
 // Wavelengths returns the wavelength vector for CR30 device.
 // The caller should preallocate the destination vector and reuse it.
 // For convenience, this method allocates and returns a new vector.
-func (o *CR30Obtainer) Wavelengths() vec.Vector {
-	wl := vec.New(o.NumWavelengths())
-	o.device.Wavelengths(wl)
+func (a *CR30Acquirer) Wavelengths() vec.Vector {
+	wl := vec.New(a.NumWavelengths())
+	a.device.Wavelengths(wl)
 	return wl
 }
 
 // DeviceInfo returns device identification and version information
-func (o *CR30Obtainer) DeviceInfo() DeviceInfo {
-	return o.info
+func (a *CR30Acquirer) DeviceInfo() DeviceInfo {
+	return a.info
 }
 
 // NumWavelengths returns the number of wavelengths in the CR30 spectrum (31)
-func (o *CR30Obtainer) NumWavelengths() int {
-	return o.device.NumWavelengths()
+func (a *CR30Acquirer) NumWavelengths() int {
+	return a.device.NumWavelengths()
 }

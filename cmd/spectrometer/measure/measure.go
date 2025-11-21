@@ -10,11 +10,13 @@ import (
 
 	"log/slog"
 
-	"github.com/itohio/EasyRobot/cmd/spectrometer/internal/obtainer"
+	"github.com/itohio/EasyRobot/cmd/spectrometer/internal/acquirer"
+	"github.com/itohio/EasyRobot/cmd/spectrometer/internal/render"
 	"github.com/itohio/EasyRobot/types/math"
 	"github.com/itohio/EasyRobot/types/spectrometer"
 	jsonMarshaller "github.com/itohio/EasyRobot/x/marshaller/json"
 	marshallerProto "github.com/itohio/EasyRobot/x/marshaller/proto"
+	mathx "github.com/itohio/EasyRobot/x/math"
 	"github.com/itohio/EasyRobot/x/math/colorscience"
 	"github.com/itohio/EasyRobot/x/math/mat"
 	"github.com/itohio/EasyRobot/x/math/vec"
@@ -33,14 +35,17 @@ func Run(ctx context.Context, cmd *cobra.Command) error {
 	patches, _ := cmd.Flags().GetString("patches")
 	buttonMode, _ := cmd.Flags().GetBool("button")
 
-	// Validate device type
-	if device != "cr30" {
-		return fmt.Errorf("unsupported device type: %q (only 'cr30' is supported)", device)
+	// Validate device type (check if available)
+	availableDevices := acquirer.AvailableDevices()
+	deviceSupported := false
+	for _, d := range availableDevices {
+		if d == device {
+			deviceSupported = true
+			break
+		}
 	}
-
-	// Validate port
-	if port == "" {
-		return fmt.Errorf("--port is required for CR30 device")
+	if !deviceSupported {
+		return fmt.Errorf("unsupported device type: %q (available: %v)", device, availableDevices)
 	}
 
 	// Validate readings
@@ -48,26 +53,26 @@ func Run(ctx context.Context, cmd *cobra.Command) error {
 		return fmt.Errorf("--readings must be >= 1, got %d", readings)
 	}
 
-	// Create obtainer configuration
+	// Create acquirer configuration
 	config := map[string]interface{}{
 		"port": port,
 		"baud": baud,
 	}
 
-	// Create obtainer
-	obt, err := obtainer.NewObtainer(ctx, device, config)
+	// Create acquirer
+	acq, err := acquirer.NewAcquirer(ctx, device, config)
 	if err != nil {
-		return fmt.Errorf("failed to create obtainer: %w", err)
+		return fmt.Errorf("failed to create acquirer: %w", err)
 	}
-	defer obt.Disconnect()
+	defer acq.Disconnect()
 
 	// Connect to device
-	if err := obt.Connect(ctx); err != nil {
+	if err := acq.Connect(ctx); err != nil {
 		return fmt.Errorf("failed to connect to device: %w", err)
 	}
 
 	// Get device info
-	info := obt.DeviceInfo()
+	info := acq.DeviceInfo()
 	slog.Info("Connected to device",
 		"name", info.Name,
 		"model", info.Model,
@@ -75,23 +80,28 @@ func Run(ctx context.Context, cmd *cobra.Command) error {
 		"firmware", info.Firmware,
 	)
 
-	// Perform measurement
+	// Handle patch-based measurement if patches flag is provided
+	if patches != "" {
+		return measurePatches(ctx, acq, patches, readings, buttonMode, output)
+	}
+
+	// Perform single measurement
 	var spd colorscience.SPD
 	if buttonMode {
 		// Button-initiated measurement using Start() callback pattern
-		spd, err = measureWithButton(ctx, obt, readings)
+		spd, err = measureWithButton(ctx, acq, readings)
 		if err != nil {
 			return fmt.Errorf("button-initiated measurement failed: %w", err)
 		}
 	} else if readings == 1 {
 		// Single PC-initiated measurement
-		spd, err = measureSingle(ctx, obt)
+		spd, err = measureSingle(ctx, acq)
 		if err != nil {
 			return fmt.Errorf("single measurement failed: %w", err)
 		}
 	} else {
 		// Averaged PC-initiated measurement
-		spd, err = measureAveraged(ctx, obt, readings)
+		spd, err = measureAveraged(ctx, acq, readings)
 		if err != nil {
 			return fmt.Errorf("averaged measurement failed: %w", err)
 		}
@@ -108,18 +118,15 @@ func Run(ctx context.Context, cmd *cobra.Command) error {
 		printMeasurementSummary(spd)
 	}
 
-	// Note: patches flag is not yet used, but kept for future implementation
-	_ = patches
-
 	return nil
 }
 
 // measureSingle performs a single measurement
-func measureSingle(ctx context.Context, obt obtainer.Obtainer) (colorscience.SPD, error) {
-	numWl := obt.NumWavelengths()
+func measureSingle(ctx context.Context, acq acquirer.Acquirer) (colorscience.SPD, error) {
+	numWl := acq.NumWavelengths()
 	dst := mat.New(2, numWl)
 
-	if err := obt.Measure(ctx, dst); err != nil {
+	if err := acq.Measure(ctx, dst); err != nil {
 		return colorscience.SPD{}, fmt.Errorf("measure failed: %w", err)
 	}
 
@@ -133,12 +140,12 @@ func measureSingle(ctx context.Context, obt obtainer.Obtainer) (colorscience.SPD
 }
 
 // measureWithButton performs button-initiated measurements using Start() callback pattern
-func measureWithButton(ctx context.Context, obt obtainer.Obtainer, numReadings int) (colorscience.SPD, error) {
+func measureWithButton(ctx context.Context, acq acquirer.Acquirer, numReadings int) (colorscience.SPD, error) {
 	if numReadings < 1 {
 		numReadings = 1
 	}
 
-	numWl := obt.NumWavelengths()
+	numWl := acq.NumWavelengths()
 	readings := make([]colorscience.SPD, 0, numReadings)
 	readingsChan := make(chan colorscience.SPD, numReadings)
 	errChan := make(chan error, 1)
@@ -169,8 +176,8 @@ func measureWithButton(ctx context.Context, obt obtainer.Obtainer, numReadings i
 	}
 
 	// Start listener
-	slog.Info("Waiting for button-initiated measurements", "count", numReadings, "press device button to measure")
-	if err := obt.Start(ctx, callback); err != nil {
+	slog.Info("Waiting for button-initiated measurements", "count", numReadings, "instruction", "press device button to measure")
+	if err := acq.Start(ctx, callback); err != nil {
 		return colorscience.SPD{}, fmt.Errorf("failed to start measurement listener: %w", err)
 	}
 
@@ -180,19 +187,19 @@ func measureWithButton(ctx context.Context, obt obtainer.Obtainer, numReadings i
 		case spd := <-readingsChan:
 			readings = append(readings, spd)
 		case err := <-errChan:
-			_ = obt.Stop(ctx)
+			_ = acq.Stop(ctx)
 			if err.Error() == "done" {
 				break // Done collecting
 			}
 			return colorscience.SPD{}, err
 		case <-ctx.Done():
-			_ = obt.Stop(ctx)
+			_ = acq.Stop(ctx)
 			return colorscience.SPD{}, ctx.Err()
 		}
 	}
 
 	// Stop listener
-	if err := obt.Stop(ctx); err != nil {
+	if err := acq.Stop(ctx); err != nil {
 		return colorscience.SPD{}, fmt.Errorf("failed to stop measurement listener: %w", err)
 	}
 
@@ -221,8 +228,8 @@ func measureWithButton(ctx context.Context, obt obtainer.Obtainer, numReadings i
 }
 
 // measureAveraged performs multiple measurements and averages them
-func measureAveraged(ctx context.Context, obt obtainer.Obtainer, numReadings int) (colorscience.SPD, error) {
-	numWl := obt.NumWavelengths()
+func measureAveraged(ctx context.Context, acq acquirer.Acquirer, numReadings int) (colorscience.SPD, error) {
+	numWl := acq.NumWavelengths()
 
 	// Preallocate matrices for all readings
 	readings := make([]mat.Matrix, numReadings)
@@ -233,7 +240,7 @@ func measureAveraged(ctx context.Context, obt obtainer.Obtainer, numReadings int
 	// Perform all measurements
 	slog.Info("Performing measurements", "count", numReadings)
 	for i := 0; i < numReadings; i++ {
-		if err := obt.Measure(ctx, readings[i]); err != nil {
+		if err := acq.Measure(ctx, readings[i]); err != nil {
 			return colorscience.SPD{}, fmt.Errorf("measurement %d/%d failed: %w", i+1, numReadings, err)
 		}
 		slog.Debug("Measurement completed", "index", i+1, "total", numReadings)
@@ -428,4 +435,213 @@ func printMeasurementSummary(spd colorscience.SPD) {
 	if wavelengths.Len() > 5 {
 		fmt.Printf("  ... (%d more points)\n", wavelengths.Len()-5)
 	}
+}
+
+// measurePatches performs patch-based measurements.
+// Loads patches from file, measures each patch, calculates colorimetry and Delta E.
+// Works with any acquirer that implements the Acquirer interface.
+func measurePatches(ctx context.Context, acq acquirer.Acquirer, patchesPath string, readings int, buttonMode bool, output string) error {
+	// Load patches
+	patches, err := LoadPatches(ctx, patchesPath)
+	if err != nil {
+		return fmt.Errorf("failed to load patches: %w", err)
+	}
+
+	if len(patches.GetPatches()) == 0 {
+		return fmt.Errorf("no patches found in file")
+	}
+
+	slog.Info("Loaded patches", "count", len(patches.GetPatches()))
+
+	// Default white point (D65)
+	whitePoint := colorscience.WhitePointD65_10
+
+	// Measure each patch
+	results := make([]render.Patch, 0, len(patches.GetPatches()))
+	for i, protoPatch := range patches.GetPatches() {
+		slog.Info("Measuring patch", "index", i+1, "total", len(patches.GetPatches()), "name", protoPatch.GetName())
+
+		// Convert proto patch to render patch
+		refPatch, err := ConvertProtoPatchToRenderPatch(protoPatch)
+		if err != nil {
+			return fmt.Errorf("failed to convert patch %q: %w", protoPatch.GetName(), err)
+		}
+
+		// Measure spectrum
+		var measuredSPD colorscience.SPD
+		if buttonMode {
+			measuredSPD, err = measureWithButton(ctx, acq, readings)
+			if err != nil {
+				return fmt.Errorf("button-initiated measurement failed for patch %q: %w", protoPatch.GetName(), err)
+			}
+		} else if readings == 1 {
+			measuredSPD, err = measureSingle(ctx, acq)
+			if err != nil {
+				return fmt.Errorf("single measurement failed for patch %q: %w", protoPatch.GetName(), err)
+			}
+		} else {
+			measuredSPD, err = measureAveraged(ctx, acq, readings)
+			if err != nil {
+				return fmt.Errorf("averaged measurement failed for patch %q: %w", protoPatch.GetName(), err)
+			}
+		}
+
+		// Convert measured SPD to render patch with colorimetry
+		measuredPatch, err := ConvertMeasuredSPDToRenderPatch(measuredSPD, refPatch, whitePoint)
+		if err != nil {
+			return fmt.Errorf("failed to compute colorimetry for patch %q: %w", protoPatch.GetName(), err)
+		}
+
+		results = append(results, measuredPatch)
+
+		// Print patch result
+		printPatchResult(measuredPatch)
+	}
+
+	// Export results if output specified
+	if output != "" {
+		if err := exportPatchResults(ctx, results, output); err != nil {
+			return fmt.Errorf("export failed: %w", err)
+		}
+		slog.Info("Patch results exported", "path", output, "count", len(results))
+	}
+
+	return nil
+}
+
+// printPatchResult prints a summary of patch measurement result
+func printPatchResult(patch render.Patch) {
+	fmt.Printf("\n=== Patch: %s ===\n", patch.Name)
+	fmt.Printf("Delta E: %.2f\n", patch.DeltaE)
+
+	// Reference values
+	refX, refY, refZ := vec.Vector3D(patch.ReferenceXYZ).XYZ()
+	fmt.Printf("Reference XYZ: %.2f %.2f %.2f\n", refX, refY, refZ)
+	refL, refA, refB := vec.Vector3D(patch.Reference).XYZ()
+	fmt.Printf("Reference LAB: %.2f %.2f %.2f\n", refL, refA, refB)
+
+	// Measured values
+	measX, measY, measZ := vec.Vector3D(patch.MeasuredXYZ).XYZ()
+	fmt.Printf("Measured XYZ: %.2f %.2f %.2f\n", measX, measY, measZ)
+	measL, measA, measB := vec.Vector3D(patch.Measured).XYZ()
+	fmt.Printf("Measured LAB: %.2f %.2f %.2f\n", measL, measA, measB)
+
+	// RGB
+	R, G, B := vec.Vector3D(patch.RGB).XYZ()
+	R = mathx.Clamp(R, 0, 255)
+	G = mathx.Clamp(G, 0, 255)
+	B = mathx.Clamp(B, 0, 255)
+	fmt.Printf("RGB: #%02X%02X%02X\n", uint8(R), uint8(G), uint8(B))
+}
+
+// exportPatchResults exports patch measurement results to a file
+func exportPatchResults(ctx context.Context, results []render.Patch, path string) error {
+	format := detectFormat(path)
+	slog.Debug("Exporting patch results", "path", path, "format", format, "count", len(results))
+
+	file, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %w", err)
+	}
+	defer file.Close()
+
+	switch format {
+	case "csv":
+		return exportPatchResultsCSV(ctx, file, results)
+	case "json":
+		return exportPatchResultsJSON(ctx, file, results)
+	case "pb", "proto":
+		return exportPatchResultsProto(ctx, file, results)
+	default:
+		return fmt.Errorf("unsupported export format: %s (supported: csv, json, pb)", format)
+	}
+}
+
+// exportPatchResultsCSV exports patch results to CSV format
+func exportPatchResultsCSV(ctx context.Context, w *os.File, results []render.Patch) error {
+	writer := csv.NewWriter(w)
+	defer writer.Flush()
+
+	// Write header
+	header := []string{"name", "delta_e", "ref_xyz_x", "ref_xyz_y", "ref_xyz_z", "ref_lab_l", "ref_lab_a", "ref_lab_b", "meas_xyz_x", "meas_xyz_y", "meas_xyz_z", "meas_lab_l", "meas_lab_a", "meas_lab_b", "rgb_r", "rgb_g", "rgb_b"}
+	if err := writer.Write(header); err != nil {
+		return fmt.Errorf("failed to write CSV header: %w", err)
+	}
+
+	// Write data rows
+	for _, patch := range results {
+		refX, refY, refZ := vec.Vector3D(patch.ReferenceXYZ).XYZ()
+		refL, refA, refB := vec.Vector3D(patch.Reference).XYZ()
+		measX, measY, measZ := vec.Vector3D(patch.MeasuredXYZ).XYZ()
+		measL, measA, measB := vec.Vector3D(patch.Measured).XYZ()
+		R, G, B := vec.Vector3D(patch.RGB).XYZ()
+		R = mathx.Clamp(R, 0, 255)
+		G = mathx.Clamp(G, 0, 255)
+		B = mathx.Clamp(B, 0, 255)
+
+		row := []string{
+			patch.Name,
+			fmt.Sprintf("%.4f", patch.DeltaE),
+			fmt.Sprintf("%.6f", refX), fmt.Sprintf("%.6f", refY), fmt.Sprintf("%.6f", refZ),
+			fmt.Sprintf("%.6f", refL), fmt.Sprintf("%.6f", refA), fmt.Sprintf("%.6f", refB),
+			fmt.Sprintf("%.6f", measX), fmt.Sprintf("%.6f", measY), fmt.Sprintf("%.6f", measZ),
+			fmt.Sprintf("%.6f", measL), fmt.Sprintf("%.6f", measA), fmt.Sprintf("%.6f", measB),
+			fmt.Sprintf("%.0f", R), fmt.Sprintf("%.0f", G), fmt.Sprintf("%.0f", B),
+		}
+		if err := writer.Write(row); err != nil {
+			return fmt.Errorf("failed to write CSV row: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// exportPatchResultsJSON exports patch results to JSON format
+func exportPatchResultsJSON(ctx context.Context, w *os.File, results []render.Patch) error {
+	// Create a simple JSON structure for patch results
+	type PatchResult struct {
+		Name         string    `json:"name"`
+		DeltaE       float32   `json:"delta_e"`
+		ReferenceXYZ []float32 `json:"reference_xyz"`
+		ReferenceLAB []float32 `json:"reference_lab"`
+		MeasuredXYZ  []float32 `json:"measured_xyz"`
+		MeasuredLAB  []float32 `json:"measured_lab"`
+		RGB          []float32 `json:"rgb"`
+	}
+
+	patchResults := make([]PatchResult, len(results))
+	for i, patch := range results {
+		refX, refY, refZ := vec.Vector3D(patch.ReferenceXYZ).XYZ()
+		refL, refA, refB := vec.Vector3D(patch.Reference).XYZ()
+		measX, measY, measZ := vec.Vector3D(patch.MeasuredXYZ).XYZ()
+		measL, measA, measB := vec.Vector3D(patch.Measured).XYZ()
+		R, G, B := vec.Vector3D(patch.RGB).XYZ()
+		R = mathx.Clamp(R, 0, 255)
+		G = mathx.Clamp(G, 0, 255)
+		B = mathx.Clamp(B, 0, 255)
+
+		patchResults[i] = PatchResult{
+			Name:         patch.Name,
+			DeltaE:       patch.DeltaE,
+			ReferenceXYZ: []float32{refX, refY, refZ},
+			ReferenceLAB: []float32{refL, refA, refB},
+			MeasuredXYZ:  []float32{measX, measY, measZ},
+			MeasuredLAB:  []float32{measL, measA, measB},
+			RGB:          []float32{R, G, B},
+		}
+	}
+
+	marshaller := jsonMarshaller.NewMarshaller()
+	if err := marshaller.Marshal(w, patchResults); err != nil {
+		return fmt.Errorf("failed to marshal JSON: %w", err)
+	}
+
+	return nil
+}
+
+// exportPatchResultsProto exports patch results to protobuf format
+func exportPatchResultsProto(ctx context.Context, w *os.File, results []render.Patch) error {
+	// For proto export, we could create a new ColorPatches with measured values
+	// For now, just export as JSON (proto export can be added later if needed)
+	return exportPatchResultsJSON(ctx, w, results)
 }
