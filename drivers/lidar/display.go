@@ -24,7 +24,9 @@ type DisplaySetup struct {
 }
 
 // SetupDisplay sets up the display if enabled in config.
-func SetupDisplay(ctx context.Context, cfg *Config) (*DisplaySetup, error) {
+// Follows the gocv marshaller pattern for display setup.
+// The cancelFunc is called when ESC is pressed to cancel the parent context.
+func SetupDisplay(ctx context.Context, cfg *Config, cancelFunc context.CancelFunc) (*DisplaySetup, error) {
 	if !cfg.Display {
 		return nil, nil
 	}
@@ -36,15 +38,30 @@ func SetupDisplay(ctx context.Context, cfg *Config) (*DisplaySetup, error) {
 
 	winW, winH := cfg.WindowSize()
 
+	// Create marshaller with display options following gocv pattern
+	// Pass context for cancellation, key handler for ESC, and cancel function
 	marshaller := gocv.NewMarshaller(
 		gocv.WithDisplay(ctx),
 		gocv.WithTitle("LiDAR Scan Visualization (Press ESC to exit)"),
 		gocv.WithWindowSize(winW, winH),
+		gocv.WithOnKey(func(event types.KeyEvent) bool {
+			// ESC key (27) cancels parent context and stops event loop
+			if event.Key == types.KeyEscape {
+				if cancelFunc != nil {
+					cancelFunc()
+				}
+				return false // Stop event loop, marshaller will handle cleanup
+			}
+			return true // Continue processing
+		}),
+		gocv.WithCancel(cancelFunc),
 	)
 
+	// Start marshaller in goroutine (nil writer = side-effect operation, display only)
 	go func() {
 		if err := marshaller.Marshal(nil, stream); err != nil {
 			// Error already logged by marshaller
+			// Context cancellation or window close will cause normal exit
 		}
 	}()
 
@@ -91,4 +108,3 @@ func (d *DisplaySetup) Close() {
 		d.Stream.Close()
 	}
 }
-

@@ -27,7 +27,6 @@ import (
 	"math"
 
 	"github.com/itohio/EasyRobot/x/marshaller/types"
-	tensorgocv "github.com/itohio/EasyRobot/x/math/tensor/gocv"
 	cv "gocv.io/x/gocv"
 )
 
@@ -192,43 +191,29 @@ func main() {
 		"scale_factor", *scaleFactor,
 	)
 
-	// Setup display destination (reusing cmd/display/destination)
-	slog.Info("Setting up display destination")
-	displayDest := destination.NewDisplay()
-	if err := displayDest.Start(ctx); err != nil {
-		slog.Error("Failed to start display destination", "err", err)
+	// Setup display using gocv marshaller pattern
+	displayCfg := &Config{
+		Display:      true,
+		ImageWidth:   *imageWidth,
+		ImageHeight:  *imageHeight,
+		ScaleFactor:  *scaleFactor,
+		WindowWidth:  0, // Use image size
+		WindowHeight: 0,
+	}
+	displaySetup, err := SetupDisplay(ctx, displayCfg, cancel)
+	if err != nil {
+		slog.Error("Failed to setup display", "err", err)
+		os.Exit(1)
+	}
+	if displaySetup == nil {
+		slog.Error("Display setup returned nil")
 		os.Exit(1)
 	}
 	defer func() {
-		slog.Info("Closing display destination")
-		displayDest.Close()
+		slog.Info("Closing display setup")
+		displaySetup.Close()
 	}()
-	slog.Info("Display destination started successfully")
-
-	// Preallocate image tensor for visualization
-	slog.Info("Creating display tensor", "width", *imageWidth, "height", *imageHeight, "channels", 3)
-	displayTensor, err := tensorgocv.NewImage(*imageHeight, *imageWidth, 3)
-	if err != nil {
-		slog.Error("Failed to create display tensor", "err", err)
-		os.Exit(1)
-	}
-	defer func() {
-		slog.Info("Releasing display tensor")
-		displayTensor.Release()
-	}()
-
-	accessor, ok := displayTensor.(tensorgocv.Accessor)
-	if !ok {
-		slog.Error("Display tensor does not implement Accessor interface")
-		os.Exit(1)
-	}
-
-	displayMat, err := accessor.MatRef()
-	if err != nil {
-		slog.Error("Failed to get Mat reference from tensor", "err", err)
-		os.Exit(1)
-	}
-	slog.Info("Display tensor and Mat reference created successfully")
+	slog.Info("Display setup completed successfully")
 
 	// Register callback to publish readings and display
 	readingCount := 0
@@ -270,15 +255,22 @@ func main() {
 			}
 		}
 
-		// Draw visualization and send to display destination
-		drawLIDARReading(displayMat, reading, *imageWidth, *imageHeight, *scaleFactor)
+		// Draw visualization and send to display stream
+		drawLIDARReading(displaySetup.Mat, reading, displaySetup.ImageWidth, displaySetup.ImageHeight, displaySetup.ScaleFactor)
 		frame := types.Frame{
-			Tensors:   []types.Tensor{displayTensor},
+			Tensors:   []types.Tensor{displaySetup.Tensor},
 			Index:     readingCount,
 			Timestamp: time.Now().UnixNano(),
 		}
-		if err := displayDest.AddFrame(frame); err != nil {
-			slog.Error("Failed to add frame to display", "err", err, "frame_index", readingCount)
+		select {
+		case displaySetup.FrameChan <- frame:
+			// Frame sent successfully
+		case <-ctx.Done():
+			// Context cancelled, stop processing
+			return
+		default:
+			// Channel full, skip this frame to avoid blocking
+			slog.Warn("Display frame channel full, skipping frame", "frame_index", readingCount)
 		}
 	})
 
