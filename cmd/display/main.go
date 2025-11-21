@@ -32,6 +32,15 @@ func main() {
 		return
 	}
 
+	// Handle list-cameras flag - list cameras and exit (don't start streaming)
+	if source.IsListCamerasFlagSet() {
+		if err := source.ListCameras(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error listing cameras: %v\n", err)
+			os.Exit(1)
+		}
+		return // Exit after listing cameras
+	}
+
 	// Create source from flags
 	slog.Info("Creating source from flags")
 	src, err := source.NewFromFlags()

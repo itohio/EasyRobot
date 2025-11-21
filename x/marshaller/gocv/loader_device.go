@@ -3,6 +3,8 @@ package gocv
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"strings"
 	"time"
 
 	cv "gocv.io/x/gocv"
@@ -124,13 +126,81 @@ func (l *videoDeviceLoader) CameraController() types.CameraController {
 	return &cameraController{capture: l.capture}
 }
 
+// fourccCode creates a FOURCC code from four characters.
+// FOURCC is a 32-bit integer where each byte represents a character.
+func fourccCode(c1, c2, c3, c4 byte) int {
+	return int(c1) | (int(c2) << 8) | (int(c3) << 16) | (int(c4) << 24)
+}
+
+// pixelFormatToFOURCC converts a pixel format string to a FOURCC code.
+// Supports common formats like: mjpeg, yuyv, yuv2, rgb24, bgr24, etc.
+// Returns the FOURCC code as an integer that can be used with VideoCaptureFOURCC.
+func pixelFormatToFOURCC(format string) (int, error) {
+	format = strings.ToUpper(strings.TrimSpace(format))
+	
+	// Handle common pixel format aliases
+	switch format {
+	case "MJPEG", "MJPG", "JPEG":
+		return fourccCode('M', 'J', 'P', 'G'), nil
+	case "YUYV", "YUY2":
+		return fourccCode('Y', 'U', 'Y', 'V'), nil
+	case "YUV2", "UYVY":
+		return fourccCode('U', 'Y', 'V', 'Y'), nil
+	case "RGB24", "RGB3":
+		return fourccCode('R', 'G', 'B', '3'), nil
+	case "BGR24", "BGR3":
+		return fourccCode('B', 'G', 'R', '3'), nil
+	case "NV12":
+		return fourccCode('N', 'V', '1', '2'), nil
+	case "NV21":
+		return fourccCode('N', 'V', '2', '1'), nil
+	case "I420", "YV12":
+		return fourccCode('I', '4', '2', '0'), nil
+	case "H264":
+		return fourccCode('H', '2', '6', '4'), nil
+	case "H265", "HEVC":
+		return fourccCode('H', 'E', 'V', 'C'), nil
+	default:
+		// If format is exactly 4 characters, treat as FOURCC code directly
+		if len(format) == 4 {
+			return fourccCode(
+				byte(format[0]),
+				byte(format[1]),
+				byte(format[2]),
+				byte(format[3]),
+			), nil
+		}
+		return 0, fmt.Errorf("unknown pixel format: %s (supported: mjpeg, yuyv, yuv2, rgb24, bgr24, nv12, nv21, i420, h264, h265, or 4-char FOURCC)", format)
+	}
+}
+
 func newVideoDeviceLoader(spec deviceSpec, cfg config) (sourceStream, error) {
 	cap, err := cv.OpenVideoCapture(spec.ID)
 	if err != nil {
 		return nil, fmt.Errorf("gocv: open video device %d: %w", spec.ID, err)
 	}
 
-	// Configure capture properties
+	// Set pixel format FIRST (if specified) - some backends require format before resolution
+	if spec.PixelFormat != "" {
+		fourcc, err := pixelFormatToFOURCC(spec.PixelFormat)
+		if err != nil {
+			slog.Warn("Invalid pixel format, ignoring", "device_id", spec.ID, "format", spec.PixelFormat, "err", err)
+		} else {
+			// Set pixel format using FOURCC code
+			// This should be set before width/height for best compatibility
+			cap.Set(cv.VideoCaptureFOURCC, float64(fourcc))
+			// Verify the format was set by reading it back
+			actualFourcc := int(cap.Get(cv.VideoCaptureFOURCC))
+			if actualFourcc == fourcc {
+				slog.Info("Pixel format set successfully", "device_id", spec.ID, "format", spec.PixelFormat, "fourcc", fourcc)
+			} else {
+				slog.Warn("Pixel format may not have been set correctly", 
+					"device_id", spec.ID, "format", spec.PixelFormat, "requested_fourcc", fourcc, "actual_fourcc", actualFourcc)
+			}
+		}
+	}
+
+	// Configure capture properties (resolution and frame rate)
 	if spec.Width > 0 {
 		cap.Set(cv.VideoCaptureFrameWidth, float64(spec.Width))
 	}
@@ -140,10 +210,6 @@ func newVideoDeviceLoader(spec deviceSpec, cfg config) (sourceStream, error) {
 	if spec.FrameRate > 0 {
 		cap.Set(cv.VideoCaptureFPS, float64(spec.FrameRate))
 	}
-
-	// Note: GoCV doesn't directly expose pixel format setting via VideoCapture
-	// The pixel format is typically set through the resolution/frame rate configuration
-	// or through lower-level V4L2 APIs if needed
 
 	return &videoDeviceLoader{
 		spec:    spec,

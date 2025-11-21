@@ -104,6 +104,22 @@ func (d *displayDestination) Start(ctx context.Context) error {
 		return false
 	}
 
+	// Key handler - ESC key is treated as a regular keyboard event (not special)
+	// Users can decide what to do with ESC by setting their own handler.
+	// This is a convenience handler for cmd/display that cancels on ESC.
+	// To customize ESC behavior, users can create their own DisplaySink with WithOnKey().
+	onKey := func(event types.KeyEvent) bool {
+		if event.Key == 27 { // ESC key
+			slog.Info("ESC key pressed, cancelling context")
+			if cancelFunc != nil {
+				cancelFunc()
+			}
+			return false // Stop event processing
+		}
+		// Other keys are ignored by default - return true to continue processing
+		return true
+	}
+
 	displaySink, err := gocv.NewDisplaySinkFromOptions(
 		d.ctx,
 		title,
@@ -111,6 +127,7 @@ func (d *displayDestination) Start(ctx context.Context) error {
 		height,
 		gocv.WithCancel(cancelFunc), // Cancel function called if callback returns true
 		gocv.WithOnClose(onClose),   // Callback decides when to terminate
+		gocv.WithOnKey(onKey),       // Key handler - ESC cancels context, other keys ignored
 		types.WithRelease(),         // Release tensors after displaying
 	)
 	if err != nil {

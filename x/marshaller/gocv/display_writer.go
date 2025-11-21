@@ -378,6 +378,23 @@ func handleShowImage(cmd GUICommand) error {
 
 	if !winInfo.window.IsOpen() {
 		cmd.Image.Close() // Close mat if window is closed
+		// Window was closed, trigger close callback if available
+		windowsMapMu.Lock()
+		remainingWindows := len(windowsMap) - 1
+		shouldCancel := false
+		if winInfo.onClose != nil {
+			shouldCancel = winInfo.onClose(winInfo.window, remainingWindows)
+		}
+		// Remove from map
+		delete(windowsMap, cmd.WindowID)
+		windowsMapMu.Unlock()
+		// Cancel context if callback indicated we should terminate
+		if shouldCancel && winInfo.cancelFunc != nil {
+			slog.Info("Window closed during frame write, cancelling context",
+				"window_id", cmd.WindowID,
+				"remaining_windows", remainingWindows)
+			winInfo.cancelFunc()
+		}
 		return fmt.Errorf("window is closed: %s", cmd.WindowID)
 	}
 
@@ -467,6 +484,10 @@ func processWindowEvents() {
 					}
 					if !winInfo.keyHandler(keyEvent) {
 						// Handler returned false, stop
+						// Cancel parent context if available, then event loop
+						if winInfo.cancelFunc != nil {
+							winInfo.cancelFunc()
+						}
 						windowsMapMu.RUnlock()
 						if eventLoopCancel != nil {
 							eventLoopCancel()
@@ -478,21 +499,20 @@ func processWindowEvents() {
 				if winInfo.onKey != nil {
 					if !winInfo.onKey(key) {
 						// Handler returned false, stop
+						// Cancel parent context if available, then event loop
+						if winInfo.cancelFunc != nil {
+							winInfo.cancelFunc()
+						}
 						windowsMapMu.RUnlock()
 						if eventLoopCancel != nil {
 							eventLoopCancel()
 						}
 						return
 					}
-				} else if key == 27 {
-					// ESC key - default behavior: stop all
-					slog.Info("ESC key pressed, stopping all displays")
-					windowsMapMu.RUnlock()
-					if eventLoopCancel != nil {
-						eventLoopCancel()
-					}
-					return
 				}
+				// Note: ESC key (27) is now treated as a regular keyboard event.
+				// If no key handler is set, ESC will be ignored (no default behavior).
+				// Users should set a key handler via WithOnKey() if they want to handle ESC.
 			}
 		}
 		windowsMapMu.RUnlock()
@@ -611,6 +631,16 @@ func (dw *displayWriter) Write(frame types.Frame) error {
 	case <-time.After(2 * time.Second):
 		return fmt.Errorf("window not ready")
 	}
+
+	// Check if window still exists and is open before sending frame
+	windowsMapMu.RLock()
+	winInfo, exists := windowsMap[dw.windowID]
+	if !exists || winInfo.window == nil || !winInfo.window.IsOpen() {
+		windowsMapMu.RUnlock()
+		// Window was closed, stop the loop
+		return errStopLoop
+	}
+	windowsMapMu.RUnlock()
 
 	// Convert tensor to Mat
 	mat, err := tensorToMat(frame.Tensors[0])

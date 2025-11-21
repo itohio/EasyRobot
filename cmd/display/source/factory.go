@@ -27,11 +27,11 @@ var (
 func RegisterAllFlags() {
 	flag.Var(&imagePaths, "images", "Image file or directory path (can repeat)")
 	flag.Var(&videoPaths, "video", "Video file path (can repeat)")
-	flag.Var(&cameraIDs, "camera", "Camera device ID (can repeat)")
+	flag.Var(&cameraIDs, "camera", "Camera device ID or configuration (can repeat). Format: ID[:widthxheight[@fps[/format]]]. Examples: '0', '0:640x480', '0:640x480@30', '0:640x480@30/mjpeg', '0@30/mjpeg'")
 	flag.IntVar(&cameraWidth, "width", 640, "Frame width for cameras")
 	flag.IntVar(&cameraHeight, "height", 480, "Frame height for cameras")
 	flag.BoolVar(&generateFlag, "generate", false, "Generate test frames with spinning triangle")
-	flag.BoolVar(&enumerateCameras, "enumerate-cameras", false, "Enumerate available cameras and configure interactively")
+	flag.BoolVar(&enumerateCameras, "list-cameras", false, "List all available cameras with their parameters and exit (does not start streaming)")
 	// Note: Interest source flags will be registered separately if DNDM is enabled
 }
 
@@ -51,16 +51,9 @@ func NewFromFlags() (Source, error) {
 	var selected Source
 	var sourceType string
 
-	if enumerateCameras {
-		count++
-		sourceType = "camera"
-		camSrc, err := createEnumeratedCameraSource()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create enumerated camera source: %w", err)
-		}
-		selected = camSrc
-		slog.Info("Enumerated camera source selected")
-	} else if len(cameraIDs) > 0 {
+	// Note: enumerateCameras (list-cameras) is now handled in main.go before this function
+	// It lists cameras and exits, so it should never reach here
+	if len(cameraIDs) > 0 {
 		// Regular camera source (not enumeration)
 		count++
 		sourceType = "camera"
@@ -114,7 +107,7 @@ func NewFromFlags() (Source, error) {
 
 	if count == 0 {
 		slog.Error("No input source specified")
-		return nil, fmt.Errorf("no input source specified (use --generate, --images, --video, --camera, --enumerate-cameras, or --interest)")
+		return nil, fmt.Errorf("no input source specified (use --generate, --images, --video, --camera, --list-cameras, or --interest)")
 	}
 	if count > 1 {
 		slog.Error("Multiple sources specified", "count", count)
@@ -125,7 +118,75 @@ func NewFromFlags() (Source, error) {
 	return selected, nil
 }
 
+// IsListCamerasFlagSet returns true if the list-cameras flag is set
+func IsListCamerasFlagSet() bool {
+	return enumerateCameras
+}
+
+// ListCameras lists all available cameras with all their parameters and exits
+func ListCameras() error {
+	fmt.Println("=== Camera List ===")
+
+	// Enumerate available cameras
+	unmarshaller := gocv.NewUnmarshaller()
+	var devices []gocv.CameraInfo
+	err := unmarshaller.Unmarshal(strings.NewReader("list"), &devices)
+	if err != nil {
+		return fmt.Errorf("failed to enumerate cameras: %w", err)
+	}
+
+	if len(devices) == 0 {
+		fmt.Println("No cameras found")
+		return nil
+	}
+
+	fmt.Printf("Found %d camera(s):\n\n", len(devices))
+	for i, dev := range devices {
+		fmt.Printf("Camera %d:\n", i)
+		fmt.Printf("  ID: %d\n", dev.ID)
+		fmt.Printf("  Name: %s\n", dev.Name)
+		fmt.Printf("  Path: %s\n", dev.Path)
+		fmt.Printf("  Driver: %s\n", dev.Driver)
+		fmt.Printf("  Card: %s\n", dev.Card)
+		fmt.Printf("  Bus Info: %s\n", dev.BusInfo)
+		fmt.Printf("  Capabilities: %v\n", dev.Capabilities)
+
+		// List all supported formats
+		fmt.Printf("  Supported Formats (%d):\n", len(dev.SupportedFormats))
+		if len(dev.SupportedFormats) == 0 {
+			fmt.Printf("    (none listed)\n")
+		} else {
+			for j, format := range dev.SupportedFormats {
+				fmt.Printf("    [%d] %s - %s (%dx%d)\n", j, format.PixelFormat, format.Description, format.Width, format.Height)
+			}
+		}
+
+		// List all controls with their parameters
+		fmt.Printf("  Controls (%d):\n", len(dev.Controls))
+		if len(dev.Controls) == 0 {
+			fmt.Printf("    (none listed)\n")
+		} else {
+			for j, ctrl := range dev.Controls {
+				fmt.Printf("    [%d] %s (%s)\n", j, ctrl.Name, ctrl.Description)
+				fmt.Printf("        Type: %s\n", ctrl.Type)
+				if ctrl.Type == "integer" {
+					fmt.Printf("        Range: %d - %d (default: %d, step: %d)\n", ctrl.Min, ctrl.Max, ctrl.Default, ctrl.Step)
+				} else if ctrl.Type == "boolean" {
+					fmt.Printf("        Default: %v\n", ctrl.Default != 0)
+				} else {
+					fmt.Printf("        Default: %d\n", ctrl.Default)
+				}
+			}
+		}
+		fmt.Println()
+	}
+
+	return nil
+}
+
 // createEnumeratedCameraSource enumerates cameras and allows interactive configuration
+// DEPRECATED: This function is no longer used. Use ListCameras() instead for listing,
+// and use --camera flag with device IDs for streaming.
 func createEnumeratedCameraSource() (Source, error) {
 	fmt.Println("=== Camera Enumeration ===")
 

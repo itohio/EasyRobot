@@ -25,53 +25,101 @@ Choose one of the following input sources:
 
 ### Cameras (Direct)
 ```bash
+# Simple: just camera ID (uses default width/height from --width/--height flags)
+--camera 0
+
+# With resolution
+--camera 0:640x480
+
+# With resolution and frame rate
+--camera 0:640x480@30
+
+# With resolution, frame rate, and pixel format
+--camera 0:640x480@30/mjpeg    # MJPEG compressed format (common, good for high res/fps)
+--camera 0:640x480@30/yuyv     # YUYV raw format (uncompressed)
+--camera 0:640x480@30/yuv2      # UYVY raw format (uncompressed)
+--camera 0:640x480@30/bgr       # BGR24 raw format (uncompressed)
+
+# Multiple cameras with different configurations
+--camera 0:640x480@30/mjpeg --camera 1:1280x720@60/bgr
+
+# Legacy format (still supported): use --width and --height flags
 --camera 0 --width 640 --height 480
---camera 0 --camera 1 --width 1024 --height 768  # Multiple cameras
 ```
 
-### Camera Enumeration (Interactive)
+Camera configuration format: `ID[:widthxheight[@fps[/format]]]`
+- `ID` - Camera device ID (required)
+- `widthxheight` - Resolution (optional, e.g., `640x480`)
+- `fps` - Frame rate (optional, e.g., `@30`)
+- `format` - Pixel format (optional, e.g., `/mjpeg`, `/yuyv`, `/bgr`)
+
+All components except ID are optional. If not specified, defaults from `--width`, `--height`, and other flags are used.
+
+**Supported Pixel Formats:**
+- `mjpeg`, `mjpg`, `jpeg` - MJPEG compressed (good for high resolution/fps, requires decoding)
+- `yuyv`, `yuy2` - YUYV raw format (uncompressed)
+- `yuv2`, `uyvy` - UYVY raw format (uncompressed)
+- `rgb24`, `rgb3` - RGB24 raw format (uncompressed)
+- `bgr24`, `bgr3` - BGR24 raw format (uncompressed)
+- `nv12` - NV12 format
+- `nv21` - NV21 format
+- `i420`, `yv12` - I420/YV12 format
+- `h264` - H.264 compressed
+- `h265`, `hevc` - H.265/HEVC compressed
+- Or any 4-character FOURCC code (e.g., `GREY`, `RGGB`)
+
+**Note:** Not all cameras support all formats. Use `--list-cameras` to see which formats your camera supports. If a format is not supported, the camera will use its default format.
+
+### List Cameras
 ```bash
---enumerate-cameras
+--list-cameras
 ```
 
-When using `--enumerate-cameras`, the command will:
-1. List all available camera devices
-2. Allow you to select which cameras to use
-3. Prompt for resolution, pixel format, and frame rate
-4. Start capture with your selected configuration
+When using `--list-cameras`, the command will:
+1. List all available camera devices with their complete parameters
+2. Show all supported formats for each camera
+3. Show all available controls with their ranges and current values
+4. Exit immediately after listing (does not start streaming)
+
+Use this to discover available cameras and their capabilities before using `--camera` to start streaming.
 
 ## Examples
 
-### Enumerate and configure cameras interactively
+### List all cameras and their parameters
 ```bash
-./display --enumerate-cameras
+./display --list-cameras
 ```
 Output:
 ```
-=== Camera Enumeration ===
+=== Camera List ===
 Found 2 camera(s):
-  [0] Camera 0 (/dev/video0)
-      Driver: v4l2
-      Formats: 2 available
-      Example format: 640x480
-      Controls: 8 available
 
-  [1] Camera 1 (/dev/video1)
-      Driver: v4l2
-      Formats: 2 available
-      Example format: 640x480
-      Controls: 8 available
+Camera 0:
+  ID: 0
+  Name: Video Device 0
+  Path: /dev/video0
+  Driver: v4l2
+  Card: Camera 0
+  Bus Info: platform
+  Capabilities: [VIDEO_CAPTURE]
+  Supported Formats (3):
+    [0] BGR - BGR 24-bit (640x480)
+    [1] BGR - BGR 24-bit (1280x720)
+    [2] BGR - BGR 24-bit (1920x1080)
+  Controls (19):
+    [0] brightness (Brightness)
+        Type: integer
+        Range: 0 - 255 (default: 128, step: 1)
+    [1] contrast (Contrast)
+        Type: integer
+        Range: 0 - 255 (default: 128, step: 1)
+    ... (more controls)
 
-Enter camera ID(s) to use (comma-separated, or 'all' for all cameras): 0,1
-Enter resolution (width x height, default 640x480): 1024x768
-Enter pixel format (default: MJPEG, options: MJPEG, YUYV, etc.): YUYV
-Enter frame rate (default: 30): 30
-
-Selected configuration:
-  Cameras: [0 1]
-  Resolution: 1024x768
-  Pixel Format: YUYV
-  Frame Rate: 30 fps
+Camera 1:
+  ID: 1
+  Name: Video Device 1
+  Path: /dev/video1
+  ...
 ```
 
 ### Display images from directory
