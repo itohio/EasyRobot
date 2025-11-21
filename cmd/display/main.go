@@ -76,9 +76,14 @@ func main() {
 	slog.Info("Starting destinations", "count", len(dests))
 	for i, dest := range dests {
 		slog.Info("Starting destination", "index", i)
-		// Pass cancel function via context value for destinations that need it
-		destCtx := context.WithValue(ctx, "cancel", cancel)
-		if err := dest.Start(destCtx); err != nil {
+		// If this is a display destination, set the cancel function so window close cancels parent context
+		if cancelSetter, ok := dest.(destination.CancelSetter); ok {
+			cancelSetter.SetCancelFunc(cancel)
+		}
+		// Each destination gets the same parent context - when main context is cancelled,
+		// all destinations will be notified. The display destination can cancel the parent
+		// context when the main window is closed.
+		if err := dest.Start(ctx); err != nil {
 			slog.Error("Error starting destination", "index", i, "err", err)
 			fmt.Fprintf(os.Stderr, "Error starting destination: %v\n", err)
 			os.Exit(1)
@@ -195,12 +200,10 @@ func main() {
 				}
 			}
 
-			// Release tensors if single destination (smart tensors handle it automatically for multiple destinations)
-			if numDests == 1 {
-				for _, t := range frame.Tensors {
-					t.Release()
-				}
-			}
+			// Note: Tensor release is now handled by destinations that use WithRelease() option
+			// For single destination with WithRelease(), the destination will release after consumption
+			// For multiple destinations, smart tensors handle refcounting automatically
+			// No manual Release() needed here
 		}
 
 		if frameCount%100 == 0 {

@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/itohio/EasyRobot/x/marshaller/gocv"
-	"github.com/itohio/EasyRobot/x/marshaller/types"
 )
 
 // Package-level flag variables shared by all sources
@@ -143,7 +142,7 @@ func createEnumeratedCameraSource() (Source, error) {
 	}
 
 	fmt.Printf("Found %d camera(s):\n", len(devices))
-	for i, dev := range devices {
+	for _, dev := range devices {
 		fmt.Printf("  [%d] %s (%s)\n", dev.ID, dev.Name, dev.Path)
 		fmt.Printf("      Driver: %s\n", dev.Driver)
 		fmt.Printf("      Formats: %d available\n", len(dev.SupportedFormats))

@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"io"
 
-	cv "gocv.io/x/gocv"
 	corepb "github.com/itohio/EasyRobot/types/core"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
+	cv "gocv.io/x/gocv"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -34,22 +34,22 @@ func NewProtobufSink(w io.Writer) *ProtobufSink {
 // Each frame is written as a length-prefixed protobuf message.
 func (s *ProtobufSink) WriteFrame(frame types.Frame) error {
 	pbFrame := frameToProto(frame)
-	
+
 	data, err := proto.Marshal(pbFrame)
 	if err != nil {
 		return types.NewError("marshal", "gocv", "protobuf encode frame", err)
 	}
-	
+
 	// Write length-prefixed message (4-byte little-endian length, then data)
 	length := uint32(len(data))
 	if err := binary.Write(s.writer, binary.LittleEndian, length); err != nil {
 		return types.NewError("marshal", "gocv", "write frame length", err)
 	}
-	
+
 	if _, err := s.writer.Write(data); err != nil {
 		return types.NewError("marshal", "gocv", "write frame data", err)
 	}
-	
+
 	return nil
 }
 
@@ -109,17 +109,20 @@ func NewDisplaySink(cfg config) (*DisplaySink, error) {
 
 // NewDisplaySinkFromOptions creates a new DisplaySink from marshaller options.
 // This is a convenience function for creating a DisplaySink without needing direct access to config.
-func NewDisplaySinkFromOptions(ctx context.Context, title string, width, height int) (*DisplaySink, error) {
-	opts := []types.Option{
+// Additional options (e.g., WithCancel, WithClose) can be passed to configure cancel behavior.
+func NewDisplaySinkFromOptions(ctx context.Context, title string, width, height int, opts ...types.Option) (*DisplaySink, error) {
+	allOpts := []types.Option{
 		WithDisplay(ctx),
 		WithTitle(title),
 	}
 	if width > 0 && height > 0 {
-		opts = append(opts, WithWindowSize(width, height))
+		allOpts = append(allOpts, WithWindowSize(width, height))
 	}
-	
+	// Append any additional options (e.g., WithCancel, WithOnClose)
+	allOpts = append(allOpts, opts...)
+
 	// Apply options to get config
-	_, cfg := applyOptions(types.Options{}, defaultConfig(), opts)
+	_, cfg := applyOptions(types.Options{}, defaultConfig(), allOpts)
 	return NewDisplaySink(cfg)
 }
 
@@ -189,7 +192,7 @@ func frameToProto(frame types.Frame) *corepb.Frame {
 		Metadata:  make(map[string]string),
 		Tensors:   nil, // Tensors not serialized per GoCV-first policy
 	}
-	
+
 	// Convert metadata (map[string]any -> map[string]string)
 	for k, v := range frame.Metadata {
 		if str, ok := v.(string); ok {
@@ -199,11 +202,10 @@ func frameToProto(frame types.Frame) *corepb.Frame {
 			pbFrame.Metadata[k] = fmt.Sprintf("%v", v)
 		}
 	}
-	
+
 	// Note: Per GoCV-first policy, tensor pixel data is not serialized in protobuf.
 	// Frames are serialized with metadata only. Actual pixels are handled separately
 	// via GoCV image encoding when writing to files/displays.
-	
+
 	return pbFrame
 }
-

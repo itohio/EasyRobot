@@ -165,12 +165,6 @@ func (m *Marshaller) writeFrameStream(w io.Writer, stream types.FrameStream, cfg
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	// Store cancel function in context if available
-	var cancelFn context.CancelFunc
-	if cancel, ok := ctx.Value("cancel").(context.CancelFunc); ok {
-		cancelFn = cancel
-		ctx = context.WithValue(ctx, "cancel", cancel)
-	}
 
 	step := func() bool {
 		if stop {
@@ -241,9 +235,8 @@ func (m *Marshaller) writeFrameStream(w io.Writer, stream types.FrameStream, cfg
 				if err := writers[0].WriteFrame(smartFrame); err != nil {
 					if errors.Is(err, errStopLoop) {
 						stop = true
-						if cancelFn != nil {
-							cancelFn()
-						}
+						// errStopLoop indicates loop should stop - just set stop flag
+						// Context cancellation is handled by the caller monitoring ctx.Done()
 					} else {
 						stepErr = err
 						stop = true
@@ -266,9 +259,8 @@ func (m *Marshaller) writeFrameStream(w io.Writer, stream types.FrameStream, cfg
 				if err := writers[i].WriteFrame(viewFrames[i-1]); err != nil {
 					if errors.Is(err, errStopLoop) {
 						stop = true
-						if cancelFn != nil {
-							cancelFn()
-						}
+						// errStopLoop indicates loop should stop - just set stop flag
+						// Context cancellation is handled by the caller monitoring ctx.Done()
 					} else {
 						stepErr = err
 						stop = true
@@ -291,10 +283,8 @@ func (m *Marshaller) writeFrameStream(w io.Writer, stream types.FrameStream, cfg
 				if err := writer.WriteFrame(frame); err != nil {
 					if errors.Is(err, errStopLoop) {
 						stop = true
-						// Cancel context to propagate stop signal
-						if cancelFn != nil {
-							cancelFn()
-						}
+						// errStopLoop indicates loop should stop - just set stop flag
+						// Context cancellation is handled by the caller monitoring ctx.Done()
 					} else {
 						stepErr = err
 						stop = true
@@ -302,8 +292,9 @@ func (m *Marshaller) writeFrameStream(w io.Writer, stream types.FrameStream, cfg
 				}
 			}
 			
-			// Release objects that implement Releaser if WithRelease is enabled or single writer
-			if cfg.autoRelease || numWriters == 1 {
+			// Release objects that implement Releaser if WithRelease is enabled
+			// Only release if ReleaseAfterProcessing is explicitly set to true
+			if cfg.ReleaseAfterProcessing {
 				for _, obj := range frame.Tensors {
 					if releaser, ok := obj.(types.Releaser); ok {
 						releaser.Release()

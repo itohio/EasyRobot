@@ -77,7 +77,7 @@ func (fw *fileWriter) Write(frame types.Frame) error {
 		data, err := encodeMatBytes(mat, fw.cfg.codec.imageEncoding)
 		mat.Close()
 		// Release objects that implement Releaser after writing if WithRelease is enabled
-		if fw.cfg.autoRelease {
+		if fw.cfg.ReleaseAfterProcessing {
 			if releaser, ok := frame.Tensors[i].(types.Releaser); ok {
 				releaser.Release()
 			}

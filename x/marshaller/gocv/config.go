@@ -1,6 +1,8 @@
 package gocv
 
 import (
+	"context"
+
 	cv "gocv.io/x/gocv"
 
 	tensorgocv "github.com/itohio/EasyRobot/x/math/tensor/gocv"
@@ -38,15 +40,23 @@ func defaultStreamConfig() streamConfig {
 	}
 }
 
+// CloseCallback is called when a window is closed.
+// window is the actual gocv.Window that was closed (for querying information).
+// remainingWindows is the number of windows still open (after this one closes).
+// Returns true if the application should terminate (cancel context).
+type CloseCallback func(window *cv.Window, remainingWindows int) bool
+
 // displayConfig holds display-related configuration.
 type displayConfig struct {
-	enabled   bool
-	title     string
-	width     int
-	height    int
-	onKey     func(types.KeyEvent) bool
-	onMouse   func(types.MouseEvent) bool
-	eventLoop types.EventLoop
+	enabled           bool
+	title             string
+	width             int
+	height            int
+	onKey             func(types.KeyEvent) bool
+	onMouse           func(types.MouseEvent) bool
+	eventLoop         types.EventLoop
+	cancelFunc        context.CancelFunc      // Cancel function to call if callback returns true
+	onClose           CloseCallback           // Callback called when any window closes
 }
 
 func defaultDisplayConfig() displayConfig {

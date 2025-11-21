@@ -55,27 +55,28 @@ type GUICommand struct {
 }
 
 type windowConfig struct {
-	Title  string
-	Width  int
-	Height int
-	// Legacy handlers (for backward compatibility)
-	OnKey   func(int) bool
-	OnMouse func(event, x, y, flags int) bool
-	// New shared interface handlers
-	KeyHandler   func(types.KeyEvent) bool
+	Title        string
+	Width        int
+	Height       int
+	OnKey        func(int) bool // Legacy handlers (for backward compatibility)
+	OnMouse      func(event, x, y, flags int) bool
+	KeyHandler   func(types.KeyEvent) bool // New shared interface handlers
 	MouseHandler func(types.MouseEvent) bool
+	CancelFunc   context.CancelFunc // Cancel function to call if window close callback returns true
+	OnClose      CloseCallback      // Callback called when this window closes
 }
 
 // WindowInfo tracks a window in the event loop
 type windowInfo struct {
-	id      string
-	window  *cv.Window
-	config  windowConfig
-	onKey   func(int) bool                    // Legacy handler
-	onMouse func(event, x, y, flags int) bool // Legacy handler
-	// New shared interface handlers
-	keyHandler   func(types.KeyEvent) bool
-	mouseHandler func(types.MouseEvent) bool
+	id           string
+	window       *cv.Window
+	config       windowConfig
+	onKey        func(int) bool                    // Legacy handler
+	onMouse      func(event, x, y, flags int) bool // Legacy handler
+	keyHandler   func(types.KeyEvent) bool         // New shared interface handler
+	mouseHandler func(types.MouseEvent) bool       // New shared interface handler
+	cancelFunc   context.CancelFunc                // Cancel function if callback returns true
+	onClose      CloseCallback                     // Callback called when this window closes
 }
 
 // Global event loop - single thread for all GUI operations
@@ -191,6 +192,8 @@ func newDisplayWriter(cfg config) (frameWriter, error) {
 			OnMouse:      onMouse,
 			KeyHandler:   cfg.display.onKey,
 			MouseHandler: cfg.display.onMouse,
+			CancelFunc:   cfg.display.cancelFunc,
+			OnClose:      cfg.display.onClose,
 		},
 		Result: result,
 	}
@@ -323,6 +326,8 @@ func handleCreateWindow(cmd GUICommand) error {
 		onMouse:      cmd.Config.OnMouse,
 		keyHandler:   cmd.Config.KeyHandler,
 		mouseHandler: cmd.Config.MouseHandler,
+		cancelFunc:   cmd.Config.CancelFunc,
+		onClose:      cmd.Config.OnClose,
 	}
 
 	// Set mouse handler if provided
@@ -403,7 +408,26 @@ func handleCloseWindow(cmd GUICommand) {
 	if winInfo.window != nil && winInfo.window.IsOpen() {
 		winInfo.window.Close()
 	}
+
+	// Calculate remaining windows before deleting this one
+	remainingWindows := len(windowsMap) - 1
+
+	// Call close callback if available, passing actual window and remaining count
+	shouldCancel := false
+	if winInfo.onClose != nil && winInfo.window != nil {
+		shouldCancel = winInfo.onClose(winInfo.window, remainingWindows)
+	}
+
+	// Remove window from map
 	delete(windowsMap, cmd.WindowID)
+
+	// Cancel context if callback indicated we should terminate
+	if shouldCancel && winInfo.cancelFunc != nil {
+		slog.Info("Window close callback requested termination, cancelling context",
+			"window_id", cmd.WindowID,
+			"remaining_windows", remainingWindows)
+		winInfo.cancelFunc()
+	}
 }
 
 func processWindowEvents() {
@@ -517,12 +541,45 @@ func processWindowEvents() {
 			if !processedAny {
 				// Check for closed windows only if we didn't process any mouse events
 				windowsMapMu.Lock()
+				// Collect closed windows first to calculate remaining count correctly
+				var closedWindows []struct {
+					id             string
+					winInfo        *windowInfo
+					remainingCount int
+				}
+
 				for id, winInfo := range windowsMap {
 					if winInfo.window != nil && !winInfo.window.IsOpen() {
-						delete(windowsMap, id)
+						remainingCount := len(windowsMap) - 1 - len(closedWindows)
+						closedWindows = append(closedWindows, struct {
+							id             string
+							winInfo        *windowInfo
+							remainingCount int
+						}{id, winInfo, remainingCount})
 					}
 				}
 				windowsMapMu.Unlock()
+
+				// Process closed windows outside the lock
+				for _, closed := range closedWindows {
+					shouldCancel := false
+					if closed.winInfo.onClose != nil && closed.winInfo.window != nil {
+						shouldCancel = closed.winInfo.onClose(closed.winInfo.window, closed.remainingCount)
+					}
+
+					// Remove from map
+					windowsMapMu.Lock()
+					delete(windowsMap, closed.id)
+					windowsMapMu.Unlock()
+
+					// Cancel context if callback indicated we should terminate
+					if shouldCancel && closed.winInfo.cancelFunc != nil {
+						slog.Info("Window close callback requested termination, cancelling context",
+							"window_id", closed.id,
+							"remaining_windows", closed.remainingCount)
+						closed.winInfo.cancelFunc()
+					}
+				}
 			}
 			return
 		}
@@ -563,7 +620,7 @@ func (dw *displayWriter) Write(frame types.Frame) error {
 	// Don't close mat here - it will be closed in the event loop after IMShow
 
 	// Release objects that implement Releaser after displaying if WithRelease is enabled
-	if dw.cfg.autoRelease {
+	if dw.cfg.ReleaseAfterProcessing {
 		defer func() {
 			for _, tensor := range frame.Tensors {
 				if releaser, ok := tensor.(types.Releaser); ok {

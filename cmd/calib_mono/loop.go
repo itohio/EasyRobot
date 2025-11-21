@@ -37,22 +37,23 @@ func processCalibrationLoop(ctx context.Context, src source.Source, processor Fr
 		mat, err := tensorToMat(frame.Tensors[0])
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to convert tensor: %v\n", err)
+			// Note: Original tensor will be released by destinations with WithRelease()
 			continue
 		}
+		defer mat.Close()
 
 		found, err := processor.ProcessFrame(mat)
 		if err != nil {
-			mat.Close()
+			// mat already closed via defer, original tensor released by destinations
 			fmt.Fprintf(os.Stderr, "Warning: failed to process frame: %v\n", err)
 			continue
 		}
 
 		if err := sendVisualization(ctx, mat, processor, found, frame.Metadata, dests); err != nil {
-			mat.Close()
+			// mat already closed via defer
 			return err
 		}
-
-		mat.Close()
+		// mat already closed via defer
 
 		if processor.NumSamples() >= processor.TargetSamples() {
 			fmt.Printf("\nCollected %d samples, computing calibration...\n", processor.NumSamples())
@@ -89,11 +90,12 @@ func readFrameOrContinue(src source.Source) (types.Frame, bool) {
 
 func sendVisualization(ctx context.Context, mat cv.Mat, processor FrameProcessor, found bool, metadata map[string]any, dests []destination.Destination) error {
 	visMat := mat.Clone()
+	defer visMat.Close()
 	processor.DrawCorners(visMat, found)
 
 	visTensor, err := matToTensor(visMat)
 	if err != nil {
-		visMat.Close()
+		// visMat already closed via defer
 		return fmt.Errorf("failed to convert mat to tensor: %w", err)
 	}
 
@@ -102,19 +104,20 @@ func sendVisualization(ctx context.Context, mat cv.Mat, processor FrameProcessor
 		Metadata: metadata,
 	}
 
+	// Send to destinations - destinations with WithRelease() will release visTensor after consumption
 	for _, dest := range dests {
 		if err := dest.AddFrame(displayFrame); err != nil {
 			select {
 			case <-ctx.Done():
-				visMat.Close()
+				// visMat already closed via defer, visTensor released by destinations
 				return ctx.Err()
 			default:
 				// Continue processing
 			}
 		}
 	}
-
-	visMat.Close()
+	// visMat already closed via defer
+	// visTensor release is handled by destinations with WithRelease()
 	return nil
 }
 

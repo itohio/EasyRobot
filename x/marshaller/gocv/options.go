@@ -39,12 +39,12 @@ const (
 )
 
 type deviceSpec struct {
-	ID           int
-	Width        int
-	Height       int
-	FrameRate    int
-	PixelFormat  string
-	Controls     map[string]int32
+	ID          int
+	Width       int
+	Height      int
+	FrameRate   int
+	PixelFormat string
+	Controls    map[string]int32
 }
 
 type sourceSpec struct {
@@ -59,22 +59,22 @@ type fileSorter func([]string) []string
 // Camera types are now defined in the shared types package
 
 type config struct {
-	ctx         context.Context
-	codec       codecConfig
-	stream      streamConfig
-	display     displayConfig
-	dnn         dnnConfig
-	autoRelease bool
+	ctx                    context.Context
+	codec                  codecConfig
+	stream                 streamConfig
+	display                displayConfig
+	dnn                    dnnConfig
+	ReleaseAfterProcessing bool
 }
 
 func defaultConfig() config {
 	return config{
-		ctx:         context.Background(),
-		codec:       defaultCodecConfig(),
-		stream:      defaultStreamConfig(),
-		display:     defaultDisplayConfig(),
-		dnn:         defaultDNNConfig(),
-		autoRelease: false,
+		ctx:                    context.Background(),
+		codec:                  defaultCodecConfig(),
+		stream:                 defaultStreamConfig(),
+		display:                defaultDisplayConfig(),
+		dnn:                    defaultDNNConfig(),
+		ReleaseAfterProcessing: false,
 	}
 }
 
@@ -320,6 +320,31 @@ func WithEventLoop(loop types.EventLoop) types.Option {
 	})
 }
 
+// WithCancel sets a cancel function that will be called if the close callback
+// returns true (indicating the application should terminate).
+func WithCancel(cancel context.CancelFunc) types.Option {
+	return newOption(func(cfg *config) {
+		cfg.display.cancelFunc = cancel
+	})
+}
+
+// WithOnClose sets a callback that is invoked when any window is closed.
+// The callback receives:
+//   - window: the actual gocv.Window that was closed (for querying window information)
+//   - remainingWindows: the number of windows still open (after this one closes)
+//
+// The callback should return true if the application should terminate (cancel context).
+// This allows the application to decide when to shut down based on window information
+// and how many windows remain. For example:
+//   - Terminate when the last window closes
+//   - Terminate when a specific window closes (check window properties)
+//   - Never terminate automatically (always return false)
+func WithOnClose(callback CloseCallback) types.Option {
+	return newOption(func(cfg *config) {
+		cfg.display.onClose = callback
+	})
+}
+
 // WithSorter configures filename ordering for globbed image lists.
 func WithSorter(sorter func([]string) []string) types.Option {
 	return newOption(func(cfg *config) {
@@ -353,7 +378,7 @@ func applyOptions(base types.Options, cfg config, opts []types.Option) (types.Op
 	if local.Context != nil {
 		localCfg.ctx = local.Context
 	}
-	localCfg.autoRelease = local.ReleaseAfterProcessing
+	localCfg.ReleaseAfterProcessing = local.ReleaseAfterProcessing
 	// Apply defaults
 	if localCfg.stream.sorter == nil {
 		localCfg.stream.sorter = defaultSorter

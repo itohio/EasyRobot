@@ -75,10 +75,11 @@ func (v *videoDestination) AddFrame(frame types.Frame) error {
 	}
 	defer mat.Close()
 	
-	// Release tensor after converting to Mat (tensor is no longer needed)
-	// The Mat clone is independent, so we can release the tensor
-	// Note: If using smart tensors, this will decrement the ref count
-	defer frame.Tensors[0].Release()
+	// Note: We do NOT release the tensor here because:
+	// 1. Tensors may be shared with other destinations (e.g., display)
+	// 2. Tensor release should be handled by destinations that use WithRelease() option
+	// 3. For single destination cases, main loop will handle release
+	// 4. For multiple destinations with smart tensors, refcounting handles cleanup
 
 	// Initialize video writer on first frame if not already initialized
 	if v.writer == nil {

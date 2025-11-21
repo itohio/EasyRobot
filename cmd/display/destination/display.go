@@ -4,11 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"sync"
-	"time"
 
 	"github.com/itohio/EasyRobot/x/marshaller/gocv"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
+	cv "gocv.io/x/gocv"
 )
 
 var (
@@ -18,21 +17,34 @@ var (
 	height    int
 )
 
+// CancelSetter is an interface for destinations that can accept a cancel function
+// to be called when certain events occur (e.g., window close).
+type CancelSetter interface {
+	SetCancelFunc(cancel context.CancelFunc)
+}
+
 // displayDestination implements Destination for displaying frames in a window.
 // It uses the marshaller's display writer to handle window management and event processing.
 type displayDestination struct {
 	ctx          context.Context
 	cancel       context.CancelFunc
 	parentCtx    context.Context
-	parentCancel context.CancelFunc
+	parentCancel context.CancelFunc // Cancel function from parent context - called when main window closes
 	displaySink  *gocv.DisplaySink
 	started      bool
-	eventLoopWg  sync.WaitGroup
 }
 
 // NewDisplay creates a new display destination.
 func NewDisplay() Destination {
 	return &displayDestination{}
+}
+
+// SetCancelFunc sets the cancel function to be called when the main window is closed.
+// This allows the application to be notified and cleanly shut down when the user closes
+// the main display window. Call this before Start() if you want window close to cancel
+// a parent context.
+func (d *displayDestination) SetCancelFunc(cancel context.CancelFunc) {
+	d.parentCancel = cancel
 }
 
 func (d *displayDestination) RegisterFlags() {
@@ -55,47 +67,61 @@ func (d *displayDestination) Start(ctx context.Context) error {
 
 	// Store parent context and create a cancellable context for the display destination
 	d.parentCtx = ctx
-	// Try to get parent cancel function if available
-	if parentCancel, ok := ctx.Value("cancel").(context.CancelFunc); ok {
-		d.parentCancel = parentCancel
-	}
 	d.ctx, d.cancel = context.WithCancel(ctx)
 
+	// Try to extract parent cancel function - if the parent context was created with WithCancel,
+	// we need to get that cancel function to cancel it when main window closes.
+	// Since we can't use context.Value, we'll use a type assertion or interface.
+	// For now, we'll derive a context from parent and store its cancel.
+	// The caller (main.go) should pass cancel via a proper mechanism.
+	// TODO: Consider adding a WithParentCancel option to Start() method or create a new interface
+
 	// Create display sink using marshaller's display writer
-	// The window is created immediately so the event loop can start right away
-	displaySink, err := gocv.NewDisplaySinkFromOptions(d.ctx, title, width, height)
+	// Pass cancel function and window close callback so user can decide when to terminate
+	var cancelFunc context.CancelFunc
+	if d.parentCancel != nil {
+		// Use parent cancel function if available - it will cancel the parent context
+		cancelFunc = d.parentCancel
+	} else {
+		// Fallback: cancel our derived context if parent cancel not set
+		cancelFunc = d.cancel
+	}
+
+	// Close callback - user decides when to terminate based on window info
+	onClose := func(window *cv.Window, remainingWindows int) bool {
+		// Query window information to make proper decision
+		// window can be queried for properties if needed
+
+		slog.Info("Window closed",
+			"remaining_windows", remainingWindows)
+
+		// Terminate when last window closes
+		if remainingWindows == 0 {
+			slog.Info("Last window closed, terminating application")
+			return true
+		}
+		// Keep running if other windows are still open
+		return false
+	}
+
+	displaySink, err := gocv.NewDisplaySinkFromOptions(
+		d.ctx,
+		title,
+		width,
+		height,
+		gocv.WithCancel(cancelFunc), // Cancel function called if callback returns true
+		gocv.WithOnClose(onClose),   // Callback decides when to terminate
+		types.WithRelease(),         // Release tensors after displaying
+	)
 	if err != nil {
 		return fmt.Errorf("failed to create display sink: %w", err)
 	}
 	d.displaySink = displaySink
 
 	// The global event loop is started automatically when DisplaySink is created
-	// We just need to monitor for window close events
-	slog.Info("Display sink created, global event loop will handle window events")
-
-	// Monitor for window close (poll window state)
-	d.eventLoopWg.Add(1)
-	go func() {
-		defer d.eventLoopWg.Done()
-		ticker := time.NewTicker(100 * time.Millisecond)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-d.ctx.Done():
-				return
-			case <-ticker.C:
-				window := d.displaySink.Window()
-				if window == nil || !window.IsOpen() {
-					slog.Info("Display window closed, cancelling parent context")
-					if d.parentCancel != nil {
-						d.parentCancel()
-					}
-					return
-				}
-			}
-		}
-	}()
+	// Window close detection is handled by the marshaller's event loop which will
+	// call the cancel function (if set via SetCancelFunc) when the main window closes
+	slog.Info("Display sink created, global event loop will handle window events and cancellation")
 
 	d.started = true
 	slog.Info("Display destination started (window will be created on first frame)")
@@ -119,27 +145,14 @@ func (d *displayDestination) AddFrame(frame types.Frame) error {
 func (d *displayDestination) Close() error {
 	slog.Info("Closing display destination")
 
-	// Stop monitoring goroutine first
+	// Cancel our derived context to signal shutdown
 	if d.cancel != nil {
 		d.cancel()
 	}
 
-	// Wait for monitoring goroutine to finish (with timeout)
-	done := make(chan struct{})
-	go func() {
-		d.eventLoopWg.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		// Monitoring goroutine finished
-	case <-time.After(200 * time.Millisecond):
-		slog.Debug("Monitoring goroutine did not finish within timeout")
-	}
-
 	// Close display sink (which closes the window)
-	// This is non-blocking and won't hang even if event loop is shutting down
+	// Window close detection is handled by the marshaller's event loop,
+	// so we don't need a separate monitoring goroutine
 	if d.displaySink != nil {
 		if err := d.displaySink.Close(); err != nil {
 			slog.Error("Error closing display sink", "err", err)
