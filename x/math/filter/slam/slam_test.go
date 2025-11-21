@@ -4,10 +4,31 @@ import (
 	"testing"
 
 	"github.com/chewxy/math32"
+	"github.com/itohio/EasyRobot/x/math/filter"
 	"github.com/itohio/EasyRobot/x/math/grid"
+	matTypes "github.com/itohio/EasyRobot/x/math/mat/types"
 	"github.com/itohio/EasyRobot/x/math/mat"
 	"github.com/itohio/EasyRobot/x/math/vec"
 )
+
+// Helper to create pose matrix from [px, py, heading]
+func poseFromVector(px, py, heading float32) mat.Matrix3x3 {
+	cosH := math32.Cos(heading)
+	sinH := math32.Sin(heading)
+	return mat.Matrix3x3{
+		{cosH, -sinH, px},
+		{sinH, cosH, py},
+		{0, 0, 1},
+	}
+}
+
+// Helper to extract [px, py, heading] from pose matrix
+func poseToVector(pose mat.Matrix3x3) (px, py, heading float32) {
+	px = pose[0][2]
+	py = pose[1][2]
+	heading = math32.Atan2(pose[1][0], pose[0][0])
+	return
+}
 
 // TestRayCast_Simple tests basic ray casting on a simple map.
 func TestRayCast_Simple(t *testing.T) {
@@ -136,7 +157,7 @@ func TestSLAM_New(t *testing.T) {
 	mapOriginX := float32(0.0)
 	mapOriginY := float32(0.0)
 
-	slam := New(rayAngles, mapGrid, mapResolution, mapOriginX, mapOriginY)
+	slam := New(rayAngles, mapOriginX, mapOriginY, WithMap(mapGrid), WithResolution(mapResolution))
 
 	if slam.numRays != 4 {
 		t.Errorf("Expected 4 rays, got %d", slam.numRays)
@@ -148,8 +169,9 @@ func TestSLAM_New(t *testing.T) {
 
 	// Check initial pose at map origin
 	pose := slam.GetPose()
-	if pose[0] != mapOriginX || pose[1] != mapOriginY || pose[2] != 0.0 {
-		t.Errorf("Expected initial pose at origin, got [%f, %f, %f]", pose[0], pose[1], pose[2])
+	px, py, heading := poseToVector(pose)
+	if px != mapOriginX || py != mapOriginY || heading != 0.0 {
+		t.Errorf("Expected initial pose at origin, got [%f, %f, %f]", px, py, heading)
 	}
 }
 
@@ -164,14 +186,15 @@ func TestSLAM_SetPose(t *testing.T) {
 	mapOriginX := float32(0.0)
 	mapOriginY := float32(0.0)
 
-	slam := New(rayAngles, mapGrid, mapResolution, mapOriginX, mapOriginY)
+	slam := New(rayAngles, mapOriginX, mapOriginY, WithMap(mapGrid), WithResolution(mapResolution))
 
-	newPose := vec.NewFrom(1.0, 2.0, math32.Pi/4.0)
+	newPose := poseFromVector(1.0, 2.0, math32.Pi/4.0)
 	slam.SetPose(newPose)
 
 	pose := slam.GetPose()
-	if pose[0] != 1.0 || pose[1] != 2.0 || pose[2] != math32.Pi/4.0 {
-		t.Errorf("Expected pose [1.0, 2.0, π/4], got [%f, %f, %f]", pose[0], pose[1], pose[2])
+	px, py, heading := poseToVector(pose)
+	if px != 1.0 || py != 2.0 || math32.Abs(heading-math32.Pi/4.0) > 1e-6 {
+		t.Errorf("Expected pose [1.0, 2.0, π/4], got [%f, %f, %f]", px, py, heading)
 	}
 }
 
@@ -188,17 +211,19 @@ func TestSLAM_UpdateMeasurement(t *testing.T) {
 	mapOriginX := float32(0.0)
 	mapOriginY := float32(0.0)
 
-	slam := New(rayAngles, mapGrid, mapResolution, mapOriginX, mapOriginY)
-	slam.SetPose(vec.NewFrom(0.3, 0.3, 0.0))
+	slam := New(rayAngles, mapOriginX, mapOriginY, WithMap(mapGrid), WithResolution(mapResolution))
+	slam.SetPose(poseFromVector(0.3, 0.3, 0.0))
 
-	// Provide distance measurements
+	// Provide angle and distance measurements
+	angles := vec.NewFrom(0.0, math32.Pi/2.0)
 	distances := vec.NewFrom(0.2, 0.2)
-	slam.UpdateMeasurement(distances)
+	slam.UpdateMeasurement(angles, distances)
 
 	// Pose should have been updated by EKF
 	pose := slam.GetPose()
-	if pose[0] < -10 || pose[0] > 10 || pose[1] < -10 || pose[1] > 10 {
-		t.Errorf("Expected reasonable pose, got [%f, %f, %f]", pose[0], pose[1], pose[2])
+	px, py, _ := poseToVector(pose)
+	if px < -10 || px > 10 || py < -10 || py > 10 {
+		t.Errorf("Expected reasonable pose, got [%f, %f]", px, py)
 	}
 
 	// Check expected distances were computed
@@ -219,31 +244,35 @@ func TestSLAM_FilterInterface(t *testing.T) {
 	mapOriginX := float32(0.0)
 	mapOriginY := float32(0.0)
 
-	slam := New(rayAngles, mapGrid, mapResolution, mapOriginX, mapOriginY)
+	slam := New(rayAngles, mapOriginX, mapOriginY, WithMap(mapGrid), WithResolution(mapResolution))
 
 	// Test Filter interface methods
 	input := slam.Input()
 	output := slam.Output()
 	target := slam.GetTarget()
 
-	if len(input) != 1 {
-		t.Errorf("Expected input length 1, got %d", len(input))
+	if input.Rows() != 2 || input.Cols() != 1 {
+		t.Errorf("Expected input size 2x1, got %dx%d", input.Rows(), input.Cols())
 	}
-	if len(output) != 3 {
-		t.Errorf("Expected output length 3, got %d", len(output))
+	if output.Rows() != 3 || output.Cols() != 3 {
+		t.Errorf("Expected output size 3x3, got %dx%d", output.Rows(), output.Cols())
 	}
-	if len(target) != 3 {
-		t.Errorf("Expected target length 3, got %d", len(target))
+	if target.Rows() != 3 || target.Cols() != 3 {
+		t.Errorf("Expected target size 3x3, got %dx%d", target.Rows(), target.Cols())
 	}
 
 	// Test Update method (Filter interface)
-	measurement := vec.NewFrom(0.5)
-	slam.Update(0.01, measurement) // timestep and measurement
+	// Create input matrix: 2 rows (angles, distances) x 1 column
+	inputMat := mat.New(2, 1)
+	inputMat[0][0] = 0.0 // angle
+	inputMat[1][0] = 0.5 // distance
+	slam.Update(0.01, inputMat)
 
 	// Pose should have been updated
 	pose := slam.Output()
-	if pose[0] < -10 || pose[0] > 10 {
-		t.Errorf("Expected reasonable pose after update, got [%f, %f, %f]", pose[0], pose[1], pose[2])
+	px, _, _ := poseToVector(pose)
+	if px < -10 || px > 10 {
+		t.Errorf("Expected reasonable pose after update, got px=%f", px)
 	}
 }
 
@@ -258,18 +287,19 @@ func TestSLAM_Reset(t *testing.T) {
 	mapOriginX := float32(0.0)
 	mapOriginY := float32(0.0)
 
-	slam := New(rayAngles, mapGrid, mapResolution, mapOriginX, mapOriginY)
+	slam := New(rayAngles, mapOriginX, mapOriginY, WithMap(mapGrid), WithResolution(mapResolution))
 
 	// Set pose to non-origin
-	slam.SetPose(vec.NewFrom(1.0, 2.0, math32.Pi/4.0))
+	slam.SetPose(poseFromVector(1.0, 2.0, math32.Pi/4.0))
 
 	// Reset
 	slam.Reset()
 
 	// Pose should be back at origin
 	pose := slam.GetPose()
-	if pose[0] != mapOriginX || pose[1] != mapOriginY || pose[2] != 0.0 {
-		t.Errorf("Expected pose at origin after reset, got [%f, %f, %f]", pose[0], pose[1], pose[2])
+	px, py, heading := poseToVector(pose)
+	if px != mapOriginX || py != mapOriginY || heading != 0.0 {
+		t.Errorf("Expected pose at origin after reset, got [%f, %f, %f]", px, py, heading)
 	}
 }
 
@@ -284,11 +314,12 @@ func TestSLAM_GetResiduals(t *testing.T) {
 	mapOriginX := float32(0.0)
 	mapOriginY := float32(0.0)
 
-	slam := New(rayAngles, mapGrid, mapResolution, mapOriginX, mapOriginY)
+	slam := New(rayAngles, mapOriginX, mapOriginY, WithMap(mapGrid), WithResolution(mapResolution))
 
 	// Update with measurements
+	angles := vec.NewFrom(0.0, math32.Pi/2.0)
 	distances := vec.NewFrom(0.5, 0.6)
-	slam.UpdateMeasurement(distances)
+	slam.UpdateMeasurement(angles, distances)
 
 	// Get residuals
 	residuals := slam.GetResiduals()
@@ -315,7 +346,7 @@ func TestSLAM_SetMaxRange(t *testing.T) {
 	mapOriginX := float32(0.0)
 	mapOriginY := float32(0.0)
 
-	slam := New(rayAngles, mapGrid, mapResolution, mapOriginX, mapOriginY)
+	slam := New(rayAngles, mapOriginX, mapOriginY, WithMap(mapGrid), WithResolution(mapResolution))
 
 	maxRange := float32(5.0)
 	slam.SetMaxRange(maxRange)
@@ -323,4 +354,9 @@ func TestSLAM_SetMaxRange(t *testing.T) {
 	if slam.maxRange != maxRange {
 		t.Errorf("Expected maxRange %f, got %f", maxRange, slam.maxRange)
 	}
+}
+
+// TestSLAM_InterfaceConformance tests that SLAM implements Filter interface.
+func TestSLAM_InterfaceConformance(t *testing.T) {
+	var _ filter.Filter[matTypes.Matrix, mat.Matrix3x3] = (*SLAM)(nil)
 }

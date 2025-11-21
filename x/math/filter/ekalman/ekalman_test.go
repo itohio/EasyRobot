@@ -343,5 +343,5 @@ func TestEKF_Reset(t *testing.T) {
 }
 
 func TestEKFInterface(t *testing.T) {
-	var _ filter.Filter[vec.Vector] = (*EKF)(nil)
+	var _ filter.Filter[vec.Vector, vec.Vector] = (*EKF)(nil)
 }

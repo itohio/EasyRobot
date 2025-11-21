@@ -210,5 +210,5 @@ func TestKalmanFilter_WithControl(t *testing.T) {
 }
 
 func TestKalmanFilterInterface(t *testing.T) {
-	var _ filter.Filter[vec.Vector] = (*Kalman)(nil)
+	var _ filter.Filter[vec.Vector, vec.Vector] = (*Kalman)(nil)
 }
