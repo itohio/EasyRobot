@@ -157,6 +157,80 @@ func (sg *SignalGenerator1D) NoiseGaussian(length int, stddev float32) vecTypes.
 	return vec.NewFrom(data...)
 }
 
+// NoiseWhite creates white noise (flat frequency spectrum)
+// White noise has equal power at all frequencies
+func (sg *SignalGenerator1D) NoiseWhite(length int, amplitude float32) vecTypes.Vector {
+	data := make([]float32, length)
+	for i := range data {
+		data[i] = amplitude * (rand.Float32()*2 - 1) // Uniform distribution [-amplitude, amplitude]
+	}
+	return vec.NewFrom(data...)
+}
+
+// NoisePink creates pink noise (1/f noise, -3dB per octave)
+// Pink noise has equal power per octave
+func (sg *SignalGenerator1D) NoisePink(length int, amplitude float32) vecTypes.Vector {
+	data := make([]float32, length)
+
+	// Pink noise filter coefficients (approximate)
+	b0 := float32(0.99886)
+	b1 := float32(-2.49482)
+	b2 := float32(1.44331)
+	b3 := float32(-0.44419)
+	b4 := float32(0.05081)
+	b5 := float32(-0.00226)
+
+	// Initialize filter state
+	var y1, y2, y3, y4, y5 float32
+
+	// Generate white noise and filter it
+	for i := range data {
+		white := amplitude * (rand.Float32()*2 - 1)
+
+		// Apply pink noise filter
+		y0 := b0*white + b1*y1 + b2*y2 + b3*y3 + b4*y4 + b5*y5
+		data[i] = y0
+
+		// Update filter state
+		y5 = y4
+		y4 = y3
+		y3 = y2
+		y2 = y1
+		y1 = y0
+	}
+
+	return vec.NewFrom(data...)
+}
+
+// NoiseBrown creates brown noise (1/f^2 noise, -6dB per octave, Brownian motion)
+// Brown noise has power that decreases with frequency squared
+func (sg *SignalGenerator1D) NoiseBrown(length int, amplitude float32) vecTypes.Vector {
+	data := make([]float32, length)
+
+	// Brown noise is essentially integrated white noise
+	var accumulator float32
+	for i := range data {
+		white := amplitude * (rand.Float32()*2 - 1)
+		accumulator += white * 0.02 // Integration step (scaled for stability)
+
+		// High-pass filter to remove DC component
+		if i > 0 {
+			data[i] = accumulator - data[i-1]*0.99
+		} else {
+			data[i] = accumulator
+		}
+
+		// Normalize to prevent drift
+		if accumulator > amplitude {
+			accumulator = amplitude
+		} else if accumulator < -amplitude {
+			accumulator = -amplitude
+		}
+	}
+
+	return vec.NewFrom(data...)
+}
+
 // Impulse creates an impulse signal (1 at position, 0 elsewhere)
 func (sg *SignalGenerator1D) Impulse(length int, position int) vecTypes.Vector {
 	data := make([]float32, length)
@@ -250,7 +324,7 @@ func (sg *SignalGenerator2D) Gaussian(rows, cols int, sigma float32) matTypes.Ma
 		for j := 0; j < cols; j++ {
 			x := float32(j) - centerX
 			y := float32(i) - centerY
-			matrix[i][j] = float32(math.Exp(float64(-0.5 * (x*x+y*y) / (sigma * sigma))))
+			matrix[i][j] = float32(math.Exp(float64(-0.5 * (x*x + y*y) / (sigma * sigma))))
 		}
 	}
 	return matrix

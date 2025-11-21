@@ -1,6 +1,7 @@
 package dsp
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/itohio/EasyRobot/x/math/filter"
@@ -579,4 +580,194 @@ func (ask *ASKDecoder) Demodulate(signal vecTypes.Vector) vec.Vector {
 	}
 
 	return symbols
+}
+
+// PSKEncoder handles Phase Shift Keying encoding
+type PSKEncoder struct {
+	sampleRate       float32
+	carrierFreq      float32
+	symbolRate       float32
+	modulationOrder  int // 2 for BPSK, 4 for QPSK, 8 for 8-PSK, etc.
+	samplesPerSymbol int
+}
+
+// NewPSKEncoder creates a new PSK encoder
+func NewPSKEncoder(sampleRate, carrierFreq, symbolRate float32, modulationOrder int) *PSKEncoder {
+	samplesPerSymbol := int(sampleRate / symbolRate)
+	return &PSKEncoder{
+		sampleRate:       sampleRate,
+		carrierFreq:      carrierFreq,
+		symbolRate:       symbolRate,
+		modulationOrder:  modulationOrder,
+		samplesPerSymbol: samplesPerSymbol,
+	}
+}
+
+// GenerateSignal generates a PSK modulated signal from data bytes
+func (psk *PSKEncoder) GenerateSignal(data []byte, amplitude float32, length int) vec.Vector {
+	result := vec.New(length)
+	resultData := []float32(result)
+
+	bitsPerSymbol := int(math.Log2(float64(psk.modulationOrder)))
+	phaseStep := 2 * math.Pi / float32(psk.modulationOrder)
+
+	bitIndex := 0
+	sampleIndex := 0
+
+	// Convert bytes to bits
+	bitBuffer := make([]byte, 0, len(data)*8)
+	for _, b := range data {
+		for i := 7; i >= 0; i-- {
+			bit := (b >> uint(i)) & 1
+			bitBuffer = append(bitBuffer, byte(bit))
+		}
+	}
+
+	// Process bits in symbol groups
+	for i := 0; i < len(bitBuffer)-bitsPerSymbol+1 && sampleIndex < length; i += bitsPerSymbol {
+		// Collect bits for one symbol
+		symbol := 0
+		for j := 0; j < bitsPerSymbol && i+j < len(bitBuffer); j++ {
+			symbol = (symbol << 1) | int(bitBuffer[i+j])
+		}
+
+		// Generate symbol samples
+		phaseOffset := float32(symbol) * phaseStep
+		for s := 0; s < psk.samplesPerSymbol && sampleIndex < length; s++ {
+			phase := 2*math.Pi*psk.carrierFreq*float32(sampleIndex)/psk.sampleRate + phaseOffset
+			resultData[sampleIndex] = amplitude * float32(math.Cos(float64(phase)))
+			sampleIndex++
+		}
+		bitIndex++
+	}
+
+	return result
+}
+
+// FSKEncoder handles Frequency Shift Keying encoding
+type FSKEncoder struct {
+	sampleRate       float32
+	frequencies      []float32 // Frequencies for each symbol (2, 4, 8, or 16 frequencies)
+	symbolRate       float32
+	samplesPerSymbol int
+	modulationOrder  int // Number of frequencies (2, 4, 8, 16)
+}
+
+// NewFSKEncoder creates a new FSK encoder with 2 frequencies (binary FSK)
+func NewFSKEncoder(sampleRate, freqLow, freqHigh, symbolRate float32) *FSKEncoder {
+	return NewMFSKEncoder(sampleRate, symbolRate, freqLow, freqHigh)
+}
+
+// NewMFSKEncoder creates a new M-FSK encoder with multiple frequencies
+// modulationOrder is determined by the number of frequencies provided
+func NewMFSKEncoder(sampleRate, symbolRate float32, frequencies ...float32) *FSKEncoder {
+	if len(frequencies) < 2 {
+		panic("FSK encoder requires at least 2 frequencies")
+	}
+	// Validate modulation order is power of 2
+	modOrder := len(frequencies)
+	if modOrder != 2 && modOrder != 4 && modOrder != 8 && modOrder != 16 {
+		panic(fmt.Sprintf("FSK modulation order must be 2, 4, 8, or 16, got %d", modOrder))
+	}
+
+	samplesPerSymbol := int(sampleRate / symbolRate)
+	return &FSKEncoder{
+		sampleRate:       sampleRate,
+		frequencies:      frequencies,
+		symbolRate:       symbolRate,
+		samplesPerSymbol: samplesPerSymbol,
+		modulationOrder:  modOrder,
+	}
+}
+
+// GenerateSignal generates an FSK modulated signal from data bytes
+func (fsk *FSKEncoder) GenerateSignal(data []byte, amplitude float32, length int) vec.Vector {
+	result := vec.New(length)
+	resultData := []float32(result)
+
+	bitsPerSymbol := int(math.Log2(float64(fsk.modulationOrder)))
+
+	// Convert bytes to bits
+	bitBuffer := make([]byte, 0, len(data)*8)
+	for _, b := range data {
+		for i := 7; i >= 0; i-- {
+			bit := (b >> uint(i)) & 1
+			bitBuffer = append(bitBuffer, byte(bit))
+		}
+	}
+
+	sampleIndex := 0
+	phase := float32(0)
+
+	// Process bits in symbol groups
+	for i := 0; i < len(bitBuffer)-bitsPerSymbol+1 && sampleIndex < length; i += bitsPerSymbol {
+		// Collect bits for one symbol
+		symbol := 0
+		for j := 0; j < bitsPerSymbol && i+j < len(bitBuffer); j++ {
+			symbol = (symbol << 1) | int(bitBuffer[i+j])
+		}
+
+		// Select frequency based on symbol value
+		if symbol >= len(fsk.frequencies) {
+			symbol = len(fsk.frequencies) - 1
+		}
+		freq := fsk.frequencies[symbol]
+
+		// Generate symbol samples
+		for s := 0; s < fsk.samplesPerSymbol && sampleIndex < length; s++ {
+			phase += 2 * math.Pi * freq / fsk.sampleRate
+			resultData[sampleIndex] = amplitude * float32(math.Cos(float64(phase)))
+			sampleIndex++
+		}
+	}
+
+	return result
+}
+
+// GenerateSignal generates a QAM modulated signal from data bytes
+func (qam *QAM16Encoder) GenerateSignal(data []byte, amplitude float32, length int) vec.Vector {
+	result := vec.New(length)
+	resultData := []float32(result)
+
+	// Convert bytes to bits
+	bitBuffer := make([]byte, 0, len(data)*8)
+	for _, b := range data {
+		for i := 7; i >= 0; i-- {
+			bit := (b >> uint(i)) & 1
+			bitBuffer = append(bitBuffer, byte(bit))
+		}
+	}
+
+	sampleIndex := 0
+	qam.currentPhase = 0
+
+	// Process 4 bits at a time (16-QAM symbols)
+	for i := 0; i < len(bitBuffer)-3 && sampleIndex < length; i += 4 {
+		bits := bitBuffer[i : i+4]
+
+		// Map 4 bits to I/Q values
+		iVal, qVal := qam.bitsToIQ(bits)
+		iVal *= amplitude / 3.0 // Normalize to amplitude
+		qVal *= amplitude / 3.0
+
+		// Generate symbol samples
+		for s := 0; s < qam.samplesPerSymbol && sampleIndex < length; s++ {
+			phase := 2 * math.Pi * qam.carrierFreq * qam.currentPhase / qam.sampleRate
+			carrierI := float32(math.Cos(float64(phase)))
+			carrierQ := float32(math.Sin(float64(phase)))
+
+			// Modulate: I*cos - Q*sin (standard QAM modulation)
+			resultData[sampleIndex] = iVal*carrierI - qVal*carrierQ
+
+			qam.currentPhase += 1.0
+			sampleIndex++
+		}
+	}
+
+	return result
+}
+
+// GenerateIQSignal generates an IQ modulated signal from I and Q vectors
+func (iq *IQEncoder) GenerateIQSignal(I, Q vecTypes.Vector) vec.Vector {
+	return iq.Modulate(I, Q)
 }

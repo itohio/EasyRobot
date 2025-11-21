@@ -174,6 +174,9 @@ triangle := gen1D.Triangle(1024, 10.0, 1.0, 1000.0)
 // Noise
 uniformNoise := gen1D.NoiseUniform(1024, 0.1)
 gaussianNoise := gen1D.NoiseGaussian(1024, 0.1)
+whiteNoise := gen1D.NoiseWhite(1024, 0.1)      // White noise (flat spectrum)
+pinkNoise := gen1D.NoisePink(1024, 0.1)        // Pink noise (1/f, -3dB/octave)
+brownNoise := gen1D.NoiseBrown(1024, 0.1)      // Brown noise (1/f^2, -6dB/octave)
 
 // Special signals
 impulse := gen1D.Impulse(1024, 512)
@@ -282,9 +285,19 @@ decoder.SetFilter(lowPass)
 I_demod, Q_demod := decoder.Demodulate(modulated)
 ```
 
-### PSK (Phase Shift Keying) Demodulation
+### PSK (Phase Shift Keying) Encoding/Decoding
 
 ```go
+// PSK Encoder (BPSK, QPSK, 8-PSK, 16-PSK)
+pskEncoder := dsp.NewPSKEncoder(1000000.0, 100000.0, 10000.0, 2) // BPSK
+// Modulation order: 2=BPSK, 4=QPSK, 8=8-PSK, 16=16-PSK
+
+// Generate PSK modulated signal from data
+data := []byte("Hello")
+amplitude := float32(1.0)
+signalLength := 1000
+modulatedSignal := pskEncoder.GenerateSignal(data, amplitude, signalLength)
+
 // PSK Decoder
 pskDecoder := dsp.NewPSKDecoder(1000000.0, 100000.0, 10000.0, 2) // BPSK
 
@@ -294,16 +307,29 @@ symbols := pskDecoder.Demodulate(receivedSignal)
 // symbols will contain 0s and 1s for BPSK
 ```
 
-### FSK (Frequency Shift Keying) Demodulation
+### FSK (Frequency Shift Keying) Encoding/Decoding
 
 ```go
+// Binary FSK Encoder (2 frequencies)
+fskEncoder := dsp.NewFSKEncoder(1000000.0, 90000.0, 110000.0, 10000.0) // 90kHz/110kHz
+
+// Multi-FSK Encoder (2, 4, 8, or 16 frequencies)
+mFskEncoder := dsp.NewMFSKEncoder(1000000.0, 10000.0, 90000.0, 100000.0, 110000.0, 120000.0) // 4-FSK
+// Supports 2, 4, 8, or 16 frequencies (must be power of 2)
+
+// Generate FSK modulated signal from data
+data := []byte("Hello")
+amplitude := float32(1.0)
+signalLength := 1000
+modulatedSignal := fskEncoder.GenerateSignal(data, amplitude, signalLength)
+
 // FSK Decoder
 fskDecoder := dsp.NewFSKDecoder(1000000.0, 90000.0, 110000.0, 10000.0) // 90kHz/110kHz
 
 // Demodulate FSK signal
 symbols := fskDecoder.Demodulate(receivedSignal)
 
-// symbols will contain 0s and 1s for FSK
+// symbols will contain 0s and 1s for binary FSK
 ```
 
 ### ASK (Amplitude Shift Keying) Demodulation
@@ -324,7 +350,13 @@ symbols := askDecoder.Demodulate(receivedSignal)
 // QAM-16 Encoder (4 bits per symbol)
 qamEncoder := dsp.NewQAM16Encoder(sampleRate, carrierFreq, symbolRate)
 
-// Encode bytes to amplitudes
+// Generate QAM modulated signal from data
+data := []byte("Hello World")
+amplitude := float32(1.0)
+signalLength := 1000
+modulatedSignal := qamEncoder.GenerateSignal(data, amplitude, signalLength)
+
+// Alternative: Encode bytes to amplitudes using interface
 encoder := qamEncoder.(dsp.ModulatorEncoder)
 signal := vec.New(1000)
 encoder.Encode(signal, []byte("Hello World"))
