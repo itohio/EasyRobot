@@ -359,6 +359,56 @@ dfs := NewDFS[GridNode, float32](graph)
 visited := dfs.Search(start)
 ```
 
+### RRT* (Rapidly-exploring Random Tree Star)
+
+RRT* is a sampling-based pathfinding algorithm that builds a tree by randomly sampling the search space. It's particularly useful for high-dimensional spaces and when the graph structure is not known a priori.
+
+```go
+// Sampler generates random coordinates in the search space
+type Sampler[N any] func() N
+
+// Reachability returns the probability (0-1) that 'from' can reach 'to'
+type Reachability[N any, E any] func(from, to Node[N, E]) float32
+
+// Distance calculates distance between two nodes
+type Distance[N any, E any] func(a, b Node[N, E]) float32
+
+// GoalChecker determines if a node has reached the goal
+type GoalChecker[N any, E any] func(node, goal Node[N, E]) bool
+
+// NodeCreator creates a new node from data
+type NodeCreator[N any, E any] func(data N) Node[N, E]
+
+rrtstar := NewRRTStar[GridNode, float32](
+    graph,           // GenericGraph to build tree in
+    sampler,         // Random coordinate generator
+    reachability,    // Probability-based reachability (0-1)
+    distance,        // Distance function for nearest neighbor
+    goalChecker,     // Check if goal is reached
+    nodeCreator,     // Create nodes from sampled data
+)
+
+path := rrtstar.Search(start, goal, maxIterations)
+```
+
+**Features:**
+- Probabilistic reachability (not boolean) - allows for uncertain environments
+- Generic over node and edge types
+- Works with GenericGraph - manages connections automatically
+- Rewiring optimization (the * variant) - improves paths as tree grows
+- Configurable sampling and reachability functions
+
+**Algorithm:**
+1. Initialize tree with start node
+2. For each iteration:
+   - Sample random point in search space
+   - Find nearest node in tree
+   - Check reachability probability from nearest to sample
+   - If reachable (probability > threshold), create new node and connect
+   - Rewire: check if new node can improve paths to nearby nodes
+   - If goal reached, return path
+3. Return path from start to goal (or nil if max iterations reached)
+
 ### Cycle Detection
 
 ```go

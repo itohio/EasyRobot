@@ -317,9 +317,13 @@ func (g *GenericGraph[N, E]) AddNode(node Node[N, E]) error {
 		return nil
 	}
 
-	// If it's already a GenericNode, check if it's in this graph
-	if gn.graph == g {
-		return nil // Already in graph
+	// If it's already a GenericNode, check if it's actually in this graph
+	// Check both graph reference and nodeIdx to ensure it's really in the graph
+	if gn.graph == g && gn.nodeIdx >= 0 {
+		// Verify it's actually in the nodeMap
+		if idx, exists := g.nodeMap[gn.id]; exists && idx == gn.nodeIdx {
+			return nil // Already in graph
+		}
 	}
 
 	// Add to graph
