@@ -52,6 +52,40 @@ func ElemConvert[T, U Numeric](dst []T, src []U, n int) {
 func elemConvertNumeric[T, U Numeric](dst []T, src []U) []T {
 	// Check if this is a down-conversion that needs clamping
 	switch d := any(dst).(type) {
+	case []complex64:
+		// Handle complex64 destination
+		switch s := any(src).(type) {
+		case []complex64:
+			// Same type - use copy
+			n := min(len(d), len(s))
+			copy(d[:n], s[:n])
+			return dst
+		case []float64:
+			// float64 -> complex64: need to clamp to float32 range
+			clampToComplex64FromFloat64(d, s, min(len(d), len(s)))
+			return dst
+		case []float32:
+			// float32 -> complex64: no clamping needed (same range)
+			FromTToComplex(d, s)
+			return dst
+		case []int64:
+			// int64 -> complex64: need to clamp to float32 range
+			clampToComplex64FromInt64(d, s, min(len(d), len(s)))
+			return dst
+		case []int:
+			FromTToComplex(d, s)
+			return dst
+		case []int32:
+			FromTToComplex(d, s)
+			return dst
+		case []int16:
+			FromTToComplex(d, s)
+			return dst
+		case []int8:
+			FromTToComplex(d, s)
+			return dst
+		}
+		return dst
 	case []int64:
 		// Check if source is larger (float32/float64) - needs clamping
 		switch any(src).(type) {
@@ -119,6 +153,11 @@ func elemConvertGeneric[T, U Numeric](dst []T, src []U) []T {
 	// Fast path: same type - use type assertion to check and use copy
 	// This is optimized by the compiler when T == U
 	switch d := any(dst).(type) {
+	case []complex64:
+		if s, ok := any(src).([]complex64); ok {
+			copy(d[:n], s[:n])
+			return dst
+		}
 	case []float64:
 		if s, ok := any(src).([]float64); ok {
 			copy(d[:n], s[:n])
@@ -155,15 +194,422 @@ func elemConvertGeneric[T, U Numeric](dst []T, src []U) []T {
 			return dst
 		}
 	}
+
+	// Use helpers for complex conversions to avoid type casts in hot path
+	switch d := any(dst).(type) {
+	case []complex64:
+		// complex64 destination
+		switch s := any(src).(type) {
+		case []complex64:
+			// Same type already handled above
+		case []float64:
+			FromTToComplex(d[:n], s)
+			return dst
+		case []float32:
+			FromTToComplex(d[:n], s)
+			return dst
+		case []int64:
+			FromTToComplex(d[:n], s)
+			return dst
+		case []int:
+			FromTToComplex(d[:n], s)
+			return dst
+		case []int32:
+			FromTToComplex(d[:n], s)
+			return dst
+		case []int16:
+			FromTToComplex(d[:n], s)
+			return dst
+		case []int8:
+			FromTToComplex(d[:n], s)
+			return dst
+		}
+	case []float64:
+		switch s := any(src).(type) {
+		case []complex64:
+			// complex64 -> float64: extract real part (up-conversion, no clamping needed)
+			clampToFloat64FromComplex(d[:n], s, n)
+			return dst
+		case []float64:
+			FromUToT[float64, float64](d[:n], s[:n])
+			return dst
+		case []float32:
+			FromUToT[float64, float32](d[:n], s[:n])
+			return dst
+		case []int64:
+			FromUToT[float64, int64](d[:n], s[:n])
+			return dst
+		case []int:
+			FromUToT[float64, int](d[:n], s[:n])
+			return dst
+		case []int32:
+			FromUToT[float64, int32](d[:n], s[:n])
+			return dst
+		case []int16:
+			FromUToT[float64, int16](d[:n], s[:n])
+			return dst
+		case []int8:
+			FromUToT[float64, int8](d[:n], s[:n])
+			return dst
+		}
+	case []float32:
+		switch s := any(src).(type) {
+		case []complex64:
+			// complex64 -> float32: extract real part (same range, no clamping needed but use function for consistency)
+			clampToFloat32FromComplex(d[:n], s, n)
+			return dst
+		case []float64:
+			FromUToT[float32, float64](d[:n], s[:n])
+			return dst
+		case []float32:
+			FromUToT[float32, float32](d[:n], s[:n])
+			return dst
+		case []int64:
+			FromUToT[float32, int64](d[:n], s[:n])
+			return dst
+		case []int:
+			FromUToT[float32, int](d[:n], s[:n])
+			return dst
+		case []int32:
+			FromUToT[float32, int32](d[:n], s[:n])
+			return dst
+		case []int16:
+			FromUToT[float32, int16](d[:n], s[:n])
+			return dst
+		case []int8:
+			FromUToT[float32, int8](d[:n], s[:n])
+			return dst
+		}
+	case []int64:
+		switch s := any(src).(type) {
+		case []complex64:
+			clampToInt64FromComplex(d[:n], s, n)
+			return dst
+		case []float64:
+			clampToInt64(d[:n], s, n)
+			return dst
+		case []float32:
+			clampToInt64(d[:n], s, n)
+			return dst
+		case []int64:
+			copy(d[:n], s[:n])
+			return dst
+		case []int:
+			FromUToT[int64, int](d[:n], s[:n])
+			return dst
+		case []int32:
+			FromUToT[int64, int32](d[:n], s[:n])
+			return dst
+		case []int16:
+			FromUToT[int64, int16](d[:n], s[:n])
+			return dst
+		case []int8:
+			FromUToT[int64, int8](d[:n], s[:n])
+			return dst
+		}
+	case []int:
+		switch s := any(src).(type) {
+		case []complex64:
+			// Use platform-specific clamping function
+			elemConvertToInt(d[:n], s)
+			return dst
+		case []float64:
+			FromUToT[int, float64](d[:n], s[:n])
+			return dst
+		case []float32:
+			FromUToT[int, float32](d[:n], s[:n])
+			return dst
+		case []int64:
+			FromUToT[int, int64](d[:n], s[:n])
+			return dst
+		case []int:
+			FromUToT[int, int](d[:n], s[:n])
+			return dst
+		case []int32:
+			FromUToT[int, int32](d[:n], s[:n])
+			return dst
+		case []int16:
+			FromUToT[int, int16](d[:n], s[:n])
+			return dst
+		case []int8:
+			FromUToT[int, int8](d[:n], s[:n])
+			return dst
+		}
+	case []int32:
+		switch s := any(src).(type) {
+		case []complex64:
+			clampToInt32FromComplex(d[:n], s, n)
+			return dst
+		case []float64:
+			clampToInt32(d[:n], s, n)
+			return dst
+		case []float32:
+			clampToInt32(d[:n], s, n)
+			return dst
+		case []int64:
+			clampToInt32(d[:n], s, n)
+			return dst
+		case []int:
+			clampToInt32(d[:n], s, n)
+			return dst
+		case []int32:
+			copy(d[:n], s[:n])
+			return dst
+		case []int16:
+			FromUToT[int32, int16](d[:n], s[:n])
+			return dst
+		case []int8:
+			FromUToT[int32, int8](d[:n], s[:n])
+			return dst
+		}
+	case []int16:
+		switch s := any(src).(type) {
+		case []complex64:
+			clampToInt16FromComplex(d[:n], s, n)
+			return dst
+		case []float64:
+			clampToInt16(d[:n], s, n)
+			return dst
+		case []float32:
+			clampToInt16(d[:n], s, n)
+			return dst
+		case []int64:
+			clampToInt16(d[:n], s, n)
+			return dst
+		case []int:
+			clampToInt16(d[:n], s, n)
+			return dst
+		case []int32:
+			clampToInt16(d[:n], s, n)
+			return dst
+		case []int16:
+			copy(d[:n], s[:n])
+			return dst
+		case []int8:
+			FromUToT[int16, int8](d[:n], s[:n])
+			return dst
+		}
+	case []int8:
+		switch s := any(src).(type) {
+		case []complex64:
+			clampToInt8FromComplex(d[:n], s, n)
+			return dst
+		case []float64:
+			clampToInt8(d[:n], s, n)
+			return dst
+		case []float32:
+			clampToInt8(d[:n], s, n)
+			return dst
+		case []int64:
+			clampToInt8(d[:n], s, n)
+			return dst
+		case []int:
+			clampToInt8(d[:n], s, n)
+			return dst
+		case []int32:
+			clampToInt8(d[:n], s, n)
+			return dst
+		case []int16:
+			clampToInt8(d[:n], s, n)
+			return dst
+		case []int8:
+			copy(d[:n], s[:n])
+			return dst
+		}
+	}
+
 	// Generic conversion: compiler optimizes T(src[i]) for each type combination
+	// Skip if complex64 is involved (already handled above) - use type switch to avoid compiler error
+	switch any(dst).(type) {
+	case []complex64:
+		return dst
+	}
+	switch any(src).(type) {
+	case []complex64:
+		return dst
+	}
 	// Bounds check elimination
 	if n > 0 {
 		_ = dst[n-1]
 		_ = src[n-1]
 	}
-	for i := 0; i < n; i++ {
-		dst[i] = T(src[i])
+	// Generic conversion for NumericReal types only (complex64 already handled above)
+	// This code path should only be reached for NumericReal <-> NumericReal conversions
+	// Use explicit type handling to avoid generic constraint issues
+	switch d := any(dst).(type) {
+	case []float64:
+		switch s := any(src).(type) {
+		case []float64:
+			FromUToT[float64, float64](d[:n], s[:n])
+			return dst
+		case []float32:
+			FromUToT[float64, float32](d[:n], s[:n])
+			return dst
+		case []int64:
+			FromUToT[float64, int64](d[:n], s[:n])
+			return dst
+		case []int:
+			FromUToT[float64, int](d[:n], s[:n])
+			return dst
+		case []int32:
+			FromUToT[float64, int32](d[:n], s[:n])
+			return dst
+		case []int16:
+			FromUToT[float64, int16](d[:n], s[:n])
+			return dst
+		case []int8:
+			FromUToT[float64, int8](d[:n], s[:n])
+			return dst
+		}
+	case []float32:
+		switch s := any(src).(type) {
+		case []float64:
+			FromUToT[float32, float64](d[:n], s[:n])
+			return dst
+		case []float32:
+			FromUToT[float32, float32](d[:n], s[:n])
+			return dst
+		case []int64:
+			FromUToT[float32, int64](d[:n], s[:n])
+			return dst
+		case []int:
+			FromUToT[float32, int](d[:n], s[:n])
+			return dst
+		case []int32:
+			FromUToT[float32, int32](d[:n], s[:n])
+			return dst
+		case []int16:
+			FromUToT[float32, int16](d[:n], s[:n])
+			return dst
+		case []int8:
+			FromUToT[float32, int8](d[:n], s[:n])
+			return dst
+		}
+	case []int64:
+		switch s := any(src).(type) {
+		case []float64:
+			clampToInt64(d[:n], s, n)
+			return dst
+		case []float32:
+			clampToInt64(d[:n], s, n)
+			return dst
+		case []int64:
+			copy(d[:n], s[:n])
+			return dst
+		case []int:
+			FromUToT[int64, int](d[:n], s[:n])
+			return dst
+		case []int32:
+			FromUToT[int64, int32](d[:n], s[:n])
+			return dst
+		case []int16:
+			FromUToT[int64, int16](d[:n], s[:n])
+			return dst
+		case []int8:
+			FromUToT[int64, int8](d[:n], s[:n])
+			return dst
+		}
+	case []int:
+		switch s := any(src).(type) {
+		case []float64:
+			// Use platform-specific clamping function
+			elemConvertToInt(d[:n], s)
+			return dst
+		case []float32:
+			// Use platform-specific clamping function
+			elemConvertToInt(d[:n], s)
+			return dst
+		case []int64:
+			// Use platform-specific clamping function (int64 may need clamping on 32-bit)
+			elemConvertToInt(d[:n], s)
+			return dst
+		case []int:
+			copy(d[:n], s[:n])
+			return dst
+		case []int32:
+			FromUToT[int, int32](d[:n], s[:n])
+			return dst
+		case []int16:
+			FromUToT[int, int16](d[:n], s[:n])
+			return dst
+		case []int8:
+			FromUToT[int, int8](d[:n], s[:n])
+			return dst
+		}
+	case []int32:
+		switch s := any(src).(type) {
+		case []float64:
+			clampToInt32(d[:n], s, n)
+			return dst
+		case []float32:
+			clampToInt32(d[:n], s, n)
+			return dst
+		case []int64:
+			clampToInt32(d[:n], s, n)
+			return dst
+		case []int:
+			clampToInt32(d[:n], s, n)
+			return dst
+		case []int32:
+			copy(d[:n], s[:n])
+			return dst
+		case []int16:
+			FromUToT[int32, int16](d[:n], s[:n])
+			return dst
+		case []int8:
+			FromUToT[int32, int8](d[:n], s[:n])
+			return dst
+		}
+	case []int16:
+		switch s := any(src).(type) {
+		case []float64:
+			clampToInt16(d[:n], s, n)
+			return dst
+		case []float32:
+			clampToInt16(d[:n], s, n)
+			return dst
+		case []int64:
+			clampToInt16(d[:n], s, n)
+			return dst
+		case []int:
+			clampToInt16(d[:n], s, n)
+			return dst
+		case []int32:
+			clampToInt16(d[:n], s, n)
+			return dst
+		case []int16:
+			copy(d[:n], s[:n])
+			return dst
+		case []int8:
+			FromUToT[int16, int8](d[:n], s[:n])
+			return dst
+		}
+	case []int8:
+		switch s := any(src).(type) {
+		case []float64:
+			clampToInt8(d[:n], s, n)
+			return dst
+		case []float32:
+			clampToInt8(d[:n], s, n)
+			return dst
+		case []int64:
+			clampToInt8(d[:n], s, n)
+			return dst
+		case []int:
+			clampToInt8(d[:n], s, n)
+			return dst
+		case []int32:
+			clampToInt8(d[:n], s, n)
+			return dst
+		case []int16:
+			clampToInt8(d[:n], s, n)
+			return dst
+		case []int8:
+			copy(d[:n], s[:n])
+			return dst
+		}
 	}
+	// Fallback: should not reach here for complex64 (handled above)
 	return dst
 }
 
@@ -183,44 +629,8 @@ func ElemConvertStrided[T, U Numeric](dst []T, src []U, shape []int, stridesDst,
 
 	// Check if types match for fast path (same type, contiguous)
 	if IsContiguous(stridesDst, shape) && IsContiguous(stridesSrc, shape) {
-		switch d := any(dst).(type) {
-		case []float32:
-			if s, ok := any(src).([]float32); ok {
-				// Same type, contiguous: use direct copy
-				copy(d[:size], s[:size])
-				return
-			}
-		case []float64:
-			if s, ok := any(src).([]float64); ok {
-				copy(d[:size], s[:size])
-				return
-			}
-		case []int64:
-			if s, ok := any(src).([]int64); ok {
-				copy(d[:size], s[:size])
-				return
-			}
-		case []int:
-			if s, ok := any(src).([]int); ok {
-				copy(d[:size], s[:size])
-				return
-			}
-		case []int32:
-			if s, ok := any(src).([]int32); ok {
-				copy(d[:size], s[:size])
-				return
-			}
-		case []int16:
-			if s, ok := any(src).([]int16); ok {
-				copy(d[:size], s[:size])
-				return
-			}
-		case []int8:
-			if s, ok := any(src).([]int8); ok {
-				copy(d[:size], s[:size])
-				return
-			}
-		}
+		elemConvertNumeric(dst, src)
+		return
 	}
 
 	// Different types or strided: use conversion with strides
@@ -293,16 +703,435 @@ func elemConvertStridedGeneric[T, U Numeric](dst []T, src []U, shape []int, srcS
 		return
 	}
 
+	// Skip if complex64 is involved (should be handled by specialized functions)
+	switch any(dst).(type) {
+	case []complex64:
+		return
+	}
+	switch any(src).(type) {
+	case []complex64:
+		return
+	}
+
 	// Use stack-allocated arrays and AdvanceOffsets pattern
 	var indicesStatic [MAX_DIMS]int
 	var offsetsStatic [2]int
 	indices := indicesStatic[:ndims]
 	offsets := offsetsStatic[:2]
-	for {
-		// Hot path: direct conversion, no type switches
-		dst[offsets[0]] = T(src[offsets[1]])
-		if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
-			break
+	// Handle each destination type explicitly to avoid generic constraint issues
+	switch d := any(dst).(type) {
+	case []float64:
+		switch s := any(src).(type) {
+		case []float64:
+			for {
+				d[offsets[0]] = float64(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []float32:
+			for {
+				d[offsets[0]] = float64(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int64:
+			for {
+				d[offsets[0]] = float64(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int:
+			for {
+				d[offsets[0]] = float64(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int32:
+			for {
+				d[offsets[0]] = float64(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int16:
+			for {
+				d[offsets[0]] = float64(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int8:
+			for {
+				d[offsets[0]] = float64(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		}
+	case []float32:
+		switch s := any(src).(type) {
+		case []float64:
+			for {
+				d[offsets[0]] = float32(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []float32:
+			for {
+				d[offsets[0]] = float32(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int64:
+			for {
+				d[offsets[0]] = float32(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int:
+			for {
+				d[offsets[0]] = float32(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int32:
+			for {
+				d[offsets[0]] = float32(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int16:
+			for {
+				d[offsets[0]] = float32(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int8:
+			for {
+				d[offsets[0]] = float32(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		}
+	case []int64:
+		switch s := any(src).(type) {
+		case []float64:
+			for {
+				d[offsets[0]] = int64(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []float32:
+			for {
+				d[offsets[0]] = int64(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int64:
+			for {
+				d[offsets[0]] = int64(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int:
+			for {
+				d[offsets[0]] = int64(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int32:
+			for {
+				d[offsets[0]] = int64(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int16:
+			for {
+				d[offsets[0]] = int64(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int8:
+			for {
+				d[offsets[0]] = int64(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		}
+	case []int:
+		switch s := any(src).(type) {
+		case []float64:
+			for {
+				d[offsets[0]] = int(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []float32:
+			for {
+				d[offsets[0]] = int(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int64:
+			for {
+				d[offsets[0]] = int(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int:
+			for {
+				d[offsets[0]] = int(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int32:
+			for {
+				d[offsets[0]] = int(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int16:
+			for {
+				d[offsets[0]] = int(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int8:
+			for {
+				d[offsets[0]] = int(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		}
+	case []int32:
+		switch s := any(src).(type) {
+		case []float64:
+			for {
+				d[offsets[0]] = int32(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []float32:
+			for {
+				d[offsets[0]] = int32(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int64:
+			for {
+				d[offsets[0]] = int32(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int:
+			for {
+				d[offsets[0]] = int32(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int32:
+			for {
+				d[offsets[0]] = int32(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int16:
+			for {
+				d[offsets[0]] = int32(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int8:
+			for {
+				d[offsets[0]] = int32(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		}
+	case []int16:
+		switch s := any(src).(type) {
+		case []float64:
+			for {
+				d[offsets[0]] = int16(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []float32:
+			for {
+				d[offsets[0]] = int16(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int64:
+			for {
+				d[offsets[0]] = int16(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int:
+			for {
+				d[offsets[0]] = int16(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int32:
+			for {
+				d[offsets[0]] = int16(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int16:
+			for {
+				d[offsets[0]] = int16(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int8:
+			for {
+				d[offsets[0]] = int16(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		}
+	case []int8:
+		switch s := any(src).(type) {
+		case []float64:
+			for {
+				d[offsets[0]] = int8(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []float32:
+			for {
+				d[offsets[0]] = int8(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int64:
+			for {
+				d[offsets[0]] = int8(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int:
+			for {
+				d[offsets[0]] = int8(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int32:
+			for {
+				d[offsets[0]] = int8(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int16:
+			for {
+				d[offsets[0]] = int8(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
+		case []int8:
+			for {
+				d[offsets[0]] = int8(s[offsets[1]])
+				if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+					break
+				}
+			}
+			return
 		}
 	}
 }
@@ -322,11 +1151,18 @@ func elemConvertToInt64[U Numeric](dst []int64, src []U) {
 			clampToInt64(dst, s, n)
 		case []float64:
 			clampToInt64(dst, s, n)
-		default:
-			// Up-conversion: direct conversion
-			for i := 0; i < n; i++ {
-				dst[i] = int64(src[i])
-			}
+		case []complex64:
+			clampToInt64FromComplex(dst, s, n)
+		case []int64:
+			copy(dst, s)
+		case []int32:
+			FromUToT[int64, int32](dst, s)
+		case []int16:
+			FromUToT[int64, int16](dst, s)
+		case []int8:
+			FromUToT[int64, int8](dst, s)
+		case []int:
+			FromUToT[int64, int](dst, s)
 		}
 	}
 }
@@ -350,11 +1186,14 @@ func elemConvertToInt32[U Numeric](dst []int32, src []U) {
 			clampToInt32(dst, s, n)
 		case []int:
 			clampToInt32(dst, s, n)
-		default:
-			// Up-conversion: direct conversion
-			for i := 0; i < n; i++ {
-				dst[i] = int32(src[i])
-			}
+		case []complex64:
+			clampToInt32FromComplex(dst, s, n)
+		case []int32:
+			FromUToT[int32, int32](dst, s)
+		case []int16:
+			FromUToT[int32, int16](dst, s)
+		case []int8:
+			FromUToT[int32, int8](dst, s)
 		}
 	}
 }
@@ -370,6 +1209,8 @@ func elemConvertToInt16[U Numeric](dst []int16, src []U) {
 	}
 	if n > 0 {
 		switch s := any(src).(type) {
+		case []complex64:
+			clampToInt16FromComplex(dst, s, n)
 		case []float64:
 			clampToInt16(dst, s, n)
 		case []float32:
@@ -380,11 +1221,11 @@ func elemConvertToInt16[U Numeric](dst []int16, src []U) {
 			clampToInt16(dst, s, n)
 		case []int32:
 			clampToInt16(dst, s, n)
-		default:
-			// Up-conversion: direct conversion
-			for i := 0; i < n; i++ {
-				dst[i] = int16(src[i])
-			}
+		case []int16:
+			copy(dst, s)
+		case []int8:
+			FromUToT[int16, int8](dst, s)
+
 		}
 	}
 }
@@ -399,6 +1240,8 @@ func elemConvertToInt8[U Numeric](dst []int8, src []U) {
 	}
 	if n > 0 {
 		switch s := any(src).(type) {
+		case []complex64:
+			clampToInt8FromComplex(dst, s, n)
 		case []float64:
 			clampToInt8(dst, s, n)
 		case []float32:
@@ -411,11 +1254,96 @@ func elemConvertToInt8[U Numeric](dst []int8, src []U) {
 			clampToInt8(dst, s, n)
 		case []int16:
 			clampToInt8(dst, s, n)
-		default:
-			// Same type: direct conversion
-			for i := 0; i < n; i++ {
-				dst[i] = int8(src[i])
-			}
+		case []int8:
+			copy(dst, s)
+		}
+	}
+}
+
+// clampToFloat32FromComplex extracts real part from complex64 to float32.
+// No clamping needed (same range) but uses dedicated function for consistency.
+func clampToFloat32FromComplex(dst []float32, src []complex64, n int) {
+	if n == 0 {
+		return
+	}
+	_ = dst[n-1]
+	_ = src[n-1]
+	for i := 0; i < n; i++ {
+		dst[i] = float32(real(src[i]))
+	}
+}
+
+// clampToFloat64FromComplex extracts real part from complex64 to float64.
+// No clamping needed (up-conversion) but uses dedicated function for consistency.
+func clampToFloat64FromComplex(dst []float64, src []complex64, n int) {
+	if n == 0 {
+		return
+	}
+	_ = dst[n-1]
+	_ = src[n-1]
+	for i := 0; i < n; i++ {
+		dst[i] = float64(real(src[i]))
+	}
+}
+
+// clampToComplex64FromFloat64 clamps float64 to float32 range and converts to complex64.
+func clampToComplex64FromFloat64(dst []complex64, src []float64, n int) {
+	if n == 0 {
+		return
+	}
+	_ = dst[n-1]
+	_ = src[n-1]
+	for i := 0; i < n; i++ {
+		val := src[i]
+		var clamped float32
+		if val > float64(math.MaxFloat32) {
+			clamped = math.MaxFloat32
+		} else if val < float64(-math.MaxFloat32) {
+			clamped = -math.MaxFloat32
+		} else {
+			clamped = float32(val)
+		}
+		dst[i] = complex(clamped, 0)
+	}
+}
+
+// clampToComplex64FromInt64 clamps int64 to float32 range and converts to complex64.
+func clampToComplex64FromInt64(dst []complex64, src []int64, n int) {
+	if n == 0 {
+		return
+	}
+	_ = dst[n-1]
+	_ = src[n-1]
+	for i := 0; i < n; i++ {
+		val := float64(src[i])
+		var clamped float32
+		if val > float64(math.MaxFloat32) {
+			clamped = math.MaxFloat32
+		} else if val < float64(-math.MaxFloat32) {
+			clamped = -math.MaxFloat32
+		} else {
+			clamped = float32(val)
+		}
+		dst[i] = complex(clamped, 0)
+	}
+}
+
+// clampToInt8FromComplex implements the hot path inner loop for clamping complex64 to int8 range.
+// Extracts real part and clamps directly without allocations.
+func clampToInt8FromComplex(dst []int8, src []complex64, n int) {
+	if n == 0 {
+		return
+	}
+	_ = dst[n-1]
+	_ = src[n-1]
+	for i := 0; i < n; i++ {
+		val := float32(real(src[i]))
+		if val > float32(math.MaxInt8) {
+			dst[i] = math.MaxInt8
+		} else if val < float32(math.MinInt8) {
+			dst[i] = math.MinInt8
+		} else {
+			dst[i] = int8(val)
 		}
 	}
 }
@@ -442,6 +1370,26 @@ func clampToInt8[U clampableToInt8](dst []int8, src []U, n int) {
 	}
 }
 
+// clampToInt64FromComplex implements the hot path inner loop for clamping complex64 to int64 range.
+// Extracts real part and clamps directly without allocations.
+func clampToInt64FromComplex(dst []int64, src []complex64, n int) {
+	if n == 0 {
+		return
+	}
+	_ = dst[n-1]
+	_ = src[n-1]
+	for i := 0; i < n; i++ {
+		val := float32(real(src[i]))
+		if val > float32(math.MaxInt64) {
+			dst[i] = math.MaxInt64
+		} else if val < float32(math.MinInt64) {
+			dst[i] = math.MinInt64
+		} else {
+			dst[i] = int64(val)
+		}
+	}
+}
+
 // clampToInt64 implements the hot path inner loop for clamping to int64 range.
 // Generic over source types that need clamping (float32, float64).
 func clampToInt64[U clampableToInt64](dst []int64, src []U, n int) {
@@ -463,6 +1411,26 @@ func clampToInt64[U clampableToInt64](dst []int64, src []U, n int) {
 	}
 }
 
+// clampToInt32FromComplex implements the hot path inner loop for clamping complex64 to int32 range.
+// Extracts real part and clamps directly without allocations.
+func clampToInt32FromComplex(dst []int32, src []complex64, n int) {
+	if n == 0 {
+		return
+	}
+	_ = dst[n-1]
+	_ = src[n-1]
+	for i := 0; i < n; i++ {
+		val := float32(real(src[i]))
+		if val > float32(math.MaxInt32) {
+			dst[i] = math.MaxInt32
+		} else if val < float32(math.MinInt32) {
+			dst[i] = math.MinInt32
+		} else {
+			dst[i] = int32(val)
+		}
+	}
+}
+
 // clampToInt32 implements the hot path inner loop for clamping to int32 range [-2147483648, 2147483647].
 // Generic over source types that need clamping (float32, float64, int64).
 func clampToInt32[U clampableToInt32](dst []int32, src []U, n int) {
@@ -480,6 +1448,26 @@ func clampToInt32[U clampableToInt32](dst []int32, src []U, n int) {
 			dst[i] = math.MinInt32
 		} else {
 			dst[i] = int32(val)
+		}
+	}
+}
+
+// clampToInt16FromComplex implements the hot path inner loop for clamping complex64 to int16 range.
+// Extracts real part and clamps directly without allocations.
+func clampToInt16FromComplex(dst []int16, src []complex64, n int) {
+	if n == 0 {
+		return
+	}
+	_ = dst[n-1]
+	_ = src[n-1]
+	for i := 0; i < n; i++ {
+		val := float32(real(src[i]))
+		if val > float32(math.MaxInt16) {
+			dst[i] = math.MaxInt16
+		} else if val < float32(math.MinInt16) {
+			dst[i] = math.MinInt16
+		} else {
+			dst[i] = int16(val)
 		}
 	}
 }

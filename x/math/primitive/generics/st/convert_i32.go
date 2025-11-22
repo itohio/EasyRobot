@@ -11,25 +11,53 @@ import (
 // clampableToInt is now in helpers package as ClampableToInt
 
 // elemConvertToInt handles conversions to int with clamping.
-// Handles: float32/float64/int64 -> int (needs clamping)
+// Handles: float32/float64/int64/complex64 -> int (needs clamping)
 func elemConvertToInt[U Numeric](dst []int, src []U) {
-	n := len(dst)
-	if len(src) < n {
-		n = len(src)
+	n := min(len(src), len(dst))
+	if n == 0 {
+		return
 	}
-	if n > 0 {
-		switch s := any(src).(type) {
-		case []float32:
-			clampToInt(dst, s, n)
-		case []float64:
-			clampToInt(dst, s, n)
-		case []int64:
-			clampToInt(dst, s, n)
-		default:
-			// Up-conversion: direct conversion
-			for i := 0; i < n; i++ {
-				dst[i] = int(src[i])
-			}
+	switch s := any(src).(type) {
+	case []complex64:
+		// Direct conversion from complex64 to int with clamping (no allocations)
+		clampToIntFromComplex(dst, s, n)
+	case []float32:
+		clampToInt(dst, s, n)
+	case []float64:
+		clampToInt(dst, s, n)
+	case []int64:
+		// On 32-bit platforms, int64 needs clamping
+		clampToInt(dst, s, n)
+	case []int32:
+		// Use helper to avoid type casts in hot path
+		FromUToT[int, int32](dst[:n], s[:n])
+	case []int16:
+		FromUToT[int, int16](dst[:n], s[:n])
+	case []int8:
+		FromUToT[int, int8](dst[:n], s[:n])
+	case []int:
+		// Same type, just copy
+		copy(dst[:n], s[:n])
+	}
+}
+
+// clampToIntFromComplex implements the hot path inner loop for clamping complex64 to int range.
+// Extracts real part and clamps directly without allocations.
+func clampToIntFromComplex(dst []int, src []complex64, n int) {
+	if n == 0 {
+		return
+	}
+	_ = dst[n-1]
+	_ = src[n-1]
+	for i := 0; i < n; i++ {
+		val := float32(real(src[i]))
+		// Direct clamping to avoid type conversion issues and improve performance
+		if val > float32(math.MaxInt) {
+			dst[i] = math.MaxInt
+		} else if val < float32(math.MinInt) {
+			dst[i] = math.MinInt
+		} else {
+			dst[i] = int(val)
 		}
 	}
 }
@@ -58,12 +86,42 @@ func clampToInt[U ClampableToInt](dst []int, src []U, n int) {
 // elemConvertToIntStrided handles conversions to int with clamping.
 func elemConvertToIntStrided[U Numeric](dst []int, src []U, shape []int, srcStrides, dstStrides []int) {
 	switch s := any(src).(type) {
+	case []complex64:
+		clampToIntFromComplexStrided(dst, s, shape, srcStrides, dstStrides)
 	case []float32:
 		clampToIntStrided(dst, s, shape, srcStrides, dstStrides)
 	case []float64:
 		clampToIntStrided(dst, s, shape, srcStrides, dstStrides)
 	case []int64:
 		clampToIntStrided(dst, s, shape, srcStrides, dstStrides)
+	}
+}
+
+// clampToIntFromComplexStrided implements the hot path for strided copying with clamping complex64 to int.
+func clampToIntFromComplexStrided(dst []int, src []complex64, shape []int, srcStrides, dstStrides []int) {
+	ndims := len(shape)
+	if ndims == 0 {
+		return
+	}
+
+	// Use stack-allocated arrays and AdvanceOffsets pattern
+	var indicesStatic [MAX_DIMS]int
+	var offsetsStatic [2]int
+	indices := indicesStatic[:ndims]
+	offsets := offsetsStatic[:2]
+	for {
+		// Hot path: extract real part and clamp
+		val := float32(real(src[offsets[1]]))
+		if val > float32(math.MaxInt) {
+			dst[offsets[0]] = math.MaxInt
+		} else if val < float32(math.MinInt) {
+			dst[offsets[0]] = math.MinInt
+		} else {
+			dst[offsets[0]] = int(val)
+		}
+		if !AdvanceOffsets(shape, indices, offsets, dstStrides, srcStrides) {
+			break
+		}
 	}
 }
 

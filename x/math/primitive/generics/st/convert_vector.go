@@ -19,14 +19,586 @@ func ElemVecConvertStrided[T, U Numeric](dst []T, src []U, n int, strideDst, str
 	}
 
 	// Strided path: convert each element individually
-	dIdx := 0
-	sIdx := 0
-	for i := 0; i < n; i++ {
-		// Convert single element using the same logic as ElemConvert
-		val := src[sIdx]
-		dst[dIdx] = T(val)
-		dIdx += strideDst
-		sIdx += strideSrc
+	// Handle complex64 cases explicitly to avoid type conversion issues
+	switch d := any(dst).(type) {
+	case []complex64:
+		switch s := any(src).(type) {
+		case []complex64:
+			// Same type - copy
+			dIdx := 0
+			sIdx := 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = s[sIdx]
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []float64:
+			dIdx := 0
+			sIdx := 0
+			for i := 0; i < n; i++ {
+				FromTToComplex(d[dIdx:dIdx+1], s[sIdx:sIdx+1])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []float32:
+			dIdx := 0
+			sIdx := 0
+			for i := 0; i < n; i++ {
+				FromTToComplex(d[dIdx:dIdx+1], s[sIdx:sIdx+1])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int64:
+			dIdx := 0
+			sIdx := 0
+			for i := 0; i < n; i++ {
+				FromTToComplex(d[dIdx:dIdx+1], s[sIdx:sIdx+1])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int:
+			dIdx := 0
+			sIdx := 0
+			for i := 0; i < n; i++ {
+				FromTToComplex(d[dIdx:dIdx+1], s[sIdx:sIdx+1])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int32:
+			dIdx := 0
+			sIdx := 0
+			for i := 0; i < n; i++ {
+				FromTToComplex(d[dIdx:dIdx+1], s[sIdx:sIdx+1])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int16:
+			dIdx := 0
+			sIdx := 0
+			for i := 0; i < n; i++ {
+				FromTToComplex(d[dIdx:dIdx+1], s[sIdx:sIdx+1])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int8:
+			dIdx := 0
+			sIdx := 0
+			for i := 0; i < n; i++ {
+				FromTToComplex(d[dIdx:dIdx+1], s[sIdx:sIdx+1])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		}
+	case []float64:
+		switch s := any(src).(type) {
+		case []complex64:
+			dIdx := 0
+			sIdx := 0
+			for i := 0; i < n; i++ {
+				FromComplexToT(d[dIdx:dIdx+1], s[sIdx:sIdx+1])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		}
+	case []float32:
+		switch s := any(src).(type) {
+		case []complex64:
+			dIdx := 0
+			sIdx := 0
+			for i := 0; i < n; i++ {
+				FromComplexToT(d[dIdx:dIdx+1], s[sIdx:sIdx+1])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		}
+	case []int64:
+		switch s := any(src).(type) {
+		case []complex64:
+			dIdx := 0
+			sIdx := 0
+			for i := 0; i < n; i++ {
+				FromComplexToT(d[dIdx:dIdx+1], s[sIdx:sIdx+1])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		}
+	case []int:
+		switch s := any(src).(type) {
+		case []complex64:
+			dIdx := 0
+			sIdx := 0
+			for i := 0; i < n; i++ {
+				FromComplexToT(d[dIdx:dIdx+1], s[sIdx:sIdx+1])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		}
+	case []int32:
+		switch s := any(src).(type) {
+		case []complex64:
+			dIdx := 0
+			sIdx := 0
+			for i := 0; i < n; i++ {
+				FromComplexToT(d[dIdx:dIdx+1], s[sIdx:sIdx+1])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		}
+	case []int16:
+		switch s := any(src).(type) {
+		case []complex64:
+			dIdx := 0
+			sIdx := 0
+			for i := 0; i < n; i++ {
+				FromComplexToT(d[dIdx:dIdx+1], s[sIdx:sIdx+1])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		}
+	case []int8:
+		switch s := any(src).(type) {
+		case []complex64:
+			dIdx := 0
+			sIdx := 0
+			for i := 0; i < n; i++ {
+				FromComplexToT(d[dIdx:dIdx+1], s[sIdx:sIdx+1])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		}
+	}
+
+	// NumericReal to NumericReal - direct conversion
+	// Handle each destination type explicitly to avoid generic constraint issues
+	switch d := any(dst).(type) {
+	case []float64:
+		switch s := any(src).(type) {
+		case []float64:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = float64(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []float32:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = float64(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int64:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = float64(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = float64(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int32:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = float64(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int16:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = float64(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int8:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = float64(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		}
+	case []float32:
+		switch s := any(src).(type) {
+		case []float64:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = float32(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []float32:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = float32(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int64:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = float32(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = float32(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int32:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = float32(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int16:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = float32(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int8:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = float32(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		}
+	case []int64:
+		switch s := any(src).(type) {
+		case []float64:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int64(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []float32:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int64(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int64:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int64(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int64(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int32:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int64(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int16:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int64(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int8:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int64(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		}
+	case []int:
+		switch s := any(src).(type) {
+		case []float64:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []float32:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int64:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int32:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int16:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int8:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		}
+	case []int32:
+		switch s := any(src).(type) {
+		case []float64:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int32(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []float32:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int32(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int64:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int32(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int32(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int32:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int32(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int16:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int32(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int8:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int32(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		}
+	case []int16:
+		switch s := any(src).(type) {
+		case []float64:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int16(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []float32:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int16(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int64:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int16(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int16(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int32:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int16(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int16:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int16(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int8:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int16(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		}
+	case []int8:
+		switch s := any(src).(type) {
+		case []float64:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int8(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []float32:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int8(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int64:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int8(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int8(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int32:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int8(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int16:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int8(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		case []int8:
+			dIdx, sIdx := 0, 0
+			for i := 0; i < n; i++ {
+				d[dIdx] = int8(s[sIdx])
+				dIdx += strideDst
+				sIdx += strideSrc
+			}
+			return
+		}
 	}
 }
 

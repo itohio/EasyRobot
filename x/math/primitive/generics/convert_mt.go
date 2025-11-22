@@ -3,7 +3,8 @@
 package generics
 
 import (
-	mt "github.com/itohio/EasyRobot/x/math/primitive/generics/mt"
+	// TODO: Implement multi-threaded conversion functions that use the st implementation under the hood
+	mt "github.com/itohio/EasyRobot/x/math/primitive/generics/st"
 )
 
 // Re-export conversion functions from multi-threaded implementation
