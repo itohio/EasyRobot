@@ -4,7 +4,8 @@ package helpers
 
 // ValueConvertToInt handles conversion to int with clamping (32-bit platform).
 // On 32-bit platforms, int64 also needs clamping when converting to int.
-func ValueConvertToInt[T, U Numeric](value T) (zeroU U) {
+// T can be any Numeric (including complex64), but U must be NumericReal (int).
+func ValueConvertToInt[T Numeric, U NumericReal](value T) (zeroU U) {
 	switch v := any(value).(type) {
 	case float32:
 		return U(ClampToIntValue(v))
@@ -12,7 +13,23 @@ func ValueConvertToInt[T, U Numeric](value T) (zeroU U) {
 		return U(ClampToIntValue(v))
 	case int64:
 		return U(ClampToIntValue(v))
+	case complex64:
+		// Extract real part and reuse ClampToIntValue
+		return U(ClampToIntValue(float32(real(v))))
+	case complex128:
+		// Extract real part and reuse ClampToIntValue (complex128 not officially supported, but handle gracefully)
+		return U(ClampToIntValue(float64(real(v))))
+	case int:
+		return U(v)
+	case int32:
+		return U(int(v))
+	case int16:
+		return U(int(v))
+	case int8:
+		return U(int(v))
 	default:
-		return U(value)
+		// Should not reach here - all supported numeric types are handled above
+		// Return zero value as fallback
+		return zeroU
 	}
 }

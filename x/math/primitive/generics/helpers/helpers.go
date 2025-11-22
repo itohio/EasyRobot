@@ -4,9 +4,17 @@ import "math"
 
 const MAX_DIMS = 16
 
+type NumericComplex interface {
+	~complex64
+}
+
+type NumericReal interface {
+	~float64 | ~int64 | ~float32 | ~int | ~int32 | ~int16 | ~int8
+}
+
 // Numeric types that can be used with generic operations
 type Numeric interface {
-	~float64 | ~int64 | ~float32 | ~int | ~int32 | ~int16 | ~int8
+	NumericReal | NumericComplex
 }
 
 // Types that need clamping when converting to int8 (sorted by type size)
