@@ -219,14 +219,15 @@ func (gt *GraphTensor) AddScalar(dst types.Tensor, scalar float64) types.Tensor 
 		panic("gorgonia.GraphTensor.AddScalar: can only add operations during graph building")
 	}
 
+	// Use NewConstant for scalar values to ensure they're truly constant
 	var scalarNode *gorgonia.Node
 	switch gt.dataType {
 	case types.FP32:
-		scalarNode = gorgonia.NewScalar(gt.graph.graph, toGorgoniaDtype(gt.dataType), gorgonia.WithValue(float32(scalar)))
+		scalarNode = gorgonia.NewConstant(float32(scalar))
 	case types.FP64:
-		scalarNode = gorgonia.NewScalar(gt.graph.graph, toGorgoniaDtype(gt.dataType), gorgonia.WithValue(scalar))
+		scalarNode = gorgonia.NewConstant(scalar)
 	default:
-		scalarNode = gorgonia.NewScalar(gt.graph.graph, toGorgoniaDtype(gt.dataType), gorgonia.WithValue(float32(scalar)))
+		scalarNode = gorgonia.NewConstant(float32(scalar))
 	}
 
 	node, err := gorgonia.Add(gt.node, scalarNode)
@@ -242,14 +243,15 @@ func (gt *GraphTensor) SubScalar(dst types.Tensor, scalar float64) types.Tensor 
 		panic("gorgonia.GraphTensor.SubScalar: can only add operations during graph building")
 	}
 
+	// Use NewConstant for scalar values to ensure they're truly constant
 	var scalarNode *gorgonia.Node
 	switch gt.dataType {
 	case types.FP32:
-		scalarNode = gorgonia.NewScalar(gt.graph.graph, toGorgoniaDtype(gt.dataType), gorgonia.WithValue(float32(scalar)))
+		scalarNode = gorgonia.NewConstant(float32(scalar))
 	case types.FP64:
-		scalarNode = gorgonia.NewScalar(gt.graph.graph, toGorgoniaDtype(gt.dataType), gorgonia.WithValue(scalar))
+		scalarNode = gorgonia.NewConstant(scalar)
 	default:
-		scalarNode = gorgonia.NewScalar(gt.graph.graph, toGorgoniaDtype(gt.dataType), gorgonia.WithValue(float32(scalar)))
+		scalarNode = gorgonia.NewConstant(float32(scalar))
 	}
 
 	node, err := gorgonia.Sub(gt.node, scalarNode)
@@ -265,14 +267,15 @@ func (gt *GraphTensor) MulScalar(dst types.Tensor, scalar float64) types.Tensor 
 		panic("gorgonia.GraphTensor.MulScalar: can only add operations during graph building")
 	}
 
+	// Use NewConstant for scalar values to ensure they're truly constant
 	var scalarNode *gorgonia.Node
 	switch gt.dataType {
 	case types.FP32:
-		scalarNode = gorgonia.NewScalar(gt.graph.graph, toGorgoniaDtype(gt.dataType), gorgonia.WithValue(float32(scalar)))
+		scalarNode = gorgonia.NewConstant(float32(scalar))
 	case types.FP64:
-		scalarNode = gorgonia.NewScalar(gt.graph.graph, toGorgoniaDtype(gt.dataType), gorgonia.WithValue(scalar))
+		scalarNode = gorgonia.NewConstant(scalar)
 	default:
-		scalarNode = gorgonia.NewScalar(gt.graph.graph, toGorgoniaDtype(gt.dataType), gorgonia.WithValue(float32(scalar)))
+		scalarNode = gorgonia.NewConstant(float32(scalar))
 	}
 
 	node, err := gorgonia.HadamardProd(gt.node, scalarNode)
@@ -288,14 +291,15 @@ func (gt *GraphTensor) DivScalar(dst types.Tensor, scalar float64) types.Tensor 
 		panic("gorgonia.GraphTensor.DivScalar: can only add operations during graph building")
 	}
 
+	// Use NewConstant for scalar values to ensure they're truly constant
 	var scalarNode *gorgonia.Node
 	switch gt.dataType {
 	case types.FP32:
-		scalarNode = gorgonia.NewScalar(gt.graph.graph, toGorgoniaDtype(gt.dataType), gorgonia.WithValue(float32(scalar)))
+		scalarNode = gorgonia.NewConstant(float32(scalar))
 	case types.FP64:
-		scalarNode = gorgonia.NewScalar(gt.graph.graph, toGorgoniaDtype(gt.dataType), gorgonia.WithValue(scalar))
+		scalarNode = gorgonia.NewConstant(scalar)
 	default:
-		scalarNode = gorgonia.NewScalar(gt.graph.graph, toGorgoniaDtype(gt.dataType), gorgonia.WithValue(float32(scalar)))
+		scalarNode = gorgonia.NewConstant(float32(scalar))
 	}
 
 	node, err := gorgonia.HadamardDiv(gt.node, scalarNode)
@@ -367,15 +371,15 @@ func (gt *GraphTensor) Pow(dst types.Tensor, power float64) types.Tensor {
 		panic("gorgonia.GraphTensor.Pow: can only add operations during graph building")
 	}
 
-	// Create scalar node for power
+	// Create scalar node for power - use NewConstant for true constants
 	var powerNode *gorgonia.Node
 	switch gt.dataType {
 	case types.FP32:
-		powerNode = gorgonia.NewScalar(gt.graph.graph, toGorgoniaDtype(gt.dataType), gorgonia.WithValue(float32(power)))
+		powerNode = gorgonia.NewConstant(float32(power))
 	case types.FP64:
-		powerNode = gorgonia.NewScalar(gt.graph.graph, toGorgoniaDtype(gt.dataType), gorgonia.WithValue(power))
+		powerNode = gorgonia.NewConstant(power)
 	default:
-		powerNode = gorgonia.NewScalar(gt.graph.graph, toGorgoniaDtype(gt.dataType), gorgonia.WithValue(float32(power)))
+		powerNode = gorgonia.NewConstant(float32(power))
 	}
 
 	node, err := gorgonia.Pow(gt.node, powerNode)
