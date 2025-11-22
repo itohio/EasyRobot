@@ -3,7 +3,7 @@ package generics
 // ElemVecSignStrided writes the sign of src into dst for a vector with stride support.
 // Optimized for 1D vector operations.
 // n is the vector length, strideDst and strideSrc are the strides.
-func ElemVecSignStrided[T Numeric](dst, src []T, n int, strideDst, strideSrc int) {
+func ElemVecSignStrided[T NumericReal](dst, src []T, n int, strideDst, strideSrc int) {
 	if n == 0 {
 		return
 	}
@@ -34,7 +34,7 @@ func ElemVecSignStrided[T Numeric](dst, src []T, n int, strideDst, strideSrc int
 // ElemMatSignStrided writes the sign of src into dst for a matrix with leading dimension support.
 // Optimized for 2D matrix operations.
 // rows and cols are the matrix dimensions, ldDst and ldSrc are leading dimensions (typically cols for row-major).
-func ElemMatSignStrided[T Numeric](dst, src []T, rows, cols int, ldDst, ldSrc int) {
+func ElemMatSignStrided[T NumericReal](dst, src []T, rows, cols int, ldDst, ldSrc int) {
 	if rows == 0 || cols == 0 {
 		return
 	}

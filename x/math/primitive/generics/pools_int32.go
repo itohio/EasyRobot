@@ -10,6 +10,6 @@ func ClampToIntValue[U ClampableToInt](v U) int {
 	return helpers.ClampToIntValue(v)
 }
 
-func ValueConvertToInt[T, U Numeric](value T) (zeroU U) {
+func ValueConvertToInt[T Numeric, U NumericReal](value T) (zeroU U) {
 	return helpers.ValueConvertToInt[T, U](value)
 }

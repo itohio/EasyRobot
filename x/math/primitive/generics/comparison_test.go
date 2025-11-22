@@ -273,7 +273,7 @@ func TestComparisonMultipleTypes(t *testing.T) {
 	testComparisonType[float64](t, []float64{1.5, 2.5, 3.5}, []float64{1.0, 2.5, 4.0}, []int{3})
 }
 
-func testComparisonType[T Numeric](t *testing.T, a, b []T, shape []int) {
+func testComparisonType[T NumericReal](t *testing.T, a, b []T, shape []int) {
 	size := SizeFromShape(shape)
 	dst := make([]T, size)
 

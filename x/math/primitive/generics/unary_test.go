@@ -108,7 +108,7 @@ func TestUnaryMultipleTypes(t *testing.T) {
 	testNegativeType[float64](t, []float64{1.5, -2.5, 0.0}, []int{3})
 }
 
-func testSignType[T Numeric](t *testing.T, src []T, shape []int) {
+func testSignType[T NumericReal](t *testing.T, src []T, shape []int) {
 	size := SizeFromShape(shape)
 	dst := make([]T, size)
 

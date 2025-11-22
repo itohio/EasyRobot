@@ -6,6 +6,8 @@ const MAX_DIMS = helpers.MAX_DIMS
 
 type (
 	Numeric          = helpers.Numeric
+	NumericReal      = helpers.NumericReal
+	ComplexNumeric   = helpers.NumericComplex
 	ClampableToInt8  = helpers.ClampableToInt8
 	ClampableToInt16 = helpers.ClampableToInt16
 	ClampableToInt32 = helpers.ClampableToInt32

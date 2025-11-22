@@ -3,7 +3,7 @@ package generics
 // ElemWhere writes elements from a where condition is true, otherwise from b.
 // condition, a, b must have compatible shapes/strides.
 // condition > 0 means true, otherwise false.
-func ElemWhere[T Numeric](dst, condition, a, b []T, shape []int, stridesDst, stridesCond, stridesA, stridesB []int) {
+func ElemWhere[T NumericReal](dst, condition, a, b []T, shape []int, stridesDst, stridesCond, stridesA, stridesB []int) {
 	size := SizeFromShape(shape)
 	if len(shape) == 0 || size == 0 {
 		return

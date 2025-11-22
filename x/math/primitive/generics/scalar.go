@@ -127,7 +127,7 @@ func ElemEqualScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, stri
 }
 
 // ElemGreaterScalar writes 1 where src > scalar, 0 otherwise for contiguous arrays.
-func ElemGreaterScalar[T Numeric](dst, src []T, scalar T, n int) {
+func ElemGreaterScalar[T NumericReal](dst, src []T, scalar T, n int) {
 	if n == 0 {
 		return
 	}
@@ -146,7 +146,7 @@ func ElemGreaterScalar[T Numeric](dst, src []T, scalar T, n int) {
 }
 
 // ElemGreaterScalarStrided writes 1 where src > scalar, 0 otherwise with strides.
-func ElemGreaterScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, stridesDst, stridesSrc []int) {
+func ElemGreaterScalarStrided[T NumericReal](dst, src []T, scalar T, shape []int, stridesDst, stridesSrc []int) {
 	size := SizeFromShape(shape)
 	if len(shape) == 0 || size == 0 {
 		return
@@ -195,7 +195,7 @@ func ElemGreaterScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, st
 }
 
 // ElemLessScalar writes 1 where src < scalar, 0 otherwise for contiguous arrays.
-func ElemLessScalar[T Numeric](dst, src []T, scalar T, n int) {
+func ElemLessScalar[T NumericReal](dst, src []T, scalar T, n int) {
 	if n == 0 {
 		return
 	}
@@ -214,7 +214,7 @@ func ElemLessScalar[T Numeric](dst, src []T, scalar T, n int) {
 }
 
 // ElemLessScalarStrided writes 1 where src < scalar, 0 otherwise with strides.
-func ElemLessScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, stridesDst, stridesSrc []int) {
+func ElemLessScalarStrided[T NumericReal](dst, src []T, scalar T, shape []int, stridesDst, stridesSrc []int) {
 	size := SizeFromShape(shape)
 	if len(shape) == 0 || size == 0 {
 		return
@@ -263,7 +263,7 @@ func ElemLessScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, strid
 }
 
 // ElemNotEqualScalar writes 1 where src != scalar, 0 otherwise for contiguous arrays.
-func ElemNotEqualScalar[T Numeric](dst, src []T, scalar T, n int) {
+func ElemNotEqualScalar[T NumericReal](dst, src []T, scalar T, n int) {
 	if n == 0 {
 		return
 	}
@@ -282,7 +282,7 @@ func ElemNotEqualScalar[T Numeric](dst, src []T, scalar T, n int) {
 }
 
 // ElemNotEqualScalarStrided writes 1 where src != scalar, 0 otherwise with strides.
-func ElemNotEqualScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, stridesDst, stridesSrc []int) {
+func ElemNotEqualScalarStrided[T NumericReal](dst, src []T, scalar T, shape []int, stridesDst, stridesSrc []int) {
 	size := SizeFromShape(shape)
 	if len(shape) == 0 || size == 0 {
 		return
@@ -331,7 +331,7 @@ func ElemNotEqualScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, s
 }
 
 // ElemLessEqualScalar writes 1 where src <= scalar, 0 otherwise for contiguous arrays.
-func ElemLessEqualScalar[T Numeric](dst, src []T, scalar T, n int) {
+func ElemLessEqualScalar[T NumericReal](dst, src []T, scalar T, n int) {
 	if n == 0 {
 		return
 	}
@@ -350,7 +350,7 @@ func ElemLessEqualScalar[T Numeric](dst, src []T, scalar T, n int) {
 }
 
 // ElemLessEqualScalarStrided writes 1 where src <= scalar, 0 otherwise with strides.
-func ElemLessEqualScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, stridesDst, stridesSrc []int) {
+func ElemLessEqualScalarStrided[T NumericReal](dst, src []T, scalar T, shape []int, stridesDst, stridesSrc []int) {
 	size := SizeFromShape(shape)
 	if len(shape) == 0 || size == 0 {
 		return
@@ -399,7 +399,7 @@ func ElemLessEqualScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, 
 }
 
 // ElemGreaterEqualScalar writes 1 where src >= scalar, 0 otherwise for contiguous arrays.
-func ElemGreaterEqualScalar[T Numeric](dst, src []T, scalar T, n int) {
+func ElemGreaterEqualScalar[T NumericReal](dst, src []T, scalar T, n int) {
 	if n == 0 {
 		return
 	}
@@ -418,7 +418,7 @@ func ElemGreaterEqualScalar[T Numeric](dst, src []T, scalar T, n int) {
 }
 
 // ElemGreaterEqualScalarStrided writes 1 where src >= scalar, 0 otherwise with strides.
-func ElemGreaterEqualScalarStrided[T Numeric](dst, src []T, scalar T, shape []int, stridesDst, stridesSrc []int) {
+func ElemGreaterEqualScalarStrided[T NumericReal](dst, src []T, scalar T, shape []int, stridesDst, stridesSrc []int) {
 	size := SizeFromShape(shape)
 	if len(shape) == 0 || size == 0 {
 		return

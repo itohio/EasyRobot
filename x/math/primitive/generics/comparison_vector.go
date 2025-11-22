@@ -3,7 +3,7 @@ package generics
 // ElemVecGreaterThanStrided writes 1 where a > b, 0 otherwise for vectors with stride support.
 // Optimized for 1D vector operations.
 // n is the vector length, strideDst, strideA, and strideB are the strides.
-func ElemVecGreaterThanStrided[T Numeric](dst, a, b []T, n int, strideDst, strideA, strideB int) {
+func ElemVecGreaterThanStrided[T NumericReal](dst, a, b []T, n int, strideDst, strideA, strideB int) {
 	if n == 0 {
 		return
 	}
@@ -33,7 +33,7 @@ func ElemVecGreaterThanStrided[T Numeric](dst, a, b []T, n int, strideDst, strid
 // ElemMatGreaterThanStrided writes 1 where a > b, 0 otherwise for matrices with leading dimension support.
 // Optimized for 2D matrix operations.
 // rows and cols are the matrix dimensions, ldDst, ldA, and ldB are leading dimensions (typically cols for row-major).
-func ElemMatGreaterThanStrided[T Numeric](dst, a, b []T, rows, cols int, ldDst, ldA, ldB int) {
+func ElemMatGreaterThanStrided[T NumericReal](dst, a, b []T, rows, cols int, ldDst, ldA, ldB int) {
 	if rows == 0 || cols == 0 {
 		return
 	}
@@ -62,7 +62,7 @@ func ElemMatGreaterThanStrided[T Numeric](dst, a, b []T, rows, cols int, ldDst, 
 
 // ElemVecEqualStrided writes 1 where a == b, 0 otherwise for vectors with stride support.
 // Optimized for 1D vector operations.
-func ElemVecEqualStrided[T Numeric](dst, a, b []T, n int, strideDst, strideA, strideB int) {
+func ElemVecEqualStrided[T NumericReal](dst, a, b []T, n int, strideDst, strideA, strideB int) {
 	if n == 0 {
 		return
 	}
@@ -89,7 +89,7 @@ func ElemVecEqualStrided[T Numeric](dst, a, b []T, n int, strideDst, strideA, st
 
 // ElemMatEqualStrided writes 1 where a == b, 0 otherwise for matrices with leading dimension support.
 // Optimized for 2D matrix operations.
-func ElemMatEqualStrided[T Numeric](dst, a, b []T, rows, cols int, ldDst, ldA, ldB int) {
+func ElemMatEqualStrided[T NumericReal](dst, a, b []T, rows, cols int, ldDst, ldA, ldB int) {
 	if rows == 0 || cols == 0 {
 		return
 	}
@@ -116,7 +116,7 @@ func ElemMatEqualStrided[T Numeric](dst, a, b []T, rows, cols int, ldDst, ldA, l
 
 // ElemVecLessStrided writes 1 where a < b, 0 otherwise for vectors with stride support.
 // Optimized for 1D vector operations.
-func ElemVecLessStrided[T Numeric](dst, a, b []T, n int, strideDst, strideA, strideB int) {
+func ElemVecLessStrided[T NumericReal](dst, a, b []T, n int, strideDst, strideA, strideB int) {
 	if n == 0 {
 		return
 	}
@@ -143,7 +143,7 @@ func ElemVecLessStrided[T Numeric](dst, a, b []T, n int, strideDst, strideA, str
 
 // ElemMatLessStrided writes 1 where a < b, 0 otherwise for matrices with leading dimension support.
 // Optimized for 2D matrix operations.
-func ElemMatLessStrided[T Numeric](dst, a, b []T, rows, cols int, ldDst, ldA, ldB int) {
+func ElemMatLessStrided[T NumericReal](dst, a, b []T, rows, cols int, ldDst, ldA, ldB int) {
 	if rows == 0 || cols == 0 {
 		return
 	}
@@ -170,7 +170,7 @@ func ElemMatLessStrided[T Numeric](dst, a, b []T, rows, cols int, ldDst, ldA, ld
 
 // ElemVecNotEqualStrided writes 1 where a != b, 0 otherwise for vectors with stride support.
 // Optimized for 1D vector operations.
-func ElemVecNotEqualStrided[T Numeric](dst, a, b []T, n int, strideDst, strideA, strideB int) {
+func ElemVecNotEqualStrided[T NumericReal](dst, a, b []T, n int, strideDst, strideA, strideB int) {
 	if n == 0 {
 		return
 	}
@@ -224,7 +224,7 @@ func ElemMatNotEqualStrided[T Numeric](dst, a, b []T, rows, cols int, ldDst, ldA
 
 // ElemVecLessEqualStrided writes 1 where a <= b, 0 otherwise for vectors with stride support.
 // Optimized for 1D vector operations.
-func ElemVecLessEqualStrided[T Numeric](dst, a, b []T, n int, strideDst, strideA, strideB int) {
+func ElemVecLessEqualStrided[T NumericReal](dst, a, b []T, n int, strideDst, strideA, strideB int) {
 	if n == 0 {
 		return
 	}
@@ -251,7 +251,7 @@ func ElemVecLessEqualStrided[T Numeric](dst, a, b []T, n int, strideDst, strideA
 
 // ElemMatLessEqualStrided writes 1 where a <= b, 0 otherwise for matrices with leading dimension support.
 // Optimized for 2D matrix operations.
-func ElemMatLessEqualStrided[T Numeric](dst, a, b []T, rows, cols int, ldDst, ldA, ldB int) {
+func ElemMatLessEqualStrided[T NumericReal](dst, a, b []T, rows, cols int, ldDst, ldA, ldB int) {
 	if rows == 0 || cols == 0 {
 		return
 	}
@@ -278,7 +278,7 @@ func ElemMatLessEqualStrided[T Numeric](dst, a, b []T, rows, cols int, ldDst, ld
 
 // ElemVecGreaterEqualStrided writes 1 where a >= b, 0 otherwise for vectors with stride support.
 // Optimized for 1D vector operations.
-func ElemVecGreaterEqualStrided[T Numeric](dst, a, b []T, n int, strideDst, strideA, strideB int) {
+func ElemVecGreaterEqualStrided[T NumericReal](dst, a, b []T, n int, strideDst, strideA, strideB int) {
 	if n == 0 {
 		return
 	}
@@ -305,7 +305,7 @@ func ElemVecGreaterEqualStrided[T Numeric](dst, a, b []T, n int, strideDst, stri
 
 // ElemMatGreaterEqualStrided writes 1 where a >= b, 0 otherwise for matrices with leading dimension support.
 // Optimized for 2D matrix operations.
-func ElemMatGreaterEqualStrided[T Numeric](dst, a, b []T, rows, cols int, ldDst, ldA, ldB int) {
+func ElemMatGreaterEqualStrided[T NumericReal](dst, a, b []T, rows, cols int, ldDst, ldA, ldB int) {
 	if rows == 0 || cols == 0 {
 		return
 	}

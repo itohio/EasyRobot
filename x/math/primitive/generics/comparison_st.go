@@ -7,11 +7,11 @@ import (
 )
 
 // Re-export comparison functions from single-threaded implementation
-func ElemGreaterThan[T Numeric](dst, a, b []T, n int) {
+func ElemGreaterThan[T NumericReal](dst, a, b []T, n int) {
 	st.ElemGreaterThan(dst, a, b, n)
 }
 
-func ElemGreaterThanStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, stridesA, stridesB []int) {
+func ElemGreaterThanStrided[T NumericReal](dst, a, b []T, shape []int, stridesDst, stridesA, stridesB []int) {
 	st.ElemGreaterThanStrided(dst, a, b, shape, stridesDst, stridesA, stridesB)
 }
 
@@ -23,11 +23,11 @@ func ElemEqualStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, strides
 	st.ElemEqualStrided(dst, a, b, shape, stridesDst, stridesA, stridesB)
 }
 
-func ElemLess[T Numeric](dst, a, b []T, n int) {
+func ElemLess[T NumericReal](dst, a, b []T, n int) {
 	st.ElemLess(dst, a, b, n)
 }
 
-func ElemLessStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, stridesA, stridesB []int) {
+func ElemLessStrided[T NumericReal](dst, a, b []T, shape []int, stridesDst, stridesA, stridesB []int) {
 	st.ElemLessStrided(dst, a, b, shape, stridesDst, stridesA, stridesB)
 }
 
@@ -39,18 +39,18 @@ func ElemNotEqualStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, stri
 	st.ElemNotEqualStrided(dst, a, b, shape, stridesDst, stridesA, stridesB)
 }
 
-func ElemLessEqual[T Numeric](dst, a, b []T, n int) {
+func ElemLessEqual[T NumericReal](dst, a, b []T, n int) {
 	st.ElemLessEqual(dst, a, b, n)
 }
 
-func ElemLessEqualStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, stridesA, stridesB []int) {
+func ElemLessEqualStrided[T NumericReal](dst, a, b []T, shape []int, stridesDst, stridesA, stridesB []int) {
 	st.ElemLessEqualStrided(dst, a, b, shape, stridesDst, stridesA, stridesB)
 }
 
-func ElemGreaterEqual[T Numeric](dst, a, b []T, n int) {
+func ElemGreaterEqual[T NumericReal](dst, a, b []T, n int) {
 	st.ElemGreaterEqual(dst, a, b, n)
 }
 
-func ElemGreaterEqualStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, stridesA, stridesB []int) {
+func ElemGreaterEqualStrided[T NumericReal](dst, a, b []T, shape []int, stridesDst, stridesA, stridesB []int) {
 	st.ElemGreaterEqualStrided(dst, a, b, shape, stridesDst, stridesA, stridesB)
 }
