@@ -6,7 +6,7 @@ import (
 
 // ElemGreaterThan writes 1 where a > b, 0 otherwise for contiguous arrays.
 // Optimized for the common case of contiguous memory.
-func ElemGreaterThan[T Numeric](dst, a, b []T, n int) {
+func ElemGreaterThan[T NumericReal](dst, a, b []T, n int) {
 	if n == 0 {
 		return
 	}
@@ -27,7 +27,7 @@ func ElemGreaterThan[T Numeric](dst, a, b []T, n int) {
 
 // ElemGreaterThanStrided writes 1 where a > b, 0 otherwise with strides.
 // Handles both contiguous and strided cases with optimized paths.
-func ElemGreaterThanStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, stridesA, stridesB []int) {
+func ElemGreaterThanStrided[T NumericReal](dst, a, b []T, shape []int, stridesDst, stridesA, stridesB []int) {
 	size := SizeFromShape(shape)
 	if len(shape) == 0 || size == 0 {
 		return
@@ -162,7 +162,7 @@ func ElemEqualStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, strides
 
 // ElemLess writes 1 where a < b, 0 otherwise for contiguous arrays.
 // Optimized for the common case of contiguous memory.
-func ElemLess[T Numeric](dst, a, b []T, n int) {
+func ElemLess[T NumericReal](dst, a, b []T, n int) {
 	if n == 0 {
 		return
 	}
@@ -183,7 +183,7 @@ func ElemLess[T Numeric](dst, a, b []T, n int) {
 
 // ElemLessStrided writes 1 where a < b, 0 otherwise with strides.
 // Handles both contiguous and strided cases with optimized paths.
-func ElemLessStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, stridesA, stridesB []int) {
+func ElemLessStrided[T NumericReal](dst, a, b []T, shape []int, stridesDst, stridesA, stridesB []int) {
 	size := SizeFromShape(shape)
 	if len(shape) == 0 || size == 0 {
 		return
@@ -318,7 +318,7 @@ func ElemNotEqualStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, stri
 
 // ElemLessEqual writes 1 where a <= b, 0 otherwise for contiguous arrays.
 // Optimized for the common case of contiguous memory.
-func ElemLessEqual[T Numeric](dst, a, b []T, n int) {
+func ElemLessEqual[T NumericReal](dst, a, b []T, n int) {
 	if n == 0 {
 		return
 	}
@@ -339,7 +339,7 @@ func ElemLessEqual[T Numeric](dst, a, b []T, n int) {
 
 // ElemLessEqualStrided writes 1 where a <= b, 0 otherwise with strides.
 // Handles both contiguous and strided cases with optimized paths.
-func ElemLessEqualStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, stridesA, stridesB []int) {
+func ElemLessEqualStrided[T NumericReal](dst, a, b []T, shape []int, stridesDst, stridesA, stridesB []int) {
 	size := SizeFromShape(shape)
 	if len(shape) == 0 || size == 0 {
 		return
@@ -396,7 +396,7 @@ func ElemLessEqualStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, str
 
 // ElemGreaterEqual writes 1 where a >= b, 0 otherwise for contiguous arrays.
 // Optimized for the common case of contiguous memory.
-func ElemGreaterEqual[T Numeric](dst, a, b []T, n int) {
+func ElemGreaterEqual[T NumericReal](dst, a, b []T, n int) {
 	if n == 0 {
 		return
 	}
@@ -417,7 +417,7 @@ func ElemGreaterEqual[T Numeric](dst, a, b []T, n int) {
 
 // ElemGreaterEqualStrided writes 1 where a >= b, 0 otherwise with strides.
 // Handles both contiguous and strided cases with optimized paths.
-func ElemGreaterEqualStrided[T Numeric](dst, a, b []T, shape []int, stridesDst, stridesA, stridesB []int) {
+func ElemGreaterEqualStrided[T NumericReal](dst, a, b []T, shape []int, stridesDst, stridesA, stridesB []int) {
 	size := SizeFromShape(shape)
 	if len(shape) == 0 || size == 0 {
 		return
