@@ -2,6 +2,7 @@ package types
 
 import (
 	"github.com/itohio/EasyRobot/x/math/primitive"
+	"github.com/itohio/EasyRobot/x/math/primitive/c64"
 	"github.com/itohio/EasyRobot/x/math/primitive/fp32"
 	"github.com/itohio/EasyRobot/x/math/primitive/qi"
 	"github.com/itohio/EasyRobot/x/math/primitive/qi16"
@@ -17,6 +18,8 @@ type DataType uint8
 const (
 	DT_UNKNOWN DataType = iota
 	INT64               // 64-bit integer tensors
+	C128                // 128-bit complex point tensors
+	C64                 // 64-bit complex point tensors
 	FP64                // 64-bit floating point tensors
 	INT32               // 32-bit integer tensors
 	FP32                // DTFP32 represents 32-bit floating point tensors (default)
@@ -37,6 +40,8 @@ func TypeFromData(v any) DataType {
 	switch any(v).(type) {
 	case float64:
 		return FP64
+	case complex64:
+		return C64
 	case float32:
 		return FP32
 	case int:
@@ -51,6 +56,8 @@ func TypeFromData(v any) DataType {
 		return INT8
 	case []float64:
 		return FP64
+	case []complex64:
+		return C64
 	case []float32:
 		return FP32
 	case []int16:
@@ -76,6 +83,8 @@ func MakeTensorData(dt DataType, size int) any {
 		return fp32.Pool.Get(size)
 	case FP64:
 		return make([]float64, size)
+	case C64:
+		return c64.Pool.Get(size)
 	case INT16:
 		return qi16.Pool.Get(size)
 	case INT:
@@ -103,6 +112,8 @@ func ReleaseTensorData(data any) {
 	switch buf := data.(type) {
 	case []float32:
 		fp32.Pool.Put(buf)
+	case []complex64:
+		c64.Pool.Put(buf)
 	case []int16:
 		qi16.Pool.Put(buf)
 	case []int:
@@ -128,6 +139,8 @@ func CloneTensorDataTo(dst DataType, data any) any {
 	case []float32:
 		size = len(d)
 	case []float64:
+		size = len(d)
+	case []complex64:
 		size = len(d)
 	case []int16:
 		size = len(d)
