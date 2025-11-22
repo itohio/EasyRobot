@@ -1,17 +1,27 @@
 package audio
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/go-audio/audio"
 	"github.com/go-audio/wav"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
+	"github.com/itohio/EasyRobot/x/math/primitive/generics/helpers"
 	"github.com/itohio/EasyRobot/x/math/tensor"
 	tensortypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 )
+
+// stats tracks statistics for the unmarshaller using atomic counters.
+type stats struct {
+	frames int64 // Total frames processed
+	bytes  int64 // Total bytes read
+}
 
 // Unmarshaller decodes audio from WAV files or audio devices into tensors.
 type Unmarshaller struct {
@@ -22,6 +32,12 @@ type Unmarshaller struct {
 	lastSampleRate int
 	lastChannels   int
 	lastDataType   tensortypes.DataType
+
+	// Statistics tracking
+	stats stats
+
+	// Buffer pools
+	intPool *helpers.Pool[int] // Pool for PCM int buffers
 }
 
 // NewUnmarshaller constructs an audio unmarshaller instance.
@@ -31,6 +47,7 @@ func NewUnmarshaller(opts ...types.Option) *Unmarshaller {
 		opts:         baseOpts,
 		cfg:          baseCfg,
 		lastDataType: tensortypes.DT_UNKNOWN,
+		intPool:      &helpers.Pool[int]{},
 	}
 }
 
@@ -94,18 +111,29 @@ func (u *Unmarshaller) DataType() types.DataType {
 // For device streams: frames, queue lengths, dropped buffers, byte counts.
 // For WAV files: frames, bytes read.
 func (u *Unmarshaller) Health() map[string]int64 {
-	// TODO: Implement health statistics tracking
-	return make(map[string]int64)
+	return map[string]int64{
+		"frames": atomic.LoadInt64(&u.stats.frames),
+		"bytes":  atomic.LoadInt64(&u.stats.bytes),
+	}
 }
 
 // unmarshalTensor creates a tensor from WAV file(s) or device(s).
 func (u *Unmarshaller) unmarshalTensor(r io.Reader, cfg config, dstType tensortypes.DataType, tensorFactory func(tensortypes.DataType, types.Shape) types.Tensor) (types.Tensor, error) {
+	// Check if we have devices configured
+	if len(cfg.device.deviceIDs) > 0 {
+		if len(cfg.wav.paths) > 0 {
+			// Mixed sources: WAV + devices
+			return u.unmarshalMixedSources(cfg, dstType, tensorFactory)
+		}
+		// Device-only capture
+		if len(cfg.device.deviceIDs) == 1 {
+			return u.captureSingleDevice(cfg.device.deviceIDs[0], cfg, dstType, tensorFactory)
+		}
+		return u.captureMultipleDevices(cfg.device.deviceIDs, cfg, dstType, tensorFactory)
+	}
+
 	// Check if we have WAV paths configured
 	if len(cfg.wav.paths) == 0 {
-		// No WAV files, check for devices
-		if len(cfg.device.deviceIDs) > 0 {
-			return nil, types.NewError("unmarshal", "audio", "device capture not yet implemented", nil)
-		}
 		return nil, types.NewError("unmarshal", "audio", "no WAV paths or devices specified", nil)
 	}
 
@@ -114,8 +142,8 @@ func (u *Unmarshaller) unmarshalTensor(r io.Reader, cfg config, dstType tensorty
 		return u.readSingleWAV(cfg.wav.paths[0], cfg, dstType, tensorFactory)
 	}
 
-	// Multiple WAV files (Phase 2.2) - TODO
-	return nil, types.NewError("unmarshal", "audio", "multiple WAV files not yet implemented", nil)
+	// Multiple WAV files (Phase 2.2)
+	return u.readMultipleWAV(cfg.wav.paths, cfg, dstType, tensorFactory)
 }
 
 // readSingleWAV reads a single WAV file and creates a tensor.
@@ -195,21 +223,28 @@ func (u *Unmarshaller) readSingleWAV(path string, cfg config, dstType tensortype
 		Data:   make([]int, 0),
 	}
 
-	// Read all frames
+	// Read all frames using pooled buffers
+	chunkSize := 1024 * numChannels
 	for {
+		// Get pooled buffer
+		bufData := u.intPool.Get(chunkSize)
 		buf := &audio.IntBuffer{
 			Format: format,
-			Data:   make([]int, 1024*numChannels), // Read in chunks
+			Data:   bufData,
 		}
 		n, err := decoder.PCMBuffer(buf)
 		if err != nil && err != io.EOF {
+			u.intPool.Put(bufData)
 			return nil, types.NewError("unmarshal", "audio", "failed to read PCM data", err)
 		}
 		if n == 0 {
+			u.intPool.Put(bufData)
 			break
 		}
 		// Append read data
 		intBuf.Data = append(intBuf.Data, buf.Data[:n]...)
+		// Return buffer to pool
+		u.intPool.Put(bufData)
 		if err == io.EOF {
 			break
 		}
@@ -240,6 +275,10 @@ func (u *Unmarshaller) readSingleWAV(path string, cfg config, dstType tensortype
 	if err := u.fillTensorFromPCM(t, intBuf.Data, numFrames, numChannels, tensorDtype, bitDepth, isFloat); err != nil {
 		return nil, err
 	}
+
+	// Update statistics
+	atomic.AddInt64(&u.stats.frames, int64(numFrames))
+	atomic.AddInt64(&u.stats.bytes, int64(len(intBuf.Data)*4)) // Approximate: int is 4 bytes
 
 	return t, nil
 }
@@ -347,10 +386,419 @@ func (u *Unmarshaller) fillTensorFromPCM(t types.Tensor, pcmData []int, numFrame
 	return nil
 }
 
+// readMultipleWAV reads multiple WAV files and combines them into a single tensor.
+// All files must have the same sample rate (no resampling).
+// Channels are concatenated: file 0 → ch 0..N, file 1 → ch N+1..M, etc.
+func (u *Unmarshaller) readMultipleWAV(paths []string, cfg config, dstType tensortypes.DataType, tensorFactory func(tensortypes.DataType, types.Shape) types.Tensor) (types.Tensor, error) {
+	if len(paths) == 0 {
+		return nil, types.NewError("unmarshal", "audio", "no WAV paths provided", nil)
+	}
+
+	// Read all files and collect metadata
+	type fileInfo struct {
+		tensor     types.Tensor
+		frames     int
+		channels   int
+		sampleRate int
+		dtype      tensortypes.DataType
+	}
+	files := make([]fileInfo, 0, len(paths))
+
+	// Read each file
+	var commonSampleRate int
+	var commonDtype tensortypes.DataType
+	maxFrames := 0
+	totalChannels := 0
+
+	for i, path := range paths {
+		t, err := u.readSingleWAV(path, cfg, dstType, tensorFactory)
+		if err != nil {
+			return nil, types.NewError("unmarshal", "audio", fmt.Sprintf("failed to read file %d (%s): %v", i, path, err), err)
+		}
+
+		shape := t.Shape()
+		frames := shape[0]
+		channels := shape[1]
+
+		// Verify sample rate consistency
+		if i == 0 {
+			commonSampleRate = u.lastSampleRate
+			if dstType != tensortypes.DT_UNKNOWN {
+				commonDtype = dstType
+			} else {
+				commonDtype = u.lastDataType
+			}
+		} else if u.lastSampleRate != commonSampleRate {
+			return nil, types.NewError("unmarshal", "audio",
+				fmt.Sprintf("sample rate mismatch: file %d has %d Hz, expected %d Hz (resampling not supported)",
+					i, u.lastSampleRate, commonSampleRate), nil)
+		}
+
+		// Track maximum frames (for padding)
+		if frames > maxFrames {
+			maxFrames = frames
+		}
+		totalChannels += channels
+
+		files = append(files, fileInfo{
+			tensor:     t,
+			frames:     frames,
+			channels:   channels,
+			sampleRate: u.lastSampleRate,
+			dtype:      u.lastDataType,
+		})
+	}
+
+	// Determine common dtype (already set from first file or dstType)
+	// Convert all tensors to common dtype if needed
+	for i := range files {
+		if files[i].dtype != commonDtype {
+			// Create new tensor with target dtype and same shape
+			fileShape := files[i].tensor.Shape()
+			converted := tensorFactory(commonDtype, fileShape)
+			if converted == nil {
+				return nil, types.NewError("unmarshal", "audio", fmt.Sprintf("failed to create converted tensor from %v to %v", files[i].dtype, commonDtype), nil)
+			}
+			// Copy with type conversion
+			converted.Copy(files[i].tensor)
+			files[i].tensor = converted
+			files[i].dtype = commonDtype
+		}
+	}
+
+	// Create combined tensor with shape [maxFrames, totalChannels]
+	combinedShape := tensor.NewShape(maxFrames, totalChannels)
+	if tensorFactory == nil {
+		tensorFactory = func(dtype tensortypes.DataType, shape types.Shape) types.Tensor {
+			return tensor.New(dtype, shape)
+		}
+	}
+	combined := tensorFactory(commonDtype, combinedShape)
+	if combined == nil {
+		return nil, types.NewError("unmarshal", "audio", "failed to create combined tensor", nil)
+	}
+
+	// Combine channels from all files
+	combinedData := combined.Data()
+	if combinedData == nil {
+		return nil, types.NewError("unmarshal", "audio", "combined tensor data is nil", nil)
+	}
+
+	// Copy data from each file to appropriate channels
+	channelOffset := 0
+	for _, file := range files {
+		srcData := file.tensor.Data()
+		if srcData == nil {
+			continue
+		}
+
+		// Copy frames from source to combined tensor
+		switch commonDtype {
+		case tensortypes.INT16:
+			dst := combinedData.([]int16)
+			src := srcData.([]int16)
+			for frame := 0; frame < file.frames; frame++ {
+				for ch := 0; ch < file.channels; ch++ {
+					dst[frame*totalChannels+channelOffset+ch] = src[frame*file.channels+ch]
+				}
+			}
+			// Pad remaining frames with zeros
+			for frame := file.frames; frame < maxFrames; frame++ {
+				for ch := 0; ch < file.channels; ch++ {
+					dst[frame*totalChannels+channelOffset+ch] = 0
+				}
+			}
+		case tensortypes.INT32:
+			dst := combinedData.([]int32)
+			src := srcData.([]int32)
+			for frame := 0; frame < file.frames; frame++ {
+				for ch := 0; ch < file.channels; ch++ {
+					dst[frame*totalChannels+channelOffset+ch] = src[frame*file.channels+ch]
+				}
+			}
+			for frame := file.frames; frame < maxFrames; frame++ {
+				for ch := 0; ch < file.channels; ch++ {
+					dst[frame*totalChannels+channelOffset+ch] = 0
+				}
+			}
+		case tensortypes.FP32:
+			dst := combinedData.([]float32)
+			src := srcData.([]float32)
+			for frame := 0; frame < file.frames; frame++ {
+				for ch := 0; ch < file.channels; ch++ {
+					dst[frame*totalChannels+channelOffset+ch] = src[frame*file.channels+ch]
+				}
+			}
+			for frame := file.frames; frame < maxFrames; frame++ {
+				for ch := 0; ch < file.channels; ch++ {
+					dst[frame*totalChannels+channelOffset+ch] = 0
+				}
+			}
+		case tensortypes.UINT8:
+			dst := combinedData.([]uint8)
+			src := srcData.([]uint8)
+			for frame := 0; frame < file.frames; frame++ {
+				for ch := 0; ch < file.channels; ch++ {
+					dst[frame*totalChannels+channelOffset+ch] = src[frame*file.channels+ch]
+				}
+			}
+			for frame := file.frames; frame < maxFrames; frame++ {
+				for ch := 0; ch < file.channels; ch++ {
+					dst[frame*totalChannels+channelOffset+ch] = 0
+				}
+			}
+		default:
+			return nil, types.NewError("unmarshal", "audio", fmt.Sprintf("unsupported dtype for concatenation: %v", commonDtype), nil)
+		}
+
+		channelOffset += file.channels
+	}
+
+	// Update format info
+	u.lastSampleRate = commonSampleRate
+	u.lastChannels = totalChannels
+	u.lastDataType = commonDtype
+
+	// Update statistics
+	atomic.AddInt64(&u.stats.frames, int64(maxFrames))
+	atomic.AddInt64(&u.stats.bytes, int64(maxFrames*totalChannels*4)) // Approximate
+
+	return combined, nil
+}
+
 // unmarshalStream creates a FrameStream from audio device(s).
 func (u *Unmarshaller) unmarshalStream(r io.Reader, cfg config) (types.FrameStream, error) {
-	// TODO: Implement stream unmarshalling
-	return types.FrameStream{}, types.NewError("unmarshal", "audio", "unmarshalStream not yet implemented", nil)
+	if len(cfg.device.deviceIDs) == 0 {
+		return types.FrameStream{}, types.NewError("unmarshal", "audio", "no devices specified for streaming", nil)
+	}
+
+	// For now, single device streaming
+	// Multi-device streaming would require more complex synchronization
+	if len(cfg.device.deviceIDs) == 1 {
+		return u.createDeviceStream(cfg.device.deviceIDs[0], cfg)
+	}
+
+	// Multi-device streaming - combine into single stream
+	return u.createMultiDeviceStream(cfg.device.deviceIDs, cfg)
+}
+
+// createDeviceStream creates a FrameStream from a single device.
+func (u *Unmarshaller) createDeviceStream(deviceID string, cfg config) (types.FrameStream, error) {
+	dev, err := newAudioDevice(deviceID, "capture", cfg.device, cfg.stream, cfg.ctx)
+	if err != nil {
+		return types.FrameStream{}, types.NewError("unmarshal", "audio", fmt.Sprintf("failed to create device: %v", err), err)
+	}
+
+	if err := dev.start(); err != nil {
+		return types.FrameStream{}, types.NewError("unmarshal", "audio", fmt.Sprintf("failed to start device: %v", err), err)
+	}
+
+	// Create frame stream channel
+	ch := make(chan types.Frame, 32)
+	stream := types.NewFrameStream(ch, func() {
+		dev.stop()
+	})
+
+	// Start goroutine to capture frames
+	go func() {
+		defer close(ch)
+		defer dev.stop()
+
+		frameSize := cfg.stream.frameSize
+		if frameSize == 0 {
+			frameSize = 1024
+		}
+
+		format := getDeviceFormat(dev)
+		channels := getDeviceChannels(dev)
+		dtype := tensortypes.INT16
+		if fmtStr, ok := formatToDtype[format]; ok {
+			dtype = fmtStr
+		}
+
+		for {
+			select {
+			case <-cfg.ctx.Done():
+				return
+			default:
+				buf, err := dev.readFrame(100 * time.Millisecond)
+				if err != nil {
+					if err == context.Canceled || err == context.DeadlineExceeded {
+						return
+					}
+					continue
+				}
+
+				// Convert PCM to tensor
+				actualFrames := len(buf) / (channels * sampleSizeFromFormat(format))
+				shape := tensor.NewShape(actualFrames, channels)
+				t := tensor.New(dtype, shape)
+				if t.Empty() {
+					continue
+				}
+
+				tensorData, err := pcmToTensor(buf, format, channels, actualFrames, dtype)
+				if err != nil {
+					continue
+				}
+
+				if err := copyToTensor(t, tensorData); err != nil {
+					continue
+				}
+
+				// Send frame
+				select {
+				case ch <- types.Frame{Tensors: []types.Tensor{t}}:
+				case <-cfg.ctx.Done():
+					return
+				}
+
+				// Release buffer
+				if md, ok := dev.(*malgoDevice); ok {
+					md.bytePool.Put(buf)
+				}
+			}
+		}
+	}()
+
+	return stream, nil
+}
+
+// createMultiDeviceStream creates a FrameStream from multiple devices.
+func (u *Unmarshaller) createMultiDeviceStream(deviceIDs []string, cfg config) (types.FrameStream, error) {
+	// Create all devices
+	devices := make([]deviceInterface, 0, len(deviceIDs))
+	for _, id := range deviceIDs {
+		dev, err := newAudioDevice(id, "capture", cfg.device, cfg.stream, cfg.ctx)
+		if err != nil {
+			for _, d := range devices {
+				d.stop()
+			}
+			return types.FrameStream{}, types.NewError("unmarshal", "audio", fmt.Sprintf("failed to create device: %v", err), err)
+		}
+		devices = append(devices, dev)
+	}
+
+	// Start all devices
+	for _, dev := range devices {
+		if err := dev.start(); err != nil {
+			for _, d := range devices {
+				d.stop()
+			}
+			return types.FrameStream{}, types.NewError("unmarshal", "audio", fmt.Sprintf("failed to start device: %v", err), err)
+		}
+	}
+
+	// Create frame stream channel
+	ch := make(chan types.Frame, 32)
+	stream := types.NewFrameStream(ch, func() {
+		for _, dev := range devices {
+			dev.stop()
+		}
+	})
+
+	// Start goroutine to capture frames from all devices
+	go func() {
+		defer close(ch)
+		defer func() {
+			for _, dev := range devices {
+				dev.stop()
+			}
+		}()
+
+		frameSize := cfg.stream.frameSize
+		if frameSize == 0 {
+			frameSize = 1024
+		}
+
+		format := getDeviceFormat(devices[0])
+		totalChannels := 0
+		for _, dev := range devices {
+			totalChannels += getDeviceChannels(dev)
+		}
+
+		dtype := tensortypes.INT16
+		if fmtStr, ok := formatToDtype[format]; ok {
+			dtype = fmtStr
+		}
+
+		for {
+			select {
+			case <-cfg.ctx.Done():
+				return
+			default:
+				// Read from all devices
+				frames := make([][]byte, len(devices))
+				allRead := true
+				for i, dev := range devices {
+					buf, err := dev.readFrame(100 * time.Millisecond)
+					if err != nil {
+						allRead = false
+						break
+					}
+					frames[i] = buf
+				}
+
+				if !allRead {
+					// Release frames we did read
+					for i, frame := range frames {
+						if frame != nil {
+							if md, ok := devices[i].(*malgoDevice); ok {
+								md.bytePool.Put(frame)
+							}
+						}
+					}
+					if cfg.ctx.Err() != nil {
+						return
+					}
+					continue
+				}
+
+				// Combine channels from all devices
+				// For simplicity, use first device's frame count
+				channels0 := getDeviceChannels(devices[0])
+				actualFrames := len(frames[0]) / (channels0 * sampleSizeFromFormat(format))
+
+				shape := tensor.NewShape(actualFrames, totalChannels)
+				t := tensor.New(dtype, shape)
+				if t.Empty() {
+					continue
+				}
+
+				// Copy data from all devices
+				channelOffset := 0
+				for devIdx, dev := range devices {
+					channels := getDeviceChannels(dev)
+					framePCM := frames[devIdx]
+					tensorData, err := pcmToTensor(framePCM, format, channels, actualFrames, dtype)
+					if err != nil {
+						continue
+					}
+
+					// Copy to combined tensor
+					if err := copyDeviceChannelsToTensor(t, tensorData, dtype, 0, channelOffset, channels, totalChannels); err != nil {
+						// Continue on error
+					}
+
+					channelOffset += channels
+
+					// Release frame
+					if md, ok := dev.(*malgoDevice); ok {
+						md.bytePool.Put(framePCM)
+					}
+				}
+
+				// Send frame
+				select {
+				case ch <- types.Frame{Tensors: []types.Tensor{t}}:
+				case <-cfg.ctx.Done():
+					return
+				}
+			}
+		}
+	}()
+
+	return stream, nil
 }
 
 // unmarshalDeviceList enumerates available audio devices.
@@ -368,6 +816,543 @@ func (u *Unmarshaller) unmarshalDeviceList(r io.Reader) ([]types.AudioDeviceInfo
 		}
 	}
 
-	// TODO: Enumerate audio devices using malgo (via gocoustics)
-	return nil, types.NewError("unmarshal", "audio", "device enumeration not yet implemented", nil)
+	return enumerateDevices()
+}
+
+// captureSingleDevice captures from a single audio device.
+func (u *Unmarshaller) captureSingleDevice(deviceID string, cfg config, dstType tensortypes.DataType, tensorFactory func(tensortypes.DataType, types.Shape) types.Tensor) (types.Tensor, error) {
+	// Create device
+	dev, err := newAudioDevice(deviceID, "capture", cfg.device, cfg.stream, cfg.ctx)
+	if err != nil {
+		return nil, types.NewError("unmarshal", "audio", fmt.Sprintf("failed to create device: %v", err), err)
+	}
+
+	// Start device
+	if err := dev.start(); err != nil {
+		return nil, types.NewError("unmarshal", "audio", fmt.Sprintf("failed to start device: %v", err), err)
+	}
+	defer dev.stop()
+
+	// Determine dtype
+	deviceDtype := dstType
+	if deviceDtype == tensortypes.DT_UNKNOWN {
+		format := getDeviceFormat(dev)
+		if fmtStr, ok := formatToDtype[format]; ok {
+			deviceDtype = fmtStr
+		} else {
+			deviceDtype = tensortypes.INT16 // Default
+		}
+	}
+
+	// Capture frames (for now, capture a fixed duration or until context cancelled)
+	// In streaming mode, this would return a FrameStream instead
+	frameSize := cfg.stream.frameSize
+	if frameSize == 0 {
+		frameSize = 1024
+	}
+
+	// Accumulate frames
+	var allFrames [][]byte
+	totalFrames := 0
+
+	for {
+		select {
+		case <-cfg.ctx.Done():
+			goto done
+		default:
+			buf, err := dev.readFrame(100 * time.Millisecond)
+			if err != nil {
+				if err == context.Canceled || err == context.DeadlineExceeded {
+					goto done
+				}
+				// Continue on other errors
+				break
+			}
+			allFrames = append(allFrames, buf)
+			totalFrames += frameSize
+		}
+	}
+
+done:
+	if totalFrames == 0 {
+		return nil, types.NewError("unmarshal", "audio", "no frames captured", nil)
+	}
+
+	// Combine all frames
+	totalBytes := 0
+	for _, frame := range allFrames {
+		totalBytes += len(frame)
+	}
+
+	combinedPCM := make([]byte, 0, totalBytes)
+	for _, frame := range allFrames {
+		combinedPCM = append(combinedPCM, frame...)
+		if md, ok := dev.(*malgoDevice); ok {
+			md.bytePool.Put(frame)
+		}
+	}
+
+	// Convert to tensor
+	format := getDeviceFormat(dev)
+	channels := getDeviceChannels(dev)
+	actualFrames := totalBytes / (channels * sampleSizeFromFormat(format))
+	shape := tensor.NewShape(actualFrames, channels)
+
+	if tensorFactory == nil {
+		tensorFactory = func(dtype tensortypes.DataType, shape types.Shape) types.Tensor {
+			return tensor.New(dtype, shape)
+		}
+	}
+
+	t := tensorFactory(deviceDtype, shape)
+	if t == nil {
+		return nil, types.NewError("unmarshal", "audio", "failed to create tensor", nil)
+	}
+
+	// Convert PCM to tensor
+	tensorData, err := pcmToTensor(combinedPCM, format, channels, actualFrames, deviceDtype)
+	if err != nil {
+		return nil, types.NewError("unmarshal", "audio", fmt.Sprintf("failed to convert PCM: %v", err), err)
+	}
+
+	// Copy to tensor
+	if err := copyToTensor(t, tensorData); err != nil {
+		return nil, types.NewError("unmarshal", "audio", fmt.Sprintf("failed to copy tensor data: %v", err), err)
+	}
+
+	// Update format info
+	u.lastSampleRate = getDeviceSampleRate(dev)
+	u.lastChannels = getDeviceChannels(dev)
+	u.lastDataType = deviceDtype
+
+	// Update statistics
+	atomic.AddInt64(&u.stats.frames, int64(actualFrames))
+	atomic.AddInt64(&u.stats.bytes, int64(totalBytes))
+
+	return t, nil
+}
+
+// captureMultipleDevices captures from multiple devices and combines channels.
+func (u *Unmarshaller) captureMultipleDevices(deviceIDs []string, cfg config, dstType tensortypes.DataType, tensorFactory func(tensortypes.DataType, types.Shape) types.Tensor) (types.Tensor, error) {
+	if len(deviceIDs) == 0 {
+		return nil, types.NewError("unmarshal", "audio", "no device IDs provided", nil)
+	}
+
+	// Create all devices
+	devices := make([]deviceInterface, 0, len(deviceIDs))
+	deviceChannels := make([]int, 0, len(deviceIDs))
+	totalDeviceChannels := 0
+
+	for _, id := range deviceIDs {
+		dev, err := newAudioDevice(id, "capture", cfg.device, cfg.stream, cfg.ctx)
+		if err != nil {
+			// Cleanup
+			for _, d := range devices {
+				d.stop()
+			}
+			return nil, types.NewError("unmarshal", "audio", fmt.Sprintf("failed to create device %s: %v", id, err), err)
+		}
+		devices = append(devices, dev)
+		channels := getDeviceChannels(dev)
+		deviceChannels = append(deviceChannels, channels)
+		totalDeviceChannels += channels
+	}
+
+	// Start all devices
+	for _, dev := range devices {
+		if err := dev.start(); err != nil {
+			// Cleanup
+			for _, d := range devices {
+				d.stop()
+			}
+			return nil, types.NewError("unmarshal", "audio", fmt.Sprintf("failed to start device: %v", err), err)
+		}
+	}
+	defer func() {
+		for _, dev := range devices {
+			dev.stop()
+		}
+	}()
+
+	// Verify all devices have same sample rate
+	commonSampleRate := getDeviceSampleRate(devices[0])
+	for i, dev := range devices {
+		if getDeviceSampleRate(dev) != commonSampleRate {
+			return nil, types.NewError("unmarshal", "audio",
+				fmt.Sprintf("sample rate mismatch: device %d has %d Hz, expected %d Hz (resampling not supported)",
+					i, getDeviceSampleRate(dev), commonSampleRate), nil)
+		}
+	}
+
+	// Get device format (use first device's format)
+	format := getDeviceFormat(devices[0])
+
+	// Determine dtype
+	deviceDtype := dstType
+	if deviceDtype == tensortypes.DT_UNKNOWN {
+		if fmtStr, ok := formatToDtype[format]; ok {
+			deviceDtype = fmtStr
+		} else {
+			deviceDtype = tensortypes.INT16 // Default
+		}
+	}
+
+	// Capture frames from all devices in lockstep
+	frameSize := cfg.stream.frameSize
+	if frameSize == 0 {
+		frameSize = 1024
+	}
+
+	// Accumulate frames from all devices
+	var allDeviceFrames [][][]byte // [device][frame][data]
+	for range devices {
+		allDeviceFrames = append(allDeviceFrames, make([][]byte, 0))
+	}
+	totalFrames := 0
+
+	// Capture frames in lockstep
+	for {
+		select {
+		case <-cfg.ctx.Done():
+			goto done
+		default:
+			// Read frame from each device
+			var deviceFrames [][]byte
+			allRead := true
+			for _, dev := range devices {
+				buf, err := dev.readFrame(100 * time.Millisecond)
+				if err != nil {
+					if err == context.Canceled || err == context.DeadlineExceeded {
+						goto done
+					}
+					allRead = false
+					break
+				}
+				deviceFrames = append(deviceFrames, buf)
+			}
+
+			if !allRead || len(deviceFrames) != len(devices) {
+				// Not all devices have data, break
+				goto done
+			}
+
+			// Store frames for each device
+			for i, frame := range deviceFrames {
+				allDeviceFrames[i] = append(allDeviceFrames[i], frame)
+			}
+			totalFrames += frameSize
+		}
+	}
+
+done:
+	if totalFrames == 0 {
+		return nil, types.NewError("unmarshal", "audio", "no frames captured", nil)
+	}
+
+	// Find minimum frames (devices may have different amounts)
+	minFrames := totalFrames
+	for _, frames := range allDeviceFrames {
+		deviceFrameCount := 0
+		for _, frame := range frames {
+			deviceFrameCount += len(frame) / (deviceChannels[len(allDeviceFrames)-1] * sampleSizeFromFormat(format))
+		}
+		if deviceFrameCount < minFrames {
+			minFrames = deviceFrameCount
+		}
+	}
+
+	// Combine PCM data from all devices
+	actualFrames := minFrames
+	combinedShape := tensor.NewShape(actualFrames, totalDeviceChannels)
+
+	if tensorFactory == nil {
+		tensorFactory = func(dtype tensortypes.DataType, shape types.Shape) types.Tensor {
+			return tensor.New(dtype, shape)
+		}
+	}
+
+	combined := tensorFactory(deviceDtype, combinedShape)
+	if combined == nil {
+		return nil, types.NewError("unmarshal", "audio", "failed to create combined tensor", nil)
+	}
+
+	// Convert and combine channels from all devices
+	combinedData := combined.Data()
+	if combinedData == nil {
+		return nil, types.NewError("unmarshal", "audio", "combined tensor data is nil", nil)
+	}
+
+	// Convert each device's frames and combine channels
+	channelOffset := 0
+	for devIdx, devFrames := range allDeviceFrames {
+		devChannels := deviceChannels[devIdx]
+		dev := devices[devIdx]
+
+		// Combine all frames from this device
+		totalBytes := 0
+		for _, frame := range devFrames {
+			totalBytes += len(frame)
+		}
+
+		combinedPCM := make([]byte, 0, totalBytes)
+		for _, frame := range devFrames {
+			combinedPCM = append(combinedPCM, frame...)
+			if md, ok := dev.(*malgoDevice); ok {
+				md.bytePool.Put(frame)
+			}
+		}
+
+		// Calculate actual frames for this device (may be less than totalFrames)
+		devActualFrames := len(combinedPCM) / (devChannels * sampleSizeFromFormat(format))
+		if devActualFrames > actualFrames {
+			devActualFrames = actualFrames
+			combinedPCM = combinedPCM[:actualFrames*devChannels*sampleSizeFromFormat(format)]
+		}
+
+		// Convert this device's PCM to tensor data
+		devTensorData, err := pcmToTensor(combinedPCM, format, devChannels, devActualFrames, deviceDtype)
+		if err != nil {
+			return nil, types.NewError("unmarshal", "audio", fmt.Sprintf("failed to convert PCM for device %d: %v", devIdx, err), err)
+		}
+
+		// Copy device channels to combined tensor
+		switch deviceDtype {
+		case tensortypes.INT16:
+			dst := combinedData.([]int16)
+			src := devTensorData.([]int16)
+			for frame := 0; frame < devActualFrames; frame++ {
+				for ch := 0; ch < devChannels; ch++ {
+					dst[frame*totalDeviceChannels+channelOffset+ch] = src[frame*devChannels+ch]
+				}
+			}
+			// Pad remaining frames with zeros if needed
+			for frame := devActualFrames; frame < actualFrames; frame++ {
+				for ch := 0; ch < devChannels; ch++ {
+					dst[frame*totalDeviceChannels+channelOffset+ch] = 0
+				}
+			}
+		case tensortypes.INT32:
+			dst := combinedData.([]int32)
+			src := devTensorData.([]int32)
+			for frame := 0; frame < devActualFrames; frame++ {
+				for ch := 0; ch < devChannels; ch++ {
+					dst[frame*totalDeviceChannels+channelOffset+ch] = src[frame*devChannels+ch]
+				}
+			}
+			for frame := devActualFrames; frame < actualFrames; frame++ {
+				for ch := 0; ch < devChannels; ch++ {
+					dst[frame*totalDeviceChannels+channelOffset+ch] = 0
+				}
+			}
+		case tensortypes.FP32:
+			dst := combinedData.([]float32)
+			src := devTensorData.([]float32)
+			for frame := 0; frame < devActualFrames; frame++ {
+				for ch := 0; ch < devChannels; ch++ {
+					dst[frame*totalDeviceChannels+channelOffset+ch] = src[frame*devChannels+ch]
+				}
+			}
+			for frame := devActualFrames; frame < actualFrames; frame++ {
+				for ch := 0; ch < devChannels; ch++ {
+					dst[frame*totalDeviceChannels+channelOffset+ch] = 0
+				}
+			}
+		case tensortypes.UINT8:
+			dst := combinedData.([]uint8)
+			src := devTensorData.([]uint8)
+			for frame := 0; frame < devActualFrames; frame++ {
+				for ch := 0; ch < devChannels; ch++ {
+					dst[frame*totalDeviceChannels+channelOffset+ch] = src[frame*devChannels+ch]
+				}
+			}
+			for frame := devActualFrames; frame < actualFrames; frame++ {
+				for ch := 0; ch < devChannels; ch++ {
+					dst[frame*totalDeviceChannels+channelOffset+ch] = 0
+				}
+			}
+		default:
+			return nil, types.NewError("unmarshal", "audio", fmt.Sprintf("unsupported dtype for multi-device: %v", deviceDtype), nil)
+		}
+
+		channelOffset += devChannels
+	}
+
+	// Update format info
+	u.lastSampleRate = commonSampleRate
+	u.lastChannels = totalDeviceChannels
+	u.lastDataType = deviceDtype
+
+	// Update statistics
+	atomic.AddInt64(&u.stats.frames, int64(actualFrames))
+	atomic.AddInt64(&u.stats.bytes, int64(actualFrames*totalDeviceChannels*sampleSizeFromFormat(format)))
+
+	return combined, nil
+}
+
+// unmarshalMixedSources handles mixed WAV files + devices.
+func (u *Unmarshaller) unmarshalMixedSources(cfg config, dstType tensortypes.DataType, tensorFactory func(tensortypes.DataType, types.Shape) types.Tensor) (types.Tensor, error) {
+	// Read WAV files first
+	var wavTensors []types.Tensor
+	if len(cfg.wav.paths) > 0 {
+		for _, path := range cfg.wav.paths {
+			t, err := u.readSingleWAV(path, cfg, dstType, tensorFactory)
+			if err != nil {
+				return nil, err
+			}
+			wavTensors = append(wavTensors, t)
+		}
+	}
+
+	// Capture from devices
+	var deviceTensors []types.Tensor
+	if len(cfg.device.deviceIDs) > 0 {
+		if len(cfg.device.deviceIDs) == 1 {
+			t, err := u.captureSingleDevice(cfg.device.deviceIDs[0], cfg, dstType, tensorFactory)
+			if err != nil {
+				return nil, err
+			}
+			deviceTensors = append(deviceTensors, t)
+		} else {
+			t, err := u.captureMultipleDevices(cfg.device.deviceIDs, cfg, dstType, tensorFactory)
+			if err != nil {
+				return nil, err
+			}
+			deviceTensors = append(deviceTensors, t)
+		}
+	}
+
+	// Combine all tensors
+	allTensors := append(wavTensors, deviceTensors...)
+	if len(allTensors) == 0 {
+		return nil, types.NewError("unmarshal", "audio", "no sources to combine", nil)
+	}
+
+	if len(allTensors) == 1 {
+		return allTensors[0], nil
+	}
+
+	// Verify all have same sample rate
+	commonSampleRate := u.lastSampleRate
+	_ = allTensors // Sample rate should be consistent from reads
+
+	// Determine max frames
+	maxFrames := 0
+	totalChannels := 0
+	for _, t := range allTensors {
+		shape := t.Shape()
+		if shape[0] > maxFrames {
+			maxFrames = shape[0]
+		}
+		totalChannels += shape[1]
+	}
+
+	// Determine common dtype
+	commonDtype := dstType
+	if commonDtype == tensortypes.DT_UNKNOWN {
+		commonDtype = allTensors[0].DataType()
+	}
+
+	// Create combined tensor
+	combinedShape := tensor.NewShape(maxFrames, totalChannels)
+	if tensorFactory == nil {
+		tensorFactory = func(dtype tensortypes.DataType, shape types.Shape) types.Tensor {
+			return tensor.New(dtype, shape)
+		}
+	}
+
+	combined := tensorFactory(commonDtype, combinedShape)
+	if combined == nil {
+		return nil, types.NewError("unmarshal", "audio", "failed to create combined tensor", nil)
+	}
+
+	// Combine channels
+	channelOffset := 0
+	for _, t := range allTensors {
+		shape := t.Shape()
+		frames := shape[0]
+		channels := shape[1]
+
+		// Copy data
+		if err := copyTensorChannels(combined, t, 0, channelOffset, frames, channels, totalChannels); err != nil {
+			return nil, types.NewError("unmarshal", "audio", fmt.Sprintf("failed to copy channels: %v", err), err)
+		}
+
+		channelOffset += channels
+	}
+
+	// Update format info
+	u.lastSampleRate = commonSampleRate
+	u.lastChannels = totalChannels
+	u.lastDataType = commonDtype
+
+	return combined, nil
+}
+
+// copyTensorChannels copies channels from source tensor to combined tensor.
+func copyTensorChannels(dst, src types.Tensor, frameOffset, channelOffset, frames, channels, totalChannels int) error {
+	dstData := dst.Data()
+	srcData := src.Data()
+	if dstData == nil || srcData == nil {
+		return fmt.Errorf("tensor data is nil")
+	}
+
+	dtype := dst.DataType()
+	switch dtype {
+	case tensortypes.INT16:
+		dstSlice := dstData.([]int16)
+		srcSlice := srcData.([]int16)
+		for i := 0; i < frames; i++ {
+			for ch := 0; ch < channels; ch++ {
+				srcIdx := i*channels + ch
+				dstIdx := (frameOffset+i)*totalChannels + channelOffset + ch
+				if srcIdx < len(srcSlice) && dstIdx < len(dstSlice) {
+					dstSlice[dstIdx] = srcSlice[srcIdx]
+				}
+			}
+		}
+
+	case tensortypes.INT32:
+		dstSlice := dstData.([]int32)
+		srcSlice := srcData.([]int32)
+		for i := 0; i < frames; i++ {
+			for ch := 0; ch < channels; ch++ {
+				srcIdx := i*channels + ch
+				dstIdx := (frameOffset+i)*totalChannels + channelOffset + ch
+				if srcIdx < len(srcSlice) && dstIdx < len(dstSlice) {
+					dstSlice[dstIdx] = srcSlice[srcIdx]
+				}
+			}
+		}
+
+	case tensortypes.FP32:
+		dstSlice := dstData.([]float32)
+		srcSlice := srcData.([]float32)
+		for i := 0; i < frames; i++ {
+			for ch := 0; ch < channels; ch++ {
+				srcIdx := i*channels + ch
+				dstIdx := (frameOffset+i)*totalChannels + channelOffset + ch
+				if srcIdx < len(srcSlice) && dstIdx < len(dstSlice) {
+					dstSlice[dstIdx] = srcSlice[srcIdx]
+				}
+			}
+		}
+
+	case tensortypes.UINT8:
+		dstSlice := dstData.([]uint8)
+		srcSlice := srcData.([]uint8)
+		for i := 0; i < frames; i++ {
+			for ch := 0; ch < channels; ch++ {
+				srcIdx := i*channels + ch
+				dstIdx := (frameOffset+i)*totalChannels + channelOffset + ch
+				if srcIdx < len(srcSlice) && dstIdx < len(dstSlice) {
+					dstSlice[dstIdx] = srcSlice[srcIdx]
+				}
+			}
+		}
+
+	default:
+		return fmt.Errorf("unsupported dtype: %v", dtype)
+	}
+
+	return nil
 }

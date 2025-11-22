@@ -4,25 +4,41 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync/atomic"
 
 	"github.com/go-audio/audio"
 	"github.com/go-audio/wav"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
+	"github.com/itohio/EasyRobot/x/math/primitive/generics/helpers"
+	"github.com/itohio/EasyRobot/x/math/tensor"
 	tensortypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 )
+
+// stats tracks statistics for the marshaller using atomic counters.
+type marshallerStats struct {
+	frames int64 // Total frames written
+	bytes  int64 // Total bytes written
+}
 
 // Marshaller encodes audio tensors to WAV files or audio devices.
 type Marshaller struct {
 	opts types.Options
 	cfg  config
+
+	// Statistics tracking
+	stats marshallerStats
+
+	// Buffer pools
+	intPool *helpers.Pool[int] // Pool for PCM int buffers
 }
 
 // NewMarshaller constructs an audio marshaller instance.
 func NewMarshaller(opts ...types.Option) *Marshaller {
 	baseOpts, baseCfg := applyOptions(types.Options{}, defaultConfig(), opts)
 	return &Marshaller{
-		opts: baseOpts,
-		cfg:  baseCfg,
+		opts:    baseOpts,
+		cfg:     baseCfg,
+		intPool: &helpers.Pool[int]{},
 	}
 }
 
@@ -78,8 +94,10 @@ func (m *Marshaller) SampleRate() int {
 // For device streams: frames, queue lengths, dropped buffers, byte counts.
 // For WAV files: frames, bytes written.
 func (m *Marshaller) Health() map[string]int64 {
-	// TODO: Implement health statistics tracking
-	return make(map[string]int64)
+	return map[string]int64{
+		"frames": atomic.LoadInt64(&m.stats.frames),
+		"bytes":  atomic.LoadInt64(&m.stats.bytes),
+	}
 }
 
 // writeTensor writes a tensor to WAV file(s) and/or audio device(s).
@@ -102,22 +120,32 @@ func (m *Marshaller) writeTensor(w io.Writer, t types.Tensor, cfg config) error 
 		sampleRate = 48000 // default
 	}
 
+	// Check if we have devices configured
+	if len(cfg.device.deviceIDs) > 0 {
+		if len(cfg.wav.paths) > 0 {
+			// Mixed outputs: WAV + devices
+			return m.writeMixedOutputs(t, cfg)
+		}
+		// Device-only playback
+		if len(cfg.device.deviceIDs) == 1 {
+			return m.playbackSingleDevice(cfg.device.deviceIDs[0], t, cfg)
+		}
+		return m.playbackMultipleDevices(cfg.device.deviceIDs, t, cfg)
+	}
+
 	// Check if we have WAV paths configured
 	if len(cfg.wav.paths) == 0 {
-		// No WAV files, check for devices
-		if len(cfg.device.deviceIDs) > 0 {
-			return types.NewError("marshal", "audio", "device playback not yet implemented", nil)
-		}
 		return types.NewError("marshal", "audio", "no WAV paths or devices specified", nil)
 	}
 
 	// Single WAV file writing (Phase 3.1)
+	// Note: Multi-output for WAV files not needed per requirements
 	if len(cfg.wav.paths) == 1 {
 		return m.writeSingleWAV(cfg.wav.paths[0], t, numFrames, numChannels, sampleRate, cfg)
 	}
 
-	// Multiple WAV files (Phase 3.2) - TODO
-	return types.NewError("marshal", "audio", "multiple WAV files not yet implemented", nil)
+	// Multiple WAV files - not supported per requirements (only multi-source needed)
+	return types.NewError("marshal", "audio", "multiple WAV file output not supported (only multi-source for WAV files)", nil)
 }
 
 // writeSingleWAV writes a tensor to a single WAV file.
@@ -181,29 +209,40 @@ func (m *Marshaller) writeSingleWAV(path string, t types.Tensor, numFrames, numC
 
 // writeInt16PCM writes int16 tensor data to WAV.
 func (m *Marshaller) writeInt16PCM(encoder *wav.Encoder, data []int16, numFrames, numChannels int) error {
+	// Get pooled buffer for frame data
+	frameData := m.intPool.Get(numChannels)
+	defer m.intPool.Put(frameData)
+
 	for frame := 0; frame < numFrames; frame++ {
-		intData := make([]int, numChannels)
 		for ch := 0; ch < numChannels; ch++ {
-			intData[ch] = int(data[frame*numChannels+ch])
+			frameData[ch] = int(data[frame*numChannels+ch])
 		}
 		buf := &audio.IntBuffer{
 			Format: &audio.Format{
 				NumChannels: numChannels,
 				SampleRate:  encoder.SampleRate,
 			},
-			Data: intData,
+			Data: frameData,
 		}
 		if err := encoder.Write(buf); err != nil {
 			return types.NewError("marshal", "audio", fmt.Sprintf("failed to write frame %d", frame), err)
 		}
 	}
+
+	// Update statistics
+	atomic.AddInt64(&m.stats.frames, int64(numFrames))
+	atomic.AddInt64(&m.stats.bytes, int64(numFrames*numChannels*2)) // int16 = 2 bytes
+
 	return nil
 }
 
 // writeInt32PCM writes int32 tensor data to WAV.
 func (m *Marshaller) writeInt32PCM(encoder *wav.Encoder, data []int32, numFrames, numChannels, bitDepth int) error {
+	// Get pooled buffer for frame data
+	frameData := m.intPool.Get(numChannels)
+	defer m.intPool.Put(frameData)
+
 	for frame := 0; frame < numFrames; frame++ {
-		intData := make([]int, numChannels)
 		for ch := 0; ch < numChannels; ch++ {
 			val := int(data[frame*numChannels+ch])
 			// Clamp to bit depth range
@@ -214,26 +253,38 @@ func (m *Marshaller) writeInt32PCM(encoder *wav.Encoder, data []int32, numFrames
 					val = -32768
 				}
 			}
-			intData[ch] = val
+			frameData[ch] = val
 		}
 		buf := &audio.IntBuffer{
 			Format: &audio.Format{
 				NumChannels: numChannels,
 				SampleRate:  encoder.SampleRate,
 			},
-			Data: intData,
+			Data: frameData,
 		}
 		if err := encoder.Write(buf); err != nil {
 			return types.NewError("marshal", "audio", fmt.Sprintf("failed to write frame %d", frame), err)
 		}
 	}
+
+	// Update statistics
+	atomic.AddInt64(&m.stats.frames, int64(numFrames))
+	bytesPerSample := 4
+	if bitDepth == 16 {
+		bytesPerSample = 2
+	}
+	atomic.AddInt64(&m.stats.bytes, int64(numFrames*numChannels*bytesPerSample))
+
 	return nil
 }
 
 // writeFloat32PCM writes float32 tensor data to WAV.
 func (m *Marshaller) writeFloat32PCM(encoder *wav.Encoder, data []float32, numFrames, numChannels, bitDepth int) error {
+	// Get pooled buffer for frame data
+	frameData := m.intPool.Get(numChannels)
+	defer m.intPool.Put(frameData)
+
 	for frame := 0; frame < numFrames; frame++ {
-		intData := make([]int, numChannels)
 		for ch := 0; ch < numChannels; ch++ {
 			val := data[frame*numChannels+ch]
 			// Convert float to int based on bit depth
@@ -244,7 +295,7 @@ func (m *Marshaller) writeFloat32PCM(encoder *wav.Encoder, data []float32, numFr
 				} else if intVal < -32768 {
 					intVal = -32768
 				}
-				intData[ch] = intVal
+				frameData[ch] = intVal
 			} else if bitDepth == 32 {
 				intVal := int(val * 2147483647.0)
 				if intVal > 2147483647 {
@@ -252,7 +303,7 @@ func (m *Marshaller) writeFloat32PCM(encoder *wav.Encoder, data []float32, numFr
 				} else if intVal < -2147483648 {
 					intVal = -2147483648
 				}
-				intData[ch] = intVal
+				frameData[ch] = intVal
 			} else {
 				// Default to 16-bit
 				intVal := int(val * 32767.0)
@@ -261,7 +312,7 @@ func (m *Marshaller) writeFloat32PCM(encoder *wav.Encoder, data []float32, numFr
 				} else if intVal < -32768 {
 					intVal = -32768
 				}
-				intData[ch] = intVal
+				frameData[ch] = intVal
 			}
 		}
 		buf := &audio.IntBuffer{
@@ -269,40 +320,500 @@ func (m *Marshaller) writeFloat32PCM(encoder *wav.Encoder, data []float32, numFr
 				NumChannels: numChannels,
 				SampleRate:  encoder.SampleRate,
 			},
-			Data: intData,
+			Data: frameData,
 		}
 		if err := encoder.Write(buf); err != nil {
 			return types.NewError("marshal", "audio", fmt.Sprintf("failed to write frame %d", frame), err)
 		}
 	}
+
+	// Update statistics
+	atomic.AddInt64(&m.stats.frames, int64(numFrames))
+	bytesPerSample := 4
+	if bitDepth == 16 {
+		bytesPerSample = 2
+	}
+	atomic.AddInt64(&m.stats.bytes, int64(numFrames*numChannels*bytesPerSample))
+
 	return nil
 }
 
 // writeUint8PCM writes uint8 tensor data to WAV.
 func (m *Marshaller) writeUint8PCM(encoder *wav.Encoder, data []uint8, numFrames, numChannels int) error {
+	// Get pooled buffer for frame data
+	frameData := m.intPool.Get(numChannels)
+	defer m.intPool.Put(frameData)
+
 	for frame := 0; frame < numFrames; frame++ {
-		intData := make([]int, numChannels)
 		for ch := 0; ch < numChannels; ch++ {
 			// Convert from [0, 255] to signed [-128, 127] for WAV
-			val := int(data[frame*numChannels+ch]) - 128
-			intData[ch] = val
+			frameData[ch] = int(data[frame*numChannels+ch]) - 128
 		}
 		buf := &audio.IntBuffer{
 			Format: &audio.Format{
 				NumChannels: numChannels,
 				SampleRate:  encoder.SampleRate,
 			},
-			Data: intData,
+			Data: frameData,
 		}
 		if err := encoder.Write(buf); err != nil {
 			return types.NewError("marshal", "audio", fmt.Sprintf("failed to write frame %d", frame), err)
 		}
 	}
+
+	// Update statistics
+	atomic.AddInt64(&m.stats.frames, int64(numFrames))
+	atomic.AddInt64(&m.stats.bytes, int64(numFrames*numChannels)) // uint8 = 1 byte
+
+	return nil
+}
+
+// playbackSingleDevice plays tensor to a single audio device.
+func (m *Marshaller) playbackSingleDevice(deviceID string, t types.Tensor, cfg config) error {
+	if t.Empty() {
+		return types.NewError("marshal", "audio", "empty tensor", nil)
+	}
+
+	shape := t.Shape()
+	if len(shape) != 2 {
+		return types.NewError("marshal", "audio", "tensor must be 2D [frames, channels] for audio", nil)
+	}
+
+	numFrames := shape[0]
+	numChannels := shape[1]
+
+	// Create device
+	dev, err := newAudioDevice(deviceID, "playback", cfg.device, cfg.stream, cfg.ctx)
+	if err != nil {
+		return types.NewError("marshal", "audio", fmt.Sprintf("failed to create device: %v", err), err)
+	}
+
+	// Start device
+	if err := dev.start(); err != nil {
+		return types.NewError("marshal", "audio", fmt.Sprintf("failed to start device: %v", err), err)
+	}
+	defer dev.stop()
+
+	// Get device format
+	format := getDeviceFormat(dev)
+	deviceChannels := getDeviceChannels(dev)
+
+	// Verify channel count
+	if numChannels != deviceChannels {
+		return types.NewError("marshal", "audio",
+			fmt.Sprintf("channel mismatch: tensor has %d channels, device expects %d", numChannels, deviceChannels), nil)
+	}
+
+	// Get tensor data
+	tensorData := t.Data()
+	if tensorData == nil {
+		return types.NewError("marshal", "audio", "tensor data is nil", nil)
+	}
+
+	// Write frames to device
+	frameSize := cfg.stream.frameSize
+	if frameSize == 0 {
+		frameSize = 1024
+	}
+
+	for frameOffset := 0; frameOffset < numFrames; frameOffset += frameSize {
+		select {
+		case <-cfg.ctx.Done():
+			return cfg.ctx.Err()
+		default:
+		}
+
+		// Calculate actual frame count for this chunk
+		chunkFrames := frameSize
+		if frameOffset+chunkFrames > numFrames {
+			chunkFrames = numFrames - frameOffset
+		}
+
+		// Extract chunk from tensor
+		chunkData, err := extractTensorChunk(tensorData, t.DataType(), frameOffset, chunkFrames, numChannels)
+		if err != nil {
+			return types.NewError("marshal", "audio", fmt.Sprintf("failed to extract chunk: %v", err), err)
+		}
+
+		// Convert tensor to PCM
+		pcmData, err := tensorToPCM(chunkData, format, numChannels, chunkFrames)
+		if err != nil {
+			return types.NewError("marshal", "audio", fmt.Sprintf("failed to convert to PCM: %v", err), err)
+		}
+
+		// Write to device
+		if err := dev.writeFrame(pcmData); err != nil {
+			return types.NewError("marshal", "audio", fmt.Sprintf("failed to write frame: %v", err), err)
+		}
+
+		// Update statistics
+		atomic.AddInt64(&m.stats.frames, int64(chunkFrames))
+		atomic.AddInt64(&m.stats.bytes, int64(len(pcmData)))
+	}
+
+	return nil
+}
+
+// playbackMultipleDevices distributes tensor channels across multiple devices.
+func (m *Marshaller) playbackMultipleDevices(deviceIDs []string, t types.Tensor, cfg config) error {
+	if t.Empty() {
+		return types.NewError("marshal", "audio", "empty tensor", nil)
+	}
+
+	shape := t.Shape()
+	if len(shape) != 2 {
+		return types.NewError("marshal", "audio", "tensor must be 2D [frames, channels] for audio", nil)
+	}
+
+	numFrames := shape[0]
+	numChannels := shape[1]
+
+	if len(deviceIDs) == 0 {
+		return types.NewError("marshal", "audio", "no device IDs provided", nil)
+	}
+
+	// Create all devices
+	devices := make([]deviceInterface, 0, len(deviceIDs))
+	deviceChannels := make([]int, 0, len(deviceIDs))
+	totalDeviceChannels := 0
+
+	for _, id := range deviceIDs {
+		dev, err := newAudioDevice(id, "playback", cfg.device, cfg.stream, cfg.ctx)
+		if err != nil {
+			// Cleanup
+			for _, d := range devices {
+				d.stop()
+			}
+			return types.NewError("marshal", "audio", fmt.Sprintf("failed to create device %s: %v", id, err), err)
+		}
+		devices = append(devices, dev)
+		channels := getDeviceChannels(dev)
+		deviceChannels = append(deviceChannels, channels)
+		totalDeviceChannels += channels
+	}
+
+	// Verify channel count
+	if numChannels != totalDeviceChannels {
+		// Cleanup
+		for _, dev := range devices {
+			dev.stop()
+		}
+		return types.NewError("marshal", "audio",
+			fmt.Sprintf("channel mismatch: tensor has %d channels, devices total %d", numChannels, totalDeviceChannels), nil)
+	}
+
+	// Start all devices
+	for _, dev := range devices {
+		if err := dev.start(); err != nil {
+			// Cleanup
+			for _, d := range devices {
+				d.stop()
+			}
+			return types.NewError("marshal", "audio", fmt.Sprintf("failed to start device: %v", err), err)
+		}
+	}
+	defer func() {
+		for _, dev := range devices {
+			dev.stop()
+		}
+	}()
+
+	// Verify all devices have same sample rate
+	commonSampleRate := getDeviceSampleRate(devices[0])
+	for i, dev := range devices {
+		if getDeviceSampleRate(dev) != commonSampleRate {
+			return types.NewError("marshal", "audio",
+				fmt.Sprintf("sample rate mismatch: device %d has %d Hz, expected %d Hz", i, getDeviceSampleRate(dev), commonSampleRate), nil)
+		}
+	}
+
+	// Get device format
+	format := getDeviceFormat(devices[0])
+
+	// Get tensor data
+	tensorData := t.Data()
+	if tensorData == nil {
+		return types.NewError("marshal", "audio", "tensor data is nil", nil)
+	}
+
+	// Write frames to all devices in lockstep
+	frameSize := cfg.stream.frameSize
+	if frameSize == 0 {
+		frameSize = 1024
+	}
+
+	for frameOffset := 0; frameOffset < numFrames; frameOffset += frameSize {
+		select {
+		case <-cfg.ctx.Done():
+			return cfg.ctx.Err()
+		default:
+		}
+
+		// Calculate actual frame count for this chunk
+		chunkFrames := frameSize
+		if frameOffset+chunkFrames > numFrames {
+			chunkFrames = numFrames - frameOffset
+		}
+
+		// Distribute channels across devices
+		channelOffset := 0
+		for devIdx, dev := range devices {
+			devChannels := deviceChannels[devIdx]
+
+			// Extract channels for this device
+			chunkData, err := extractDeviceChannels(tensorData, t.DataType(), frameOffset, chunkFrames, channelOffset, devChannels, numChannels)
+			if err != nil {
+				return types.NewError("marshal", "audio", fmt.Sprintf("failed to extract channels: %v", err), err)
+			}
+
+			// Convert tensor to PCM
+			pcmData, err := tensorToPCM(chunkData, format, devChannels, chunkFrames)
+			if err != nil {
+				return types.NewError("marshal", "audio", fmt.Sprintf("failed to convert to PCM: %v", err), err)
+			}
+
+			// Write to device
+			if err := dev.writeFrame(pcmData); err != nil {
+				return types.NewError("marshal", "audio", fmt.Sprintf("failed to write to device %d: %v", devIdx, err), err)
+			}
+
+			channelOffset += devChannels
+		}
+
+		// Update statistics
+		atomic.AddInt64(&m.stats.frames, int64(chunkFrames))
+		atomic.AddInt64(&m.stats.bytes, int64(chunkFrames*totalDeviceChannels*sampleSizeFromFormat(format)))
+	}
+
+	return nil
+}
+
+// writeMixedOutputs writes to both WAV file(s) and device(s).
+func (m *Marshaller) writeMixedOutputs(t types.Tensor, cfg config) error {
+	shape := t.Shape()
+	if len(shape) != 2 {
+		return types.NewError("marshal", "audio", "tensor must be 2D [frames, channels] for audio", nil)
+	}
+
+	// Write to WAV files
+	if len(cfg.wav.paths) > 0 {
+		if err := m.writeTensor(nil, t, cfg); err != nil {
+			return err
+		}
+	}
+
+	// Play to devices
+	if len(cfg.device.deviceIDs) > 0 {
+		if len(cfg.device.deviceIDs) == 1 {
+			if err := m.playbackSingleDevice(cfg.device.deviceIDs[0], t, cfg); err != nil {
+				return err
+			}
+		} else {
+			if err := m.playbackMultipleDevices(cfg.device.deviceIDs, t, cfg); err != nil {
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 
 // writeFrameStream writes a frame stream to WAV file(s) and/or audio device(s).
 func (m *Marshaller) writeFrameStream(w io.Writer, stream types.FrameStream, cfg config) error {
-	// TODO: Implement frame stream writing
-	return types.NewError("marshal", "audio", "writeFrameStream not yet implemented", nil)
+	// Check if we have devices configured
+	if len(cfg.device.deviceIDs) > 0 {
+		// Create devices for streaming
+		devices := make([]deviceInterface, 0, len(cfg.device.deviceIDs))
+		for _, id := range cfg.device.deviceIDs {
+			dev, err := newAudioDevice(id, "playback", cfg.device, cfg.stream, cfg.ctx)
+			if err != nil {
+				for _, d := range devices {
+					d.stop()
+				}
+				return types.NewError("marshal", "audio", fmt.Sprintf("failed to create device: %v", err), err)
+			}
+			devices = append(devices, dev)
+		}
+
+		// Start all devices
+		for _, dev := range devices {
+			if err := dev.start(); err != nil {
+				for _, d := range devices {
+					d.stop()
+				}
+				return types.NewError("marshal", "audio", fmt.Sprintf("failed to start device: %v", err), err)
+			}
+		}
+		defer func() {
+			for _, dev := range devices {
+				dev.stop()
+			}
+		}()
+
+		format := getDeviceFormat(devices[0])
+		deviceChannels := make([]int, len(devices))
+		totalDeviceChannels := 0
+		for i, dev := range devices {
+			channels := getDeviceChannels(dev)
+			deviceChannels[i] = channels
+			totalDeviceChannels += channels
+		}
+
+		// Stream frames to devices
+		for frame := range stream.C {
+			if len(frame.Tensors) == 0 {
+				continue
+			}
+
+			t := frame.Tensors[0]
+			if t.Empty() {
+				continue
+			}
+
+			shape := t.Shape()
+			if len(shape) != 2 {
+				continue
+			}
+
+			tensorData := t.Data()
+			if tensorData == nil {
+				continue
+			}
+
+			chunkFrames := shape[0]
+			tensorChannels := shape[1]
+
+			// Distribute channels across devices
+			channelOffset := 0
+			for devIdx, dev := range devices {
+				devChannels := deviceChannels[devIdx]
+
+				// Extract channels for this device
+				chunkData, err := extractDeviceChannels(tensorData, t.DataType(), 0, chunkFrames, channelOffset, devChannels, tensorChannels)
+				if err != nil {
+					continue
+				}
+
+				// Convert tensor to PCM
+				pcmData, err := tensorToPCM(chunkData, format, devChannels, chunkFrames)
+				if err != nil {
+					continue
+				}
+
+				// Write to device
+				dev.writeFrame(pcmData)
+
+				channelOffset += devChannels
+			}
+
+			// Update statistics
+			atomic.AddInt64(&m.stats.frames, int64(chunkFrames))
+			atomic.AddInt64(&m.stats.bytes, int64(chunkFrames*totalDeviceChannels*sampleSizeFromFormat(format)))
+
+			// Release frame if needed
+			if cfg.ReleaseAfterProcessing {
+				t.Release()
+			}
+		}
+
+		return nil
+	}
+
+	// If only WAV files, accumulate frames and write to WAV
+	if len(cfg.wav.paths) > 0 {
+		// Accumulate all frames from stream
+		var frameTensors []types.Tensor
+		var totalFrames int
+		var numChannels int
+		var commonDtype tensortypes.DataType
+		var sampleRate int
+
+		// First pass: collect frames and determine format
+		for frame := range stream.C {
+			if len(frame.Tensors) == 0 {
+				continue
+			}
+
+			t := frame.Tensors[0]
+			if t.Empty() {
+				continue
+			}
+
+			shape := t.Shape()
+			if len(shape) != 2 {
+				continue
+			}
+
+			frameTensors = append(frameTensors, t)
+			totalFrames += shape[0]
+			numChannels = shape[1]
+			commonDtype = t.DataType()
+			// Get sample rate from config
+			sampleRate = cfg.wav.sampleRate
+			if sampleRate == 0 {
+				sampleRate = 48000 // default
+			}
+		}
+
+		if len(frameTensors) == 0 {
+			return types.NewError("marshal", "audio", "no frames in stream", nil)
+		}
+
+		// Combine all frames into single tensor
+		combinedShape := tensor.NewShape(totalFrames, numChannels)
+		combined := tensor.New(commonDtype, combinedShape)
+		if combined.Empty() {
+			return types.NewError("marshal", "audio", "failed to create combined tensor", nil)
+		}
+
+		combinedData := combined.Data()
+		if combinedData == nil {
+			return types.NewError("marshal", "audio", "combined tensor data is nil", nil)
+		}
+
+		// Copy frames into combined tensor
+		frameOffset := 0
+		for _, t := range frameTensors {
+			tShape := t.Shape()
+			frameCount := tShape[0]
+			tData := t.Data()
+			if tData == nil {
+				continue
+			}
+
+			// Copy data based on dtype
+			switch commonDtype {
+			case tensortypes.INT16:
+				dst := combinedData.([]int16)
+				src := tData.([]int16)
+				copy(dst[frameOffset*numChannels:(frameOffset+frameCount)*numChannels], src)
+			case tensortypes.INT32:
+				dst := combinedData.([]int32)
+				src := tData.([]int32)
+				copy(dst[frameOffset*numChannels:(frameOffset+frameCount)*numChannels], src)
+			case tensortypes.FP32:
+				dst := combinedData.([]float32)
+				src := tData.([]float32)
+				copy(dst[frameOffset*numChannels:(frameOffset+frameCount)*numChannels], src)
+			case tensortypes.UINT8:
+				dst := combinedData.([]uint8)
+				src := tData.([]uint8)
+				copy(dst[frameOffset*numChannels:(frameOffset+frameCount)*numChannels], src)
+			default:
+				return types.NewError("marshal", "audio", fmt.Sprintf("unsupported dtype: %v", commonDtype), nil)
+			}
+
+			frameOffset += frameCount
+
+			// Release frame if needed
+			if cfg.ReleaseAfterProcessing {
+				t.Release()
+			}
+		}
+
+		// Write combined tensor to WAV file
+		return m.writeSingleWAV(cfg.wav.paths[0], combined, totalFrames, numChannels, sampleRate, cfg)
+	}
+
+	return types.NewError("marshal", "audio", "no outputs specified", nil)
 }

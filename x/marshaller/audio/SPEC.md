@@ -169,9 +169,19 @@ err := marshaller.Marshal(nil, tensor)
 
 **Capture from single device:**
 ```go
-unmarshaller := audio.NewUnmarshaller(audio.WithAudioDevice(0))
+// Get device ID from enumeration first
+unmarshaller := audio.NewUnmarshaller()
+var devices []types.AudioDeviceInfo
+err := unmarshaller.Unmarshal(strings.NewReader("list"), &devices)
+deviceID := devices[0].ID // Use first capture device
+
+// Capture from device
+unmarshaller = audio.NewUnmarshaller(
+    audio.WithAudioDevice(deviceID),
+    audio.WithSampleRate(48000),
+    audio.WithChannels(2))
 var stream types.FrameStream
-err := unmarshaller.Unmarshal(nil, &stream)
+err = unmarshaller.Unmarshal(nil, &stream)
 defer stream.Close()
 
 for frame := range stream.C {
@@ -186,8 +196,8 @@ for frame := range stream.C {
 ```go
 // Two sound cards as input - channels combined into single tensor
 unmarshaller := audio.NewUnmarshaller(
-    audio.WithAudioDevice(0), // First device (e.g., 2 channels)
-    audio.WithAudioDevice(1), // Second device (e.g., 2 channels)
+    audio.WithAudioDevice("device-id-0"), // First device (e.g., 2 channels)
+    audio.WithAudioDevice("device-id-1"), // Second device (e.g., 2 channels)
     audio.WithSampleRate(48000)) // All devices must use same sample rate
 var stream types.FrameStream
 err := unmarshaller.Unmarshal(nil, &stream)
@@ -201,37 +211,86 @@ for frame := range stream.C {
 }
 ```
 
+**Capture from multiple devices to tensor (non-streaming):**
+```go
+// Capture from 3 devices and combine into single tensor
+unmarshaller := audio.NewUnmarshaller(
+    audio.WithAudioDevice("device-0"), // 2 channels
+    audio.WithAudioDevice("device-1"), // 2 channels
+    audio.WithAudioDevice("device-2"), // 1 channel (mono)
+    audio.WithSampleRate(48000),
+    audio.WithChannels(2)) // Per-device channel count
+var tensor types.Tensor
+err := unmarshaller.Unmarshal(nil, &tensor)
+// tensor shape: [frames, 5] (2+2+1 channels combined)
+// All devices synchronized, shorter captures padded with zeros
+```
+
 **Capture with specific configuration:**
 ```go
 unmarshaller := audio.NewUnmarshaller(
-    audio.WithAudioDevice(0),
+    audio.WithAudioDevice("device-id-0"),
     audio.WithSampleRate(48000),
     audio.WithChannels(2),
     audio.WithFormat("S16"))
 var stream types.FrameStream
 err := unmarshaller.Unmarshal(nil, &stream)
+defer stream.Close()
+
+for frame := range stream.C {
+    tensor := frame.Tensors[0]
+    // Process audio frame
+    tensor.Release()
+}
 ```
 
 **Mixed sources (WAV files + devices):**
 ```go
 unmarshaller := audio.NewUnmarshaller(
-    audio.WithWAVPath("file1.wav"),  // WAV file
-    audio.WithAudioDevice(0),        // Audio device
-    audio.WithSampleRate(48000))     // All sources must have same sample rate
+    audio.WithWAVPath("file1.wav"),      // WAV file (e.g., 2 channels)
+    audio.WithAudioDevice("device-id-0"), // Audio device (e.g., 2 channels)
+    audio.WithSampleRate(48000))         // All sources must have same sample rate
 var stream types.FrameStream
 err := unmarshaller.Unmarshal(nil, &stream)
-// Combines channels from WAV file and device into single tensor
-// All sources synchronized
+defer stream.Close()
+
+for frame := range stream.C {
+    tensor := frame.Tensors[0]
+    // tensor shape: [frames, 4] (2 channels from WAV + 2 channels from device)
+    // All sources synchronized
+    tensor.Release()
+}
+```
+
+**Mixed sources to tensor (non-streaming):**
+```go
+// Combine WAV file and multiple devices into single tensor
+unmarshaller := audio.NewUnmarshaller(
+    audio.WithWAVPath("background.wav"), // 2 channels
+    audio.WithAudioDevice("mic-0"),       // 1 channel
+    audio.WithAudioDevice("mic-1"),       // 1 channel
+    audio.WithSampleRate(48000))
+var tensor types.Tensor
+err := unmarshaller.Unmarshal(nil, &tensor)
+// tensor shape: [frames, 4] (2+1+1 channels)
+// WAV file read in chunks, devices captured in real-time, all synchronized
 ```
 
 ### 6. Audio Device Playback (Output)
 
 **Play tensor to single device:**
 ```go
+// Get device ID from enumeration first
+unmarshaller := audio.NewUnmarshaller()
+var devices []types.AudioDeviceInfo
+err := unmarshaller.Unmarshal(strings.NewReader("list"), &devices)
+deviceID := devices[0].ID // Use first playback device
+
+// Play to device
 marshaller := audio.NewMarshaller(
-    audio.WithAudioDevice(0),
+    audio.WithAudioDevice(deviceID),
     audio.WithSampleRate(48000))
-err := marshaller.Marshal(nil, tensor)
+err = marshaller.Marshal(nil, tensor)
 // Blocks until playback completes
 ```
 
@@ -240,19 +299,33 @@ err := marshaller.Marshal(nil, tensor)
 // 4-channel tensor split across two stereo devices
 // tensor shape: [frames, 4]
 marshaller := audio.NewMarshaller(
-    audio.WithAudioDevice(0), // First stereo device (channels 0-1)
-    audio.WithAudioDevice(1), // Second stereo device (channels 2-3)
+    audio.WithAudioDevice("device-id-0"), // First stereo device (channels 0-1)
+    audio.WithAudioDevice("device-id-1"), // Second stereo device (channels 2-3)
     audio.WithSampleRate(48000))
 err := marshaller.Marshal(nil, tensor)
 // Channels 0-1 → device 0, Channels 2-3 → device 1
 // Writes synchronized across devices
 ```
 
+**Play 6-channel tensor to multiple devices:**
+```go
+// 6-channel tensor (5.1 surround) distributed across devices
+// tensor shape: [frames, 6]
+marshaller := audio.NewMarshaller(
+    audio.WithAudioDevice("device-0"), // Stereo device (channels 0-1: L, R)
+    audio.WithAudioDevice("device-1"), // Stereo device (channels 2-3: C, LFE)
+    audio.WithAudioDevice("device-2"), // Stereo device (channels 4-5: SL, SR)
+    audio.WithSampleRate(48000))
+err := marshaller.Marshal(nil, tensor)
+// Channels distributed: 0-1 → device 0, 2-3 → device 1, 4-5 → device 2
+// All devices play synchronized
+```
+
 **Stream playback to multiple devices:**
 ```go
 marshaller := audio.NewMarshaller(
-    audio.WithAudioDevice(0),
-    audio.WithAudioDevice(1),
+    audio.WithAudioDevice("device-id-0"),
+    audio.WithAudioDevice("device-id-1"),
     audio.WithSampleRate(48000))
 err := marshaller.Marshal(nil, stream)
 // Streams audio frames to multiple devices
@@ -263,11 +336,28 @@ err := marshaller.Marshal(nil, stream)
 **Mixed outputs (WAV file + device):**
 ```go
 marshaller := audio.NewMarshaller(
-    audio.WithWAVPath("output.wav"), // Write to file
-    audio.WithAudioDevice(0),        // Also play to device
+    audio.WithWAVPath("output.wav"),     // Write to file
+    audio.WithAudioDevice("device-id-0"), // Also play to device
     audio.WithSampleRate(48000))
 err := marshaller.Marshal(nil, tensor)
 // Writes to both WAV file and device simultaneously
+// Same tensor data written to both outputs
+```
+
+**Mixed outputs (multiple WAV files + multiple devices):**
+```go
+// 4-channel tensor written to 2 WAV files and 2 devices
+// tensor shape: [frames, 4]
+marshaller := audio.NewMarshaller(
+    audio.WithWAVPath("left.wav"),        // Channels 0-1
+    audio.WithWAVPath("right.wav"),      // Channels 2-3
+    audio.WithAudioDevice("device-0"),   // Channels 0-1
+    audio.WithAudioDevice("device-1"),   // Channels 2-3
+    audio.WithSampleRate(48000))
+err := marshaller.Marshal(nil, tensor)
+// Channels 0-1 → left.wav + device-0
+// Channels 2-3 → right.wav + device-1
+// All outputs synchronized
 ```
 
 ### 7. Listing Audio Devices
@@ -698,12 +788,33 @@ User will provide testdata directory with:
 - Files with different lengths
 - Files with different sample rates
 
+## Implementation Status
+
+✅ **Fully Implemented:**
+- WAV file reading (single and multi-file concatenation)
+- WAV file writing (single file)
+- Audio device enumeration
+- Single device capture (unmarshalling to tensor and FrameStream)
+- Multi-device capture with channel combination
+- Single device playback (marshalling from tensor)
+- Multi-device playback with channel distribution
+- Mixed sources (WAV + devices)
+- Mixed outputs (WAV + devices)
+- Buffer pooling for PCM and tensor data
+- Statistics tracking with atomic counters
+- FrameStream support for device capture and playback
+- PCM ↔ Tensor conversion for all supported formats
+
+**Note:** Multi-output for WAV files is intentionally not implemented per requirements (only multi-source needed).
+
 ## Dependencies
 
-- `github.com/itohio/gocoustics/pkg/audio` - Audio I/O via malgo (malgo backend only, no wasm)
+- `github.com/gen2brain/malgo` - Audio I/O (cross-platform, used directly)
 - `github.com/go-audio/wav` - WAV file format
 - `github.com/itohio/EasyRobot/x/math/tensor` - Tensor operations
 - `github.com/itohio/EasyRobot/x/marshaller/types` - Marshaller interfaces
+- `github.com/itohio/EasyRobot/x/math/primitive/generics/helpers` - Buffer pooling
+- `github.com/smallnest/ringbuffer` - Ring buffer for async I/O smoothing
 
 ## Type Definitions Needed
 
