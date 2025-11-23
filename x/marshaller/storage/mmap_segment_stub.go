@@ -1,4 +1,4 @@
-//go:build !tinygo && !unix
+//go:build !tinygo && !unix && !windows
 
 package storage
 

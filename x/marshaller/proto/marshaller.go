@@ -5,8 +5,8 @@ import (
 	"io"
 	"reflect"
 
-	"github.com/itohio/EasyRobot/x/marshaller/types"
 	pb "github.com/itohio/EasyRobot/types/core"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -141,6 +141,14 @@ func (m *Marshaller) sliceToProto(value any) (*pb.Slice, error) {
 	case []float64:
 		data := value.([]float64)
 		result.DataF64 = data
+	case []complex64:
+		data := value.([]complex64)
+		// Store complex64 as pairs of float32 [real0, imag0, real1, imag1, ...]
+		result.DataF32 = make([]float32, len(data)*2)
+		for i, c := range data {
+			result.DataF32[i*2] = real(c)
+			result.DataF32[i*2+1] = imag(c)
+		}
 	case []int:
 		data := value.([]int)
 		result.DataI64 = make([]int64, len(data))

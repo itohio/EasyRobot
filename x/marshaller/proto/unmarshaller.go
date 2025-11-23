@@ -5,10 +5,10 @@ import (
 	"io"
 	"reflect"
 
+	pb "github.com/itohio/EasyRobot/types/core"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"github.com/itohio/EasyRobot/x/math/tensor"
 	tensortypes "github.com/itohio/EasyRobot/x/math/tensor/types"
-	pb "github.com/itohio/EasyRobot/types/core"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -119,6 +119,16 @@ func (u *Unmarshaller) protoToSlice(ps *pb.Slice) (any, error) {
 		return ps.DataF32, nil
 	case "float64":
 		return ps.DataF64, nil
+	case "complex64":
+		// Complex64 is stored as pairs of float32 [real0, imag0, real1, imag1, ...]
+		if len(ps.DataF32)%2 != 0 {
+			return nil, fmt.Errorf("invalid complex64 data: odd number of float32 values")
+		}
+		result := make([]complex64, len(ps.DataF32)/2)
+		for i := 0; i < len(result); i++ {
+			result[i] = complex(ps.DataF32[i*2], ps.DataF32[i*2+1])
+		}
+		return result, nil
 	case "int32":
 		return ps.DataI32, nil
 	case "int64":

@@ -76,6 +76,12 @@ func gobToTensor(gt gobTensor, tensorFactory func(types.DataType, types.Shape) t
 				copy(dst, data)
 			}
 		}
+	case types.C64:
+		if data, ok := gt.Data.([]complex64); ok {
+			if dst, ok := t.Data().([]complex64); ok {
+				copy(dst, data)
+			}
+		}
 	}
 
 	return t

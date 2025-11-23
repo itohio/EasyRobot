@@ -167,7 +167,7 @@ func writeEdgeFile(storage types.MappedStorage, edges []edgeInfo, kind graphKind
 }
 
 func newSerializedDataEntry(dataType DataType, typeName string, payload []byte) (serializedDataEntry, error) {
-	if len(payload) > math.MaxUint32 {
+	if len(payload) > math.MaxInt32 {
 		return serializedDataEntry{}, fmt.Errorf("data payload too large: %d bytes", len(payload))
 	}
 	entry := serializedDataEntry{
@@ -302,7 +302,7 @@ func writeDataFile(storage types.MappedStorage, nodeEntries, edgeEntries []seria
 	return nodeOffsets, edgeOffsets, metadataOffset, nil
 }
 func dataEntrySize(entry serializedDataEntry) (int64, error) {
-	if len(entry.payload) > math.MaxUint32 {
+	if len(entry.payload) > math.MaxInt32 {
 		return 0, fmt.Errorf("data payload too large: %d bytes", len(entry.payload))
 	}
 	if len(entry.typeName) > math.MaxUint16 {

@@ -805,8 +805,8 @@ func (u *Unmarshaller) createMultiDeviceStream(deviceIDs []string, cfg config) (
 func (u *Unmarshaller) unmarshalDeviceList(r io.Reader) ([]types.AudioDeviceInfo, error) {
 	// Check if this is a "list" command
 	if r != nil {
-		buf := make([]byte, 4)
-		n, err := r.Read(buf)
+		var buf [4]byte
+		n, err := r.Read(buf[:])
 		if err != nil && err != io.EOF {
 			return nil, types.NewError("unmarshal", "audio", "read list command", err)
 		}

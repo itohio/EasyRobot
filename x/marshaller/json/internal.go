@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/itohio/EasyRobot/x/math/graph"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
+	"github.com/itohio/EasyRobot/x/math/graph"
 )
 
 // Internal structs for JSON encoding/decoding.
@@ -118,6 +118,8 @@ func dtypeToString(dt types.DataType) string {
 		return "fp16"
 	case types.INT48:
 		return "int48"
+	case types.C64:
+		return "c64"
 	default:
 		return "unknown"
 	}
@@ -143,6 +145,8 @@ func stringToDtype(s string) types.DataType {
 		return types.FP16
 	case "int48":
 		return types.INT48
+	case "c64":
+		return types.C64
 	default:
 		return types.DT_UNKNOWN
 	}
@@ -229,7 +233,6 @@ func graphToJSON(value any) (*jsonGraph, error) {
 	return captureGraphViaReflection(value)
 }
 
-
 func captureGraphViaReflection(value any) (*jsonGraph, error) {
 	// Try various GenericGraph concrete types
 	switch g := value.(type) {
@@ -237,15 +240,39 @@ func captureGraphViaReflection(value any) (*jsonGraph, error) {
 		return captureGenericGraphPublicAPI(g)
 	case *graph.GenericGraph[string, float32]:
 		return captureGenericGraphStringFloat32(g)
+	case *graph.GenericTree[any, any]:
+		return captureGenericTreePublicAPI(g)
+	case *graph.GenericTree[string, float32]:
+		return captureGenericTreeFromGraph(g)
 	}
 
-	// Try to handle other GenericGraph types via reflection
+	// Try to handle GenericTree, GenericDecisionTree, GenericExpressionGraph via reflection
 	val := reflect.ValueOf(value)
 	if val.Kind() == reflect.Ptr {
 		val = val.Elem()
 	}
 
 	typeName := val.Type().String()
+
+	// Check for tree types first (they don't contain "GenericGraph" in name)
+	if strings.Contains(typeName, "GenericTree") && !strings.Contains(typeName, "DecisionTree") && !strings.Contains(typeName, "ExpressionGraph") {
+		// Try type assertion to Graph interface first
+		if treeGraph, ok := value.(graph.Graph[any, any]); ok {
+			return captureGenericTreePublicAPI(treeGraph.(*graph.GenericTree[any, any]))
+		}
+		// Try with the actual generic types
+		if treeGraph, ok := value.(graph.Graph[string, float32]); ok {
+			return captureGenericTreeFromGraph(treeGraph)
+		}
+		return captureGenericTreeViaReflection(value)
+	}
+	if strings.Contains(typeName, "GenericDecisionTree") {
+		return captureGenericDecisionTreeViaReflection(value)
+	}
+	if strings.Contains(typeName, "GenericExpressionGraph") {
+		return captureGenericExpressionGraphViaReflection(value)
+	}
+
 	if strings.Contains(typeName, "GenericGraph") {
 		// This is some form of GenericGraph, try to extract data
 		return captureGenericGraphViaReflection(value)
@@ -346,19 +373,370 @@ func captureGenericGraphPublicAPI(g *graph.GenericGraph[any, any]) (*jsonGraph, 
 	}, nil
 }
 
+func captureGenericTreePublicAPI(t *graph.GenericTree[any, any]) (*jsonGraph, error) {
+	nodes := make([]jsonGraphNode, 0)
+	edges := make([]jsonGraphEdge, 0)
+
+	// Capture nodes using public API
+	for node := range t.Nodes() {
+		if node != nil {
+			nodes = append(nodes, jsonGraphNode{
+				ID:   node.ID(),
+				Data: node.Data(),
+			})
+		}
+	}
+
+	// Capture edges using public API
+	for edge := range t.Edges() {
+		if edge != nil {
+			from := edge.From()
+			to := edge.To()
+			if from != nil && to != nil {
+				edges = append(edges, jsonGraphEdge{
+					FromID: from.ID(),
+					ToID:   to.ID(),
+					Data:   edge.Data(),
+				})
+			}
+		}
+	}
+
+	metadata, err := captureGraphMetadata(t)
+	if err != nil {
+		return nil, err
+	}
+	// Ensure metadata kind is "tree"
+	if metadata != nil {
+		metadata.Kind = "tree"
+		// Set root ID from tree
+		if root := t.Root(); root != nil {
+			metadata.RootID = root.ID()
+		}
+	}
+
+	return &jsonGraph{
+		Nodes:    nodes,
+		Edges:    edges,
+		Metadata: metadata,
+	}, nil
+}
+
+// captureGenericTreeFromGraph captures a tree from a Graph interface (for generic types like [string, float32])
+func captureGenericTreeFromGraph(t graph.Graph[string, float32]) (*jsonGraph, error) {
+	nodes := make([]jsonGraphNode, 0)
+	edges := make([]jsonGraphEdge, 0)
+
+	// Capture nodes using public API
+	for node := range t.Nodes() {
+		if node != nil {
+			nodes = append(nodes, jsonGraphNode{
+				ID:   node.ID(),
+				Data: node.Data(),
+			})
+		}
+	}
+
+	// Capture edges using public API
+	for edge := range t.Edges() {
+		if edge != nil {
+			from := edge.From()
+			to := edge.To()
+			if from != nil && to != nil {
+				edges = append(edges, jsonGraphEdge{
+					FromID: from.ID(),
+					ToID:   to.ID(),
+					Data:   edge.Data(),
+				})
+			}
+		}
+	}
+
+	metadata, err := captureGraphMetadata(t)
+	if err != nil {
+		return nil, err
+	}
+	// Ensure metadata kind is "tree"
+	if metadata != nil {
+		metadata.Kind = "tree"
+		// Try to get root ID if it's a tree
+		if tree, ok := t.(interface {
+			Root() graph.Node[string, float32]
+		}); ok {
+			if root := tree.Root(); root != nil {
+				metadata.RootID = root.ID()
+			}
+		}
+	}
+
+	return &jsonGraph{
+		Nodes:    nodes,
+		Edges:    edges,
+		Metadata: metadata,
+	}, nil
+}
+
 func captureGenericGraphViaReflection(value any) (*jsonGraph, error) {
 	// For GenericGraph[T, U] where T, U are not any, we need reflection
-	// This is complex and for now, we'll return empty data
+	// Use the same approach as captureGenericTreeViaReflection
+	val := reflect.ValueOf(value)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+		value = val.Addr().Interface()
+		val = reflect.ValueOf(value)
+	}
+
+	nodes := make([]jsonGraphNode, 0)
+	edges := make([]jsonGraphEdge, 0)
+
+	// Try to call Nodes() using reflection and iterate
+	nodesMethod := val.MethodByName("Nodes")
+	if nodesMethod.IsValid() {
+		// Nodes() returns iter.Seq[Node[N, E]] which is a function
+		seqFunc := nodesMethod.Call(nil)[0]
+		if seqFunc.Kind() == reflect.Func {
+			// Get the yield function type from the iterator function signature
+			seqFuncType := seqFunc.Type()
+			if seqFuncType.NumIn() == 1 {
+				yieldType := seqFuncType.In(0)
+				// Create a yield function that matches the iterator's expected type
+				nodeSlice := reflect.MakeSlice(reflect.SliceOf(reflect.TypeOf((*any)(nil)).Elem()), 0, 0)
+				yieldFunc := reflect.MakeFunc(
+					yieldType,
+					func(args []reflect.Value) []reflect.Value {
+						if len(args) > 0 && !args[0].IsNil() {
+							nodeSlice = reflect.Append(nodeSlice, args[0])
+						}
+						return []reflect.Value{reflect.ValueOf(true)}
+					},
+				)
+				seqFunc.Call([]reflect.Value{yieldFunc})
+
+				// Convert collected nodes to jsonGraphNode
+				for i := 0; i < nodeSlice.Len(); i++ {
+					node := nodeSlice.Index(i).Interface()
+					nodeVal := reflect.ValueOf(node)
+					if idMethod := nodeVal.MethodByName("ID"); idMethod.IsValid() {
+						idResults := idMethod.Call(nil)
+						if len(idResults) > 0 {
+							nodes = append(nodes, jsonGraphNode{
+								ID:   idResults[0].Int(),
+								Data: getNodeData(node),
+							})
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Similarly for Edges()
+	edgesMethod := val.MethodByName("Edges")
+	if edgesMethod.IsValid() {
+		seqFunc := edgesMethod.Call(nil)[0]
+		if seqFunc.Kind() == reflect.Func {
+			// Get the yield function type from the iterator function signature
+			seqFuncType := seqFunc.Type()
+			if seqFuncType.NumIn() == 1 {
+				yieldType := seqFuncType.In(0)
+				// Create a yield function that matches the iterator's expected type
+				edgeSlice := reflect.MakeSlice(reflect.SliceOf(reflect.TypeOf((*any)(nil)).Elem()), 0, 0)
+				yieldFunc := reflect.MakeFunc(
+					yieldType,
+					func(args []reflect.Value) []reflect.Value {
+						if len(args) > 0 && !args[0].IsNil() {
+							edgeSlice = reflect.Append(edgeSlice, args[0])
+						}
+						return []reflect.Value{reflect.ValueOf(true)}
+					},
+				)
+				seqFunc.Call([]reflect.Value{yieldFunc})
+
+				for i := 0; i < edgeSlice.Len(); i++ {
+					edge := edgeSlice.Index(i).Interface()
+					edgeVal := reflect.ValueOf(edge)
+					fromMethod := edgeVal.MethodByName("From")
+					toMethod := edgeVal.MethodByName("To")
+					if fromMethod.IsValid() && toMethod.IsValid() {
+						fromNode := fromMethod.Call(nil)[0].Interface()
+						toNode := toMethod.Call(nil)[0].Interface()
+						fromID := reflect.ValueOf(fromNode).MethodByName("ID").Call(nil)[0].Int()
+						toID := reflect.ValueOf(toNode).MethodByName("ID").Call(nil)[0].Int()
+						edges = append(edges, jsonGraphEdge{
+							FromID: fromID,
+							ToID:   toID,
+							Data:   getEdgeData(edge),
+						})
+					}
+				}
+			}
+		}
+	}
+
 	metadata, err := captureGraphMetadata(value)
 	if err != nil {
 		return nil, err
 	}
 
 	return &jsonGraph{
-		Nodes:    []jsonGraphNode{},
-		Edges:    []jsonGraphEdge{},
+		Nodes:    nodes,
+		Edges:    edges,
 		Metadata: metadata,
 	}, nil
+}
+
+func captureGenericTreeViaReflection(value any) (*jsonGraph, error) {
+	// Try to use the tree as a Graph interface to access Nodes() and Edges()
+	// Since GenericTree implements Graph[N, E], we can try type assertion
+	val := reflect.ValueOf(value)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+		value = val.Addr().Interface()
+		val = reflect.ValueOf(value)
+	}
+
+	nodes := make([]jsonGraphNode, 0)
+	edges := make([]jsonGraphEdge, 0)
+
+	// Try to call Nodes() using reflection and iterate
+	nodesMethod := val.MethodByName("Nodes")
+	if nodesMethod.IsValid() {
+		// Nodes() returns iter.Seq[Node[N, E]] which is a function
+		seqFunc := nodesMethod.Call(nil)[0]
+		if seqFunc.Kind() == reflect.Func {
+			// Get the yield function type from the iterator function signature
+			seqFuncType := seqFunc.Type()
+			if seqFuncType.NumIn() == 1 {
+				yieldType := seqFuncType.In(0)
+				// Create a yield function that matches the iterator's expected type
+				nodeSlice := reflect.MakeSlice(reflect.SliceOf(reflect.TypeOf((*any)(nil)).Elem()), 0, 0)
+				yieldFunc := reflect.MakeFunc(
+					yieldType,
+					func(args []reflect.Value) []reflect.Value {
+						if len(args) > 0 && !args[0].IsNil() {
+							nodeSlice = reflect.Append(nodeSlice, args[0])
+						}
+						return []reflect.Value{reflect.ValueOf(true)}
+					},
+				)
+				seqFunc.Call([]reflect.Value{yieldFunc})
+
+				// Convert collected nodes to jsonGraphNode
+				for i := 0; i < nodeSlice.Len(); i++ {
+					node := nodeSlice.Index(i).Interface()
+					nodeVal := reflect.ValueOf(node)
+					if idMethod := nodeVal.MethodByName("ID"); idMethod.IsValid() {
+						idResults := idMethod.Call(nil)
+						if len(idResults) > 0 {
+							nodes = append(nodes, jsonGraphNode{
+								ID:   idResults[0].Int(),
+								Data: getNodeData(node),
+							})
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Similarly for Edges()
+	edgesMethod := val.MethodByName("Edges")
+	if edgesMethod.IsValid() {
+		seqFunc := edgesMethod.Call(nil)[0]
+		if seqFunc.Kind() == reflect.Func {
+			// Get the yield function type from the iterator function signature
+			seqFuncType := seqFunc.Type()
+			if seqFuncType.NumIn() == 1 {
+				yieldType := seqFuncType.In(0)
+				// Create a yield function that matches the iterator's expected type
+				edgeSlice := reflect.MakeSlice(reflect.SliceOf(reflect.TypeOf((*any)(nil)).Elem()), 0, 0)
+				yieldFunc := reflect.MakeFunc(
+					yieldType,
+					func(args []reflect.Value) []reflect.Value {
+						if len(args) > 0 && !args[0].IsNil() {
+							edgeSlice = reflect.Append(edgeSlice, args[0])
+						}
+						return []reflect.Value{reflect.ValueOf(true)}
+					},
+				)
+				seqFunc.Call([]reflect.Value{yieldFunc})
+
+				for i := 0; i < edgeSlice.Len(); i++ {
+					edge := edgeSlice.Index(i).Interface()
+					edgeVal := reflect.ValueOf(edge)
+					fromMethod := edgeVal.MethodByName("From")
+					toMethod := edgeVal.MethodByName("To")
+					if fromMethod.IsValid() && toMethod.IsValid() {
+						fromNode := fromMethod.Call(nil)[0].Interface()
+						toNode := toMethod.Call(nil)[0].Interface()
+						fromID := reflect.ValueOf(fromNode).MethodByName("ID").Call(nil)[0].Int()
+						toID := reflect.ValueOf(toNode).MethodByName("ID").Call(nil)[0].Int()
+						edges = append(edges, jsonGraphEdge{
+							FromID: fromID,
+							ToID:   toID,
+							Data:   getEdgeData(edge),
+						})
+					}
+				}
+			}
+		}
+	}
+
+	metadata, err := captureGraphMetadata(value)
+	if err != nil {
+		return nil, err
+	}
+	// Ensure metadata kind is "tree"
+	if metadata != nil {
+		metadata.Kind = "tree"
+	}
+
+	return &jsonGraph{
+		Nodes:    nodes,
+		Edges:    edges,
+		Metadata: metadata,
+	}, nil
+}
+
+func captureGenericDecisionTreeViaReflection(value any) (*jsonGraph, error) {
+	// Similar to GenericTree but for decision trees
+	return captureGenericTreeViaReflection(value)
+}
+
+func captureGenericExpressionGraphViaReflection(value any) (*jsonGraph, error) {
+	// Similar to GenericGraph but for expression graphs
+	// Try to use it as a Graph interface
+	return captureGenericGraphViaReflection(value)
+}
+
+func getNodeData(node any) any {
+	if node == nil {
+		return nil
+	}
+	val := reflect.ValueOf(node)
+	dataMethod := val.MethodByName("Data")
+	if dataMethod.IsValid() {
+		results := dataMethod.Call(nil)
+		if len(results) > 0 {
+			return results[0].Interface()
+		}
+	}
+	return nil
+}
+
+func getEdgeData(edge any) any {
+	if edge == nil {
+		return nil
+	}
+	val := reflect.ValueOf(edge)
+	dataMethod := val.MethodByName("Data")
+	if dataMethod.IsValid() {
+		results := dataMethod.Call(nil)
+		if len(results) > 0 {
+			return results[0].Interface()
+		}
+	}
+	return nil
 }
 
 func captureGraphMetadata(value any) (*jsonGraphMetadata, error) {

@@ -5,23 +5,15 @@ package storage
 import (
 	"errors"
 	"os"
-	"sync"
 	"syscall"
 	"unsafe"
 )
 
-var (
-	allocationOnce   sync.Once
-	allocGranularity int64 = 65536 // sane default
-)
+// Windows allocation granularity is always 64KB (65536 bytes)
+const windowsAllocationGranularity int64 = 65536
 
 func systemAllocationGranularity() int64 {
-	allocationOnce.Do(func() {
-		var info syscall.SystemInfo
-		syscall.GetSystemInfo(&info)
-		allocGranularity = int64(info.AllocationGranularity)
-	})
-	return allocGranularity
+	return windowsAllocationGranularity
 }
 
 func mapFileSegment(file *os.File, offset int64, length int, readOnly bool) (*mappedSegment, error) {

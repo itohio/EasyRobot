@@ -236,6 +236,7 @@ const (
 	DT_UNKNOWN DataType = tensortypes.DT_UNKNOWN
 	INT64      DataType = tensortypes.INT64
 	FP64       DataType = tensortypes.FP64
+	C64       DataType = tensortypes.C64
 	INT32      DataType = tensortypes.INT32
 	FP32       DataType = tensortypes.FP32
 	INT        DataType = tensortypes.INT

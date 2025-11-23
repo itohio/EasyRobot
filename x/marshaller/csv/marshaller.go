@@ -291,6 +291,9 @@ func (m *Marshaller) marshalSlice(writer *csv.Writer, rv reflect.Value, hasHeade
 		case reflect.Float64:
 			values := rv.Interface().([]float64)
 			return m.writeFloat64Column(writer, values)
+		case reflect.Complex64:
+			values := rv.Interface().([]complex64)
+			return m.writeComplex64Column(writer, values)
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			return m.writeIntColumn(writer, rv)
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
@@ -327,6 +330,11 @@ func (m *Marshaller) marshalSlice(writer *csv.Writer, rv reflect.Value, hasHeade
 		values := rv.Interface().([]float64)
 		for i, val := range values {
 			row[i] = formatFloat64(val)
+		}
+	case reflect.Complex64:
+		values := rv.Interface().([]complex64)
+		for i, val := range values {
+			row[i] = formatComplex64(val)
 		}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		for i := 0; i < length; i++ {
@@ -402,6 +410,16 @@ func (m *Marshaller) writeStringColumn(writer *csv.Writer, values []string) erro
 	return nil
 }
 
+// writeComplex64Column writes a complex64 column.
+func (m *Marshaller) writeComplex64Column(writer *csv.Writer, values []complex64) error {
+	for _, val := range values {
+		if err := writer.Write([]string{formatComplex64(val)}); err != nil {
+			return types.NewError("marshal", "csv", "failed to write row", err)
+		}
+	}
+	return nil
+}
+
 // formatFloat32 formats a float32 value for CSV.
 func formatFloat32(val float32) string {
 	return strconv.FormatFloat(float64(val), 'g', -1, 32)
@@ -410,6 +428,16 @@ func formatFloat32(val float32) string {
 // formatFloat64 formats a float64 value for CSV.
 func formatFloat64(val float64) string {
 	return strconv.FormatFloat(val, 'g', -1, 64)
+}
+
+// formatComplex64 formats a complex64 value for CSV as "real+imagi" or "real-imagi".
+func formatComplex64(val complex64) string {
+	real := real(val)
+	imag := imag(val)
+	if imag >= 0 {
+		return fmt.Sprintf("%g+%gi", real, imag)
+	}
+	return fmt.Sprintf("%g%gi", real, imag)
 }
 
 // detectDataType detects the data type from a value.
@@ -437,6 +465,8 @@ func (m *Marshaller) detectDataType(value any) types.DataType {
 			return types.FP32
 		case reflect.Float64:
 			return types.FP64
+		case reflect.Complex64:
+			return types.C64
 		case reflect.Int32:
 			return types.INT32
 		case reflect.Int16:
@@ -458,6 +488,8 @@ func dtypeToString(dtype types.DataType) string {
 		return "FP32"
 	case types.FP64:
 		return "FP64"
+	case types.C64:
+		return "C64"
 	case types.INT32:
 		return "INT32"
 	case types.INT16:

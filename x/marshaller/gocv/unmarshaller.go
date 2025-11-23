@@ -228,8 +228,8 @@ func (u *Unmarshaller) unmarshalNet(r io.Reader, cfg config) (cv.Net, error) {
 func (u *Unmarshaller) unmarshalCameraList(r io.Reader) ([]types.CameraInfo, error) {
 	// Check if this is a "list" command
 	if r != nil {
-		buf := make([]byte, 4)
-		n, err := r.Read(buf)
+		var buf [4]byte
+		n, err := r.Read(buf[:])
 		if err != nil && err != io.EOF {
 			return nil, types.NewError("unmarshal", "gocv", "read list command", err)
 		}

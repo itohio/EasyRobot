@@ -67,3 +67,54 @@ func TestGraphMarshallerMatrixRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+func TestGraphMarshallerComplex64ArrayRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	// Test complex64 array serialization/deserialization directly
+	srcData := []complex64{
+		complex(1.0, 2.0),
+		complex(3.5, 4.5),
+		complex(-1.0, -2.0),
+		complex(0.0, 1.0),
+	}
+
+	// Serialize
+	serialized, dataType, typeName, err := serializeData(srcData)
+	if err != nil {
+		t.Fatalf("serializeData() failed: %v", err)
+	}
+	if dataType != DataTypeSlice {
+		t.Fatalf("expected DataTypeSlice, got %d", dataType)
+	}
+
+	// Deserialize
+	deserialized, err := deserializeData(serialized, dataType, typeName, nil)
+	if err != nil {
+		t.Fatalf("deserializeData() failed: %v", err)
+	}
+
+	// Verify the data
+	restoredData, ok := deserialized.([]any)
+	if !ok {
+		t.Fatalf("deserialized data is not []any, got %T", deserialized)
+	}
+
+	if len(restoredData) != len(srcData) {
+		t.Fatalf("data length mismatch: want %d, got %d", len(srcData), len(restoredData))
+	}
+
+	const tol = 1e-5
+	for i := range srcData {
+		restoredComplex, ok := restoredData[i].(complex64)
+		if !ok {
+			t.Fatalf("element %d is not complex64, got %T", i, restoredData[i])
+		}
+		if diff := math.Abs(float64(real(srcData[i]) - real(restoredComplex))); diff > tol {
+			t.Errorf("real part mismatch at index %d: want %f, got %f (diff %f)", i, real(srcData[i]), real(restoredComplex), diff)
+		}
+		if diff := math.Abs(float64(imag(srcData[i]) - imag(restoredComplex))); diff > tol {
+			t.Errorf("imag part mismatch at index %d: want %f, got %f (diff %f)", i, imag(srcData[i]), imag(restoredComplex), diff)
+		}
+	}
+}

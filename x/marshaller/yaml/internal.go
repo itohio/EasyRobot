@@ -2,9 +2,10 @@ package yaml
 
 import (
 	"reflect"
+	"strings"
 
-	"github.com/itohio/EasyRobot/x/math/graph"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
+	"github.com/itohio/EasyRobot/x/math/graph"
 )
 
 // Internal structs for YAML encoding/decoding.
@@ -117,6 +118,8 @@ func dtypeToString(dt types.DataType) string {
 		return "fp16"
 	case types.INT48:
 		return "int48"
+	case types.C64:
+		return "c64"
 	default:
 		return "unknown"
 	}
@@ -142,6 +145,8 @@ func stringToDtype(s string) types.DataType {
 		return types.FP16
 	case "int48":
 		return types.INT48
+	case "c64":
+		return types.C64
 	default:
 		return types.DT_UNKNOWN
 	}
@@ -235,6 +240,25 @@ func captureGraphViaReflection(value any) (*yamlGraph, error) {
 		return captureGenericGraphPublicAPIYAML(g)
 	case *graph.GenericGraph[string, float32]:
 		return captureGenericGraphStringFloat32YAML(g)
+	}
+
+	// Try to handle GenericTree, GenericDecisionTree, GenericExpressionGraph via reflection
+	val := reflect.ValueOf(value)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	typeName := val.Type().String()
+
+	// Check for tree types first (they don't contain "GenericGraph" in name)
+	if strings.Contains(typeName, "GenericTree") && !strings.Contains(typeName, "DecisionTree") {
+		return captureGenericTreeViaReflectionYAML(value)
+	}
+	if strings.Contains(typeName, "GenericDecisionTree") {
+		return captureGenericDecisionTreeViaReflectionYAML(value)
+	}
+	if strings.Contains(typeName, "GenericExpressionGraph") {
+		return captureGenericExpressionGraphViaReflectionYAML(value)
 	}
 
 	// Fallback: capture metadata only
@@ -332,6 +356,243 @@ func captureGenericGraphStringFloat32YAML(g *graph.GenericGraph[string, float32]
 	}, nil
 }
 
+func captureGenericTreeViaReflectionYAML(value any) (*yamlGraph, error) {
+	// Try to use the tree as a Graph interface to access Nodes() and Edges()
+	// Since GenericTree implements Graph[N, E], we can try type assertion
+	val := reflect.ValueOf(value)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+		value = val.Addr().Interface()
+		val = reflect.ValueOf(value)
+	}
+
+	nodes := make([]yamlGraphNode, 0)
+	edges := make([]yamlGraphEdge, 0)
+
+	// Try to call Nodes() using reflection and iterate
+	nodesMethod := val.MethodByName("Nodes")
+	if nodesMethod.IsValid() {
+		// Nodes() returns iter.Seq[Node[N, E]] which is a function
+		seqFunc := nodesMethod.Call(nil)[0]
+		if seqFunc.Kind() == reflect.Func {
+			// Get the yield function type from the iterator function signature
+			seqFuncType := seqFunc.Type()
+			if seqFuncType.NumIn() == 1 {
+				yieldType := seqFuncType.In(0)
+				// Create a yield function that matches the iterator's expected type
+				nodeSlice := reflect.MakeSlice(reflect.SliceOf(reflect.TypeOf((*any)(nil)).Elem()), 0, 0)
+				yieldFunc := reflect.MakeFunc(
+					yieldType,
+					func(args []reflect.Value) []reflect.Value {
+						if len(args) > 0 && !args[0].IsNil() {
+							nodeSlice = reflect.Append(nodeSlice, args[0])
+						}
+						return []reflect.Value{reflect.ValueOf(true)}
+					},
+				)
+				seqFunc.Call([]reflect.Value{yieldFunc})
+
+				// Convert collected nodes to yamlGraphNode
+				for i := 0; i < nodeSlice.Len(); i++ {
+					node := nodeSlice.Index(i).Interface()
+					nodeVal := reflect.ValueOf(node)
+					if idMethod := nodeVal.MethodByName("ID"); idMethod.IsValid() {
+						idResults := idMethod.Call(nil)
+						if len(idResults) > 0 {
+							nodes = append(nodes, yamlGraphNode{
+								ID:   idResults[0].Int(),
+								Data: getNodeData(node),
+							})
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Similarly for Edges()
+	edgesMethod := val.MethodByName("Edges")
+	if edgesMethod.IsValid() {
+		seqFunc := edgesMethod.Call(nil)[0]
+		if seqFunc.Kind() == reflect.Func {
+			// Get the yield function type from the iterator function signature
+			seqFuncType := seqFunc.Type()
+			if seqFuncType.NumIn() == 1 {
+				yieldType := seqFuncType.In(0)
+				// Create a yield function that matches the iterator's expected type
+				edgeSlice := reflect.MakeSlice(reflect.SliceOf(reflect.TypeOf((*any)(nil)).Elem()), 0, 0)
+				yieldFunc := reflect.MakeFunc(
+					yieldType,
+					func(args []reflect.Value) []reflect.Value {
+						if len(args) > 0 && !args[0].IsNil() {
+							edgeSlice = reflect.Append(edgeSlice, args[0])
+						}
+						return []reflect.Value{reflect.ValueOf(true)}
+					},
+				)
+				seqFunc.Call([]reflect.Value{yieldFunc})
+
+				for i := 0; i < edgeSlice.Len(); i++ {
+					edge := edgeSlice.Index(i).Interface()
+					edgeVal := reflect.ValueOf(edge)
+					fromMethod := edgeVal.MethodByName("From")
+					toMethod := edgeVal.MethodByName("To")
+					if fromMethod.IsValid() && toMethod.IsValid() {
+						fromNode := fromMethod.Call(nil)[0].Interface()
+						toNode := toMethod.Call(nil)[0].Interface()
+						fromID := reflect.ValueOf(fromNode).MethodByName("ID").Call(nil)[0].Int()
+						toID := reflect.ValueOf(toNode).MethodByName("ID").Call(nil)[0].Int()
+						edges = append(edges, yamlGraphEdge{
+							FromID: fromID,
+							ToID:   toID,
+							Data:   getEdgeData(edge),
+						})
+					}
+				}
+			}
+		}
+	}
+
+	metadata, err := captureGraphMetadata(value)
+	if err != nil {
+		return nil, err
+	}
+	// Ensure metadata kind is "tree"
+	if metadata != nil {
+		metadata.Kind = "tree"
+	}
+
+	return &yamlGraph{
+		Nodes:    nodes,
+		Edges:    edges,
+		Metadata: metadata,
+	}, nil
+}
+
+func captureGenericDecisionTreeViaReflectionYAML(value any) (*yamlGraph, error) {
+	// Similar to GenericTree but for decision trees
+	graph, err := captureGenericTreeViaReflectionYAML(value)
+	if err != nil {
+		return nil, err
+	}
+	if graph.Metadata != nil {
+		graph.Metadata.Kind = "decision_tree"
+	}
+	return graph, nil
+}
+
+func captureGenericExpressionGraphViaReflectionYAML(value any) (*yamlGraph, error) {
+	// Similar to GenericGraph but for expression graphs
+	// Use the same approach as captureGenericTreeViaReflectionYAML
+	val := reflect.ValueOf(value)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+		value = val.Addr().Interface()
+		val = reflect.ValueOf(value)
+	}
+
+	nodes := make([]yamlGraphNode, 0)
+	edges := make([]yamlGraphEdge, 0)
+
+	// Try to call Nodes() using reflection and iterate
+	nodesMethod := val.MethodByName("Nodes")
+	if nodesMethod.IsValid() {
+		// Nodes() returns iter.Seq[Node[N, E]] which is a function
+		seqFunc := nodesMethod.Call(nil)[0]
+		if seqFunc.Kind() == reflect.Func {
+			// Get the yield function type from the iterator function signature
+			seqFuncType := seqFunc.Type()
+			if seqFuncType.NumIn() == 1 {
+				yieldType := seqFuncType.In(0)
+				// Create a yield function that matches the iterator's expected type
+				nodeSlice := reflect.MakeSlice(reflect.SliceOf(reflect.TypeOf((*any)(nil)).Elem()), 0, 0)
+				yieldFunc := reflect.MakeFunc(
+					yieldType,
+					func(args []reflect.Value) []reflect.Value {
+						if len(args) > 0 && !args[0].IsNil() {
+							nodeSlice = reflect.Append(nodeSlice, args[0])
+						}
+						return []reflect.Value{reflect.ValueOf(true)}
+					},
+				)
+				seqFunc.Call([]reflect.Value{yieldFunc})
+
+				// Convert collected nodes to yamlGraphNode
+				for i := 0; i < nodeSlice.Len(); i++ {
+					node := nodeSlice.Index(i).Interface()
+					nodeVal := reflect.ValueOf(node)
+					if idMethod := nodeVal.MethodByName("ID"); idMethod.IsValid() {
+						idResults := idMethod.Call(nil)
+						if len(idResults) > 0 {
+							nodes = append(nodes, yamlGraphNode{
+								ID:   idResults[0].Int(),
+								Data: getNodeData(node),
+							})
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Similarly for Edges()
+	edgesMethod := val.MethodByName("Edges")
+	if edgesMethod.IsValid() {
+		seqFunc := edgesMethod.Call(nil)[0]
+		if seqFunc.Kind() == reflect.Func {
+			// Get the yield function type from the iterator function signature
+			seqFuncType := seqFunc.Type()
+			if seqFuncType.NumIn() == 1 {
+				yieldType := seqFuncType.In(0)
+				// Create a yield function that matches the iterator's expected type
+				edgeSlice := reflect.MakeSlice(reflect.SliceOf(reflect.TypeOf((*any)(nil)).Elem()), 0, 0)
+				yieldFunc := reflect.MakeFunc(
+					yieldType,
+					func(args []reflect.Value) []reflect.Value {
+						if len(args) > 0 && !args[0].IsNil() {
+							edgeSlice = reflect.Append(edgeSlice, args[0])
+						}
+						return []reflect.Value{reflect.ValueOf(true)}
+					},
+				)
+				seqFunc.Call([]reflect.Value{yieldFunc})
+
+				for i := 0; i < edgeSlice.Len(); i++ {
+					edge := edgeSlice.Index(i).Interface()
+					edgeVal := reflect.ValueOf(edge)
+					fromMethod := edgeVal.MethodByName("From")
+					toMethod := edgeVal.MethodByName("To")
+					if fromMethod.IsValid() && toMethod.IsValid() {
+						fromNode := fromMethod.Call(nil)[0].Interface()
+						toNode := toMethod.Call(nil)[0].Interface()
+						fromID := reflect.ValueOf(fromNode).MethodByName("ID").Call(nil)[0].Int()
+						toID := reflect.ValueOf(toNode).MethodByName("ID").Call(nil)[0].Int()
+						edges = append(edges, yamlGraphEdge{
+							FromID: fromID,
+							ToID:   toID,
+							Data:   getEdgeData(edge),
+						})
+					}
+				}
+			}
+		}
+	}
+
+	metadata, err := captureGraphMetadata(value)
+	if err != nil {
+		return nil, err
+	}
+	if metadata != nil {
+		metadata.Kind = "expression_graph"
+	}
+
+	return &yamlGraph{
+		Nodes:    nodes,
+		Edges:    edges,
+		Metadata: metadata,
+	}, nil
+}
+
 func captureGraphMetadata(value any) (*yamlGraphMetadata, error) {
 	// Detect graph kind and capture metadata
 	val := reflect.ValueOf(value)
@@ -379,4 +640,34 @@ func captureGraphMetadata(value any) (*yamlGraphMetadata, error) {
 
 func hasMethod(val reflect.Value, name string) bool {
 	return val.MethodByName(name).IsValid()
+}
+
+func getNodeData(node any) any {
+	if node == nil {
+		return nil
+	}
+	val := reflect.ValueOf(node)
+	dataMethod := val.MethodByName("Data")
+	if dataMethod.IsValid() {
+		results := dataMethod.Call(nil)
+		if len(results) > 0 {
+			return results[0].Interface()
+		}
+	}
+	return nil
+}
+
+func getEdgeData(edge any) any {
+	if edge == nil {
+		return nil
+	}
+	val := reflect.ValueOf(edge)
+	dataMethod := val.MethodByName("Data")
+	if dataMethod.IsValid() {
+		results := dataMethod.Call(nil)
+		if len(results) > 0 {
+			return results[0].Interface()
+		}
+	}
+	return nil
 }

@@ -14,12 +14,12 @@ func TestNodeHeader(t *testing.T) {
 		Checksum:       12345,
 	}
 
-	buf := make([]byte, NodeHeaderSize)
-	if err := WriteNodeHeader(buf, header); err != nil {
+	var buf [NodeHeaderSize]byte
+	if err := WriteNodeHeader(buf[:], header); err != nil {
 		t.Fatalf("WriteNodeHeader() failed: %v", err)
 	}
 
-	readHeader, err := ReadNodeHeader(buf)
+	readHeader, err := ReadNodeHeader(buf[:])
 	if err != nil {
 		t.Fatalf("ReadNodeHeader() failed: %v", err)
 	}
@@ -42,10 +42,10 @@ func TestNodeHeader(t *testing.T) {
 }
 
 func TestNodeHeaderInvalidMagic(t *testing.T) {
-	buf := make([]byte, NodeHeaderSize)
+	var buf [NodeHeaderSize]byte
 	copy(buf[0:8], []byte("INVALID"))
 
-	_, err := ReadNodeHeader(buf)
+	_, err := ReadNodeHeader(buf[:])
 	if err == nil {
 		t.Error("Expected error for invalid magic, got nil")
 	}
@@ -57,12 +57,12 @@ func TestNodeHeaderInvalidVersion(t *testing.T) {
 		Version: 999, // Invalid version
 	}
 
-	buf := make([]byte, NodeHeaderSize)
-	if err := WriteNodeHeader(buf, header); err != nil {
+	var buf [NodeHeaderSize]byte
+	if err := WriteNodeHeader(buf[:], header); err != nil {
 		t.Fatalf("WriteNodeHeader() failed: %v", err)
 	}
 
-	_, err := ReadNodeHeader(buf)
+	_, err := ReadNodeHeader(buf[:])
 	if err == nil {
 		t.Error("Expected error for invalid version, got nil")
 	}
@@ -78,12 +78,12 @@ func TestEdgeHeader(t *testing.T) {
 		Checksum:       54321,
 	}
 
-	buf := make([]byte, EdgeHeaderSize)
-	if err := WriteEdgeHeader(buf, header); err != nil {
+	var buf [EdgeHeaderSize]byte
+	if err := WriteEdgeHeader(buf[:], header); err != nil {
 		t.Fatalf("WriteEdgeHeader() failed: %v", err)
 	}
 
-	readHeader, err := ReadEdgeHeader(buf)
+	readHeader, err := ReadEdgeHeader(buf[:])
 	if err != nil {
 		t.Fatalf("ReadEdgeHeader() failed: %v", err)
 	}
@@ -106,12 +106,12 @@ func TestNodeRecord(t *testing.T) {
 		Flags:      FlagActive,
 	}
 
-	buf := make([]byte, NodeRecordSize)
-	if err := WriteNodeRecord(buf, record); err != nil {
+	var buf [NodeRecordSize]byte
+	if err := WriteNodeRecord(buf[:], record); err != nil {
 		t.Fatalf("WriteNodeRecord() failed: %v", err)
 	}
 
-	readRecord, err := ReadNodeRecord(buf)
+	readRecord, err := ReadNodeRecord(buf[:])
 	if err != nil {
 		t.Fatalf("ReadNodeRecord() failed: %v", err)
 	}
@@ -135,12 +135,12 @@ func TestEdgeRecord(t *testing.T) {
 		Flags:      FlagActive,
 	}
 
-	buf := make([]byte, EdgeRecordSize)
-	if err := WriteEdgeRecord(buf, record); err != nil {
+	var buf [EdgeRecordSize]byte
+	if err := WriteEdgeRecord(buf[:], record); err != nil {
 		t.Fatalf("WriteEdgeRecord() failed: %v", err)
 	}
 
-	readRecord, err := ReadEdgeRecord(buf)
+	readRecord, err := ReadEdgeRecord(buf[:])
 	if err != nil {
 		t.Fatalf("ReadEdgeRecord() failed: %v", err)
 	}

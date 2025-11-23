@@ -3,8 +3,8 @@ package marshallerv1
 import (
 	"fmt"
 
-	"github.com/itohio/EasyRobot/x/marshaller/types"
 	pb "github.com/itohio/EasyRobot/types/core"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
 )
 
 // Conversion helpers between domain types and protobuf messages
@@ -29,6 +29,8 @@ func dtypeToString(dt types.DataType) string {
 		return "fp16"
 	case types.INT48:
 		return "int48"
+	case types.C64:
+		return "c64"
 	default:
 		return "unknown"
 	}
@@ -54,6 +56,8 @@ func stringToDtype(s string) types.DataType {
 		return types.FP16
 	case "int48":
 		return types.INT48
+	case "c64":
+		return types.C64
 	default:
 		return types.DT_UNKNOWN
 	}
@@ -102,6 +106,16 @@ func tensorToProto(t types.Tensor) (*pb.Tensor, error) {
 			result.DataI64 = make([]int64, len(intData))
 			for i, v := range intData {
 				result.DataI64[i] = int64(v)
+			}
+		}
+	case types.C64:
+		if c64Data, ok := data.([]complex64); ok {
+			// Store complex64 as pairs of float32 (real, imag)
+			// We'll use DataF32 to store [real0, imag0, real1, imag1, ...]
+			result.DataF32 = make([]float32, len(c64Data)*2)
+			for i, c := range c64Data {
+				result.DataF32[i*2] = real(c)
+				result.DataF32[i*2+1] = imag(c)
 			}
 		}
 	}
@@ -193,6 +207,24 @@ func protoToTensor(pt *pb.Tensor, destType types.DataType, tensorFactory func(ty
 			} else {
 				for i, v := range pt.DataI64 {
 					t.SetAt(float64(v), i)
+				}
+			}
+		}
+	case types.C64:
+		// Complex64 is stored as pairs of float32 [real0, imag0, real1, imag1, ...]
+		if len(pt.DataF32) > 0 && len(pt.DataF32)%2 == 0 {
+			if destType == 0 || destType == dtype {
+				if destData, ok := t.Data().([]complex64); ok {
+					for i := 0; i < len(pt.DataF32)/2 && i < len(destData); i++ {
+						destData[i] = complex(pt.DataF32[i*2], pt.DataF32[i*2+1])
+					}
+				}
+			} else {
+				// Type conversion needed
+				for i := 0; i < len(pt.DataF32)/2 && i < t.Size(); i++ {
+					realVal := float64(pt.DataF32[i*2])
+					// For non-complex destinations, use real part
+					t.SetAt(realVal, i)
 				}
 			}
 		}

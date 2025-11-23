@@ -5,6 +5,7 @@ import (
 	"io"
 	"iter"
 	"reflect"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -50,8 +51,17 @@ func (u *Unmarshaller) Unmarshal(r io.Reader, dst any, opts ...types.Option) err
 		return types.NewError("unmarshal", "yaml", "decoding", err)
 	}
 
+	// Get destination type for graph unmarshalling
+	var dstType reflect.Type
+	if dst != nil {
+		dstVal := reflect.ValueOf(dst)
+		if dstVal.Kind() == reflect.Ptr {
+			dstType = dstVal.Elem().Type()
+		}
+	}
+
 	// Convert yamlValue to actual value
-	value, err := u.yamlToValue(&yv, localOpts)
+	value, err := u.yamlToValue(&yv, localOpts, dstType)
 	if err != nil {
 		return types.NewError("unmarshal", "yaml", "conversion", err)
 	}
@@ -64,7 +74,7 @@ func (u *Unmarshaller) Unmarshal(r io.Reader, dst any, opts ...types.Option) err
 	return nil
 }
 
-func (u *Unmarshaller) yamlToValue(yv *yamlValue, opts types.Options) (any, error) {
+func (u *Unmarshaller) yamlToValue(yv *yamlValue, opts types.Options, dstType reflect.Type) (any, error) {
 	if yv == nil {
 		return nil, fmt.Errorf("nil yamlValue")
 	}
@@ -100,7 +110,7 @@ func (u *Unmarshaller) yamlToValue(yv *yamlValue, opts types.Options) (any, erro
 		if yv.Graph == nil {
 			return nil, fmt.Errorf("nil graph in yamlValue")
 		}
-		return yamlToGraph(yv.Graph, opts)
+		return yamlToGraph(yv.Graph, opts, dstType)
 
 	case "slice":
 		// For slices, YAML already decoded the data, but we need to convert types
@@ -226,6 +236,26 @@ func convertSliceData(data any, sliceType string) (any, error) {
 			}
 		}
 		return result, nil
+	case "[]complex64":
+		// YAML complex numbers are represented as [real, imag] pairs
+		result := make([]complex64, len(anySlice))
+		for i, v := range anySlice {
+			if pair, ok := v.([]any); ok && len(pair) == 2 {
+				var real, imag float32
+				if r, ok := pair[0].(float64); ok {
+					real = float32(r)
+				} else if r, ok := pair[0].(int); ok {
+					real = float32(r)
+				}
+				if im, ok := pair[1].(float64); ok {
+					imag = float32(im)
+				} else if im, ok := pair[1].(int); ok {
+					imag = float32(im)
+				}
+				result[i] = complex(real, imag)
+			}
+		}
+		return result, nil
 	default:
 		return data, nil
 	}
@@ -257,12 +287,27 @@ func (u *Unmarshaller) assignToDst(dst any, value any) error {
 
 // yamlToGraph reconstructs a graph from YAML representation.
 // Returns GenericGraph, GenericTree, GenericDecisionTree, or GenericExpressionGraph
-// based on the metadata kind. Unmarshals into Generic* types with any for node and edge data.
-func yamlToGraph(yg *yamlGraph, opts types.Options) (any, error) {
+// based on the metadata kind or destination type. Unmarshals into Generic* types with any for node and edge data.
+func yamlToGraph(yg *yamlGraph, opts types.Options, dstType reflect.Type) (any, error) {
 	if yg == nil {
 		return nil, fmt.Errorf("nil yamlGraph")
 	}
 
+	// First, try to determine type from destination
+	if dstType != nil {
+		typeName := dstType.String()
+		if strings.Contains(typeName, "GenericDecisionTree") {
+			return yamlToDecisionTree(yg, opts)
+		}
+		if strings.Contains(typeName, "GenericExpressionGraph") {
+			return yamlToExpressionGraph(yg, opts)
+		}
+		if strings.Contains(typeName, "GenericTree") {
+			return yamlToTree(yg)
+		}
+	}
+
+	// Fall back to metadata kind
 	kind := "graph"
 	if yg.Metadata != nil {
 		kind = yg.Metadata.Kind
@@ -397,27 +442,40 @@ func yamlToGenericGraph(yg *yamlGraph) (*graph.GenericGraph[any, any], error) {
 
 // yamlToTree reconstructs a GenericTree[any, any].
 func yamlToTree(yg *yamlGraph) (*graph.GenericTree[any, any], error) {
-	if yg.Metadata == nil || yg.Metadata.RootID == 0 {
-		return nil, fmt.Errorf("tree requires root ID in metadata")
+	// If no nodes/edges, return empty tree with default root
+	if len(yg.Nodes) == 0 {
+		return graph.NewGenericTree[any, any](nil), nil
+	}
+
+	// Try to find root from metadata or use first node
+	var rootID int64
+	if yg.Metadata != nil && yg.Metadata.RootID != 0 {
+		rootID = yg.Metadata.RootID
+	} else if len(yg.Nodes) > 0 {
+		// Use first node as root if no root ID specified
+		rootID = yg.Nodes[0].ID
+	} else {
+		return nil, fmt.Errorf("tree requires at least one node")
 	}
 
 	// Find root node
 	var rootData any
 	for _, yn := range yg.Nodes {
-		if yn.ID == yg.Metadata.RootID {
+		if yn.ID == rootID {
 			rootData = yn.Data
 			break
 		}
 	}
 	if rootData == nil {
-		return nil, fmt.Errorf("root node %d not found", yg.Metadata.RootID)
+		// If root not found, use nil
+		rootData = nil
 	}
 
 	tree := graph.NewGenericTree[any, any](rootData)
 
 	// Create node map
 	nodeMap := make(map[int64]int) // ID -> index
-	nodeMap[yg.Metadata.RootID] = tree.RootIdx()
+	nodeMap[rootID] = tree.RootIdx()
 
 	// Add child nodes (we need to build parent-child relationships from edges)
 	// For trees, edges represent parent->child relationships
@@ -455,27 +513,40 @@ func yamlToTree(yg *yamlGraph) (*graph.GenericTree[any, any], error) {
 // yamlToDecisionTree reconstructs a GenericDecisionTree[any, any, any, any].
 // Operations must be registered via options (similar to graph marshaller).
 func yamlToDecisionTree(yg *yamlGraph, opts types.Options) (*graph.GenericDecisionTree[any, any, any, any], error) {
-	if yg.Metadata == nil || yg.Metadata.RootID == 0 {
-		return nil, fmt.Errorf("decision tree requires root ID in metadata")
+	// If no nodes/edges, return empty decision tree with default root
+	if len(yg.Nodes) == 0 {
+		return graph.NewGenericDecisionTree[any, any, any, any](nil), nil
+	}
+
+	// Try to find root from metadata or use first node
+	var rootID int64
+	if yg.Metadata != nil && yg.Metadata.RootID != 0 {
+		rootID = yg.Metadata.RootID
+	} else if len(yg.Nodes) > 0 {
+		// Use first node as root if no root ID specified
+		rootID = yg.Nodes[0].ID
+	} else {
+		return nil, fmt.Errorf("decision tree requires at least one node")
 	}
 
 	// Find root node
 	var rootData any
 	for _, yn := range yg.Nodes {
-		if yn.ID == yg.Metadata.RootID {
+		if yn.ID == rootID {
 			rootData = yn.Data
 			break
 		}
 	}
 	if rootData == nil {
-		return nil, fmt.Errorf("root node %d not found", yg.Metadata.RootID)
+		// If root not found, use nil
+		rootData = nil
 	}
 
 	dt := graph.NewGenericDecisionTree[any, any, any, any](rootData)
 
 	// Build tree structure first (same as yamlToTree)
 	nodeMap := make(map[int64]int)
-	nodeMap[yg.Metadata.RootID] = dt.RootIdx()
+	nodeMap[rootID] = dt.RootIdx()
 
 	for _, ye := range yg.Edges {
 		parentIdx, ok := nodeMap[ye.FromID]

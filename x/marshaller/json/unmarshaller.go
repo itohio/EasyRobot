@@ -6,6 +6,7 @@ import (
 	"io"
 	"iter"
 	"reflect"
+	"strings"
 
 	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"github.com/itohio/EasyRobot/x/math/graph"
@@ -49,8 +50,17 @@ func (u *Unmarshaller) Unmarshal(r io.Reader, dst any, opts ...types.Option) err
 		return types.NewError("unmarshal", "json", "decoding", err)
 	}
 
+	// Get destination type for graph unmarshalling
+	var dstType reflect.Type
+	if dst != nil {
+		dstVal := reflect.ValueOf(dst)
+		if dstVal.Kind() == reflect.Ptr {
+			dstType = dstVal.Elem().Type()
+		}
+	}
+
 	// Convert jsonValue to actual value
-	value, err := u.jsonToValue(&jv, localOpts)
+	value, err := u.jsonToValue(&jv, localOpts, dstType)
 	if err != nil {
 		return types.NewError("unmarshal", "json", "conversion", err)
 	}
@@ -63,7 +73,7 @@ func (u *Unmarshaller) Unmarshal(r io.Reader, dst any, opts ...types.Option) err
 	return nil
 }
 
-func (u *Unmarshaller) jsonToValue(jv *jsonValue, opts types.Options) (any, error) {
+func (u *Unmarshaller) jsonToValue(jv *jsonValue, opts types.Options, dstType reflect.Type) (any, error) {
 	if jv == nil {
 		return nil, fmt.Errorf("nil jsonValue")
 	}
@@ -101,7 +111,7 @@ func (u *Unmarshaller) jsonToValue(jv *jsonValue, opts types.Options) (any, erro
 		if jv.Graph == nil {
 			return nil, fmt.Errorf("nil graph in jsonValue")
 		}
-		return jsonToGraph(jv.Graph, opts)
+		return jsonToGraph(jv.Graph, opts, dstType)
 
 	case "slice":
 		// For slices, JSON already decoded the data, but we need to convert types
@@ -210,6 +220,22 @@ func convertSliceData(data any, sliceType string) (any, error) {
 			}
 		}
 		return result, nil
+	case "[]complex64":
+		// JSON complex numbers are represented as [real, imag] pairs
+		result := make([]complex64, len(anySlice))
+		for i, v := range anySlice {
+			if pair, ok := v.([]any); ok && len(pair) == 2 {
+				var real, imag float32
+				if r, ok := pair[0].(float64); ok {
+					real = float32(r)
+				}
+				if im, ok := pair[1].(float64); ok {
+					imag = float32(im)
+				}
+				result[i] = complex(real, imag)
+			}
+		}
+		return result, nil
 	default:
 		return data, nil
 	}
@@ -244,12 +270,27 @@ func (u *Unmarshaller) assignToDst(dst any, value any) error {
 
 // jsonToGraph reconstructs a graph from JSON representation.
 // Returns GenericGraph, GenericTree, GenericDecisionTree, or GenericExpressionGraph
-// based on the metadata kind. Unmarshals into Generic* types with any for node and edge data.
-func jsonToGraph(jg *jsonGraph, opts types.Options) (any, error) {
+// based on the metadata kind or destination type. Unmarshals into Generic* types with any for node and edge data.
+func jsonToGraph(jg *jsonGraph, opts types.Options, dstType reflect.Type) (any, error) {
 	if jg == nil {
 		return nil, fmt.Errorf("nil jsonGraph")
 	}
 
+	// First, try to determine type from destination
+	if dstType != nil {
+		typeName := dstType.String()
+		if strings.Contains(typeName, "GenericDecisionTree") {
+			return jsonToDecisionTree(jg, opts)
+		}
+		if strings.Contains(typeName, "GenericExpressionGraph") {
+			return jsonToExpressionGraph(jg, opts)
+		}
+		if strings.Contains(typeName, "GenericTree") {
+			return jsonToTree(jg)
+		}
+	}
+
+	// Fall back to metadata kind
 	kind := "graph"
 	if jg.Metadata != nil {
 		kind = jg.Metadata.Kind
@@ -384,27 +425,40 @@ func (e *tempGraphEdge[N, E]) Cost() float32 {
 
 // jsonToTree reconstructs a GenericTree[any, any].
 func jsonToTree(jg *jsonGraph) (*graph.GenericTree[any, any], error) {
-	if jg.Metadata == nil || jg.Metadata.RootID == 0 {
-		return nil, fmt.Errorf("tree requires root ID in metadata")
+	// If no nodes/edges, return empty tree with default root
+	if len(jg.Nodes) == 0 {
+		return graph.NewGenericTree[any, any](nil), nil
+	}
+
+	// Try to find root from metadata or use first node
+	var rootID int64
+	if jg.Metadata != nil && jg.Metadata.RootID != 0 {
+		rootID = jg.Metadata.RootID
+	} else if len(jg.Nodes) > 0 {
+		// Use first node as root if no root ID specified
+		rootID = jg.Nodes[0].ID
+	} else {
+		return nil, fmt.Errorf("tree requires at least one node")
 	}
 
 	// Find root node
 	var rootData any
 	for _, jn := range jg.Nodes {
-		if jn.ID == jg.Metadata.RootID {
+		if jn.ID == rootID {
 			rootData = jn.Data
 			break
 		}
 	}
 	if rootData == nil {
-		return nil, fmt.Errorf("root node %d not found", jg.Metadata.RootID)
+		// If root not found, use nil
+		rootData = nil
 	}
 
 	tree := graph.NewGenericTree[any, any](rootData)
 
 	// Create node map
 	nodeMap := make(map[int64]int) // ID -> index
-	nodeMap[jg.Metadata.RootID] = tree.RootIdx()
+	nodeMap[rootID] = tree.RootIdx()
 
 	// Add child nodes (we need to build parent-child relationships from edges)
 	// For trees, edges represent parent->child relationships
@@ -454,27 +508,40 @@ func jsonToTree(jg *jsonGraph) (*graph.GenericTree[any, any], error) {
 // jsonToDecisionTree reconstructs a GenericDecisionTree[any, any, any, any].
 // Operations must be registered via options (similar to graph marshaller).
 func jsonToDecisionTree(jg *jsonGraph, opts types.Options) (*graph.GenericDecisionTree[any, any, any, any], error) {
-	if jg.Metadata == nil || jg.Metadata.RootID == 0 {
-		return nil, fmt.Errorf("decision tree requires root ID in metadata")
+	// If no nodes/edges, return empty decision tree with default root
+	if len(jg.Nodes) == 0 {
+		return graph.NewGenericDecisionTree[any, any, any, any](nil), nil
+	}
+
+	// Try to find root from metadata or use first node
+	var rootID int64
+	if jg.Metadata != nil && jg.Metadata.RootID != 0 {
+		rootID = jg.Metadata.RootID
+	} else if len(jg.Nodes) > 0 {
+		// Use first node as root if no root ID specified
+		rootID = jg.Nodes[0].ID
+	} else {
+		return nil, fmt.Errorf("decision tree requires at least one node")
 	}
 
 	// Find root node
 	var rootData any
 	for _, jn := range jg.Nodes {
-		if jn.ID == jg.Metadata.RootID {
+		if jn.ID == rootID {
 			rootData = jn.Data
 			break
 		}
 	}
 	if rootData == nil {
-		return nil, fmt.Errorf("root node %d not found", jg.Metadata.RootID)
+		// If root not found, use nil
+		rootData = nil
 	}
 
 	dt := graph.NewGenericDecisionTree[any, any, any, any](rootData)
 
 	// Build tree structure first (same as jsonToTree)
 	nodeMap := make(map[int64]int)
-	nodeMap[jg.Metadata.RootID] = dt.RootIdx()
+	nodeMap[rootID] = dt.RootIdx()
 
 	for _, je := range jg.Edges {
 		parentIdx, ok := nodeMap[je.FromID]
