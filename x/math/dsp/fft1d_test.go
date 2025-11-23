@@ -152,7 +152,7 @@ func TestFFT1D_EdgeCases(t *testing.T) {
 	// Test with length 1
 	fft1 := NewFFT1D(1)
 	signal1 := vec.NewFrom(5.0)
-	spectrum1 := vec.New(1)
+	spectrum1 := vec.New(2) // Need 2*N = 2*1 = 2 for packed format
 	fft1.Forward(spectrum1, signal1)
 	if math.Abs(float64(spectrum1[0]-5.0)) > 1e-6 {
 		t.Errorf("FFT of single element failed: expected 5.0, got %f", spectrum1[0])
@@ -161,7 +161,7 @@ func TestFFT1D_EdgeCases(t *testing.T) {
 	// Test with non-power-of-two input (should be padded)
 	fft2 := NewFFT1D(3) // Will pad to 4
 	signal2 := vec.NewFrom(1, 2, 3)
-	spectrum2 := vec.New(4)
+	spectrum2 := vec.New(8) // Need 2*N = 2*4 = 8 for packed format
 	fft2.Forward(spectrum2, signal2)
 	// Check that FFT completed without error
 	hasNonZero := false

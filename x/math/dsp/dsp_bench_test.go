@@ -120,82 +120,80 @@ func BenchmarkWindows_ApplyToMatrix_Hann_64x64(b *testing.B) {
 }
 
 func BenchmarkSignalGenerator1D_Sinusoid_1024(b *testing.B) {
-	gen := NewSignalGenerator1D()
+	gen := NewSinusoidGenerator(1000.0, 10.0, 1.0, 0.0)
+	dst := make([]float32, 1024)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		gen.Sinusoid(1024, 10.0, 1.0, 0.0, 1000.0)
+		gen.Generate(dst)
 	}
 }
 
-func BenchmarkSignalGenerator2D_Gaussian_256x256(b *testing.B) {
-	gen := NewSignalGenerator2D()
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		gen.Gaussian(256, 256, 50.0)
-	}
-}
+// TODO: Implement 2D stateful generators
+// func BenchmarkSignalGenerator2D_Gaussian_256x256(b *testing.B) {
+// 	gen := NewSignalGenerator2D()
+//
+// 	b.ResetTimer()
+// 	for i := 0; i < b.N; i++ {
+// 		gen.Gaussian(256, 256, 50.0)
+// 	}
+// }
 
 func BenchmarkMeasurements_Measure1D_1024(b *testing.B) {
-	measurements := NewMeasurements()
 	signal := vec.New(1024)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		measurements.Measure1D(signal)
+		Measure1D(signal)
 	}
 }
 
 func BenchmarkMeasurements_Measure2D_64x64(b *testing.B) {
-	measurements := NewMeasurements()
 	matrix := mat.New(64, 64)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		measurements.Measure2D(matrix)
+		Measure2D(matrix)
 	}
 }
 
 func BenchmarkMeasurements_Goertzel_1024(b *testing.B) {
-	measurements := NewMeasurements()
 	signal := vec.New(1024)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		measurements.Goertzel(signal, 100.0, 1000.0)
+		Goertzel(signal, 100.0, 1000.0)
 	}
 }
 
-func BenchmarkMeasurements_CrossCorrelate1D_1024(b *testing.B) {
-	measurements := NewMeasurements()
+func BenchmarkCorrelation_CrossCorrelate1D_1024(b *testing.B) {
 	signal1 := vec.New(1024)
 	signal2 := vec.New(512)
+	dst := vec.New(1535) // 1024 + 512 - 1
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		measurements.CrossCorrelate1D(signal1, signal2)
+		CrossCorrelate1D(dst, signal1, signal2)
 	}
 }
 
-func BenchmarkMeasurements_CrossCorrelate2D_64x64(b *testing.B) {
-	measurements := NewMeasurements()
+func BenchmarkCorrelation_CrossCorrelate2D_64x64(b *testing.B) {
 	matrix1 := mat.New(64, 64)
 	matrix2 := mat.New(32, 32)
+	dst := mat.New(95, 95) // 64+32-1, 64+32-1
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		measurements.CrossCorrelate2D(matrix1, matrix2)
+		CrossCorrelate2D(dst, matrix1, matrix2)
 	}
 }
 
-func BenchmarkMeasurements_EstimateShift2D_64x64(b *testing.B) {
-	measurements := NewMeasurements()
+func BenchmarkCorrelation_EstimateShift2D_64x64(b *testing.B) {
 	matrix1 := mat.New(64, 64)
 	matrix2 := mat.New(64, 64)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		measurements.EstimateShift2D(matrix1, matrix2)
+		EstimateShift2D(matrix1, matrix2)
 	}
 }

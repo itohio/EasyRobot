@@ -1,7 +1,9 @@
 // Package dsp provides digital signal processing functions for EasyRobot.
 package dsp
 
-import "math"
+import (
+	"github.com/chewxy/math32"
+)
 
 // Helper functions for FFT operations
 
@@ -27,7 +29,7 @@ func nextPowerOfTwo(n int) int {
 // fftReal performs in-place FFT on packed complex data using Cooley-Tukey algorithm.
 // Data layout: real parts in data[0:N], imaginary parts in data[N:2*N] where N = len(data)/2.
 // The input must have even length (2*N) to accommodate both real and imaginary parts.
-// Optimized with BCE techniques: reslicing and for range loops
+// Optimized with BCE techniques: reslicing and for range loops, math32 for float32 operations.
 func fftReal(data []float32) {
 	n := len(data)
 	if n <= 2 {
@@ -60,8 +62,10 @@ func fftReal(data []float32) {
 
 	// Cooley-Tukey FFT on complex data
 	for length := 2; length <= fftSize; length <<= 1 {
-		angle := -2 * math.Pi / float64(length)
-		wlen := complex64(complex(math.Cos(angle), math.Sin(angle)))
+		lengthF := float32(length)
+		angle := -2 * math32.Pi / lengthF
+		cosAngle := math32.Cos(angle)
+		sinAngle := math32.Sin(angle)
 
 		halfLen := length / 2
 		for i := 0; i < fftSize; i += length {
@@ -69,22 +73,37 @@ func fftReal(data []float32) {
 			for j := range halfLen {
 				idx1 := i + j
 				idx2 := i + j + halfLen
+				idx1Imag := idx1 + fftSize
+				idx2Imag := idx2 + fftSize
 
-				// Get complex values from packed format
-				u := complex64(complex(data[idx1], data[idx1+fftSize]))
-				v := complex64(complex(data[idx2], data[idx2+fftSize])) * w
+				// Get complex values from packed format (no type casts in hot path)
+				uReal := data[idx1]
+				uImag := data[idx1Imag]
+				vReal := data[idx2]
+				vImag := data[idx2Imag]
 
-				// Compute FFT butterfly
-				sum := u + v
-				diff := u - v
+				// Multiply v by w: (vReal + vImag*i) * (wReal + wImag*i)
+				wReal := real(w)
+				wImag := imag(w)
+				vRealNew := vReal*wReal - vImag*wImag
+				vImagNew := vReal*wImag + vImag*wReal
 
-				// Store back in packed format
-				data[idx1] = float32(real(sum))
-				data[idx1+fftSize] = float32(imag(sum))
-				data[idx2] = float32(real(diff))
-				data[idx2+fftSize] = float32(imag(diff))
+				// Compute FFT butterfly: sum = u + v, diff = u - v
+				sumReal := uReal + vRealNew
+				sumImag := uImag + vImagNew
+				diffReal := uReal - vRealNew
+				diffImag := uImag - vImagNew
 
-				w *= wlen
+				// Store back in packed format (no type casts)
+				data[idx1] = sumReal
+				data[idx1Imag] = sumImag
+				data[idx2] = diffReal
+				data[idx2Imag] = diffImag
+
+				// Update twiddle factor: w *= wlen
+				wRealNew := wReal*cosAngle - wImag*sinAngle
+				wImagNew := wReal*sinAngle + wImag*cosAngle
+				w = complex64(complex(wRealNew, wImagNew))
 			}
 		}
 	}
@@ -93,7 +112,7 @@ func fftReal(data []float32) {
 // ifftReal performs in-place inverse FFT on packed complex data.
 // Data layout: real parts in data[0:N], imaginary parts in data[N:2*N] where N = len(data)/2.
 // The input must have even length (2*N) to accommodate both real and imaginary parts.
-// Optimized with BCE techniques: reslicing and for range loops
+// Optimized with BCE techniques: reslicing and for range loops, math32 for float32 operations.
 func ifftReal(data []float32) {
 	n := len(data)
 	if n <= 2 {
@@ -117,7 +136,8 @@ func ifftReal(data []float32) {
 	fftReal(data)
 
 	// Conjugate back and scale by 1/N
-	scale := 1.0 / float32(fftSize)
+	fftSizeF := float32(fftSize)
+	scale := 1.0 / fftSizeF
 	for i := range fftSize {
 		// Conjugate back (negate imag) and scale both parts
 		imagIdx := i + fftSize
@@ -128,7 +148,7 @@ func ifftReal(data []float32) {
 }
 
 // fftComplex performs in-place complex FFT using Cooley-Tukey algorithm
-// Optimized with BCE techniques: reslicing and for range loops
+// Optimized with BCE techniques: reslicing and for range loops, math32 for float32 operations.
 func fftComplex(data []complex64) {
 	n := len(data)
 	if n <= 1 {
@@ -153,8 +173,10 @@ func fftComplex(data []complex64) {
 
 	// Cooley-Tukey FFT
 	for length := 2; length <= n; length <<= 1 {
-		angle := -2 * math.Pi / float64(length)
-		wlen := complex64(complex(math.Cos(angle), math.Sin(angle)))
+		lengthF := float32(length)
+		angle := -2 * math32.Pi / lengthF
+		cosAngle := math32.Cos(angle)
+		sinAngle := math32.Sin(angle)
 
 		halfLen := length / 2
 		for i := 0; i < n; i += length {
@@ -164,17 +186,30 @@ func fftComplex(data []complex64) {
 			segment = segment[:length]
 			for j := range halfLen {
 				u := segment[j]
-				v := segment[j+halfLen] * w
-				segment[j] = u + v
-				segment[j+halfLen] = u - v
-				w *= wlen
+				// Multiply v by w: (vReal + vImag*i) * (wReal + wImag*i)
+				v := segment[j+halfLen]
+				vReal := real(v)
+				vImag := imag(v)
+				wReal := real(w)
+				wImag := imag(w)
+				vRealNew := vReal*wReal - vImag*wImag
+				vImagNew := vReal*wImag + vImag*wReal
+				vNew := complex64(complex(vRealNew, vImagNew))
+
+				segment[j] = u + vNew
+				segment[j+halfLen] = u - vNew
+
+				// Update twiddle factor: w *= wlen
+				wRealNew := wReal*cosAngle - wImag*sinAngle
+				wImagNew := wReal*sinAngle + wImag*cosAngle
+				w = complex64(complex(wRealNew, wImagNew))
 			}
 		}
 	}
 }
 
 // ifftComplex performs in-place complex inverse FFT
-// Optimized with BCE techniques: reslicing and for range loops
+// Optimized with BCE techniques: reslicing and for range loops, math32 for float32 operations.
 func ifftComplex(data []complex64) {
 	n := len(data)
 	if n <= 1 {
@@ -184,17 +219,22 @@ func ifftComplex(data []complex64) {
 	// BCE hint: reslice to exact size
 	data = data[:n]
 
-	// Conjugate the data for IFFT
+	// Conjugate the data for IFFT (no type casts in hot path)
 	for i := range n {
-		data[i] = complex64(complex(real(data[i]), -imag(data[i])))
+		realVal := real(data[i])
+		imagVal := imag(data[i])
+		data[i] = complex64(complex(realVal, -imagVal))
 	}
 
 	// Forward FFT on conjugated data
 	fftComplex(data)
 
-	// Conjugate back and scale
-	scale := complex64(complex(1.0/float32(n), 0))
+	// Conjugate back and scale (no type casts in hot path)
+	nF := float32(n)
+	scale := 1.0 / nF
 	for i := range n {
-		data[i] = complex64(complex(real(data[i]), -imag(data[i]))) * scale
+		realVal := real(data[i])
+		imagVal := imag(data[i])
+		data[i] = complex64(complex(realVal*scale, -imagVal*scale))
 	}
 }

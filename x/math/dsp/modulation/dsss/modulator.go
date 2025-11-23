@@ -4,9 +4,97 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/itohio/EasyRobot/x/math/primitive/generics"
 	"github.com/itohio/EasyRobot/x/math/vec"
 	vecTypes "github.com/itohio/EasyRobot/x/math/vec/types"
 )
+
+// MinimumSamplesPerChip is the minimum number of samples per chip recommended for proper DSSS operation
+// Lower values may work but are not recommended for reliable performance
+const MinimumSamplesPerChip = 4
+
+// RecommendedSamplesPerChip is the recommended number of samples per chip for good DSSS performance
+const RecommendedSamplesPerChip = 8
+
+// CalculateMinimumSampleRate calculates the minimum sample rate required for DSSS modulation/demodulation
+//
+// This function determines the minimum sample rate based on two constraints:
+// 1. Nyquist criterion for carrier frequency (with safety margin)
+// 2. Chip sampling rate (baud rate * chip length * samples per chip)
+//
+// Parameters:
+//   - symbolRate: symbol rate in symbols/sec (baud rate)
+//   - spreadingFactor: number of chips per symbol (code length / chip length)
+//   - carrierFreq: carrier frequency in Hz
+//   - minSamplesPerChip: minimum samples per chip (default: MinimumSamplesPerChip = 4)
+//
+// Returns:
+//   - minimum sample rate in Hz
+//
+// Constraints:
+//  1. Nyquist criterion: sampleRate >= 4 * carrierFreq (4x safety margin to prevent aliasing)
+//  2. Chip sampling: sampleRate >= chipRate * minSamplesPerChip
+//     where chipRate = symbolRate * spreadingFactor (baud rate * chips per symbol)
+//
+// The function returns the maximum of these two constraints to satisfy both requirements.
+//
+// Calculation:
+//
+//	chipRate = symbolRate * spreadingFactor
+//	nyquistRate = 4 * carrierFreq
+//	chipSamplingRate = chipRate * minSamplesPerChip
+//	minSampleRate = max(nyquistRate, chipSamplingRate)
+//
+// Example:
+//
+//	symbolRate (baud) = 1000 symbols/sec
+//	spreadingFactor (chip length) = 7 chips/symbol (m-sequence with n=3)
+//	carrierFreq = 1000 Hz
+//	chipRate = 1000 * 7 = 7000 chips/sec
+//	nyquistRate = 4 * 1000 = 4000 Hz
+//	chipSamplingRate (4 samples/chip) = 7000 * 4 = 28000 Hz
+//	minSampleRate = max(4000, 28000) = 28000 Hz
+//	recommendedSampleRate (8 samples/chip) = max(4000, 7000*8) = max(4000, 56000) = 56000 Hz
+func CalculateMinimumSampleRate(symbolRate, spreadingFactor, carrierFreq float32, minSamplesPerChip int) float32 {
+	if minSamplesPerChip <= 0 {
+		minSamplesPerChip = MinimumSamplesPerChip
+	}
+
+	// Chip rate = symbol rate * spreading factor
+	chipRate := symbolRate * spreadingFactor
+
+	// Constraint 1: Nyquist for carrier frequency (with safety margin)
+	// Use 4x carrier frequency for safety margin (allows processing without aliasing)
+	nyquistRate := 4 * carrierFreq
+
+	// Constraint 2: Sufficient samples per chip
+	chipSamplingRate := chipRate * float32(minSamplesPerChip)
+
+	// Return maximum of both constraints
+	if nyquistRate > chipSamplingRate {
+		return nyquistRate
+	}
+	return chipSamplingRate
+}
+
+// CalculateRecommendedSampleRate calculates the recommended sample rate for DSSS
+//
+// This function uses RecommendedSamplesPerChip (8 samples per chip) for optimal performance.
+// The recommended rate provides better signal quality, timing recovery, and noise immunity
+// compared to the minimum rate (4 samples per chip).
+//
+// Parameters:
+//   - symbolRate: symbol rate in symbols/sec (baud rate)
+//   - spreadingFactor: number of chips per symbol (code length / chip length)
+//   - carrierFreq: carrier frequency in Hz
+//
+// Returns:
+//   - recommended sample rate in Hz (uses 8 samples per chip)
+//
+// See CalculateMinimumSampleRate for detailed calculation methodology.
+func CalculateRecommendedSampleRate(symbolRate, spreadingFactor, carrierFreq float32) float32 {
+	return CalculateMinimumSampleRate(symbolRate, spreadingFactor, carrierFreq, RecommendedSamplesPerChip)
+}
 
 // Modulator handles Direct Sequence Spread Spectrum modulation
 // Implements modulation.Modulator interface
@@ -22,21 +110,36 @@ type Modulator struct {
 	code              Code      // Spreading code for binary DSSS
 	codeTable         CodeTable // Code table for M-ary DSSS
 	modulationOrder   int       // 2 for binary, M for M-ary
-	bitBuffer         []byte
-	bitIndex          int
-	chipIndex         int // Current chip index within symbol
-	sampleIndexInChip int // Current sample index within chip
+	chipIndex         int       // Current chip index within symbol
+	sampleIndexInChip int       // Current sample index within chip
 	carrierPhase      float32
 }
 
 // NewModulator creates a new DSSS modulator with unified API
-// sampleRate: sampling frequency in Hz
-// carrierFreq: carrier frequency in Hz
-// symbolRate: symbol rate in symbols/sec
-// codes: spreading codes (varargs)
+//
+// Parameters:
+//   - sampleRate: sampling frequency in Hz. Must meet minimum requirements (see CalculateMinimumSampleRate)
+//   - carrierFreq: carrier frequency in Hz
+//   - symbolRate: symbol rate in symbols/sec (baud rate)
+//   - codes: spreading codes (varargs)
 //   - 1 code: Binary DSSS (modulation order = 2, 1 bit per symbol)
 //   - M codes: M-ary DSSS (modulation order = M, log2(M) bits per symbol)
 //     M must be a power of 2 (2, 4, 8, 16, 32, 64, etc.)
+//
+// Sample Rate Requirements:
+//
+//	The sample rate must satisfy:
+//	1. Nyquist criterion: sampleRate >= 4 * carrierFreq (safety margin)
+//	2. Chip sampling: sampleRate >= chipRate * MinimumSamplesPerChip
+//	   where chipRate = symbolRate * spreadingFactor
+//
+//	Use CalculateMinimumSampleRate() or CalculateRecommendedSampleRate() to determine
+//	the required sample rate for your parameters.
+//
+//	Example:
+//	  For symbolRate=1000, spreadingFactor=7, carrierFreq=1000:
+//	  - Minimum: 28000 Hz (4 samples/chip)
+//	  - Recommended: 56000 Hz (8 samples/chip)
 //
 // Code Requirements:
 //   - Binary DSSS: 1 code (reused with ±1 based on bit value)
@@ -51,17 +154,13 @@ type Modulator struct {
 // Example - Binary DSSS:
 //
 //	code := GenerateMSequence(3, []int{2, 1, 0}, 1)
-//	modulator := NewModulator(48000, 1000, 1000, code)
+//	minRate := CalculateRecommendedSampleRate(1000, code.Length(), 1000)
+//	modulator := NewModulator(minRate, 1000, 1000, code)
 //
 // Example - 4-ary DSSS:
 //
 //	codeTable := GenerateWalshCodeTable(4) // 4 orthogonal codes
 //	modulator := NewModulator(48000, 1000, 1000, codeTable[0], codeTable[1], codeTable[2], codeTable[3])
-//
-// Example - 8-ary DSSS with unique codes:
-//
-//	codeTable := GetUniqueSymbolCodeTable("m-sequence", 8, 15, true) // 8 unique codes
-//	modulator := NewModulator(48000, 1000, 1000, codeTable...)
 func NewModulator(sampleRate, carrierFreq, symbolRate float32, codes ...Code) *Modulator {
 	if len(codes) == 0 {
 		panic("DSSS modulator: at least one code must be provided")
@@ -100,9 +199,24 @@ func NewModulator(sampleRate, carrierFreq, symbolRate float32, codes ...Code) *M
 
 	spreadingFactor := firstCodeLength
 	chipRate := symbolRate * float32(spreadingFactor)
+
+	// Validate sample rate meets minimum requirements
+	minSampleRate := CalculateMinimumSampleRate(symbolRate, float32(spreadingFactor), carrierFreq, MinimumSamplesPerChip)
+	if sampleRate < minSampleRate {
+		panic(fmt.Sprintf("DSSS modulator: sample rate %f Hz is below minimum %f Hz (symbolRate=%f, spreadingFactor=%d, carrierFreq=%f). Use CalculateMinimumSampleRate() to determine required rate.",
+			sampleRate, minSampleRate, symbolRate, spreadingFactor, carrierFreq))
+	}
+
 	samplesPerChip := int(sampleRate / chipRate)
 	if samplesPerChip <= 0 {
 		panic(fmt.Sprintf("DSSS modulator: samplesPerChip must be positive, got %d (sampleRate=%f, chipRate=%f)", samplesPerChip, sampleRate, chipRate))
+	}
+
+	// Warn if below recommended (but don't fail)
+	if samplesPerChip < RecommendedSamplesPerChip {
+		recommendedRate := CalculateRecommendedSampleRate(symbolRate, float32(spreadingFactor), carrierFreq)
+		// Note: Using fmt.Printf for warning would be ideal, but to keep it clean, we just validate minimum
+		_ = recommendedRate // Suppress unused warning
 	}
 
 	mod := &Modulator{
@@ -115,7 +229,6 @@ func NewModulator(sampleRate, carrierFreq, symbolRate float32, codes ...Code) *M
 		samplesPerSymbol: spreadingFactor * samplesPerChip,
 		amplitude:        1.0,
 		modulationOrder:  modulationOrder,
-		bitBuffer:        make([]byte, 0, 1024),
 		carrierPhase:     0,
 	}
 
@@ -134,50 +247,6 @@ func NewModulator(sampleRate, carrierFreq, symbolRate float32, codes ...Code) *M
 	return mod
 }
 
-// NewMModulator creates a new DSSS modulator for M-ary DSSS
-// sampleRate: sampling frequency in Hz
-// carrierFreq: carrier frequency in Hz
-// symbolRate: symbol rate in symbols/sec
-// codeTable: table of spreading codes (one per symbol)
-func NewMModulator(sampleRate, carrierFreq, symbolRate float32, codeTable CodeTable) *Modulator {
-	if len(codeTable) == 0 {
-		panic("DSSS modulator: codeTable must not be empty")
-	}
-	if codeTable[0].length == 0 {
-		panic("DSSS modulator: codes in codeTable must not be empty")
-	}
-
-	// Verify all codes have same length
-	codeLength := codeTable[0].length
-	for i, code := range codeTable {
-		if code.length != codeLength {
-			panic(fmt.Sprintf("DSSS modulator: code %d has length %d, expected %d", i, code.length, codeLength))
-		}
-	}
-
-	spreadingFactor := codeLength
-	chipRate := symbolRate * float32(spreadingFactor)
-	samplesPerChip := int(sampleRate / chipRate)
-	if samplesPerChip <= 0 {
-		panic(fmt.Sprintf("DSSS modulator: samplesPerChip must be positive, got %d", samplesPerChip))
-	}
-
-	return &Modulator{
-		sampleRate:       sampleRate,
-		carrierFreq:      carrierFreq,
-		symbolRate:       symbolRate,
-		spreadingFactor:  spreadingFactor,
-		chipsPerSymbol:   spreadingFactor,
-		samplesPerChip:   samplesPerChip,
-		samplesPerSymbol: spreadingFactor * samplesPerChip,
-		amplitude:        1.0,
-		codeTable:        codeTable,
-		modulationOrder:  len(codeTable),
-		bitBuffer:        make([]byte, 0, 1024),
-		carrierPhase:     0,
-	}
-}
-
 // SetAmplitude sets the signal amplitude for modulation
 //
 // Deprecated: This method is not part of the Modulator interface.
@@ -188,8 +257,6 @@ func (dsss *Modulator) SetAmplitude(amplitude float32) {
 
 // Reset resets the modulator state
 func (dsss *Modulator) Reset() {
-	dsss.bitBuffer = dsss.bitBuffer[:0]
-	dsss.bitIndex = 0
 	dsss.chipIndex = 0
 	dsss.sampleIndexInChip = 0
 	dsss.carrierPhase = 0
@@ -203,17 +270,9 @@ func (dsss *Modulator) Encode(amplitudes vecTypes.Vector, data []byte) int {
 	if amplitudes == nil {
 		// Calculate expected length
 		bitsPerSymbol := int(math.Log2(float64(dsss.modulationOrder)))
-		bitsNeeded := len(dsss.bitBuffer) + len(data)*8
+		bitsNeeded := len(data) * 8
 		symbolsNeeded := (bitsNeeded + bitsPerSymbol - 1) / bitsPerSymbol
 		return symbolsNeeded * dsss.samplesPerSymbol
-	}
-
-	// Convert bytes to bits
-	for _, b := range data {
-		for i := 7; i >= 0; i-- {
-			bit := (b >> uint(i)) & 1
-			dsss.bitBuffer = append(dsss.bitBuffer, byte(bit))
-		}
 	}
 
 	ampVec := amplitudes.(vec.Vector)
@@ -221,20 +280,21 @@ func (dsss *Modulator) Encode(amplitudes vecTypes.Vector, data []byte) int {
 
 	samplesWritten := 0
 
-	// Process bits into symbols and generate signal
+	// Use BitBuffer to read symbols from input data
 	bitsPerSymbol := int(math.Log2(float64(dsss.modulationOrder)))
-	for len(dsss.bitBuffer) >= bitsPerSymbol && samplesWritten < len(ampData) {
-		// Extract bits for symbol
-		bits := dsss.bitBuffer[:bitsPerSymbol]
-		dsss.bitBuffer = dsss.bitBuffer[bitsPerSymbol:]
+	bitBuffer := generics.NewBitBuffer[byte](bitsPerSymbol)
+	bitBuffer.ReadFromBytes(data)
+	bitBuffer.Reset()
 
-		// Convert bits to symbol index
-		symbolIndex := 0
-		for i, bit := range bits {
-			if bit == 1 {
-				symbolIndex |= 1 << uint(bitsPerSymbol-1-i)
-			}
+	// Process symbols and generate signal
+	for samplesWritten < len(ampData) {
+		// Read symbol value using BitBuffer
+		symbolValue, ok := bitBuffer.Read()
+		if !ok {
+			// No more symbols available
+			break
 		}
+		symbolIndex := int(symbolValue)
 
 		// Get spreading code for this symbol
 		var code Code

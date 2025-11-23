@@ -7,6 +7,7 @@ import (
 	"github.com/itohio/EasyRobot/x/math/dsp/modulation/iq"
 	"github.com/itohio/EasyRobot/x/math/filter"
 	agcFilter "github.com/itohio/EasyRobot/x/math/filter/agc"
+	"github.com/itohio/EasyRobot/x/math/primitive/generics"
 	"github.com/itohio/EasyRobot/x/math/vec"
 	vecTypes "github.com/itohio/EasyRobot/x/math/vec/types"
 )
@@ -37,11 +38,14 @@ type Demodulator struct {
 	phaseAcc  float32
 
 	// Streaming state
-	sampleBuffer []float32 // Buffer for partial symbols
-	bitBuffer    []byte    // Buffer for partial bytes
+	sampleBuffer   []float32                // Buffer for partial symbols
+	bitBuffer      generics.BitBuffer[byte] // Buffer for symbols
+	bytesExtracted int
 
 	// Lock state
-	locked bool
+	locked        bool
+	wasLocked     bool // Track previous lock state to detect lock transition
+	startDecoding bool // Track if we've started decoding (to skip padding)
 }
 
 // NewDemodulator creates a new PSK demodulator
@@ -77,7 +81,8 @@ func NewDemodulator(sampleRate, carrierFreq, symbolRate float32, modulationOrder
 		agc:              agc,
 		iqDecoder:        iq.NewDecoder(sampleRate, carrierFreq),
 		sampleBuffer:     make([]float32, 0, samplesPerSymbol*2),
-		bitBuffer:        make([]byte, 0, 64),
+		bitBuffer:        generics.NewBitBuffer[byte](int(math.Log2(float64(modulationOrder)))), // bits per symbol
+		bytesExtracted:   0,
 	}
 
 	return decoder
@@ -98,8 +103,11 @@ func (psk *Demodulator) SetFilter(f filter.Processor[float32]) {
 func (psk *Demodulator) Reset() {
 	psk.phaseAcc = 0
 	psk.locked = false
+	psk.wasLocked = false
+	psk.startDecoding = false
 	psk.sampleBuffer = psk.sampleBuffer[:0]
-	psk.bitBuffer = psk.bitBuffer[:0]
+	psk.bitBuffer.Clear()
+	psk.bytesExtracted = 0
 	if psk.costasLoop != nil {
 		psk.costasLoop.Reset()
 	}
@@ -218,18 +226,32 @@ func (psk *Demodulator) ProcessChunk(samples []float32, output []byte) (bytesDec
 		}
 	}
 
+	// Check if we just locked (transition from unlocked to locked)
+	justLocked := !psk.wasLocked && psk.locked
+	if justLocked {
+		// When we first lock, clear the sample buffer to discard padding samples
+		// Keep only the last few samples for continuity (enough for signal detector to work)
+		keepSamples := psk.samplesPerSymbol * 2 // Keep 2 symbols worth for better continuity
+		if len(psk.sampleBuffer) > keepSamples {
+			psk.sampleBuffer = psk.sampleBuffer[len(psk.sampleBuffer)-keepSamples:]
+		} else {
+			// If buffer is small, keep it all (might be all signal, no padding)
+		}
+		psk.startDecoding = true
+	}
+	psk.wasLocked = psk.locked
+
 	// Always add samples to buffer (even if not locked yet)
 	// This allows signal detector to accumulate samples and lock
 	// We'll only decode symbols when locked
 	psk.sampleBuffer = append(psk.sampleBuffer, samples...)
 
-	// Only decode symbols if locked (signal detector must lock first)
-	if !psk.locked {
+	// Only decode symbols if locked and we've started decoding (to skip padding)
+	if !psk.locked || !psk.startDecoding {
 		return 0, len(psk.sampleBuffer) >= psk.samplesPerSymbol
 	}
 
 	// Process complete symbols
-	bitsPerSymbol := int(math.Log2(float64(psk.modulationOrder)))
 	bytesDecoded = 0
 
 	for len(psk.sampleBuffer) >= psk.samplesPerSymbol {
@@ -289,21 +311,28 @@ func (psk *Demodulator) ProcessChunk(samples []float32, output []byte) (bytesDec
 			symbol = int(phase / (2 * math.Pi / float32(psk.modulationOrder)))
 		}
 
-		// Convert symbol to bits
-		for i := bitsPerSymbol - 1; i >= 0; i-- {
-			bit := (symbol >> uint(i)) & 1
-			psk.bitBuffer = append(psk.bitBuffer, byte(bit))
-		}
+		// Write symbol to bit buffer
+		psk.bitBuffer.Write(byte(symbol))
 
-		// Convert bits to bytes
-		for len(psk.bitBuffer) >= 8 && bytesDecoded < len(output) {
-			byteVal := byte(0)
-			for i := 0; i < 8; i++ {
-				byteVal |= psk.bitBuffer[i] << uint(7-i)
+		// Extract bytes when we have enough
+		allBytes := psk.bitBuffer.ToBytes()
+		if len(allBytes) > psk.bytesExtracted {
+			// Copy new bytes to output
+			newBytes := allBytes[psk.bytesExtracted:]
+			remaining := output[bytesDecoded:]
+			copied := copy(remaining, newBytes)
+			bytesDecoded += copied
+			psk.bytesExtracted += copied
+
+			// If we extracted all complete bytes, compact the buffer
+			bitsWritten := psk.bitBuffer.GetWrittenBits()
+			completeBytes := (bitsWritten >> 3) * 8
+			if psk.bytesExtracted*8 >= completeBytes && completeBytes > 0 {
+				// Move remaining bits to beginning
+				psk.bitBuffer.SetPosition(completeBytes)
+				psk.bitBuffer.Compact()
+				psk.bytesExtracted = 0
 			}
-			output[bytesDecoded] = byteVal
-			bytesDecoded++
-			psk.bitBuffer = psk.bitBuffer[8:]
 		}
 	}
 
@@ -328,10 +357,4 @@ func (psk *Demodulator) Decode(data []byte, amplitudes vecTypes.Vector) int {
 
 	bytesDecoded, _ := psk.ProcessChunk(ampData, data)
 	return bytesDecoded
-}
-
-// OnIsEndOfPacket sets a callback to check if packet is complete
-func (psk *Demodulator) OnIsEndOfPacket(callback func([]byte) bool) {
-	// Store callback for future use
-	_ = callback
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/itohio/EasyRobot/x/math/dsp/modulation/iq"
 	"github.com/itohio/EasyRobot/x/math/filter"
 	agcFilter "github.com/itohio/EasyRobot/x/math/filter/agc"
+	"github.com/itohio/EasyRobot/x/math/primitive/generics"
 	"github.com/itohio/EasyRobot/x/math/vec"
 	vecTypes "github.com/itohio/EasyRobot/x/math/vec/types"
 )
@@ -30,10 +31,10 @@ type Demodulator struct {
 	agc            *agcFilter.Filter
 
 	// State
-	iqDemodulator *iq.Decoder
-	currentPhase  float32
-	bitBuffer     []byte
-	endOfPacket   func([]byte) bool
+	iqDemodulator  *iq.Decoder
+	currentPhase   float32
+	bitBuffer      generics.BitBuffer[byte]
+	bytesExtracted int
 
 	// Streaming state
 	sampleBuffer []float32
@@ -42,7 +43,9 @@ type Demodulator struct {
 	omega float32
 
 	// Lock state
-	locked bool
+	locked        bool
+	wasLocked     bool // Track previous lock state to detect lock transition
+	startDecoding bool // Track if we've started decoding (to skip padding)
 }
 
 // NewDemodulator creates a new ASK demodulator.
@@ -94,7 +97,8 @@ func NewDemodulator(sampleRate, carrierFreq, symbolRate float32, modulationOrder
 		signalDetector:   signalDetector,
 		agc:              agc,
 		iqDemodulator:    iq.NewDecoder(sampleRate, carrierFreq),
-		bitBuffer:        make([]byte, 0, 1024),
+		bitBuffer:        generics.NewBitBuffer[byte](int(math.Log2(float64(modulationOrder)))), // bits per symbol
+		bytesExtracted:   0,
 		sampleBuffer:     make([]float32, 0, samplesPerSymbol*2),
 	}
 }
@@ -113,7 +117,10 @@ func (mask *Demodulator) SetFilter(f filter.Processor[float32]) {
 // Reset resets the demodulator state.
 func (mask *Demodulator) Reset() {
 	mask.locked = false
-	mask.bitBuffer = mask.bitBuffer[:0]
+	mask.wasLocked = false
+	mask.startDecoding = false
+	mask.bitBuffer.Clear()
+	mask.bytesExtracted = 0
 	mask.sampleBuffer = mask.sampleBuffer[:0]
 	mask.currentPhase = 0
 	if mask.costasLoop != nil {
@@ -134,11 +141,6 @@ func (mask *Demodulator) Reset() {
 	if mask.lowPassFilter != nil {
 		mask.lowPassFilter.Reset()
 	}
-}
-
-// OnIsEndOfPacket sets a callback to check if packet is complete.
-func (mask *Demodulator) OnIsEndOfPacket(callback func([]byte) bool) {
-	mask.endOfPacket = callback
 }
 
 // Decode decodes amplitude vector into bytes.
@@ -177,13 +179,23 @@ func (mask *Demodulator) ProcessChunk(samples []float32, output []byte) (bytesDe
 		}
 	}
 
+	// Check if we just locked (transition from unlocked to locked)
+	justLocked := !mask.wasLocked && mask.locked
+	if justLocked {
+		// When we first lock, start decoding
+		// Don't clear the buffer - the signal detector has already filtered out most padding
+		// by requiring consistent signal energy. The remaining samples should be mostly signal.
+		mask.startDecoding = true
+	}
+	mask.wasLocked = mask.locked
+
 	// Always add samples to buffer (even if not locked yet)
 	// This allows signal detector to accumulate samples and lock
 	// We'll only decode symbols when locked
 	mask.sampleBuffer = append(mask.sampleBuffer, samples...)
 
-	// Only decode symbols if locked (signal detector must lock first)
-	if !mask.locked {
+	// Only decode symbols if locked and we've started decoding (to skip padding)
+	if !mask.locked || !mask.startDecoding {
 		return 0, len(mask.sampleBuffer) >= mask.samplesPerSymbol
 	}
 
@@ -198,24 +210,29 @@ func (mask *Demodulator) ProcessChunk(samples []float32, output []byte) (bytesDe
 		// Demodulate symbol to get amplitude
 		amplitude := mask.demodulateSymbol(symbolSamples)
 
-		// Convert amplitude back to bits
-		bits := mask.amplitudeToBits(amplitude)
-		mask.bitBuffer = append(mask.bitBuffer, bits...)
+		// Convert amplitude back to symbol and write to bit buffer
+		symbol := mask.quantizeAmplitude(amplitude)
+		mask.bitBuffer.Write(byte(symbol))
 
-		// Convert bits to bytes when we have enough
-		for len(mask.bitBuffer) >= 8 && bytesDecoded < len(output) {
-			byteVal := byte(0)
-			for i := 0; i < 8; i++ {
-				byteVal |= mask.bitBuffer[i] << uint(7-i)
-			}
-			output[bytesDecoded] = byteVal
-			bytesDecoded++
+		// Extract bytes when we have enough
+		allBytes := mask.bitBuffer.ToBytes()
+		if len(allBytes) > mask.bytesExtracted {
+			// Copy new bytes to output
+			newBytes := allBytes[mask.bytesExtracted:]
+			remaining := output[bytesDecoded:]
+			copied := copy(remaining, newBytes)
+			bytesDecoded += copied
+			mask.bytesExtracted += copied
 
-			// Check if packet is complete
-			if mask.endOfPacket != nil && mask.endOfPacket(output[:bytesDecoded]) {
-				return bytesDecoded, false // Packet complete
+			// If we extracted all complete bytes, compact the buffer
+			bitsWritten := mask.bitBuffer.GetWrittenBits()
+			completeBytes := (bitsWritten >> 3) * 8
+			if mask.bytesExtracted*8 >= completeBytes && completeBytes > 0 {
+				// Move remaining bits to beginning
+				mask.bitBuffer.SetPosition(completeBytes)
+				mask.bitBuffer.Compact()
+				mask.bytesExtracted = 0
 			}
-			mask.bitBuffer = mask.bitBuffer[8:]
 		}
 	}
 
@@ -224,13 +241,14 @@ func (mask *Demodulator) ProcessChunk(samples []float32, output []byte) (bytesDe
 
 // demodulateSymbol extracts amplitude from symbol samples.
 func (mask *Demodulator) demodulateSymbol(samples []float32) float32 {
-	// Use IQ demodulator to get envelope (magnitude)
+	// For ASK, we can use direct envelope detection (rectification + averaging)
+	// This is simpler and more robust than IQ demodulation for amplitude-only modulation
 	var envelopeAcc float32
 
 	for _, sample := range samples {
-		iVal, qVal := mask.iqDemodulator.ProcessSample(sample)
-		// Calculate envelope (magnitude)
-		envelope := float32(math.Sqrt(float64(iVal*iVal + qVal*qVal)))
+		// Rectify (absolute value) to get envelope
+		// For ASK, the signal is amplitude-modulated, so the envelope is the absolute value
+		envelope := float32(math.Abs(float64(sample)))
 		envelopeAcc += envelope
 	}
 

@@ -78,10 +78,3 @@ func (c *ComposeDecoder) Reset() {
 	c.demodulator.Reset()
 	c.byteDecoder.Reset()
 }
-
-// OnIsEndOfPacket sets the callback on the demodulator.
-// OnIsEndOfPacket implements Demodulator interface
-func (c *ComposeDecoder) OnIsEndOfPacket(callback func([]byte) bool) {
-	c.demodulator.OnIsEndOfPacket(callback)
-}
-

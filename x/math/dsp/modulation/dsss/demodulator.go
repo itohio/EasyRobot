@@ -6,6 +6,8 @@ import (
 
 	"github.com/itohio/EasyRobot/x/math/dsp/modulation"
 	agcFilter "github.com/itohio/EasyRobot/x/math/filter/agc"
+	"github.com/itohio/EasyRobot/x/math/filter/pll"
+	"github.com/itohio/EasyRobot/x/math/primitive/generics"
 	"github.com/itohio/EasyRobot/x/math/vec"
 	vecTypes "github.com/itohio/EasyRobot/x/math/vec/types"
 )
@@ -24,46 +26,66 @@ type Demodulator struct {
 	modulationOrder  int
 
 	// Signal detection and AGC
-	signalDetector *modulation.SignalDetector
-	agc            *agcFilter.Filter
+	signalDetector modulation.SignalDetector
+	agc            agcFilter.Filter
+
+	// Testable components (SOLID principle - single responsibility)
+	acquisition Acquisition
+	despreader  Despreader
 
 	// Acquisition state
 	acquired          bool
 	codePhase         int     // Current code phase offset (in samples)
-	carrierPhase      float32 // Current carrier phase
+	carrierPhase      float32 // Current carrier phase (for modulator compatibility)
 	carrierFreqOffset float32 // Estimated carrier frequency offset
 
 	// Tracking loops
-	dllGain     float32 // DLL gain for timing tracking
-	pllGain     float32 // PLL gain for carrier tracking
-	timingError float32 // Current timing error estimate
-	phaseError  float32 // Current phase error estimate
+	pllFilter   pll.Filter // PLL for carrier phase/frequency tracking
+	dllGain     float32    // DLL gain for timing tracking
+	timingError float32    // Current timing error estimate
+	phaseError  float32    // Current phase error estimate
 
 	// Buffers
 	sampleBuffer []float32 // Ring buffer for incoming samples
 	bufferSize   int
 	bufferIndex  int
+	totalSamples int // Total number of samples processed (for carrier phase tracking)
 
-	// Symbol decision
-	symbolBuffer []int // Recovered symbol decisions
-	bitExtractor *modulation.BitExtractor
+	// Symbol decision and bit conversion
+	symbolBuffer   []int                    // Recovered symbol decisions
+	bitBuffer      generics.BitBuffer[byte] // BitBuffer for symbol-to-byte conversion
+	bytesExtracted int                      // Number of complete bytes already extracted from bitBuffer
 
 	// State
 	bitsPerSymbol int
 	locked        bool
-
-	// Callback for packet end detection
-	isEndOfPacket func([]byte) bool
 }
 
 // NewDemodulator creates a new DSSS demodulator with unified API
-// sampleRate: sampling frequency in Hz
-// carrierFreq: carrier frequency in Hz
-// symbolRate: symbol rate in symbols/sec
-// codes: spreading codes (varargs, must match encoder)
+//
+// Parameters:
+//   - sampleRate: sampling frequency in Hz. Must meet minimum requirements (see CalculateMinimumSampleRate)
+//   - carrierFreq: carrier frequency in Hz
+//   - symbolRate: symbol rate in symbols/sec (baud rate)
+//   - codes: spreading codes (varargs, must match encoder)
 //   - 1 code: Binary DSSS (modulation order = 2, 1 bit per symbol)
 //   - M codes: M-ary DSSS (modulation order = M, log2(M) bits per symbol)
 //     M must be a power of 2 (2, 4, 8, 16, 32, 64, etc.)
+//
+// Sample Rate Requirements:
+//
+//	The sample rate must satisfy:
+//	1. Nyquist criterion: sampleRate >= 4 * carrierFreq (safety margin)
+//	2. Chip sampling: sampleRate >= chipRate * MinimumSamplesPerChip
+//	   where chipRate = symbolRate * spreadingFactor
+//
+//	Use CalculateMinimumSampleRate() or CalculateRecommendedSampleRate() to determine
+//	the required sample rate for your parameters.
+//
+//	Example:
+//	  For symbolRate=1000, spreadingFactor=7, carrierFreq=1000:
+//	  - Minimum: 28000 Hz (4 samples/chip)
+//	  - Recommended: 56000 Hz (8 samples/chip)
 //
 // Code Requirements:
 //   - Binary DSSS: 1 code (same as encoder)
@@ -76,12 +98,14 @@ type Demodulator struct {
 // Example - Binary DSSS:
 //
 //	code := GenerateMSequence(3, []int{2, 1, 0}, 1)
-//	demodulator := NewDemodulator(48000, 1000, 1000, code)
+//	minRate := CalculateRecommendedSampleRate(1000, code.Length(), 1000)
+//	demodulator := NewDemodulator(minRate, 1000, 1000, code)
 //
 // Example - 4-ary DSSS:
 //
 //	codeTable := GenerateWalshCodeTable(4)
-//	demodulator := NewDemodulator(48000, 1000, 1000, codeTable[0], codeTable[1], codeTable[2], codeTable[3])
+//	recommendedRate := CalculateRecommendedSampleRate(1000, float32(codeTable[0].Length()), 1000)
+//	demodulator := NewDemodulator(recommendedRate, 1000, 1000, codeTable[0], codeTable[1], codeTable[2], codeTable[3])
 func NewDemodulator(sampleRate, carrierFreq, symbolRate float32, codes ...Code) *Demodulator {
 	if len(codes) == 0 {
 		panic("DSSS demodulator: at least one code must be provided")
@@ -120,6 +144,14 @@ func NewDemodulator(sampleRate, carrierFreq, symbolRate float32, codes ...Code) 
 
 	spreadingFactor := firstCodeLength
 	chipRate := symbolRate * float32(spreadingFactor)
+
+	// Validate sample rate meets minimum requirements
+	minSampleRate := CalculateMinimumSampleRate(symbolRate, float32(spreadingFactor), carrierFreq, MinimumSamplesPerChip)
+	if sampleRate < minSampleRate {
+		panic(fmt.Sprintf("DSSS demodulator: sample rate %f Hz is below minimum %f Hz (symbolRate=%f, spreadingFactor=%d, carrierFreq=%f). Use CalculateMinimumSampleRate() to determine required rate.",
+			sampleRate, minSampleRate, symbolRate, spreadingFactor, carrierFreq))
+	}
+
 	samplesPerChip := int(sampleRate / chipRate)
 	if samplesPerChip <= 0 {
 		panic(fmt.Sprintf("DSSS demodulator: samplesPerChip must be positive, got %d", samplesPerChip))
@@ -130,18 +162,39 @@ func NewDemodulator(sampleRate, carrierFreq, symbolRate float32, codes ...Code) 
 
 	// Initialize signal detector
 	detectorWindow := samplesPerSymbol * 4
-	signalDetector := modulation.NewSignalDetector(detectorWindow, modulation.MinSignalEnergy*10)
+	signalDetector := *modulation.NewSignalDetector(detectorWindow, modulation.MinSignalEnergy*10)
 	signalDetector.SetMinSNR(3.0) // Require 3dB SNR
 
 	// Initialize AGC
-	agc := agcFilter.New(0.5, 0.01)
+	agc := *agcFilter.New(0.5, 0.01)
 	agc.SetSampleRate(sampleRate)
 
-	// Initialize bit extractor
-	bitExtractor := modulation.NewBitExtractor()
+	// Initialize symbol buffer and BitBuffer
+	symbolBuffer := make([]int, 0, 64)
+	bitBuffer := generics.NewBitBuffer[byte](bitsPerSymbol)
+
+	// Initialize PLL for carrier phase tracking
+	// Use loop bandwidth of 5% of symbol rate for good tracking vs noise trade-off
+	loopBandwidth := symbolRate * 0.05
+	pllFilter := *pll.NewFromLoopBandwidth(loopBandwidth, symbolRate, 0.707)
 
 	// Buffer size: enough for acquisition window + margin
 	bufferSize := samplesPerSymbol * 8
+
+	// Create testable components (SOLID principle)
+	var code Code
+	var codeTable CodeTable
+	if numCodes == 1 {
+		code = codes[0] // Binary DSSS: single code
+	} else {
+		codeTable = make(CodeTable, modulationOrder)
+		copy(codeTable, codes) // M-ary DSSS: code table
+	}
+
+	acquisition := NewAcquisition(spreadingFactor, samplesPerChip, samplesPerSymbol, modulationOrder, bufferSize,
+		code, codeTable, carrierFreq, sampleRate)
+	despreader := NewDespreader(spreadingFactor, samplesPerChip, samplesPerSymbol, modulationOrder, bufferSize,
+		code, codeTable, carrierFreq, sampleRate)
 
 	demod := &Demodulator{
 		sampleRate:       sampleRate,
@@ -154,78 +207,20 @@ func NewDemodulator(sampleRate, carrierFreq, symbolRate float32, codes ...Code) 
 		bitsPerSymbol:    bitsPerSymbol,
 		signalDetector:   signalDetector,
 		agc:              agc,
-		bitExtractor:     bitExtractor,
+		acquisition:      acquisition,
+		despreader:       despreader,
+		symbolBuffer:     symbolBuffer,
+		bitBuffer:        bitBuffer,
+		bytesExtracted:   0,
+		pllFilter:        pllFilter,
 		dllGain:          0.1,
-		pllGain:          0.1,
 		sampleBuffer:     make([]float32, bufferSize),
 		bufferSize:       bufferSize,
-	}
-
-	// Set code or codeTable based on number of codes
-	if numCodes == 1 {
-		demod.code = codes[0] // Binary DSSS: single code
-	} else {
-		demod.codeTable = make(CodeTable, modulationOrder)
-		copy(demod.codeTable, codes) // M-ary DSSS: code table
+		code:             code,
+		codeTable:        codeTable,
 	}
 
 	return demod
-}
-
-// NewMDemodulator creates a new DSSS demodulator for M-ary DSSS
-// sampleRate: sampling frequency in Hz
-// carrierFreq: carrier frequency in Hz
-// symbolRate: symbol rate in symbols/sec
-// codeTable: table of spreading codes (must match encoder)
-func NewMDemodulator(sampleRate, carrierFreq, symbolRate float32, codeTable CodeTable) *Demodulator {
-	if len(codeTable) == 0 {
-		panic("DSSS demodulator: codeTable must not be empty")
-	}
-
-	spreadingFactor := codeTable[0].length
-	chipRate := symbolRate * float32(spreadingFactor)
-	samplesPerChip := int(sampleRate / chipRate)
-	if samplesPerChip <= 0 {
-		panic(fmt.Sprintf("DSSS demodulator: samplesPerChip must be positive, got %d", samplesPerChip))
-	}
-
-	samplesPerSymbol := spreadingFactor * samplesPerChip
-	modulationOrder := len(codeTable)
-	bitsPerSymbol := int(math.Log2(float64(modulationOrder)))
-
-	// Initialize signal detector
-	detectorWindow := samplesPerSymbol * 4
-	signalDetector := modulation.NewSignalDetector(detectorWindow, modulation.MinSignalEnergy*10)
-	signalDetector.SetMinSNR(3.0)
-
-	// Initialize AGC
-	agc := agcFilter.New(0.5, 0.01)
-	agc.SetSampleRate(sampleRate)
-
-	// Initialize bit extractor
-	bitExtractor := modulation.NewBitExtractor()
-
-	// Buffer size
-	bufferSize := samplesPerSymbol * 8
-
-	return &Demodulator{
-		sampleRate:       sampleRate,
-		carrierFreq:      carrierFreq,
-		symbolRate:       symbolRate,
-		spreadingFactor:  spreadingFactor,
-		samplesPerChip:   samplesPerChip,
-		samplesPerSymbol: samplesPerSymbol,
-		codeTable:        codeTable,
-		modulationOrder:  modulationOrder,
-		bitsPerSymbol:    bitsPerSymbol,
-		signalDetector:   signalDetector,
-		agc:              agc,
-		bitExtractor:     bitExtractor,
-		dllGain:          0.1,
-		pllGain:          0.1,
-		sampleBuffer:     make([]float32, bufferSize),
-		bufferSize:       bufferSize,
-	}
 }
 
 // Reset resets the demodulator state
@@ -238,18 +233,13 @@ func (dsss *Demodulator) Reset() {
 	dsss.timingError = 0
 	dsss.phaseError = 0
 	dsss.bufferIndex = 0
+	dsss.totalSamples = 0
 	dsss.symbolBuffer = dsss.symbolBuffer[:0]
-	if dsss.bitExtractor != nil {
-		dsss.bitExtractor.Reset()
-	}
-	if dsss.signalDetector != nil {
-		dsss.signalDetector.Reset()
-	}
-}
-
-// OnIsEndOfPacket sets a callback to check if packet is complete
-func (dsss *Demodulator) OnIsEndOfPacket(callback func([]byte) bool) {
-	dsss.isEndOfPacket = callback
+	dsss.bitBuffer.Clear()
+	dsss.bytesExtracted = 0
+	dsss.signalDetector.Reset()
+	dsss.agc.Reset()
+	dsss.pllFilter.Reset()
 }
 
 // IsLocked returns whether the demodulator is locked
@@ -263,6 +253,11 @@ func (dsss *Demodulator) IsLocked() bool {
 // Implements modulation.Demodulator interface
 // Returns the number of bytes written
 // Returns expected data length if data is nil
+//
+// Flow: 1. Try to get lock (acquisition)
+//  2. Try to detect preamble (future: can add preamble detection here)
+//  3. Decode symbols and add them to buffer
+//  4. Convert symbols to bytes using BitWriter-like pattern
 func (dsss *Demodulator) Decode(data []byte, amplitudes vecTypes.Vector) int {
 	if data == nil {
 		// Calculate expected length
@@ -278,6 +273,7 @@ func (dsss *Demodulator) Decode(data []byte, amplitudes vecTypes.Vector) int {
 	for _, sample := range ampData {
 		dsss.sampleBuffer[dsss.bufferIndex] = sample
 		dsss.bufferIndex = (dsss.bufferIndex + 1) % dsss.bufferSize
+		dsss.totalSamples++
 	}
 
 	// Update signal detector
@@ -285,17 +281,22 @@ func (dsss *Demodulator) Decode(data []byte, amplitudes vecTypes.Vector) int {
 		dsss.signalDetector.Update(sample)
 	}
 
-	// Check if signal is detected
-	if !dsss.acquired && dsss.signalDetector.IsLocked() {
-		// Attempt acquisition
-		dsss.attemptAcquisition()
-	}
-
+	// Step 1: Try to get lock (acquisition)
 	if !dsss.acquired {
-		return 0
+		// Only attempt acquisition if we have enough samples
+		// Need at least samplesPerSymbol samples for correlation
+		if dsss.totalSamples >= dsss.samplesPerSymbol {
+			dsss.attemptAcquisition()
+		}
+		if !dsss.acquired {
+			return 0
+		}
 	}
 
-	// Process samples for despreading
+	// Step 2: Try to detect preamble (future enhancement)
+	// For now, we proceed directly to symbol decoding after acquisition
+
+	// Step 3: Decode symbols and add them to buffer
 	bytesDecoded := 0
 	samplesProcessed := 0
 
@@ -306,21 +307,41 @@ func (dsss *Demodulator) Decode(data []byte, amplitudes vecTypes.Vector) int {
 			break
 		}
 
-		// Extract symbol
+		// Decode symbol
 		symbol := dsss.despreadSymbol()
 
 		if symbol >= 0 {
-			// Add symbol to bit extractor
-			dsss.bitExtractor.AddSymbol(symbol, dsss.bitsPerSymbol)
+			// Write symbol to BitBuffer
+			dsss.bitBuffer.Write(byte(symbol))
 
-			// Extract bytes
-			remaining := data[bytesDecoded:]
-			extracted := dsss.bitExtractor.ExtractBytes(remaining)
-			bytesDecoded += extracted
+			// Convert bits to bytes and extract new complete bytes
+			allBytes := dsss.bitBuffer.ToBytes()
+			if len(allBytes) > dsss.bytesExtracted {
+				// Copy new bytes to output
+				newBytes := allBytes[dsss.bytesExtracted:]
+				remaining := data[bytesDecoded:]
+				copied := copy(remaining, newBytes)
+				bytesDecoded += copied
+				dsss.bytesExtracted += copied
 
-			// Check if packet is complete
-			if dsss.isEndOfPacket != nil && bytesDecoded > 0 && dsss.isEndOfPacket(data[:bytesDecoded]) {
-				return bytesDecoded
+				// If we extracted all complete bytes, compact the buffer
+				bitsWritten := dsss.bitBuffer.GetWrittenBits()
+				completeBytes := (bitsWritten / 8) * 8
+				if dsss.bytesExtracted*8 >= completeBytes && completeBytes > 0 {
+					// Move remaining bits to beginning
+					dsss.bitBuffer.SetPosition(completeBytes)
+					dsss.bitBuffer.Compact()
+					dsss.bytesExtracted = 0
+				}
+			}
+
+			// Advance code phase for next symbol
+			dsss.codePhase = (dsss.codePhase + dsss.samplesPerSymbol) % dsss.bufferSize
+		} else {
+			// If we can't despread, we might have lost lock
+			// Advance buffer position anyway to avoid getting stuck
+			if dsss.acquired {
+				dsss.codePhase = (dsss.codePhase + dsss.samplesPerSymbol) % dsss.bufferSize
 			}
 		}
 
@@ -331,34 +352,127 @@ func (dsss *Demodulator) Decode(data []byte, amplitudes vecTypes.Vector) int {
 }
 
 // attemptAcquisition attempts to acquire the spreading code
+// Uses the testable Acquisition component
 func (dsss *Demodulator) attemptAcquisition() {
-	// Simple acquisition: correlate with code at different phases
-	maxCorrelation := float32(0)
-	bestPhase := 0
+	acquired, codePhase, _ := dsss.acquisition.AttemptAcquisition(
+		dsss.sampleBuffer, dsss.bufferIndex, dsss.totalSamples)
 
-	// Search over possible code phases
-	searchRange := dsss.samplesPerSymbol
-	for phase := 0; phase < searchRange; phase++ {
-		correlation := dsss.computeCorrelation(phase)
-		magnitude := float32(math.Abs(float64(correlation)))
-		if magnitude > maxCorrelation {
-			maxCorrelation = magnitude
-			bestPhase = phase
-		}
-	}
-
-	// Check if correlation is strong enough
-	threshold := float32(0.5) * float32(dsss.spreadingFactor) // Threshold based on spreading factor
-	if maxCorrelation > threshold {
-		dsss.codePhase = bestPhase
+	if acquired {
+		dsss.codePhase = codePhase
 		dsss.acquired = true
 		dsss.locked = true
+		// Initialize PLL - it will track phase from here
+		dsss.pllFilter.Reset()
 	}
 }
 
-// computeCorrelation computes correlation at given code phase
-func (dsss *Demodulator) computeCorrelation(phase int) float32 {
+// computeSimpleCorrelation computes simple correlation with carrier phase = 0
+// Used for initial acquisition search
+func (dsss *Demodulator) computeSimpleCorrelation(phase int) float32 {
 	var correlation float32
+
+	// Get code to correlate with
+	var code Code
+	if dsss.modulationOrder == 2 {
+		code = dsss.code
+	} else {
+		code = dsss.codeTable[0]
+	}
+
+	codeLength := code.length
+	// Calculate buffer start: we want to look back from current write position
+	// bufferIndex points to the next write position, so we need to look back
+	// by samplesPerSymbol + phase to find the start of the symbol we're correlating
+	lookback := dsss.samplesPerSymbol + phase
+	if lookback > dsss.bufferSize {
+		lookback = dsss.bufferSize
+	}
+	bufferStart := (dsss.bufferIndex - lookback + dsss.bufferSize) % dsss.bufferSize
+
+	// Calculate absolute sample index for carrier phase calculation
+	// This should match the modulator's carrierPhase counter
+	correlationStartSample := dsss.totalSamples - lookback
+	if correlationStartSample < 0 {
+		correlationStartSample = 0
+	}
+
+	// Correlate: multiply samples by code and accumulate
+	for chipIdx := 0; chipIdx < codeLength; chipIdx++ {
+		chipStartOffset := chipIdx * dsss.samplesPerChip
+		chipValue := code.GetBipolar(chipIdx)
+
+		for s := 0; s < dsss.samplesPerChip; s++ {
+			sampleOffset := chipStartOffset + s
+			bufferIdx := (bufferStart + sampleOffset) % dsss.bufferSize
+			sample := dsss.sampleBuffer[bufferIdx]
+
+			// Compute carrier phase and mix down
+			absoluteSampleIdx := correlationStartSample + sampleOffset
+			carrierPhase := 2 * math.Pi * dsss.carrierFreq * float32(absoluteSampleIdx) / dsss.sampleRate
+			carrierMix := float32(math.Cos(float64(carrierPhase)))
+
+			// Correlate: sample * code * carrier
+			correlation += sample * chipValue * carrierMix
+		}
+	}
+
+	// Return absolute value for magnitude
+	if correlation < 0 {
+		return -correlation
+	}
+	return correlation
+}
+
+// computeIQCorrelationWithPhaseOffset computes I/Q correlation with a carrier phase offset
+// This is used during acquisition when we don't know the exact carrier phase
+func (dsss *Demodulator) computeIQCorrelationWithPhaseOffset(phase int, carrierPhaseOffset float32) (float32, float32) {
+	var iCorr, qCorr float32
+
+	// Get code to correlate with
+	var code Code
+	if dsss.modulationOrder == 2 {
+		code = dsss.code
+	} else {
+		code = dsss.codeTable[0]
+	}
+
+	codeLength := code.length
+	correlationStartSample := dsss.totalSamples - dsss.samplesPerSymbol - phase
+	if correlationStartSample < 0 {
+		correlationStartSample = 0
+	}
+	bufferStart := (dsss.bufferIndex - dsss.samplesPerSymbol - phase + dsss.bufferSize) % dsss.bufferSize
+
+	// Integrate over all samples
+	for chipIdx := 0; chipIdx < codeLength; chipIdx++ {
+		chipStartOffset := chipIdx * dsss.samplesPerChip
+		chipValue := code.GetBipolar(chipIdx)
+
+		for s := 0; s < dsss.samplesPerChip; s++ {
+			sampleOffset := chipStartOffset + s
+			bufferIdx := (bufferStart + sampleOffset) % dsss.bufferSize
+			sample := dsss.sampleBuffer[bufferIdx]
+
+			// Compute carrier phase with offset
+			absoluteSampleIdx := correlationStartSample + sampleOffset
+			carrierPhase := 2 * math.Pi * dsss.carrierFreq * float32(absoluteSampleIdx) / dsss.sampleRate
+			correctedPhase := carrierPhase - carrierPhaseOffset
+
+			iCorrLocal := float32(math.Cos(float64(correctedPhase)))
+			qCorrLocal := float32(math.Sin(float64(correctedPhase)))
+
+			iCorr += sample * chipValue * iCorrLocal
+			qCorr += sample * chipValue * qCorrLocal
+		}
+	}
+
+	return iCorr, qCorr
+}
+
+// computeIQCorrelation computes I/Q correlation at given code phase (for acquisition)
+// Returns I and Q correlation values
+func (dsss *Demodulator) computeIQCorrelation(phase int) (float32, float32) {
+	var iCorr, qCorr float32
 
 	// Get code to correlate with
 	var code Code
@@ -371,95 +485,144 @@ func (dsss *Demodulator) computeCorrelation(phase int) float32 {
 
 	// Correlate over one symbol period (work directly with bits)
 	codeLength := code.length
-	for chipIdx := 0; chipIdx < codeLength; chipIdx++ {
-		chipStart := phase + chipIdx*dsss.samplesPerChip
-		if chipStart >= dsss.bufferSize {
-			break
-		}
 
-		// Sample at chip center (middle of chip period)
-		sampleIdx := chipStart + dsss.samplesPerChip/2
-		if sampleIdx >= dsss.bufferSize {
-			break
-		}
-
-		// Get sample (accounting for ring buffer)
-		sample := dsss.sampleBuffer[sampleIdx%dsss.bufferSize]
-
-		// Apply carrier correction (simplified - just use real part)
-		carrierPhase := 2 * math.Pi * dsss.carrierFreq * float32(sampleIdx) / dsss.sampleRate
-		carrierCorrection := float32(math.Cos(float64(carrierPhase)))
-
-		// Correlate: sample * code_chip * carrier_correction (get bipolar directly)
-		chipValue := code.GetBipolar(chipIdx)
-		correlation += sample * chipValue * carrierCorrection
+	// Calculate absolute sample index where correlation starts
+	// Ensure we don't go negative
+	correlationStartSample := dsss.totalSamples - dsss.samplesPerSymbol - phase
+	if correlationStartSample < 0 {
+		correlationStartSample = 0
 	}
 
-	return correlation
+	// Get buffer position for the start of correlation
+	// Look back from bufferIndex (which points to next write position)
+	bufferStart := (dsss.bufferIndex - dsss.samplesPerSymbol - phase + dsss.bufferSize) % dsss.bufferSize
+
+	// Get current PLL phase estimate for carrier correction (only if acquired)
+	var pllPhase float32
+	if dsss.acquired {
+		pllPhase = dsss.pllFilter.Phase()
+	}
+
+	// Integrate over all samples in the symbol period
+	// For each chip, integrate over all samples in that chip period
+	for chipIdx := 0; chipIdx < codeLength; chipIdx++ {
+		chipStartOffset := chipIdx * dsss.samplesPerChip
+
+		// Get bipolar chip value (constant for this chip)
+		chipValue := code.GetBipolar(chipIdx)
+
+		// Integrate over all samples in this chip period
+		for s := 0; s < dsss.samplesPerChip; s++ {
+			sampleOffset := chipStartOffset + s
+
+			// Get buffer index for this sample
+			bufferIdx := (bufferStart + sampleOffset) % dsss.bufferSize
+			sample := dsss.sampleBuffer[bufferIdx]
+
+			// Compute carrier phase using absolute sample index
+			// Modulator uses: phase = 2π * carrierFreq * sampleIndex / sampleRate
+			absoluteSampleIdx := correlationStartSample + sampleOffset
+			carrierPhase := 2 * math.Pi * dsss.carrierFreq * float32(absoluteSampleIdx) / dsss.sampleRate
+
+			// Apply PLL phase correction only if acquired
+			correctedPhase := carrierPhase - pllPhase
+
+			// I/Q correlation: in-phase and quadrature components
+			iCorrLocal := float32(math.Cos(float64(correctedPhase)))
+			qCorrLocal := float32(math.Sin(float64(correctedPhase)))
+
+			// Accumulate correlation: sample * code_chip * carrier_correction
+			iCorr += sample * chipValue * iCorrLocal
+			qCorr += sample * chipValue * qCorrLocal
+		}
+	}
+
+	// Don't update PLL here - this is for acquisition, PLL update happens in computeCorrelation
+	return iCorr, qCorr
+}
+
+// computeCorrelation computes I/Q correlation at given code phase and updates PLL
+// Returns in-phase (I) correlation value
+func (dsss *Demodulator) computeCorrelation(phase int) float32 {
+	iCorr, qCorr := dsss.computeIQCorrelation(phase)
+
+	// Update PLL with phase error after correlation
+	// Phase error = atan2(Q, I) - desired_phase (which is 0 for binary DSSS)
+	if iCorr != 0 || qCorr != 0 {
+		phaseError := float32(math.Atan2(float64(qCorr), float64(iCorr)))
+		if dsss.acquired {
+			// Only update PLL after acquisition to avoid disrupting acquisition
+			dsss.pllFilter.Update(phaseError)
+		}
+	}
+
+	// Return in-phase correlation (this is what we use for binary DSSS decision)
+	return iCorr
 }
 
 // despreadSymbol despreads one symbol from the received signal
 // Returns symbol index, or -1 if not enough samples
+// Uses the testable Despreader component
 func (dsss *Demodulator) despreadSymbol() int {
 	if !dsss.acquired {
 		return -1
 	}
 
-	if dsss.modulationOrder == 2 {
-		// Binary DSSS: correlate with single code
-		correlation := dsss.computeCorrelation(dsss.codePhase)
-
-		// Decision: positive -> 1, negative -> 0
-		if correlation > 0 {
-			return 1
-		}
-		return 0
-	} else {
-		// M-ary DSSS: correlate with all codes, choose maximum
-		maxCorrelation := float32(0)
-		bestSymbol := 0
-
-		for symbolIdx, code := range dsss.codeTable {
-			// Compute correlation with this code
-			correlation := dsss.computeCorrelationWithCode(dsss.codePhase, code)
-			magnitude := float32(math.Abs(float64(correlation)))
-
-			if magnitude > maxCorrelation {
-				maxCorrelation = magnitude
-				bestSymbol = symbolIdx
-			}
-		}
-
-		return bestSymbol
-	}
+	pllPhase := dsss.pllFilter.Phase()
+	return dsss.despreader.DespreadSymbol(
+		dsss.sampleBuffer, dsss.bufferIndex, dsss.totalSamples, dsss.codePhase, pllPhase)
 }
 
-// computeCorrelationWithCode computes correlation with a specific code
+// computeCorrelationWithCode computes I/Q correlation with a specific code
+// Returns magnitude of complex correlation
 func (dsss *Demodulator) computeCorrelationWithCode(phase int, code Code) float32 {
-	var correlation float32
+	var iCorr, qCorr float32
 
 	// Work directly with bits (no allocation)
 	codeLength := code.length
-	for chipIdx := 0; chipIdx < codeLength; chipIdx++ {
-		chipStart := phase + chipIdx*dsss.samplesPerChip
-		if chipStart >= dsss.bufferSize {
-			break
-		}
 
-		sampleIdx := chipStart + dsss.samplesPerChip/2
-		if sampleIdx >= dsss.bufferSize {
-			break
-		}
+	// Calculate absolute sample index where correlation starts
+	correlationStartSample := dsss.totalSamples - dsss.samplesPerSymbol - phase
+	bufferStart := (dsss.bufferIndex - dsss.samplesPerSymbol - phase + dsss.bufferSize) % dsss.bufferSize
 
-		sample := dsss.sampleBuffer[sampleIdx%dsss.bufferSize]
-
-		carrierPhase := 2 * math.Pi * dsss.carrierFreq * float32(sampleIdx) / dsss.sampleRate
-		carrierCorrection := float32(math.Cos(float64(carrierPhase)))
-
-		// Get bipolar value directly from bit
-		chipValue := code.GetBipolar(chipIdx)
-		correlation += sample * chipValue * carrierCorrection
+	// Get current PLL phase estimate (only if acquired)
+	var pllPhase float32
+	if dsss.acquired {
+		pllPhase = dsss.pllFilter.Phase()
 	}
 
-	return correlation
+	// Integrate over all samples in the symbol period
+	for chipIdx := 0; chipIdx < codeLength; chipIdx++ {
+		chipStartOffset := chipIdx * dsss.samplesPerChip
+
+		// Get bipolar chip value (constant for this chip)
+		chipValue := code.GetBipolar(chipIdx)
+
+		// Integrate over all samples in this chip period
+		for s := 0; s < dsss.samplesPerChip; s++ {
+			sampleOffset := chipStartOffset + s
+
+			// Get buffer index for this sample
+			bufferIdx := (bufferStart + sampleOffset) % dsss.bufferSize
+			sample := dsss.sampleBuffer[bufferIdx]
+
+			// Compute carrier phase using absolute sample index
+			absoluteSampleIdx := correlationStartSample + sampleOffset
+			carrierPhase := 2 * math.Pi * dsss.carrierFreq * float32(absoluteSampleIdx) / dsss.sampleRate
+
+			// Apply PLL phase correction only if acquired
+			correctedPhase := carrierPhase - pllPhase
+
+			// I/Q correlation
+			iCorrLocal := float32(math.Cos(float64(correctedPhase)))
+			qCorrLocal := float32(math.Sin(float64(correctedPhase)))
+
+			// Accumulate correlation
+			iCorr += sample * chipValue * iCorrLocal
+			qCorr += sample * chipValue * qCorrLocal
+		}
+	}
+
+	// Return magnitude for M-ary DSSS
+	return float32(math.Sqrt(float64(iCorr*iCorr + qCorr*qCorr)))
 }

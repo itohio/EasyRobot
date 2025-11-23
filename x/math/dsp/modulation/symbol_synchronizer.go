@@ -8,8 +8,8 @@ type SymbolSynchronizer struct {
 }
 
 // NewSymbolSynchronizer creates a new symbol synchronizer
-func NewSymbolSynchronizer(samplesPerSymbol int) *SymbolSynchronizer {
-	return &SymbolSynchronizer{
+func NewSymbolSynchronizer(samplesPerSymbol int) SymbolSynchronizer {
+	return SymbolSynchronizer{
 		samplesPerSymbol: samplesPerSymbol,
 		sampleBuffer:     make([]float32, 0, samplesPerSymbol*2),
 	}

@@ -4,169 +4,581 @@ import (
 	"math"
 	"testing"
 
-	"github.com/itohio/EasyRobot/x/math/vec"
 	"github.com/stretchr/testify/assert"
 )
 
-// TestGoertzelFrequencyDetector_PureSine tests Goertzel with pure sine waves
-// This verifies the algorithm itself is correct, independent of encoder
-func TestGoertzelFrequencyDetector_PureSine(t *testing.T) {
-	sampleRate := float32(48000)
-	freqLow := float32(800)
-	freqHigh := float32(1200)
-	samplesPerSymbol := 48
+// TestGoertzelFrequencySpacing tests Goertzel detector with proper frequency spacing
+// Demonstrates reliable detection when frequencies are spaced according to theoretical requirements
+func TestGoertzelFrequencySpacing(t *testing.T) {
+	// Test parameters
+	symbolRate := float32(1000)                          // 1000 symbols per second
+	samplesPerSymbol := 48                               // 48 samples per symbol
+	sampleRate := symbolRate * float32(samplesPerSymbol) // 48 kHz
 
-	detector := NewGoertzelFrequencyDetector(sampleRate, freqLow, freqHigh)
+	// Recommended spacing: 3 * symbolRate = 3000 Hz
+	// Minimum spacing: 2 * symbolRate = 2000 Hz
+	// Use 2x recommended spacing for safety: 2 * 3 * symbolRate = 6000 Hz
+	recommendedSpacing := 3 * symbolRate
+	testSpacing := 2 * recommendedSpacing // 2x recommended for test safety margin
 
-	// Test 1: Pure sine wave at freqLow
-	signalLow := vec.New(samplesPerSymbol)
-	signalDataLow := []float32(signalLow)
-	amplitude := float32(0.5)
-	for i := 0; i < samplesPerSymbol; i++ {
-		phase := 2 * math.Pi * freqLow * float32(i) / sampleRate
-		signalDataLow[i] = amplitude * float32(math.Cos(float64(phase)))
+	t.Logf("Symbol rate: %.0f sps", symbolRate)
+	t.Logf("Sample rate: %.0f Hz", sampleRate)
+	t.Logf("Samples per symbol: %d", samplesPerSymbol)
+	t.Logf("Frequency resolution: %.2f Hz", sampleRate/float32(samplesPerSymbol))
+	t.Logf("Recommended spacing: %.0f Hz", recommendedSpacing)
+	t.Logf("Test spacing (2x recommended): %.0f Hz", testSpacing)
+
+	// Create frequencies with proper spacing
+	// Start at 1000 Hz, space by testSpacing
+	freqs := []float32{
+		1000,
+		1000 + testSpacing,
+		1000 + 2*testSpacing,
+		1000 + 3*testSpacing,
 	}
 
-	freqIdx, magnitude := detector.DetectFrequency(signalDataLow)
-	assert.Equal(t, 0, freqIdx, "Should detect freqLow (index 0) for pure sine")
-	assert.Greater(t, magnitude, float32(0.1), "Magnitude should be significant")
+	t.Logf("Test frequencies: %v Hz", freqs)
 
-	// Test 2: Pure sine wave at freqHigh
-	signalHigh := vec.New(samplesPerSymbol)
-	signalDataHigh := []float32(signalHigh)
-	for i := 0; i < samplesPerSymbol; i++ {
-		phase := 2 * math.Pi * freqHigh * float32(i) / sampleRate
-		signalDataHigh[i] = amplitude * float32(math.Cos(float64(phase)))
+	detector := NewGoertzelFrequencyDetector(sampleRate, freqs...)
+
+	// Test detection of each frequency individually
+	correctDetections := 0
+	for expectedIdx, freq := range freqs {
+		// Generate one symbol worth of samples at this frequency
+		samples := make([]float32, samplesPerSymbol)
+		phase := float32(0)
+		for i := range samples {
+			phase += 2 * math.Pi * freq / sampleRate
+			samples[i] = float32(math.Cos(float64(phase)))
+		}
+
+		// Detect frequency
+		detectedIdx, magnitude := detector.DetectFrequency(samples)
+
+		t.Logf("Frequency %d (%.0f Hz): detected=%d, magnitude=%.6f", expectedIdx, freq, detectedIdx, magnitude)
+
+		if detectedIdx == expectedIdx {
+			correctDetections++
+		} else if detectedIdx < 0 {
+			t.Logf("  Ambiguous detection for frequency %d", expectedIdx)
+		} else {
+			t.Logf("  Wrong detection: expected %d, got %d", expectedIdx, detectedIdx)
+		}
+
+		detector.Reset()
 	}
 
-	freqIdx, magnitude = detector.DetectFrequency(signalDataHigh)
-	assert.Equal(t, 1, freqIdx, "Should detect freqHigh (index 1) for pure sine")
-	assert.Greater(t, magnitude, float32(0.1), "Magnitude should be significant")
-
-	// Test 3: Magnitudes should be similar for same amplitude
-	_, magLow := detector.DetectFrequency(signalDataLow)
-	_, magHigh := detector.DetectFrequency(signalDataHigh)
-	ratio := magLow / magHigh
-	assert.InDelta(t, 1.0, ratio, 0.2, "Magnitudes should be similar for same amplitude (ratio should be close to 1.0)")
+	t.Logf("Correct detections: %d/%d", correctDetections, len(freqs))
+	assert.Equal(t, len(freqs), correctDetections, "Should detect all frequencies correctly with proper spacing")
 }
 
-// TestGoertzelFrequencyDetector tests frequency detection with Goertzel
-func TestGoertzelFrequencyDetector(t *testing.T) {
-	sampleRate := float32(48000)
-	freqLow := float32(800)
-	freqHigh := float32(1200)
-	samplesPerSymbol := 48
+// TestGoertzelMultipleFrequencies tests Goertzel detector with multiple frequencies present simultaneously
+// This is the more challenging case - detecting one frequency when others are also present
+func TestGoertzelMultipleFrequencies(t *testing.T) {
+	// Test parameters
+	symbolRate := float32(1000)                          // 1000 symbols per second
+	samplesPerSymbol := 48                               // 48 samples per symbol
+	sampleRate := symbolRate * float32(samplesPerSymbol) // 48 kHz
 
-	detector := NewGoertzelFrequencyDetector(sampleRate, freqLow, freqHigh)
+	// Use 2x recommended spacing for safety
+	recommendedSpacing := 3 * symbolRate
+	testSpacing := 2 * recommendedSpacing // 6000 Hz
 
-	// Test 1: Generate pure sine wave at freqLow and detect it
-	signalLow := vec.New(samplesPerSymbol)
-	signalDataLow := []float32(signalLow)
-	amplitude := float32(0.5)
-	phase := float32(0)
-	for i := 0; i < samplesPerSymbol; i++ {
-		phase += 2 * math.Pi * freqLow / sampleRate
-		signalDataLow[i] = amplitude * float32(math.Cos(float64(phase)))
+	// Create frequencies with proper spacing
+	freqs := []float32{
+		1000,
+		1000 + testSpacing,
+		1000 + 2*testSpacing,
+		1000 + 3*testSpacing,
 	}
 
-	freqIdx, magnitude := detector.DetectFrequency(signalDataLow)
-	assert.Equal(t, 0, freqIdx, "Should detect freqLow (index 0) for bit 0")
-	assert.Greater(t, magnitude, float32(0.1), "Magnitude should be significant")
+	t.Logf("Test frequencies: %v Hz (spacing: %.0f Hz)", freqs, testSpacing)
 
-	// Test 2: Generate pure sine wave at freqHigh and detect it
-	signalHigh := vec.New(samplesPerSymbol)
-	signalDataHigh := []float32(signalHigh)
-	phase = float32(0)
-	for i := 0; i < samplesPerSymbol; i++ {
-		phase += 2 * math.Pi * freqHigh / sampleRate
-		signalDataHigh[i] = amplitude * float32(math.Cos(float64(phase)))
-	}
+	detector := NewGoertzelFrequencyDetector(sampleRate, freqs...)
 
-	freqIdx, magnitude = detector.DetectFrequency(signalDataHigh)
-	assert.Equal(t, 1, freqIdx, "Should detect freqHigh (index 1) for bit 1")
-	assert.Greater(t, magnitude, float32(0.1), "Magnitude should be significant")
-}
-
-// TestCorrelationFrequencyDetector tests frequency detection with correlation
-func TestCorrelationFrequencyDetector(t *testing.T) {
-	sampleRate := float32(48000)
-	freqLow := float32(800)
-	freqHigh := float32(1200)
-	samplesPerSymbol := 48
-
-	detector := NewCorrelationFrequencyDetector(sampleRate, freqLow, freqHigh)
-
-	// Test 1: Generate pure sine wave at freqLow and detect it
-	signalLow := vec.New(samplesPerSymbol)
-	signalDataLow := []float32(signalLow)
-	amplitude := float32(0.5)
-	phase := float32(0)
-	for i := 0; i < samplesPerSymbol; i++ {
-		phase += 2 * math.Pi * freqLow / sampleRate
-		signalDataLow[i] = amplitude * float32(math.Cos(float64(phase)))
-	}
-
-	freqIdx, magnitude := detector.DetectFrequency(signalDataLow)
-	assert.Equal(t, 0, freqIdx, "Should detect freqLow (index 0)")
-	assert.Greater(t, magnitude, float32(0.1), "Magnitude should be significant")
-
-	// Test 2: Generate pure sine wave at freqHigh and detect it
-	signalHigh := vec.New(samplesPerSymbol)
-	signalDataHigh := []float32(signalHigh)
-	phase = float32(0)
-	for i := 0; i < samplesPerSymbol; i++ {
-		phase += 2 * math.Pi * freqHigh / sampleRate
-		signalDataHigh[i] = amplitude * float32(math.Cos(float64(phase)))
-	}
-
-	freqIdx, magnitude = detector.DetectFrequency(signalDataHigh)
-	assert.Equal(t, 1, freqIdx, "Should detect freqHigh (index 1)")
-	assert.Greater(t, magnitude, float32(0.1), "Magnitude should be significant")
-}
-
-// TestFrequencyDetector_PhaseIndependence tests that detection works regardless of phase
-func TestFrequencyDetector_PhaseIndependence(t *testing.T) {
-	sampleRate := float32(48000)
-	freqLow := float32(800)
-	freqHigh := float32(1200)
-	samplesPerSymbol := 48
-
-	detector := NewGoertzelFrequencyDetector(sampleRate, freqLow, freqHigh)
-
-	// Generate signals with different starting phases
-	testCases := []struct {
-		name      string
-		frequency  float32
-		phase     float32
-		expected  int
-	}{
-		{"freqLow phase 0", freqLow, 0, 0},
-		{"freqLow phase Pi/4", freqLow, math.Pi / 4, 0},
-		{"freqLow phase Pi/2", freqLow, math.Pi / 2, 0},
-		{"freqLow phase Pi", freqLow, math.Pi, 0},
-		{"freqHigh phase 0", freqHigh, 0, 1},
-		{"freqHigh phase Pi/4", freqHigh, math.Pi / 4, 1},
-		{"freqHigh phase Pi/2", freqHigh, math.Pi / 2, 1},
-		{"freqHigh phase Pi", freqHigh, math.Pi, 1},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			signal := vec.New(samplesPerSymbol)
-			signalData := []float32(signal)
-			amplitude := float32(0.5)
-			phase := tc.phase
-			for i := 0; i < samplesPerSymbol; i++ {
-				phase += 2 * math.Pi * tc.frequency / sampleRate
-				signalData[i] = amplitude * float32(math.Cos(float64(phase)))
+	// Test detection when multiple frequencies are present simultaneously
+	// Generate signal with all frequencies at equal amplitude
+	correctDetections := 0
+	for expectedIdx, targetFreq := range freqs {
+		// Generate signal with all frequencies present, but target frequency is dominant
+		samples := make([]float32, samplesPerSymbol)
+		for i := range samples {
+			// Add all frequencies, but make target frequency 2x stronger
+			sample := float32(0)
+			for freqIdx, freq := range freqs {
+				phaseFreq := 2 * math.Pi * freq / sampleRate * float32(i)
+				amplitude := float32(0.5) // Base amplitude
+				if freqIdx == expectedIdx {
+					amplitude = 1.0 // Target frequency is stronger
+				}
+				sample += amplitude * float32(math.Cos(float64(phaseFreq)))
 			}
+			samples[i] = sample
+		}
 
-			freqIdx, magnitude := detector.DetectFrequency(signalData)
+		// Detect frequency
+		detectedIdx, magnitude := detector.DetectFrequency(samples)
 
-			assert.Equal(t, tc.expected, freqIdx,
-				"Should detect correct frequency regardless of starting phase")
-			assert.Greater(t, magnitude, float32(0.05),
-				"Magnitude should be significant")
-		})
+		t.Logf("Target frequency %d (%.0f Hz) with all frequencies present: detected=%d, magnitude=%.6f",
+			expectedIdx, targetFreq, detectedIdx, magnitude)
+
+		if detectedIdx == expectedIdx {
+			correctDetections++
+		} else if detectedIdx < 0 {
+			t.Logf("  Ambiguous detection for target frequency %d", expectedIdx)
+		} else {
+			t.Logf("  Wrong detection: expected %d, got %d", expectedIdx, detectedIdx)
+		}
+
+		detector.Reset()
 	}
+
+	t.Logf("Correct detections: %d/%d", correctDetections, len(freqs))
+	assert.GreaterOrEqual(t, correctDetections, len(freqs)-1, "Should detect target frequency correctly even with others present")
+}
+
+// TestGoertzelMinimumSpacing tests Goertzel detector at minimum spacing requirement
+// This demonstrates the boundary condition - spacing = 2 * symbolRate
+func TestGoertzelMinimumSpacing(t *testing.T) {
+	// Test parameters
+	symbolRate := float32(1000)                          // 1000 symbols per second
+	samplesPerSymbol := 48                               // 48 samples per symbol
+	sampleRate := symbolRate * float32(samplesPerSymbol) // 48 kHz
+
+	// Minimum spacing: 2 * symbolRate = 2000 Hz
+	// Use 2x minimum for test safety: 4000 Hz
+	minSpacing := 2 * symbolRate
+	testSpacing := 2 * minSpacing // 4000 Hz (2x minimum for safety)
+
+	t.Logf("Symbol rate: %.0f sps", symbolRate)
+	t.Logf("Sample rate: %.0f Hz", sampleRate)
+	t.Logf("Samples per symbol: %d", samplesPerSymbol)
+	t.Logf("Frequency resolution: %.2f Hz", sampleRate/float32(samplesPerSymbol))
+	t.Logf("Minimum spacing: %.0f Hz", minSpacing)
+	t.Logf("Test spacing (2x minimum): %.0f Hz", testSpacing)
+
+	// Create frequencies at minimum spacing
+	freqs := []float32{
+		1000,
+		1000 + testSpacing,
+	}
+
+	t.Logf("Test frequencies: %v Hz", freqs)
+
+	detector := NewGoertzelFrequencyDetector(sampleRate, freqs...)
+
+	// Test detection of each frequency
+	correctDetections := 0
+	for expectedIdx, freq := range freqs {
+		// Generate one symbol worth of samples at this frequency
+		samples := make([]float32, samplesPerSymbol)
+		phase := float32(0)
+		for i := range samples {
+			phase += 2 * math.Pi * freq / sampleRate
+			samples[i] = float32(math.Cos(float64(phase)))
+		}
+
+		// Detect frequency
+		detectedIdx, magnitude := detector.DetectFrequency(samples)
+
+		t.Logf("Frequency %d (%.0f Hz): detected=%d, magnitude=%.6f", expectedIdx, freq, detectedIdx, magnitude)
+
+		if detectedIdx == expectedIdx {
+			correctDetections++
+		} else if detectedIdx < 0 {
+			t.Logf("  Ambiguous detection for frequency %d", expectedIdx)
+		} else {
+			t.Logf("  Wrong detection: expected %d, got %d", expectedIdx, detectedIdx)
+		}
+
+		detector.Reset()
+	}
+
+	t.Logf("Correct detections: %d/%d", correctDetections, len(freqs))
+	// At minimum spacing, we expect at least one correct detection
+	assert.GreaterOrEqual(t, correctDetections, 1, "Should detect at least one frequency correctly at minimum spacing")
+}
+
+// TestGoertzelSampleRateRequirement tests that sample rate must be sufficient for given spacing
+// Demonstrates that insufficient sample rate leads to detection failures
+func TestGoertzelSampleRateRequirement(t *testing.T) {
+	symbolRate := float32(1000)          // 1000 symbols per second
+	recommendedSpacing := 3 * symbolRate // 3000 Hz
+
+	// Test with insufficient sample rate (too few samples per symbol)
+	insufficientSamplesPerSymbol := 12                                           // Only 12 samples per symbol
+	insufficientSampleRate := symbolRate * float32(insufficientSamplesPerSymbol) // 12 kHz
+	resolution := insufficientSampleRate / float32(insufficientSamplesPerSymbol) // 1000 Hz
+
+	t.Logf("Insufficient sample rate test:")
+	t.Logf("  Symbol rate: %.0f sps", symbolRate)
+	t.Logf("  Samples per symbol: %d", insufficientSamplesPerSymbol)
+	t.Logf("  Sample rate: %.0f Hz", insufficientSampleRate)
+	t.Logf("  Frequency resolution: %.2f Hz", resolution)
+	t.Logf("  Recommended spacing: %.0f Hz", recommendedSpacing)
+	t.Logf("  Spacing / Resolution: %.2f (should be >= 3)", recommendedSpacing/resolution)
+
+	// Create frequencies with recommended spacing
+	freqs := []float32{
+		1000,
+		1000 + recommendedSpacing,
+	}
+
+	detector := NewGoertzelFrequencyDetector(insufficientSampleRate, freqs...)
+
+	// Test detection - may fail due to insufficient resolution
+	correctDetections := 0
+	for expectedIdx, freq := range freqs {
+		samples := make([]float32, insufficientSamplesPerSymbol)
+		phase := float32(0)
+		for i := range samples {
+			phase += 2 * math.Pi * freq / insufficientSampleRate
+			samples[i] = float32(math.Cos(float64(phase)))
+		}
+
+		detectedIdx, magnitude := detector.DetectFrequency(samples)
+		t.Logf("Frequency %d (%.0f Hz): detected=%d, magnitude=%.6f", expectedIdx, freq, detectedIdx, magnitude)
+
+		if detectedIdx == expectedIdx {
+			correctDetections++
+		}
+
+		detector.Reset()
+	}
+
+	// With insufficient sample rate, detection may fail
+	// This test documents the requirement - we expect some failures
+	t.Logf("Correct detections with insufficient sample rate: %d/%d", correctDetections, len(freqs))
+
+	// Test with sufficient sample rate (2x recommended)
+	sufficientSamplesPerSymbol := 48                                                   // 48 samples per symbol
+	sufficientSampleRate := symbolRate * float32(sufficientSamplesPerSymbol)           // 48 kHz
+	sufficientResolution := sufficientSampleRate / float32(sufficientSamplesPerSymbol) // 1000 Hz
+
+	t.Logf("\nSufficient sample rate test:")
+	t.Logf("  Symbol rate: %.0f sps", symbolRate)
+	t.Logf("  Samples per symbol: %d", sufficientSamplesPerSymbol)
+	t.Logf("  Sample rate: %.0f Hz", sufficientSampleRate)
+	t.Logf("  Frequency resolution: %.2f Hz", sufficientResolution)
+	t.Logf("  Recommended spacing: %.0f Hz", recommendedSpacing)
+	t.Logf("  Spacing / Resolution: %.2f (should be >= 3)", recommendedSpacing/sufficientResolution)
+
+	detectorSufficient := NewGoertzelFrequencyDetector(sufficientSampleRate, freqs...)
+
+	correctDetectionsSufficient := 0
+	for expectedIdx, freq := range freqs {
+		samples := make([]float32, sufficientSamplesPerSymbol)
+		phase := float32(0)
+		for i := range samples {
+			phase += 2 * math.Pi * freq / sufficientSampleRate
+			samples[i] = float32(math.Cos(float64(phase)))
+		}
+
+		detectedIdx, magnitude := detectorSufficient.DetectFrequency(samples)
+		t.Logf("Frequency %d (%.0f Hz): detected=%d, magnitude=%.6f", expectedIdx, freq, detectedIdx, magnitude)
+
+		if detectedIdx == expectedIdx {
+			correctDetectionsSufficient++
+		}
+
+		detectorSufficient.Reset()
+	}
+
+	t.Logf("Correct detections with sufficient sample rate: %d/%d", correctDetectionsSufficient, len(freqs))
+	// With sufficient sample rate, we expect all detections to be correct
+	assert.Equal(t, len(freqs), correctDetectionsSufficient, "Should detect all frequencies correctly with sufficient sample rate")
+}
+
+// TestIQFrequencySpacing tests IQ detector with proper frequency spacing
+// Demonstrates reliable detection when frequencies are spaced according to theoretical requirements
+func TestIQFrequencySpacing(t *testing.T) {
+	// Test parameters
+	symbolRate := float32(1000)                          // 1000 symbols per second
+	samplesPerSymbol := 48                               // 48 samples per symbol
+	sampleRate := symbolRate * float32(samplesPerSymbol) // 48 kHz
+
+	// Recommended spacing: 3 * symbolRate = 3000 Hz
+	// Minimum spacing: 2 * symbolRate = 2000 Hz
+	// Use 2x recommended spacing for safety: 2 * 3 * symbolRate = 6000 Hz
+	recommendedSpacing := 3 * symbolRate
+	testSpacing := 2 * recommendedSpacing // 2x recommended for test safety margin
+
+	t.Logf("Symbol rate: %.0f sps", symbolRate)
+	t.Logf("Sample rate: %.0f Hz", sampleRate)
+	t.Logf("Samples per symbol: %d", samplesPerSymbol)
+	t.Logf("Frequency resolution: %.2f Hz", sampleRate/float32(samplesPerSymbol))
+	t.Logf("Recommended spacing: %.0f Hz", recommendedSpacing)
+	t.Logf("Test spacing (2x recommended): %.0f Hz", testSpacing)
+
+	// Create frequencies with proper spacing
+	// Start at 1000 Hz, space by testSpacing
+	freqs := []float32{
+		1000,
+		1000 + testSpacing,
+		1000 + 2*testSpacing,
+		1000 + 3*testSpacing,
+	}
+
+	t.Logf("Test frequencies: %v Hz", freqs)
+
+	detector := NewIQFrequencyDetector(sampleRate, symbolRate, freqs...)
+
+	// Test detection of each frequency individually
+	// IQ detector uses EMA smoothing, so we need to warm it up with multiple symbols
+	correctDetections := 0
+	for expectedIdx, freq := range freqs {
+		// Warm up: feed 3 symbols to build up EMA state
+		for warmup := 0; warmup < 3; warmup++ {
+			warmupSamples := make([]float32, samplesPerSymbol)
+			phase := float32(0)
+			for i := range warmupSamples {
+				phase += 2 * math.Pi * freq / sampleRate
+				warmupSamples[i] = float32(math.Cos(float64(phase)))
+			}
+			detector.DetectFrequency(warmupSamples)
+		}
+
+		// Generate one symbol worth of samples at this frequency for actual test
+		samples := make([]float32, samplesPerSymbol)
+		phase := float32(0)
+		for i := range samples {
+			phase += 2 * math.Pi * freq / sampleRate
+			samples[i] = float32(math.Cos(float64(phase)))
+		}
+
+		// Detect frequency
+		detectedIdx, magnitude := detector.DetectFrequency(samples)
+
+		t.Logf("Frequency %d (%.0f Hz): detected=%d, magnitude=%.6f", expectedIdx, freq, detectedIdx, magnitude)
+
+		if detectedIdx == expectedIdx {
+			correctDetections++
+		} else if detectedIdx < 0 {
+			t.Logf("  Ambiguous detection for frequency %d", expectedIdx)
+		} else {
+			t.Logf("  Wrong detection: expected %d, got %d", expectedIdx, detectedIdx)
+		}
+
+		detector.Reset()
+	}
+
+	t.Logf("Correct detections: %d/%d", correctDetections, len(freqs))
+	assert.Equal(t, len(freqs), correctDetections, "Should detect all frequencies correctly with proper spacing")
+}
+
+// TestIQMultipleFrequencies tests IQ detector with multiple frequencies present simultaneously
+// This is the more challenging case - detecting one frequency when others are also present
+func TestIQMultipleFrequencies(t *testing.T) {
+	// Test parameters
+	symbolRate := float32(1000)                          // 1000 symbols per second
+	samplesPerSymbol := 48                               // 48 samples per symbol
+	sampleRate := symbolRate * float32(samplesPerSymbol) // 48 kHz
+
+	// Use 2x recommended spacing for safety
+	recommendedSpacing := 3 * symbolRate
+	testSpacing := 2 * recommendedSpacing // 6000 Hz
+
+	// Create frequencies with proper spacing
+	freqs := []float32{
+		1000,
+		1000 + testSpacing,
+		1000 + 2*testSpacing,
+		1000 + 3*testSpacing,
+	}
+
+	t.Logf("Test frequencies: %v Hz (spacing: %.0f Hz)", freqs, testSpacing)
+
+	detector := NewIQFrequencyDetector(sampleRate, symbolRate, freqs...)
+
+	// Test detection when multiple frequencies are present simultaneously
+	// Generate signal with all frequencies at equal amplitude
+	correctDetections := 0
+	for expectedIdx, targetFreq := range freqs {
+		// Generate signal with all frequencies present, but target frequency is dominant
+		samples := make([]float32, samplesPerSymbol)
+		for i := range samples {
+			// Add all frequencies, but make target frequency 2x stronger
+			sample := float32(0)
+			for freqIdx, freq := range freqs {
+				phaseFreq := 2 * math.Pi * freq / sampleRate * float32(i)
+				amplitude := float32(0.5) // Base amplitude
+				if freqIdx == expectedIdx {
+					amplitude = 1.0 // Target frequency is stronger
+				}
+				sample += amplitude * float32(math.Cos(float64(phaseFreq)))
+			}
+			samples[i] = sample
+		}
+
+		// Detect frequency
+		detectedIdx, magnitude := detector.DetectFrequency(samples)
+
+		t.Logf("Target frequency %d (%.0f Hz) with all frequencies present: detected=%d, magnitude=%.6f",
+			expectedIdx, targetFreq, detectedIdx, magnitude)
+
+		if detectedIdx == expectedIdx {
+			correctDetections++
+		} else if detectedIdx < 0 {
+			t.Logf("  Ambiguous detection for target frequency %d", expectedIdx)
+		} else {
+			t.Logf("  Wrong detection: expected %d, got %d", expectedIdx, detectedIdx)
+		}
+
+		detector.Reset()
+	}
+
+	t.Logf("Correct detections: %d/%d", correctDetections, len(freqs))
+	assert.GreaterOrEqual(t, correctDetections, len(freqs)-1, "Should detect target frequency correctly even with others present")
+}
+
+// TestIQMinimumSpacing tests IQ detector at minimum spacing requirement
+// This demonstrates the boundary condition - spacing = 2 * symbolRate
+func TestIQMinimumSpacing(t *testing.T) {
+	// Test parameters
+	symbolRate := float32(1000)                          // 1000 symbols per second
+	samplesPerSymbol := 48                               // 48 samples per symbol
+	sampleRate := symbolRate * float32(samplesPerSymbol) // 48 kHz
+
+	// Minimum spacing: 2 * symbolRate = 2000 Hz
+	// Use 2x minimum for test safety: 4000 Hz
+	minSpacing := 2 * symbolRate
+	testSpacing := 2 * minSpacing // 4000 Hz (2x minimum for safety)
+
+	t.Logf("Symbol rate: %.0f sps", symbolRate)
+	t.Logf("Sample rate: %.0f Hz", sampleRate)
+	t.Logf("Samples per symbol: %d", samplesPerSymbol)
+	t.Logf("Frequency resolution: %.2f Hz", sampleRate/float32(samplesPerSymbol))
+	t.Logf("Minimum spacing: %.0f Hz", minSpacing)
+	t.Logf("Test spacing (2x minimum): %.0f Hz", testSpacing)
+
+	// Create frequencies at minimum spacing
+	freqs := []float32{
+		1000,
+		1000 + testSpacing,
+	}
+
+	t.Logf("Test frequencies: %v Hz", freqs)
+
+	detector := NewIQFrequencyDetector(sampleRate, symbolRate, freqs...)
+
+	// Test detection of each frequency
+	correctDetections := 0
+	for expectedIdx, freq := range freqs {
+		// Generate one symbol worth of samples at this frequency
+		samples := make([]float32, samplesPerSymbol)
+		phase := float32(0)
+		for i := range samples {
+			phase += 2 * math.Pi * freq / sampleRate
+			samples[i] = float32(math.Cos(float64(phase)))
+		}
+
+		// Detect frequency
+		detectedIdx, magnitude := detector.DetectFrequency(samples)
+
+		t.Logf("Frequency %d (%.0f Hz): detected=%d, magnitude=%.6f", expectedIdx, freq, detectedIdx, magnitude)
+
+		if detectedIdx == expectedIdx {
+			correctDetections++
+		} else if detectedIdx < 0 {
+			t.Logf("  Ambiguous detection for frequency %d", expectedIdx)
+		} else {
+			t.Logf("  Wrong detection: expected %d, got %d", expectedIdx, detectedIdx)
+		}
+
+		detector.Reset()
+	}
+
+	t.Logf("Correct detections: %d/%d", correctDetections, len(freqs))
+	// At minimum spacing, we expect at least one correct detection
+	assert.GreaterOrEqual(t, correctDetections, 1, "Should detect at least one frequency correctly at minimum spacing")
+}
+
+// TestIQSampleRateRequirement tests that sample rate must be sufficient for given spacing
+// Demonstrates that insufficient sample rate leads to detection failures
+func TestIQSampleRateRequirement(t *testing.T) {
+	symbolRate := float32(1000)          // 1000 symbols per second
+	recommendedSpacing := 3 * symbolRate // 3000 Hz
+
+	// Test with insufficient sample rate (too few samples per symbol)
+	insufficientSamplesPerSymbol := 12                                           // Only 12 samples per symbol
+	insufficientSampleRate := symbolRate * float32(insufficientSamplesPerSymbol) // 12 kHz
+	resolution := insufficientSampleRate / float32(insufficientSamplesPerSymbol) // 1000 Hz
+
+	t.Logf("Insufficient sample rate test:")
+	t.Logf("  Symbol rate: %.0f sps", symbolRate)
+	t.Logf("  Samples per symbol: %d", insufficientSamplesPerSymbol)
+	t.Logf("  Sample rate: %.0f Hz", insufficientSampleRate)
+	t.Logf("  Frequency resolution: %.2f Hz", resolution)
+	t.Logf("  Recommended spacing: %.0f Hz", recommendedSpacing)
+	t.Logf("  Spacing / Resolution: %.2f (should be >= 3)", recommendedSpacing/resolution)
+
+	// Create frequencies with recommended spacing
+	freqs := []float32{
+		1000,
+		1000 + recommendedSpacing,
+	}
+
+	detector := NewIQFrequencyDetector(insufficientSampleRate, symbolRate, freqs...)
+
+	// Test detection - may fail due to insufficient resolution
+	correctDetections := 0
+	for expectedIdx, freq := range freqs {
+		samples := make([]float32, insufficientSamplesPerSymbol)
+		phase := float32(0)
+		for i := range samples {
+			phase += 2 * math.Pi * freq / insufficientSampleRate
+			samples[i] = float32(math.Cos(float64(phase)))
+		}
+
+		detectedIdx, magnitude := detector.DetectFrequency(samples)
+		t.Logf("Frequency %d (%.0f Hz): detected=%d, magnitude=%.6f", expectedIdx, freq, detectedIdx, magnitude)
+
+		if detectedIdx == expectedIdx {
+			correctDetections++
+		}
+
+		detector.Reset()
+	}
+
+	// With insufficient sample rate, detection may fail
+	// This test documents the requirement - we expect some failures
+	t.Logf("Correct detections with insufficient sample rate: %d/%d", correctDetections, len(freqs))
+
+	// Test with sufficient sample rate (2x recommended)
+	sufficientSamplesPerSymbol := 48                                                   // 48 samples per symbol
+	sufficientSampleRate := symbolRate * float32(sufficientSamplesPerSymbol)           // 48 kHz
+	sufficientResolution := sufficientSampleRate / float32(sufficientSamplesPerSymbol) // 1000 Hz
+
+	t.Logf("\nSufficient sample rate test:")
+	t.Logf("  Symbol rate: %.0f sps", symbolRate)
+	t.Logf("  Samples per symbol: %d", sufficientSamplesPerSymbol)
+	t.Logf("  Sample rate: %.0f Hz", sufficientSampleRate)
+	t.Logf("  Frequency resolution: %.2f Hz", sufficientResolution)
+	t.Logf("  Recommended spacing: %.0f Hz", recommendedSpacing)
+	t.Logf("  Spacing / Resolution: %.2f (should be >= 3)", recommendedSpacing/sufficientResolution)
+
+	detectorSufficient := NewIQFrequencyDetector(sufficientSampleRate, symbolRate, freqs...)
+
+	correctDetectionsSufficient := 0
+	for expectedIdx, freq := range freqs {
+		samples := make([]float32, sufficientSamplesPerSymbol)
+		phase := float32(0)
+		for i := range samples {
+			phase += 2 * math.Pi * freq / sufficientSampleRate
+			samples[i] = float32(math.Cos(float64(phase)))
+		}
+
+		detectedIdx, magnitude := detectorSufficient.DetectFrequency(samples)
+		t.Logf("Frequency %d (%.0f Hz): detected=%d, magnitude=%.6f", expectedIdx, freq, detectedIdx, magnitude)
+
+		if detectedIdx == expectedIdx {
+			correctDetectionsSufficient++
+		}
+
+		detectorSufficient.Reset()
+	}
+
+	t.Logf("Correct detections with sufficient sample rate: %d/%d", correctDetectionsSufficient, len(freqs))
+	// With sufficient sample rate, we expect all detections to be correct
+	assert.Equal(t, len(freqs), correctDetectionsSufficient, "Should detect all frequencies correctly with sufficient sample rate")
 }

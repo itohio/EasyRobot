@@ -25,14 +25,17 @@ type FFT1D struct {
 // NewFFT1D creates a 1D FFT processor for real-valued vectors of the specified length.
 // The FFT size will be rounded up to the next power of 2.
 // The internal buffer is allocated as 2*length to store both real and imaginary parts.
-func NewFFT1D(length int) *FFT1D {
+func NewFFT1D(length int, tempBuf ...float32) *FFT1D {
 	if length <= 0 {
 		panic("FFT length must be positive")
 	}
 	nextPow2 := nextPowerOfTwo(length)
+	if len(tempBuf) < 2*nextPow2 {
+		tempBuf = make([]float32, 2*nextPow2)
+	}
 	return &FFT1D{
 		length:  nextPow2,
-		tempBuf: make([]float32, 2*nextPow2), // 2*N for packed format (real + imag)
+		tempBuf: tempBuf, // 2*N for packed format (real + imag)
 	}
 }
 
@@ -138,6 +141,7 @@ func (f *FFT1D) backward(src, dst vec.Vector) {
 	ifftReal(tempBuf)
 
 	// Copy real part to destination (imaginary parts should be ~0 for real output)
+	// Note: ifftReal already scales by 1/N, so we just copy the scaled values
 	copyLen = f.length
 	if copyLen > len(dstData) {
 		copyLen = len(dstData)

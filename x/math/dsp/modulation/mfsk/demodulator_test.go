@@ -61,7 +61,7 @@ func TestDemodulator_NewDemodulator(t *testing.T) {
 	assert.Equal(t, int(testSampleRate/testSymbolRate), demodulator.samplesPerSymbol)
 	assert.NotNil(t, demodulator.frequencyDetector)
 	assert.NotNil(t, demodulator.symbolSynchronizer)
-	assert.NotNil(t, demodulator.bitExtractor)
+	assert.NotNil(t, demodulator.bitBuffer)
 }
 
 // TestDemodulator_NewMDemodulator tests M-FSK demodulator creation

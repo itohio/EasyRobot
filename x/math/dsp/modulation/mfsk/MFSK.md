@@ -300,8 +300,318 @@ with κ ~ 6–10 depending on desired P_FA.
 
 ### End of specification
 
-Use this spec to implement `CoherentMFSKDecoder` and (optionally) `CoherentMFSKEncoder`. If you want, I can next:
+---
 
-- produce a **reference pseudocode** / flowchart for the `ProcessStream()` loop,  
-- or generate a **Go skeleton** with key inner loops (correlator, PLL update, acquisition) to jumpstart implementation. Which would you prefer?
-::contentReference[oaicite:0]{index=0}
+## 18. Current Implementation Status
+
+### 18.1 What's Implemented
+
+**Encoder (`mfsk/encoder.go`):**
+- ✅ M-FSK modulation with configurable frequencies (2, 4, 8, 16-FSK)
+- ✅ Phase-continuous tone generation (phase accumulator)
+- ✅ Bit-to-symbol mapping (MSB first)
+- ✅ Padding of incomplete symbols with zeros
+- ❌ No preamble generation (tests control preamble)
+
+**Decoder (`mfsk/decoder.go`):**
+- ✅ Non-coherent detection using Goertzel algorithm
+- ✅ Energy-based signal detector (`SignalDetector`) for acquisition
+- ✅ Simple symbol synchronizer (fixed sample-per-symbol buffering)
+- ✅ AGC (Automatic Gain Control)
+- ✅ Bit extractor for symbol-to-byte conversion
+- ✅ Low-pass filter (optional, currently disabled for clean signals)
+- ❌ No PLL for carrier phase/frequency tracking
+- ❌ No symbol timing recovery (early/late correlators)
+- ❌ No CFO (Carrier Frequency Offset) estimation
+- ❌ No coherent correlators (using Goertzel instead of complex mixing)
+
+**Current Architecture:**
+```
+Input → AGC → SignalDetector → SymbolSynchronizer → GoertzelFrequencyDetector → BitExtractor → Bytes
+```
+
+**Issues with Current Implementation:**
+1. **8-FSK/16-FSK failures**: Goertzel may not have sufficient frequency resolution for closely spaced frequencies (250Hz for 8-FSK, 100Hz for 16-FSK with 48 samples/symbol)
+2. **No phase tracking**: Non-coherent detection loses ~3dB performance vs coherent
+3. **No timing recovery**: Fixed sample-per-symbol assumption breaks with timing jitter
+4. **No CFO compensation**: Frequency offset causes detection errors
+5. **Simple acquisition**: Energy-based detection doesn't align to symbol boundaries
+
+### 18.2 What Needs to Be Implemented
+
+**For Proper Coherent Detection:**
+
+1. **PLL (Phase-Locked Loop)** for carrier tracking:
+   - Track residual phase after coarse CFO correction
+   - Update based on detected symbol's phase
+   - Use PI controller (proportional + integral)
+
+2. **Symbol Timing Recovery**:
+   - Early/late correlators or Gardner algorithm
+   - Adjust symbol boundary timing dynamically
+   - Handle fractional sample timing
+
+3. **Coherent Correlators**:
+   - Replace Goertzel with complex mixing: `Z_k = Σ r[n] * e^(-j2πf_k nT_s)`
+   - Use precomputed LUTs for sin/cos (embedded-friendly)
+   - Phase-align for coherent gain
+
+4. **Acquisition & Synchronization**:
+   - Preamble-based symbol boundary detection
+   - Coarse CFO estimation from preamble
+   - Proper alignment to symbol start
+
+---
+
+## 19. Proposed Embedded-Friendly Implementation
+
+### 19.1 Design Principles for Embedded
+
+- **No allocations**: Pre-allocate all buffers at initialization
+- **Small LUTs**: Precompute sin/cos tables for correlators (max 256 entries)
+- **Fixed-point optional**: Use float32 for simplicity, optimize later if needed
+- **Ring buffers**: Use circular indexing for sample buffers
+- **State machines**: Clear state transitions (SEARCH → ACQUIRE → TRACK)
+
+### 19.2 Proposed Architecture
+
+```
+Input → AGC → SignalDetector → Acquisition → PLL → TimingRecovery → CoherentCorrelators → BitExtractor → Bytes
+```
+
+**State Machine:**
+- **SEARCH**: Energy-based detection, look for preamble
+- **ACQUIRE**: Coarse CFO estimation, symbol boundary alignment
+- **TRACK**: Fine PLL/timing tracking, coherent detection
+
+### 19.3 Key Components to Add
+
+#### 19.3.1 PLL (Phase-Locked Loop)
+
+**Location**: `x/math/filter/pll/` (shared component for M-FSK, M-PSK, QAM, M-ASK)
+
+```go
+// From x/math/filter/pll/pll.go
+type Filter struct {
+    kp         float32  // Proportional gain
+    ki         float32  // Integral gain
+    phase      float32  // Current phase estimate (radians)
+    freqOffset float32  // Frequency offset accumulator (radians/symbol)
+    symbolRate float32  // Symbol rate for frequency conversion
+}
+```
+
+**Usage:**
+```go
+import "github.com/itohio/EasyRobot/x/math/filter/pll"
+
+// Create PLL filter with loop bandwidth
+filter := pll.NewFromLoopBandwidth(loopBandwidth, symbolRate, 0.707)
+
+// Update with phase error from correlator
+phaseError := math.Atan2(imag(correlatorOutput), real(correlatorOutput))
+filter.Update(phaseError)
+
+// Apply phase correction
+correctedI, correctedQ := filter.RotatePhase(i, q)
+```
+
+**Update rule:**
+- Phase error: `ε = arg(Z_k)` where `Z_k` is correlator output for detected symbol
+- Frequency update: `freqOffset += ki * ε`
+- Phase update: `phase += kp * ε + freqOffset`
+
+#### 19.3.2 Symbol Timing Recovery
+
+```go
+type TimingRecovery struct {
+    // Early/late correlators
+    earlyOffset int     // Samples before nominal
+    lateOffset  int     // Samples after nominal
+    timingPhase float32 // Fractional sample offset
+    
+    // DLL (Delay-Locked Loop) state
+    timingError float32
+    kp, ki      float32
+    
+    // Pre-allocated buffers (no allocations)
+    earlyBuffer []float32
+    lateBuffer  []float32
+}
+```
+
+**Update rule:**
+- Early correlator: `E = |Z_k(early)|`
+- Late correlator: `L = |Z_k(late)|`
+- Timing error: `ε_t = (E - L) / (E + L)`
+- Update timing phase: `timingPhase += kp * ε_t`
+
+#### 19.3.3 Coherent Correlators with LUTs
+
+```go
+type CoherentCorrelator struct {
+    frequencies []float32
+    sampleRate  float32
+    samplesPerSymbol int
+    
+    // Precomputed LUTs (embedded-friendly, no allocations)
+    // sinLUT[i] = sin(2π * freq_k * i * T_s) for i=0..N-1, k=0..M-1
+    // cosLUT[i] = cos(2π * freq_k * i * T_s)
+    sinLUT [][]float32  // [freq_idx][sample_idx]
+    cosLUT [][]float32
+    
+    // Or use phase accumulator approach (more memory efficient)
+    phaseIncrements []float32  // 2π * freq_k / sampleRate
+}
+```
+
+**Correlation computation:**
+```go
+// For symbol samples r[n], compute Z_k = Σ r[n] * e^(-j2πf_k nT_s)
+// Using LUTs:
+for n := range samples {
+    idx := (n + timingOffset) % len(sinLUT[k])
+    I += samples[n] * cosLUT[k][idx]
+    Q += samples[n] * sinLUT[k][idx]  // Note: -sin for e^(-j...)
+}
+Z_k = complex(I, -Q)  // e^(-jθ) = cos(θ) - j*sin(θ)
+```
+
+**Memory-efficient alternative (phase accumulator):**
+```go
+// No LUTs, compute on-the-fly (slower but no memory)
+for n := range samples {
+    phase := 2 * math.Pi * freq_k * float32(n) / sampleRate
+    I += samples[n] * float32(math.Cos(float64(phase)))
+    Q += samples[n] * float32(math.Sin(float64(phase)))
+}
+```
+
+#### 19.3.4 Acquisition with Preamble
+
+```go
+type Acquisition struct {
+    preamblePattern []int  // Expected symbol sequence
+    searchWindow    int     // Samples to search (e.g., 2 symbols)
+    
+    // Pre-allocated correlation buffer
+    correlationBuffer []float32
+}
+```
+
+**Acquisition algorithm:**
+1. Slide window over samples
+2. For each offset, compute correlators for preamble symbols
+3. Score: `S(τ) = Σ |Z_expectedTone(j)(τ + j*N)|²`
+4. Find peak: `τ* = argmax S(τ)`
+5. If `S(τ*) > threshold`, declare acquisition at `τ*`
+
+### 19.4 Memory Budget (Embedded)
+
+**Per demodulator instance:**
+- Sample buffer: `2 * samplesPerSymbol` (early/late) = ~96 samples = 384 bytes
+- LUTs (if used): `M * N * 2 * 4 bytes` = `8 * 48 * 2 * 4` = 3KB for 8-FSK
+- Phase accumulator (no LUTs): `M * 4 bytes` = 32 bytes
+- PLL state (`x/math/filter/pll`): 20 bytes (5 float32)
+- Timing recovery: 16 bytes
+- **Total: ~500 bytes** (with LUTs) or **~450 bytes** (phase accumulator)
+
+**Recommendation**: Use phase accumulator for embedded (no LUTs), optimize with LUTs if CPU allows.
+
+### 19.5 Processing Pipeline (Proposed)
+
+```
+1. SEARCH state:
+   - Update SignalDetector (energy-based)
+   - If energy > threshold, switch to ACQUIRE
+
+2. ACQUIRE state:
+   - Slide window, correlate with preamble
+   - Find symbol boundary offset τ*
+   - Estimate coarse CFO from preamble phase rotation
+   - Initialize PLL: phase = 0, freqOffset = -CFO_coarse
+   - Initialize TimingRecovery: timingPhase = τ*
+   - Switch to TRACK
+
+3. TRACK state:
+   - For each symbol:
+     a. Apply timing recovery (adjust sample window)
+     b. Apply PLL correction (rotate samples by e^(-j(phase + freqOffset*t)))
+     c. Compute coherent correlators Z_k for all frequencies
+     d. Detect symbol: m = argmax |Z_k|
+     e. Update PLL: phase error = arg(Z_m)
+     f. Update TimingRecovery: early/late correlation
+     g. Extract bits from symbol m
+   - If signal lost, switch back to SEARCH
+```
+
+---
+
+## 20. Implementation Decision
+
+### 20.1 Current Status vs Required
+
+**Current (Non-Coherent):**
+- ✅ Works for BFSK (2-FSK) with clean signals
+- ❌ Fails for 8-FSK/16-FSK (frequency resolution issues)
+- ❌ Loses ~3dB performance vs coherent
+- ✅ Simple, low CPU usage
+
+**Required (Coherent):**
+- ✅ Better frequency resolution (coherent gain)
+- ✅ Handles CFO and phase drift
+- ✅ Symbol timing recovery
+- ✅ Better performance at low SNR
+- ❌ More complex, higher CPU usage
+
+### 20.2 Recommendation
+
+**Phase 1: Fix Current Issues (Quick Win)**
+1. Improve Goertzel frequency resolution:
+   - Use more samples per symbol (increase sample rate or reduce symbol rate)
+   - Or use longer integration window (2 symbols) for acquisition
+2. Add simple CFO estimation:
+   - Estimate from phase difference across symbols
+   - Rotate samples before Goertzel
+
+**Phase 2: Add Coherent Detection (Proper Fix)**
+1. Implement PLL for phase tracking
+2. Implement symbol timing recovery (early/late)
+3. Replace Goertzel with coherent correlators (phase accumulator, no LUTs initially)
+4. Add preamble-based acquisition
+
+**Phase 3: Optimize (If Needed)**
+1. Add sin/cos LUTs if CPU allows
+2. Optimize correlator computation (SIMD if available)
+3. Fine-tune PLL/timing loop gains
+
+### 20.3 Embedded Constraints
+
+- **No allocations**: ✅ All buffers pre-allocated
+- **Small memory**: ✅ Phase accumulator approach (~450 bytes)
+- **Low CPU**: ⚠️ Coherent detection is more expensive, but necessary for 8-FSK/16-FSK
+- **Real-time**: ✅ Streaming processing, no blocking operations
+
+---
+
+## 21. Next Steps
+
+1. **Update decoder.go** to add:
+   - PLL component
+   - TimingRecovery component
+   - CoherentCorrelator (phase accumulator)
+   - Acquisition state machine
+
+2. **Keep backward compatibility**:
+   - Current non-coherent path for BFSK (if it works)
+   - New coherent path for 8-FSK/16-FSK
+
+3. **Test incrementally**:
+   - Test PLL with known phase offset
+   - Test timing recovery with known timing offset
+   - Test coherent correlators vs Goertzel
+   - Test full pipeline with round-trip tests
+
+---
+
+### End of Updated Specification

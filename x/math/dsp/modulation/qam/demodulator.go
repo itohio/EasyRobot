@@ -3,10 +3,11 @@ package qam
 import (
 	"math"
 
-	"github.com/itohio/EasyRobot/x/math/filter"
-	agcFilter "github.com/itohio/EasyRobot/x/math/filter/agc"
 	"github.com/itohio/EasyRobot/x/math/dsp/modulation"
 	"github.com/itohio/EasyRobot/x/math/dsp/modulation/iq"
+	"github.com/itohio/EasyRobot/x/math/filter"
+	agcFilter "github.com/itohio/EasyRobot/x/math/filter/agc"
+	"github.com/itohio/EasyRobot/x/math/primitive/generics"
 	"github.com/itohio/EasyRobot/x/math/vec"
 	vecTypes "github.com/itohio/EasyRobot/x/math/vec/types"
 )
@@ -30,10 +31,10 @@ type Decoder struct {
 	agc            *agcFilter.Filter
 
 	// State
-	iqDecoder    *iq.Decoder
-	currentPhase float32
-	bitBuffer    []byte
-	endOfPacket  func([]byte) bool
+	iqDecoder      *iq.Decoder
+	currentPhase   float32
+	bitBuffer      generics.BitBuffer[byte]
+	bytesExtracted int
 
 	// Streaming state
 	sampleBuffer []float32
@@ -80,7 +81,8 @@ func NewDecoder(sampleRate, carrierFreq, symbolRate float32) *Decoder {
 		signalDetector:   signalDetector,
 		agc:              agc,
 		iqDecoder:        iq.NewDecoder(sampleRate, carrierFreq),
-		bitBuffer:        make([]byte, 0, 1024),
+		bitBuffer:        generics.NewBitBuffer[byte](4), // 4 bits per symbol for 16-QAM
+		bytesExtracted:   0,
 		sampleBuffer:     make([]float32, 0, samplesPerSymbol*2),
 	}
 }
@@ -99,7 +101,8 @@ func (qam *Decoder) SetFilter(f filter.Processor[float32]) {
 // Reset resets the decoder state
 func (qam *Decoder) Reset() {
 	qam.locked = false
-	qam.bitBuffer = qam.bitBuffer[:0]
+	qam.bitBuffer.Clear()
+	qam.bytesExtracted = 0
 	qam.sampleBuffer = qam.sampleBuffer[:0]
 	qam.currentPhase = 0
 	if qam.costasLoop != nil {
@@ -127,11 +130,6 @@ func (qam *Decoder) Reset() {
 // Deprecated: This method is not part of the Demodulator interface.
 func (qam *Decoder) IsLocked() bool {
 	return qam.locked && qam.signalDetector != nil && qam.signalDetector.IsLocked()
-}
-
-// OnIsEndOfPacket sets a callback to check if packet is complete
-func (qam *Decoder) OnIsEndOfPacket(callback func([]byte) bool) {
-	qam.endOfPacket = callback
 }
 
 // ProcessChunk processes a chunk of samples for streaming decoding
@@ -170,24 +168,31 @@ func (qam *Decoder) ProcessChunk(samples []float32, output []byte) (bytesDecoded
 		// Demodulate symbol to get I/Q values
 		iVal, qVal := qam.demodulateSymbol(symbolSamples)
 
-		// Convert I/Q back to 4 bits
+		// Convert I/Q back to symbol (4 bits) and write to bit buffer
 		bits := qam.iqToBits(iVal, qVal)
-		qam.bitBuffer = append(qam.bitBuffer, bits...)
+		// Combine 4 bits into a symbol: [i1 i0 q1 q0]
+		symbol := byte((bits[0] << 3) | (bits[1] << 2) | (bits[2] << 1) | bits[3])
+		qam.bitBuffer.Write(symbol)
 
-		// Convert bits to bytes when we have enough
-		for len(qam.bitBuffer) >= 8 && bytesDecoded < len(output) {
-			byteVal := byte(0)
-			for i := 0; i < 8; i++ {
-				byteVal |= qam.bitBuffer[i] << uint(7-i)
-			}
-			output[bytesDecoded] = byteVal
-			bytesDecoded++
+		// Extract bytes when we have enough
+		allBytes := qam.bitBuffer.ToBytes()
+		if len(allBytes) > qam.bytesExtracted {
+			// Copy new bytes to output
+			newBytes := allBytes[qam.bytesExtracted:]
+			remaining := output[bytesDecoded:]
+			copied := copy(remaining, newBytes)
+			bytesDecoded += copied
+			qam.bytesExtracted += copied
 
-			// Check if packet is complete
-			if qam.endOfPacket != nil && qam.endOfPacket(output[:bytesDecoded]) {
-				return bytesDecoded, false // Packet complete
+			// If we extracted all complete bytes, compact the buffer
+			bitsWritten := qam.bitBuffer.GetWrittenBits()
+			completeBytes := (bitsWritten >> 3) * 8
+			if qam.bytesExtracted*8 >= completeBytes && completeBytes > 0 {
+				// Move remaining bits to beginning
+				qam.bitBuffer.SetPosition(completeBytes)
+				qam.bitBuffer.Compact()
+				qam.bytesExtracted = 0
 			}
-			qam.bitBuffer = qam.bitBuffer[8:]
 		}
 	}
 
@@ -275,4 +280,3 @@ func (qam *Decoder) quantizeValue(val float32) int {
 		return 3 // Maps to 1 (bit pattern 11)
 	}
 }
-

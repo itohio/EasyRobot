@@ -1,8 +1,7 @@
 package dsp
 
 import (
-	"math"
-
+	"github.com/chewxy/math32"
 	"github.com/itohio/EasyRobot/x/math/mat"
 	matTypes "github.com/itohio/EasyRobot/x/math/mat/types"
 	"github.com/itohio/EasyRobot/x/math/vec"
@@ -134,34 +133,34 @@ func (w *Windows) rectangular(data []float32) {
 }
 
 func (w *Windows) sine(data []float32) {
-	k := math.Pi / float64(len(data)-1)
+	k := math32.Pi / float32(len(data)-1)
 	for i := range data {
-		data[i] *= float32(math.Sin(k * float64(i)))
+		data[i] *= math32.Sin(k * float32(i))
 	}
 }
 
 func (w *Windows) lanczos(data []float32) {
-	k := 2 / float64(len(data)-1)
+	k := 2 / float32(len(data)-1)
 	for i := range data {
-		x := math.Pi * (k*float64(i) - 1)
+		x := math32.Pi * (k*float32(i) - 1)
 		if x == 0 {
 			continue // Avoid NaN
 		}
-		data[i] *= float32(math.Sin(x) / x)
+		data[i] *= math32.Sin(x) / x
 	}
 }
 
 func (w *Windows) triangular(data []float32) {
-	a := float64(len(data)-1) / 2
+	a := float32(len(data)-1) / 2
 	for i := range data {
-		data[i] *= float32(1 - math.Abs(float64(i)/a-1))
+		data[i] *= 1 - math32.Abs(float32(i)/a-1)
 	}
 }
 
 func (w *Windows) hann(data []float32) {
-	k := 2 * math.Pi / float64(len(data)-1)
+	k := 2 * math32.Pi / float32(len(data)-1)
 	for i := range data {
-		data[i] *= float32(0.5 * (1 - math.Cos(k*float64(i))))
+		data[i] *= 0.5 * (1 - math32.Cos(k*float32(i)))
 	}
 }
 
@@ -173,9 +172,9 @@ func (w *Windows) bartlettHann(data []float32) {
 	)
 
 	n := len(data)
-	k := 2 * math.Pi / float64(n-1)
+	k := 2 * math32.Pi / float32(n-1)
 	for i := range data {
-		data[i] *= float32(a0 - a1*math.Abs(float64(i)/float64(n-1)-0.5) - a2*math.Cos(k*float64(i)))
+		data[i] *= a0 - a1*math32.Abs(float32(i)/float32(n-1)-0.5) - a2*math32.Cos(k*float32(i))
 	}
 }
 
@@ -185,9 +184,9 @@ func (w *Windows) hamming(data []float32) {
 		a1 = 0.46
 	)
 
-	k := 2 * math.Pi / float64(len(data)-1)
+	k := 2 * math32.Pi / float32(len(data)-1)
 	for i := range data {
-		data[i] *= float32(a0 - a1*math.Cos(k*float64(i)))
+		data[i] *= a0 - a1*math32.Cos(k*float32(i))
 	}
 }
 
@@ -198,10 +197,10 @@ func (w *Windows) blackman(data []float32) {
 		a2 = 0.08
 	)
 
-	k := 2 * math.Pi / float64(len(data)-1)
+	k := 2 * math32.Pi / float32(len(data)-1)
 	for i := range data {
-		x := k * float64(i)
-		data[i] *= float32(a0 - a1*math.Cos(x) + a2*math.Cos(2*x))
+		x := k * float32(i)
+		data[i] *= a0 - a1*math32.Cos(x) + a2*math32.Cos(2*x)
 	}
 }
 
@@ -213,10 +212,10 @@ func (w *Windows) blackmanHarris(data []float32) {
 		a3 = 0.01168
 	)
 
-	k := 2 * math.Pi / float64(len(data)-1)
+	k := 2 * math32.Pi / float32(len(data)-1)
 	for i := range data {
-		x := k * float64(i)
-		data[i] *= float32(a0 - a1*math.Cos(x) + a2*math.Cos(2*x) - a3*math.Cos(3*x))
+		x := k * float32(i)
+		data[i] *= a0 - a1*math32.Cos(x) + a2*math32.Cos(2*x) - a3*math32.Cos(3*x)
 	}
 }
 
@@ -228,10 +227,10 @@ func (w *Windows) nuttall(data []float32) {
 		a3 = 0.012604
 	)
 
-	k := 2 * math.Pi / float64(len(data)-1)
+	k := 2 * math32.Pi / float32(len(data)-1)
 	for i := range data {
-		x := k * float64(i)
-		data[i] *= float32(a0 - a1*math.Cos(x) + a2*math.Cos(2*x) - a3*math.Cos(3*x))
+		x := k * float32(i)
+		data[i] *= a0 - a1*math32.Cos(x) + a2*math32.Cos(2*x) - a3*math32.Cos(3*x)
 	}
 }
 
@@ -243,10 +242,10 @@ func (w *Windows) blackmanNuttall(data []float32) {
 		a3 = 0.0106411
 	)
 
-	k := 2 * math.Pi / float64(len(data)-1)
+	k := 2 * math32.Pi / float32(len(data)-1)
 	for i := range data {
-		x := k * float64(i)
-		data[i] *= float32(a0 - a1*math.Cos(x) + a2*math.Cos(2*x) - a3*math.Cos(3*x))
+		x := k * float32(i)
+		data[i] *= a0 - a1*math32.Cos(x) + a2*math32.Cos(2*x) - a3*math32.Cos(3*x)
 	}
 }
 
@@ -259,10 +258,10 @@ func (w *Windows) flatTop(data []float32) {
 		a4 = 0.006947368
 	)
 
-	k := 2 * math.Pi / float64(len(data)-1)
+	k := 2 * math32.Pi / float32(len(data)-1)
 	for i := range data {
-		x := k * float64(i)
-		data[i] *= float32(a0 - a1*math.Cos(x) + a2*math.Cos(2*x) - a3*math.Cos(3*x) + a4*math.Cos(4*x))
+		x := k * float32(i)
+		data[i] *= a0 - a1*math32.Cos(x) + a2*math32.Cos(2*x) - a3*math32.Cos(3*x) + a4*math32.Cos(4*x)
 	}
 }
 
@@ -271,10 +270,10 @@ func (w *Windows) gaussian(data []float32, sigma float32) {
 		sigma = 0.5 // Default sigma
 	}
 
-	a := float64(len(data)-1) / 2
+	a := float32(len(data)-1) / 2
 	for i := range data {
-		x := -0.5 * math.Pow((float64(i)-a)/(float64(sigma)*a), 2)
-		data[i] *= float32(math.Exp(x))
+		x := -0.5 * math32.Pow((float32(i)-a)/(sigma*a), 2)
+		data[i] *= math32.Exp(x)
 	}
 }
 
@@ -290,15 +289,15 @@ func (w *Windows) tukey(data []float32, alpha float32) {
 	}
 
 	n := len(data)
-	alphaL := float64(alpha) * float64(n-1)
+	alphaL := alpha * float32(n-1)
 	width := int(0.5*alphaL) + 1
 
 	// Apply Hann window to edges
-	j := 0.0
+	j := float32(0)
 	for i := 0; i < width; i++ {
-		w := 0.5 * (1 - math.Cos(2*math.Pi*j/alphaL))
-		data[i] *= float32(w)
-		data[n-1-i] *= float32(w)
+		w := 0.5 * (1 - math32.Cos(2*math32.Pi*j/alphaL))
+		data[i] *= w
+		data[n-1-i] *= w
 		j += 1
 	}
 }

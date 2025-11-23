@@ -3,6 +3,7 @@ package mpsk
 import (
 	"math"
 
+	"github.com/itohio/EasyRobot/x/math/primitive/generics"
 	"github.com/itohio/EasyRobot/x/math/vec"
 	vecTypes "github.com/itohio/EasyRobot/x/math/vec/types"
 )
@@ -48,25 +49,21 @@ func (psk *Modulator) GenerateSignal(data []byte, amplitude float32, length int)
 	bitsPerSymbol := int(math.Log2(float64(psk.modulationOrder)))
 	phaseStep := 2 * math.Pi / float32(psk.modulationOrder)
 
-	bitIndex := 0
 	sampleIndex := 0
 
-	// Convert bytes to bits
-	bitBuffer := make([]byte, 0, len(data)*8)
-	for _, b := range data {
-		for i := 7; i >= 0; i-- {
-			bit := (b >> uint(i)) & 1
-			bitBuffer = append(bitBuffer, byte(bit))
-		}
-	}
+	// Use bit buffer to read symbols
+	bitBuffer := generics.NewBitBuffer[byte](bitsPerSymbol)
+	bitBuffer.ReadFromBytes(data)
+	bitBuffer.Reset()
 
-	// Process bits in symbol groups
-	for i := 0; i < len(bitBuffer)-bitsPerSymbol+1 && sampleIndex < length; i += bitsPerSymbol {
-		// Collect bits for one symbol
-		symbol := 0
-		for j := 0; j < bitsPerSymbol && i+j < len(bitBuffer); j++ {
-			symbol = (symbol << 1) | int(bitBuffer[i+j])
+	// Process symbols
+	for bitBuffer.HasValue() && sampleIndex < length {
+		// Read one symbol
+		symbolVal, ok := bitBuffer.Read()
+		if !ok {
+			break
 		}
+		symbol := int(symbolVal)
 
 		// Generate symbol samples
 		phaseOffset := float32(symbol) * phaseStep
@@ -75,7 +72,6 @@ func (psk *Modulator) GenerateSignal(data []byte, amplitude float32, length int)
 			resultData[sampleIndex] = amplitude * float32(math.Cos(float64(phase)))
 			sampleIndex++
 		}
-		bitIndex++
 	}
 
 	return result

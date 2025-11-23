@@ -24,9 +24,6 @@ type Demodulator interface {
 
 	// Reset resets the decoder state
 	Reset()
-
-	// OnIsEndOfPacket sets a callback to check if packet is complete
-	OnIsEndOfPacket(callback func([]byte) bool)
 }
 
 // ByteEncoder is an interface for byte-level encoders that can be composed.

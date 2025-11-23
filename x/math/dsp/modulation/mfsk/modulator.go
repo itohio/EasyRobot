@@ -4,10 +4,14 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/itohio/EasyRobot/x/math/dsp/modulation"
 	"github.com/itohio/EasyRobot/x/math/vec"
 	vecTypes "github.com/itohio/EasyRobot/x/math/vec/types"
 )
+
+// Preamble is a known byte sequence used for synchronization
+// Pattern: 0xAA, 0x55 (alternating bits: 10101010, 01010101)
+// This creates an alternating pattern that's easy to detect
+var Preamble = []byte{0xAA, 0x55, 0xAA, 0x55} // 4 bytes = 32 bits
 
 // Modulator handles Frequency Shift Keying modulation
 type Modulator struct {
@@ -36,9 +40,16 @@ func NewMModulator(sampleRate, symbolRate float32, frequencies ...float32) *Modu
 		panic(fmt.Sprintf("FSK modulation order must be 2, 4, 8, or 16, got %d", modOrder))
 	}
 
-	samplesPerSymbol := int(sampleRate / symbolRate)
+	// For 8-FSK and 16-FSK, use 4x sample rate to improve frequency resolution
+	// This gives 4x more samples per symbol, improving frequency discrimination
+	effectiveSampleRate := sampleRate
+	if modOrder >= 8 {
+		effectiveSampleRate = sampleRate * 4.0
+	}
+	
+	samplesPerSymbol := int(effectiveSampleRate / symbolRate)
 	return &Modulator{
-		sampleRate:       sampleRate,
+		sampleRate:       effectiveSampleRate, // Store effective sample rate
 		frequencies:      frequencies,
 		symbolRate:       symbolRate,
 		samplesPerSymbol: samplesPerSymbol,
@@ -68,23 +79,21 @@ func (fsk *Modulator) GenerateSignal(data []byte, amplitude float32, length int)
 	sampleIndex := 0
 	phase := float32(0)
 
-	// Generate preamble: alternating 0/1 pattern (PreamblePattern = 0xAAAA)
-	// This provides consistent signal energy for detector to lock
-	preambleBits := make([]byte, 0, modulation.PreambleLength*bitsPerSymbol)
-	for i := 0; i < modulation.PreambleLength; i++ {
-		// Alternating pattern: for BFSK, alternate between freqLow (0) and freqHigh (1)
-		bit := byte(i % 2)
-		for j := 0; j < bitsPerSymbol; j++ {
-			preambleBits = append(preambleBits, bit)
+	// Convert data bytes to bits
+	bitBuffer := make([]byte, 0, len(data)*8)
+	for _, b := range data {
+		for i := 7; i >= 0; i-- {
+			bit := (b >> uint(i)) & 1
+			bitBuffer = append(bitBuffer, byte(bit))
 		}
 	}
 
-	// Process preamble bits
-	for i := 0; i < len(preambleBits)-bitsPerSymbol+1 && sampleIndex < length; i += bitsPerSymbol {
+	// Process data bits in symbol groups
+	for i := 0; i < len(bitBuffer)-bitsPerSymbol+1 && sampleIndex < length; i += bitsPerSymbol {
 		// Collect bits for one symbol
 		symbol := 0
-		for j := 0; j < bitsPerSymbol && i+j < len(preambleBits); j++ {
-			symbol = (symbol << 1) | int(preambleBits[i+j])
+		for j := 0; j < bitsPerSymbol && i+j < len(bitBuffer); j++ {
+			symbol = (symbol << 1) | int(bitBuffer[i+j])
 		}
 
 		// Select frequency based on symbol value
@@ -101,21 +110,19 @@ func (fsk *Modulator) GenerateSignal(data []byte, amplitude float32, length int)
 		}
 	}
 
-	// Convert data bytes to bits
-	bitBuffer := make([]byte, 0, len(data)*8)
-	for _, b := range data {
-		for i := 7; i >= 0; i-- {
-			bit := (b >> uint(i)) & 1
-			bitBuffer = append(bitBuffer, byte(bit))
-		}
-	}
-
-	// Process data bits in symbol groups
-	for i := 0; i < len(bitBuffer)-bitsPerSymbol+1 && sampleIndex < length; i += bitsPerSymbol {
-		// Collect bits for one symbol
+	// Handle leftover bits that don't form a complete symbol
+	// Pad with zeros to form a complete symbol (same as mask modulator)
+	remainingBits := len(bitBuffer) % bitsPerSymbol
+	if remainingBits > 0 && sampleIndex < length {
+		// Get the last remainingBits from bitBuffer
+		lastBitsStart := len(bitBuffer) - remainingBits
 		symbol := 0
-		for j := 0; j < bitsPerSymbol && i+j < len(bitBuffer); j++ {
-			symbol = (symbol << 1) | int(bitBuffer[i+j])
+		for j := 0; j < remainingBits; j++ {
+			symbol = (symbol << 1) | int(bitBuffer[lastBitsStart+j])
+		}
+		// Pad remaining bits with zeros
+		for j := remainingBits; j < bitsPerSymbol; j++ {
+			symbol = symbol << 1
 		}
 
 		// Select frequency based on symbol value
@@ -155,22 +162,23 @@ func (fsk *Modulator) Encode(amplitudes vecTypes.Vector, data []byte) int {
 	if amplitudes == nil {
 		// Calculate expected length: preamble + data
 		bitsPerSymbol := int(math.Log2(float64(fsk.modulationOrder)))
-		preambleSymbols := modulation.PreambleLength
-		bitsNeeded := len(data) * 8
-		dataSymbolsNeeded := (bitsNeeded + bitsPerSymbol - 1) / bitsPerSymbol
-		totalSymbols := preambleSymbols + dataSymbolsNeeded
+		preambleBits := len(Preamble) * 8
+		dataBits := len(data) * 8
+		totalBits := preambleBits + dataBits
+		totalSymbols := (totalBits + bitsPerSymbol - 1) / bitsPerSymbol
 		return totalSymbols * fsk.samplesPerSymbol
-	}
-
-	if len(data) == 0 {
-		return 0
 	}
 
 	ampVec := amplitudes.(vec.Vector)
 	ampData := []float32(ampVec)
 
-	// Generate signal (no padding - encoder doesn't add padding)
-	signal := fsk.GenerateSignal(data, fsk.amplitude, len(ampData))
+	// Prepend preamble to data
+	fullData := make([]byte, 0, len(Preamble)+len(data))
+	fullData = append(fullData, Preamble...)
+	fullData = append(fullData, data...)
+
+	// Generate signal with preamble + data
+	signal := fsk.GenerateSignal(fullData, fsk.amplitude, len(ampData))
 	signalData := []float32(signal)
 
 	// Copy signal to output

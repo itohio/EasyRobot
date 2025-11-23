@@ -3,6 +3,7 @@ package qam
 import (
 	"math"
 
+	"github.com/itohio/EasyRobot/x/math/primitive/generics"
 	"github.com/itohio/EasyRobot/x/math/vec"
 	vecTypes "github.com/itohio/EasyRobot/x/math/vec/types"
 )
@@ -17,8 +18,7 @@ type Encoder struct {
 	samplesPerSymbol int
 	amplitude        float32
 	currentPhase     float32
-	bitBuffer        []byte
-	bitIndex         int
+	bitBuffer        generics.BitBuffer[byte]
 }
 
 // NewEncoder creates a new 16-QAM encoder.
@@ -35,14 +35,13 @@ func NewEncoder(sampleRate, carrierFreq, symbolRate, amplitude float32) *Encoder
 		modulationOrder:  16, // 16-QAM
 		samplesPerSymbol: samplesPerSymbol,
 		amplitude:        amplitude,
-		bitBuffer:        make([]byte, 0, 1024),
+		bitBuffer:        generics.NewBitBuffer[byte](4), // 4 bits per symbol for 16-QAM
 	}
 }
 
 // Reset resets the encoder state
 func (qam *Encoder) Reset() {
-	qam.bitBuffer = qam.bitBuffer[:0]
-	qam.bitIndex = 0
+	qam.bitBuffer.Clear()
 	qam.currentPhase = 0
 }
 
@@ -54,30 +53,34 @@ func (qam *Encoder) Encode(amplitudes vecTypes.Vector, data []byte) int {
 	if amplitudes == nil {
 		// Calculate expected length
 		bitsPerSymbol := 4 // 16-QAM: 4 bits per symbol
-		bitsNeeded := len(qam.bitBuffer) + len(data)*8
+		bitsNeeded := qam.bitBuffer.GetWrittenBits() + len(data)*8
 		symbolsNeeded := (bitsNeeded + bitsPerSymbol - 1) / bitsPerSymbol
 		return symbolsNeeded * qam.samplesPerSymbol
 	}
 
-	// Convert bytes to bits
-	for _, b := range data {
-		for i := 7; i >= 0; i-- {
-			bit := (b >> uint(i)) & 1
-			qam.bitBuffer = append(qam.bitBuffer, byte(bit))
-		}
-	}
+	// Add bytes to bit buffer
+	qam.bitBuffer.ReadFromBytes(data)
 
 	ampVec := amplitudes.(vec.Vector)
 	ampData := []float32(ampVec)
 
 	samplesWritten := 0
 
-	// Process 4 bits at a time (16-QAM symbols)
-	bitsPerSymbol := 4
-	for len(qam.bitBuffer) >= bitsPerSymbol && samplesWritten < len(ampData) {
-		// Extract 4 bits
-		bits := qam.bitBuffer[:bitsPerSymbol]
-		qam.bitBuffer = qam.bitBuffer[bitsPerSymbol:]
+	// Process symbols (4 bits per symbol for 16-QAM)
+	for qam.bitBuffer.HasValue() && samplesWritten < len(ampData) {
+		// Read one symbol (4 bits)
+		symbol, ok := qam.bitBuffer.Read()
+		if !ok {
+			break
+		}
+
+		// Convert symbol to 4 bits for I/Q mapping
+		bits := []byte{
+			byte((symbol >> 3) & 1),
+			byte((symbol >> 2) & 1),
+			byte((symbol >> 1) & 1),
+			byte(symbol & 1),
+		}
 
 		// Map 4 bits to I/Q values (-3, -1, 1, 3)
 		iVal, qVal := qam.bitsToIQ(bits)
@@ -132,25 +135,32 @@ func (qam *Encoder) GenerateSignal(data []byte, length int) vec.Vector {
 	result := vec.New(length)
 	resultData := []float32(result)
 
-	// Convert bytes to bits
-	bitBuffer := make([]byte, 0, len(data)*8)
-	for _, b := range data {
-		for i := 7; i >= 0; i-- {
-			bit := (b >> uint(i)) & 1
-			bitBuffer = append(bitBuffer, byte(bit))
-		}
-	}
+	// Use bit buffer to read symbols
+	bitBuffer := generics.NewBitBuffer[byte](4) // 4 bits per symbol for 16-QAM
+	bitBuffer.ReadFromBytes(data)
+	bitBuffer.Reset()
 
 	sampleIndex := 0
 	qam.currentPhase = 0
 
-	// Process 4 bits at a time (16-QAM symbols)
-	bitsPerSymbol := 4
-	for i := 0; i < len(bitBuffer)-bitsPerSymbol+1 && sampleIndex < length; i += bitsPerSymbol {
-		bits := bitBuffer[i : i+bitsPerSymbol]
+	// Process symbols
+	for bitBuffer.HasValue() && sampleIndex < length {
+		// Read one symbol (4 bits)
+		symbol, ok := bitBuffer.Read()
+		if !ok {
+			break
+		}
+
+		// Convert symbol to 4 bits for I/Q mapping
+		bits := []byte{
+			byte((symbol >> 3) & 1),
+			byte((symbol >> 2) & 1),
+			byte((symbol >> 1) & 1),
+			byte(symbol & 1),
+		}
 
 		// Map 4 bits to I/Q values
-		iVal, qVal := qam.bitsToIQ(bits)
+		iVal, qVal := qam.bitsToIQ(bits[:])
 		iVal *= qam.amplitude / 3.0 // Normalize to amplitude
 		qVal *= qam.amplitude / 3.0
 
@@ -170,4 +180,3 @@ func (qam *Encoder) GenerateSignal(data []byte, length int) vec.Vector {
 
 	return result
 }
-

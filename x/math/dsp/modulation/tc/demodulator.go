@@ -257,8 +257,3 @@ func (tcd *Demodulator) Reset() {
 func (tcd *Demodulator) FrameRate() FrameRate {
 	return tcd.frameRate
 }
-
-// SetEndOfPacketCallback sets a callback to detect end of packet.
-func (tcd *Demodulator) SetEndOfPacketCallback(callback func([]byte) bool) {
-	tcd.demodulator.OnIsEndOfPacket(callback)
-}

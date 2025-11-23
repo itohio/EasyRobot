@@ -3,6 +3,7 @@ package mask
 import (
 	"math"
 
+	"github.com/itohio/EasyRobot/x/math/primitive/generics"
 	"github.com/itohio/EasyRobot/x/math/vec"
 	vecTypes "github.com/itohio/EasyRobot/x/math/vec/types"
 )
@@ -18,8 +19,7 @@ type Modulator struct {
 	amplitude        float32
 
 	// State for streaming encoding
-	bitBuffer    []byte
-	bitIndex     int
+	bitBuffer    generics.BitBuffer[byte]
 	currentPhase float32
 }
 
@@ -38,14 +38,13 @@ func NewModulator(sampleRate, carrierFreq, symbolRate float32, modulationOrder i
 		modulationOrder:  modulationOrder,
 		samplesPerSymbol: samplesPerSymbol,
 		amplitude:        amplitude,
-		bitBuffer:        make([]byte, 0, 1024),
+		bitBuffer:        generics.NewBitBuffer[byte](int(math.Log2(float64(modulationOrder)))), // bits per symbol
 	}
 }
 
 // Reset resets the modulator state.
 func (mask *Modulator) Reset() {
-	mask.bitBuffer = mask.bitBuffer[:0]
-	mask.bitIndex = 0
+	mask.bitBuffer.Clear()
 	mask.currentPhase = 0
 }
 
@@ -57,33 +56,26 @@ func (mask *Modulator) Encode(amplitudes vecTypes.Vector, data []byte) int {
 	if amplitudes == nil {
 		// Calculate expected length
 		bitsPerSymbol := int(math.Log2(float64(mask.modulationOrder)))
-		bitsNeeded := len(mask.bitBuffer) + len(data)*8
+		bitsNeeded := mask.bitBuffer.GetWrittenBits() + len(data)*8
 		symbolsNeeded := (bitsNeeded + bitsPerSymbol - 1) / bitsPerSymbol
 		return symbolsNeeded * mask.samplesPerSymbol
 	}
 
-	// Convert bytes to bits
-	for _, b := range data {
-		for i := 7; i >= 0; i-- {
-			bit := (b >> uint(i)) & 1
-			mask.bitBuffer = append(mask.bitBuffer, byte(bit))
-		}
-	}
+	// Add bytes to bit buffer
+	mask.bitBuffer.ReadFromBytes(data)
 
 	ampVec := amplitudes.(vec.Vector)
 	ampData := []float32(ampVec)
 	samplesWritten := 0
 
-	bitsPerSymbol := int(math.Log2(float64(mask.modulationOrder)))
-
-	// Process bits in symbol groups
-	for len(mask.bitBuffer) >= bitsPerSymbol && samplesWritten < len(ampData) {
-		// Extract bits for one symbol
-		symbol := 0
-		for i := 0; i < bitsPerSymbol; i++ {
-			symbol = (symbol << 1) | int(mask.bitBuffer[i])
+	// Process symbols
+	for mask.bitBuffer.HasValue() && samplesWritten < len(ampData) {
+		// Read one symbol
+		symbolVal, ok := mask.bitBuffer.Read()
+		if !ok {
+			break
 		}
-		mask.bitBuffer = mask.bitBuffer[bitsPerSymbol:]
+		symbol := int(symbolVal)
 
 		// Map symbol to amplitude level
 		amplitudeLevel := mask.symbolToAmplitude(symbol)
@@ -139,26 +131,21 @@ func (mask *Modulator) GenerateSignal(data []byte, length int) vec.Vector {
 	resultData := []float32(result)
 
 	bitsPerSymbol := int(math.Log2(float64(mask.modulationOrder)))
-	bitBuffer := make([]byte, 0, len(data)*8)
-
-	// Convert bytes to bits
-	for _, b := range data {
-		for i := 7; i >= 0; i-- {
-			bit := (b >> uint(i)) & 1
-			bitBuffer = append(bitBuffer, byte(bit))
-		}
-	}
+	bitBuffer := generics.NewBitBuffer[byte](bitsPerSymbol)
+	bitBuffer.ReadFromBytes(data)
+	bitBuffer.Reset()
 
 	sampleIndex := 0
 	mask.currentPhase = 0
 
-	// Process bits in symbol groups
-	for i := 0; i < len(bitBuffer)-bitsPerSymbol+1 && sampleIndex < length; i += bitsPerSymbol {
-		// Collect bits for one symbol
-		symbol := 0
-		for j := 0; j < bitsPerSymbol && i+j < len(bitBuffer); j++ {
-			symbol = (symbol << 1) | int(bitBuffer[i+j])
+	// Process symbols
+	for bitBuffer.HasValue() && sampleIndex < length {
+		// Read one symbol
+		symbolVal, ok := bitBuffer.Read()
+		if !ok {
+			break
 		}
+		symbol := int(symbolVal)
 
 		// Map symbol to amplitude
 		amplitudeLevel := mask.symbolToAmplitude(symbol)
@@ -174,4 +161,3 @@ func (mask *Modulator) GenerateSignal(data []byte, length int) vec.Vector {
 
 	return result
 }
-

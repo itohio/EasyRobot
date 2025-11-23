@@ -12,6 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Test constants are defined in modulator_test.go
+// These are shared across both modulator and demodulator tests
+
 // addNoise adds AWGN noise to a signal to achieve a specific SNR in dB
 func addNoise(signal vecTypes.Vector, snrDb float32) vecTypes.Vector {
 	signalData := []float32(signal.(vec.Vector))
@@ -92,51 +95,102 @@ func TestDemodulator_IsLocked(t *testing.T) {
 	assert.False(t, demodulator.IsLocked())
 }
 
-func TestRoundtrip_BinaryDSSS_Clean(t *testing.T) {
+// TestRoundtrip_BinaryDSSS_Short_Clean tests round-trip with short clean data
+func TestRoundtrip_BinaryDSSS_Short_Clean(t *testing.T) {
 	code := GenerateMSequence(3, []int{2, 1, 0}, 1)
 	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
 	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
 
-	// Test data
-	testData := []byte{0x55, 0xAA}
-
-	// Encode with padding using helper
-	paddingSamples := int(testSampleRate * 0.5)
-	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 10) // Chunk size: 10 bytes
-
-	// Decode with chunks using helper
-	decoded := modulation.DemodulateWithChunks(t, demodulator, signal, 1000, 0)
-
-	// For DSSS, acquisition can be challenging, so we're lenient
-	assert.GreaterOrEqual(t, len(decoded), 0, "Should not have negative bytes decoded")
-	if len(decoded) > 0 {
-		t.Logf("Binary DSSS: Successfully decoded %d bytes", len(decoded))
-	}
-}
-
-func TestRoundtrip_BinaryDSSS_WithNoise(t *testing.T) {
-	code := GenerateMSequence(3, []int{2, 1, 0}, 1)
-	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
-	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
-
-	// Test data
+	// Short test data (1 byte)
 	testData := []byte{0x55}
 
-	// Encode with padding using helper
+	// Encode with padding
 	paddingSamples := int(testSampleRate * 0.5)
-	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 5) // Chunk size: 5 bytes
+	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 0)
 
-	// Add noise (15dB SNR)
-	noisySignal := addNoise(signal, 15.0)
+	// Decode
+	decoded := modulation.DemodulateWithChunks(t, demodulator, signal, 1000, len(testData))
 
-	// Reset demodulator for clean state
+	// Verify exact match
+	modulation.VerifyExactMatch(t, testData, decoded)
+}
+
+// TestRoundtrip_BinaryDSSS_Short_Noisy tests round-trip with short noisy data (6dB SNR)
+func TestRoundtrip_BinaryDSSS_Short_Noisy(t *testing.T) {
+	code := GenerateMSequence(3, []int{2, 1, 0}, 1)
+	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
+	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
+
+	// Short test data (1 byte)
+	testData := []byte{0x55}
+
+	// Encode with padding
+	paddingSamples := int(testSampleRate * 0.5)
+	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 0)
+
+	// Add noise at 6dB SNR
+	noisySignal := addNoise(signal, 6.0)
+
+	// Reset demodulator
 	demodulator.Reset()
 
-	// Decode with chunks using helper
-	decoded := modulation.DemodulateWithChunks(t, demodulator, noisySignal, 1000, 0)
+	// Decode
+	decoded := modulation.DemodulateWithChunks(t, demodulator, noisySignal, 1000, len(testData))
 
-	// Should decode some bytes even with noise
-	assert.GreaterOrEqual(t, len(decoded), 0, "Should handle noise gracefully")
+	// Verify exact match (DSSS should handle 6dB SNR)
+	modulation.VerifyExactMatch(t, testData, decoded)
+}
+
+// TestRoundtrip_BinaryDSSS_Long_Clean tests round-trip with long clean data
+func TestRoundtrip_BinaryDSSS_Long_Clean(t *testing.T) {
+	code := GenerateMSequence(3, []int{2, 1, 0}, 1)
+	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
+	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
+
+	// Long test data (100 bytes)
+	testData := make([]byte, 100)
+	for i := range testData {
+		testData[i] = byte(i % 256)
+	}
+
+	// Encode with padding and chunked encoding
+	paddingSamples := int(testSampleRate * 0.5)
+	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 10)
+
+	// Decode
+	decoded := modulation.DemodulateWithChunks(t, demodulator, signal, 1000, len(testData))
+
+	// Verify exact match
+	modulation.VerifyExactMatch(t, testData, decoded)
+}
+
+// TestRoundtrip_BinaryDSSS_Long_Noisy tests round-trip with long noisy data (6dB SNR)
+func TestRoundtrip_BinaryDSSS_Long_Noisy(t *testing.T) {
+	code := GenerateMSequence(3, []int{2, 1, 0}, 1)
+	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
+	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
+
+	// Long test data (100 bytes)
+	testData := make([]byte, 100)
+	for i := range testData {
+		testData[i] = byte(i % 256)
+	}
+
+	// Encode with padding and chunked encoding
+	paddingSamples := int(testSampleRate * 0.5)
+	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 10)
+
+	// Add noise at 6dB SNR
+	noisySignal := addNoise(signal, 6.0)
+
+	// Reset demodulator
+	demodulator.Reset()
+
+	// Decode
+	decoded := modulation.DemodulateWithChunks(t, demodulator, noisySignal, 1000, len(testData))
+
+	// Verify exact match (DSSS should handle 6dB SNR)
+	modulation.VerifyExactMatch(t, testData, decoded)
 }
 
 func TestRoundtrip_BinaryDSSS_Padding(t *testing.T) {
@@ -183,23 +237,102 @@ func TestRoundtrip_BinaryDSSS_Padding(t *testing.T) {
 	assert.GreaterOrEqual(t, len(decoded), 0, "Should handle padding correctly")
 }
 
-func TestRoundtrip_MaryDSSS_Clean(t *testing.T) {
+// TestRoundtrip_MaryDSSS_Short_Clean tests round-trip with short clean data (M-ary)
+func TestRoundtrip_MaryDSSS_Short_Clean(t *testing.T) {
 	codeTable := GenerateWalshCodeTable(4)
-	modulator := NewMModulator(testSampleRate, testCarrierFreq, testSymbolRate, codeTable)
+	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, codeTable...)
 	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, codeTable...)
 
-	// Test data
+	// Short test data (2 bytes)
 	testData := []byte{0x12, 0x34}
 
-	// Encode with padding using helper
+	// Encode with padding
 	paddingSamples := int(testSampleRate * 0.5)
-	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 10) // Chunk size: 10 bytes
+	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 0)
 
-	// Decode with chunks using helper
-	decoded := modulation.DemodulateWithChunks(t, demodulator, signal, 1000, 0)
+	// Decode
+	decoded := modulation.DemodulateWithChunks(t, demodulator, signal, 1000, len(testData))
 
-	// Should decode some bytes
-	assert.GreaterOrEqual(t, len(decoded), 0, "Should decode some bytes for M-ary DSSS")
+	// Verify exact match
+	modulation.VerifyExactMatch(t, testData, decoded)
+}
+
+// TestRoundtrip_MaryDSSS_Short_Noisy tests round-trip with short noisy data (6dB SNR, M-ary)
+func TestRoundtrip_MaryDSSS_Short_Noisy(t *testing.T) {
+	codeTable := GenerateWalshCodeTable(4)
+	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, codeTable...)
+	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, codeTable...)
+
+	// Short test data (2 bytes)
+	testData := []byte{0x12, 0x34}
+
+	// Encode with padding
+	paddingSamples := int(testSampleRate * 0.5)
+	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 0)
+
+	// Add noise at 6dB SNR
+	noisySignal := addNoise(signal, 6.0)
+
+	// Reset demodulator
+	demodulator.Reset()
+
+	// Decode
+	decoded := modulation.DemodulateWithChunks(t, demodulator, noisySignal, 1000, len(testData))
+
+	// Verify exact match
+	modulation.VerifyExactMatch(t, testData, decoded)
+}
+
+// TestRoundtrip_MaryDSSS_Long_Clean tests round-trip with long clean data (M-ary)
+func TestRoundtrip_MaryDSSS_Long_Clean(t *testing.T) {
+	codeTable := GenerateWalshCodeTable(4)
+	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, codeTable...)
+	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, codeTable...)
+
+	// Long test data (100 bytes)
+	testData := make([]byte, 100)
+	for i := range testData {
+		testData[i] = byte(i % 256)
+	}
+
+	// Encode with padding and chunked encoding
+	paddingSamples := int(testSampleRate * 0.5)
+	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 10)
+
+	// Decode
+	decoded := modulation.DemodulateWithChunks(t, demodulator, signal, 1000, len(testData))
+
+	// Verify exact match
+	modulation.VerifyExactMatch(t, testData, decoded)
+}
+
+// TestRoundtrip_MaryDSSS_Long_Noisy tests round-trip with long noisy data (6dB SNR, M-ary)
+func TestRoundtrip_MaryDSSS_Long_Noisy(t *testing.T) {
+	codeTable := GenerateWalshCodeTable(4)
+	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, codeTable...)
+	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, codeTable...)
+
+	// Long test data (100 bytes)
+	testData := make([]byte, 100)
+	for i := range testData {
+		testData[i] = byte(i % 256)
+	}
+
+	// Encode with padding and chunked encoding
+	paddingSamples := int(testSampleRate * 0.5)
+	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 10)
+
+	// Add noise at 6dB SNR
+	noisySignal := addNoise(signal, 6.0)
+
+	// Reset demodulator
+	demodulator.Reset()
+
+	// Decode
+	decoded := modulation.DemodulateWithChunks(t, demodulator, noisySignal, 1000, len(testData))
+
+	// Verify exact match
+	modulation.VerifyExactMatch(t, testData, decoded)
 }
 
 func TestDemodulator_InterfaceCompliance(t *testing.T) {
@@ -207,9 +340,5 @@ func TestDemodulator_InterfaceCompliance(t *testing.T) {
 	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
 
 	// Verify it implements the Demodulator interface
-	var _ interface {
-		Decode(data []byte, amplitudes vecTypes.Vector) int
-		Reset()
-		OnIsEndOfPacket(callback func([]byte) bool)
-	} = demodulator
+	var _ modulation.Demodulator = demodulator
 }
