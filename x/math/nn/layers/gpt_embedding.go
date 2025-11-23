@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/itohio/EasyRobot/x/math/nn/types"
+	"github.com/itohio/EasyRobot/x/math/shape"
 	"github.com/itohio/EasyRobot/x/math/tensor"
 	tensorTypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 )
@@ -52,7 +53,7 @@ func NewGPTEmbedding(vocabSize, embedDim int, opts ...Option) (*GPTEmbedding, er
 
 // Init initializes the layer, creating internal computation tensors.
 // Input shape should be [batchSize, seqLen] for token IDs.
-func (e *GPTEmbedding) Init(inputShape tensor.Shape) error {
+func (e *GPTEmbedding) Init(inputShape shape.Shape) error {
 	if e == nil {
 		return fmt.Errorf("GPTEmbedding.Init: nil layer")
 	}
@@ -63,7 +64,7 @@ func (e *GPTEmbedding) Init(inputShape tensor.Shape) error {
 	}
 
 	// Compute output shape
-	var outputShape tensor.Shape
+	var outputShape shape.Shape
 	var seqLen int
 	if len(inputShape) == 1 {
 		// Single sequence: [seqLen] -> [seqLen, embedDim]
@@ -257,7 +258,7 @@ func (e *GPTEmbedding) accumulateEmbeddingGradients(input, gradOutput, gradEmbed
 // OutputShape returns the output shape for given input shape.
 // Input: [batchSize, seqLen] or [seqLen]
 // Output: [batchSize, seqLen, embedDim] or [seqLen, embedDim]
-func (e *GPTEmbedding) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
+func (e *GPTEmbedding) OutputShape(inputShape shape.Shape) (shape.Shape, error) {
 	if e == nil {
 		return nil, fmt.Errorf("GPTEmbedding.OutputShape: nil layer")
 	}

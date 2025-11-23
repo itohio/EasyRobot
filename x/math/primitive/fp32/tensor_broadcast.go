@@ -3,7 +3,7 @@ package fp32
 import (
 	"fmt"
 
-	helpers "github.com/itohio/EasyRobot/x/math/primitive/generics/helpers"
+	shp "github.com/itohio/EasyRobot/x/math/shape"
 )
 
 // BroadcastStrides computes effective strides when broadcasting a tensor with the given shape/strides to the target shape.
@@ -18,7 +18,8 @@ func BroadcastStridesTo(buf []int, shape []int, strides []int, target []int) ([]
 		return nil, fmt.Errorf("fp32: cannot broadcast rank %d tensor to rank %d", len(shape), len(target))
 	}
 
-	strides = EnsureStrides(strides, shape)
+	var stridesBuf [shp.MAX_DIMS]int
+	strides = shp.EnsureStrides(stridesBuf[:], strides, shape)
 	if len(target) > len(buf) {
 		buf = make([]int, len(target))
 	}
@@ -52,39 +53,40 @@ func BroadcastStridesTo(buf []int, shape []int, strides []int, target []int) ([]
 
 // ExpandTo writes a broadcasted view of src into dst.
 func ExpandTo(dst, src []float32, dstShape, srcShape []int, dstStrides, srcStrides []int) error {
-	sizeDst := SizeFromShape(dstShape)
+	sizeDst := shp.SizeFromShape(dstShape)
 	if sizeDst == 0 {
 		return nil
 	}
 
-	dstStrides = EnsureStrides(dstStrides, dstShape)
-	srcStrides = EnsureStrides(srcStrides, srcShape)
-	var effectiveSrcBuf [helpers.MAX_DIMS]int
+	var dstStridesBuf [shp.MAX_DIMS]int
+	dstStrides = shp.EnsureStrides(dstStridesBuf[:], dstStrides, dstShape)
+	var srcStridesBuf [shp.MAX_DIMS]int
+	srcStrides = shp.EnsureStrides(srcStridesBuf[:], srcStrides, srcShape)
+	var effectiveSrcBuf [shp.MAX_DIMS]int
 	effectiveSrc, err := BroadcastStridesTo(effectiveSrcBuf[:], srcShape, srcStrides, dstShape)
 	if err != nil {
 		return err
 	}
 
-	strideSet := [][]int{dstStrides, effectiveSrc}
 	var offsetsArr [2]int
 	process := func(indices []int, offsets []int) {
 		for {
 			dIdx := offsets[0]
 			sIdx := offsets[1]
 			dst[dIdx] = src[sIdx]
-			if !advanceOffsets(dstShape, indices, offsets, strideSet) {
+			if !shp.AdvanceOffsets(dstShape, indices, offsets, dstStrides, effectiveSrc) {
 				break
 			}
 		}
 	}
 
-	if len(dstShape) <= helpers.MAX_DIMS {
-		var indicesArr [helpers.MAX_DIMS]int
-		process(indicesArr[:len(dstShape)], offsetsArr[:len(strideSet)])
+	if len(dstShape) <= shp.MAX_DIMS {
+		var indicesArr [shp.MAX_DIMS]int
+		process(indicesArr[:len(dstShape)], offsetsArr[:2])
 		return nil
 	}
 
-	process(make([]int, len(dstShape)), offsetsArr[:len(strideSet)])
+	process(make([]int, len(dstShape)), offsetsArr[:2])
 
 	return nil
 }

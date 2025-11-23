@@ -3,6 +3,7 @@ package gorgonia
 import (
 	"fmt"
 
+	"github.com/itohio/EasyRobot/x/math/shape"
 	"github.com/itohio/EasyRobot/x/math/tensor/types"
 	"gorgonia.org/gorgonia"
 	"gorgonia.org/tensor"
@@ -84,7 +85,7 @@ func (gt *GraphTensor) Fill(dst types.Tensor, value float64) types.Tensor {
 }
 
 // Reshape reshapes the tensor.
-func (gt *GraphTensor) Reshape(dst types.Tensor, newShape types.Shape) types.Tensor {
+func (gt *GraphTensor) Reshape(dst types.Tensor, newShape shape.Shape) types.Tensor {
 	if gt.graph.State() != types.GraphBuilding {
 		panic("gorgonia.GraphTensor.Reshape: can only add operations during graph building")
 	}
@@ -120,7 +121,7 @@ func (gt *GraphTensor) Transpose(dst types.Tensor, dims []int) types.Tensor {
 	}
 
 	// Compute new shape
-	newShape := make(types.Shape, len(gt.shape))
+	newShape := make(shape.Shape, len(gt.shape))
 	for i, d := range dims {
 		newShape[i] = gt.shape[d]
 	}
@@ -436,9 +437,9 @@ func (gt *GraphTensor) MatMul(dst types.Tensor, other types.Tensor) types.Tensor
 	}
 
 	// Compute output shape
-	var outShape types.Shape
+	var outShape shape.Shape
 	if gt.Rank() == 2 && otherGT.Rank() == 2 {
-		outShape = types.Shape{gt.shape[0], otherGT.shape[1]}
+		outShape = shape.Shape{gt.shape[0], otherGT.shape[1]}
 	} else {
 		// TODO: Handle batched matmul
 		panic("gorgonia.GraphTensor.MatMul: only 2D matmul supported currently")
@@ -461,7 +462,7 @@ func (gt *GraphTensor) Sum(dst types.Tensor, dims []int) types.Tensor {
 		if err != nil {
 			panic(err)
 		}
-		return gt.graph.wrapNode(node, types.Shape{}, gt.dataType)
+		return gt.graph.wrapNode(node, shape.Shape{}, gt.dataType)
 	}
 
 	// Sum along specific dimensions
@@ -606,12 +607,12 @@ func (gt *GraphTensor) MaxPool2D(dst types.Tensor, kernelSize, stride, padding [
 // Helper to wrap a node into a GraphTensor
 //
 
-func (eg *ExpressionGraph) wrapNode(node *gorgonia.Node, shape types.Shape, dataType types.DataType) *GraphTensor {
+func (eg *ExpressionGraph) wrapNode(node *gorgonia.Node, s shape.Shape, dataType types.DataType) *GraphTensor {
 	gt := &GraphTensor{
 		graph:    eg,
 		node:     node,
 		id:       eg.nextID,
-		shape:    shape,
+		shape:    s,
 		dataType: dataType,
 		constant: false,
 	}

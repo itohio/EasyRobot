@@ -3,7 +3,7 @@ package qam
 import (
 	"math"
 
-	"github.com/itohio/EasyRobot/x/math/primitive/generics"
+	"github.com/itohio/EasyRobot/x/buffer"
 	"github.com/itohio/EasyRobot/x/math/vec"
 	vecTypes "github.com/itohio/EasyRobot/x/math/vec/types"
 )
@@ -18,7 +18,7 @@ type Encoder struct {
 	samplesPerSymbol int
 	amplitude        float32
 	currentPhase     float32
-	bitBuffer        generics.BitBuffer[byte]
+	bitBuffer        buffer.Bits[byte]
 }
 
 // NewEncoder creates a new 16-QAM encoder.
@@ -35,7 +35,7 @@ func NewEncoder(sampleRate, carrierFreq, symbolRate, amplitude float32) *Encoder
 		modulationOrder:  16, // 16-QAM
 		samplesPerSymbol: samplesPerSymbol,
 		amplitude:        amplitude,
-		bitBuffer:        generics.NewBitBuffer[byte](4), // 4 bits per symbol for 16-QAM
+		bitBuffer:        buffer.NewBits[byte](4), // 4 bits per symbol for 16-QAM
 	}
 }
 
@@ -136,7 +136,7 @@ func (qam *Encoder) GenerateSignal(data []byte, length int) vec.Vector {
 	resultData := []float32(result)
 
 	// Use bit buffer to read symbols
-	bitBuffer := generics.NewBitBuffer[byte](4) // 4 bits per symbol for 16-QAM
+	bitBuffer := buffer.NewBits[byte](4) // 4 bits per symbol for 16-QAM
 	bitBuffer.ReadFromBytes(data)
 	bitBuffer.Reset()
 

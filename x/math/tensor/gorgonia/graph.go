@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/itohio/EasyRobot/x/math/shape"
 	"github.com/itohio/EasyRobot/x/math/tensor/types"
 	"gorgonia.org/gorgonia"
 	"gorgonia.org/tensor"
@@ -44,7 +45,7 @@ func NewExpressionGraph() *ExpressionGraph {
 }
 
 // New creates a new tensor node in the graph.
-func (eg *ExpressionGraph) New(dtype types.DataType, shape ...int) types.Tensor {
+func (eg *ExpressionGraph) New(dtype types.DataType, sh ...int) types.Tensor {
 	eg.mu.Lock()
 	defer eg.mu.Unlock()
 
@@ -56,13 +57,13 @@ func (eg *ExpressionGraph) New(dtype types.DataType, shape ...int) types.Tensor 
 	gdt := toGorgoniaDtype(dtype)
 
 	// Create node in the graph
-	gshape := make([]int, len(shape))
-	copy(gshape, shape)
+	gshape := make([]int, len(sh))
+	copy(gshape, sh)
 
 	node := gorgonia.NewTensor(
 		eg.graph,
 		gdt,
-		len(shape),
+		len(sh),
 		gorgonia.WithShape(gshape...),
 		gorgonia.WithName(fmt.Sprintf("tensor_%d", eg.nextID)),
 	)
@@ -71,7 +72,7 @@ func (eg *ExpressionGraph) New(dtype types.DataType, shape ...int) types.Tensor 
 		graph:    eg,
 		node:     node,
 		id:       eg.nextID,
-		shape:    types.Shape(shape),
+		shape:    shape.NewShape(sh...),
 		dataType: dtype,
 		constant: false,
 	}
@@ -83,7 +84,7 @@ func (eg *ExpressionGraph) New(dtype types.DataType, shape ...int) types.Tensor 
 }
 
 // NewConstant creates a constant tensor node with embedded data.
-func (eg *ExpressionGraph) NewConstant(data any, shape ...int) types.Tensor {
+func (eg *ExpressionGraph) NewConstant(data any, sh ...int) types.Tensor {
 	eg.mu.Lock()
 	defer eg.mu.Unlock()
 
@@ -96,8 +97,8 @@ func (eg *ExpressionGraph) NewConstant(data any, shape ...int) types.Tensor {
 	gdt := toGorgoniaDtype(dtype)
 
 	// Create constant node
-	gshape := make([]int, len(shape))
-	copy(gshape, shape)
+	gshape := make([]int, len(sh))
+	copy(gshape, sh)
 
 	// Create dense tensor with data
 	denseVal := tensor.New(tensor.WithShape(gshape...), tensor.Of(gdt), tensor.WithBacking(data))
@@ -105,7 +106,7 @@ func (eg *ExpressionGraph) NewConstant(data any, shape ...int) types.Tensor {
 	node := gorgonia.NewTensor(
 		eg.graph,
 		gdt,
-		len(shape),
+		len(sh),
 		gorgonia.WithShape(gshape...),
 		gorgonia.WithValue(denseVal),
 		gorgonia.WithName(fmt.Sprintf("const_%d", eg.nextID)),
@@ -115,7 +116,7 @@ func (eg *ExpressionGraph) NewConstant(data any, shape ...int) types.Tensor {
 		graph:    eg,
 		node:     node,
 		id:       eg.nextID,
-		shape:    types.Shape(shape),
+		shape:    shape.NewShape(sh...),
 		dataType: dtype,
 		constant: true,
 	}

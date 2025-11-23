@@ -5,6 +5,8 @@ import (
 	"sync/atomic"
 	"unsafe"
 
+	"github.com/itohio/EasyRobot/x/iter"
+	"github.com/itohio/EasyRobot/x/math/shape"
 	"github.com/itohio/EasyRobot/x/math/tensor/types"
 	cv "gocv.io/x/gocv"
 )
@@ -17,7 +19,7 @@ type Tensor struct {
 
 type tensorHandle struct {
 	mat      *cv.Mat
-	shape    types.Shape
+	shape    shape.Shape
 	dtype    types.DataType
 	owns     bool
 	released atomic.Bool
@@ -49,7 +51,7 @@ func NewImage(rows, cols, channels int, opts ...Option) (types.Tensor, error) {
 		opt(&cfg)
 	}
 
-	shape := types.Shape{rows, cols, channels}
+	shape := shape.Shape{rows, cols, channels}
 	return Tensor{
 		handle: &tensorHandle{
 			mat:   &mat,
@@ -115,7 +117,7 @@ func FromMat(mat cv.Mat, opts ...Option) (types.Tensor, error) {
 	}, nil
 }
 
-func inferMetadata(mat cv.Mat) (types.Shape, types.DataType, error) {
+func inferMetadata(mat cv.Mat) (shape.Shape, types.DataType, error) {
 	mt := mat.Type()
 	dtype, err := matTypeToDataType(mt)
 	if err != nil {
@@ -128,7 +130,7 @@ func inferMetadata(mat cv.Mat) (types.Shape, types.DataType, error) {
 		return nil, types.DT_UNKNOWN, fmt.Errorf("gocv tensor: invalid mat dimensions: rows=%d cols=%d channels=%d", rows, cols, ch)
 	}
 
-	shape := types.Shape{rows, cols, ch}
+	shape := shape.Shape{rows, cols, ch}
 	return shape, dtype, nil
 }
 
@@ -216,7 +218,7 @@ func (t Tensor) DataType() types.DataType {
 }
 
 // Shape returns the tensor shape in [rows, cols, channels] format.
-func (t Tensor) Shape() types.Shape {
+func (t Tensor) Shape() shape.Shape {
 	h, err := t.getHandle()
 	if err != nil {
 		return nil
@@ -224,7 +226,7 @@ func (t Tensor) Shape() types.Shape {
 	if h.shape == nil {
 		return nil
 	}
-	return append(types.Shape(nil), h.shape...)
+	return append(shape.Shape(nil), h.shape...)
 }
 
 // Rank returns the number of dimensions (always 3 for images).
@@ -305,7 +307,7 @@ func (t Tensor) Data() any {
 	}
 }
 
-func validateIndices(shape types.Shape, idx []int) {
+func validateIndices(shape shape.Shape, idx []int) {
 	if len(idx) != len(shape) {
 		panic("gocv tensor: index dimensionality mismatch")
 	}
@@ -316,7 +318,7 @@ func validateIndices(shape types.Shape, idx []int) {
 	}
 }
 
-func (t Tensor) linearIndex(shape types.Shape, indices []int) int {
+func (t Tensor) linearIndex(shape shape.Shape, indices []int) int {
 	switch len(indices) {
 	case 1:
 		return indices[0]
@@ -443,7 +445,7 @@ func (t Tensor) Elements(fixedAxisValuePairs ...int) func(func(types.Element) bo
 
 	return func(yield func(types.Element) bool) {
 		shape := h.shape
-		for indices := range shape.Iterator(fixedAxisValuePairs...) {
+		for indices := range iter.ElementsIndices(shape.ToSlice(), fixedAxisValuePairs...) {
 			validateIndices(shape, indices)
 			idx := t.linearIndex(shape, indices)
 			elem := element{tensor: t, index: idx}

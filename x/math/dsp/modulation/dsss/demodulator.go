@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/itohio/EasyRobot/x/buffer"
 	"github.com/itohio/EasyRobot/x/math/dsp/modulation"
 	agcFilter "github.com/itohio/EasyRobot/x/math/filter/agc"
 	"github.com/itohio/EasyRobot/x/math/filter/pll"
-	"github.com/itohio/EasyRobot/x/math/primitive/generics"
 	"github.com/itohio/EasyRobot/x/math/vec"
 	vecTypes "github.com/itohio/EasyRobot/x/math/vec/types"
 )
@@ -52,9 +52,9 @@ type Demodulator struct {
 	totalSamples int // Total number of samples processed (for carrier phase tracking)
 
 	// Symbol decision and bit conversion
-	symbolBuffer   []int                    // Recovered symbol decisions
-	bitBuffer      generics.BitBuffer[byte] // BitBuffer for symbol-to-byte conversion
-	bytesExtracted int                      // Number of complete bytes already extracted from bitBuffer
+	symbolBuffer   []int             // Recovered symbol decisions
+	bitBuffer      buffer.Bits[byte] // BitBuffer for symbol-to-byte conversion
+	bytesExtracted int               // Number of complete bytes already extracted from bitBuffer
 
 	// State
 	bitsPerSymbol int
@@ -171,7 +171,7 @@ func NewDemodulator(sampleRate, carrierFreq, symbolRate float32, codes ...Code) 
 
 	// Initialize symbol buffer and BitBuffer
 	symbolBuffer := make([]int, 0, 64)
-	bitBuffer := generics.NewBitBuffer[byte](bitsPerSymbol)
+	bitBuffer := buffer.NewBits[byte](bitsPerSymbol)
 
 	// Initialize PLL for carrier phase tracking
 	// Use loop bandwidth of 5% of symbol rate for good tracking vs noise trade-off

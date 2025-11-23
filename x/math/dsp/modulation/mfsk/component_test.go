@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/itohio/EasyRobot/x/math/dsp/modulation"
-	"github.com/itohio/EasyRobot/x/math/primitive/generics"
+	"github.com/itohio/EasyRobot/x/buffer"
 	"github.com/itohio/EasyRobot/x/math/vec"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -215,7 +215,7 @@ func TestFrequencyDetector_8FSK_AllFrequencies(t *testing.T) {
 
 // TestBitBuffer_8FSK tests bit buffer with 8-FSK symbols
 func TestBitBuffer_8FSK(t *testing.T) {
-	bitBuffer := generics.NewBitBuffer[int64](3) // 8-FSK = 2^3, 3 bits per symbol
+	bitBuffer := buffer.NewBits[int64](3) // 8-FSK = 2^3, 3 bits per symbol
 
 	// Test symbols: 0, 1, 2, 3, 4, 5, 6, 7
 	// Expected bits:
@@ -297,7 +297,7 @@ func TestFullPipeline_8FSK(t *testing.T) {
 	detector := modulation.NewGoertzelFrequencyDetector(testSampleRate, freqs...)
 
 	// Step 3: Bit buffer
-	bitBuffer := generics.NewBitBuffer[int64](3) // 8-FSK = 2^3, 3 bits per symbol
+	bitBuffer := buffer.NewBits[int64](3) // 8-FSK = 2^3, 3 bits per symbol
 
 	symbolsDetected := []int{}
 	for sync.HasCompleteSymbol() {

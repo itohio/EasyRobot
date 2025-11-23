@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/itohio/EasyRobot/x/math/nn/types"
+	"github.com/itohio/EasyRobot/x/math/shape"
 	"github.com/itohio/EasyRobot/x/math/tensor"
 	tensortypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 )
@@ -17,14 +18,14 @@ type Option interface {
 
 // Options holds marshaller/unmarshaller configuration.
 type Options struct {
-	FormatVersion        string
-	Hint                 string            // optional value hint (e.g. "tensor", "matrix", "model", "layer")
-	Metadata             map[string]string // free-form, backend specific
-	TensorFactory        func(DataType, Shape) Tensor
-	DestinationType      DataType // target data type for conversion during unmarshal
-	Context              context.Context
-	MappedStorageFactory MappedStorageFactory // factory for creating mapped storage (for graph marshaller, etc.)
-	ReleaseAfterProcessing bool // for sink marshallers: call Release() on tensors after processing
+	FormatVersion          string
+	Hint                   string            // optional value hint (e.g. "tensor", "matrix", "model", "layer")
+	Metadata               map[string]string // free-form, backend specific
+	TensorFactory          func(DataType, Shape) Tensor
+	DestinationType        DataType // target data type for conversion during unmarshal
+	Context                context.Context
+	MappedStorageFactory   MappedStorageFactory // factory for creating mapped storage (for graph marshaller, etc.)
+	ReleaseAfterProcessing bool                 // for sink marshallers: call Release() on tensors after processing
 }
 
 // Marshaller encodes values to a format.
@@ -224,7 +225,7 @@ type Releaser interface {
 // Domain type aliases for convenience
 type (
 	Tensor    = tensor.Tensor
-	Shape     = tensor.Shape
+	Shape     = shape.Shape
 	DataType  = tensor.DataType
 	Model     = types.Model
 	Layer     = types.Layer
@@ -236,7 +237,7 @@ const (
 	DT_UNKNOWN DataType = tensortypes.DT_UNKNOWN
 	INT64      DataType = tensortypes.INT64
 	FP64       DataType = tensortypes.FP64
-	C64       DataType = tensortypes.C64
+	C64        DataType = tensortypes.C64
 	INT32      DataType = tensortypes.INT32
 	FP32       DataType = tensortypes.FP32
 	INT        DataType = tensortypes.INT

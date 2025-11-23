@@ -1,6 +1,7 @@
 package types
 
 import (
+	"github.com/itohio/EasyRobot/x/math/shape"
 	"github.com/itohio/EasyRobot/x/math/tensor"
 	"github.com/itohio/EasyRobot/x/math/tensor/types"
 )
@@ -44,7 +45,7 @@ type Parameter struct {
 //   - fanOut: Output fan size for Xavier initialization (if 0, inferred from paramIdx and shape)
 //   - rng: Random number generator for initialization
 //   - requiresGrad: Whether gradients should be computed for this parameter
-func (p *Parameter) Init(dtype tensor.DataType, shape tensor.Shape, paramIdx ParamIndex, fanIn, fanOut int, rng tensor.RNG, requiresGrad bool) {
+func (p *Parameter) Init(dtype tensor.DataType, shape shape.Shape, paramIdx ParamIndex, fanIn, fanOut int, rng tensor.RNG, requiresGrad bool) {
 	if p == nil {
 		return
 	}
@@ -67,7 +68,7 @@ func (p *Parameter) Init(dtype tensor.DataType, shape tensor.Shape, paramIdx Par
 
 // inferFanSizes infers fanIn and fanOut from parameter index and shape.
 // This provides sensible defaults for Xavier initialization.
-func inferFanSizes(paramIdx ParamIndex, shape tensor.Shape) (fanIn, fanOut int) {
+func inferFanSizes(paramIdx ParamIndex, shape shape.Shape) (fanIn, fanOut int) {
 	if shape == nil || len(shape) == 0 {
 		return 1, 1
 	}

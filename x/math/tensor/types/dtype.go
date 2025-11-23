@@ -1,7 +1,6 @@
 package types
 
 import (
-	"github.com/itohio/EasyRobot/x/math/primitive"
 	"github.com/itohio/EasyRobot/x/math/primitive/c64"
 	"github.com/itohio/EasyRobot/x/math/primitive/fp32"
 	"github.com/itohio/EasyRobot/x/math/primitive/qi"
@@ -10,6 +9,7 @@ import (
 	"github.com/itohio/EasyRobot/x/math/primitive/qi64"
 	"github.com/itohio/EasyRobot/x/math/primitive/qi8"
 	"github.com/itohio/EasyRobot/x/math/primitive/qu8"
+	"github.com/itohio/EasyRobot/x/types"
 )
 
 // DataType represents the underlying element type stored by a tensor.
@@ -162,8 +162,7 @@ func CloneTensorDataTo(dst DataType, data any) any {
 	if newData == nil {
 		return nil
 	}
-	// Use primitive.CopyWithConversion instead of CopyTensorData
-	primitive.CopyWithConversion(newData, data)
+	types.CastClampedAny(newData, data)
 	return newData
 }
 

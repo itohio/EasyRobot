@@ -5,6 +5,7 @@ import (
 	"math/rand"
 
 	"github.com/itohio/EasyRobot/x/math/nn/types"
+	"github.com/itohio/EasyRobot/x/math/shape"
 	"github.com/itohio/EasyRobot/x/math/tensor"
 	tensorTypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 )
@@ -27,7 +28,7 @@ func NewReLU(name string) *ReLU {
 }
 
 // Init initializes the layer.
-func (r *ReLU) Init(inputShape tensor.Shape) error {
+func (r *ReLU) Init(inputShape shape.Shape) error {
 	if len(inputShape) == 0 {
 		return fmt.Errorf("ReLU.Init: empty input shape")
 	}
@@ -95,7 +96,7 @@ func (r *ReLU) Backward(gradOutput Tensor) (Tensor, error) {
 }
 
 // OutputShape returns the output shape (same as input shape for ReLU).
-func (r *ReLU) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
+func (r *ReLU) OutputShape(inputShape shape.Shape) (shape.Shape, error) {
 	outputShape := make([]int, len(inputShape))
 	copy(outputShape, inputShape)
 	return outputShape, nil
@@ -116,7 +117,7 @@ func NewSigmoid(name string) *Sigmoid {
 }
 
 // Init initializes the layer.
-func (s *Sigmoid) Init(inputShape tensor.Shape) error {
+func (s *Sigmoid) Init(inputShape shape.Shape) error {
 	if len(inputShape) == 0 {
 		return fmt.Errorf("Sigmoid.Init: empty input shape")
 	}
@@ -189,7 +190,7 @@ func (s *Sigmoid) Backward(gradOutput Tensor) (Tensor, error) {
 }
 
 // OutputShape returns the output shape (same as input shape for Sigmoid).
-func (s *Sigmoid) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
+func (s *Sigmoid) OutputShape(inputShape shape.Shape) (shape.Shape, error) {
 	outputShape := make([]int, len(inputShape))
 	copy(outputShape, inputShape)
 	return outputShape, nil
@@ -210,7 +211,7 @@ func NewTanh(name string) *Tanh {
 }
 
 // Init initializes the layer.
-func (t *Tanh) Init(inputShape tensor.Shape) error {
+func (t *Tanh) Init(inputShape shape.Shape) error {
 	if len(inputShape) == 0 {
 		return fmt.Errorf("Tanh.Init: empty input shape")
 	}
@@ -283,7 +284,7 @@ func (t *Tanh) Backward(gradOutput Tensor) (Tensor, error) {
 }
 
 // OutputShape returns the output shape (same as input shape for Tanh).
-func (t *Tanh) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
+func (t *Tanh) OutputShape(inputShape shape.Shape) (shape.Shape, error) {
 	outputShape := make([]int, len(inputShape))
 	copy(outputShape, inputShape)
 	return outputShape, nil
@@ -306,7 +307,7 @@ func NewSoftmax(name string, dim int) *Softmax {
 }
 
 // Init initializes the layer.
-func (s *Softmax) Init(inputShape tensor.Shape) error {
+func (s *Softmax) Init(inputShape shape.Shape) error {
 	if len(inputShape) == 0 {
 		return fmt.Errorf("Softmax.Init: empty input shape")
 	}
@@ -383,7 +384,7 @@ func (s *Softmax) Backward(gradOutput Tensor) (Tensor, error) {
 }
 
 // OutputShape returns the output shape (same as input shape for Softmax).
-func (s *Softmax) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
+func (s *Softmax) OutputShape(inputShape shape.Shape) (shape.Shape, error) {
 	outputShape := make([]int, len(inputShape))
 	copy(outputShape, inputShape)
 	return outputShape, nil
@@ -449,7 +450,7 @@ func NewDropout(name string, opts ...DropoutOption) *Dropout {
 }
 
 // Init initializes the layer.
-func (d *Dropout) Init(inputShape tensor.Shape) error {
+func (d *Dropout) Init(inputShape shape.Shape) error {
 	if len(inputShape) == 0 {
 		return fmt.Errorf("Dropout.Init: empty input shape")
 	}
@@ -551,7 +552,7 @@ func (d *Dropout) Backward(gradOutput Tensor) (Tensor, error) {
 }
 
 // OutputShape returns the output shape (same as input shape for Dropout).
-func (d *Dropout) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
+func (d *Dropout) OutputShape(inputShape shape.Shape) (shape.Shape, error) {
 	outputShape := make([]int, len(inputShape))
 	copy(outputShape, inputShape)
 	return outputShape, nil
@@ -613,7 +614,7 @@ func NewBatchNorm2D(numFeatures int, eps, momentum float64, name string) *BatchN
 }
 
 // Init initializes the BatchNorm2D layer.
-func (bn *BatchNorm2D) Init(inputShape tensor.Shape) error {
+func (bn *BatchNorm2D) Init(inputShape shape.Shape) error {
 	if len(inputShape) != 4 {
 		return fmt.Errorf("BatchNorm2D.Init: expected 4D input [batch, channels, height, width], got shape %v", inputShape)
 	}
@@ -746,7 +747,7 @@ func (bn *BatchNorm2D) Momentum() float64 {
 
 // OutputShape returns the output shape for the given input shape.
 // For BatchNorm2D, output shape equals input shape.
-func (bn *BatchNorm2D) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
+func (bn *BatchNorm2D) OutputShape(inputShape shape.Shape) (shape.Shape, error) {
 	if len(inputShape) != 4 {
 		return nil, fmt.Errorf("BatchNorm2D.OutputShape: expected 4D input [batch, channels, height, width], got shape %v", inputShape)
 	}

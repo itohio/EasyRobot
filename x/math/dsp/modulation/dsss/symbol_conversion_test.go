@@ -3,7 +3,7 @@ package dsss
 import (
 	"testing"
 
-	"github.com/itohio/EasyRobot/x/math/primitive/generics"
+	"github.com/itohio/EasyRobot/x/buffer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -15,7 +15,7 @@ func TestSymbolToByteConversion_Isolated(t *testing.T) {
 	bitsPerSymbol := 1
 	
 	// Create BitBuffer (same as demodulator uses)
-	bitBuffer := generics.NewBitBuffer[int64](bitsPerSymbol)
+	bitBuffer := buffer.NewBits[int64](bitsPerSymbol)
 	
 	// Test data: 0x55 = 01010101 (LSB first in bit stream)
 	// Symbols: 1, 0, 1, 0, 1, 0, 1, 0 (LSB first)
@@ -48,7 +48,7 @@ func TestSymbolToByteConversion_4DSSS(t *testing.T) {
 	// 4-ary DSSS: 2 bits per symbol
 	bitsPerSymbol := 2
 	
-	bitBuffer := generics.NewBitBuffer[int64](bitsPerSymbol)
+	bitBuffer := buffer.NewBits[int64](bitsPerSymbol)
 	
 	// Test: write symbols 0, 1, 2, 3 (2 bits each)
 	// This should give us: 00 01 10 11 = 0b110100 = 0x36 (LSB first)
@@ -89,7 +89,7 @@ func TestSymbolToByteConversion_RealisticFlow(t *testing.T) {
 	
 	// Step 1: Convert bytes to symbols (simulate what modulator does)
 	// Use BitBuffer to extract bits
-	bitBuffer := generics.NewBitBuffer[int64](bitsPerSymbol)
+	bitBuffer := buffer.NewBits[int64](bitsPerSymbol)
 	bitBuffer.ReadFromBytes(originalData)
 	bitBuffer.Reset()
 	
@@ -105,7 +105,7 @@ func TestSymbolToByteConversion_RealisticFlow(t *testing.T) {
 	t.Logf("Extracted %d symbols from %d bytes", len(symbols), len(originalData))
 	
 	// Step 2: Convert symbols back to bytes (simulate what demodulator does)
-	bitBuffer2 := generics.NewBitBuffer[int64](bitsPerSymbol)
+	bitBuffer2 := buffer.NewBits[int64](bitsPerSymbol)
 	
 	for _, symbol := range symbols {
 		bitBuffer2.Write(int64(symbol))

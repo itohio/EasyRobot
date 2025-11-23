@@ -4,6 +4,7 @@ package dsp
 import (
 	"github.com/itohio/EasyRobot/x/math/mat"
 	matTypes "github.com/itohio/EasyRobot/x/math/mat/types"
+	"github.com/itohio/EasyRobot/x/math/primitive/fp32"
 	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
@@ -22,20 +23,32 @@ import (
 type FFT2D struct {
 	rows, cols int       // matrix dimensions (FFT size)
 	tempBuf    []float32 // temporary buffer for optimizations (size 2*rows*cols for packed format)
+	lut        []float32 // precomputed LUT for twiddle factors (optional)
 }
 
 // NewFFT2D creates a 2D FFT processor for real-valued matrices of the specified dimensions.
-func NewFFT2D(rows, cols int) *FFT2D {
+// If lut is provided (vararg), it will be used for optimized FFT operations.
+// The LUT can be created using fp32.NewFFTLUT(max(rows, cols)).
+// Returns a value (not a pointer).
+func NewFFT2D(rows, cols int, lut ...[]float32) FFT2D {
 	if rows <= 0 || cols <= 0 {
 		panic("FFT dimensions must be positive")
 	}
-	nextPow2Rows := nextPowerOfTwo(rows)
-	nextPow2Cols := nextPowerOfTwo(cols)
-	return &FFT2D{
+	nextPow2Rows := fp32.NextPowerOfTwo(rows)
+	nextPow2Cols := fp32.NextPowerOfTwo(cols)
+
+	fft := FFT2D{
 		rows:    nextPow2Rows,
 		cols:    nextPow2Cols,
 		tempBuf: make([]float32, 2*nextPow2Rows*nextPow2Cols), // 2*rows*cols for packed format
 	}
+
+	// Use LUT if provided
+	if len(lut) > 0 && len(lut[0]) > 0 {
+		fft.lut = lut[0]
+	}
+
+	return fft
 }
 
 // Forward performs a forward FFT transform on a real-valued matrix.
@@ -135,7 +148,12 @@ func (f *FFT2D) forward(src, dst matTypes.Matrix) {
 			tempBuf[i+f.rows] = dst.(mat.Matrix)[i][j+f.cols] // imag part
 		}
 		// FFT the column (packed format)
-		fftReal(tempBuf)
+		if len(f.lut) > 0 {
+			totalFactors := len(f.lut) / 2
+			fp32.FFTWithLUT(tempBuf, f.lut, totalFactors)
+		} else {
+			fp32.FFT(tempBuf)
+		}
 		// Put back
 		for i := range f.rows {
 			dst.(mat.Matrix)[i][j] = tempBuf[i]
@@ -189,7 +207,8 @@ func (f *FFT2D) backward(src, dst matTypes.Matrix) {
 			colBuf[i+f.rows] = tempBuf[idx+f.cols] // imag part
 		}
 		// IFFT the column (packed format)
-		ifftReal(colBuf)
+		// Note: IFFTWithLUT could be added later for optimization
+		fp32.IFFT(colBuf)
 		// Put back
 		for i := range f.rows {
 			idx := i*2*f.cols + j
@@ -203,7 +222,8 @@ func (f *FFT2D) backward(src, dst matTypes.Matrix) {
 	for i := range f.rows {
 		rowStart := i * 2 * f.cols
 		copy(rowBuf, tempBuf[rowStart:rowStart+2*f.cols])
-		ifftReal(rowBuf)
+		// Note: IFFTWithLUT could be added later for optimization
+		fp32.IFFT(rowBuf)
 		// Copy real part to destination
 		copy(dst.(mat.Matrix)[i][:f.cols], rowBuf[:f.cols])
 	}
@@ -212,13 +232,19 @@ func (f *FFT2D) backward(src, dst matTypes.Matrix) {
 // fftRow performs FFT on a single row
 func (f *FFT2D) fftRow(row vec.Vector) {
 	rowData := []float32(row)
-	fftReal(rowData)
+	if len(f.lut) > 0 {
+		totalFactors := len(f.lut) / 2
+		fp32.FFTWithLUT(rowData, f.lut, totalFactors)
+	} else {
+		fp32.FFT(rowData)
+	}
 }
 
 // ifftRow performs inverse FFT on a single row
 func (f *FFT2D) ifftRow(row vec.Vector) {
 	rowData := []float32(row)
-	ifftReal(rowData)
+	// Note: IFFTWithLUT could be added later for optimization
+	fp32.IFFT(rowData)
 }
 
 // Convolve performs 2D convolution of signal matrix with kernel matrix using FFT.

@@ -1,10 +1,15 @@
 package fp32
 
-import "testing"
+import (
+	"testing"
+
+	shp "github.com/itohio/EasyRobot/x/math/shape"
+)
 
 func BenchmarkElemAdd(b *testing.B) {
 	shape := []int{128, 256}
-	contiguousStrides := ComputeStrides(shape)
+	var stridesBuf [shp.MAX_DIMS]int
+	contiguousStrides := shp.ComputeStrides(stridesBuf[:], shape)
 	size := shape[0] * shape[1]
 	dst := make([]float32, size)
 	a := make([]float32, size)
@@ -34,11 +39,13 @@ func BenchmarkElemAdd(b *testing.B) {
 
 func BenchmarkReduceSum(b *testing.B) {
 	shape := []int{256, 128}
-	contiguousStrides := ComputeStrides(shape)
+	var stridesBuf [shp.MAX_DIMS]int
+	contiguousStrides := shp.ComputeStrides(stridesBuf[:], shape)
 	size := shape[0] * shape[1]
 	src := make([]float32, size)
 	dstShape := []int{shape[0]}
-	dstStrides := ComputeStrides(dstShape)
+	var dstStridesBuf [shp.MAX_DIMS]int
+	dstStrides := shp.ComputeStrides(dstStridesBuf[:], dstShape)
 	dst := make([]float32, dstShape[0])
 	axes := []int{1}
 
@@ -197,7 +204,8 @@ func BenchmarkDiffArrScalar(b *testing.B) {
 
 func BenchmarkElemScale(b *testing.B) {
 	shape := []int{128, 256}
-	contiguousStrides := ComputeStrides(shape)
+	var stridesBuf [shp.MAX_DIMS]int
+	contiguousStrides := shp.ComputeStrides(stridesBuf[:], shape)
 	size := shape[0] * shape[1]
 	dst := make([]float32, size)
 	src := make([]float32, size)

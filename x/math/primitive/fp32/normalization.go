@@ -2,6 +2,7 @@ package fp32
 
 import (
 	"github.com/chewxy/math32"
+	shp "github.com/itohio/EasyRobot/x/math/shape"
 )
 
 // BatchNormForward performs batch normalization: (x - mean) / sqrt(var + eps) * gamma + beta
@@ -16,7 +17,7 @@ func BatchNormForward(dst, x, gamma, beta []float32, shape []int, eps float32) {
 	}
 
 	batchSize := shape[0]
-	featureSize := SizeFromShape(shape[1:])
+	featureSize := shp.SizeFromShape(shape[1:])
 
 	// Use Pool for temporary arrays - much more efficient than stack allocation
 	mean := Pool.Get(featureSize)
@@ -82,7 +83,7 @@ func LayerNormForward(dst, x, gamma, beta []float32, shape []int, eps float32) {
 		return
 	}
 
-	size := SizeFromShape(shape)
+	size := shp.SizeFromShape(shape)
 	if size == 0 {
 		return
 	}
@@ -138,7 +139,7 @@ func RMSNormForward(dst, x, gamma []float32, shape []int, eps float32) {
 		return
 	}
 
-	size := SizeFromShape(shape)
+	size := shp.SizeFromShape(shape)
 	if size == 0 {
 		return
 	}
@@ -177,7 +178,7 @@ func RMSNormForward(dst, x, gamma []float32, shape []int, eps float32) {
 // Normalizes each sample to unit L2 norm. Normalization axis can be specified.
 // If axis < 0, normalizes the entire tensor as one vector.
 func L2NormForward(dst, x []float32, shape []int, axis int) {
-	size := SizeFromShape(shape)
+	size := shp.SizeFromShape(shape)
 	if size == 0 {
 		return
 	}
@@ -306,7 +307,7 @@ func GroupNormForward(dst, x, gamma, beta []float32, shape []int, numGroups int,
 	}
 
 	channelsPerGroup := channels / numGroups
-	spatialSize := SizeFromShape(shape[2:]) // H * W * D * ...
+	spatialSize := shp.SizeFromShape(shape[2:]) // H * W * D * ...
 
 	for b := 0; b < batchSize; b++ {
 		for g := 0; g < numGroups; g++ {
@@ -377,7 +378,7 @@ func GroupNormForward(dst, x, gamma, beta []float32, shape []int, numGroups int,
 func BatchNormGrad(gradInput, gradGamma, gradBeta, gradOutput, input, gamma []float32, shape []int, eps float32) {
 	if len(shape) < 2 {
 		// Zero out gradients for invalid shapes
-		size := SizeFromShape(shape)
+		size := shp.SizeFromShape(shape)
 		for i := 0; i < size; i++ {
 			gradInput[i] = 0
 		}
@@ -385,7 +386,7 @@ func BatchNormGrad(gradInput, gradGamma, gradBeta, gradOutput, input, gamma []fl
 	}
 
 	batchSize := shape[0]
-	featureSize := SizeFromShape(shape[1:])
+	featureSize := shp.SizeFromShape(shape[1:])
 
 	// Use Pool for temporary arrays - much more efficient than stack allocation
 	mean := Pool.Get(featureSize)
@@ -474,7 +475,7 @@ func LayerNormGrad(gradInput, gradGamma, gradBeta, gradOutput, input, gamma []fl
 		return
 	}
 
-	size := SizeFromShape(shape)
+	size := shp.SizeFromShape(shape)
 	if size == 0 {
 		return
 	}
@@ -552,7 +553,7 @@ func RMSNormGrad(gradInput, gradGamma, gradOutput, input, gamma []float32, shape
 		return
 	}
 
-	size := SizeFromShape(shape)
+	size := shp.SizeFromShape(shape)
 	if size == 0 {
 		return
 	}
@@ -684,7 +685,7 @@ func GroupNormGrad(gradInput, gradGamma, gradBeta, gradOutput, input, gamma []fl
 	}
 
 	channelsPerGroup := channels / numGroups
-	spatialSize := SizeFromShape(shape[2:]) // H * W * D * ...
+	spatialSize := shp.SizeFromShape(shape[2:]) // H * W * D * ...
 
 	for b := 0; b < batchSize; b++ {
 		for g := 0; g < numGroups; g++ {

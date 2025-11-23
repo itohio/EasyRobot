@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/itohio/EasyRobot/x/math/nn/types"
+	"github.com/itohio/EasyRobot/x/math/shape"
 	"github.com/itohio/EasyRobot/x/math/tensor"
 	tensorTypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 )
@@ -68,7 +69,7 @@ func NewDense(inFeatures, outFeatures int, opts ...Option) (*Dense, error) {
 }
 
 // Init initializes the layer, creating internal computation tensors.
-func (d *Dense) Init(inputShape tensor.Shape) error {
+func (d *Dense) Init(inputShape shape.Shape) error {
 	if d == nil {
 		return fmt.Errorf("Dense.Init: nil layer")
 	}
@@ -87,7 +88,7 @@ func (d *Dense) Init(inputShape tensor.Shape) error {
 	}
 
 	// Compute output shape
-	var outputShape tensor.Shape
+	var outputShape shape.Shape
 	if len(inputShape) == 1 {
 		outputShape = tensor.NewShape(d.outFeatures)
 	} else {
@@ -343,7 +344,7 @@ func (d *Dense) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tensor, err
 }
 
 // OutputShape returns the output shape for given input shape.
-func (d *Dense) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
+func (d *Dense) OutputShape(inputShape shape.Shape) (shape.Shape, error) {
 	if d == nil {
 		return nil, fmt.Errorf("Dense.OutputShape: nil layer")
 	}

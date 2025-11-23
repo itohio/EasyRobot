@@ -1,12 +1,12 @@
 package tensor
 
 import (
-	"github.com/itohio/EasyRobot/x/math/tensor/eager_tensor"
+	"github.com/itohio/EasyRobot/x/math/shape"
+	"github.com/itohio/EasyRobot/x/math/tensor/eager"
 	"github.com/itohio/EasyRobot/x/math/tensor/types"
 )
 
 type Tensor = types.Tensor
-type Shape = types.Shape
 type DataType = types.DataType
 
 const (
@@ -19,58 +19,58 @@ const (
 	DTFP64     DataType = types.FP64
 )
 
-func NewShape(dimensions ...int) Shape {
-	return types.NewShape(dimensions...)
+func NewShape(dimensions ...int) shape.Shape {
+	return shape.NewShape(dimensions...)
 }
 
-func New(dtype types.DataType, shape types.Shape) eager_tensor.Tensor {
-	return eager_tensor.New(dtype, shape)
+func New(dtype types.DataType, shape shape.Shape) eager.Tensor {
+	return eager.New(dtype, shape)
 }
 
 // NewAs creates a new tensor with the same data type and shape as the given tensor.
 func NewAs(t types.Tensor) types.Tensor {
-	return eager_tensor.NewAs(t)
+	return eager.NewAs(t)
 }
 
 // Empty creates an empty tensor of given data type.
-func Empty(dt types.DataType) eager_tensor.Tensor {
-	return eager_tensor.Empty(dt)
+func Empty(dt types.DataType) eager.Tensor {
+	return eager.Empty(dt)
 }
 
 // EmptyLike creates an empty tensor with the same data type as the given tensor.
-func EmptyLike(t types.Tensor) eager_tensor.Tensor {
-	return eager_tensor.EmptyLike(t)
+func EmptyLike(t types.Tensor) eager.Tensor {
+	return eager.EmptyLike(t)
 }
 
-func FromArray[T types.DataElementType](shape types.Shape, data []T) eager_tensor.Tensor {
-	return eager_tensor.FromArray(shape, data)
+func FromArray[T types.DataElementType](shape shape.Shape, data []T) eager.Tensor {
+	return eager.FromArray(shape, data)
 }
 
 // FromFloat32 constructs an FP32 tensor from an existing backing slice.
 // If data is nil, a new buffer is allocated. The slice is used directly (no copy).
-func FromFloat32(shape types.Shape, data []float32) eager_tensor.Tensor {
-	return eager_tensor.FromFloat32(shape, data)
+func FromFloat32(shape shape.Shape, data []float32) eager.Tensor {
+	return eager.FromFloat32(shape, data)
 }
 
 // ZerosLike creates a new tensor with the same shape as t, filled with zeros.
 func ZerosLike(t types.Tensor) types.Tensor {
-	return eager_tensor.ZerosLike(t)
+	return eager.ZerosLike(t)
 }
 
 // OnesLike creates a new tensor with the same shape as t, filled with ones.
 func OnesLike(t types.Tensor) types.Tensor {
-	return eager_tensor.OnesLike(t)
+	return eager.OnesLike(t)
 }
 
 // FullLike creates a new tensor with the same shape as t, filled with the given value.
 func FullLike(t types.Tensor, value float32) types.Tensor {
-	return eager_tensor.FullLike(t, value)
+	return eager.FullLike(t, value)
 }
 
 // IsNil checks whether the tensor is nil or empty.
 // Returns true if t is nil, or if t.Shape() is nil, or if t.Empty() is true.
 func IsNil(t types.Tensor) bool {
-	return eager_tensor.IsNil(t)
+	return eager.IsNil(t)
 }
 
 // RNG interface for random number generation used in initialization.
@@ -81,16 +81,16 @@ type RNG = types.RNG
 // and initializes it with Xavier/Glorot uniform initialization.
 // For weights, limit = sqrt(6 / (fanIn + fanOut))
 // Returns a new initialized tensor.
-func XavierUniform(dtype DataType, shape Shape, fanIn, fanOut int, rng RNG) Tensor {
-	return eager_tensor.XavierUniform(dtype, shape, fanIn, fanOut, rng)
+func XavierUniform(dtype DataType, shape shape.Shape, fanIn, fanOut int, rng RNG) Tensor {
+	return eager.XavierUniform(dtype, shape, fanIn, fanOut, rng)
 }
 
 // XavierNormal creates a new tensor with the given data type and shape,
 // and initializes it with Xavier/Glorot normal initialization.
 // For weights, stddev = sqrt(2 / (fanIn + fanOut))
 // Returns a new initialized tensor.
-func XavierNormal(dtype DataType, shape Shape, fanIn, fanOut int, rng RNG) Tensor {
-	return eager_tensor.XavierNormal(dtype, shape, fanIn, fanOut, rng)
+func XavierNormal(dtype DataType, shape shape.Shape, fanIn, fanOut int, rng RNG) Tensor {
+	return eager.XavierNormal(dtype, shape, fanIn, fanOut, rng)
 }
 
 // XavierUniformLike creates a new tensor with the same data type and shape as the reference tensor,
@@ -98,7 +98,7 @@ func XavierNormal(dtype DataType, shape Shape, fanIn, fanOut int, rng RNG) Tenso
 // For weights, limit = sqrt(6 / (fanIn + fanOut))
 // Returns a new initialized tensor.
 func XavierUniformLike(ref Tensor, fanIn, fanOut int, rng RNG) Tensor {
-	return eager_tensor.XavierUniformLike(ref, fanIn, fanOut, rng)
+	return eager.XavierUniformLike(ref, fanIn, fanOut, rng)
 }
 
 // XavierNormalLike creates a new tensor with the same data type and shape as the reference tensor,
@@ -106,7 +106,7 @@ func XavierUniformLike(ref Tensor, fanIn, fanOut int, rng RNG) Tensor {
 // For weights, stddev = sqrt(2 / (fanIn + fanOut))
 // Returns a new initialized tensor.
 func XavierNormalLike(ref Tensor, fanIn, fanOut int, rng RNG) Tensor {
-	return eager_tensor.XavierNormalLike(ref, fanIn, fanOut, rng)
+	return eager.XavierNormalLike(ref, fanIn, fanOut, rng)
 }
 
 // Package-level convenience wrappers for destination-based operations.

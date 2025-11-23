@@ -5,7 +5,8 @@ import (
 	"math"
 	"testing"
 
-	"github.com/itohio/EasyRobot/x/math/tensor/eager_tensor"
+	"github.com/itohio/EasyRobot/x/math/shape"
+	"github.com/itohio/EasyRobot/x/math/tensor/eager"
 	"github.com/itohio/EasyRobot/x/math/tensor/gorgonia"
 	"github.com/itohio/EasyRobot/x/math/tensor/types"
 )
@@ -52,7 +53,7 @@ func TestXORTrainEagerInferGraph(t *testing.T) {
 		// Set input
 		inferGraph.input.Copy(&simpleTensor{
 			data:  tc.input,
-			shape: types.Shape{1, 2},
+			shape: shape.Shape{1, 2},
 			dtype: types.FP32,
 		})
 
@@ -96,10 +97,10 @@ func trainXORWithEager(t *testing.T) *XORWeights {
 	Y := []float32{0, 1, 1, 0}
 
 	// Initialize network: 2 -> 4 -> 1
-	W1 := eager_tensor.New(types.FP32, types.NewShape(2, 4))
-	B1 := eager_tensor.New(types.FP32, types.NewShape(4))
-	W2 := eager_tensor.New(types.FP32, types.NewShape(4, 1))
-	B2 := eager_tensor.New(types.FP32, types.NewShape(1))
+	W1 := eager.New(types.FP32, shape.NewShape(2, 4))
+	B1 := eager.New(types.FP32, shape.NewShape(4))
+	W2 := eager.New(types.FP32, shape.NewShape(4, 1))
+	B2 := eager.New(types.FP32, shape.NewShape(1))
 
 	// Xavier initialization
 	initXavier(W1, 2, 4)
@@ -119,7 +120,7 @@ func trainXORWithEager(t *testing.T) *XORWeights {
 
 		for i := 0; i < len(X); i++ {
 			// Forward pass
-			input := eager_tensor.FromArray(types.NewShape(1, 2), X[i])
+			input := eager.FromArray(shape.NewShape(1, 2), X[i])
 			target := Y[i]
 
 			// Layer 1: input * W1 + B1
@@ -192,7 +193,7 @@ func trainXORWithEager(t *testing.T) *XORWeights {
 	// Test trained network
 	t.Log("\nTrained network predictions (eager):")
 	for i := 0; i < len(X); i++ {
-		input := eager_tensor.FromArray(types.NewShape(1, 2), X[i])
+		input := eager.FromArray(shape.NewShape(1, 2), X[i])
 		hidden := input.MatMul(nil, W1)
 		// Add bias
 		for j := 0; j < 4; j++ {
@@ -294,12 +295,12 @@ func extractWeights(t types.Tensor) []float32 {
 // simpleTensor is a minimal tensor for feeding data to graph
 type simpleTensor struct {
 	data  any
-	shape types.Shape
+	shape shape.Shape
 	dtype types.DataType
 }
 
 func (st *simpleTensor) Data() any                                             { return st.data }
-func (st *simpleTensor) Shape() types.Shape                                    { return st.shape }
+func (st *simpleTensor) Shape() shape.Shape                                    { return st.shape }
 func (st *simpleTensor) DataType() types.DataType                              { return st.dtype }
 func (st *simpleTensor) ID() uintptr                                           { return 0 }
 func (st *simpleTensor) Rank() int                                             { return len(st.shape) }
@@ -315,11 +316,11 @@ func (st *simpleTensor) Elements(...int) func(func(types.Element) bool)        {
 func (st *simpleTensor) Release()                                              {}
 func (st *simpleTensor) Clone() types.Tensor                                   { return st }
 func (st *simpleTensor) Copy(types.Tensor) types.Tensor                        { return st }
-func (st *simpleTensor) Reshape(types.Tensor, types.Shape) types.Tensor        { return st }
+func (st *simpleTensor) Reshape(types.Tensor, shape.Shape) types.Tensor        { return st }
 func (st *simpleTensor) Slice(types.Tensor, int, int, int) types.Tensor        { return st }
 func (st *simpleTensor) Transpose(types.Tensor, []int) types.Tensor            { return st }
 func (st *simpleTensor) Permute(types.Tensor, []int) types.Tensor              { return st }
-func (st *simpleTensor) BroadcastTo(types.Tensor, types.Shape) types.Tensor    { return st }
+func (st *simpleTensor) BroadcastTo(types.Tensor, shape.Shape) types.Tensor    { return st }
 func (st *simpleTensor) Fill(types.Tensor, float64) types.Tensor               { return st }
 func (st *simpleTensor) FillFunc(types.Tensor, func() float64) types.Tensor    { return st }
 func (st *simpleTensor) Pad(types.Tensor, []int, float64) types.Tensor         { return st }

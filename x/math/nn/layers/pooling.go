@@ -3,6 +3,7 @@ package layers
 import (
 	"fmt"
 
+	"github.com/itohio/EasyRobot/x/math/shape"
 	"github.com/itohio/EasyRobot/x/math/tensor"
 	"github.com/itohio/EasyRobot/x/math/tensor/types"
 )
@@ -56,7 +57,7 @@ func NewMaxPool2D(kernelH, kernelW, strideH, strideW, padH, padW int) (*MaxPool2
 }
 
 // Init initializes the layer, creating internal computation tensors.
-func (m *MaxPool2D) Init(inputShape tensor.Shape) error {
+func (m *MaxPool2D) Init(inputShape shape.Shape) error {
 	if m == nil {
 		return fmt.Errorf("MaxPool2D.Init: nil layer")
 	}
@@ -156,7 +157,7 @@ func (m *MaxPool2D) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 }
 
 // OutputShape returns the output shape for given input shape.
-func (m *MaxPool2D) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
+func (m *MaxPool2D) OutputShape(inputShape shape.Shape) (shape.Shape, error) {
 	if m == nil {
 		return nil, fmt.Errorf("MaxPool2D.OutputShape: nil layer")
 	}
@@ -224,7 +225,7 @@ func NewAvgPool2D(kernelH, kernelW, strideH, strideW, padH, padW int) (*AvgPool2
 }
 
 // Init initializes the layer, creating internal computation tensors.
-func (a *AvgPool2D) Init(inputShape tensor.Shape) error {
+func (a *AvgPool2D) Init(inputShape shape.Shape) error {
 	if a == nil {
 		return fmt.Errorf("AvgPool2D.Init: nil layer")
 	}
@@ -316,7 +317,7 @@ func (a *AvgPool2D) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 }
 
 // OutputShape returns the output shape for given input shape.
-func (a *AvgPool2D) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
+func (a *AvgPool2D) OutputShape(inputShape shape.Shape) (shape.Shape, error) {
 	if a == nil {
 		return nil, fmt.Errorf("AvgPool2D.OutputShape: nil layer")
 	}
@@ -349,7 +350,7 @@ func NewGlobalAvgPool2D() *GlobalAvgPool2D {
 }
 
 // Init initializes the layer, creating internal computation tensors.
-func (g *GlobalAvgPool2D) Init(inputShape tensor.Shape) error {
+func (g *GlobalAvgPool2D) Init(inputShape shape.Shape) error {
 	if g == nil {
 		return fmt.Errorf("GlobalAvgPool2D.Init: nil layer")
 	}
@@ -431,7 +432,7 @@ func (g *GlobalAvgPool2D) Backward(gradOutput types.Tensor) (types.Tensor, error
 }
 
 // OutputShape returns the output shape for given input shape.
-func (g *GlobalAvgPool2D) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
+func (g *GlobalAvgPool2D) OutputShape(inputShape shape.Shape) (shape.Shape, error) {
 	if g == nil {
 		return nil, fmt.Errorf("GlobalAvgPool2D.OutputShape: nil layer")
 	}

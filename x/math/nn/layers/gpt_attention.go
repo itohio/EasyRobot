@@ -5,6 +5,7 @@ import (
 	"math"
 
 	"github.com/itohio/EasyRobot/x/math/nn/types"
+	"github.com/itohio/EasyRobot/x/math/shape"
 	"github.com/itohio/EasyRobot/x/math/tensor"
 	tensorTypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 )
@@ -100,7 +101,7 @@ func NewGPTAttention(embedDim, numHeads, maxSeqLen int, dropout float64, opts ..
 
 // Init initializes the layer, creating internal computation tensors.
 // Input shape should be [batchSize, seqLen, embedDim] from positional encoding.
-func (a *GPTAttention) Init(inputShape tensor.Shape) error {
+func (a *GPTAttention) Init(inputShape shape.Shape) error {
 	if a == nil {
 		return fmt.Errorf("GPTAttention.Init: nil layer")
 	}
@@ -131,7 +132,7 @@ func (a *GPTAttention) Init(inputShape tensor.Shape) error {
 	}
 
 	// Output shape matches input shape
-	var outputShape tensor.Shape
+	var outputShape shape.Shape
 	if len(inputShape) == 2 {
 		outputShape = tensor.NewShape(seqLen, a.embedDim)
 	} else {
@@ -424,7 +425,7 @@ func (a *GPTAttention) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tens
 
 // OutputShape returns the output shape for given input shape.
 // Output shape matches input shape exactly.
-func (a *GPTAttention) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
+func (a *GPTAttention) OutputShape(inputShape shape.Shape) (shape.Shape, error) {
 	if a == nil {
 		return nil, fmt.Errorf("GPTAttention.OutputShape: nil layer")
 	}

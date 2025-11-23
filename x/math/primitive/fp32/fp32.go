@@ -1,7 +1,7 @@
 package fp32
 
-import helpers "github.com/itohio/EasyRobot/x/math/primitive/generics/helpers"
+import "github.com/itohio/EasyRobot/x/buffer"
 
 var (
-	Pool = helpers.Pool[float32]{}
+	Pool = buffer.Pool[float32]{}
 )

@@ -1,5 +1,7 @@
 package types
 
+import "github.com/itohio/EasyRobot/x/math/shape"
+
 // Core defines the core tensor properties and metadata access.
 // This interface contains fundamental operations for tensor identity and element access.
 type Core interface {
@@ -16,7 +18,7 @@ type Core interface {
 	Data() any
 
 	// Shape returns a copy of the tensor's shape (dimensions).
-	Shape() Shape
+	Shape() shape.Shape
 
 	// Rank returns the number of dimensions in the tensor.
 	Rank() int

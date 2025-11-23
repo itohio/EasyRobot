@@ -12,6 +12,7 @@ import (
 	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"github.com/itohio/EasyRobot/x/math/mat"
 	matTypes "github.com/itohio/EasyRobot/x/math/mat/types"
+	"github.com/itohio/EasyRobot/x/math/shape"
 	"github.com/itohio/EasyRobot/x/math/tensor"
 	"github.com/itohio/EasyRobot/x/math/vec"
 	vecTypes "github.com/itohio/EasyRobot/x/math/vec/types"
@@ -186,7 +187,7 @@ func (u *Unmarshaller) unmarshalToTensor(dst any, records [][]string, startRow i
 	// Determine shape
 	// If hint says tensor and single row, it's 1D
 	// Otherwise, if multiple rows, it's 2D
-	var shape tensor.Shape
+	var shape shape.Shape
 	hint := opts.Hint
 	if hint == "tensor" && numRows == 1 {
 		// 1D tensor: single row

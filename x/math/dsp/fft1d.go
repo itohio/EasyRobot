@@ -2,6 +2,7 @@
 package dsp
 
 import (
+	"github.com/itohio/EasyRobot/x/math/primitive/fp32"
 	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
@@ -20,23 +21,32 @@ import (
 type FFT1D struct {
 	length  int       // FFT size (number of complex samples)
 	tempBuf []float32 // temporary buffer for optimizations (size 2*length for packed format)
+	lut     []float32 // precomputed LUT for twiddle factors (optional)
 }
 
 // NewFFT1D creates a 1D FFT processor for real-valued vectors of the specified length.
 // The FFT size will be rounded up to the next power of 2.
-// The internal buffer is allocated as 2*length to store both real and imaginary parts.
-func NewFFT1D(length int, tempBuf ...float32) *FFT1D {
+// If lut is provided (vararg), it will be used for optimized FFT operations.
+// The LUT can be created using fp32.NewFFTLUT(fftSize).
+// Returns a value (not a pointer).
+func NewFFT1D(length int, lut ...[]float32) FFT1D {
 	if length <= 0 {
 		panic("FFT length must be positive")
 	}
-	nextPow2 := nextPowerOfTwo(length)
-	if len(tempBuf) < 2*nextPow2 {
-		tempBuf = make([]float32, 2*nextPow2)
-	}
-	return &FFT1D{
+	nextPow2 := fp32.NextPowerOfTwo(length)
+	tempBuf := make([]float32, 2*nextPow2)
+
+	fft := FFT1D{
 		length:  nextPow2,
 		tempBuf: tempBuf, // 2*N for packed format (real + imag)
 	}
+
+	// Use LUT if provided
+	if len(lut) > 0 && len(lut[0]) > 0 {
+		fft.lut = lut[0]
+	}
+
+	return fft
 }
 
 // Forward performs a forward FFT transform on a real-valued vector.
@@ -102,7 +112,12 @@ func (f *FFT1D) forward(src, dst vec.Vector) {
 	}
 
 	// Perform FFT on packed format
-	fftReal(tempBuf)
+	if len(f.lut) > 0 {
+		totalFactors := len(f.lut) / 2
+		fp32.FFTWithLUT(tempBuf, f.lut, totalFactors)
+	} else {
+		fp32.FFT(tempBuf)
+	}
 
 	// Copy result to destination (copy all 2*N elements)
 	copyLen := 2 * f.length
@@ -138,7 +153,7 @@ func (f *FFT1D) backward(src, dst vec.Vector) {
 	}
 
 	// Perform inverse FFT on packed format
-	ifftReal(tempBuf)
+	fp32.IFFT(tempBuf)
 
 	// Copy real part to destination (imaginary parts should be ~0 for real output)
 	// Note: ifftReal already scales by 1/N, so we just copy the scaled values
@@ -224,7 +239,7 @@ func (f *FFT1D) Correlate(dst, signal1, signal2 vec.Vector) {
 	}
 
 	// FFT size must be at least resultLen to avoid aliasing
-	fftSize := nextPowerOfTwo(resultLen)
+	fftSize := fp32.NextPowerOfTwo(resultLen)
 
 	// Create temporary FFTs for signals (use fftSize to ensure no aliasing)
 	sig1FFT := NewFFT1D(fftSize)

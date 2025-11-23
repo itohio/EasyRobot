@@ -1,17 +1,33 @@
 # Project EasyRobot specific rules
-- Main use-case : Robotics
-- Precision - float32
+- Main use-case : Robotics & Embedded Systems
+- Target: Embedded systems - must be efficient, fast, and memory-conscious
+- Precision - float32, or generic types (Numeric/NumericReal/NumericComplex)
+- **CRITICAL: Use `github.com/chewxy/math32` package instead of `math` for all floating-point operations** (faster, optimized for float32, essential for embedded systems)
 - As few allocations as possible (controlled buffer-preallocations, reuse)
-- low level algorithms and hot paths as optimized as possible <- consider possibility to segregate by architecture
+- Low level algorithms and hot paths as optimized as possible <- consider possibility to segregate by architecture/type
+- NEVER DO TYPE CASTS INSIDE HOT PATH FOR LOOPS!
 - Do not use Docker when working on unit tests
 - Use Python libraries via helper programs to verify results for math primitives
 - Use testify in unit tests
-- When working on EasyRobot project, modify only this repository!
+- When working on EasyRobot project, modify only EasyRobot repository!
+- **Before implementing new algorithms, ALWAYS check existing implementations in:**
+  - `x/math/dsp` - Digital Signal Processing operations
+  - `x/math/mat` - Matrix operations
+  - `x/math/vec` - Vector operations
+  - `x/math/tensor` - Tensor operations
+  - `x/math/primitive/generics` - Generic primitives
+  - Try not to roll out new algorithms if implementation already exists
+  - Reuse and extend existing functionality rather than duplicating
+- prefer go run ./path instead of go build and then run
+- prefer tmp folder for temporary code, program output and so on
 
 # General rules
 - Prefer composition over inheritance
+- Prefer `any` over `interface{}`
 - Return early to reduce nesting
 - `New*` functions should return types, not interfaces. Check instance conformance to interface.
+- Prefer returning errors instead of panicking. 
+- Instead of `GetSomething()` prefer `Something` and accompanying `SetSomething`.
 - Keep number of arguments low
 - Write testable code: avoid hard-to-mock dependencies
 - Each function does one thing (Single Responsibility)
@@ -44,18 +60,69 @@
 - Use Testify `requre` and `assert`
 - Interface names must be verbs, e.g. "Reader", "Writer", "Searcher" according to go interface naming best practices.
 
+# SOLID Principles (Comprehensive)
+
+## Single Responsibility Principle (SRP)
+- Each function/type/package should have one reason to change
+- Each function does one thing (Single Responsibility)
+- Maximum function length: 30 lines. Extract helper functions (Not a hard limit. do not split just for splitting sake)
+- Separate concerns: I/O, business logic, data transformation
+- Package by feature/domain, not by layer
+
+## Open/Closed Principle (OCP)
+- Open for extension, closed for modification
+- Extend behavior without modifying existing code
+- Use Options pattern over builder or other patterns
+- Prefer composition over inheritance
+- Use interfaces for extensibility
+
+## Liskov Substitution Principle (LSP)
+- Subtypes must be substitutable for their base types
+- Implementations must honor interface contracts
+- No breaking changes when substituting implementations
+- Make zero values useful (structs should work with zero initialization)
+
+## Interface Segregation Principle (ISP)
+- Many specific interfaces > one general interface
+- Keep interfaces small (1-3 methods ideal)
+- Interface names must be verbs, e.g. "Reader", "Writer", "Searcher" according to go interface naming best practices
+- Clients should not depend on methods they don't use
+
+## Dependency Inversion Principle (DIP)
+- Depend on abstractions, not concretions
+- Accept interfaces, return structs
+- Explicit dependencies in function/constructor signatures
+- Avoid package-level state; use dependency injection
+- Constructor functions return interfaces when appropriate
+
+# Naming Conventions (Clear & Precise)
+
+## General Naming Rules
+- Name things precisely: no utils, helpers, managers as names
+- Package names: don't stutter (http.HTTPServer → http.Server)
+- Instead of `GetSomething()` prefer `Something` and accompanying `SetSomething`
+- Interface names must be verbs (Reader, Writer, Searcher)
+- Function names should be verbs (Read, Write, Process)
+- Type names should be nouns (Reader, Config, Processor)
+- Constants should be UPPER_CASE
+- Variables should be camelCase or short names in local scope
+
+## Avoid Anti-Patterns
+- ❌ `utils`, `helpers`, `common`, `misc` - too vague
+- ❌ `manager`, `handler`, `processor` - too generic
+- ❌ `data`, `info`, `temp` - meaningless
+- ✅ Use domain-specific names: `RobotController`, `SensorReader`, `PathPlanner`
+
+## Function Naming
+- `New*` functions should return types, not interfaces. Check instance conformance to interface.
+- Keep number of arguments low
+- Prefer Options pattern over builder or other patterns
+
 # Cross-language principles
 - If it is CRUD - prefer variable arguments for inserts (i.e. no CreateOne, CreateMany - the fewer similar functions the better)
 - DRY but avoid premature abstraction
 - Avoid writing multiple functions that do very similar thing
 - Prefer using standard library instead of rolling your own algorithms
-- Open/Closed: extend behavior without modifying existing code
-- Liskov Substitution: subtypes must be substitutable
-- Interface Segregation: many specific interfaces > one general
-- Dependency Inversion: depend on abstractions
-- Explicit dependencies in function/constructor signatures
-- Separate concerns: I/O, business logic, data transformation
-- Name things precisely: no utils, helpers, managers as names
 - Comments explain "why", not "what"
 - Optimize for readability and maintainability over cleverness
 
@@ -85,12 +152,126 @@ Avoid:
 - Pointer receivers for consistency, value for immutability
 - init() functions (makes testing hard)
 - Package names: don't stutter (http.HTTPServer → http.Server)
+- Manual if statements for min/max calculations when `min()`/`max()` functions are available (Go 1.21+)
 
 Prefer:
 - Early returns over deeply nested if-else
 - errors.Is/As over type assertions
 - sync.Pool for frequently allocated objects
 - Concrete types in struct fields, interfaces in parameters
+- Use `min()` and `max()` functions (Go 1.21+) instead of if statements for minimum/maximum calculations
+- **Use `for i := range n` instead of `for i := 0; i < n; i++`** (better BCE, Go 1.22+)
+
+# Embedded Systems Performance & BCE Optimizations
+
+## Critical Performance Rules
+- **Use `github.com/chewxy/math32` package instead of `math`** for all floating-point operations (faster, optimized for float32, essential for embedded systems)
+- Low level algorithms and hot paths as optimized as possible (consider architecture/type-specific implementations)
+- As few allocations as possible (controlled buffer-preallocations, reuse)
+- **NEVER DO TYPE CASTS INSIDE HOT PATH FOR LOOPS!**
+- Use sync.Pool for frequently allocated objects in hot paths
+
+## Boundary Check Elimination (BCE) Strategies
+
+### Loop Patterns
+- **ALWAYS use `for i := range n` instead of `for i := 0; i < n; i++`**
+  - Better BCE opportunities
+  - Compiler can optimize better
+  - ~2-3% improvement consistently
+
+### General BCE Patterns
+
+**Reslicing for BCE Hints:**
+- Always reslice slices to exact size before loops: `dst = dst[:size]`
+- This tells the compiler exact bounds and eliminates bounds checks
+- Works best with `for range` loops
+
+**Flattening Multi-dimensional Data:**
+- For contiguous operations, flatten to 1D when possible
+- Reduces nested loop overhead and index calculations
+- Better for element-wise operations
+
+**Row/Column Slices for Strided Operations:**
+- Create row/column slices for 2D strided data
+- Reslice each slice to exact size for BCE
+- Process each slice independently
+
+**Loop Unrolling:**
+- Unroll inner loops by 4-8 for hot paths
+- Reduces loop overhead and improves instruction-level parallelism
+- Handle remainder elements separately
+
+**Recursive Decomposition:**
+- For higher dimensions (3D+), decompose recursively
+- Leverage optimized 1D/2D operations for lower dimensions
+- Each recursive call gets fresh slice bounds (natural BCE)
+
+### Memory Allocation Best Practices
+
+**❌ NEVER use `make([]T, n)` for temporary arrays in hot paths**
+- Creates heap allocations
+- Increases GC pressure
+- Slower than stack allocation
+
+**✅ ALWAYS use stack arrays for small scratch space (< 1KB)**
+- Use fixed-size arrays: `var buf [MAX_SIZE]T`
+- Slice them: `buf[:actualSize]`
+- Much faster, no GC pressure, better cache locality
+
+**When to use `make()`:**
+- Only for large arrays (> 1KB) that would overflow the stack
+- Only when size is dynamically determined and too large for stack
+- For arrays that need to escape the function scope
+
+**Destination-Based Functions Pattern:**
+- Accept optional destination slice parameter
+- Use stack array if nil or too small
+- Allows caller to reuse buffers or use stack allocation
+
+### Platform-Specific Assembly
+
+**✅ Recommended For:**
+- Performance-critical hot paths where every nanosecond counts
+- Large arrays where overhead is amortized
+- Contiguous memory operations
+- Simple operations that map well to SIMD instructions
+- Platform-specific optimizations (e.g., amd64 with SSE/AVX)
+
+**❌ Not Recommended For:**
+- Generic code that needs to work across platforms
+- Complex operations that don't map well to SIMD
+- Strided operations (assembly doesn't handle strides well)
+- Code maintainability is more important than performance
+
+**Trade-offs:**
+- ✅ Massive performance gains possible
+- ✅ Zero allocations
+- ❌ Architecture-specific (amd64 only)
+- ❌ More complex to maintain
+- ❌ Requires assembly knowledge
+
+### Optimization Checklist (General Principles)
+
+#### Loop Optimization:
+1. ✅ Use `for range n` instead of `for i := 0; i < n; i++`
+2. ✅ Reslice slices to exact size before loops
+3. ✅ Flatten multi-dimensional data when possible
+4. ✅ Unroll inner loops in hot paths
+5. ✅ Use row/column slices for strided operations
+
+#### Memory Management:
+1. ✅ Use stack arrays for small scratch space (< 1KB)
+2. ✅ Never use `make()` for temporary arrays in hot paths
+3. ✅ Use destination-based functions for buffer reuse
+4. ✅ Zero allocations in hot paths
+5. ✅ Use sync.Pool for frequently allocated objects
+
+#### Higher Dimensions:
+1. ✅ Recursive decomposition to leverage optimized lower-dim operations
+2. ✅ Use existing optimized Vec/Mat functions when available
+3. ✅ Use stack arrays for shape/stride/indices
+4. ✅ Avoid deep nesting - decompose early
+
 
 # Context Management
 When dealing with large files or datasets:

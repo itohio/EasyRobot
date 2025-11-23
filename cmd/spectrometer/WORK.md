@@ -73,6 +73,34 @@ This document tracks the current work session progress, next session plans, and 
 
 This section captures learnings about code structure, API design, code conventions, and patterns discovered during implementation. These should be referenced when implementing similar code.
 
+### Camera-Based Spectrometer Calibration Context
+
+**DIY Spectrometer Design**:
+- The diffraction grating produces a **horizontal strip of light** on the camera image
+- Typical dimensions: ~100 pixels tall, ~1000+ pixels wide (can span full image width)
+- The strip represents spectral data: light on dark background
+- During calibration, we detect this horizontal strip and define its bounding box
+
+**Bounding Box Detection**:
+- Should prioritize **wide horizontal strips** that extend across image width
+- Aspect ratio: width >> height (typically 10:1 or more)
+- Angle: Should be roughly horizontal (±45 degrees max, but typically much less)
+- During calibration: Detect bounding box from live camera feed
+- During normal operation: Use fixed bounding box from saved calibration config
+
+**Workflow**:
+1. **Calibration Phase**:
+   - Point spectrometer to light source (produces horizontal strip)
+   - Detect bounding box covering the light strip
+   - Bounding box should extend as far as image size allows (width-wise)
+   - Save bounding box to calibration config
+2. **Normal Operation**:
+   - Load fixed bounding box from calibration config
+   - Extract pixels from bounding box region
+   - Calculate spectrum from extracted region (row averaging)
+   - Apply linearization based on x coordinate
+   - Apply wavelength calibration
+
 ### Reusability Principle ⚠️ **CRITICAL**
 
 **CRITICAL**: Always implement reusable functionality in shared packages (`x/*`), not in application-specific code (`cmd/*`).
@@ -348,20 +376,39 @@ This section captures learnings about code structure, API design, code conventio
   - [x] Integration with `Start()` callback pattern for button-initiated measurements (`--button` flag) ✅
   - [ ] Patch-based measurement (`--patches=path`) (optional, can be added later)
 
-- **`internal/calibrate/`** (SPEC.md, PLAN.md): **10%** (IN PROGRESS) ⭐ **CURRENT PRIORITY**
+- **`internal/calibrate/`** (SPEC.md, PLAN.md): **80%** (IN PROGRESS) ⭐ **CURRENT PRIORITY**
   - [x] Camera calibration command structure ✅
   - [x] Image capture from camera (using source package) ✅
   - [x] Image display (using destination package) ✅
   - [x] Strip bounding box detection (basic threshold + contour detection) ✅
-  - [ ] Enhanced strip detection algorithm (±45 degrees max, improved accuracy)
-  - [ ] Dual window display (camera + spectrum)
-  - [ ] Bounding box interaction (click to fix, right-click to flip, color coding)
+  - [x] Enhanced strip detection algorithm (±45 degrees max, improved accuracy) ✅
+    - [x] Prioritizes wide horizontal strips that extend across image width ✅
+    - [x] Typical dimensions: ~100 pixels tall, ~1000+ pixels wide ✅
+    - [x] Continuous frame capture loop ✅
+  - [x] Bounding box state management and color coding ✅
+    - [x] Fixed/unfixed state tracking (thread-safe) ✅
+    - [x] Color coding: red=unfixed, green=fixed ✅
+    - [x] Flip state tracking ✅
+    - [x] Mouse interaction (click to fix, right-click to flip) ✅
+      - [x] Left-click on bounding box: Fix bounding box ✅
+      - [x] Right-click on bounding box: Toggle flip ✅
+      - [x] Handlers via gocv marshaller OnMouse callback ✅
+    - [x] Keyboard interaction ✅
+      - [x] 'f' or 'F': Fix bounding box ✅
+      - [x] 'r' or 'R': Reset (unfix) bounding box ✅
+      - [x] 'x' or 'X': Toggle flip ✅
+      - [x] ESC: Exit calibration ✅
+  - [x] Config integration (load/save bounding box) ✅
+    - [x] Load bounding box from config if provided (`--config=path`) ✅
+    - [x] Save bounding box to config when fixed (`--config-output=path`) ✅
+    - [x] Helper functions: convert image.Rectangle ↔ SpectrumWindow ✅
+    - [x] Command-line flags for config path ✅
+  - [x] Dual window display (camera + spectrum) ✅
   - [ ] Exposure controls (trackbar, label, auto checkbox)
-  - [ ] Spectrum extraction from bounding box
-  - [ ] Reusable spectrum rendering with calibration targets
-  - [ ] Config integration (load/save bounding box)
+  - [x] Spectrum extraction from bounding box ✅
+  - [x] Reusable spectrum rendering with calibration targets ✅
   - [ ] Keyboard commands for spectrum (in internal/measure)
-  - [ ] Calibration target database (Hg, Ar, Ne emission lines)
+  - [x] Calibration target database (Hg, Ar, Ne emission lines) ✅
   - [ ] Wavelength calibration workflow (peak detection, matching, calibration)
   - [ ] Quality assessment (R² calculation)
 
@@ -575,6 +622,129 @@ Implement missing filters, program structure, config loading/outputting, CR30 su
 4. **Acquirer Tests**: Unit tests needed for acquirer framework and CR30 acquirer
 5. **Ports Command Tests**: Unit tests needed for ports command
 
+### Calibration Issues Found (IMMUTABLE)
+
+**Issues discovered during code review of implemented calibration features:**
+
+1. **Flip State Not Saved/Loaded to/from Config**: ⚠️ **HIGH PRIORITY**
+   - **Issue**: Flip state is tracked in `BoundingBoxState.flipped` but never saved to/loaded from config
+   - **Problem**: Flip state is lost when config is saved/reloaded
+   - **Location**: `cmd/spectrometer/internal/calibrate/camera.go` 
+     - Config save: lines ~398-412 (doesn't save `flipped` state)
+     - Config load: lines ~250-262 (doesn't load `flipped` state)
+   - **Impact**: Flip state not persisted across sessions - user must re-toggle flip on each calibration session
+   - **Root Cause**: `SpectrumWindow` proto message doesn't have `flipped` field
+   - **Fix Required**: 
+     - Add `bool flipped = 4;` field to `SpectrumWindow` proto message
+     - Regenerate proto files (`make proto`)
+     - Update `rectangleToSpectrumWindow()` to save flip state
+     - Update config load to restore flip state and call `SetFixedWithAngle()` or add `SetFixedWithFlip()` method
+
+2. **ESC Key Context Cancellation Not Connected**: ⚠️ **MEDIUM PRIORITY**
+   - **Issue**: ESC key handler returns false to stop event processing, but cancel function not passed to display sink
+   - **Problem**: Display sink's cancel function is not set, so context won't be cancelled when ESC is pressed
+   - **Location**: `cmd/spectrometer/internal/calibrate/camera.go` 
+     - Display sink creation: lines ~347-357 (no `gocv.WithCancel()` option)
+     - Keyboard handler: line ~332 (returns false but no explicit context cancellation)
+   - **Impact**: ESC key stops event processing but doesn't propagate context cancellation to main loop
+   - **Fix Required**: 
+     - Create cancelable context at start of `RunCameraCalibration()`
+     - Pass cancel function via `gocv.WithCancel()` option to display sink
+     - Verify that display sink properly cancels context when handler returns false
+
+3. **Config Save Race Condition**: ⚠️ **MEDIUM PRIORITY**
+   - **Issue**: `configSaved` flag is a regular `bool` accessed from main loop (potentially concurrent with event handlers)
+   - **Problem**: Race condition between main loop and event handlers (mouse/keyboard) could cause multiple save attempts
+   - **Location**: `cmd/spectrometer/internal/calibrate/camera.go` 
+     - Flag declaration: line ~267 (`configSaved := false`)
+     - Config save check: line ~398 (`if fixed && shouldSaveConfig && !configSaved`)
+     - Flag set: line ~410 (`configSaved = true`)
+   - **Impact**: Potential race condition - unlikely but possible, especially if event handlers modify state concurrently
+   - **Fix Required**: 
+     - Use `sync/atomic` for `configSaved` flag (atomic.Bool) OR
+     - Use mutex to protect config save section OR
+     - Move config save to separate goroutine with proper synchronization
+
+4. **Bounding Box Extension Uses Detected Y Position (Not Center)**: ⚠️ **MEDIUM PRIORITY**
+   - **Issue**: When extending bounding box horizontally, we use `detectedRect.Min.Y` which might not be optimal for rotated strips
+   - **Problem**: For rotated strips, the bounding box Y position might not be centered, causing extension to be off-center
+   - **Location**: `cmd/spectrometer/internal/calibrate/camera.go` - `detectStripBoundingBox()` line ~624
+   - **Current Code**: `Min: image.Pt(0, detectedRect.Min.Y)` - uses top Y of detected bounding box
+   - **Impact**: Extended bounding box might not be optimally centered for rotated strips
+   - **Fix Required**: 
+     - Use center Y from `bestCandidate.Rect` (center Y = `(Min.Y + Max.Y) / 2`)
+     - Recalculate height from detected strip height
+     - Extend symmetrically around center: `centerY - height/2` to `centerY + height/2`
+
+5. **Missing Height Validation After Extension**: ⚠️ **MEDIUM PRIORITY**
+   - **Issue**: After extending bounding box to full width, basic validation exists but height reasonableness not checked
+   - **Problem**: Extended bounding box height might be unreasonably large (e.g., >50% of image height)
+   - **Location**: `cmd/spectrometer/internal/calibrate/camera.go` - `detectStripBoundingBox()` lines ~628-645
+   - **Current Validation**: Only checks bounds clamping and `Dx() > 0 && Dy() > 0`
+   - **Missing**: No check that height is reasonable (e.g., <50% of image height, typical strip is ~100 pixels tall)
+   - **Impact**: Invalid or unreasonably large bounding boxes might be detected
+   - **Fix Required**: 
+     - Add validation: height should be reasonable (e.g., < 500 pixels for typical camera, or < 50% of image height)
+     - Add validation: Y position should leave reasonable margins (not at very top/bottom of image)
+     - Log warning if bounding box seems unusual
+
+6. **Config Save Blocks Main Loop**: ⚠️ **LOW PRIORITY**
+   - **Issue**: Config save happens synchronously in main loop, could block frame capture
+   - **Problem**: If file I/O is slow, frames might be missed during save
+   - **Location**: `cmd/spectrometer/internal/calibrate/camera.go` - config save lines ~404-411
+   - **Impact**: Minor - save is fast usually, but could cause frame drops on slow I/O
+   - **Fix Required**: 
+     - Move config save to separate goroutine (optional improvement)
+     - Use channel to signal save completion
+     - Ensure save completes before exit
+
+7. **No Error Handling for Config Save Retry**: ⚠️ **LOW PRIORITY**
+   - **Issue**: If config save fails, we log error but don't retry
+   - **Problem**: Transient errors (e.g., file locked, disk full temporarily) cause save to fail permanently
+   - **Location**: `cmd/spectrometer/internal/calibrate/camera.go` - config save lines ~406-411
+   - **Impact**: User might lose calibration data if save fails due to transient error
+   - **Fix Required**: 
+     - Add retry logic with exponential backoff
+     - Or: Retry save periodically if initial save failed
+     - Or: Queue save and retry on next frame if save failed
+
+8. **Missing Error Context Wrapping**: ⚠️ **LOW PRIORITY**
+   - **Issue**: Some error returns don't wrap with context using `fmt.Errorf("...: %w", err)`
+   - **Problem**: Error messages might not have enough context for debugging
+   - **Location**: Various places in `camera.go`
+   - **Example**: Line ~373 `return fmt.Errorf("failed to read frame: %w", err)` - good, but check all others
+   - **Impact**: Debugging might be harder if errors don't have sufficient context
+   - **Fix Required**: 
+     - Review all error returns in `camera.go`
+     - Ensure all errors are wrapped with context using `%w` verb
+     - Add context to errors that currently just return wrapped errors without additional info
+
+9. **Angle Preservation on Detection Failure**: ⚠️ **LOW PRIORITY** (Optional)
+   - **Issue**: When detection fails or returns nil, the previously detected angle in state is lost (if detection was never successful)
+   - **Problem**: If detection temporarily fails, angle information is lost
+   - **Location**: `cmd/spectrometer/internal/calibrate/camera.go` - detection loop line ~388-394
+   - **Impact**: Minor - angle will be re-detected on next successful detection
+   - **Note**: Once detection succeeds and state is set, angle is preserved in `BoundingBoxState`
+   - **Fix Required**: 
+     - Optional: Consider preserving last detected angle if detection temporarily fails
+     - Not critical since detection usually succeeds quickly
+
+10. **No Window ID in Mouse Event Handler**: ⚠️ **LOW PRIORITY** (Future Issue)
+    - **Issue**: Mouse event handler comment mentions MouseEvent doesn't have WindowID field
+    - **Problem**: For multi-window support (dual window display), window identification will be needed
+    - **Location**: `cmd/spectrometer/internal/calibrate/camera.go` - mouse handler lines ~278-305
+    - **Impact**: Currently single window, but will need window ID for dual window display feature
+    - **Fix Required**: 
+      - When implementing dual window display, verify window identification works correctly
+      - May need to use window title or other mechanism to identify windows
+      - Check if gocv marshaller supports window identification in event handlers
+
+11. **Frame Rate Limiting**: ✅ **RESOLVED - Not an Issue**
+    - **Issue**: Continuous capture loop runs at maximum speed
+    - **Status**: Camera capturer naturally limits frame rate, no additional limiting needed
+    - **Location**: `cmd/spectrometer/internal/calibrate/camera.go` - continuous loop line ~365
+    - **Decision**: No fix needed - frame rate is naturally limited by camera capture speed
+
 ---
 
 ## Next Work Session Tasks (MUTABLE)
@@ -607,21 +777,30 @@ Implement missing filters, program structure, config loading/outputting, CR30 su
      - [ ] Exposure label
      - [ ] Auto exposure checkbox (on the right of main display)
      - [ ] Integrate with camera source exposure control
-   - [ ] **Task**: Bounding box interaction
-     - [ ] Click on window to fix bounding box
-     - [ ] Red color when not fixed, green when fixed
-     - [ ] Right-click to flip bounding box (for reversed images)
-     - [ ] Store fixed bounding box state
-   - [ ] **Task**: Config integration for bounding box
-     - [ ] Load bounding box from config if provided
-     - [ ] Save bounding box to config
-     - [ ] Support fresh config (calibrate from scratch)
-     - [ ] Support existing config (recalibration)
+   - [x] **Task**: Bounding box interaction (partial) ✅
+     - [x] Continuous frame capture loop with state management ✅
+     - [x] Fixed/unfixed state tracking (thread-safe) ✅
+     - [x] Red color when not fixed, green when fixed ✅
+     - [x] Flip state tracking ✅
+     - [x] Store fixed bounding box state ✅
+     - [x] Click on bounding box to fix bounding box ✅
+     - [x] Right-click on bounding box to flip bounding box ✅
+     - [x] Keyboard shortcuts: 'f' to fix, 'r' to reset, 'x' to flip ✅
+   - [x] **Task**: Config integration for bounding box ✅
+     - [x] Load bounding box from config if provided (during normal operation, use fixed bbox) ✅
+     - [x] Save bounding box to config (store as part of calibration data) ✅
+     - [x] Support fresh config (calibrate from scratch, detect new bbox) ✅
+     - [x] Support existing config (recalibration, optionally update bbox or use existing) ✅
+     - [x] Bounding box is part of calibration data: during normal operation it's always fixed ✅
+     - [x] Helper functions: convert image.Rectangle ↔ SpectrumWindow ✅
+     - [x] Command-line flags: `--config=path` and `--config-output=path` ✅
    - [ ] **Task**: Spectrum extraction from bounding box
-     - [ ] Extract image region using bounding box
-     - [ ] Decode spectrum from extracted region (row averaging)
-     - [ ] Convert to SPD format
-     - [ ] Handle rotated strips (±45 degrees)
+     - [ ] Extract image region using bounding box (cut out pixels from bbox region)
+     - [ ] Decode spectrum from extracted region (row averaging to get intensity per x coordinate)
+     - [ ] Convert to SPD format (linearization based on x coordinate, then wavelength calibration)
+     - [ ] Handle rotated strips (±45 degrees) - rotate extracted region to horizontal if needed
+     - [ ] During calibration: Extract from detected bounding box
+     - [ ] During normal operation: Extract from fixed bounding box loaded from config
    - [ ] **Task**: Reusable spectrum rendering (in `internal/render`)
      - [ ] Render spectrum graph with peaks
      - [ ] Mark calibration target wavelengths (default: Hg lines)
@@ -687,11 +866,11 @@ Implement missing filters, program structure, config loading/outputting, CR30 su
 4. **Phase 1 - Camera Calibration** (IN PROGRESS): ⭐ **CURRENT PRIORITY** - Camera-based spectrometer calibration
    
    **Task Group 1: Enhanced Display and Controls** (Priority: HIGH)
-   - [ ] **Task**: Dual window display system
-     - [ ] Main window: Camera capture with bounding box (title: "Camera Calibration")
-     - [ ] Second window: Calculated spectrum with peaks and wavelengths (title: "Spectrum")
-     - [ ] Frame structure with two tensors: [0] camera capture with BB, [1] decoded spectrum
-     - [ ] Continuous frame updates (loop reading from camera)
+   - [x] **Task**: Dual window display system ✅
+     - [x] Main window: Camera capture with bounding box (title: "Camera Calibration") ✅
+     - [x] Second window: Calculated spectrum with peaks and wavelengths (title: "Spectrum") ✅
+     - [x] Frame structure with two tensors: [0] camera capture with BB, [1] decoded spectrum ✅
+     - [x] Continuous frame updates (loop reading from camera) ✅
    - [ ] **Task**: Exposure controls on camera window
      - [ ] Exposure trackbar (positioned on the right side of main display)
      - [ ] Exposure label showing current value
@@ -700,46 +879,92 @@ Implement missing filters, program structure, config loading/outputting, CR30 su
      - [ ] Update exposure in real-time when trackbar/checkbox changes
    
    **Task Group 2: Bounding Box Interaction** (Priority: HIGH)
-   - [ ] **Task**: Enhanced strip detection algorithm
-     - [ ] Support ±45 degrees max (no vertical strips)
-     - [ ] Improve detection accuracy for different lighting conditions
-     - [ ] Handle rotated strips (up to 45 degrees)
-     - [ ] Filter detections by aspect ratio and orientation
-   - [ ] **Task**: Bounding box interaction and state management
-     - [ ] Click on camera window to fix bounding box (store fixed state)
-     - [ ] Red color when bounding box is not fixed (detected but not confirmed)
-     - [ ] Green color when bounding box is fixed (user confirmed)
-     - [ ] Right-click to flip bounding box horizontally (for reversed images)
-     - [ ] Store fixed bounding box coordinates and flip state
-     - [ ] Visual feedback for fixed vs unfixed state
+   - [x] **Task**: Enhanced strip detection algorithm ✅
+     - [x] Support ±45 degrees max (no vertical strips) ✅
+     - [x] Improve detection accuracy for different lighting conditions (adaptive thresholding, morphological operations) ✅
+     - [x] Handle rotated strips (up to 45 degrees) ✅
+     - [x] Filter detections by aspect ratio and orientation ✅
+   - [x] **Task**: Bounding box interaction and state management (partial) ✅
+     - [x] Continuous frame capture loop with state management ✅
+     - [x] Fixed/unfixed state tracking (thread-safe) ✅
+     - [x] Red color when bounding box is not fixed (detected but not confirmed) ✅
+     - [x] Green color when bounding box is fixed (user confirmed) ✅
+     - [x] Store fixed bounding box coordinates and flip state ✅
+     - [x] Visual feedback for fixed vs unfixed state ✅
+     - [ ] Click on camera window to fix bounding box - TODO: needs OpenCV mouse callback
+     - [ ] Right-click to flip bounding box horizontally - TODO: needs OpenCV mouse callback
    
    **Task Group 3: Config Integration** (Priority: MEDIUM)
-   - [ ] **Task**: Config loading and saving for bounding box
-     - [ ] Load bounding box from config if provided (read from `types.spectrometer.SpectrometerConfiguration`)
-     - [ ] Save bounding box to config (write to config structure)
-     - [ ] Support fresh config workflow (calibrate from scratch, create new config)
-     - [ ] Support existing config workflow (recalibration, load existing bounding box)
-     - [ ] Command-line argument for config file path (`--config=path`)
-     - [ ] Command-line argument for calibration target selection (`--target=hg|ar|ne`)
+   - [x] **Task**: Config loading and saving for bounding box ✅
+     - [x] Load bounding box from config if provided (read from `types.spectrometer.SpectrometerConfiguration`) ✅
+     - [x] Save bounding box to config (write to config structure) ✅
+     - [x] Support fresh config workflow (calibrate from scratch, create new config) ✅
+     - [x] Support existing config workflow (recalibration, load existing bounding box) ✅
+     - [x] Command-line argument for config file path (`--config=path`) ✅
+     - [x] Helper functions: convert image.Rectangle ↔ SpectrumWindow ✅
+     - [ ] Command-line argument for calibration target selection (`--target=hg|ar|ne`) - TODO: for wavelength calibration
+   - [x] **Task**: Fix calibration issues found during code review (Priority: HIGH) ✅
+     - [x] **Issue #1 - HIGH**: Fix flip state save/load to config ✅
+       - [x] Add `bool flipped = 4;` field to `SpectrumWindow` proto message in `proto/types/spectrometer/config.proto` ✅
+       - [x] Regenerate proto files (`make proto`) ✅
+       - [x] Update `rectangleToSpectrumWindow()` to include flip state in conversion ✅
+       - [x] Update config load (lines ~250-262) to restore flip state from `cfg.Window.Flipped` ✅
+       - [x] Add `SetFixedWithAngleAndFlip()` method or update existing method to restore flip state ✅
+       - [ ] Test: Save config with flipped state, reload and verify flip state is restored
+     - [x] **Issue #2 - MEDIUM**: Fix ESC key context cancellation ✅
+       - [x] Create cancelable context with `context.WithCancel()` at start of `RunCameraCalibration()` ✅
+       - [x] Pass cancel function via `gocv.WithCancel(cancelFunc)` option to display sink (line ~348) ✅
+       - [x] Verify display sink properly cancels context when keyboard handler returns false ✅
+       - [ ] Test: Press ESC key and verify main loop exits cleanly
+     - [x] **Issue #3 - MEDIUM**: Fix config save race condition ✅
+       - [x] Replace `configSaved` bool with `sync/atomic.Bool` for thread-safe access ✅
+       - [ ] Test: Rapidly fix/unfix bounding box multiple times and verify only one save occurs
+     - [x] **Issue #4 - MEDIUM**: Fix bounding box extension Y position for rotated strips ✅
+       - [x] Update `detectStripBoundingBox()` line ~624 to use center Y instead of Min.Y ✅
+       - [x] Calculate center Y: `centerY := (detectedRect.Min.Y + detectedRect.Max.Y) / 2` ✅
+       - [x] Calculate height: `height := detectedRect.Dy()` ✅
+       - [x] Extend symmetrically: `Min: image.Pt(0, centerY - height/2)`, `Max: image.Pt(imgWidth, centerY + height/2)` ✅
+       - [ ] Test: Calibrate with rotated strip and verify extended bounding box is centered correctly
+     - [x] **Issue #5 - MEDIUM**: Add height validation after bounding box extension ✅
+       - [x] Add validation: height should be < 50% of image height (or reasonable limit like 500 pixels) ✅
+       - [x] Add validation: Y position should have reasonable margins (not at very top/bottom) ✅
+       - [x] Log warning if bounding box seems unusual (height too large, position at edges) ✅
+       - [x] Location: `detectStripBoundingBox()` after line ~640 ✅
+       - [ ] Test: Verify invalid bounding boxes are rejected or logged with warnings
+     - [ ] **Issue #6 - LOW**: Move config save to separate goroutine (optional)
+       - [ ] Use channel to signal when config save is needed
+       - [ ] Save config in separate goroutine to avoid blocking main loop
+       - [ ] Ensure save completes before exit
+       - [ ] Test: Verify frames aren't dropped during config save
+     - [ ] **Issue #7 - LOW**: Add retry logic for config save failures
+       - [ ] Add retry logic with exponential backoff for transient errors
+       - [ ] Or: Retry save periodically if initial save failed
+       - [ ] Or: Queue save and retry on next frame if save failed
+       - [ ] Test: Simulate file lock error and verify retry works
+     - [ ] **Issue #8 - LOW**: Review and improve error context wrapping
+       - [ ] Review all error returns in `camera.go`
+       - [ ] Ensure all errors use `fmt.Errorf("...: %w", err)` for proper error wrapping
+       - [ ] Add context to errors that currently lack sufficient information
+       - [ ] Test: Verify error messages have sufficient context for debugging
    
    **Task Group 4: Spectrum Extraction** (Priority: HIGH)
-   - [ ] **Task**: Extract spectrum from bounding box region
-     - [ ] Extract image region using bounding box coordinates
-     - [ ] Handle rotated bounding boxes (±45 degrees)
-     - [ ] Rotate extracted region to horizontal if needed
-     - [ ] Average rows within bounding box to get intensity vector
-     - [ ] Convert intensity vector to SPD format (wavelengths + values)
-     - [ ] Handle flipped images (apply horizontal flip if bounding box was flipped)
+   - [x] **Task**: Extract spectrum from bounding box region ✅
+     - [x] Extract image region using bounding box coordinates ✅
+     - [x] Handle rotated bounding boxes (±45 degrees) ✅
+     - [x] Rotate extracted region to horizontal if needed ✅
+     - [x] Average rows within bounding box to get intensity vector ✅
+     - [x] Convert intensity vector to SPD format (wavelengths + values) ✅
+     - [x] Handle flipped images (apply horizontal flip if bounding box was flipped) ✅
    
    **Task Group 5: Reusable Spectrum Rendering** (Priority: HIGH)
-   - [ ] **Task**: Enhanced spectrum rendering in `internal/render`
-     - [ ] Render spectrum graph with detected peaks (use `colorscience.SPD.Peaks()`)
-     - [ ] Mark calibration target wavelengths on spectrum (default: Hg lines)
-     - [ ] Support different calibration targets (Hg, Ar, Ne) - configurable
-     - [ ] Draw vertical lines at calibration target wavelengths
-     - [ ] Label calibration wavelengths on spectrum
-     - [ ] Make rendering reusable by different acquirers (camera, CR30, etc.)
-     - [ ] Render to gocv.Mat for display in second window
+   - [x] **Task**: Enhanced spectrum rendering in `internal/render` ✅
+     - [x] Render spectrum graph with detected peaks (use `colorscience.SPD.Peaks()`) ✅
+     - [x] Mark calibration target wavelengths on spectrum (default: Hg lines) ✅
+     - [x] Support different calibration targets (Hg, Ar, Ne) - configurable ✅
+     - [x] Draw vertical lines at calibration target wavelengths ✅
+     - [x] Label calibration wavelengths on spectrum ✅
+     - [x] Make rendering reusable by different acquirers (camera, CR30, etc.) ✅
+     - [x] Render to gocv.Mat for display in second window ✅
    
    **Task Group 6: Keyboard Commands** (Priority: MEDIUM)
    - [ ] **Task**: Keyboard commands for spectrum (implement in `internal/measure`)
@@ -765,15 +990,15 @@ Implement missing filters, program structure, config loading/outputting, CR30 su
      - [ ] Load target by name or command-line argument
    
    **Implementation Order**:
-   1. Enhanced strip detection (±45 degrees)
-   2. Dual window display system
-   3. Bounding box interaction (click to fix, right-click to flip, color coding)
-   4. Spectrum extraction from bounding box
-   5. Reusable spectrum rendering with calibration targets
+   1. Enhanced strip detection (±45 degrees) ✅ **COMPLETED**
+   2. Dual window display system ✅ **COMPLETED**
+   3. Bounding box interaction (click to fix, right-click to flip, color coding) ✅ **COMPLETED** (mouse callbacks already work)
+   4. Spectrum extraction from bounding box ✅ **COMPLETED**
+   5. Reusable spectrum rendering with calibration targets ✅ **COMPLETED**
    6. Exposure controls
-   7. Config integration
+   7. Config integration ✅ **COMPLETED**
    8. Keyboard commands
-   9. Calibration target database
+   9. Calibration target database ✅ **COMPLETED** (basic implementation in targets.go)
 
 5. **Phase 1 - Proto Verification** (Pending):
    - [ ] Verify generated Go code compiles correctly
@@ -821,7 +1046,7 @@ Implement missing filters, program structure, config loading/outputting, CR30 su
 
 ## Progress Summary
 
-**Overall Progress**: **50%** (Filters ✅, CLI structure ✅, Config loader/saver ✅, Cameras command ✅, Ports command ✅, Acquirer framework ✅ with Start/Stop callbacks, Render module ✅, Measure command ✅ with export and button support, Patch measurement ✅ works with any acquirer, Phase 0 ✅ COMPLETE, CSV Marshaller ✅ COMPLETE - Phase 9)
+**Overall Progress**: **60%** (Filters ✅, CLI structure ✅, Config loader/saver ✅, Cameras command ✅, Ports command ✅, Acquirer framework ✅ with Start/Stop callbacks, Render module ✅, Measure command ✅ with export and button support, Patch measurement ✅ works with any acquirer, Phase 0 ✅ COMPLETE, CSV Marshaller ✅ COMPLETE - Phase 9, Phase 1 Camera Calibration: Dual window ✅, Spectrum extraction ✅, Enhanced rendering with peaks/targets ✅)
 
 **Next Milestone**: Phase 0 (CR30 Device Support & Framework) - ✅ **COMPLETE** (100%)
 

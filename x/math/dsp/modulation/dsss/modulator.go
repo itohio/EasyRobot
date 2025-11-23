@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/itohio/EasyRobot/x/math/primitive/generics"
+	"github.com/itohio/EasyRobot/x/buffer"
 	"github.com/itohio/EasyRobot/x/math/vec"
 	vecTypes "github.com/itohio/EasyRobot/x/math/vec/types"
 )
@@ -282,7 +282,7 @@ func (dsss *Modulator) Encode(amplitudes vecTypes.Vector, data []byte) int {
 
 	// Use BitBuffer to read symbols from input data
 	bitsPerSymbol := int(math.Log2(float64(dsss.modulationOrder)))
-	bitBuffer := generics.NewBitBuffer[byte](bitsPerSymbol)
+	bitBuffer := buffer.NewBits[byte](bitsPerSymbol)
 	bitBuffer.ReadFromBytes(data)
 	bitBuffer.Reset()
 

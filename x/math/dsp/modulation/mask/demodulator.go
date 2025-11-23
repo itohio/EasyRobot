@@ -7,7 +7,7 @@ import (
 	"github.com/itohio/EasyRobot/x/math/dsp/modulation/iq"
 	"github.com/itohio/EasyRobot/x/math/filter"
 	agcFilter "github.com/itohio/EasyRobot/x/math/filter/agc"
-	"github.com/itohio/EasyRobot/x/math/primitive/generics"
+	"github.com/itohio/EasyRobot/x/buffer"
 	"github.com/itohio/EasyRobot/x/math/vec"
 	vecTypes "github.com/itohio/EasyRobot/x/math/vec/types"
 )
@@ -33,7 +33,7 @@ type Demodulator struct {
 	// State
 	iqDemodulator  *iq.Decoder
 	currentPhase   float32
-	bitBuffer      generics.BitBuffer[byte]
+	bitBuffer      buffer.Bits[byte]
 	bytesExtracted int
 
 	// Streaming state
@@ -97,7 +97,7 @@ func NewDemodulator(sampleRate, carrierFreq, symbolRate float32, modulationOrder
 		signalDetector:   signalDetector,
 		agc:              agc,
 		iqDemodulator:    iq.NewDecoder(sampleRate, carrierFreq),
-		bitBuffer:        generics.NewBitBuffer[byte](int(math.Log2(float64(modulationOrder)))), // bits per symbol
+		bitBuffer:        buffer.NewBits[byte](int(math.Log2(float64(modulationOrder)))), // bits per symbol
 		bytesExtracted:   0,
 		sampleBuffer:     make([]float32, 0, samplesPerSymbol*2),
 	}

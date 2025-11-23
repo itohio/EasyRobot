@@ -3,6 +3,7 @@ package gorgonia
 import (
 	"testing"
 
+	"github.com/itohio/EasyRobot/x/math/shape"
 	"github.com/itohio/EasyRobot/x/math/tensor/types"
 )
 
@@ -27,8 +28,8 @@ func TestGraphBasicOperations(t *testing.T) {
 	data1 := []float32{1, 2, 3, 4, 5, 6, 7, 8, 9}
 	data2 := []float32{9, 8, 7, 6, 5, 4, 3, 2, 1}
 
-	t1.Copy(&SimpleTensor{data: data1, shape: types.Shape{3, 3}, dtype: types.FP32})
-	t2.Copy(&SimpleTensor{data: data2, shape: types.Shape{3, 3}, dtype: types.FP32})
+	t1.Copy(&SimpleTensor{data: data1, shape: shape.Shape{3, 3}, dtype: types.FP32})
+	t2.Copy(&SimpleTensor{data: data2, shape: shape.Shape{3, 3}, dtype: types.FP32})
 
 	// Execute
 	if err := eg.Compute(); err != nil {
@@ -73,8 +74,8 @@ func TestGraphMatMul(t *testing.T) {
 	//      [11, 12]]
 	dataB := []float32{7, 8, 9, 10, 11, 12}
 
-	a.Copy(&SimpleTensor{data: dataA, shape: types.Shape{2, 3}, dtype: types.FP32})
-	b.Copy(&SimpleTensor{data: dataB, shape: types.Shape{3, 2}, dtype: types.FP32})
+	a.Copy(&SimpleTensor{data: dataA, shape: shape.Shape{2, 3}, dtype: types.FP32})
+	b.Copy(&SimpleTensor{data: dataB, shape: shape.Shape{3, 2}, dtype: types.FP32})
 
 	// Execute
 	if err := eg.Compute(); err != nil {
@@ -120,7 +121,7 @@ func TestGraphActivations(t *testing.T) {
 
 	// Set input data: [-2, -1, 1, 2]
 	inputData := []float32{-2, -1, 1, 2}
-	input.Copy(&SimpleTensor{data: inputData, shape: types.Shape{4}, dtype: types.FP32})
+	input.Copy(&SimpleTensor{data: inputData, shape: shape.Shape{4}, dtype: types.FP32})
 
 	// Execute
 	if err := eg.Compute(); err != nil {
@@ -176,7 +177,7 @@ func TestGraphConv2D(t *testing.T) {
 		9, 10, 11, 12,
 		13, 14, 15, 16,
 	}
-	input.Copy(&SimpleTensor{data: inputData, shape: types.Shape{1, 1, 4, 4}, dtype: types.FP32})
+	input.Copy(&SimpleTensor{data: inputData, shape: shape.Shape{1, 1, 4, 4}, dtype: types.FP32})
 
 	// Execute
 	if err := eg.Compute(); err != nil {
@@ -229,7 +230,7 @@ func TestGraphMaxPool2D(t *testing.T) {
 		9, 10, 11, 12,
 		13, 14, 15, 16,
 	}
-	input.Copy(&SimpleTensor{data: inputData, shape: types.Shape{1, 1, 4, 4}, dtype: types.FP32})
+	input.Copy(&SimpleTensor{data: inputData, shape: shape.Shape{1, 1, 4, 4}, dtype: types.FP32})
 
 	// Execute
 	if err := eg.Compute(); err != nil {
@@ -277,7 +278,7 @@ func TestGraphReuseExecution(t *testing.T) {
 
 	for i, tc := range testCases {
 		// Set input
-		input.Copy(&SimpleTensor{data: tc.input, shape: types.Shape{3}, dtype: types.FP32})
+		input.Copy(&SimpleTensor{data: tc.input, shape: shape.Shape{3}, dtype: types.FP32})
 
 		// Execute
 		if err := eg.Compute(); err != nil {
@@ -297,12 +298,12 @@ func TestGraphReuseExecution(t *testing.T) {
 // SimpleTensor is a simple tensor implementation for testing
 type SimpleTensor struct {
 	data  any
-	shape types.Shape
+	shape shape.Shape
 	dtype types.DataType
 }
 
 func (st *SimpleTensor) Data() any                                      { return st.data }
-func (st *SimpleTensor) Shape() types.Shape                             { return st.shape }
+func (st *SimpleTensor) Shape() shape.Shape                             { return st.shape }
 func (st *SimpleTensor) DataType() types.DataType                       { return st.dtype }
 func (st *SimpleTensor) ID() uintptr                                    { return 0 }
 func (st *SimpleTensor) Rank() int                                      { return len(st.shape) }
@@ -320,11 +321,11 @@ func (st *SimpleTensor) Release()                                       {}
 // All other interface methods - stubs for testing
 func (st *SimpleTensor) Clone() types.Tensor                                   { return st }
 func (st *SimpleTensor) Copy(types.Tensor) types.Tensor                        { return st }
-func (st *SimpleTensor) Reshape(types.Tensor, types.Shape) types.Tensor        { return st }
+func (st *SimpleTensor) Reshape(types.Tensor, shape.Shape) types.Tensor        { return st }
 func (st *SimpleTensor) Slice(types.Tensor, int, int, int) types.Tensor        { return st }
 func (st *SimpleTensor) Transpose(types.Tensor, []int) types.Tensor            { return st }
 func (st *SimpleTensor) Permute(types.Tensor, []int) types.Tensor              { return st }
-func (st *SimpleTensor) BroadcastTo(types.Tensor, types.Shape) types.Tensor    { return st }
+func (st *SimpleTensor) BroadcastTo(types.Tensor, shape.Shape) types.Tensor    { return st }
 func (st *SimpleTensor) Fill(types.Tensor, float64) types.Tensor               { return st }
 func (st *SimpleTensor) FillFunc(types.Tensor, func() float64) types.Tensor    { return st }
 func (st *SimpleTensor) Pad(types.Tensor, []int, float64) types.Tensor         { return st }

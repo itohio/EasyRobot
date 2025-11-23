@@ -8,7 +8,7 @@ import (
 	agcFilter "github.com/itohio/EasyRobot/x/math/filter/agc"
 	"github.com/itohio/EasyRobot/x/math/filter/fir"
 	"github.com/itohio/EasyRobot/x/math/filter/pll"
-	"github.com/itohio/EasyRobot/x/math/primitive/generics"
+	"github.com/itohio/EasyRobot/x/buffer"
 	"github.com/itohio/EasyRobot/x/math/vec"
 	vecTypes "github.com/itohio/EasyRobot/x/math/vec/types"
 )
@@ -23,8 +23,8 @@ type Demodulator struct {
 	// Reusable components (SOLID principle - single responsibility)
 	frequencyDetector  modulation.FrequencyDetector // Kept for backward compatibility, but coherent correlators are preferred
 	symbolSynchronizer modulation.SymbolSynchronizer
-	bitBuffer          generics.BitBuffer[byte] // BitBuffer for symbol-to-byte conversion
-	bytesExtracted     int                      // Number of complete bytes already extracted from bitBuffer
+	bitBuffer          buffer.Bits[byte] // BitBuffer for symbol-to-byte conversion
+	bytesExtracted     int               // Number of complete bytes already extracted from bitBuffer
 
 	// Coherent detection components
 	pllFilter pll.Filter // PLL for carrier phase/frequency tracking
@@ -85,7 +85,7 @@ func NewMDemodulator(sampleRate, symbolRate float32, frequencies ...float32) *De
 	// Use effective sample rate for frequency detector (4x for 8-FSK/16-FSK)
 	frequencyDetector := modulation.NewGoertzelFrequencyDetector(effectiveSampleRate, frequencies...)
 	symbolSynchronizer := modulation.NewSymbolSynchronizer(samplesPerSymbol)
-	bitBuffer := generics.NewBitBuffer[byte](bitsPerSymbol)
+	bitBuffer := buffer.NewBits[byte](bitsPerSymbol)
 
 	// Create PLL for coherent detection
 	// Use loop bandwidth of 5% of symbol rate for good tracking vs noise trade-off
@@ -217,7 +217,7 @@ func (fsk *Demodulator) SymbolSynchronizer() *modulation.SymbolSynchronizer {
 }
 
 // BitBuffer returns the bit buffer (for debugging)
-func (fsk *Demodulator) BitBuffer() *generics.BitBuffer[byte] {
+func (fsk *Demodulator) BitBuffer() *buffer.Bits[byte] {
 	return &fsk.bitBuffer
 }
 

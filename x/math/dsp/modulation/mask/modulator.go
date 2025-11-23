@@ -3,7 +3,7 @@ package mask
 import (
 	"math"
 
-	"github.com/itohio/EasyRobot/x/math/primitive/generics"
+	"github.com/itohio/EasyRobot/x/buffer"
 	"github.com/itohio/EasyRobot/x/math/vec"
 	vecTypes "github.com/itohio/EasyRobot/x/math/vec/types"
 )
@@ -19,7 +19,7 @@ type Modulator struct {
 	amplitude        float32
 
 	// State for streaming encoding
-	bitBuffer    generics.BitBuffer[byte]
+	bitBuffer    buffer.Bits[byte]
 	currentPhase float32
 }
 
@@ -38,7 +38,7 @@ func NewModulator(sampleRate, carrierFreq, symbolRate float32, modulationOrder i
 		modulationOrder:  modulationOrder,
 		samplesPerSymbol: samplesPerSymbol,
 		amplitude:        amplitude,
-		bitBuffer:        generics.NewBitBuffer[byte](int(math.Log2(float64(modulationOrder)))), // bits per symbol
+		bitBuffer:        buffer.NewBits[byte](int(math.Log2(float64(modulationOrder)))), // bits per symbol
 	}
 }
 
@@ -131,7 +131,7 @@ func (mask *Modulator) GenerateSignal(data []byte, length int) vec.Vector {
 	resultData := []float32(result)
 
 	bitsPerSymbol := int(math.Log2(float64(mask.modulationOrder)))
-	bitBuffer := generics.NewBitBuffer[byte](bitsPerSymbol)
+	bitBuffer := buffer.NewBits[byte](bitsPerSymbol)
 	bitBuffer.ReadFromBytes(data)
 	bitBuffer.Reset()
 

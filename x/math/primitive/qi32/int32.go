@@ -1,7 +1,7 @@
 package qi32
 
-import helpers "github.com/itohio/EasyRobot/x/math/primitive/generics/helpers"
+import "github.com/itohio/EasyRobot/x/buffer"
 
 var (
-	Pool = helpers.Pool[int32]{}
+	Pool = buffer.Pool[int32]{}
 )

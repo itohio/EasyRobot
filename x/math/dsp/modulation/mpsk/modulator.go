@@ -3,7 +3,7 @@ package mpsk
 import (
 	"math"
 
-	"github.com/itohio/EasyRobot/x/math/primitive/generics"
+	"github.com/itohio/EasyRobot/x/buffer"
 	"github.com/itohio/EasyRobot/x/math/vec"
 	vecTypes "github.com/itohio/EasyRobot/x/math/vec/types"
 )
@@ -52,7 +52,7 @@ func (psk *Modulator) GenerateSignal(data []byte, amplitude float32, length int)
 	sampleIndex := 0
 
 	// Use bit buffer to read symbols
-	bitBuffer := generics.NewBitBuffer[byte](bitsPerSymbol)
+	bitBuffer := buffer.NewBits[byte](bitsPerSymbol)
 	bitBuffer.ReadFromBytes(data)
 	bitBuffer.Reset()
 

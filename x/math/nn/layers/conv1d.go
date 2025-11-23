@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/itohio/EasyRobot/x/math/nn/types"
+	"github.com/itohio/EasyRobot/x/math/shape"
 	"github.com/itohio/EasyRobot/x/math/tensor"
 	tensorTypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 )
@@ -86,7 +87,7 @@ func NewConv1D(
 }
 
 // Init initializes the layer, creating internal computation tensors.
-func (c *Conv1D) Init(inputShape tensor.Shape) error {
+func (c *Conv1D) Init(inputShape shape.Shape) error {
 	if c == nil {
 		return fmt.Errorf("Conv1D.Init: nil layer")
 	}
@@ -248,7 +249,7 @@ func (c *Conv1D) Backward(gradOutput tensorTypes.Tensor) (tensorTypes.Tensor, er
 }
 
 // OutputShape returns the output shape for given input shape.
-func (c *Conv1D) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
+func (c *Conv1D) OutputShape(inputShape shape.Shape) (shape.Shape, error) {
 	if c == nil {
 		return nil, fmt.Errorf("Conv1D.OutputShape: nil layer")
 	}

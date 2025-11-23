@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/itohio/EasyRobot/x/math/shape"
 	"github.com/itohio/EasyRobot/x/math/tensor"
 )
 
@@ -24,7 +25,7 @@ func init() {
 }
 
 // Helper to create random input tensor
-func createRandomInput(shape tensor.Shape) tensor.Tensor {
+func createRandomInput(shape shape.Shape) tensor.Tensor {
 	size := tensor.NewShape(shape...).Size()
 	data := make([]float32, size)
 	for i := range data {

@@ -1,5 +1,7 @@
 package types
 
+import "github.com/itohio/EasyRobot/x/math/shape"
+
 // Manipulation defines operations for copying, cloning, reshaping, and manipulating tensor structure.
 // This interface contains operations that modify tensor shape or create new tensor views.
 type Manipulation interface {
@@ -19,7 +21,7 @@ type Manipulation interface {
 	// If dst is nil, creates a new tensor view (zero-copy when possible).
 	// If dst is provided, copies reshaped data to dst and returns dst.
 	// Panics if newShape is incompatible with current size or if dst shape doesn't match newShape.
-	Reshape(dst Tensor, newShape Shape) Tensor
+	Reshape(dst Tensor, newShape shape.Shape) Tensor
 
 	// Slice extracts a contiguous slice along the specified dimension.
 	// Returns a tensor with the sliced data.
@@ -53,7 +55,7 @@ type Manipulation interface {
 	// BroadcastTo broadcasts the tensor to the target shape.
 	// If dst is nil, creates a new tensor. If dst is provided, writes result to dst and returns dst.
 	// Panics if broadcasting is not possible or if dst shape doesn't match target shape.
-	BroadcastTo(dst Tensor, shape Shape) Tensor
+	BroadcastTo(dst Tensor, shape shape.Shape) Tensor
 
 	// Fill fills the tensor with a constant value.
 	// If dst is nil, operation is in-place (modifies t) and returns t.

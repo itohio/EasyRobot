@@ -3,7 +3,7 @@ package fp32
 import (
 	"math"
 
-	helpers "github.com/itohio/EasyRobot/x/math/primitive/generics/helpers"
+	"github.com/itohio/EasyRobot/x/math/shape"
 )
 
 const float32ExpMax = 88.0 // max value for exp to avoid overflow
@@ -277,17 +277,20 @@ func Softmax2DColsGrad(dst, gradOutput, output []float32, rows, cols int) {
 
 // ReLUGradStride computes ReLU gradient with stride support: dst[i] = gradOutput[i] * (input[i] > 0 ? 1 : 0)
 // Supports non-contiguous tensors via stride-based access.
-func ReLUGradStride(dst, gradOutput, input []float32, shape []int, stridesDst, stridesGrad, stridesInput []int) {
-	size := SizeFromShape(shape)
-	if len(shape) == 0 || size == 0 {
+func ReLUGradStride(dst, gradOutput, input []float32, sh []int, stridesDst, stridesGrad, stridesInput []int) {
+	size := shape.SizeFromShape(sh)
+	if len(sh) == 0 || size == 0 {
 		return
 	}
 
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesGrad = EnsureStrides(stridesGrad, shape)
-	stridesInput = EnsureStrides(stridesInput, shape)
+	var stridesDstBuf [shape.MAX_DIMS]int
+	stridesDst = shape.EnsureStrides(stridesDstBuf[:], stridesDst, sh)
+	var stridesGradBuf [shape.MAX_DIMS]int
+	stridesGrad = shape.EnsureStrides(stridesGradBuf[:], stridesGrad, sh)
+	var stridesInputBuf [shape.MAX_DIMS]int
+	stridesInput = shape.EnsureStrides(stridesInputBuf[:], stridesInput, sh)
 
-	if IsContiguous(stridesDst, shape) && IsContiguous(stridesGrad, shape) && IsContiguous(stridesInput, shape) {
+	if shape.IsContiguous(stridesDst, sh) && shape.IsContiguous(stridesGrad, sh) && shape.IsContiguous(stridesInput, sh) {
 		// Fast path for contiguous tensors
 		for i := 0; i < size; i++ {
 			if input[i] > 0 {
@@ -300,7 +303,6 @@ func ReLUGradStride(dst, gradOutput, input []float32, shape []int, stridesDst, s
 	}
 
 	// Stride-based path for non-contiguous tensors
-	strideSet := [][]int{stridesDst, stridesGrad, stridesInput}
 	var offsetsArr [3]int
 	process := func(indices []int, offsets []int) {
 		for {
@@ -312,34 +314,37 @@ func ReLUGradStride(dst, gradOutput, input []float32, shape []int, stridesDst, s
 			} else {
 				dst[dIdx] = 0
 			}
-			if !advanceOffsets(shape, indices, offsets, strideSet) {
+			if !shape.AdvanceOffsets3(sh, indices, offsets, stridesDst, stridesGrad, stridesInput) {
 				break
 			}
 		}
 	}
 
-	if len(shape) <= helpers.MAX_DIMS {
-		var indicesArr [helpers.MAX_DIMS]int
-		process(indicesArr[:len(shape)], offsetsArr[:len(strideSet)])
+	if len(sh) <= shape.MAX_DIMS {
+		var indicesArr [shape.MAX_DIMS]int
+		process(indicesArr[:len(sh)], offsetsArr[:3])
 		return
 	}
 
-	process(make([]int, len(shape)), offsetsArr[:len(strideSet)])
+	process(make([]int, len(sh)), offsetsArr[:3])
 }
 
 // SigmoidGradStride computes sigmoid gradient with stride support: dst[i] = gradOutput[i] * output[i] * (1 - output[i])
 // Supports non-contiguous tensors via stride-based access.
-func SigmoidGradStride(dst, gradOutput, output []float32, shape []int, stridesDst, stridesGrad, stridesOutput []int) {
-	size := SizeFromShape(shape)
-	if len(shape) == 0 || size == 0 {
+func SigmoidGradStride(dst, gradOutput, output []float32, sh []int, stridesDst, stridesGrad, stridesOutput []int) {
+	size := shape.SizeFromShape(sh)
+	if len(sh) == 0 || size == 0 {
 		return
 	}
 
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesGrad = EnsureStrides(stridesGrad, shape)
-	stridesOutput = EnsureStrides(stridesOutput, shape)
+	var stridesDstBuf [shape.MAX_DIMS]int
+	stridesDst = shape.EnsureStrides(stridesDstBuf[:], stridesDst, sh)
+	var stridesGradBuf [shape.MAX_DIMS]int
+	stridesGrad = shape.EnsureStrides(stridesGradBuf[:], stridesGrad, sh)
+	var stridesOutputBuf [shape.MAX_DIMS]int
+	stridesOutput = shape.EnsureStrides(stridesOutputBuf[:], stridesOutput, sh)
 
-	if IsContiguous(stridesDst, shape) && IsContiguous(stridesGrad, shape) && IsContiguous(stridesOutput, shape) {
+	if shape.IsContiguous(stridesDst, sh) && shape.IsContiguous(stridesGrad, sh) && shape.IsContiguous(stridesOutput, sh) {
 		// Fast path for contiguous tensors
 		for i := 0; i < size; i++ {
 			out := output[i]
@@ -349,7 +354,6 @@ func SigmoidGradStride(dst, gradOutput, output []float32, shape []int, stridesDs
 	}
 
 	// Stride-based path for non-contiguous tensors
-	strideSet := [][]int{stridesDst, stridesGrad, stridesOutput}
 	var offsetsArr [3]int
 	process := func(indices []int, offsets []int) {
 		for {
@@ -358,34 +362,37 @@ func SigmoidGradStride(dst, gradOutput, output []float32, shape []int, stridesDs
 			oIdx := offsets[2]
 			out := output[oIdx]
 			dst[dIdx] = gradOutput[gIdx] * out * (1 - out)
-			if !advanceOffsets(shape, indices, offsets, strideSet) {
+			if !shape.AdvanceOffsets3(sh, indices, offsets, stridesDst, stridesGrad, stridesOutput) {
 				break
 			}
 		}
 	}
 
-	if len(shape) <= helpers.MAX_DIMS {
-		var indicesArr [helpers.MAX_DIMS]int
-		process(indicesArr[:len(shape)], offsetsArr[:len(strideSet)])
+	if len(sh) <= shape.MAX_DIMS {
+		var indicesArr [shape.MAX_DIMS]int
+		process(indicesArr[:len(sh)], offsetsArr[:3])
 		return
 	}
 
-	process(make([]int, len(shape)), offsetsArr[:len(strideSet)])
+	process(make([]int, len(sh)), offsetsArr[:3])
 }
 
 // TanhGradStride computes tanh gradient with stride support: dst[i] = gradOutput[i] * (1 - output[i]^2)
 // Supports non-contiguous tensors via stride-based access.
-func TanhGradStride(dst, gradOutput, output []float32, shape []int, stridesDst, stridesGrad, stridesOutput []int) {
-	size := SizeFromShape(shape)
-	if len(shape) == 0 || size == 0 {
+func TanhGradStride(dst, gradOutput, output []float32, sh []int, stridesDst, stridesGrad, stridesOutput []int) {
+	size := shape.SizeFromShape(sh)
+	if len(sh) == 0 || size == 0 {
 		return
 	}
 
-	stridesDst = EnsureStrides(stridesDst, shape)
-	stridesGrad = EnsureStrides(stridesGrad, shape)
-	stridesOutput = EnsureStrides(stridesOutput, shape)
+	var stridesDstBuf [shape.MAX_DIMS]int
+	stridesDst = shape.EnsureStrides(stridesDstBuf[:], stridesDst, sh)
+	var stridesGradBuf [shape.MAX_DIMS]int
+	stridesGrad = shape.EnsureStrides(stridesGradBuf[:], stridesGrad, sh)
+	var stridesOutputBuf [shape.MAX_DIMS]int
+	stridesOutput = shape.EnsureStrides(stridesOutputBuf[:], stridesOutput, sh)
 
-	if IsContiguous(stridesDst, shape) && IsContiguous(stridesGrad, shape) && IsContiguous(stridesOutput, shape) {
+	if shape.IsContiguous(stridesDst, sh) && shape.IsContiguous(stridesGrad, sh) && shape.IsContiguous(stridesOutput, sh) {
 		// Fast path for contiguous tensors
 		for i := 0; i < size; i++ {
 			out := output[i]
@@ -395,7 +402,6 @@ func TanhGradStride(dst, gradOutput, output []float32, shape []int, stridesDst, 
 	}
 
 	// Stride-based path for non-contiguous tensors
-	strideSet := [][]int{stridesDst, stridesGrad, stridesOutput}
 	var offsetsArr [3]int
 	process := func(indices []int, offsets []int) {
 		for {
@@ -404,17 +410,17 @@ func TanhGradStride(dst, gradOutput, output []float32, shape []int, stridesDst, 
 			oIdx := offsets[2]
 			out := output[oIdx]
 			dst[dIdx] = gradOutput[gIdx] * (1 - out*out)
-			if !advanceOffsets(shape, indices, offsets, strideSet) {
+			if !shape.AdvanceOffsets3(sh, indices, offsets, stridesDst, stridesGrad, stridesOutput) {
 				break
 			}
 		}
 	}
 
-	if len(shape) <= helpers.MAX_DIMS {
-		var indicesArr [helpers.MAX_DIMS]int
-		process(indicesArr[:len(shape)], offsetsArr[:len(strideSet)])
+	if len(sh) <= shape.MAX_DIMS {
+		var indicesArr [shape.MAX_DIMS]int
+		process(indicesArr[:len(sh)], offsetsArr[:3])
 		return
 	}
 
-	process(make([]int, len(shape)), offsetsArr[:len(strideSet)])
+	process(make([]int, len(sh)), offsetsArr[:3])
 }

@@ -3,7 +3,8 @@ package tensor
 import (
 	"testing"
 
-	"github.com/itohio/EasyRobot/x/math/tensor/eager_tensor"
+	"github.com/itohio/EasyRobot/x/math/shape"
+	"github.com/itohio/EasyRobot/x/math/tensor/eager"
 	"github.com/itohio/EasyRobot/x/math/tensor/gorgonia"
 	"github.com/itohio/EasyRobot/x/math/tensor/types"
 )
@@ -19,9 +20,9 @@ import (
 // ============================================================================
 
 func BenchmarkMatMul_Eager_Small_32x32(b *testing.B) {
-	a := eager_tensor.New(types.FP32, types.NewShape(32, 32))
+	a := eager.New(types.FP32, shape.NewShape(32, 32))
 	a.Fill(nil, 1.0)
-	c := eager_tensor.New(types.FP32, types.NewShape(32, 32))
+	c := eager.New(types.FP32, shape.NewShape(32, 32))
 	c.Fill(nil, 2.0)
 
 	b.ResetTimer()
@@ -53,8 +54,8 @@ func BenchmarkMatMul_GorgoniaGraph_Small_32x32(b *testing.B) {
 	b.ResetTimer()
 	// Execute many times (amortize compilation cost)
 	for i := 0; i < b.N; i++ {
-		a.Copy(&simpleTensor{data: aData, shape: types.Shape{32, 32}, dtype: types.FP32})
-		c.Copy(&simpleTensor{data: cData, shape: types.Shape{32, 32}, dtype: types.FP32})
+		a.Copy(&simpleTensor{data: aData, shape: shape.NewShape(32, 32), dtype: types.FP32})
+		c.Copy(&simpleTensor{data: cData, shape: shape.NewShape(32, 32), dtype: types.FP32})
 		if err := eg.Compute(); err != nil {
 			b.Fatal(err)
 		}
@@ -63,9 +64,9 @@ func BenchmarkMatMul_GorgoniaGraph_Small_32x32(b *testing.B) {
 }
 
 func BenchmarkMatMul_Eager_Medium_128x128(b *testing.B) {
-	a := eager_tensor.New(types.FP32, types.NewShape(128, 128))
+	a := eager.New(types.FP32, shape.NewShape(128, 128))
 	a.Fill(nil, 1.0)
-	c := eager_tensor.New(types.FP32, types.NewShape(128, 128))
+	c := eager.New(types.FP32, shape.NewShape(128, 128))
 	c.Fill(nil, 2.0)
 
 	b.ResetTimer()
@@ -96,8 +97,8 @@ func BenchmarkMatMul_GorgoniaGraph_Medium_128x128(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		a.Copy(&simpleTensor{data: aData, shape: types.Shape{128, 128}, dtype: types.FP32})
-		c.Copy(&simpleTensor{data: cData, shape: types.Shape{128, 128}, dtype: types.FP32})
+		a.Copy(&simpleTensor{data: aData, shape: shape.NewShape(128, 128), dtype: types.FP32})
+		c.Copy(&simpleTensor{data: cData, shape: shape.NewShape(128, 128), dtype: types.FP32})
 		if err := eg.Compute(); err != nil {
 			b.Fatal(err)
 		}
@@ -106,9 +107,9 @@ func BenchmarkMatMul_GorgoniaGraph_Medium_128x128(b *testing.B) {
 }
 
 func BenchmarkMatMul_Eager_Large_512x512(b *testing.B) {
-	a := eager_tensor.New(types.FP32, types.NewShape(512, 512))
+	a := eager.New(types.FP32, shape.NewShape(512, 512))
 	a.Fill(nil, 1.0)
-	c := eager_tensor.New(types.FP32, types.NewShape(512, 512))
+	c := eager.New(types.FP32, shape.NewShape(512, 512))
 	c.Fill(nil, 2.0)
 
 	b.ResetTimer()
@@ -139,8 +140,8 @@ func BenchmarkMatMul_GorgoniaGraph_Large_512x512(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		a.Copy(&simpleTensor{data: aData, shape: types.Shape{512, 512}, dtype: types.FP32})
-		c.Copy(&simpleTensor{data: cData, shape: types.Shape{512, 512}, dtype: types.FP32})
+		a.Copy(&simpleTensor{data: aData, shape: shape.NewShape(512, 512), dtype: types.FP32})
+		c.Copy(&simpleTensor{data: cData, shape: shape.NewShape(512, 512), dtype: types.FP32})
 		if err := eg.Compute(); err != nil {
 			b.Fatal(err)
 		}
@@ -150,9 +151,9 @@ func BenchmarkMatMul_GorgoniaGraph_Large_512x512(b *testing.B) {
 
 func BenchmarkMatMul_Eager_Rectangular_64x128x256(b *testing.B) {
 	// [64, 128] x [128, 256] = [64, 256]
-	a := eager_tensor.New(types.FP32, types.NewShape(64, 128))
+	a := eager.New(types.FP32, shape.NewShape(64, 128))
 	a.Fill(nil, 1.0)
-	c := eager_tensor.New(types.FP32, types.NewShape(128, 256))
+	c := eager.New(types.FP32, shape.NewShape(128, 256))
 	c.Fill(nil, 2.0)
 
 	b.ResetTimer()
@@ -185,8 +186,8 @@ func BenchmarkMatMul_GorgoniaGraph_Rectangular_64x128x256(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		a.Copy(&simpleTensor{data: aData, shape: types.Shape{64, 128}, dtype: types.FP32})
-		c.Copy(&simpleTensor{data: cData, shape: types.Shape{128, 256}, dtype: types.FP32})
+		a.Copy(&simpleTensor{data: aData, shape: shape.NewShape(64, 128), dtype: types.FP32})
+		c.Copy(&simpleTensor{data: cData, shape: shape.NewShape(128, 256), dtype: types.FP32})
 		if err := eg.Compute(); err != nil {
 			b.Fatal(err)
 		}
@@ -200,9 +201,9 @@ func BenchmarkMatMul_GorgoniaGraph_Rectangular_64x128x256(b *testing.B) {
 
 func BenchmarkAdd_Eager_Small_1K(b *testing.B) {
 	// 1K elements
-	a := eager_tensor.New(types.FP32, types.NewShape(32, 32))
+	a := eager.New(types.FP32, shape.NewShape(32, 32))
 	a.Fill(nil, 1.0)
-	c := eager_tensor.New(types.FP32, types.NewShape(32, 32))
+	c := eager.New(types.FP32, shape.NewShape(32, 32))
 	c.Fill(nil, 2.0)
 
 	b.ResetTimer()
@@ -233,8 +234,8 @@ func BenchmarkAdd_GorgoniaGraph_Small_1K(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		a.Copy(&simpleTensor{data: aData, shape: types.Shape{32, 32}, dtype: types.FP32})
-		c.Copy(&simpleTensor{data: cData, shape: types.Shape{32, 32}, dtype: types.FP32})
+		a.Copy(&simpleTensor{data: aData, shape: shape.NewShape(32, 32), dtype: types.FP32})
+		c.Copy(&simpleTensor{data: cData, shape: shape.NewShape(32, 32), dtype: types.FP32})
 		if err := eg.Compute(); err != nil {
 			b.Fatal(err)
 		}
@@ -244,9 +245,9 @@ func BenchmarkAdd_GorgoniaGraph_Small_1K(b *testing.B) {
 
 func BenchmarkAdd_Eager_Medium_64K(b *testing.B) {
 	// 64K elements
-	a := eager_tensor.New(types.FP32, types.NewShape(256, 256))
+	a := eager.New(types.FP32, shape.NewShape(256, 256))
 	a.Fill(nil, 1.0)
-	c := eager_tensor.New(types.FP32, types.NewShape(256, 256))
+	c := eager.New(types.FP32, shape.NewShape(256, 256))
 	c.Fill(nil, 2.0)
 
 	b.ResetTimer()
@@ -277,8 +278,8 @@ func BenchmarkAdd_GorgoniaGraph_Medium_64K(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		a.Copy(&simpleTensor{data: aData, shape: types.Shape{256, 256}, dtype: types.FP32})
-		c.Copy(&simpleTensor{data: cData, shape: types.Shape{256, 256}, dtype: types.FP32})
+		a.Copy(&simpleTensor{data: aData, shape: shape.NewShape(256, 256), dtype: types.FP32})
+		c.Copy(&simpleTensor{data: cData, shape: shape.NewShape(256, 256), dtype: types.FP32})
 		if err := eg.Compute(); err != nil {
 			b.Fatal(err)
 		}
@@ -288,9 +289,9 @@ func BenchmarkAdd_GorgoniaGraph_Medium_64K(b *testing.B) {
 
 func BenchmarkAdd_Eager_Large_1M(b *testing.B) {
 	// 1M elements
-	a := eager_tensor.New(types.FP32, types.NewShape(1024, 1024))
+	a := eager.New(types.FP32, shape.NewShape(1024, 1024))
 	a.Fill(nil, 1.0)
-	c := eager_tensor.New(types.FP32, types.NewShape(1024, 1024))
+	c := eager.New(types.FP32, shape.NewShape(1024, 1024))
 	c.Fill(nil, 2.0)
 
 	b.ResetTimer()
@@ -321,8 +322,8 @@ func BenchmarkAdd_GorgoniaGraph_Large_1M(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		a.Copy(&simpleTensor{data: aData, shape: types.Shape{1024, 1024}, dtype: types.FP32})
-		c.Copy(&simpleTensor{data: cData, shape: types.Shape{1024, 1024}, dtype: types.FP32})
+		a.Copy(&simpleTensor{data: aData, shape: shape.NewShape(1024, 1024), dtype: types.FP32})
+		c.Copy(&simpleTensor{data: cData, shape: shape.NewShape(1024, 1024), dtype: types.FP32})
 		if err := eg.Compute(); err != nil {
 			b.Fatal(err)
 		}
@@ -335,9 +336,9 @@ func BenchmarkAdd_GorgoniaGraph_Large_1M(b *testing.B) {
 // ============================================================================
 
 func BenchmarkComposite_Eager_MatMulReLU_128x128(b *testing.B) {
-	a := eager_tensor.New(types.FP32, types.NewShape(128, 128))
+	a := eager.New(types.FP32, shape.NewShape(128, 128))
 	a.Fill(nil, 1.0)
-	c := eager_tensor.New(types.FP32, types.NewShape(128, 128))
+	c := eager.New(types.FP32, shape.NewShape(128, 128))
 	c.Fill(nil, -0.5)
 
 	b.ResetTimer()
@@ -370,8 +371,8 @@ func BenchmarkComposite_GorgoniaGraph_MatMulReLU_128x128(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		a.Copy(&simpleTensor{data: aData, shape: types.Shape{128, 128}, dtype: types.FP32})
-		c.Copy(&simpleTensor{data: cData, shape: types.Shape{128, 128}, dtype: types.FP32})
+		a.Copy(&simpleTensor{data: aData, shape: shape.NewShape(128, 128), dtype: types.FP32})
+		c.Copy(&simpleTensor{data: cData, shape: shape.NewShape(128, 128), dtype: types.FP32})
 		if err := eg.Compute(); err != nil {
 			b.Fatal(err)
 		}
@@ -380,9 +381,9 @@ func BenchmarkComposite_GorgoniaGraph_MatMulReLU_128x128(b *testing.B) {
 }
 
 func BenchmarkComposite_Eager_AddMulSigmoid_64K(b *testing.B) {
-	a := eager_tensor.New(types.FP32, types.NewShape(256, 256))
+	a := eager.New(types.FP32, shape.NewShape(256, 256))
 	a.Fill(nil, 0.5)
-	c := eager_tensor.New(types.FP32, types.NewShape(256, 256))
+	c := eager.New(types.FP32, shape.NewShape(256, 256))
 	c.Fill(nil, 2.0)
 
 	b.ResetTimer()
@@ -416,8 +417,8 @@ func BenchmarkComposite_GorgoniaGraph_AddMulSigmoid_64K(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		a.Copy(&simpleTensor{data: aData, shape: types.Shape{256, 256}, dtype: types.FP32})
-		c.Copy(&simpleTensor{data: cData, shape: types.Shape{256, 256}, dtype: types.FP32})
+		a.Copy(&simpleTensor{data: aData, shape: shape.NewShape(256, 256), dtype: types.FP32})
+		c.Copy(&simpleTensor{data: cData, shape: shape.NewShape(256, 256), dtype: types.FP32})
 		if err := eg.Compute(); err != nil {
 			b.Fatal(err)
 		}
@@ -430,9 +431,9 @@ func BenchmarkComposite_GorgoniaGraph_AddMulSigmoid_64K(b *testing.B) {
 // ============================================================================
 
 func BenchmarkMultiply_Eager_64K(b *testing.B) {
-	a := eager_tensor.New(types.FP32, types.NewShape(256, 256))
+	a := eager.New(types.FP32, shape.NewShape(256, 256))
 	a.Fill(nil, 1.5)
-	c := eager_tensor.New(types.FP32, types.NewShape(256, 256))
+	c := eager.New(types.FP32, shape.NewShape(256, 256))
 	c.Fill(nil, 2.0)
 
 	b.ResetTimer()
@@ -463,8 +464,8 @@ func BenchmarkMultiply_GorgoniaGraph_64K(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		a.Copy(&simpleTensor{data: aData, shape: types.Shape{256, 256}, dtype: types.FP32})
-		c.Copy(&simpleTensor{data: cData, shape: types.Shape{256, 256}, dtype: types.FP32})
+		a.Copy(&simpleTensor{data: aData, shape: shape.NewShape(256, 256), dtype: types.FP32})
+		c.Copy(&simpleTensor{data: cData, shape: shape.NewShape(256, 256), dtype: types.FP32})
 		if err := eg.Compute(); err != nil {
 			b.Fatal(err)
 		}
@@ -473,7 +474,7 @@ func BenchmarkMultiply_GorgoniaGraph_64K(b *testing.B) {
 }
 
 func BenchmarkReLU_Eager_64K(b *testing.B) {
-	a := eager_tensor.New(types.FP32, types.NewShape(256, 256))
+	a := eager.New(types.FP32, shape.NewShape(256, 256))
 	a.Fill(nil, -0.5)
 
 	b.ResetTimer()
@@ -501,7 +502,7 @@ func BenchmarkReLU_GorgoniaGraph_64K(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		a.Copy(&simpleTensor{data: aData, shape: types.Shape{256, 256}, dtype: types.FP32})
+		a.Copy(&simpleTensor{data: aData, shape: shape.NewShape(256, 256), dtype: types.FP32})
 		if err := eg.Compute(); err != nil {
 			b.Fatal(err)
 		}
@@ -510,7 +511,7 @@ func BenchmarkReLU_GorgoniaGraph_64K(b *testing.B) {
 }
 
 func BenchmarkTranspose_Eager_128x256(b *testing.B) {
-	a := eager_tensor.New(types.FP32, types.NewShape(128, 256))
+	a := eager.New(types.FP32, shape.NewShape(128, 256))
 	a.Fill(nil, 1.0)
 
 	b.ResetTimer()
@@ -538,7 +539,7 @@ func BenchmarkTranspose_GorgoniaGraph_128x256(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		a.Copy(&simpleTensor{data: aData, shape: types.Shape{128, 256}, dtype: types.FP32})
+		a.Copy(&simpleTensor{data: aData, shape: shape.NewShape(128, 256), dtype: types.FP32})
 		if err := eg.Compute(); err != nil {
 			b.Fatal(err)
 		}
@@ -547,7 +548,7 @@ func BenchmarkTranspose_GorgoniaGraph_128x256(b *testing.B) {
 }
 
 func BenchmarkSum_Eager_All_64K(b *testing.B) {
-	a := eager_tensor.New(types.FP32, types.NewShape(256, 256))
+	a := eager.New(types.FP32, shape.NewShape(256, 256))
 	a.Fill(nil, 1.0)
 
 	b.ResetTimer()
@@ -575,7 +576,7 @@ func BenchmarkSum_GorgoniaGraph_All_64K(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		a.Copy(&simpleTensor{data: aData, shape: types.Shape{256, 256}, dtype: types.FP32})
+		a.Copy(&simpleTensor{data: aData, shape: shape.NewShape(256, 256), dtype: types.FP32})
 		if err := eg.Compute(); err != nil {
 			b.Fatal(err)
 		}
@@ -590,12 +591,12 @@ func BenchmarkSum_GorgoniaGraph_All_64K(b *testing.B) {
 // simpleTensor is a minimal tensor implementation for feeding data to graph tensors
 type simpleTensor struct {
 	data  any
-	shape types.Shape
+	shape shape.Shape
 	dtype types.DataType
 }
 
 func (st *simpleTensor) Data() any                                             { return st.data }
-func (st *simpleTensor) Shape() types.Shape                                    { return st.shape }
+func (st *simpleTensor) Shape() shape.Shape                                    { return st.shape }
 func (st *simpleTensor) DataType() types.DataType                              { return st.dtype }
 func (st *simpleTensor) ID() uintptr                                           { return 0 }
 func (st *simpleTensor) Rank() int                                             { return len(st.shape) }
@@ -611,11 +612,11 @@ func (st *simpleTensor) Elements(...int) func(func(types.Element) bool)        {
 func (st *simpleTensor) Release()                                              {}
 func (st *simpleTensor) Clone() types.Tensor                                   { return st }
 func (st *simpleTensor) Copy(types.Tensor) types.Tensor                        { return st }
-func (st *simpleTensor) Reshape(types.Tensor, types.Shape) types.Tensor        { return st }
+func (st *simpleTensor) Reshape(types.Tensor, shape.Shape) types.Tensor        { return st }
 func (st *simpleTensor) Slice(types.Tensor, int, int, int) types.Tensor        { return st }
 func (st *simpleTensor) Transpose(types.Tensor, []int) types.Tensor            { return st }
 func (st *simpleTensor) Permute(types.Tensor, []int) types.Tensor              { return st }
-func (st *simpleTensor) BroadcastTo(types.Tensor, types.Shape) types.Tensor    { return st }
+func (st *simpleTensor) BroadcastTo(types.Tensor, shape.Shape) types.Tensor    { return st }
 func (st *simpleTensor) Fill(types.Tensor, float64) types.Tensor               { return st }
 func (st *simpleTensor) FillFunc(types.Tensor, func() float64) types.Tensor    { return st }
 func (st *simpleTensor) Pad(types.Tensor, []int, float64) types.Tensor         { return st }

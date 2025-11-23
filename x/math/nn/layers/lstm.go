@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/itohio/EasyRobot/x/math/nn/types"
+	"github.com/itohio/EasyRobot/x/math/shape"
 	"github.com/itohio/EasyRobot/x/math/tensor"
 	tensorTypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 )
@@ -98,7 +99,7 @@ func NewLSTM(inputSize, hiddenSize int, opts ...Option) (*LSTM, error) {
 }
 
 // Init initializes the layer, creating internal computation tensors.
-func (l *LSTM) Init(inputShape tensor.Shape) error {
+func (l *LSTM) Init(inputShape shape.Shape) error {
 	if l == nil {
 		return fmt.Errorf("LSTM.Init: nil layer")
 	}
@@ -117,7 +118,7 @@ func (l *LSTM) Init(inputShape tensor.Shape) error {
 	}
 
 	// Compute output shape (same as hidden state shape)
-	var outputShape tensor.Shape
+	var outputShape shape.Shape
 	if len(inputShape) == 1 {
 		outputShape = tensor.NewShape(l.hiddenSize)
 	} else {
@@ -413,7 +414,7 @@ func (l *LSTM) GetState() (hiddenState, cellState tensorTypes.Tensor) {
 }
 
 // OutputShape returns the output shape for given input shape.
-func (l *LSTM) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
+func (l *LSTM) OutputShape(inputShape shape.Shape) (shape.Shape, error) {
 	if l == nil {
 		return nil, fmt.Errorf("LSTM.OutputShape: nil layer")
 	}

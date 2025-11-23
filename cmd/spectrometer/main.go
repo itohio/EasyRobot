@@ -140,6 +140,10 @@ func newCalibrateCmd() *cobra.Command {
 	source.AddSourceFlags(cameraCmd)
 	destination.AddDestinationFlags(cameraCmd)
 
+	// Add config flags for camera calibration
+	cameraCmd.Flags().String("config", "", "Config file path to load (optional, for recalibration)")
+	cameraCmd.Flags().String("config-output", "", "Config file path to save (optional, saves when bounding box is fixed)")
+
 	cmd.AddCommand(cameraCmd)
 	return cmd
 }

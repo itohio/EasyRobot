@@ -12,7 +12,7 @@ import (
 	"github.com/go-audio/audio"
 	"github.com/go-audio/wav"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
-	"github.com/itohio/EasyRobot/x/math/primitive/generics/helpers"
+	"github.com/itohio/EasyRobot/x/buffer"
 	"github.com/itohio/EasyRobot/x/math/tensor"
 	tensortypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 )
@@ -37,7 +37,7 @@ type Unmarshaller struct {
 	stats stats
 
 	// Buffer pools
-	intPool *helpers.Pool[int] // Pool for PCM int buffers
+	intPool *buffer.Pool[int] // Pool for PCM int buffers
 }
 
 // NewUnmarshaller constructs an audio unmarshaller instance.
@@ -47,7 +47,7 @@ func NewUnmarshaller(opts ...types.Option) *Unmarshaller {
 		opts:         baseOpts,
 		cfg:          baseCfg,
 		lastDataType: tensortypes.DT_UNKNOWN,
-		intPool:      &helpers.Pool[int]{},
+		intPool:      &buffer.Pool[int]{},
 	}
 }
 

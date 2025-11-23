@@ -1,6 +1,9 @@
 package gorgonia
 
-import "github.com/itohio/EasyRobot/x/math/tensor/types"
+import (
+	"github.com/itohio/EasyRobot/x/math/shape"
+	"github.com/itohio/EasyRobot/x/math/tensor/types"
+)
 
 // This file contains stub implementations for operations not yet implemented
 // for GraphTensor. These will be implemented as needed.
@@ -14,7 +17,7 @@ func (gt *GraphTensor) Permute(dst types.Tensor, dims []int) types.Tensor {
 	panic("gorgonia.GraphTensor.Permute: not yet implemented")
 }
 
-func (gt *GraphTensor) BroadcastTo(dst types.Tensor, shape types.Shape) types.Tensor {
+func (gt *GraphTensor) BroadcastTo(dst types.Tensor, shape shape.Shape) types.Tensor {
 	panic("gorgonia.GraphTensor.BroadcastTo: not yet implemented")
 }
 

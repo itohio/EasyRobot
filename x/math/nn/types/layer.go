@@ -1,6 +1,7 @@
 package types
 
 import (
+	"github.com/itohio/EasyRobot/x/math/shape"
 	"github.com/itohio/EasyRobot/x/math/tensor"
 )
 
@@ -11,7 +12,7 @@ type Layer interface {
 
 	// Init initializes the layer, creating internal computation tensors.
 	// Should be called after the layer is added to a model and input shape is known.
-	Init(inputShape tensor.Shape) error
+	Init(inputShape shape.Shape) error
 
 	// Parameter returns a trainable parameter by index.
 	// For Sequential models, returns parameter from the corresponding sublayer.
@@ -37,7 +38,7 @@ type Layer interface {
 
 	// OutputShape returns the output shape for given input shape.
 	// Used for dimension validation before Forward.
-	OutputShape(inputShape tensor.Shape) (tensor.Shape, error)
+	OutputShape(inputShape shape.Shape) (shape.Shape, error)
 
 	// CanLearn returns whether this layer computes gradients during backward pass.
 	// If false, backward pass only computes gradient w.r.t. input (propagation).

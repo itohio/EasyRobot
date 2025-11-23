@@ -5,9 +5,9 @@ import (
 
 	"github.com/itohio/EasyRobot/x/math/nn/layers"
 	"github.com/itohio/EasyRobot/x/math/primitive/fp32"
+	"github.com/itohio/EasyRobot/x/math/shape"
 	"github.com/itohio/EasyRobot/x/math/tensor"
-	"github.com/itohio/EasyRobot/x/math/tensor/eager_tensor"
-	"github.com/itohio/EasyRobot/x/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/math/tensor/eager"
 )
 
 func TestAvgPoolLayerBackwardMatchesExpected(t *testing.T) {
@@ -53,8 +53,8 @@ func TestAvgPoolLayerBackwardMatchesExpected(t *testing.T) {
 	}
 	t.Logf("avgpool output: %v", avgPool.Base.Output().Data())
 
-	gradOutput := eager_tensor.FromFloat32(types.NewShape(1, 1, 2, 2), []float32{1, 1, 1, 1})
-	baselineInput := eager_tensor.FromFloat32(types.NewShape(1, 1, 3, 3), []float32{
+	gradOutput := eager.FromFloat32(shape.NewShape(1, 1, 2, 2), []float32{1, 1, 1, 1})
+	baselineInput := eager.FromFloat32(shape.NewShape(1, 1, 3, 3), []float32{
 		1, 2, 3,
 		4, 5, 6,
 		7, 8, 9,
@@ -67,7 +67,7 @@ func TestAvgPoolLayerBackwardMatchesExpected(t *testing.T) {
 		0.5, 0.25, 0.25,
 	}, 1e-6)
 
-	manualInput := eager_tensor.FromFloat32(types.NewShape(1, 1, 3, 3), []float32{
+	manualInput := eager.FromFloat32(shape.NewShape(1, 1, 3, 3), []float32{
 		1, 2, 3,
 		4, 5, 6,
 		7, 8, 9,

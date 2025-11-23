@@ -7,15 +7,15 @@ import (
 
 	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"github.com/itohio/EasyRobot/x/math/dsp"
-	"github.com/itohio/EasyRobot/x/math/vec"
 	tensortypes "github.com/itohio/EasyRobot/x/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/math/vec"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 const (
 	testSampleRate = 22000
-	testDuration   = 5 // seconds
+	testDuration   = 5    // seconds
 	testFrequency  = 1000 // Hz
 )
 
@@ -197,7 +197,7 @@ func TestUnmarshaller_ReadSingleWAV_Stereo_INT32(t *testing.T) {
 func TestUnmarshaller_ReadSingleWAV_PhaseShifted(t *testing.T) {
 	path0 := filepath.Join("testdata", "mono_int16_phase0.wav")
 	path10 := filepath.Join("testdata", "mono_int16_phase10.wav")
-	
+
 	if _, err := os.Stat(path0); os.IsNotExist(err) {
 		t.Skipf("Test file not found: %s (run tmp/generate_wav_testdata.go first)", path0)
 	}
@@ -227,7 +227,7 @@ func TestUnmarshaller_ReadSingleWAV_PhaseShifted(t *testing.T) {
 	// Verify data is different (phase shift)
 	data0 := result0.Data().([]int16)
 	data10 := result10.Data().([]int16)
-	
+
 	// They should be different (not all zeros)
 	allSame := true
 	for i := 0; i < len(data0) && i < len(data10); i++ {
@@ -290,7 +290,7 @@ func TestUnmarshaller_ReadSingleWAV_WithDestinationType(t *testing.T) {
 
 	// Verify tensor is FP32 even though file is INT16
 	assert.Equal(t, tensortypes.FP32, result.DataType())
-	
+
 	// Verify data is float32
 	data := result.Data()
 	_, ok := data.([]float32)
@@ -326,7 +326,7 @@ func TestUnmarshaller_Format(t *testing.T) {
 
 func TestUnmarshaller_SampleRate_Channels_DataType_BeforeUnmarshal(t *testing.T) {
 	u := NewUnmarshaller()
-	
+
 	// Before unmarshalling, should return zero/unknown values
 	assert.Equal(t, 0, u.SampleRate())
 	assert.Equal(t, 0, u.Channels())
@@ -348,8 +348,7 @@ func TestUnmarshaller_ReadSingleWAV_FrequencyVerification(t *testing.T) {
 		{"stereo_int32", "stereo_int32.wav", 2},
 	}
 
-	measurements := dsp.NewMeasurements()
-	targetFreq := float32(testFrequency) // 1kHz
+	targetFreq := float32(testFrequency)  // 1kHz
 	sampleRate := float32(testSampleRate) // 22kHz
 
 	for _, tc := range testCases {
@@ -409,11 +408,11 @@ func TestUnmarshaller_ReadSingleWAV_FrequencyVerification(t *testing.T) {
 			signal := vec.NewFrom(signalData...)
 
 			// Use Goertzel algorithm to detect 1kHz frequency
-			freqMeas := measurements.Goertzel(signal, targetFreq, sampleRate)
+			freqMeas := dsp.Goertzel(signal, targetFreq, sampleRate)
 
 			// Verify that the amplitude at 1kHz is significant
 			// For a pure sine wave, we expect high amplitude
-			assert.Greater(t, freqMeas.Amplitude, float32(0.1), 
+			assert.Greater(t, freqMeas.Amplitude, float32(0.1),
 				"1kHz signal should have significant amplitude (got %.4f)", freqMeas.Amplitude)
 
 			// Verify frequency is approximately 1kHz (within 1% tolerance)
@@ -451,7 +450,7 @@ func TestUnmarshaller_ReadSingleWAV_FrequencyVerification(t *testing.T) {
 				}
 
 				signal2 := vec.NewFrom(signalData2...)
-				freqMeas2 := measurements.Goertzel(signal2, targetFreq, sampleRate)
+				freqMeas2 := dsp.Goertzel(signal2, targetFreq, sampleRate)
 				assert.Greater(t, freqMeas2.Amplitude, float32(0.1),
 					"Second channel should also have 1kHz signal")
 			}
@@ -471,7 +470,6 @@ func TestUnmarshaller_ReadSingleWAV_PhaseShiftVerification(t *testing.T) {
 		t.Skipf("Test file not found: %s (run tmp/generate_wav_testdata.go first)", path10)
 	}
 
-	measurements := dsp.NewMeasurements()
 	targetFreq := float32(testFrequency)
 	sampleRate := float32(testSampleRate)
 
@@ -502,8 +500,8 @@ func TestUnmarshaller_ReadSingleWAV_PhaseShiftVerification(t *testing.T) {
 	vec10 := vec.NewFrom(signal10...)
 
 	// Measure frequency and phase for both signals
-	freqMeas0 := measurements.Goertzel(vec0, targetFreq, sampleRate)
-	freqMeas10 := measurements.Goertzel(vec10, targetFreq, sampleRate)
+	freqMeas0 := dsp.Goertzel(vec0, targetFreq, sampleRate)
+	freqMeas10 := dsp.Goertzel(vec10, targetFreq, sampleRate)
 
 	// Both should have 1kHz signal
 	assert.Greater(t, freqMeas0.Amplitude, float32(0.1), "Phase 0 signal should have 1kHz")
@@ -519,4 +517,3 @@ func TestUnmarshaller_ReadSingleWAV_PhaseShiftVerification(t *testing.T) {
 		"Phase difference should be approximately 10 degrees (got %.4f radians, expected %.4f)",
 		phaseDiff, expectedPhaseDiff)
 }
-

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	nntypes "github.com/itohio/EasyRobot/x/math/nn/types"
+	"github.com/itohio/EasyRobot/x/math/shape"
 	"github.com/itohio/EasyRobot/x/math/tensor"
 	"github.com/itohio/EasyRobot/x/math/tensor/types"
 	"github.com/stretchr/testify/assert"
@@ -659,7 +660,7 @@ func TestConv2D_BackwardAccuracy(t *testing.T) {
 			hasBias:     true,
 			inputShape:  []int{1, 1, 3, 3},
 			input: tensor.FromFloat32(
-				tensor.Shape([]int{1, 1, 3, 3}),
+				shape.Shape([]int{1, 1, 3, 3}),
 				[]float32{
 					// Input layout: [batch=1, channels=1, height=3, width=3]
 					// Row 0: 1.0, 2.0, 3.0
@@ -671,15 +672,15 @@ func TestConv2D_BackwardAccuracy(t *testing.T) {
 				},
 			),
 			weight: tensor.FromFloat32(
-				tensor.Shape([]int{1, 1, 2, 2}),
+				shape.Shape([]int{1, 1, 2, 2}),
 				[]float32{1.0, 1.0, 1.0, 1.0}, // All weights are 1.0
 			),
 			bias: tensor.FromFloat32(
-				tensor.Shape([]int{1}),
+				shape.Shape([]int{1}),
 				[]float32{0.0},
 			),
 			gradOutput: tensor.FromFloat32(
-				tensor.Shape([]int{1, 1, 2, 2}),
+				shape.Shape([]int{1, 1, 2, 2}),
 				[]float32{
 					// Output is 2x2, all values are 1.0
 					1.0, 1.0,
@@ -749,19 +750,19 @@ func TestConv2D_BackwardAccuracy(t *testing.T) {
 			hasBias:     false,
 			inputShape:  []int{1, 1, 3, 3},
 			input: tensor.FromFloat32(
-				tensor.Shape{1, 1, 3, 3},
+				shape.Shape{1, 1, 3, 3},
 				[]float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0},
 			),
 			weight: tensor.FromFloat32(
-				tensor.Shape{1, 1, 2, 2},
+				shape.Shape{1, 1, 2, 2},
 				[]float32{1.0, 1.0, 1.0, 1.0},
 			),
 			bias: tensor.FromFloat32(
-				tensor.Shape{1},
+				shape.Shape{1},
 				[]float32{0.0},
 			),
 			gradOutput: tensor.FromFloat32(
-				tensor.Shape{1, 1, 2, 2},
+				shape.Shape{1, 1, 2, 2},
 				[]float32{1.0, 1.0, 1.0, 1.0},
 			),
 			expectedWeightGrad: []float32{12.0, 16.0, 24.0, 28.0},

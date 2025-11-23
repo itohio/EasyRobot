@@ -1,7 +1,7 @@
 package qi16
 
-import helpers "github.com/itohio/EasyRobot/x/math/primitive/generics/helpers"
+import "github.com/itohio/EasyRobot/x/buffer"
 
 var (
-	Pool = helpers.Pool[int16]{}
+	Pool = buffer.Pool[int16]{}
 )

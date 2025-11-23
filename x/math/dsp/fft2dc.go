@@ -2,6 +2,9 @@
 package dsp
 
 import (
+	"github.com/itohio/EasyRobot/x/math/primitive/c64"
+	"github.com/itohio/EasyRobot/x/math/primitive/fp32"
+	"github.com/itohio/EasyRobot/x/math/shape"
 	"github.com/itohio/EasyRobot/x/math/tensor"
 	"github.com/itohio/EasyRobot/x/math/tensor/types"
 )
@@ -18,32 +21,47 @@ import (
 // The tensor must be 2D (rank 2) and have C64 data type. The FFT dimensions are determined
 // by the tensor shape, which will be padded to the next power of 2 if needed.
 type FFT2DC struct {
-	rows, cols int          // matrix dimensions (next power of 2)
-	tempBuf    []complex64  // temporary buffer for optimizations
+	rows, cols int         // matrix dimensions (next power of 2)
+	tempBuf    []complex64 // temporary buffer for optimizations
+	lut        []float32   // precomputed LUT for twiddle factors (optional)
 }
 
 // NewFFT2DC creates a 2D complex FFT processor for tensors of the specified dimensions.
 // The dimensions will be rounded up to the next power of 2.
-func NewFFT2DC(rows, cols int) *FFT2DC {
+// If lut is provided (vararg), it will be used for optimized FFT operations.
+// The LUT can be created using c64.NewFFTLUT(max(rows, cols)).
+// Returns a value (not a pointer).
+func NewFFT2DC(rows, cols int, lut ...[]float32) FFT2DC {
 	if rows <= 0 || cols <= 0 {
 		panic("FFT dimensions must be positive")
 	}
-	nextPow2Rows := nextPowerOfTwo(rows)
-	nextPow2Cols := nextPowerOfTwo(cols)
-	return &FFT2DC{
+	nextPow2Rows := fp32.NextPowerOfTwo(rows)
+	nextPow2Cols := fp32.NextPowerOfTwo(cols)
+
+	fft := FFT2DC{
 		rows:    nextPow2Rows,
 		cols:    nextPow2Cols,
 		tempBuf: make([]complex64, nextPow2Rows*nextPow2Cols),
 	}
+
+	// Use LUT if provided
+	if len(lut) > 0 && len(lut[0]) > 0 {
+		fft.lut = lut[0]
+	}
+
+	return fft
 }
 
 // Forward performs a forward FFT transform on a complex-valued 2D tensor.
 //
 // Input (src): Complex-valued Tensor with C64 data type and rank 2.
-//              The tensor contains complex64 values representing complex samples.
+//
+//	The tensor contains complex64 values representing complex samples.
+//
 // Output (dst): Complex-valued Tensor with C64 data type. The 2D FFT result contains
-//               the full complex frequency domain representation. The output dimensions
-//               match the FFT size (next power of 2 >= input dimensions).
+//
+//	the full complex frequency domain representation. The output dimensions
+//	match the FFT size (next power of 2 >= input dimensions).
 //
 // Panics if src or dst are not C64 type, not rank 2, or if dst is too small.
 // Uses destination-based API with no allocations.
@@ -55,11 +73,12 @@ func (f *FFT2DC) Forward(dst, src types.Tensor) {
 //
 // Input (src): Complex-valued Tensor with C64 data type (2D frequency domain representation).
 // Output (dst): Complex-valued Tensor with C64 data type (2D time domain signal).
-//               The result is scaled by 1/(rows*cols) where rows and cols are the FFT dimensions.
+//
+//	The result is scaled by 1/(rows*cols) where rows and cols are the FFT dimensions.
 //
 // Panics if src or dst are not C64 type, not rank 2, or if dst is too small.
 // Uses destination-based API with no allocations.
-func (f *FFT2DC) Backward(dst, src types.Tensor) {
+func (f FFT2DC) Backward(dst, src types.Tensor) {
 	f.backward(src, dst)
 }
 
@@ -93,7 +112,7 @@ func (f *FFT2DC) forward(src, dst types.Tensor) {
 		}
 		srcRowStart := i * srcCols
 		dstRowStart := i * f.cols
-		
+
 		// Copy row data
 		copyLen := srcCols
 		if copyLen > f.cols {
@@ -121,7 +140,12 @@ func (f *FFT2DC) forward(src, dst types.Tensor) {
 		row := dstData[rowStart : rowStart+f.cols]
 		row = row[:f.cols] // BCE hint
 		copy(tempRow, row)
-		fftComplex(tempRow)
+		if len(f.lut) > 0 {
+			totalFactors := len(f.lut) / 2
+			c64.FFTWithLUT(tempRow, f.lut, totalFactors)
+		} else {
+			c64.FFT(tempRow)
+		}
 		copy(row, tempRow)
 	}
 
@@ -134,7 +158,12 @@ func (f *FFT2DC) forward(src, dst types.Tensor) {
 			tempBuf[i] = dstData[i*f.cols+j]
 		}
 		// FFT the column
-		fftComplex(tempBuf)
+		if len(f.lut) > 0 {
+			totalFactors := len(f.lut) / 2
+			c64.FFTWithLUT(tempBuf, f.lut, totalFactors)
+		} else {
+			c64.FFT(tempBuf)
+		}
 		// Put back
 		for i := range f.rows {
 			dstData[i*f.cols+j] = tempBuf[i]
@@ -172,7 +201,7 @@ func (f *FFT2DC) backward(src, dst types.Tensor) {
 		}
 		srcRowStart := i * srcCols
 		dstRowStart := i * f.cols
-		
+
 		copyLen := srcCols
 		if copyLen > f.cols {
 			copyLen = f.cols
@@ -190,7 +219,8 @@ func (f *FFT2DC) backward(src, dst types.Tensor) {
 			tempBuf[i] = dstData[i*f.cols+j]
 		}
 		// IFFT the column
-		ifftComplex(tempBuf)
+		// Note: IFFTWithLUT could be added later for optimization
+		c64.IFFT(tempBuf)
 		// Put back
 		for i := range f.rows {
 			dstData[i*f.cols+j] = tempBuf[i]
@@ -204,14 +234,15 @@ func (f *FFT2DC) backward(src, dst types.Tensor) {
 		row := dstData[rowStart : rowStart+f.cols]
 		row = row[:f.cols] // BCE hint
 		copy(tempRow, row)
-		ifftComplex(tempRow)
+		// Note: IFFTWithLUT could be added later for optimization
+		c64.IFFT(tempRow)
 		copy(row, tempRow)
 	}
 }
 
 // Convolve performs 2D convolution of signal matrix with kernel matrix using complex FFT.
 // Uses destination-based API with no allocations.
-func (f *FFT2DC) Convolve(dst, signal, kernel types.Tensor) {
+func (f FFT2DC) Convolve(dst, signal, kernel types.Tensor) {
 	sigShape := signal.Shape()
 	sigRows, sigCols := sigShape[0], sigShape[1]
 	kernShape := kernel.Shape()
@@ -230,8 +261,8 @@ func (f *FFT2DC) Convolve(dst, signal, kernel types.Tensor) {
 	kernFFT := NewFFT2DC(kernRows, kernCols)
 
 	// Temporary buffers
-	sigFreq := tensor.New(types.C64, types.NewShape(f.rows, f.cols))
-	kernFreq := tensor.New(types.C64, types.NewShape(f.rows, f.cols))
+	sigFreq := tensor.New(types.C64, shape.NewShape(f.rows, f.cols))
+	kernFreq := tensor.New(types.C64, shape.NewShape(f.rows, f.cols))
 
 	// Forward FFTs
 	sigFFT.Forward(sigFreq, signal)
@@ -293,8 +324,8 @@ func (f *FFT2DC) Correlate(dst, signal1, signal2 types.Tensor) {
 	sig2FFT := NewFFT2DC(sig2Rows, sig2Cols)
 
 	// Temporary buffers
-	sig1Freq := tensor.New(types.C64, types.NewShape(f.rows, f.cols))
-	sig2Freq := tensor.New(types.C64, types.NewShape(f.rows, f.cols))
+	sig1Freq := tensor.New(types.C64, shape.NewShape(f.rows, f.cols))
+	sig2Freq := tensor.New(types.C64, shape.NewShape(f.rows, f.cols))
 
 	// Forward FFTs
 	sig1FFT.Forward(sig1Freq, signal1)
@@ -334,4 +365,3 @@ func (f *FFT2DC) Correlate(dst, signal1, signal2 types.Tensor) {
 		dstData[i] *= scale
 	}
 }
-

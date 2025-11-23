@@ -7,6 +7,7 @@ import (
 
 	pb "github.com/itohio/EasyRobot/types/core"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
+	"github.com/itohio/EasyRobot/x/math/shape"
 	"github.com/itohio/EasyRobot/x/math/tensor"
 	tensortypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 	"google.golang.org/protobuf/proto"
@@ -69,7 +70,7 @@ func (u *Unmarshaller) protoToValue(pv *pb.Value) (any, error) {
 	tensorFactory := u.opts.TensorFactory
 	if tensorFactory == nil {
 		tensorFactory = func(dt types.DataType, sh types.Shape) types.Tensor {
-			return tensor.New(tensortypes.DataType(dt), tensortypes.Shape(sh))
+			return tensor.New(tensortypes.DataType(dt), shape.NewShape(sh...))
 		}
 	}
 

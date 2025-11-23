@@ -5,6 +5,7 @@ import (
 
 	"github.com/itohio/EasyRobot/x/math/nn/layers"
 	"github.com/itohio/EasyRobot/x/math/nn/types"
+	"github.com/itohio/EasyRobot/x/math/shape"
 	"github.com/itohio/EasyRobot/x/math/tensor"
 )
 
@@ -14,12 +15,12 @@ type Sequential struct {
 	layers.Base
 	layers     []types.Layer
 	layerNames map[string]int // Map from layer name to index
-	inputShape tensor.Shape
+	inputShape shape.Shape
 }
 
 // NewSequential creates a new Sequential model with the given layers, layer names, and input shape.
 // This is used by the builder to construct models.
-func NewSequential(base layers.Base, layers []types.Layer, layerNames map[string]int, inputShape tensor.Shape) *Sequential {
+func NewSequential(base layers.Base, layers []types.Layer, layerNames map[string]int, inputShape shape.Shape) *Sequential {
 	return &Sequential{
 		Base:       base,
 		layers:     layers,
@@ -59,7 +60,7 @@ func (m *Sequential) LayerCount() int {
 // This should be called after building the model and before first Forward pass.
 // Init initializes the model with the given input shape.
 // This implements the types.Layer interface.
-func (m *Sequential) Init(inputShape tensor.Shape) error {
+func (m *Sequential) Init(inputShape shape.Shape) error {
 	if m == nil {
 		return fmt.Errorf("model.Init: nil model")
 	}
@@ -108,7 +109,7 @@ func (m *Sequential) Forward(input tensor.Tensor) (tensor.Tensor, error) {
 
 	// Validate input shape
 	inputShape := input.Shape()
-	if !tensor.Shape(inputShape).Equal(tensor.Shape(m.inputShape)) {
+	if !shape.Shape(inputShape).Equal(shape.Shape(m.inputShape)) {
 		return nil, fmt.Errorf("model.Forward: input shape %v does not match expected shape %v", inputShape, m.inputShape)
 	}
 
@@ -302,7 +303,7 @@ func (m *Sequential) Output() tensor.Tensor {
 
 // OutputShape returns the output shape for given input shape.
 // Computes the output shape by propagating through all layers.
-func (m *Sequential) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
+func (m *Sequential) OutputShape(inputShape shape.Shape) (shape.Shape, error) {
 	if m == nil {
 		return nil, fmt.Errorf("model.OutputShape: nil model")
 	}

@@ -3,21 +3,21 @@ package v4l
 
 import (
 	"github.com/itohio/EasyRobot/x/marshaller/types"
-	"github.com/itohio/EasyRobot/x/math/primitive/generics/helpers"
+	"github.com/itohio/EasyRobot/x/buffer"
 	tensortypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 )
 
 // PooledTensor wraps uint8 data with buffer pool integration
 type PooledTensor struct {
 	data     []uint8
-	pool     *helpers.Pool[uint8]
+	pool     *buffer.Pool[uint8]
 	width    int
 	height   int
 	channels int
 }
 
 // NewPooledTensor creates a tensor from pooled buffer
-func NewPooledTensor(pool *helpers.Pool[uint8], width, height, channels int) *PooledTensor {
+func NewPooledTensor(pool *buffer.Pool[uint8], width, height, channels int) *PooledTensor {
 	size := width * height * channels
 	data := pool.Get(size)
 
@@ -31,7 +31,7 @@ func NewPooledTensor(pool *helpers.Pool[uint8], width, height, channels int) *Po
 }
 
 // NewPooledTensorFromData creates a tensor from existing data with pool integration
-func NewPooledTensorFromData(pool *helpers.Pool[uint8], data []uint8, width, height, channels int) *PooledTensor {
+func NewPooledTensorFromData(pool *buffer.Pool[uint8], data []uint8, width, height, channels int) *PooledTensor {
 	return &PooledTensor{
 		data:     data,
 		pool:     pool,
@@ -195,7 +195,7 @@ func (e *pooledElement) Set(value float64) {
 }
 
 // defaultTensorFactory creates pooled tensors
-func defaultTensorFactory(pool *helpers.Pool[uint8]) func([]uint8, int, int, int) types.Tensor {
+func defaultTensorFactory(pool *buffer.Pool[uint8]) func([]uint8, int, int, int) types.Tensor {
 	return func(data []uint8, width, height, channels int) types.Tensor {
 		return NewPooledTensorFromData(pool, data, width, height, channels)
 	}

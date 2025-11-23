@@ -3,7 +3,8 @@ package gorgonia
 import (
 	"math"
 
-	"github.com/itohio/EasyRobot/x/math/tensor/eager_tensor"
+	"github.com/itohio/EasyRobot/x/math/shape"
+	"github.com/itohio/EasyRobot/x/math/tensor/eager"
 	"github.com/itohio/EasyRobot/x/math/tensor/types"
 	"gorgonia.org/tensor"
 )
@@ -59,7 +60,7 @@ func NewFromDense(d tensor.Dense) Tensor {
 // This creates a copy of the data.
 func (t Tensor) ToEagerTensor() types.Tensor {
 	dt := t.DataType()
-	shape := t.Shape()
+	s := t.Shape()
 	data := t.Data()
 
 	// Create eager tensor with appropriate type using FromArray
@@ -68,37 +69,37 @@ func (t Tensor) ToEagerTensor() types.Tensor {
 		srcData := data.([]float32)
 		dstData := make([]float32, len(srcData))
 		copy(dstData, srcData)
-		return eager_tensor.FromArray(shape, dstData)
+		return eager.FromArray(s, dstData)
 	case types.FP64:
 		srcData := data.([]float64)
 		dstData := make([]float64, len(srcData))
 		copy(dstData, srcData)
-		return eager_tensor.FromArray(shape, dstData)
+		return eager.FromArray(s, dstData)
 	case types.INT:
 		srcData := data.([]int)
 		dstData := make([]int, len(srcData))
 		copy(dstData, srcData)
-		return eager_tensor.FromArray(shape, dstData)
+		return eager.FromArray(s, dstData)
 	case types.INT32:
 		srcData := data.([]int32)
 		dstData := make([]int32, len(srcData))
 		copy(dstData, srcData)
-		return eager_tensor.FromArray(shape, dstData)
+		return eager.FromArray(s, dstData)
 	case types.INT64:
 		srcData := data.([]int64)
 		dstData := make([]int64, len(srcData))
 		copy(dstData, srcData)
-		return eager_tensor.FromArray(shape, dstData)
+		return eager.FromArray(s, dstData)
 	case types.INT16:
 		srcData := data.([]int16)
 		dstData := make([]int16, len(srcData))
 		copy(dstData, srcData)
-		return eager_tensor.FromArray(shape, dstData)
+		return eager.FromArray(s, dstData)
 	case types.INT8:
 		srcData := data.([]int8)
 		dstData := make([]int8, len(srcData))
 		copy(dstData, srcData)
-		return eager_tensor.FromArray(shape, dstData)
+		return eager.FromArray(s, dstData)
 	default:
 		panic("gorgonia.ToEagerTensor: unsupported data type")
 	}
@@ -108,7 +109,7 @@ func (t Tensor) ToEagerTensor() types.Tensor {
 // This creates a copy of the data.
 func FromEagerTensor(t types.Tensor) Tensor {
 	dt := t.DataType()
-	shape := t.Shape()
+	s := t.Shape()
 	data := t.Data()
 
 	var gdt tensor.Dtype
@@ -133,7 +134,7 @@ func FromEagerTensor(t types.Tensor) Tensor {
 
 	// Create new gorgonia tensor
 	result := tensor.New(
-		tensor.WithShape(shape...),
+		tensor.WithShape(s...),
 		tensor.Of(gdt),
 		tensor.WithBacking(data),
 	)
@@ -205,12 +206,12 @@ func (t Tensor) Data() any {
 }
 
 // Shape returns a copy of the tensor's shape.
-func (t Tensor) Shape() types.Shape {
+func (t Tensor) Shape() shape.Shape {
 	gShape := t.dense.Shape()
 	if gShape == nil {
 		return nil
 	}
-	shape := make(types.Shape, len(gShape))
+	shape := make(shape.Shape, len(gShape))
 	copy(shape, gShape)
 	return shape
 }
@@ -517,7 +518,7 @@ func (t Tensor) Copy(src types.Tensor) types.Tensor {
 }
 
 // Reshape returns a tensor with the same data but different shape.
-func (t Tensor) Reshape(dst types.Tensor, newShape types.Shape) types.Tensor {
+func (t Tensor) Reshape(dst types.Tensor, newShape shape.Shape) types.Tensor {
 	// Clone first since Reshape is in-place in gorgonia
 	cloned := t.dense.Clone().(*tensor.Dense)
 	err := cloned.Reshape(newShape...)
@@ -578,7 +579,7 @@ func (t Tensor) Permute(dst types.Tensor, dims []int) types.Tensor {
 }
 
 // BroadcastTo broadcasts the tensor to the target shape.
-func (t Tensor) BroadcastTo(dst types.Tensor, shape types.Shape) types.Tensor {
+func (t Tensor) BroadcastTo(dst types.Tensor, shape shape.Shape) types.Tensor {
 	// gorgonia doesn't have explicit broadcast, need to implement manually
 	// For now, panic as not implemented
 	panic("gorgonia.Tensor.BroadcastTo: not implemented")

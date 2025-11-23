@@ -5,6 +5,7 @@ import (
 	"math"
 
 	"github.com/itohio/EasyRobot/x/math/nn/types"
+	"github.com/itohio/EasyRobot/x/math/shape"
 	"github.com/itohio/EasyRobot/x/math/tensor"
 	tensorTypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 )
@@ -94,7 +95,7 @@ func (e *GPTEncoding) createSinusoidalEncodings(dtype tensor.DataType) tensorTyp
 
 // Init initializes the layer, creating internal computation tensors.
 // Input shape should be [batchSize, seqLen, embedDim] from embedding layer.
-func (e *GPTEncoding) Init(inputShape tensor.Shape) error {
+func (e *GPTEncoding) Init(inputShape shape.Shape) error {
 	if e == nil {
 		return fmt.Errorf("GPTEncoding.Init: nil layer")
 	}
@@ -125,7 +126,7 @@ func (e *GPTEncoding) Init(inputShape tensor.Shape) error {
 	}
 
 	// Output shape matches input shape
-	var outputShape tensor.Shape
+	var outputShape shape.Shape
 	if len(inputShape) == 2 {
 		outputShape = tensor.NewShape(seqLen, e.embedDim)
 	} else {
@@ -309,7 +310,7 @@ func (e *GPTEncoding) accumulatePositionalGradients(gradOutput, gradPosEncodings
 
 // OutputShape returns the output shape for given input shape.
 // Output shape matches input shape exactly.
-func (e *GPTEncoding) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
+func (e *GPTEncoding) OutputShape(inputShape shape.Shape) (shape.Shape, error) {
 	if e == nil {
 		return nil, fmt.Errorf("GPTEncoding.OutputShape: nil layer")
 	}

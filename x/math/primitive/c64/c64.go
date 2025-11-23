@@ -1,7 +1,7 @@
 package c64
 
-import helpers "github.com/itohio/EasyRobot/x/math/primitive/generics/helpers"
+import "github.com/itohio/EasyRobot/x/buffer"
 
 var (
-	Pool = helpers.Pool[complex64]{}
+	Pool = buffer.Pool[complex64]{}
 )

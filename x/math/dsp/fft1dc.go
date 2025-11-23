@@ -2,6 +2,9 @@
 package dsp
 
 import (
+	"github.com/itohio/EasyRobot/x/math/primitive/c64"
+	"github.com/itohio/EasyRobot/x/math/primitive/fp32"
+	"github.com/itohio/EasyRobot/x/math/shape"
 	"github.com/itohio/EasyRobot/x/math/tensor"
 	"github.com/itohio/EasyRobot/x/math/tensor/types"
 )
@@ -18,30 +21,45 @@ import (
 // The tensor must be 1D (rank 1) and have C64 data type. The FFT size is determined by
 // the tensor length, which will be padded to the next power of 2 if needed.
 type FFT1DC struct {
-	length  int          // vector length (next power of 2)
-	tempBuf []complex64  // temporary buffer for optimizations
+	length  int         // vector length (next power of 2)
+	tempBuf []complex64 // temporary buffer for optimizations
+	lut     []float32   // precomputed LUT for twiddle factors (optional)
 }
 
 // NewFFT1DC creates a 1D complex FFT processor for tensors of the specified length.
 // The length will be rounded up to the next power of 2.
-func NewFFT1DC(length int) *FFT1DC {
+// If lut is provided (vararg), it will be used for optimized FFT operations.
+// The LUT can be created using c64.NewFFTLUT(fftSize).
+// Returns a value (not a pointer).
+func NewFFT1DC(length int, lut ...[]float32) FFT1DC {
 	if length <= 0 {
 		panic("FFT length must be positive")
 	}
-	nextPow2 := nextPowerOfTwo(length)
-	return &FFT1DC{
+	nextPow2 := fp32.NextPowerOfTwo(length)
+
+	fft := FFT1DC{
 		length:  nextPow2,
 		tempBuf: make([]complex64, nextPow2),
 	}
+
+	// Use LUT if provided
+	if len(lut) > 0 && len(lut[0]) > 0 {
+		fft.lut = lut[0]
+	}
+
+	return fft
 }
 
 // Forward performs a forward FFT transform on a complex-valued 1D tensor.
 //
 // Input (src): Complex-valued Tensor with C64 data type and rank 1.
-//              The tensor contains complex64 values representing complex samples.
+//
+//	The tensor contains complex64 values representing complex samples.
+//
 // Output (dst): Complex-valued Tensor with C64 data type. The FFT result contains
-//               the full complex frequency domain representation. The output length
-//               matches the FFT size (next power of 2 >= input length).
+//
+//	the full complex frequency domain representation. The output length
+//	matches the FFT size (next power of 2 >= input length).
 //
 // Panics if src or dst are not C64 type, not rank 1, or if dst is too small.
 // Uses destination-based API with no allocations.
@@ -53,7 +71,8 @@ func (f *FFT1DC) Forward(dst, src types.Tensor) {
 //
 // Input (src): Complex-valued Tensor with C64 data type (frequency domain representation).
 // Output (dst): Complex-valued Tensor with C64 data type (time domain signal).
-//               The result is scaled by 1/N where N is the FFT length.
+//
+//	The result is scaled by 1/N where N is the FFT length.
 //
 // Panics if src or dst are not C64 type, not rank 1, or if dst is too small.
 // Uses destination-based API with no allocations.
@@ -96,7 +115,12 @@ func (f *FFT1DC) forward(src, dst types.Tensor) {
 	}
 
 	// Perform complex FFT
-	fftComplex(tempBuf)
+	if len(f.lut) > 0 {
+		totalFactors := len(f.lut) / 2
+		c64.FFTWithLUT(tempBuf, f.lut, totalFactors)
+	} else {
+		c64.FFT(tempBuf)
+	}
 
 	// Copy result to destination (only copy what fits)
 	copyLen := f.length
@@ -141,7 +165,8 @@ func (f *FFT1DC) backward(src, dst types.Tensor) {
 	}
 
 	// Perform inverse complex FFT
-	ifftComplex(tempBuf)
+	// Note: IFFTWithLUT could be added later for optimization
+	c64.IFFT(tempBuf)
 
 	// Copy result to destination (only copy what fits)
 	copyLen := f.length
@@ -168,8 +193,8 @@ func (f *FFT1DC) Convolve(dst, signal, kernel types.Tensor) {
 	kernFFT := NewFFT1DC(kernLen)
 
 	// Temporary buffers
-	sigFreq := tensor.New(types.C64, types.NewShape(f.length))
-	kernFreq := tensor.New(types.C64, types.NewShape(f.length))
+	sigFreq := tensor.New(types.C64, shape.NewShape(f.length))
+	kernFreq := tensor.New(types.C64, shape.NewShape(f.length))
 
 	// Forward FFTs
 	sigFFT.Forward(sigFreq, signal)
@@ -222,15 +247,15 @@ func (f *FFT1DC) Correlate(dst, signal1, signal2 types.Tensor) {
 	}
 
 	// FFT size must be at least resultLen to avoid aliasing
-	fftSize := nextPowerOfTwo(resultLen)
+	fftSize := fp32.NextPowerOfTwo(resultLen)
 
 	// Create temporary FFTs for signals (use fftSize to ensure no aliasing)
 	sig1FFT := NewFFT1DC(fftSize)
 	sig2FFT := NewFFT1DC(fftSize)
 
 	// Temporary buffers (use fftSize)
-	sig1Freq := tensor.New(types.C64, types.NewShape(fftSize))
-	sig2Freq := tensor.New(types.C64, types.NewShape(fftSize))
+	sig1Freq := tensor.New(types.C64, shape.NewShape(fftSize))
+	sig2Freq := tensor.New(types.C64, shape.NewShape(fftSize))
 
 	// Forward FFTs (will zero-pad to fftSize)
 	sig1FFT.Forward(sig1Freq, signal1)
@@ -270,4 +295,3 @@ func (f *FFT1DC) Correlate(dst, signal1, signal2 types.Tensor) {
 		dstData[i] *= scale
 	}
 }
-

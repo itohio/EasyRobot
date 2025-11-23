@@ -3,7 +3,8 @@ package gorgonia
 import (
 	"testing"
 
-	"github.com/itohio/EasyRobot/x/math/tensor/eager_tensor"
+	"github.com/itohio/EasyRobot/x/math/shape"
+	"github.com/itohio/EasyRobot/x/math/tensor/eager"
 	"github.com/itohio/EasyRobot/x/math/tensor/types"
 	"github.com/stretchr/testify/assert"
 )
@@ -36,7 +37,7 @@ func TestToEagerTensor(t *testing.T) {
 
 func TestFromEagerTensor(t *testing.T) {
 	// Create an eager tensor
-	eTensor := eager_tensor.New(types.FP32, types.NewShape(2, 3))
+	eTensor := eager.New(types.FP32, shape.NewShape(2, 3))
 	for i := 0; i < eTensor.Size(); i++ {
 		eTensor.SetAt(float64(i+1), i)
 	}
@@ -109,7 +110,7 @@ func TestConversionDifferentTypes(t *testing.T) {
 
 func TestCopyFromEagerTensor(t *testing.T) {
 	// Create an eager tensor
-	eTensor := eager_tensor.New(types.FP32, types.NewShape(2, 3))
+	eTensor := eager.New(types.FP32, shape.NewShape(2, 3))
 	for i := 0; i < eTensor.Size(); i++ {
 		eTensor.SetAt(float64(i+1), i)
 	}
@@ -154,7 +155,7 @@ func TestCopyBetweenGorgoniaTensors(t *testing.T) {
 
 func TestCopyWithTypeConversion(t *testing.T) {
 	// Create an FP64 eager tensor
-	eTensor := eager_tensor.New(types.FP64, types.NewShape(2, 3))
+	eTensor := eager.New(types.FP64, shape.NewShape(2, 3))
 	for i := 0; i < eTensor.Size(); i++ {
 		eTensor.SetAt(float64(i+1), i)
 	}
@@ -173,7 +174,7 @@ func TestCopyWithTypeConversion(t *testing.T) {
 
 func TestCopyShapeMismatch(t *testing.T) {
 	// Create tensors with different shapes
-	eTensor := eager_tensor.New(types.FP32, types.NewShape(2, 3))
+	eTensor := eager.New(types.FP32, shape.NewShape(2, 3))
 	gTensor := New(types.FP32, 3, 2)
 
 	// Copy should panic with shape mismatch

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	nntypes "github.com/itohio/EasyRobot/x/math/nn/types"
+	"github.com/itohio/EasyRobot/x/math/shape"
 	"github.com/itohio/EasyRobot/x/math/tensor"
 	"github.com/itohio/EasyRobot/x/math/tensor/types"
 	"github.com/stretchr/testify/assert"
@@ -95,7 +96,7 @@ func TestNewDense(t *testing.T) {
 func TestDense_Init(t *testing.T) {
 	tests := []struct {
 		name        string
-		inputShape  tensor.Shape
+		inputShape  shape.Shape
 		expectError bool
 	}{
 		{
@@ -150,7 +151,7 @@ func TestDense_Init(t *testing.T) {
 func TestDense_Forward(t *testing.T) {
 	tests := []struct {
 		name       string
-		inputShape tensor.Shape
+		inputShape shape.Shape
 		inputData  []float32
 		weightData []float32
 		biasData   []float32
@@ -224,7 +225,7 @@ func TestDense_Forward(t *testing.T) {
 func TestDense_Backward(t *testing.T) {
 	tests := []struct {
 		name       string
-		inputShape tensor.Shape
+		inputShape shape.Shape
 	}{
 		{
 			name:       "1d_input",
@@ -333,7 +334,7 @@ func TestDense_Backward(t *testing.T) {
 func TestDense_OutputShape(t *testing.T) {
 	tests := []struct {
 		name        string
-		inputShape  tensor.Shape
+		inputShape  shape.Shape
 		expectError bool
 		expected    []int
 	}{

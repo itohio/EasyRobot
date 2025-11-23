@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/itohio/EasyRobot/x/iter"
 	"github.com/itohio/EasyRobot/x/math/nn/types"
-	"github.com/itohio/EasyRobot/x/math/primitive/generics"
 	"github.com/itohio/EasyRobot/x/math/tensor"
 )
 
@@ -341,7 +341,7 @@ func QuantizeTensor(t tensor.Tensor, params *QuantizationParams, scheme Quantiza
 	quantized := tensor.New(tensor.DTFP32, t.Shape())
 
 	// Quantize each value using shape iterator to get indices
-	for indices := range generics.ElementsIndices(t.Shape()) {
+	for indices := range iter.ElementsIndices(t.Shape()) {
 		val := t.At(indices...)
 		q := int32(math.Round(val/params.Scale)) + params.ZeroPoint
 
@@ -370,7 +370,7 @@ func DequantizeTensor(quantized tensor.Tensor, params *QuantizationParams) (tens
 
 	// Dequantize each value: real = scale * (quantized - zeroPoint)
 	// Use shape iterator to get indices
-	for indices := range generics.ElementsIndices(quantized.Shape()) {
+	for indices := range iter.ElementsIndices(quantized.Shape()) {
 		qVal := quantized.At(indices...)
 		q := int32(qVal) // Cast back to int32
 		realVal := params.Scale * float64(q-params.ZeroPoint)

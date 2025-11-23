@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	nnTypes "github.com/itohio/EasyRobot/x/math/nn/types"
+	"github.com/itohio/EasyRobot/x/math/shape"
 	"github.com/itohio/EasyRobot/x/math/tensor"
 	tflite "github.com/mattn/go-tflite"
 )
@@ -22,8 +23,8 @@ type Model struct {
 	interpreter *tflite.Interpreter
 	model       *tflite.Model
 	options     *tflite.InterpreterOptions
-	inputShape  tensor.Shape
-	outputShape tensor.Shape
+	inputShape  shape.Shape
+	outputShape shape.Shape
 	canLearn    bool // Always false for TFLite models
 
 	// Cached tensors from last Forward pass
@@ -159,7 +160,7 @@ func (m *Model) Name() string {
 
 // Init initializes the model with the given input shape.
 // For TFLite models, this validates that the shape matches the model's expected input.
-func (m *Model) Init(inputShape tensor.Shape) error {
+func (m *Model) Init(inputShape shape.Shape) error {
 	if !m.inputShape.Equal(inputShape) {
 		return fmt.Errorf("tflite.Model.Init: input shape mismatch: expected %v, got %v", m.inputShape, inputShape)
 	}
@@ -275,7 +276,7 @@ func (m *Model) Backward(gradOutput tensor.Tensor) (tensor.Tensor, error) {
 }
 
 // OutputShape returns the output shape for the given input shape.
-func (m *Model) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
+func (m *Model) OutputShape(inputShape shape.Shape) (shape.Shape, error) {
 	if !m.inputShape.Equal(inputShape) {
 		return nil, fmt.Errorf("tflite.Model.OutputShape: input shape mismatch: expected %v, got %v", m.inputShape, inputShape)
 	}
@@ -366,12 +367,12 @@ func (m *Model) Invoke() error {
 }
 
 // InputShape returns the model's expected input shape.
-func (m *Model) InputShape() tensor.Shape {
+func (m *Model) InputShape() shape.Shape {
 	return m.inputShape
 }
 
 // OutputShapeValue returns the model's output shape.
-func (m *Model) OutputShapeValue() tensor.Shape {
+func (m *Model) OutputShapeValue() shape.Shape {
 	return m.outputShape
 }
 

@@ -3,8 +3,8 @@ package types
 import (
 	"testing"
 
-	"github.com/itohio/EasyRobot/x/math/primitive"
 	"github.com/itohio/EasyRobot/x/math/primitive/fp32"
+	"github.com/itohio/EasyRobot/x/types"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -652,7 +652,7 @@ func TestCopyTensorData(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := primitive.CopyWithConversion(tt.dstData, tt.srcData)
+			result := types.CastClampedAny(tt.dstData, tt.srcData)
 			if tt.wantNil {
 				assert.Nil(t, result)
 			} else {

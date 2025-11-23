@@ -3,6 +3,7 @@ package gocv
 import (
 	"fmt"
 
+	"github.com/itohio/EasyRobot/x/math/shape"
 	"github.com/itohio/EasyRobot/x/math/tensor/types"
 	cv "gocv.io/x/gocv"
 )
@@ -18,7 +19,7 @@ func (t Tensor) Clone() types.Tensor {
 	return Tensor{
 		handle: &tensorHandle{
 			mat:   &cloned,
-			shape: append(types.Shape(nil), h.shape...),
+			shape: append(shape.Shape(nil), h.shape...),
 			dtype: h.dtype,
 			owns:  true,
 		},
@@ -61,7 +62,7 @@ func (t Tensor) Copy(src types.Tensor) types.Tensor {
 
 // Reshape currently supports returning the same tensor when newShape matches
 // the existing shape. Other reshape scenarios panic with ErrUnsupported.
-func (t Tensor) Reshape(dst types.Tensor, newShape types.Shape) types.Tensor {
+func (t Tensor) Reshape(dst types.Tensor, newShape shape.Shape) types.Tensor {
 	h, err := t.getHandle()
 	if err != nil {
 		panic(err)
@@ -121,7 +122,7 @@ func (t Tensor) Transpose(dst types.Tensor, dims []int) types.Tensor {
 		panicUnsupported("Transpose (unsupported permutation)")
 	}
 
-	outShape := types.Shape{h.shape[1], h.shape[0], h.shape[2]}
+	outShape := shape.Shape{h.shape[1], h.shape[0], h.shape[2]}
 
 	var target Tensor
 	if dst != nil {
@@ -194,7 +195,7 @@ func isIdentityPermutation(dims []int) bool {
 }
 
 // BroadcastTo is not supported for GoCV tensors.
-func (t Tensor) BroadcastTo(dst types.Tensor, shape types.Shape) types.Tensor {
+func (t Tensor) BroadcastTo(dst types.Tensor, shape shape.Shape) types.Tensor {
 	panicUnsupported("BroadcastTo")
 	return nil
 }

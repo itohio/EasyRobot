@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/gen2brain/malgo"
+	"github.com/itohio/EasyRobot/x/buffer"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
-	"github.com/itohio/EasyRobot/x/math/primitive/generics/helpers"
 	tensortypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 	"github.com/smallnest/ringbuffer"
 )
@@ -228,7 +228,7 @@ func findDeviceByID(deviceID string, devType malgo.DeviceType) (*malgo.DeviceInf
 
 // pcmBufferPool manages PCM byte buffers.
 type pcmBufferPool struct {
-	*helpers.Pool[byte]
+	*buffer.Pool[byte]
 	sampleSize int
 	channels   int
 	sampleRate int
@@ -236,7 +236,7 @@ type pcmBufferPool struct {
 
 func newPCMBufferPool(channels, sampleRate, sampleSize int) *pcmBufferPool {
 	pool := &pcmBufferPool{
-		Pool:       &helpers.Pool[byte]{},
+		Pool:       &buffer.Pool[byte]{},
 		sampleSize: sampleSize,
 		channels:   channels,
 		sampleRate: sampleRate,

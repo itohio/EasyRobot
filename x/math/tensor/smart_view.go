@@ -3,6 +3,7 @@ package tensor
 import (
 	"sync/atomic"
 
+	"github.com/itohio/EasyRobot/x/math/shape"
 	tensorTypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 )
 
@@ -31,7 +32,7 @@ type SmartTensor struct {
 // NewSmart creates a new SmartTensor with reference counting.
 // It accepts the same parameters as New() for consistency.
 // The initial reference count is 1.
-func NewSmart(dtype DataType, shape Shape) *SmartTensor {
+func NewSmart(dtype DataType, shape shape.Shape) *SmartTensor {
 	return &SmartTensor{
 		Tensor: New(dtype, shape),
 		refs:   &refCount{count: 1},

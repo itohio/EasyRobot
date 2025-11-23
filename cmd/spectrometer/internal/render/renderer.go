@@ -18,6 +18,9 @@ type Renderer interface {
 	// RenderSpectrum renders a spectrum graph
 	RenderSpectrum(ctx context.Context, img gocv.Mat, spd colorscience.SPD, config *spectrometer.DisplaySettings) error
 
+	// RenderSpectrumWithTargets renders a spectrum graph with peaks and calibration targets
+	RenderSpectrumWithTargets(ctx context.Context, img gocv.Mat, spd colorscience.SPD, config *spectrometer.DisplaySettings, calibrationTargets []float32, showPeaks bool) error
+
 	// RenderColorimetry renders colorimetry overlay (XYZ, LAB, RGB HEX)
 	RenderColorimetry(ctx context.Context, img gocv.Mat, xyz colorscience.XYZ, lab colorscience.LAB, rgb colorscience.RGB, displayMode ColorimetryDisplayMode) error
 
@@ -158,6 +161,116 @@ func (r *renderer) RenderSpectrum(ctx context.Context, img gocv.Mat, spd colorsc
 			}
 
 			gocv.Line(&img, image.Pt(x0, y0), image.Pt(x1, y1), lineColor, 2)
+		}
+	}
+
+	return nil
+}
+
+// RenderSpectrumWithTargets renders a spectrum graph with peaks and calibration target wavelengths
+func (r *renderer) RenderSpectrumWithTargets(ctx context.Context, img gocv.Mat, spd colorscience.SPD, config *spectrometer.DisplaySettings, calibrationTargets []float32, showPeaks bool) error {
+	// First render the basic spectrum
+	if err := r.RenderSpectrum(ctx, img, spd, config); err != nil {
+		return err
+	}
+
+	wavelengths := spd.Wavelengths()
+	values := spd.Values()
+	if wavelengths == nil || values == nil || wavelengths.Len() == 0 {
+		return fmt.Errorf("SPD is empty")
+	}
+
+	imgSize := img.Size()
+	imgWidth := imgSize[1]
+	imgHeight := imgSize[0]
+
+	// Calculate plot area (with margins) - same as RenderSpectrum
+	marginLeft := 60
+	marginRight := 20
+	marginTop := 20
+	marginBottom := 40
+	plotX := marginLeft
+	plotY := marginTop
+	plotWidth := imgWidth - marginLeft - marginRight
+	plotHeight := imgHeight - marginTop - marginBottom
+
+	if plotWidth <= 0 || plotHeight <= 0 {
+		return fmt.Errorf("plot area too small")
+	}
+
+	// Find min/max wavelengths and values for scaling
+	wlMin := wavelengths[0]
+	wlMax := wavelengths[0]
+	valMin := values[0]
+	valMax := values[0]
+
+	for i := 0; i < wavelengths.Len(); i++ {
+		if wavelengths[i] < wlMin {
+			wlMin = wavelengths[i]
+		}
+		if wavelengths[i] > wlMax {
+			wlMax = wavelengths[i]
+		}
+		if values[i] < valMin {
+			valMin = values[i]
+		}
+		if values[i] > valMax {
+			valMax = values[i]
+		}
+	}
+
+	// Handle edge case where all values are the same
+	if valMax == valMin {
+		valMax = valMin + 1.0
+	}
+
+	// Draw detected peaks if requested
+	if showPeaks {
+		peaks := spd.Peaks(0, 0) // Detect all peaks (no threshold, no prominence filter)
+		peakColor := color.RGBA{255, 255, 0, 255} // Yellow for peaks
+		fontScale := 0.4
+		thickness := 1
+
+		for _, peak := range peaks {
+				// Draw vertical line at peak wavelength
+				x := plotX + int((peak.Wavelength-wlMin)/(wlMax-wlMin)*float32(plotWidth))
+				if x >= plotX && x <= plotX+plotWidth {
+					// Draw line from bottom to top
+					gocv.Line(&img, image.Pt(x, plotY), image.Pt(x, plotY+plotHeight), peakColor, 1)
+
+					// Draw peak value label at top
+					label := fmt.Sprintf("%.1f", peak.Wavelength)
+					gocv.PutText(&img, label, image.Pt(x-15, plotY-5), gocv.FontHersheyPlain, fontScale, peakColor, thickness)
+				}
+		}
+	}
+
+	// Draw calibration target wavelengths as vertical lines
+	if len(calibrationTargets) > 0 {
+		targetColor := color.RGBA{0, 255, 255, 255} // Cyan for calibration targets
+		fontScale := 0.4
+		thickness := 1
+
+		for _, targetWl := range calibrationTargets {
+			// Only draw if target wavelength is within the displayed range
+			if targetWl >= wlMin && targetWl <= wlMax {
+				x := plotX + int((targetWl-wlMin)/(wlMax-wlMin)*float32(plotWidth))
+				if x >= plotX && x <= plotX+plotWidth {
+					// Draw dashed vertical line (approximate with short segments)
+					lineHeight := plotHeight / 10
+					for y := plotY; y < plotY+plotHeight; y += lineHeight * 2 {
+						endY := y + lineHeight
+						if endY > plotY+plotHeight {
+							endY = plotY + plotHeight
+						}
+						gocv.Line(&img, image.Pt(x, y), image.Pt(x, endY), targetColor, 1)
+					}
+
+					// Draw wavelength label at top
+					label := fmt.Sprintf("%.1f", targetWl)
+					gocv.PutText(&img, label, image.Pt(x-15, plotY-5), gocv.FontHersheyPlain, fontScale, targetColor, thickness)
+				}
+			}
 		}
 	}
 

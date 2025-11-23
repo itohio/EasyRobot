@@ -6,17 +6,17 @@ import (
 	"github.com/itohio/EasyRobot/x/math/nn/layers"
 	"github.com/itohio/EasyRobot/x/math/nn/models"
 	"github.com/itohio/EasyRobot/x/math/nn/types"
-	tensorTypes "github.com/itohio/EasyRobot/x/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/math/shape"
 )
 
 // SequentialModelBuilder helps construct models by adding layers sequentially.
 type SequentialModelBuilder struct {
 	layers     []types.Layer
-	inputShape tensorTypes.Shape
+	inputShape shape.Shape
 }
 
 // NewSequentialModelBuilder creates a new sequential model builder with the given input shape.
-func NewSequentialModelBuilder(inputShape tensorTypes.Shape) *SequentialModelBuilder {
+func NewSequentialModelBuilder(inputShape shape.Shape) *SequentialModelBuilder {
 	if inputShape == nil {
 		return nil
 	}

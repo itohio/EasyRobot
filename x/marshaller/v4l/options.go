@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/itohio/EasyRobot/x/marshaller/types"
-	"github.com/itohio/EasyRobot/x/math/primitive/generics/helpers"
+	"github.com/itohio/EasyRobot/x/buffer"
 )
 
 // DeviceOption configures device opening (legacy - use types.CameraOption)
@@ -61,7 +61,7 @@ type Options struct {
 	Controls map[string]int32
 
 	// BufferPool provides custom buffer pool (default: internal pool)
-	BufferPool *helpers.Pool[uint8]
+	BufferPool *buffer.Pool[uint8]
 
 	// TensorFactory creates tensors from buffer data
 	TensorFactory func([]uint8, int, int, int) types.Tensor
@@ -142,7 +142,7 @@ func WithControls(controls map[ControlID]int32) Option {
 }
 
 type withBufferPool struct {
-	pool *helpers.Pool[uint8]
+	pool *buffer.Pool[uint8]
 }
 
 func (opt withBufferPool) Apply(opts *Options) {
@@ -150,7 +150,7 @@ func (opt withBufferPool) Apply(opts *Options) {
 }
 
 // WithBufferPool sets a custom buffer pool
-func WithBufferPool(pool *helpers.Pool[uint8]) Option {
+func WithBufferPool(pool *buffer.Pool[uint8]) Option {
 	return withBufferPool{pool: pool}
 }
 
@@ -337,8 +337,8 @@ func applyOptions(baseOpts types.Options, baseCfg Options, opts ...types.Option)
 }
 
 // createDefaultBufferPool creates a default buffer pool with reasonable tiers
-func createDefaultBufferPool() *helpers.Pool[uint8] {
-	pool := &helpers.Pool[uint8]{}
+func createDefaultBufferPool() *buffer.Pool[uint8] {
+	pool := &buffer.Pool[uint8]{}
 	// Tiers for common frame sizes: 64KB, 256KB, 1MB, 4MB, 16MB
 	tiers := []int{65536, 262144, 1048576, 4194304, 16777216}
 	if err := pool.Reconfigure(tiers...); err != nil {

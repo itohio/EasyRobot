@@ -3,6 +3,7 @@ package gorgonia
 import (
 	"fmt"
 
+	"github.com/itohio/EasyRobot/x/math/shape"
 	"github.com/itohio/EasyRobot/x/math/tensor/types"
 	"gorgonia.org/gorgonia"
 	"gorgonia.org/tensor"
@@ -14,7 +15,7 @@ type GraphTensor struct {
 	graph    *ExpressionGraph
 	node     *gorgonia.Node
 	id       int
-	shape    types.Shape
+	shape    shape.Shape
 	dataType types.DataType
 	constant bool
 }
@@ -67,7 +68,7 @@ func (gt *GraphTensor) Data() any {
 }
 
 // Shape returns a copy of the tensor's shape.
-func (gt *GraphTensor) Shape() types.Shape {
+func (gt *GraphTensor) Shape() shape.Shape {
 	return gt.shape.Clone()
 }
 

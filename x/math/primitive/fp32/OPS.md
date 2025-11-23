@@ -17,8 +17,9 @@ This document catalogs all primitive operations implemented in the `fp32` packag
 9. [Convolution Operations](#convolution-operations)
 10. [Activation Functions](#activation-functions)
 11. [Linear Algebra Operations](#linear-algebra-operations)
-12. [Utility Operations](#utility-operations)
-13. [Duplicates Summary](#duplicates-summary)
+12. [DSP Operations](#dsp-operations)
+13. [Utility Operations](#utility-operations)
+14. [Duplicates Summary](#duplicates-summary)
 
 ## BLAS Level 1: Vector Operations
 
@@ -318,6 +319,43 @@ Located in `la.go`. LAPACK-style operations.
 | SVD | `Gesvd(u, s, vt, a, ldA, ldU, ldVt, M, N)` | Singular value decomposition |
 | NNLS | `Gnnls(x, a, b, ldA, M, N)` | Non-negative least squares |
 
+## DSP Operations
+
+Located in `dsp_fft.go` and `dsp_correlation.go`. Digital Signal Processing operations optimized for embedded systems.
+
+### Fast Fourier Transform (FFT)
+
+| Operation | Function | Description |
+|-----------|----------|-------------|
+| FFT | `FFT(data []float32)` | In-place FFT on packed complex data. Data layout: real parts in `data[0:N]`, imaginary parts in `data[N:2*N]` where N = len(data)/2. **Requires power-of-2 size.** |
+| IFFT | `IFFT(data []float32)` | In-place inverse FFT on packed complex data. Same data layout as FFT. **Requires power-of-2 size.** |
+| ComputeFFTLUT | `ComputeFFTLUT(fftSize int) int` | Returns the required buffer size (in float32 elements) for FFT LUT of given size. |
+| FillFFTLUT | `FillFFTLUT(dst []float32, fftSize int) int` | Fills the LUT buffer with precomputed twiddle factors. Returns number of factors. |
+| FFTWithLUT | `FFTWithLUT(data []float32, lut []float32, totalFactors int)` | Performs FFT using precomputed LUT for better performance. |
+| NextPowerOfTwo | `NextPowerOfTwo(n int) int` | Returns the next power of two >= n. |
+| IsPowerOfTwo | `isPowerOfTwo(n int) bool` | Checks if a number is a power of two (internal). |
+
+**Notes:**
+- All FFT operations require power-of-2 sizes for optimal performance
+- Use `NextPowerOfTwo` to pad non-power-of-2 data
+- LUT version (`FFTWithLUT`) provides better performance for repeated FFTs of the same size
+- Data is stored in packed format: `[real0, real1, ..., realN-1, imag0, imag1, ..., imagN-1]`
+
+### Correlation Operations
+
+| Operation | Function | Description |
+|-----------|----------|-------------|
+| CrossCorrelate1D | `CrossCorrelate1D(dst, signal1, signal2 []float32) int` | Computes 1D cross-correlation between two signals. Returns number of samples filled. |
+| CrossCorrelate1DByConvolution | `CrossCorrelate1DByConvolution(dst, signal1, signal2 []float32) int` | Alternative 1D cross-correlation using reversed signal2. |
+| CrossCorrelate2D | `CrossCorrelate2D(dst []float32, dstRows, dstCols int, signal1 []float32, rows1, cols1 int, signal2 []float32, rows2, cols2 int) int` | Computes 2D cross-correlation between two matrices. Returns number of rows filled. |
+| FindPeakCorrelation | `FindPeakCorrelation(correlation []float32) (maxCorr float32, maxIdx int)` | Finds the peak correlation value and its index. |
+| FindPeakCorrelation2D | `FindPeakCorrelation2D(correlation []float32, rows, cols int) (maxCorr float32, maxRow, maxCol int)` | Finds the peak correlation in 2D and its position. |
+
+**Notes:**
+- All correlation functions work directly on `[]float32` slices
+- 2D operations use flattened matrix representation: `[row0, row1, ..., rowN-1]`
+- Functions return the number of elements filled or found indices
+
 ## Utility Operations
 
 ### Array Utilities (array.go)
@@ -399,9 +437,10 @@ The fp32 package contains recommended implementations for all operations:
 - **Tensor Operations**: 29 (Pooling: 16, Convolution: 13) ✓ **PRIMARY API**
 - **Activation Functions**: 16 (Forward: 6, Gradient: 7, Gradient Stride: 3) ✓ **RECOMMENDED FOR EMBEDDED** - dedicated gradient functions provide better performance
 - **Linear Algebra**: 13 (LAPACK-style operations) ✓ **CORE - KEEP**
+- **DSP Operations**: 12 (FFT: 6, Correlation: 5, Utility: 1) ✓ **NEW** - optimized for embedded systems
 - **Utilities**: 12 (Array: 7, Vector: 5, Tensor: 4) ✓ **CLEANED** (includes dst-based versions)
 
-**Total Operations**: 137 functions across 14 categories
+**Total Operations**: 149 functions across 15 categories
 **Migration Status**: 11 functions are deprecated (thin wrappers calling generics). 17 functions migrated to use generics internally (keep for API compatibility). All operations follow destination-first convention. See `GENERIC_OPS_MIGRATION_PLAN.md` for details.
 
 ### Operation Patterns

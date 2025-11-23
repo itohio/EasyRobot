@@ -1,7 +1,7 @@
 package qu8
 
-import helpers "github.com/itohio/EasyRobot/x/math/primitive/generics/helpers"
+import "github.com/itohio/EasyRobot/x/buffer"
 
 var (
-	Pool = helpers.Pool[uint8]{}
+	Pool = buffer.Pool[uint8]{}
 )

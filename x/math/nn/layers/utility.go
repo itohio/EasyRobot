@@ -3,6 +3,7 @@ package layers
 import (
 	"fmt"
 
+	"github.com/itohio/EasyRobot/x/math/shape"
 	"github.com/itohio/EasyRobot/x/math/tensor"
 	"github.com/itohio/EasyRobot/x/math/tensor/types"
 )
@@ -24,7 +25,7 @@ func NewFlatten(startDim, endDim int) *Flatten {
 }
 
 // Init initializes the layer.
-func (f *Flatten) Init(inputShape tensor.Shape) error {
+func (f *Flatten) Init(inputShape shape.Shape) error {
 	if f == nil {
 		return fmt.Errorf("Flatten.Init: nil layer")
 	}
@@ -128,7 +129,7 @@ func (f *Flatten) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 }
 
 // OutputShape returns the output shape for given input shape.
-func (f *Flatten) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
+func (f *Flatten) OutputShape(inputShape shape.Shape) (shape.Shape, error) {
 	if f == nil {
 		return nil, fmt.Errorf("Flatten.OutputShape: nil layer")
 	}
@@ -175,7 +176,7 @@ func NewReshape(targetShape []int) *Reshape {
 }
 
 // Init initializes the layer.
-func (r *Reshape) Init(inputShape tensor.Shape) error {
+func (r *Reshape) Init(inputShape shape.Shape) error {
 	if r == nil {
 		return fmt.Errorf("Reshape.Init: nil layer")
 	}
@@ -277,7 +278,7 @@ func (r *Reshape) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 }
 
 // OutputShape returns the output shape for given input shape.
-func (r *Reshape) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
+func (r *Reshape) OutputShape(inputShape shape.Shape) (shape.Shape, error) {
 	if r == nil {
 		return nil, fmt.Errorf("Reshape.OutputShape: nil layer")
 	}
@@ -329,7 +330,7 @@ func NewUnsqueeze(dim int) *Unsqueeze {
 }
 
 // Init initializes the layer.
-func (u *Unsqueeze) Init(inputShape tensor.Shape) error {
+func (u *Unsqueeze) Init(inputShape shape.Shape) error {
 	if u == nil {
 		return fmt.Errorf("Unsqueeze.Init: nil layer")
 	}
@@ -353,7 +354,7 @@ func (u *Unsqueeze) Init(inputShape tensor.Shape) error {
 }
 
 // computeOutputShape computes the output shape after adding dimension.
-func (u *Unsqueeze) computeOutputShape(inputShape tensor.Shape) tensor.Shape {
+func (u *Unsqueeze) computeOutputShape(inputShape shape.Shape) shape.Shape {
 	dim := u.dim
 	if dim < 0 {
 		dim = len(inputShape) + 1 + dim
@@ -430,7 +431,7 @@ func (u *Unsqueeze) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 }
 
 // OutputShape returns the output shape for given input shape.
-func (u *Unsqueeze) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
+func (u *Unsqueeze) OutputShape(inputShape shape.Shape) (shape.Shape, error) {
 	if u == nil {
 		return nil, fmt.Errorf("Unsqueeze.OutputShape: nil layer")
 	}
@@ -470,7 +471,7 @@ func NewSqueezeDims(dims ...int) *Squeeze {
 }
 
 // Init initializes the layer.
-func (s *Squeeze) Init(inputShape tensor.Shape) error {
+func (s *Squeeze) Init(inputShape shape.Shape) error {
 	if s == nil {
 		return fmt.Errorf("Squeeze.Init: nil layer")
 	}
@@ -494,7 +495,7 @@ func (s *Squeeze) Init(inputShape tensor.Shape) error {
 }
 
 // computeOutputShape computes the output shape after removing size-1 dimensions.
-func (s *Squeeze) computeOutputShape(inputShape tensor.Shape) tensor.Shape {
+func (s *Squeeze) computeOutputShape(inputShape shape.Shape) shape.Shape {
 	if s.dims == nil {
 		// Remove all dimensions of size 1
 		outputShape := make([]int, 0, len(inputShape))
@@ -590,7 +591,7 @@ func (s *Squeeze) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 }
 
 // OutputShape returns the output shape for given input shape.
-func (s *Squeeze) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
+func (s *Squeeze) OutputShape(inputShape shape.Shape) (shape.Shape, error) {
 	if s == nil {
 		return nil, fmt.Errorf("Squeeze.OutputShape: nil layer")
 	}
@@ -631,7 +632,7 @@ func NewTransposeDims(dims ...int) *Transpose {
 }
 
 // Init initializes the layer.
-func (t *Transpose) Init(inputShape tensor.Shape) error {
+func (t *Transpose) Init(inputShape shape.Shape) error {
 	if t == nil {
 		return fmt.Errorf("Transpose.Init: nil layer")
 	}
@@ -713,7 +714,7 @@ func (t *Transpose) Backward(gradOutput types.Tensor) (types.Tensor, error) {
 }
 
 // OutputShape returns the output shape for given input shape.
-func (t *Transpose) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
+func (t *Transpose) OutputShape(inputShape shape.Shape) (shape.Shape, error) {
 	if t == nil {
 		return nil, fmt.Errorf("Transpose.OutputShape: nil layer")
 	}
@@ -780,7 +781,7 @@ func NewPadReflect(padding []int) *Pad {
 }
 
 // Init initializes the layer.
-func (p *Pad) Init(inputShape tensor.Shape) error {
+func (p *Pad) Init(inputShape shape.Shape) error {
 	if p == nil {
 		return fmt.Errorf("Pad.Init: nil layer")
 	}
@@ -948,7 +949,7 @@ func computeIndices(shape []int, strides []int, offset int) []int {
 }
 
 // OutputShape returns the output shape for given input shape.
-func (p *Pad) OutputShape(inputShape tensor.Shape) (tensor.Shape, error) {
+func (p *Pad) OutputShape(inputShape shape.Shape) (shape.Shape, error) {
 	if p == nil {
 		return nil, fmt.Errorf("Pad.OutputShape: nil layer")
 	}
@@ -1003,7 +1004,7 @@ func (c *Concatenate) SetInputs(inputs []types.Tensor) {
 // Init initializes the layer with a single input shape.
 // For multiple inputs, call InitMulti instead or set inputs via SetInputs before Forward.
 // This method is for Layer interface compatibility - actual initialization happens in ForwardMulti.
-func (c *Concatenate) Init(inputShape tensor.Shape) error {
+func (c *Concatenate) Init(inputShape shape.Shape) error {
 	if c == nil {
 		return fmt.Errorf("Concatenate.Init: nil layer")
 	}
