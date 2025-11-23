@@ -581,6 +581,7 @@ type SpectrumWindow struct {
 	Center        *Point2D               `protobuf:"bytes,1,opt,name=center,proto3" json:"center,omitempty"`                                // Center point (pixel coordinates)
 	Size          *Size2D                `protobuf:"bytes,2,opt,name=size,proto3" json:"size,omitempty"`                                    // Size (width, height)
 	RotationDeg   float64                `protobuf:"fixed64,3,opt,name=rotation_deg,json=rotationDeg,proto3" json:"rotation_deg,omitempty"` // Rotation angle in degrees (typically 0 for horizontal)
+	Flipped       bool                   `protobuf:"varint,4,opt,name=flipped,proto3" json:"flipped,omitempty"`                             // Whether the spectrum is horizontally flipped
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -634,6 +635,13 @@ func (x *SpectrumWindow) GetRotationDeg() float64 {
 		return x.RotationDeg
 	}
 	return 0
+}
+
+func (x *SpectrumWindow) GetFlipped() bool {
+	if x != nil {
+		return x.Flipped
+	}
+	return false
 }
 
 // Point2D represents a 2D point
@@ -1877,11 +1885,12 @@ const file_types_spectrometer_config_proto_rawDesc = "" +
 	"\x13integration_time_ms\x18\x03 \x01(\x05R\x11integrationTimeMs\x12\x12\n" +
 	"\x04gain\x18\x04 \x01(\x05R\x04gain\"3\n" +
 	"\rLinearization\x12\"\n" +
-	"\fcoefficients\x18\x01 \x03(\x01R\fcoefficients\"\x98\x01\n" +
+	"\fcoefficients\x18\x01 \x03(\x01R\fcoefficients\"\xb2\x01\n" +
 	"\x0eSpectrumWindow\x123\n" +
 	"\x06center\x18\x01 \x01(\v2\x1b.types.spectrometer.Point2DR\x06center\x12.\n" +
 	"\x04size\x18\x02 \x01(\v2\x1a.types.spectrometer.Size2DR\x04size\x12!\n" +
-	"\frotation_deg\x18\x03 \x01(\x01R\vrotationDeg\"%\n" +
+	"\frotation_deg\x18\x03 \x01(\x01R\vrotationDeg\x12\x18\n" +
+	"\aflipped\x18\x04 \x01(\bR\aflipped\"%\n" +
 	"\aPoint2D\x12\f\n" +
 	"\x01x\x18\x01 \x01(\x05R\x01x\x12\f\n" +
 	"\x01y\x18\x02 \x01(\x05R\x01y\"6\n" +

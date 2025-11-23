@@ -72,6 +72,7 @@ message SpectrumWindow {
   Point2D center = 1;                 // Center point (pixel coordinates)
   Size2D size = 2;                    // Size (width, height)
   double rotation_deg = 3;            // Rotation angle in degrees (typically 0 for horizontal)
+  bool flipped = 4;                   // Whether the spectrum is horizontally flipped
 }
 
 // Point2D represents a 2D point
