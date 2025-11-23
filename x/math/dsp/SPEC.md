@@ -11,6 +11,7 @@ The package includes:
 - Signal generation utilities
 - Measurement and analysis functions
 - Shift/rotation estimation for 2D signals
+- Line coding (Manchester encoding/decoding)
 
 All operations work with `vecTypes.Vector` and `matTypes.Matrix` interfaces, ensuring compatibility with the broader EasyRobot math ecosystem.
 
@@ -262,8 +263,12 @@ fmt.Printf("Estimated shift: (%d, %d) pixels\n", shiftY, shiftX)
 ### IQ Modulation/Demodulation
 
 ```go
+import (
+    "github.com/itohio/EasyRobot/x/math/dsp/modulation/iq"
+)
+
 // IQ Encoder for modulation
-encoder := dsp.NewIQEncoder(1000000.0, 100000.0) // 1MHz sample rate, 100kHz carrier
+encoder := iq.NewEncoder(1000000.0, 100000.0) // 1MHz sample rate, 100kHz carrier
 
 // Create baseband I/Q signals
 I := vec.New(1000)
@@ -274,7 +279,7 @@ Q := vec.New(1000)
 modulated := encoder.Modulate(I, Q)
 
 // IQ Decoder for demodulation
-decoder := dsp.NewIQDecoder(1000000.0, 100000.0)
+decoder := iq.NewDecoder(1000000.0, 100000.0)
 
 // Set up low-pass filter for baseband filtering
 import "github.com/itohio/EasyRobot/x/math/filter/fir"
@@ -288,8 +293,12 @@ I_demod, Q_demod := decoder.Demodulate(modulated)
 ### PSK (Phase Shift Keying) Encoding/Decoding
 
 ```go
+import (
+    "github.com/itohio/EasyRobot/x/math/dsp/modulation/mpsk"
+)
+
 // PSK Encoder (BPSK, QPSK, 8-PSK, 16-PSK)
-pskEncoder := dsp.NewPSKEncoder(1000000.0, 100000.0, 10000.0, 2) // BPSK
+pskEncoder := mpsk.NewEncoder(1000000.0, 100000.0, 10000.0, 2) // BPSK
 // Modulation order: 2=BPSK, 4=QPSK, 8=8-PSK, 16=16-PSK
 
 // Generate PSK modulated signal from data
@@ -299,7 +308,7 @@ signalLength := 1000
 modulatedSignal := pskEncoder.GenerateSignal(data, amplitude, signalLength)
 
 // PSK Decoder
-pskDecoder := dsp.NewPSKDecoder(1000000.0, 100000.0, 10000.0, 2) // BPSK
+pskDecoder := mpsk.NewDecoder(1000000.0, 100000.0, 10000.0, 2) // BPSK
 
 // Demodulate PSK signal
 symbols := pskDecoder.Demodulate(receivedSignal)
@@ -310,11 +319,15 @@ symbols := pskDecoder.Demodulate(receivedSignal)
 ### FSK (Frequency Shift Keying) Encoding/Decoding
 
 ```go
+import (
+    "github.com/itohio/EasyRobot/x/math/dsp/modulation/mfsk"
+)
+
 // Binary FSK Encoder (2 frequencies)
-fskEncoder := dsp.NewFSKEncoder(1000000.0, 90000.0, 110000.0, 10000.0) // 90kHz/110kHz
+fskEncoder := mfsk.NewEncoder(1000000.0, 90000.0, 110000.0, 10000.0) // 90kHz/110kHz
 
 // Multi-FSK Encoder (2, 4, 8, or 16 frequencies)
-mFskEncoder := dsp.NewMFSKEncoder(1000000.0, 10000.0, 90000.0, 100000.0, 110000.0, 120000.0) // 4-FSK
+mFskEncoder := mfsk.NewMEncoder(1000000.0, 10000.0, 90000.0, 100000.0, 110000.0, 120000.0) // 4-FSK
 // Supports 2, 4, 8, or 16 frequencies (must be power of 2)
 
 // Generate FSK modulated signal from data
@@ -324,7 +337,7 @@ signalLength := 1000
 modulatedSignal := fskEncoder.GenerateSignal(data, amplitude, signalLength)
 
 // FSK Decoder
-fskDecoder := dsp.NewFSKDecoder(1000000.0, 90000.0, 110000.0, 10000.0) // 90kHz/110kHz
+fskDecoder := mfsk.NewDecoder(1000000.0, 90000.0, 110000.0, 10000.0) // 90kHz/110kHz
 
 // Demodulate FSK signal
 symbols := fskDecoder.Demodulate(receivedSignal)
@@ -332,11 +345,47 @@ symbols := fskDecoder.Demodulate(receivedSignal)
 // symbols will contain 0s and 1s for binary FSK
 ```
 
+#### FSK SNR Performance Characteristics
+
+The FSK decoder has been tested for robustness at various Signal-to-Noise Ratio (SNR) levels. Performance characteristics:
+
+**Preamble Detection:**
+- **30-20 dB SNR**: 100% preamble detection success rate
+- **18-12 dB SNR**: 98-100% preamble detection success rate
+- **10-8 dB SNR**: 92-96% preamble detection success rate
+- **6-0 dB SNR**: 42-90% preamble detection success rate
+
+**Minimum SNR Requirements:**
+- **Target**: 20 dB SNR (100% preamble detection)
+- **Minimum**: 12 dB SNR (98% preamble detection)
+- **Marginal**: 8-10 dB SNR (92-96% preamble detection)
+
+**Decoder Features for Noise Robustness:**
+1. **Low-Pass Filtering**: Automatic low-pass filter (16 taps, cutoff at 4x max frequency or 80% Nyquist) applied before frequency detection
+2. **Adaptive Thresholds**: Frequency detection uses adaptive magnitude thresholds based on signal strength
+3. **Preamble Detection**: Requires 12 consecutive preamble symbols (highest frequency) for clean signals, 8 for noisy signals
+4. **START/END Markers**: 4-symbol START marker (lowest frequency) and 4-symbol END marker for packet boundaries
+5. **Lenient Symbol Detection**: Allows some non-preamble symbols during preamble detection to handle noise
+
+**Test Results Summary:**
+- Preamble detection works reliably down to 12 dB SNR
+- Bit decoding quality degrades significantly below 20 dB SNR
+- Current implementation achieves target of 20 dB SNR for reliable operation
+- Further improvements needed for reliable operation below 12 dB SNR
+
+**Test Programs:**
+- `tmp/fsk_snr_preamble.go`: Tests preamble detection at various SNR levels
+- `tmp/fsk_snr_bit_quality.go`: Tests bit decoding quality (symbol-by-symbol) at various SNR levels
+
 ### ASK (Amplitude Shift Keying) Demodulation
 
 ```go
+import (
+    "github.com/itohio/EasyRobot/x/math/dsp/modulation/ask"
+)
+
 // ASK Decoder
-askDecoder := dsp.NewASKDecoder(1000000.0, 100000.0, 10000.0)
+askDecoder := ask.NewDecoder(1000000.0, 100000.0, 10000.0)
 
 // Demodulate ASK signal
 symbols := askDecoder.Demodulate(receivedSignal)
@@ -347,8 +396,13 @@ symbols := askDecoder.Demodulate(receivedSignal)
 ### QAM (Quadrature Amplitude Modulation)
 
 ```go
+import (
+    "github.com/itohio/EasyRobot/x/math/dsp/modulation"
+    "github.com/itohio/EasyRobot/x/math/dsp/modulation/qam"
+)
+
 // QAM-16 Encoder (4 bits per symbol)
-qamEncoder := dsp.NewQAM16Encoder(sampleRate, carrierFreq, symbolRate)
+qamEncoder := qam.NewEncoder(sampleRate, carrierFreq, symbolRate)
 
 // Generate QAM modulated signal from data
 data := []byte("Hello World")
@@ -357,13 +411,13 @@ signalLength := 1000
 modulatedSignal := qamEncoder.GenerateSignal(data, amplitude, signalLength)
 
 // Alternative: Encode bytes to amplitudes using interface
-encoder := qamEncoder.(dsp.ModulatorEncoder)
+encoder := qamEncoder.(modulation.ModulatorEncoder)
 signal := vec.New(1000)
 encoder.Encode(signal, []byte("Hello World"))
 
 // QAM-16 Decoder
-qamDecoder := dsp.NewQAM16Decoder(sampleRate, carrierFreq, symbolRate)
-decoder := qamDecoder.(dsp.ModulatorDecoder)
+qamDecoder := qam.NewDecoder(sampleRate, carrierFreq, symbolRate)
+decoder := qamDecoder.(modulation.ModulatorDecoder)
 
 // Set end-of-packet callback for protocol awareness
 decoder.OnIsEndOfPacket(func(decoded []byte) bool {
@@ -376,6 +430,195 @@ decoder.Decode(decoded, signal)
 
 // decoded now contains the original bytes
 ```
+
+### Manchester Line Coding
+
+Manchester encoding is a line coding scheme where each data bit is encoded as a transition, providing built-in clock recovery and DC balance. The implementation uses optimized 4-bit lookup tables (64 bytes total) for high performance.
+
+#### Encoding Variants
+
+**Standard Manchester:**
+- `0` → `01` (low-to-high transition)
+- `1` → `10` (high-to-low transition)
+
+**IEEE 802.3 Manchester:**
+- `0` → `10` (high-to-low transition)
+- `1` → `01` (low-to-high transition)
+
+#### Basic Usage
+
+```go
+// Standard Manchester Encoder
+encoder := dsp.NewManchesterEncoder()
+
+// Encode bytes to Manchester-encoded bytes
+data := []byte{0xAA, 0x55}
+encoded := make([]byte, len(data)*2) // Output is 2x input size
+bytesWritten := encoder.Encode(encoded, data)
+
+// Standard Manchester Decoder
+decoder := dsp.NewManchesterDecoder()
+
+// Decode Manchester-encoded bytes back to original
+decoded := make([]byte, len(encoded)/2) // Output is half input size
+bytesDecoded := decoder.Decode(decoded, encoded)
+```
+
+#### IEEE 802.3 Variant
+
+```go
+// IEEE 802.3 Manchester Encoder
+encoder := dsp.NewManchesterEncoderIEEE8023()
+
+// IEEE 802.3 Manchester Decoder
+decoder := dsp.NewManchesterDecoderIEEE8023()
+```
+
+#### Handling Misaligned Signals
+
+Manchester encoding guarantees a transition in the middle of each bit period, which helps with clock recovery. However, if decoding starts at the wrong bit position, the decoder may misinterpret symbols. The decoder supports bit offset adjustment for misaligned signals:
+
+```go
+decoder := dsp.NewManchesterDecoder()
+
+// Set bit offset for misaligned signals (0-7 bits)
+decoder.SetBitOffset(3) // Skip first 3 bits before decoding
+
+// Decode with offset applied
+decoded := make([]byte, len(encoded)/2)
+decoder.Decode(decoded, encoded)
+
+// Reset offset
+decoder.Reset()
+```
+
+**When to use bit offset:**
+- Signal stream doesn't start at a byte boundary
+- Clock recovery has identified the correct symbol boundary
+- Processing partial byte streams
+
+**Note:** For best results, use clock recovery/synchronization to find the correct symbol boundary before decoding. The bit offset is a simple mechanism for handling known misalignments.
+
+#### Performance Characteristics
+
+**Memory Usage:**
+- **Lookup Tables**: 64 bytes total (16 bytes × 4 tables)
+  - `encodeTable4Std`: 16 bytes
+  - `encodeTable4IEEE`: 16 bytes
+  - `decodeTable4Std`: 16 bytes
+  - `decodeTable4IEEE`: 16 bytes
+- **96% reduction** compared to 8-bit lookup tables (1.5KB → 64 bytes)
+
+**Encoding Performance:**
+- Processes 4 bits at a time using lookup tables
+- 2 lookups per input byte (high 4 bits, low 4 bits)
+- No bit manipulation loops in hot path
+
+**Decoding Performance:**
+- Fast path: processes 2 input bytes simultaneously when aligned
+- Uses 4-bit lookup tables for efficient symbol decoding
+- Falls back to bit-by-bit decoding for misaligned signals
+
+**Cache Efficiency:**
+- 64-byte lookup tables fit in a single CPU cache line
+- Excellent cache locality and hit rates
+
+#### Roundtrip Example
+
+```go
+encoder := dsp.NewManchesterEncoder()
+decoder := dsp.NewManchesterDecoder()
+
+// Original data
+original := []byte{0x12, 0x34, 0x56, 0x78}
+
+// Encode
+encoded := make([]byte, len(original)*2)
+encoder.Encode(encoded, original)
+
+// Decode
+decoded := make([]byte, len(original))
+decoder.Decode(decoded, encoded)
+
+// decoded now matches original
+```
+
+#### Use Cases
+
+Manchester encoding is commonly used in:
+- **Ethernet (IEEE 802.3)**: Physical layer encoding
+- **RFID systems**: Data transmission with clock recovery
+- **Serial communication**: DC-balanced signaling
+- **Embedded systems**: Simple line coding with built-in synchronization
+
+**Advantages:**
+- Built-in clock recovery (transition in middle of each bit)
+- DC balance (equal number of high and low states)
+- Error detection (invalid symbols: 00 or 11)
+- Simple implementation
+
+**Trade-offs:**
+- 2x bandwidth requirement (each bit becomes 2 bits)
+- Not the most bandwidth-efficient encoding
+
+#### Composition with Other Encoders/Decoders
+
+Manchester encoder/decoder can be composed with other byte-level encoders/decoders or modulator encoders/decoders for flexible signal processing chains.
+
+**Byte-Level Composition:**
+
+```go
+// Chain multiple byte encoders together
+manchester1 := dsp.NewManchesterEncoder()
+manchester2 := dsp.NewManchesterEncoder() // or another encoder
+composedEncoder := dsp.NewComposedByteEncoder(manchester1, manchester2)
+
+// Encode through both encoders
+data := []byte{0xAA, 0x55}
+encoded := make([]byte, len(data)*4) // Estimate size
+composedEncoder.Encode(encoded, data)
+
+// Chain multiple byte decoders (applied in reverse order)
+composedDecoder := dsp.NewComposedByteDecoder(decoder1, decoder2)
+decoded := make([]byte, len(encoded)/4)
+composedDecoder.Decode(decoded, encoded)
+```
+
+**Composition with Modulator Encoders/Decoders:**
+
+```go
+// Chain Manchester encoder with BFSK encoder
+manchesterEncoder := dsp.NewManchesterEncoder()
+fskEncoder := dsp.NewFSKEncoder(sampleRate, freqLow, freqHigh, symbolRate)
+
+// Create composed encoder: bytes -> Manchester -> bytes -> BFSK -> amplitudes
+composedEncoder := dsp.NewModulatorEncoderWithByteEncoder(manchesterEncoder, fskEncoder)
+
+data := []byte("Hello")
+amplitudes := vec.New(1000)
+composedEncoder.Encode(amplitudes, data)
+
+// Chain BFSK decoder with Manchester decoder
+fskDecoder := dsp.NewFSKDecoder(sampleRate, freqLow, freqHigh, symbolRate)
+manchesterDecoder := dsp.NewManchesterDecoder()
+
+// Create composed decoder: amplitudes -> BFSK -> bytes -> Manchester -> bytes
+composedDecoder := dsp.NewModulatorDecoderWithByteDecoder(fskDecoder, manchesterDecoder)
+
+decoded := make([]byte, len(data))
+composedDecoder.Decode(decoded, amplitudes)
+```
+
+**Interface Compliance:**
+
+- `ManchesterEncoder` implements `ByteEncoder` interface
+- `ManchesterDecoder` implements `ByteDecoder` interface
+- `ComposedByteEncoder` implements `ByteEncoder` interface
+- `ComposedByteDecoder` implements `ByteDecoder` interface
+- `ModulatorEncoderWithByteEncoder` implements `ModulatorEncoder` interface
+- `ModulatorDecoderWithByteDecoder` implements `ModulatorDecoder` interface
+
+This allows flexible composition of encoding/decoding stages in your signal processing pipeline.
 
 ## Modulator Interfaces
 

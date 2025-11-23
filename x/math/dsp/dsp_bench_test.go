@@ -14,7 +14,7 @@ func BenchmarkFFT_Transform1D_1024(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		fft.Forward(signal, spectrum)
+		fft.Forward(spectrum, signal)
 	}
 }
 
@@ -25,7 +25,7 @@ func BenchmarkFFT_Transform1D_8192(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		fft.Forward(signal, spectrum)
+		fft.Forward(spectrum, signal)
 	}
 }
 
@@ -36,7 +36,7 @@ func BenchmarkFFT_InverseTransform1D_1024(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		fft.Backward(spectrum, signal)
+		fft.Backward(signal, spectrum)
 	}
 }
 
@@ -69,7 +69,7 @@ func BenchmarkFFT_InverseTransform2D_64x64(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		fft.Backward(spectrum, matrix)
+		fft.Backward(matrix, spectrum)
 	}
 }
 
@@ -81,7 +81,7 @@ func BenchmarkFFT1D_Convolve_1024(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		fft.Convolve(signal, kernel, result)
+		fft.Convolve(result, signal, kernel)
 	}
 }
 
@@ -93,7 +93,7 @@ func BenchmarkFFT2D_Convolve_64x64(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		fft.Convolve(signal, kernel, result)
+		fft.Convolve(result, signal, kernel)
 	}
 }
 
