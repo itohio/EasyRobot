@@ -253,6 +253,8 @@ func (dsss *Demodulator) OnIsEndOfPacket(callback func([]byte) bool) {
 }
 
 // IsLocked returns whether the demodulator is locked
+//
+// Deprecated: This method is not part of the Demodulator interface.
 func (dsss *Demodulator) IsLocked() bool {
 	return dsss.locked
 }

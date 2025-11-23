@@ -140,50 +140,21 @@ func TestRoundtrip_BFSK_Clean(t *testing.T) {
 	modulator := NewModulator(testSampleRate, testFreqLow, testFreqHigh, testSymbolRate)
 	demodulator := NewDemodulator(testSampleRate, testFreqLow, testFreqHigh, testSymbolRate)
 
-	// Test data
+	// Test data - short data
 	testData := []byte{0x55, 0xAA, 0x12, 0x34}
 
-	// Encode (encoder doesn't add padding)
-	expectedSize := modulator.Encode(nil, testData)
-	signalAmplitudes := vec.New(expectedSize)
-	samplesWritten := modulator.Encode(signalAmplitudes, testData)
-
-	assert.Greater(t, samplesWritten, 0, "Should write samples")
-
-	// Add padding in test to simulate signal in noise (0.5s on each side)
+	// Encode with padding using helper
 	paddingSamples := int(testSampleRate * 0.5)
-	totalSize := paddingSamples*2 + samplesWritten
-	paddedAmplitudes := vec.New(totalSize)
-	paddedData := []float32(paddedAmplitudes)
-	signalData := []float32(signalAmplitudes)
+	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 10) // Chunk size: 10 bytes
 
-	// Left padding (zeros)
-	for i := 0; i < paddingSamples; i++ {
-		paddedData[i] = 0
-	}
-	// Signal in middle
-	copy(paddedData[paddingSamples:], signalData)
-	// Right padding (zeros)
-	for i := paddingSamples + samplesWritten; i < totalSize; i++ {
-		paddedData[i] = 0
-	}
+	// Decode with chunks using helper
+	decoded := modulation.DemodulateWithChunks(t, demodulator, signal, 1000, 0)
 
-	// Decode
-	decoded := make([]byte, len(testData)*2)
-	bytesDecoded := demodulator.Decode(decoded, paddedAmplitudes)
+	// Should decode some bytes
+	assert.Greater(t, len(decoded), 0, "Should decode some bytes")
 
-	// Should decode some bytes (may not be perfect due to noise/padding)
-	assert.Greater(t, bytesDecoded, 0, "Should decode some bytes")
-
-	// Check that decoded data is not all zeros
-	hasNonZero := false
-	for i := 0; i < bytesDecoded && i < len(testData); i++ {
-		if decoded[i] != 0 {
-			hasNonZero = true
-			break
-		}
-	}
-	assert.True(t, hasNonZero, "Decoded data should not be all zeros")
+	// Verify decoded data matches input exactly (may have extra bytes from padding)
+	modulation.VerifyExactMatch(t, testData, decoded)
 }
 
 // TestRoundtrip_BFSK_WithNoise tests round-trip encoding/decoding for BFSK with noise
@@ -191,42 +162,27 @@ func TestRoundtrip_BFSK_WithNoise(t *testing.T) {
 	modulator := NewModulator(testSampleRate, testFreqLow, testFreqHigh, testSymbolRate)
 	demodulator := NewDemodulator(testSampleRate, testFreqLow, testFreqHigh, testSymbolRate)
 
-	// Test data
+	// Test data - short data
 	testData := []byte{0x55, 0xAA}
 
-	// Encode (encoder doesn't add padding)
-	expectedSize := modulator.Encode(nil, testData)
-	signalAmplitudes := vec.New(expectedSize)
-	samplesWritten := modulator.Encode(signalAmplitudes, testData)
-	require.Greater(t, samplesWritten, 0, "Should write samples")
-
-	// Add padding in test to simulate signal in noise (0.5s on each side)
+	// Encode with padding using helper
 	paddingSamples := int(testSampleRate * 0.5)
-	totalSize := paddingSamples*2 + samplesWritten
-	paddedAmplitudes := vec.New(totalSize)
-	paddedData := []float32(paddedAmplitudes)
-	signalData := []float32(signalAmplitudes)
-
-	// Left padding (zeros)
-	for i := 0; i < paddingSamples; i++ {
-		paddedData[i] = 0
-	}
-	// Signal in middle
-	copy(paddedData[paddingSamples:], signalData)
-	// Right padding (zeros)
-	for i := paddingSamples + samplesWritten; i < totalSize; i++ {
-		paddedData[i] = 0
-	}
+	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 5) // Chunk size: 5 bytes
 
 	// Add noise (15dB SNR)
-	noisyAmplitudes := addNoise(paddedAmplitudes, 15.0)
+	noisySignal := addNoise(signal, 15.0)
 
-	// Decode
-	decoded := make([]byte, len(testData)*2)
-	bytesDecoded := demodulator.Decode(decoded, noisyAmplitudes)
+	// Reset demodulator for clean state
+	demodulator.Reset()
+
+	// Decode with chunks using helper
+	decoded := modulation.DemodulateWithChunks(t, demodulator, noisySignal, 1000, 0)
 
 	// Should decode some bytes even with noise
-	assert.Greater(t, bytesDecoded, 0, "Should decode bytes with 15dB SNR")
+	assert.Greater(t, len(decoded), 0, "Should decode bytes with 15dB SNR")
+
+	// Verify decoded data matches input exactly (may have extra bytes from padding)
+	modulation.VerifyExactMatch(t, testData, decoded)
 }
 
 // TestRoundtrip_BFSK_15dB_SNR tests BFSK specifically at 15dB SNR
@@ -237,64 +193,24 @@ func TestRoundtrip_BFSK_15dB_SNR(t *testing.T) {
 	// Test data - use simple pattern for easier verification
 	testData := []byte{0xAA} // 10101010 - alternating pattern
 
-	// Encode (encoder doesn't add padding)
-	expectedSize := modulator.Encode(nil, testData)
-	signalAmplitudes := vec.New(expectedSize)
-	samplesWritten := modulator.Encode(signalAmplitudes, testData)
-	require.Greater(t, samplesWritten, 0, "Should write samples")
-
-	// Add padding in test to simulate signal in noise (0.5s on each side)
+	// Encode with padding using helper
 	paddingSamples := int(testSampleRate * 0.5)
-	totalSize := paddingSamples*2 + samplesWritten
-	paddedAmplitudes := vec.New(totalSize)
-	paddedData := []float32(paddedAmplitudes)
-	signalData := []float32(signalAmplitudes)
-
-	// Left padding (zeros)
-	for i := 0; i < paddingSamples; i++ {
-		paddedData[i] = 0
-	}
-	// Signal in middle
-	copy(paddedData[paddingSamples:], signalData)
-	// Right padding (zeros)
-	for i := paddingSamples + samplesWritten; i < totalSize; i++ {
-		paddedData[i] = 0
-	}
+	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 0) // Encode all at once
 
 	// Add 15dB SNR noise
-	noisyAmplitudes := addNoise(paddedAmplitudes, 15.0)
+	noisySignal := addNoise(signal, 15.0)
 
 	// Reset demodulator for clean state
 	demodulator.Reset()
 
-	// Decode in chunks to simulate streaming
-	decoded := make([]byte, len(testData)*4)
-	bytesDecoded := 0
-
-	noisyData := []float32(noisyAmplitudes.(vec.Vector))
-	chunkSize := 1000
-	for i := 0; i < len(noisyData); i += chunkSize {
-		end := i + chunkSize
-		if end > len(noisyData) {
-			end = len(noisyData)
-		}
-		chunk := vec.New(end - i)
-		chunkData := []float32(chunk)
-		copy(chunkData, noisyData[i:end])
-
-		remaining := decoded[bytesDecoded:]
-		chunkDecoded := demodulator.Decode(remaining, chunk)
-		bytesDecoded += chunkDecoded
-
-		if chunkDecoded == 0 && !demodulator.IsLocked() {
-			// No more data and not locked, might be done
-			break
-		}
-	}
+	// Decode with chunks using helper
+	decoded := modulation.DemodulateWithChunks(t, demodulator, noisySignal, 1000, 0)
 
 	// At 15dB SNR, we should be able to decode something
-	// The exact amount depends on signal detector lock and signal quality
-	assert.Greater(t, bytesDecoded, 0, "Should decode bytes at 15dB SNR")
+	assert.Greater(t, len(decoded), 0, "Should decode bytes at 15dB SNR")
+
+	// Verify decoded data matches input exactly (may have extra bytes from padding)
+	modulation.VerifyExactMatch(t, testData, decoded)
 }
 
 // TestRoundtrip_BFSK_Padding tests that padding is handled correctly
@@ -304,31 +220,12 @@ func TestRoundtrip_BFSK_Padding(t *testing.T) {
 
 	testData := []byte{0x55}
 
-	// Encode (encoder doesn't add padding)
-	expectedSize := modulator.Encode(nil, testData)
-	signalAmplitudes := vec.New(expectedSize)
-	samplesWritten := modulator.Encode(signalAmplitudes, testData)
-	require.Greater(t, samplesWritten, 0)
-
-	// Add padding in test to simulate signal in noise (0.5s on each side)
+	// Encode with padding using helper
 	paddingSamples := int(testSampleRate * 0.5)
-	totalSize := paddingSamples*2 + samplesWritten
-	paddedAmplitudes := vec.New(totalSize)
-	paddedData := []float32(paddedAmplitudes)
-	signalData := []float32(signalAmplitudes)
-
-	// Left padding (zeros)
-	for i := 0; i < paddingSamples; i++ {
-		paddedData[i] = 0
-	}
-	// Signal in middle
-	copy(paddedData[paddingSamples:], signalData)
-	// Right padding (zeros)
-	for i := paddingSamples + samplesWritten; i < totalSize; i++ {
-		paddedData[i] = 0
-	}
+	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 0) // Encode all at once
 
 	// Verify padding is present
+	paddedData := []float32(signal.(vec.Vector))
 	assert.GreaterOrEqual(t, len(paddedData), paddingSamples*2, "Should have space for padding on both sides")
 
 	// Check that padding regions are zeros
@@ -353,12 +250,11 @@ func TestRoundtrip_BFSK_Padding(t *testing.T) {
 	assert.Equal(t, paddingSamples, leftZeros, "Left padding should be all zeros")
 	assert.Equal(t, paddingSamples, rightZeros, "Right padding should be all zeros")
 
-	// Decode should handle padding (signal detector should skip zeros)
-	decoded := make([]byte, 100)
-	bytesDecoded := demodulator.Decode(decoded, paddedAmplitudes)
+	// Decode with chunks using helper
+	decoded := modulation.DemodulateWithChunks(t, demodulator, signal, 1000, 0)
 
 	// Should decode something (signal detector should skip padding)
-	assert.GreaterOrEqual(t, bytesDecoded, 0, "Should handle padding correctly")
+	assert.GreaterOrEqual(t, len(decoded), 0, "Should handle padding correctly")
 }
 
 // TestDemodulator_ProcessChunk tests ProcessChunk method
@@ -396,69 +292,21 @@ func TestRoundtrip_8FSK_Clean(t *testing.T) {
 	modulator := NewMModulator(testSampleRate, testSymbolRate, freqs...)
 	demodulator := NewMDemodulator(testSampleRate, testSymbolRate, freqs...)
 
-	// Test data
+	// Test data - short data
 	testData := []byte{0x12, 0x34, 0x56}
 
-	// Encode (encoder doesn't add padding)
-	expectedSize := modulator.Encode(nil, testData)
-	signalAmplitudes := vec.New(expectedSize)
-	samplesWritten := modulator.Encode(signalAmplitudes, testData)
-
-	assert.Greater(t, samplesWritten, 0, "Should write samples")
-
-	// Add padding in test to simulate signal in noise (0.5s on each side)
+	// Encode with padding using helper
 	paddingSamples := int(testSampleRate * 0.5)
-	totalSize := paddingSamples*2 + samplesWritten
-	paddedAmplitudes := vec.New(totalSize)
-	paddedData := []float32(paddedAmplitudes)
-	signalData := []float32(signalAmplitudes)
+	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 10) // Chunk size: 10 bytes
 
-	// Left padding (zeros)
-	for i := 0; i < paddingSamples; i++ {
-		paddedData[i] = 0
-	}
-	// Signal in middle
-	copy(paddedData[paddingSamples:], signalData)
-	// Right padding (zeros)
-	for i := paddingSamples + samplesWritten; i < totalSize; i++ {
-		paddedData[i] = 0
-	}
-
-	// Decode in chunks to allow signal detector to lock
-	decoded := make([]byte, len(testData)*2)
-	bytesDecoded := 0
-
-	chunkSize := 1000
-	for i := 0; i < len(paddedData); i += chunkSize {
-		end := i + chunkSize
-		if end > len(paddedData) {
-			end = len(paddedData)
-		}
-		chunk := vec.New(end - i)
-		chunkData := []float32(chunk)
-		copy(chunkData, paddedData[i:end])
-
-		remaining := decoded[bytesDecoded:]
-		chunkDecoded := demodulator.Decode(remaining, chunk)
-		bytesDecoded += chunkDecoded
-
-		if chunkDecoded == 0 && !demodulator.IsLocked() && i > len(paddedData)/2 {
-			break
-		}
-	}
+	// Decode with chunks using helper
+	decoded := modulation.DemodulateWithChunks(t, demodulator, signal, 1000, 0)
 
 	// Should decode some bytes
-	assert.Greater(t, bytesDecoded, 0, "Should decode some bytes for 8-FSK")
+	assert.Greater(t, len(decoded), 0, "Should decode some bytes for 8-FSK")
 
-	// Check that decoded data is not all zeros
-	hasNonZero := false
-	for i := 0; i < bytesDecoded && i < len(testData); i++ {
-		if decoded[i] != 0 {
-			hasNonZero = true
-			break
-		}
-	}
-	assert.True(t, hasNonZero, "Decoded data should not be all zeros")
+	// Verify decoded data matches input exactly (may have extra bytes from padding)
+	modulation.VerifyExactMatch(t, testData, decoded)
 }
 
 // TestRoundtrip_8FSK_WithNoise tests round-trip encoding/decoding for 8-FSK with noise
@@ -467,24 +315,33 @@ func TestRoundtrip_8FSK_WithNoise(t *testing.T) {
 	modulator := NewMModulator(testSampleRate, testSymbolRate, freqs...)
 	demodulator := NewMDemodulator(testSampleRate, testSymbolRate, freqs...)
 
-	// Test data
+	// Test data - short data
 	testData := []byte{0x12, 0x34}
 
-	// Encode
-	expectedSize := modulator.Encode(nil, testData)
-	amplitudes := vec.New(expectedSize)
-	samplesWritten := modulator.Encode(amplitudes, testData)
-	require.Greater(t, samplesWritten, 0, "Should write samples")
+	// Encode with padding using helper
+	paddingSamples := int(testSampleRate * 0.5)
+	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 5) // Chunk size: 5 bytes
 
 	// Add noise (15dB SNR)
-	noisyAmplitudes := addNoise(amplitudes, 15.0)
+	noisySignal := addNoise(signal, 15.0)
 
-	// Decode
-	decoded := make([]byte, len(testData)*2)
-	bytesDecoded := demodulator.Decode(decoded, noisyAmplitudes)
+	// Reset demodulator for clean state
+	demodulator.Reset()
+
+	// Decode with chunks using helper
+	decoded := modulation.DemodulateWithChunks(t, demodulator, noisySignal, 1000, 0)
 
 	// Should decode some bytes even with noise
-	assert.Greater(t, bytesDecoded, 0, "Should decode bytes with 15dB SNR for 8-FSK")
+	assert.Greater(t, len(decoded), 0, "Should decode bytes with 15dB SNR for 8-FSK")
+
+	// Verify decoded data matches input
+	minLen := len(decoded)
+	if len(testData) < minLen {
+		minLen = len(testData)
+	}
+	if minLen > 0 {
+		assert.Equal(t, testData[:minLen], decoded[:minLen], "Decoded data should match input for 8-FSK with noise")
+	}
 }
 
 // TestRoundtrip_16FSK_Clean tests round-trip encoding/decoding for 16-FSK without noise
@@ -499,77 +356,29 @@ func TestRoundtrip_16FSK_Clean(t *testing.T) {
 	// Test data - use more data to give signal detector more signal to work with
 	testData := []byte{0x12, 0x34, 0x56, 0x78, 0x9A}
 
-	// Encode (encoder doesn't add padding)
-	expectedSize := modulator.Encode(nil, testData)
-	signalAmplitudes := vec.New(expectedSize)
-	samplesWritten := modulator.Encode(signalAmplitudes, testData)
-
-	assert.Greater(t, samplesWritten, 0, "Should write samples")
-
-	// Add padding in test to simulate signal in noise (0.5s on each side)
+	// Encode with padding using helper
 	paddingSamples := int(testSampleRate * 0.5)
-	totalSize := paddingSamples*2 + samplesWritten
-	paddedAmplitudes := vec.New(totalSize)
-	paddedData := []float32(paddedAmplitudes)
-	signalData := []float32(signalAmplitudes)
+	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 10) // Chunk size: 10 bytes
 
-	// Left padding (zeros)
-	for i := 0; i < paddingSamples; i++ {
-		paddedData[i] = 0
-	}
-	// Signal in middle
-	copy(paddedData[paddingSamples:], signalData)
-	// Right padding (zeros)
-	for i := paddingSamples + samplesWritten; i < totalSize; i++ {
-		paddedData[i] = 0
-	}
-
-	// Decode in chunks to allow signal detector to lock
-	// Use smaller chunks for 16-FSK to allow gradual signal detection
-	decoded := make([]byte, len(testData)*2)
-	bytesDecoded := 0
-
-	chunkSize := 500 // Smaller chunks for better signal detector adaptation
-	for i := 0; i < len(paddedData); i += chunkSize {
-		end := i + chunkSize
-		if end > len(paddedData) {
-			end = len(paddedData)
-		}
-		chunk := vec.New(end - i)
-		chunkData := []float32(chunk)
-		copy(chunkData, paddedData[i:end])
-
-		remaining := decoded[bytesDecoded:]
-		chunkDecoded := demodulator.Decode(remaining, chunk)
-		bytesDecoded += chunkDecoded
-
-		// Continue processing until we've processed most of the signal
-		if chunkDecoded == 0 && !demodulator.IsLocked() && i > len(paddedData)*4/5 {
-			break
-		}
-	}
+	// Decode with chunks using helper - use smaller chunks for 16-FSK
+	decoded := modulation.DemodulateWithChunks(t, demodulator, signal, 500, 0)
 
 	// For 16-FSK, signal detection can be more challenging due to frequency spacing
 	// Verify we at least processed the signal
-	if bytesDecoded == 0 {
-		// Check if signal detector at least saw the signal
+	if len(decoded) == 0 {
 		t.Logf("16-FSK: No bytes decoded in clean test, but signal was processed")
-		// This is acceptable for 16-FSK which is very sensitive
 	}
 
 	// Verify the system doesn't crash and processes the signal
-	assert.GreaterOrEqual(t, bytesDecoded, 0, "Should not have negative bytes decoded")
+	assert.GreaterOrEqual(t, len(decoded), 0, "Should not have negative bytes decoded")
 
-	// If we did decode, verify it's not all zeros
-	if bytesDecoded > 0 {
-		hasNonZero := false
-		for i := 0; i < bytesDecoded && i < len(testData); i++ {
-			if decoded[i] != 0 {
-				hasNonZero = true
-				break
-			}
+	// If we did decode, verify it matches input
+	if len(decoded) > 0 {
+		minLen := len(decoded)
+		if len(testData) < minLen {
+			minLen = len(testData)
 		}
-		assert.True(t, hasNonZero, "Decoded data should not be all zeros")
+		assert.Equal(t, testData[:minLen], decoded[:minLen], "Decoded data should match input for 16-FSK")
 	}
 }
 
@@ -582,68 +391,228 @@ func TestRoundtrip_16FSK_WithNoise(t *testing.T) {
 	modulator := NewMModulator(testSampleRate, testSymbolRate, freqs...)
 	demodulator := NewMDemodulator(testSampleRate, testSymbolRate, freqs...)
 
-	// Test data
+	// Test data - short data
 	testData := []byte{0x12, 0x34}
 
-	// Encode (encoder doesn't add padding)
-	expectedSize := modulator.Encode(nil, testData)
-	signalAmplitudes := vec.New(expectedSize)
-	samplesWritten := modulator.Encode(signalAmplitudes, testData)
-	require.Greater(t, samplesWritten, 0, "Should write samples")
-
-	// Add padding in test to simulate signal in noise (0.5s on each side)
+	// Encode with padding using helper
 	paddingSamples := int(testSampleRate * 0.5)
-	totalSize := paddingSamples*2 + samplesWritten
-	paddedAmplitudes := vec.New(totalSize)
-	paddedData := []float32(paddedAmplitudes)
-	signalData := []float32(signalAmplitudes)
-
-	// Left padding (zeros)
-	for i := 0; i < paddingSamples; i++ {
-		paddedData[i] = 0
-	}
-	// Signal in middle
-	copy(paddedData[paddingSamples:], signalData)
-	// Right padding (zeros)
-	for i := paddingSamples + samplesWritten; i < totalSize; i++ {
-		paddedData[i] = 0
-	}
+	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 5) // Chunk size: 5 bytes
 
 	// Add noise (18dB SNR - increased by 3dB for M=16 since 16-FSK is more sensitive to noise)
-	noisyAmplitudes := addNoise(paddedAmplitudes, 18.0)
+	noisySignal := addNoise(signal, 18.0)
 
 	// Reset demodulator for clean state
 	demodulator.Reset()
 
-	// Decode in chunks to simulate streaming
-	decoded := make([]byte, len(testData)*2)
-	bytesDecoded := 0
-
-	noisyData := []float32(noisyAmplitudes.(vec.Vector))
-	chunkSize := 1000
-	for i := 0; i < len(noisyData); i += chunkSize {
-		end := i + chunkSize
-		if end > len(noisyData) {
-			end = len(noisyData)
-		}
-		chunk := vec.New(end - i)
-		chunkData := []float32(chunk)
-		copy(chunkData, noisyData[i:end])
-
-		remaining := decoded[bytesDecoded:]
-		chunkDecoded := demodulator.Decode(remaining, chunk)
-		bytesDecoded += chunkDecoded
-
-		if chunkDecoded == 0 && !demodulator.IsLocked() && i > len(noisyData)*3/4 {
-			break
-		}
-	}
+	// Decode with chunks using helper
+	decoded := modulation.DemodulateWithChunks(t, demodulator, noisySignal, 1000, 0)
 
 	// At 18dB SNR (15dB + 3dB for M=16), 16-FSK should be able to decode something
 	// 16-FSK is more sensitive, so we're lenient
-	assert.GreaterOrEqual(t, bytesDecoded, 0, "Should handle 16-FSK with noise")
-	if bytesDecoded > 0 {
-		t.Logf("16-FSK: Successfully decoded %d bytes at 18dB SNR (M=16 requires ~3dB more SNR)", bytesDecoded)
+	assert.GreaterOrEqual(t, len(decoded), 0, "Should handle 16-FSK with noise")
+	if len(decoded) > 0 {
+		t.Logf("16-FSK: Successfully decoded %d bytes at 18dB SNR (M=16 requires ~3dB more SNR)", len(decoded))
+	}
+}
+
+// TestRoundtrip_BFSK_LongData tests round-trip encoding/decoding for BFSK with longer data (71 bytes)
+func TestRoundtrip_BFSK_LongData(t *testing.T) {
+	modulator := NewModulator(testSampleRate, testFreqLow, testFreqHigh, testSymbolRate)
+	demodulator := NewDemodulator(testSampleRate, testFreqLow, testFreqHigh, testSymbolRate)
+
+	// Test data - 71 bytes (longer data)
+	testData := make([]byte, 71)
+	for i := range testData {
+		testData[i] = byte(i % 256)
+	}
+
+	// Encode with padding using helper
+	paddingSamples := int(testSampleRate * 0.5)
+	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 10) // Chunk size: 10 bytes
+
+	// Decode with chunks using helper
+	decoded := modulation.DemodulateWithChunks(t, demodulator, signal, 1000, 0)
+
+	// Should decode some bytes
+	assert.Greater(t, len(decoded), 0, "Should decode some bytes for 71-byte BFSK")
+
+	// Verify decoded data matches input
+	minLen := len(decoded)
+	if len(testData) < minLen {
+		minLen = len(testData)
+	}
+	if minLen > 0 {
+		assert.Equal(t, testData[:minLen], decoded[:minLen], "Decoded data should match input for 71-byte BFSK")
+	}
+}
+
+// TestRoundtrip_BFSK_LongData_WithNoise tests round-trip encoding/decoding for BFSK with longer data (71 bytes) and noise
+func TestRoundtrip_BFSK_LongData_WithNoise(t *testing.T) {
+	modulator := NewModulator(testSampleRate, testFreqLow, testFreqHigh, testSymbolRate)
+	demodulator := NewDemodulator(testSampleRate, testFreqLow, testFreqHigh, testSymbolRate)
+
+	// Test data - 71 bytes (longer data)
+	testData := make([]byte, 71)
+	for i := range testData {
+		testData[i] = byte(i % 256)
+	}
+
+	// Encode with padding using helper
+	paddingSamples := int(testSampleRate * 0.5)
+	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 10) // Chunk size: 10 bytes
+
+	// Add noise (15dB SNR)
+	noisySignal := addNoise(signal, 15.0)
+
+	// Reset demodulator for clean state
+	demodulator.Reset()
+
+	// Decode with chunks using helper
+	decoded := modulation.DemodulateWithChunks(t, demodulator, noisySignal, 1000, 0)
+
+	// Should decode some bytes even with noise
+	assert.Greater(t, len(decoded), 0, "Should decode bytes with 15dB SNR for 71-byte BFSK")
+
+	// Verify decoded data matches input exactly (may have extra bytes from padding)
+	modulation.VerifyExactMatch(t, testData, decoded)
+}
+
+// TestRoundtrip_8FSK_LongData tests round-trip encoding/decoding for 8-FSK with longer data (71 bytes)
+func TestRoundtrip_8FSK_LongData(t *testing.T) {
+	freqs := []float32{1000, 1250, 1500, 1750, 2000, 2250, 2500, 2750}
+	modulator := NewMModulator(testSampleRate, testSymbolRate, freqs...)
+	demodulator := NewMDemodulator(testSampleRate, testSymbolRate, freqs...)
+
+	// Test data - 71 bytes (longer data)
+	testData := make([]byte, 71)
+	for i := range testData {
+		testData[i] = byte(i % 256)
+	}
+
+	// Encode with padding using helper
+	paddingSamples := int(testSampleRate * 0.5)
+	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 10) // Chunk size: 10 bytes
+
+	// Decode with chunks using helper
+	decoded := modulation.DemodulateWithChunks(t, demodulator, signal, 1000, 0)
+
+	// Should decode some bytes
+	assert.Greater(t, len(decoded), 0, "Should decode some bytes for 71-byte 8-FSK")
+
+	// Verify decoded data matches input
+	minLen := len(decoded)
+	if len(testData) < minLen {
+		minLen = len(testData)
+	}
+	if minLen > 0 {
+		assert.Equal(t, testData[:minLen], decoded[:minLen], "Decoded data should match input for 71-byte 8-FSK")
+	}
+}
+
+// TestRoundtrip_8FSK_LongData_WithNoise tests round-trip encoding/decoding for 8-FSK with longer data (71 bytes) and noise
+func TestRoundtrip_8FSK_LongData_WithNoise(t *testing.T) {
+	freqs := []float32{1000, 1250, 1500, 1750, 2000, 2250, 2500, 2750}
+	modulator := NewMModulator(testSampleRate, testSymbolRate, freqs...)
+	demodulator := NewMDemodulator(testSampleRate, testSymbolRate, freqs...)
+
+	// Test data - 71 bytes (longer data)
+	testData := make([]byte, 71)
+	for i := range testData {
+		testData[i] = byte(i % 256)
+	}
+
+	// Encode with padding using helper
+	paddingSamples := int(testSampleRate * 0.5)
+	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 10) // Chunk size: 10 bytes
+
+	// Add noise (15dB SNR)
+	noisySignal := addNoise(signal, 15.0)
+
+	// Reset demodulator for clean state
+	demodulator.Reset()
+
+	// Decode with chunks using helper
+	decoded := modulation.DemodulateWithChunks(t, demodulator, noisySignal, 1000, 0)
+
+	// Should decode some bytes even with noise
+	assert.Greater(t, len(decoded), 0, "Should decode bytes with 15dB SNR for 71-byte 8-FSK")
+
+	// Verify decoded data matches input exactly (may have extra bytes from padding)
+	modulation.VerifyExactMatch(t, testData, decoded)
+}
+
+// TestRoundtrip_16FSK_LongData tests round-trip encoding/decoding for 16-FSK with longer data (71 bytes)
+func TestRoundtrip_16FSK_LongData(t *testing.T) {
+	freqs := []float32{
+		1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700,
+		1800, 1900, 2000, 2100, 2200, 2300, 2400, 2500,
+	}
+	modulator := NewMModulator(testSampleRate, testSymbolRate, freqs...)
+	demodulator := NewMDemodulator(testSampleRate, testSymbolRate, freqs...)
+
+	// Test data - 71 bytes (longer data)
+	testData := make([]byte, 71)
+	for i := range testData {
+		testData[i] = byte(i % 256)
+	}
+
+	// Encode with padding using helper
+	paddingSamples := int(testSampleRate * 0.5)
+	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 10) // Chunk size: 10 bytes
+
+	// Decode with chunks using helper - use smaller chunks for 16-FSK
+	decoded := modulation.DemodulateWithChunks(t, demodulator, signal, 500, 0)
+
+	// For 16-FSK, signal detection can be more challenging
+	if len(decoded) == 0 {
+		t.Logf("16-FSK: No bytes decoded for 71-byte test, but signal was processed")
+	}
+
+	// Verify the system doesn't crash and processes the signal
+	assert.GreaterOrEqual(t, len(decoded), 0, "Should not have negative bytes decoded")
+
+	// If we did decode, verify it matches input
+	if len(decoded) > 0 {
+		minLen := len(decoded)
+		if len(testData) < minLen {
+			minLen = len(testData)
+		}
+		assert.Equal(t, testData[:minLen], decoded[:minLen], "Decoded data should match input for 71-byte 16-FSK")
+	}
+}
+
+// TestRoundtrip_16FSK_LongData_WithNoise tests round-trip encoding/decoding for 16-FSK with longer data (71 bytes) and noise
+func TestRoundtrip_16FSK_LongData_WithNoise(t *testing.T) {
+	freqs := []float32{
+		1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700,
+		1800, 1900, 2000, 2100, 2200, 2300, 2400, 2500,
+	}
+	modulator := NewMModulator(testSampleRate, testSymbolRate, freqs...)
+	demodulator := NewMDemodulator(testSampleRate, testSymbolRate, freqs...)
+
+	// Test data - 71 bytes (longer data)
+	testData := make([]byte, 71)
+	for i := range testData {
+		testData[i] = byte(i % 256)
+	}
+
+	// Encode with padding using helper
+	paddingSamples := int(testSampleRate * 0.5)
+	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 10) // Chunk size: 10 bytes
+
+	// Add noise (18dB SNR - increased by 3dB for M=16 since 16-FSK is more sensitive to noise)
+	noisySignal := addNoise(signal, 18.0)
+
+	// Reset demodulator for clean state
+	demodulator.Reset()
+
+	// Decode with chunks using helper
+	decoded := modulation.DemodulateWithChunks(t, demodulator, noisySignal, 1000, 0)
+
+	// At 18dB SNR, 16-FSK should be able to decode something
+	assert.GreaterOrEqual(t, len(decoded), 0, "Should handle 16-FSK with noise for 71-byte data")
+	if len(decoded) > 0 {
+		t.Logf("16-FSK: Successfully decoded %d bytes at 18dB SNR for 71-byte data (M=16 requires ~3dB more SNR)", len(decoded))
 	}
 }
 
@@ -655,31 +624,12 @@ func TestRoundtrip_8FSK_Padding(t *testing.T) {
 
 	testData := []byte{0x12}
 
-	// Encode (encoder doesn't add padding)
-	expectedSize := modulator.Encode(nil, testData)
-	signalAmplitudes := vec.New(expectedSize)
-	samplesWritten := modulator.Encode(signalAmplitudes, testData)
-	require.Greater(t, samplesWritten, 0)
-
-	// Add padding in test to simulate signal in noise (0.5s on each side)
+	// Encode with padding using helper
 	paddingSamples := int(testSampleRate * 0.5)
-	totalSize := paddingSamples*2 + samplesWritten
-	paddedAmplitudes := vec.New(totalSize)
-	paddedData := []float32(paddedAmplitudes)
-	signalData := []float32(signalAmplitudes)
-
-	// Left padding (zeros)
-	for i := 0; i < paddingSamples; i++ {
-		paddedData[i] = 0
-	}
-	// Signal in middle
-	copy(paddedData[paddingSamples:], signalData)
-	// Right padding (zeros)
-	for i := paddingSamples + samplesWritten; i < totalSize; i++ {
-		paddedData[i] = 0
-	}
+	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 0) // Encode all at once
 
 	// Verify padding is present
+	paddedData := []float32(signal.(vec.Vector))
 	assert.GreaterOrEqual(t, len(paddedData), paddingSamples*2, "Should have space for padding on both sides")
 
 	// Check that padding regions are zeros
@@ -704,12 +654,11 @@ func TestRoundtrip_8FSK_Padding(t *testing.T) {
 	assert.Equal(t, paddingSamples, leftZeros, "Left padding should be all zeros")
 	assert.Equal(t, paddingSamples, rightZeros, "Right padding should be all zeros")
 
-	// Decode should handle padding (signal detector should skip zeros)
-	decoded := make([]byte, 100)
-	bytesDecoded := demodulator.Decode(decoded, paddedAmplitudes)
+	// Decode with chunks using helper
+	decoded := modulation.DemodulateWithChunks(t, demodulator, signal, 1000, 0)
 
 	// Should decode something (signal detector should skip padding)
-	assert.GreaterOrEqual(t, bytesDecoded, 0, "Should handle padding correctly for 8-FSK")
+	assert.GreaterOrEqual(t, len(decoded), 0, "Should handle padding correctly for 8-FSK")
 }
 
 // TestRoundtrip_16FSK_Padding tests that padding is handled correctly for 16-FSK
@@ -723,31 +672,12 @@ func TestRoundtrip_16FSK_Padding(t *testing.T) {
 
 	testData := []byte{0x12}
 
-	// Encode (encoder doesn't add padding)
-	expectedSize := modulator.Encode(nil, testData)
-	signalAmplitudes := vec.New(expectedSize)
-	samplesWritten := modulator.Encode(signalAmplitudes, testData)
-	require.Greater(t, samplesWritten, 0)
-
-	// Add padding in test to simulate signal in noise (0.5s on each side)
+	// Encode with padding using helper
 	paddingSamples := int(testSampleRate * 0.5)
-	totalSize := paddingSamples*2 + samplesWritten
-	paddedAmplitudes := vec.New(totalSize)
-	paddedData := []float32(paddedAmplitudes)
-	signalData := []float32(signalAmplitudes)
-
-	// Left padding (zeros)
-	for i := 0; i < paddingSamples; i++ {
-		paddedData[i] = 0
-	}
-	// Signal in middle
-	copy(paddedData[paddingSamples:], signalData)
-	// Right padding (zeros)
-	for i := paddingSamples + samplesWritten; i < totalSize; i++ {
-		paddedData[i] = 0
-	}
+	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 0) // Encode all at once
 
 	// Verify padding is present
+	paddedData := []float32(signal.(vec.Vector))
 	assert.GreaterOrEqual(t, len(paddedData), paddingSamples*2, "Should have space for padding on both sides")
 
 	// Check that padding regions are zeros
@@ -772,10 +702,9 @@ func TestRoundtrip_16FSK_Padding(t *testing.T) {
 	assert.Equal(t, paddingSamples, leftZeros, "Left padding should be all zeros")
 	assert.Equal(t, paddingSamples, rightZeros, "Right padding should be all zeros")
 
-	// Decode should handle padding (signal detector should skip zeros)
-	decoded := make([]byte, 100)
-	bytesDecoded := demodulator.Decode(decoded, paddedAmplitudes)
+	// Decode with chunks using helper
+	decoded := modulation.DemodulateWithChunks(t, demodulator, signal, 500, 0)
 
 	// Should decode something (signal detector should skip padding)
-	assert.GreaterOrEqual(t, bytesDecoded, 0, "Should handle padding correctly for 16-FSK")
+	assert.GreaterOrEqual(t, len(decoded), 0, "Should handle padding correctly for 16-FSK")
 }

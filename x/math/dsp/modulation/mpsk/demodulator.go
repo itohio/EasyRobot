@@ -84,6 +84,9 @@ func NewDemodulator(sampleRate, carrierFreq, symbolRate float32, modulationOrder
 }
 
 // SetFilter sets the filter for baseband filtering
+// SetFilter sets the low-pass filter for demodulation
+//
+// Deprecated: This method is not part of the Demodulator interface.
 func (psk *Demodulator) SetFilter(f filter.Processor[float32]) {
 	psk.lowPassFilter = f
 	if psk.iqDecoder != nil {
@@ -118,11 +121,15 @@ func (psk *Demodulator) Reset() {
 }
 
 // IsLocked returns true if demodulator is locked onto signal
+//
+// Deprecated: This method is not part of the Demodulator interface.
 func (psk *Demodulator) IsLocked() bool {
 	return psk.locked && psk.signalDetector != nil && psk.signalDetector.IsLocked()
 }
 
 // Demodulate demodulates PSK signal into symbols
+//
+// Deprecated: This method is not part of the Demodulator interface.
 func (psk *Demodulator) Demodulate(signal vecTypes.Vector) vec.Vector {
 	// First, IQ demodulate
 	I, Q := psk.iqDecoder.Demodulate(signal)
@@ -193,6 +200,9 @@ func (psk *Demodulator) Demodulate(signal vecTypes.Vector) vec.Vector {
 
 // ProcessChunk processes a chunk of samples for streaming decoding
 // Returns number of bytes decoded and whether more data is expected
+//
+// Deprecated: This method is not part of the Demodulator interface.
+// Use Decode instead.
 func (psk *Demodulator) ProcessChunk(samples []float32, output []byte) (bytesDecoded int, hasMore bool) {
 	// Apply AGC and signal detection
 	for i := range samples {

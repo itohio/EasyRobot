@@ -1,17 +1,18 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"math"
-	"os"
 	"strconv"
 
 	"github.com/itohio/EasyRobot/x/marshaller/audio"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"github.com/itohio/EasyRobot/x/math/dsp"
+	"github.com/itohio/EasyRobot/x/math/dsp/modulation/mpsk"
 	"github.com/itohio/EasyRobot/x/math/tensor"
-	"github.com/itohio/EasyRobot/x/math/vec"
 	tensortypes "github.com/itohio/EasyRobot/x/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/math/vec"
 	"github.com/spf13/cobra"
 )
 
@@ -32,7 +33,6 @@ func newGenPSKCmd() *cobra.Command {
 		padAmplitude   string
 		noise          string
 		noiseType      string
-		useProtocol    bool
 	)
 
 	cmd := &cobra.Command{
@@ -40,7 +40,7 @@ func newGenPSKCmd() *cobra.Command {
 		Short: "Generate PSK modulated signal",
 		Long:  "Generate a Phase Shift Keying (PSK) modulated signal from data. Supports protocol wrapping, padding, and noise.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runGenPSK(output, deviceID, amplitude, frequency, data, hex, sampleRate, symbolRate, modulationOrder, dataType, pad, padType, padAmplitude, noise, noiseType, useProtocol)
+			return runGenPSK(output, deviceID, amplitude, frequency, data, hex, sampleRate, symbolRate, modulationOrder, dataType, pad, padType, padAmplitude, noise, noiseType)
 		},
 	}
 
@@ -59,12 +59,11 @@ func newGenPSKCmd() *cobra.Command {
 	cmd.Flags().StringVar(&padAmplitude, "pad-amplitude", "-20", "Padding noise amplitude in dB (only used if pad-type=noise, default: -20dB)")
 	cmd.Flags().StringVar(&noise, "noise", "-120", "Noise amplitude in dB to add on top of signal (default: -120, meaning no noise)")
 	cmd.Flags().StringVar(&noiseType, "noise-type", "white", "Noise type: \"white\", \"pink\", or \"brown\" (default: white)")
-	cmd.Flags().BoolVar(&useProtocol, "protocol", false, "Wrap data with protocol header and CRC (for send/recv)")
 
 	return cmd
 }
 
-func runGenPSK(output, deviceID, amplitude string, frequency float64, data, hex string, sampleRate int, symbolRate float64, modulationOrder int, dataType string, pad float64, padType, padAmplitude, noise, noiseType string, useProtocol bool) error {
+func runGenPSK(output, deviceID, amplitude string, frequency float64, data, hex string, sampleRate int, symbolRate float64, modulationOrder int, dataType string, pad float64, padType, padAmplitude, noise, noiseType string) error {
 	// Validate output
 	if output == "" && deviceID == "" {
 		return fmt.Errorf("either --output or --device-id must be specified")
@@ -76,15 +75,7 @@ func runGenPSK(output, deviceID, amplitude string, frequency float64, data, hex 
 		return err
 	}
 
-	// Wrap with protocol if requested
-	if useProtocol {
-		protocol := audio.NewProtocolMarshaller()
-		packetData, err := protocol.MarshalData(dataBytes)
-		if err != nil {
-			return fmt.Errorf("failed to marshal protocol: %w", err)
-		}
-		dataBytes = packetData
-	}
+	// Work directly with user data - no protocol wrapping
 
 	// Parse amplitude (dB)
 	ampDb, err := strconv.ParseFloat(amplitude, 64)
@@ -105,7 +96,8 @@ func runGenPSK(output, deviceID, amplitude string, frequency float64, data, hex 
 	}
 
 	// Create PSK encoder
-	pskEncoder := dsp.NewPSKEncoder(float32(sampleRate), float32(frequency), float32(symbolRate), modulationOrder)
+	pskEncoder := mpsk.NewModulator(float32(sampleRate), float32(frequency), float32(symbolRate), modulationOrder)
+	pskEncoder.SetAmplitude(ampLinear)
 
 	// Estimate length needed (symbols * samples per symbol)
 	bitsPerSymbol := int(math.Log2(float64(modulationOrder)))
@@ -117,8 +109,18 @@ func runGenPSK(output, deviceID, amplitude string, frequency float64, data, hex 
 
 	// Generate signal
 	modulated := pskEncoder.GenerateSignal(dataBytes, ampLinear, estimatedLength)
-	modData := modulated.View().(vec.Vector)
+	modData := []float32(modulated)
 	numSamples := len(modData)
+
+	// Calculate RMS statistics (before padding/noise)
+	if len(modData) > 0 {
+		signalVec := vec.NewFrom(modData...)
+		rmsStats := dsp.CalculateRMSStatistics(signalVec)
+		fmt.Printf("  RMS Statistics:\n")
+		fmt.Printf("    MIN RMS: %.2f dB\n", rmsStats.MinRMSDb)
+		fmt.Printf("    MAX RMS: %.2f dB\n", rmsStats.MaxRMSDb)
+		fmt.Printf("    AVG RMS: %.2f dB\n", rmsStats.AvgRMSDb)
+	}
 
 	// Apply padding if requested
 	if pad > 0 {
@@ -185,29 +187,31 @@ func runGenPSK(output, deviceID, amplitude string, frequency float64, data, hex 
 		return fmt.Errorf("unsupported data type: %v", dt)
 	}
 
-	// Write to WAV file or device
+	// Create marshaller based on output config
+	ctx := context.Background()
+	opts := []types.Option{
+		audio.WithSampleRate(sampleRate),
+		audio.WithChannels(1),
+		types.WithDestinationType(dt),
+	}
 	if output != "" {
-		file, err := os.Create(output)
-		if err != nil {
-			return fmt.Errorf("failed to create output file: %w", err)
-		}
-		defer file.Close()
+		opts = append(opts, audio.WithWAVPath(output))
+	}
+	if deviceID != "" {
+		opts = append(opts, audio.WithPlaybackDevice(deviceID))
+	}
 
-		m := audio.NewMarshaller(
-			audio.WithWAVPath(output),
-			audio.WithSampleRate(sampleRate),
-			audio.WithChannels(1),
-			types.WithDestinationType(dt),
-		)
+	m := audio.NewMarshaller(opts...)
 
-		if err := m.Marshal(file, t); err != nil {
-			return fmt.Errorf("failed to write WAV file: %w", err)
-		}
+	// Write using marshaller (works with WAV files or devices)
+	if err := m.Marshal(nil, t, types.WithContext(ctx)); err != nil {
+		return fmt.Errorf("failed to write: %w", err)
+	}
 
+	if output != "" {
 		fmt.Printf("Generated PSK signal: %s\n", output)
-	} else {
-		// TODO: Implement device playback
-		return fmt.Errorf("device playback not yet implemented (use --output to save to WAV file)")
+	} else if deviceID != "" {
+		fmt.Printf("Generated PSK signal: playing on device %s\n", deviceID)
 	}
 
 	fmt.Printf("  Sample rate: %d Hz\n", sampleRate)
@@ -227,11 +231,7 @@ func runGenPSK(output, deviceID, amplitude string, frequency float64, data, hex 
 		fmt.Print("16-PSK")
 	}
 	fmt.Printf(")\n")
-	if useProtocol {
-		fmt.Printf("  Data: %d bytes (with protocol header)\n", len(dataBytes))
-	} else {
-		fmt.Printf("  Data: %d bytes\n", len(dataBytes))
-	}
+	fmt.Printf("  Data: %d bytes\n", len(dataBytes))
 	if pad > 0 {
 		fmt.Printf("  Padding: %.2f s (%s)\n", pad, padType)
 	}

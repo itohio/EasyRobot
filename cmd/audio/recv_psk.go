@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"math"
 	"os"
 	"os/signal"
 	"syscall"
@@ -12,6 +11,7 @@ import (
 	"github.com/itohio/EasyRobot/x/marshaller/audio"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"github.com/itohio/EasyRobot/x/math/dsp"
+	"github.com/itohio/EasyRobot/x/math/dsp/modulation/mpsk"
 	"github.com/itohio/EasyRobot/x/math/filter/fir"
 	"github.com/itohio/EasyRobot/x/math/vec"
 	"github.com/spf13/cobra"
@@ -19,11 +19,11 @@ import (
 
 func newRecvPSKCmd() *cobra.Command {
 	var (
-		deviceID       string
-		input          string // WAV file input (alternative to device)
-		frequency      float64
-		sampleRate     int
-		symbolRate     float64
+		deviceID        string
+		input           string // WAV file input (alternative to device)
+		frequency       float64
+		sampleRate      int
+		symbolRate      float64
 		modulationOrder int
 	)
 
@@ -52,11 +52,8 @@ func runRecvPSK(deviceID, input string, frequency float64, sampleRate int, symbo
 		return fmt.Errorf("modulation order must be 2, 4, 8, or 16, got %d", modulationOrder)
 	}
 
-	// Create protocol unmarshaller
-	protocol := audio.NewProtocolUnmarshaller()
-
 	// Create PSK decoder
-	pskDecoder := dsp.NewPSKDecoder(float32(sampleRate), float32(frequency), float32(symbolRate), modulationOrder)
+	pskDecoder := mpsk.NewDemodulator(float32(sampleRate), float32(frequency), float32(symbolRate), modulationOrder)
 
 	// Set up low-pass filter for baseband filtering
 	cutoffFreq := float32(symbolRate) / 2.0
@@ -78,209 +75,46 @@ func runRecvPSK(deviceID, input string, frequency float64, sampleRate int, symbo
 		cancel()
 	}()
 
+	// Create unmarshaller based on input config
+	var unmarshaller types.Unmarshaller
 	if input != "" {
-		// Read from WAV file
-		return recvPSKFromWAV(input, pskDecoder, protocol, ctx, modulationOrder)
+		fmt.Printf("Reading PSK signal from WAV file: %s\n", input)
+		unmarshaller = audio.NewUnmarshaller(audio.WithWAVPath(input))
 	} else {
-		// Read from audio device
-		return recvPSKFromDevice(deviceID, sampleRate, pskDecoder, protocol, ctx, modulationOrder)
+		fmt.Printf("Listening for PSK signals on audio device...\n")
+		opts := []types.Option{
+			audio.WithSampleRate(sampleRate),
+			audio.WithChannels(1),
+		}
+		if deviceID != "" {
+			opts = append(opts, audio.WithCaptureDevice(deviceID))
+		}
+		unmarshaller = audio.NewUnmarshaller(opts...)
 	}
-}
 
-func recvPSKFromWAV(input string, decoder *dsp.PSKDecoder, protocol *audio.ProtocolUnmarshaller, ctx context.Context, modulationOrder int) error {
-	fmt.Printf("Reading PSK signal from WAV file: %s\n", input)
 	fmt.Println("Press Ctrl+C to stop")
 
-	// Open WAV file
-	unmarshaller := audio.NewUnmarshaller(audio.WithWAVPath(input))
-	var tensor types.Tensor
-	err := unmarshaller.Unmarshal(nil, &tensor)
-	if err != nil {
-		return fmt.Errorf("failed to read WAV file: %w", err)
-	}
-
-	// Convert tensor to float32 vector for decoding
-	tensorData := tensor.Data()
-
-	var floatData []float32
-	switch data := tensorData.(type) {
-	case []int16:
-		floatData = make([]float32, len(data))
-		for i, v := range data {
-			floatData[i] = float32(v) / 32768.0
-		}
-	case []int32:
-		floatData = make([]float32, len(data))
-		for i, v := range data {
-			floatData[i] = float32(v) / 2147483648.0
-		}
-	case []float32:
-		floatData = data
-	case []uint8:
-		floatData = make([]float32, len(data))
-		for i, v := range data {
-			floatData[i] = (float32(v) - 128.0) / 128.0
-		}
-	default:
-		return fmt.Errorf("unsupported tensor data type: %T", tensorData)
-	}
-
-	// Demodulate signal to symbols
-	signalVec := vec.NewFrom(floatData...)
-	symbols := decoder.Demodulate(signalVec)
-
-	// Convert symbols to bytes
-	// For BPSK: each symbol is 0 or 1 (1 bit)
-	// For QPSK: each symbol is 0, 1, 2, or 3 (2 bits)
-	bitsPerSymbol := int(math.Log2(float64(modulationOrder)))
-	symbolData := symbols.View().(vec.Vector)
-
-	// Convert symbols to bits, then to bytes
-	bitBuffer := make([]byte, 0, len(symbolData)*bitsPerSymbol)
-	for i := 0; i < len(symbolData); i++ {
-		symbol := int(symbolData[i])
-		for j := bitsPerSymbol - 1; j >= 0; j-- {
-			bit := (symbol >> j) & 1
-			bitBuffer = append(bitBuffer, byte(bit))
-		}
-	}
-
-	// Convert bits to bytes
-	decodedBytes := make([]byte, 0, len(bitBuffer)/8)
-	for i := 0; i < len(bitBuffer)-7; i += 8 {
-		byteVal := byte(0)
-		for j := 0; j < 8; j++ {
-			byteVal |= bitBuffer[i+j] << uint(7-j)
-		}
-		decodedBytes = append(decodedBytes, byteVal)
-	}
-
-	// Try to extract protocol packet
-	packet, _, err := protocol.UnmarshalData(decodedBytes)
-	if err != nil {
-		return fmt.Errorf("failed to unmarshal protocol: %w", err)
-	}
-
-	if packet != nil {
-		fmt.Printf("\nReceived packet:\n")
-		fmt.Printf("  Length: %d bytes\n", len(packet))
-		fmt.Printf("  Hex: %s\n", hex.EncodeToString(packet))
-		fmt.Printf("  Text: %s\n", string(packet))
-	} else {
-		fmt.Println("\nNo complete packet found in WAV file")
-		fmt.Printf("  Decoded %d bytes (may be incomplete)\n", len(decodedBytes))
-	}
-
-	return nil
-}
-
-func recvPSKFromDevice(deviceID string, sampleRate int, decoder *dsp.PSKDecoder, protocol *audio.ProtocolUnmarshaller, ctx context.Context, modulationOrder int) error {
-	fmt.Printf("Listening for PSK signals on audio device...\n")
-	fmt.Println("Press Ctrl+C to stop")
-
-	// Configure unmarshaller for device capture
-	opts := []types.Option{
-		audio.WithSampleRate(sampleRate),
-		audio.WithChannels(1),
-	}
-	if deviceID != "" {
-		opts = append(opts, audio.WithCaptureDevice(deviceID))
-	}
-
-	unmarshaller := audio.NewUnmarshaller(opts...)
-
-	// Create frame stream
-	var stream types.FrameStream
-	err := unmarshaller.Unmarshal(nil, &stream)
-	if err != nil {
-		return fmt.Errorf("failed to start audio capture: %w", err)
-	}
-	defer stream.Close()
-
-	// Buffer for decoded bytes
-	bitBuffer := make([]byte, 0, 4096*8)
-	packetCount := 0
-
-	// Process frames from channel
-	for {
-		select {
-		case <-ctx.Done():
+	// Use generic readAndProcess function - work directly with decoded user data
+	return readAndProcess(unmarshaller, pskDecoder, ctx, func(decodedData []byte) error {
+		if len(decodedData) == 0 {
 			return nil
-		case frame, ok := <-stream.C:
-			if !ok {
-				return nil // Channel closed
-			}
-
-			// Convert frame to float32 vector
-			if len(frame.Tensors) == 0 {
-				continue
-			}
-			frameTensor := frame.Tensors[0]
-			frameData := frameTensor.Data()
-
-			var floatData []float32
-			switch data := frameData.(type) {
-			case []int16:
-				floatData = make([]float32, len(data))
-				for i, v := range data {
-					floatData[i] = float32(v) / 32768.0
-				}
-			case []float32:
-				floatData = data
-			default:
-				continue // Skip unsupported types
-			}
-
-			// Demodulate frame to symbols
-			signalVec := vec.NewFrom(floatData...)
-			symbols := decoder.Demodulate(signalVec)
-			symbolData := symbols.View().(vec.Vector)
-
-			// Convert symbols to bits
-			bitsPerSymbol := int(math.Log2(float64(modulationOrder)))
-			for i := 0; i < len(symbolData); i++ {
-				symbol := int(symbolData[i])
-				for j := bitsPerSymbol - 1; j >= 0; j-- {
-					bit := (symbol >> j) & 1
-					bitBuffer = append(bitBuffer, byte(bit))
-				}
-			}
-
-			// Convert bits to bytes when we have enough
-			if len(bitBuffer) >= 8 {
-				decodedBytes := make([]byte, 0, len(bitBuffer)/8)
-				for i := 0; i < len(bitBuffer)-7; i += 8 {
-					byteVal := byte(0)
-					for j := 0; j < 8; j++ {
-						byteVal |= bitBuffer[i+j] << uint(7-j)
-					}
-					decodedBytes = append(decodedBytes, byteVal)
-				}
-
-				// Try to extract protocol packet
-				packet, _, err := protocol.UnmarshalData(decodedBytes)
-				if err == nil && packet != nil {
-					packetCount++
-					fmt.Printf("\n[Packet %d]\n", packetCount)
-					fmt.Printf("  Length: %d bytes\n", len(packet))
-					fmt.Printf("  Hex: %s\n", hex.EncodeToString(packet))
-					fmt.Printf("  Text: %s\n", string(packet))
-					fmt.Println()
-
-					// Reset for next packet
-					bitBuffer = bitBuffer[:0]
-					protocol.Reset()
-				} else if len(decodedBytes) > 0 {
-					// Keep remaining bits for next iteration
-					remainingBits := len(bitBuffer) % 8
-					if remainingBits > 0 {
-						bitBuffer = bitBuffer[len(bitBuffer)-remainingBits:]
-					} else {
-						bitBuffer = bitBuffer[:0]
-					}
-				}
-			}
 		}
-	}
-}
 
+		// Print decoded user data directly
+		fmt.Printf("  Detector lock: %v\n", pskDecoder.IsLocked())
+		if isASCII(decodedData) {
+			fmt.Printf("  Decoded: %s\n", string(decodedData))
+		} else {
+			fmt.Printf("  Decoded (hex): %s\n", hex.EncodeToString(decodedData))
+		}
+		return nil
+	}, func(floatData []float32) error {
+		// Calculate RMS statistics per frame
+		if len(floatData) > 0 {
+			signalVec := vec.NewFrom(floatData...)
+			rmsStats := dsp.CalculateRMSStatistics(signalVec)
+			fmt.Printf("  Frame RMS: %.2f dB\n", rmsStats.AvgRMSDb)
+		}
+		return nil
+	})
+}

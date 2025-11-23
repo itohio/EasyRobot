@@ -117,12 +117,17 @@ func (qam *Encoder) bitsToIQ(bits []byte) (float32, float32) {
 }
 
 // ModulationOrder returns the modulation order.
+// ModulationOrder returns the modulation order
+//
+// Deprecated: This method is not part of the Modulator interface.
 func (qam *Encoder) ModulationOrder() int {
 	return qam.modulationOrder
 }
 
 // GenerateSignal generates a QAM modulated signal from data bytes.
 // This is a convenience method for generating a complete signal.
+//
+// Deprecated: This method is not part of the Modulator interface.
 func (qam *Encoder) GenerateSignal(data []byte, length int) vec.Vector {
 	result := vec.New(length)
 	resultData := []float32(result)

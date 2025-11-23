@@ -1,14 +1,16 @@
 package main
 
 import (
+	"context"
 	"fmt"
-	"os"
 	"strconv"
 
 	"github.com/itohio/EasyRobot/x/marshaller/audio"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"github.com/itohio/EasyRobot/x/math/dsp"
+	"github.com/itohio/EasyRobot/x/math/dsp/modulation/qam"
 	"github.com/itohio/EasyRobot/x/math/tensor"
+	tensortypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 	"github.com/itohio/EasyRobot/x/math/vec"
 	"github.com/spf13/cobra"
 )
@@ -81,7 +83,7 @@ func runGenQAM(output, amplitude string, frequency float64, poles int, data, hex
 	}
 
 	// Create QAM encoder
-	qamEncoder := dsp.NewQAM16Encoder(float32(sampleRate), float32(frequency), float32(symbolRate))
+	qamEncoder := qam.NewEncoder(float32(sampleRate), float32(frequency), float32(symbolRate), ampLinear)
 
 	// Estimate length needed (4 bits per symbol for 16-QAM)
 	numSymbols := (len(dataBytes) * 8) / 4
@@ -91,13 +93,27 @@ func runGenQAM(output, amplitude string, frequency float64, poles int, data, hex
 	estimatedLength := numSymbols * int(float32(sampleRate)/float32(symbolRate))
 
 	// Generate signal
-	modulated := qamEncoder.GenerateSignal(dataBytes, ampLinear, estimatedLength)
-	modData := modulated.View().(vec.Vector)
+	modulated := qamEncoder.GenerateSignal(dataBytes, estimatedLength)
+	modData := []float32(modulated)
+	// Apply amplitude scaling
+	for i := range modData {
+		modData[i] *= ampLinear
+	}
 	numSamples := len(modData)
+
+	// Calculate RMS statistics
+	if len(modData) > 0 {
+		signalVec := vec.NewFrom(modData...)
+		rmsStats := dsp.CalculateRMSStatistics(signalVec)
+		fmt.Printf("  RMS Statistics:\n")
+		fmt.Printf("    MIN RMS: %.2f dB\n", rmsStats.MinRMSDb)
+		fmt.Printf("    MAX RMS: %.2f dB\n", rmsStats.MaxRMSDb)
+		fmt.Printf("    AVG RMS: %.2f dB\n", rmsStats.AvgRMSDb)
+	}
 
 	// Create tensor [frames, 1]
 	shape := tensor.NewShape(numSamples, 1)
-	t := tensor.New(tensor.DataType(dt), shape)
+	t := tensor.New(tensortypes.DataType(dt), shape)
 
 	// Fill tensor
 	switch dt {
@@ -144,12 +160,8 @@ func runGenQAM(output, amplitude string, frequency float64, poles int, data, hex
 	}
 
 	// Write to WAV file
-	file, err := os.Create(output)
-	if err != nil {
-		return fmt.Errorf("failed to create output file: %w", err)
-	}
-	defer file.Close()
-
+	// Create marshaller based on output config
+	ctx := context.Background()
 	m := audio.NewMarshaller(
 		audio.WithWAVPath(output),
 		audio.WithSampleRate(sampleRate),
@@ -157,8 +169,8 @@ func runGenQAM(output, amplitude string, frequency float64, poles int, data, hex
 		types.WithDestinationType(dt),
 	)
 
-	if err := m.Marshal(file, t); err != nil {
-		return fmt.Errorf("failed to write WAV file: %w", err)
+	if err := m.Marshal(nil, t, types.WithContext(ctx)); err != nil {
+		return fmt.Errorf("failed to write: %w", err)
 	}
 
 	fmt.Printf("Generated QAM signal: %s\n", output)
@@ -172,4 +184,3 @@ func runGenQAM(output, amplitude string, frequency float64, poles int, data, hex
 
 	return nil
 }
-

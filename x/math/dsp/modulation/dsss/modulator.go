@@ -125,6 +125,10 @@ func NewModulator(sampleRate, carrierFreq, symbolRate float32, codes ...Code) *M
 	} else {
 		mod.codeTable = make(CodeTable, modulationOrder)
 		copy(mod.codeTable, codes) // M-ary DSSS: code table
+		// For binary DSSS (modulationOrder=2), also set code field for Encode method
+		if modulationOrder == 2 {
+			mod.code = codes[0] // Use first code, Encode will multiply by +1/-1 based on symbol
+		}
 	}
 
 	return mod
@@ -175,6 +179,9 @@ func NewMModulator(sampleRate, carrierFreq, symbolRate float32, codeTable CodeTa
 }
 
 // SetAmplitude sets the signal amplitude for modulation
+//
+// Deprecated: This method is not part of the Modulator interface.
+// Use the constructor parameters or configure amplitude during initialization.
 func (dsss *Modulator) SetAmplitude(amplitude float32) {
 	dsss.amplitude = amplitude
 }
@@ -273,11 +280,15 @@ func (dsss *Modulator) Encode(amplitudes vecTypes.Vector, data []byte) int {
 }
 
 // ModulationOrder returns the modulation order
+//
+// Deprecated: This method is not part of the Modulator interface.
 func (dsss *Modulator) ModulationOrder() int {
 	return dsss.modulationOrder
 }
 
 // SpreadingFactor returns the spreading factor (chips per symbol)
+//
+// Deprecated: This method is not part of the Modulator interface.
 func (dsss *Modulator) SpreadingFactor() int {
 	return dsss.spreadingFactor
 }

@@ -123,12 +123,17 @@ func (mask *Modulator) symbolToAmplitude(symbol int) float32 {
 }
 
 // ModulationOrder returns the modulation order.
+// ModulationOrder returns the modulation order
+//
+// Deprecated: This method is not part of the Modulator interface.
 func (mask *Modulator) ModulationOrder() int {
 	return mask.modulationOrder
 }
 
 // GenerateSignal generates an ASK modulated signal from data bytes.
 // This is a convenience method for generating a complete signal.
+//
+// Deprecated: This method is not part of the Modulator interface.
 func (mask *Modulator) GenerateSignal(data []byte, length int) vec.Vector {
 	result := vec.New(length)
 	resultData := []float32(result)

@@ -48,11 +48,16 @@ func NewMModulator(sampleRate, symbolRate float32, frequencies ...float32) *Modu
 }
 
 // SetAmplitude sets the signal amplitude for modulation
+// SetAmplitude sets the signal amplitude for modulation
+//
+// Deprecated: This method is not part of the Modulator interface.
 func (fsk *Modulator) SetAmplitude(amplitude float32) {
 	fsk.amplitude = amplitude
 }
 
 // GenerateSignal generates an FSK modulated signal from data bytes
+//
+// Deprecated: This method is not part of the Modulator interface.
 // Adds preamble before data to allow signal detector to lock
 func (fsk *Modulator) GenerateSignal(data []byte, amplitude float32, length int) vec.Vector {
 	result := vec.New(length)
@@ -131,6 +136,8 @@ func (fsk *Modulator) GenerateSignal(data []byte, amplitude float32, length int)
 }
 
 // ModulationOrder returns the modulation order (number of frequencies)
+//
+// Deprecated: This method is not part of the Modulator interface.
 func (fsk *Modulator) ModulationOrder() int {
 	return fsk.modulationOrder
 }

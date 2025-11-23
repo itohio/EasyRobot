@@ -86,6 +86,9 @@ func NewDecoder(sampleRate, carrierFreq, symbolRate float32) *Decoder {
 }
 
 // SetFilter sets the filter for baseband filtering
+// SetFilter sets the low-pass filter for demodulation
+//
+// Deprecated: This method is not part of the Demodulator interface.
 func (qam *Decoder) SetFilter(f filter.Processor[float32]) {
 	qam.lowPassFilter = f
 	if qam.iqDecoder != nil {
@@ -120,6 +123,8 @@ func (qam *Decoder) Reset() {
 }
 
 // IsLocked returns true if decoder is locked onto signal
+//
+// Deprecated: This method is not part of the Demodulator interface.
 func (qam *Decoder) IsLocked() bool {
 	return qam.locked && qam.signalDetector != nil && qam.signalDetector.IsLocked()
 }
@@ -130,6 +135,9 @@ func (qam *Decoder) OnIsEndOfPacket(callback func([]byte) bool) {
 }
 
 // ProcessChunk processes a chunk of samples for streaming decoding
+//
+// Deprecated: This method is not part of the Demodulator interface.
+// Use Decode instead.
 func (qam *Decoder) ProcessChunk(samples []float32, output []byte) (bytesDecoded int, hasMore bool) {
 	// Apply AGC and signal detection
 	for i := range samples {

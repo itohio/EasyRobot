@@ -110,6 +110,10 @@ func NewMDemodulator(sampleRate, symbolRate float32, frequencies ...float32) *De
 
 // SetFilter sets a filter for frequency detection (if detector supports it)
 // Note: Filters should be applied to signal before frequency detection, not to magnitudes
+// SetFilter sets the low-pass filter for demodulation
+//
+// Deprecated: This method is not part of the Demodulator interface.
+// Filters should be applied to the input signal before calling Decode.
 func (fsk *Demodulator) SetFilter(f filter.Processor[float32]) {
 	// Filtering is not directly supported in the new component-based design
 	// Filters should be applied to the input signal before calling Decode
@@ -134,6 +138,8 @@ func (fsk *Demodulator) Reset() {
 }
 
 // IsLocked returns true if demodulator is locked onto signal
+//
+// Deprecated: This method is not part of the Demodulator interface.
 func (fsk *Demodulator) IsLocked() bool {
 	return fsk.locked && fsk.signalDetector != nil && fsk.signalDetector.IsLocked()
 }
@@ -159,6 +165,8 @@ func (fsk *Demodulator) SignalDetector() *modulation.SignalDetector {
 }
 
 // Demodulate demodulates FSK signal into symbols
+//
+// Deprecated: This method is not part of the Demodulator interface.
 func (fsk *Demodulator) Demodulate(signal vecTypes.Vector) vec.Vector {
 	signalData := []float32(signal.(vec.Vector))
 
@@ -197,6 +205,9 @@ func (fsk *Demodulator) Demodulate(signal vecTypes.Vector) vec.Vector {
 }
 
 // ProcessChunk processes a chunk of samples for streaming decoding
+//
+// Deprecated: This method is not part of the Demodulator interface.
+// Use Decode instead.
 func (fsk *Demodulator) ProcessChunk(samples []float32, output []byte) (bytesDecoded int, hasMore bool) {
 	// Apply AGC and signal detection
 	for i := range samples {

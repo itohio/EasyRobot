@@ -31,11 +31,16 @@ func NewModulator(sampleRate, carrierFreq, symbolRate float32, modulationOrder i
 }
 
 // SetAmplitude sets the signal amplitude for modulation
+// SetAmplitude sets the signal amplitude for modulation
+//
+// Deprecated: This method is not part of the Modulator interface.
 func (psk *Modulator) SetAmplitude(amplitude float32) {
 	psk.amplitude = amplitude
 }
 
 // GenerateSignal generates a PSK modulated signal from data bytes
+//
+// Deprecated: This method is not part of the Modulator interface.
 func (psk *Modulator) GenerateSignal(data []byte, amplitude float32, length int) vec.Vector {
 	result := vec.New(length)
 	resultData := []float32(result)
@@ -77,6 +82,8 @@ func (psk *Modulator) GenerateSignal(data []byte, amplitude float32, length int)
 }
 
 // ModulationOrder returns the modulation order
+//
+// Deprecated: This method is not part of the Modulator interface.
 func (psk *Modulator) ModulationOrder() int {
 	return psk.modulationOrder
 }

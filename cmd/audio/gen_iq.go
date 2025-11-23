@@ -8,8 +8,9 @@ import (
 	"github.com/itohio/EasyRobot/x/marshaller/audio"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"github.com/itohio/EasyRobot/x/math/dsp"
+	"github.com/itohio/EasyRobot/x/math/dsp/modulation/iq"
 	"github.com/itohio/EasyRobot/x/math/tensor"
-	"github.com/itohio/EasyRobot/x/math/vec"
+	tensortypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 	"github.com/spf13/cobra"
 )
 
@@ -69,13 +70,13 @@ func runGenIQ(output, amplitude string, frequency float64, channels, sampleRate 
 	Q := sg.Sinusoid(numSamples, float32(frequency), ampLinear, 0, float32(sampleRate))
 
 	// Modulate using IQ encoder
-	iqEncoder := dsp.NewIQEncoder(float32(sampleRate), float32(frequency))
+	iqEncoder := iq.NewEncoder(float32(sampleRate), float32(frequency))
 	modulated := iqEncoder.GenerateIQSignal(I, Q)
-	modData := modulated.View().(vec.Vector)
+	modData := []float32(modulated)
 
 	// Combine channels into tensor [frames, channels]
 	shape := tensor.NewShape(numSamples, channels)
-	t := tensor.New(tensor.DataType(dt), shape)
+	t := tensor.New(tensortypes.DataType(dt), shape)
 
 	// Fill tensor with channel data
 	switch dt {

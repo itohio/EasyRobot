@@ -32,6 +32,9 @@ func NewDecoder(sampleRate, carrierFreq float32) *Decoder {
 }
 
 // SetFilter sets the filter for baseband filtering
+// SetFilter sets the low-pass filter for demodulation
+//
+// Deprecated: This method is not part of any interface.
 func (iq *Decoder) SetFilter(f filter.Processor[float32]) {
 	iq.lowPassFilter = f
 }
@@ -46,6 +49,8 @@ func (iq *Decoder) Reset() {
 
 // Demodulate demodulates a modulated signal into I/Q components
 // Returns I and Q components (allocates output vectors, but no allocations in processing loop)
+//
+// Deprecated: This method is not part of any interface.
 func (iq *Decoder) Demodulate(signal vecTypes.Vector) (I, Q vec.Vector) {
 	signalData := []float32(signal.(vec.Vector))
 	length := len(signalData)

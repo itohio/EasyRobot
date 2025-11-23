@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/itohio/EasyRobot/x/math/dsp"
+	"github.com/itohio/EasyRobot/x/math/dsp/modulation"
 	"github.com/itohio/EasyRobot/x/math/vec"
 	vecTypes "github.com/itohio/EasyRobot/x/math/vec/types"
 	"github.com/stretchr/testify/assert"
@@ -99,65 +100,17 @@ func TestRoundtrip_BinaryDSSS_Clean(t *testing.T) {
 	// Test data
 	testData := []byte{0x55, 0xAA}
 
-	// Encode (encoder doesn't add padding)
-	expectedSize := modulator.Encode(nil, testData)
-	signalAmplitudes := vec.New(expectedSize)
-	samplesWritten := modulator.Encode(signalAmplitudes, testData)
-
-	assert.Greater(t, samplesWritten, 0, "Should write samples")
-
-	// Add padding in test to simulate signal in noise (0.5s on each side)
+	// Encode with padding using helper
 	paddingSamples := int(testSampleRate * 0.5)
-	totalSize := paddingSamples*2 + samplesWritten
-	paddedAmplitudes := vec.New(totalSize)
-	paddedData := []float32(paddedAmplitudes)
-	signalData := []float32(signalAmplitudes)
+	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 10) // Chunk size: 10 bytes
 
-	// Left padding (zeros)
-	for i := 0; i < paddingSamples; i++ {
-		paddedData[i] = 0
-	}
-	// Signal in middle
-	copy(paddedData[paddingSamples:], signalData)
-	// Right padding (zeros)
-	for i := paddingSamples + samplesWritten; i < totalSize; i++ {
-		paddedData[i] = 0
-	}
-
-	// Decode in chunks to allow signal detector to lock
-	decoded := make([]byte, len(testData)*2)
-	bytesDecoded := 0
-
-	chunkSize := 1000
-	for i := 0; i < len(paddedData); i += chunkSize {
-		end := i + chunkSize
-		if end > len(paddedData) {
-			end = len(paddedData)
-		}
-		chunk := vec.New(end - i)
-		chunkData := []float32(chunk)
-		copy(chunkData, paddedData[i:end])
-
-		remaining := decoded[bytesDecoded:]
-		chunkDecoded := demodulator.Decode(remaining, chunk)
-		bytesDecoded += chunkDecoded
-
-		if chunkDecoded == 0 && !demodulator.IsLocked() && i > len(paddedData)/2 {
-			break
-		}
-	}
-
-	// Should decode some bytes (may need more samples for acquisition)
-	if bytesDecoded == 0 {
-		// Try processing entire signal at once
-		demodulator.Reset()
-		bytesDecoded = demodulator.Decode(decoded, paddedAmplitudes)
-	}
+	// Decode with chunks using helper
+	decoded := modulation.DemodulateWithChunks(t, demodulator, signal, 1000, 0)
 
 	// For DSSS, acquisition can be challenging, so we're lenient
-	assert.GreaterOrEqual(t, bytesDecoded, 0, "Should not have negative bytes decoded")
-	if bytesDecoded > 0 {
-		t.Logf("Binary DSSS: Successfully decoded %d bytes", bytesDecoded)
+	assert.GreaterOrEqual(t, len(decoded), 0, "Should not have negative bytes decoded")
+	if len(decoded) > 0 {
+		t.Logf("Binary DSSS: Successfully decoded %d bytes", len(decoded))
 	}
 }
 
@@ -169,62 +122,21 @@ func TestRoundtrip_BinaryDSSS_WithNoise(t *testing.T) {
 	// Test data
 	testData := []byte{0x55}
 
-	// Encode (encoder doesn't add padding)
-	expectedSize := modulator.Encode(nil, testData)
-	signalAmplitudes := vec.New(expectedSize)
-	samplesWritten := modulator.Encode(signalAmplitudes, testData)
-	require.Greater(t, samplesWritten, 0, "Should write samples")
-
-	// Add padding in test to simulate signal in noise (0.5s on each side)
+	// Encode with padding using helper
 	paddingSamples := int(testSampleRate * 0.5)
-	totalSize := paddingSamples*2 + samplesWritten
-	paddedAmplitudes := vec.New(totalSize)
-	paddedData := []float32(paddedAmplitudes)
-	signalData := []float32(signalAmplitudes)
-
-	// Left padding (zeros)
-	for i := 0; i < paddingSamples; i++ {
-		paddedData[i] = 0
-	}
-	// Signal in middle
-	copy(paddedData[paddingSamples:], signalData)
-	// Right padding (zeros)
-	for i := paddingSamples + samplesWritten; i < totalSize; i++ {
-		paddedData[i] = 0
-	}
+	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 5) // Chunk size: 5 bytes
 
 	// Add noise (15dB SNR)
-	noisyAmplitudes := addNoise(paddedAmplitudes, 15.0)
+	noisySignal := addNoise(signal, 15.0)
 
 	// Reset demodulator for clean state
 	demodulator.Reset()
 
-	// Decode in chunks to simulate streaming
-	decoded := make([]byte, len(testData)*2)
-	bytesDecoded := 0
-
-	noisyData := []float32(noisyAmplitudes.(vec.Vector))
-	chunkSize := 1000
-	for i := 0; i < len(noisyData); i += chunkSize {
-		end := i + chunkSize
-		if end > len(noisyData) {
-			end = len(noisyData)
-		}
-		chunk := vec.New(end - i)
-		chunkData := []float32(chunk)
-		copy(chunkData, noisyData[i:end])
-
-		remaining := decoded[bytesDecoded:]
-		chunkDecoded := demodulator.Decode(remaining, chunk)
-		bytesDecoded += chunkDecoded
-
-		if chunkDecoded == 0 && !demodulator.IsLocked() && i > len(noisyData)*3/4 {
-			break
-		}
-	}
+	// Decode with chunks using helper
+	decoded := modulation.DemodulateWithChunks(t, demodulator, noisySignal, 1000, 0)
 
 	// Should decode some bytes even with noise
-	assert.GreaterOrEqual(t, bytesDecoded, 0, "Should handle noise gracefully")
+	assert.GreaterOrEqual(t, len(decoded), 0, "Should handle noise gracefully")
 }
 
 func TestRoundtrip_BinaryDSSS_Padding(t *testing.T) {
@@ -234,31 +146,12 @@ func TestRoundtrip_BinaryDSSS_Padding(t *testing.T) {
 
 	testData := []byte{0x55}
 
-	// Encode (encoder doesn't add padding)
-	expectedSize := modulator.Encode(nil, testData)
-	signalAmplitudes := vec.New(expectedSize)
-	samplesWritten := modulator.Encode(signalAmplitudes, testData)
-	require.Greater(t, samplesWritten, 0)
-
-	// Add padding in test to simulate signal in noise (0.5s on each side)
+	// Encode with padding using helper
 	paddingSamples := int(testSampleRate * 0.5)
-	totalSize := paddingSamples*2 + samplesWritten
-	paddedAmplitudes := vec.New(totalSize)
-	paddedData := []float32(paddedAmplitudes)
-	signalData := []float32(signalAmplitudes)
-
-	// Left padding (zeros)
-	for i := 0; i < paddingSamples; i++ {
-		paddedData[i] = 0
-	}
-	// Signal in middle
-	copy(paddedData[paddingSamples:], signalData)
-	// Right padding (zeros)
-	for i := paddingSamples + samplesWritten; i < totalSize; i++ {
-		paddedData[i] = 0
-	}
+	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 0) // Encode all at once
 
 	// Verify padding is present
+	paddedData := []float32(signal.(vec.Vector))
 	assert.GreaterOrEqual(t, len(paddedData), paddingSamples*2, "Should have space for padding on both sides")
 
 	// Check that padding regions are zeros
@@ -283,12 +176,11 @@ func TestRoundtrip_BinaryDSSS_Padding(t *testing.T) {
 	assert.Equal(t, paddingSamples, leftZeros, "Left padding should be all zeros")
 	assert.Equal(t, paddingSamples, rightZeros, "Right padding should be all zeros")
 
-	// Decode should handle padding (signal detector should skip zeros)
-	decoded := make([]byte, 100)
-	bytesDecoded := demodulator.Decode(decoded, paddedAmplitudes)
+	// Decode with chunks using helper
+	decoded := modulation.DemodulateWithChunks(t, demodulator, signal, 1000, 0)
 
 	// Should decode something (signal detector should skip padding)
-	assert.GreaterOrEqual(t, bytesDecoded, 0, "Should handle padding correctly")
+	assert.GreaterOrEqual(t, len(decoded), 0, "Should handle padding correctly")
 }
 
 func TestRoundtrip_MaryDSSS_Clean(t *testing.T) {
@@ -299,56 +191,15 @@ func TestRoundtrip_MaryDSSS_Clean(t *testing.T) {
 	// Test data
 	testData := []byte{0x12, 0x34}
 
-	// Encode (encoder doesn't add padding)
-	expectedSize := modulator.Encode(nil, testData)
-	signalAmplitudes := vec.New(expectedSize)
-	samplesWritten := modulator.Encode(signalAmplitudes, testData)
-
-	assert.Greater(t, samplesWritten, 0, "Should write samples")
-
-	// Add padding in test to simulate signal in noise (0.5s on each side)
+	// Encode with padding using helper
 	paddingSamples := int(testSampleRate * 0.5)
-	totalSize := paddingSamples*2 + samplesWritten
-	paddedAmplitudes := vec.New(totalSize)
-	paddedData := []float32(paddedAmplitudes)
-	signalData := []float32(signalAmplitudes)
+	signal := modulation.ModulateWithPadding(t, modulator, testData, paddingSamples, 10) // Chunk size: 10 bytes
 
-	// Left padding (zeros)
-	for i := 0; i < paddingSamples; i++ {
-		paddedData[i] = 0
-	}
-	// Signal in middle
-	copy(paddedData[paddingSamples:], signalData)
-	// Right padding (zeros)
-	for i := paddingSamples + samplesWritten; i < totalSize; i++ {
-		paddedData[i] = 0
-	}
-
-	// Decode in chunks
-	decoded := make([]byte, len(testData)*2)
-	bytesDecoded := 0
-
-	chunkSize := 1000
-	for i := 0; i < len(paddedData); i += chunkSize {
-		end := i + chunkSize
-		if end > len(paddedData) {
-			end = len(paddedData)
-		}
-		chunk := vec.New(end - i)
-		chunkData := []float32(chunk)
-		copy(chunkData, paddedData[i:end])
-
-		remaining := decoded[bytesDecoded:]
-		chunkDecoded := demodulator.Decode(remaining, chunk)
-		bytesDecoded += chunkDecoded
-
-		if chunkDecoded == 0 && !demodulator.IsLocked() && i > len(paddedData)/2 {
-			break
-		}
-	}
+	// Decode with chunks using helper
+	decoded := modulation.DemodulateWithChunks(t, demodulator, signal, 1000, 0)
 
 	// Should decode some bytes
-	assert.GreaterOrEqual(t, bytesDecoded, 0, "Should decode some bytes for M-ary DSSS")
+	assert.GreaterOrEqual(t, len(decoded), 0, "Should decode some bytes for M-ary DSSS")
 }
 
 func TestDemodulator_InterfaceCompliance(t *testing.T) {

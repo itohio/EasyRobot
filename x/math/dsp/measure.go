@@ -356,3 +356,76 @@ func (m *Measurements) centerPhaseCorrelation(matrix matTypes.Matrix) {
 		}
 	}
 }
+
+// RMSStatistics holds MIN/MAX/AVG RMS values in dB
+type RMSStatistics struct {
+	MinRMSDb float64
+	MaxRMSDb float64
+	AvgRMSDb float64
+}
+
+// CalculateRMSStatistics calculates MIN/MAX/AVG RMS statistics over windows
+// Returns statistics in dB. Works on vectors with zero-copy extraction.
+func CalculateRMSStatistics(signal vecTypes.Vector) RMSStatistics {
+	data := signal.View().(vec.Vector)
+	n := len(data)
+	
+	if n == 0 {
+		return RMSStatistics{
+			MinRMSDb: -math.Inf(1),
+			MaxRMSDb: -math.Inf(1),
+			AvgRMSDb: -math.Inf(1),
+		}
+	}
+	
+	// Calculate overall RMS for AVG
+	var sumSquares float64
+	for _, v := range data {
+		sumSquares += float64(v * v)
+	}
+	avgRMS := float32(math.Sqrt(sumSquares / float64(n)))
+	
+	// Calculate RMS over windows for MIN/MAX
+	windowSize := n / 100 // 100 windows
+	if windowSize < 1 {
+		windowSize = 1
+	}
+	var minRMS, maxRMS float32 = avgRMS, avgRMS
+	for i := 0; i < n; i += windowSize {
+		end := i + windowSize
+		if end > n {
+			end = n
+		}
+		var windowSumSquares float64
+		for j := i; j < end; j++ {
+			windowSumSquares += float64(data[j] * data[j])
+		}
+		windowRMS := float32(math.Sqrt(windowSumSquares / float64(end-i)))
+		if windowRMS < minRMS {
+			minRMS = windowRMS
+		}
+		if windowRMS > maxRMS {
+			maxRMS = windowRMS
+		}
+	}
+	
+	// Convert to dB (handle zero case)
+	avgRMSDb := -math.Inf(1)
+	if avgRMS > 0 {
+		avgRMSDb = 20 * math.Log10(float64(avgRMS))
+	}
+	minRMSDb := -math.Inf(1)
+	if minRMS > 0 {
+		minRMSDb = 20 * math.Log10(float64(minRMS))
+	}
+	maxRMSDb := -math.Inf(1)
+	if maxRMS > 0 {
+		maxRMSDb = 20 * math.Log10(float64(maxRMS))
+	}
+	
+	return RMSStatistics{
+		MinRMSDb: minRMSDb,
+		MaxRMSDb: maxRMSDb,
+		AvgRMSDb: avgRMSDb,
+	}
+}

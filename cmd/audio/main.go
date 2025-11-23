@@ -24,8 +24,14 @@ func main() {
 	rootCmd.AddCommand(newGenPSKCmd())
 	rootCmd.AddCommand(newGenFSKCmd())
 	rootCmd.AddCommand(newGenQAMCmd())
+	rootCmd.AddCommand(newGenDSSSCmd())
+	rootCmd.AddCommand(newGenTCCmd())
 	rootCmd.AddCommand(newRecvPSKCmd())
-	// TODO: Add recv-fsk, recv-qam
+	rootCmd.AddCommand(newRecvFSKCmd())
+	rootCmd.AddCommand(newRecvQAMCmd())
+	rootCmd.AddCommand(newRecvDSSSCmd())
+	rootCmd.AddCommand(newRecvTCCmd())
+	rootCmd.AddCommand(newMixCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)

@@ -1,30 +1,29 @@
 package main
 
 import (
+	"context"
 	"fmt"
-	"math"
-	"os"
 	"strconv"
 	"strings"
 
 	"github.com/itohio/EasyRobot/x/marshaller/audio"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"github.com/itohio/EasyRobot/x/math/dsp"
-	"github.com/itohio/EasyRobot/x/math/tensor"
+	"github.com/itohio/EasyRobot/x/math/dsp/modulation/mfsk"
 	"github.com/itohio/EasyRobot/x/math/vec"
 	"github.com/spf13/cobra"
 )
 
 func newGenFSKCmd() *cobra.Command {
 	var (
-		output     string
-		amplitude  string
+		output      string
+		amplitude   string
 		frequencies string
-		data       string
-		hex        string
-		sampleRate int
-		symbolRate float64
-		dataType   string
+		data        string
+		hex         string
+		sampleRate  int
+		symbolRate  float64
+		dataType    string
 	)
 
 	cmd := &cobra.Command{
@@ -87,6 +86,12 @@ func runGenFSK(output, amplitude, frequencies string, data, hex string, sampleRa
 		return err
 	}
 
+	// Add sync bytes: 0xAA 0xAA at beginning, 0x55 0x55 at end
+	syncPrefix := []byte{0xAA, 0xAA}
+	syncSuffix := []byte{0x55, 0x55}
+	dataBytes = append(syncPrefix, dataBytes...)
+	dataBytes = append(dataBytes, syncSuffix...)
+
 	// Parse data type
 	dt, err := parseDataType(dataType)
 	if err != nil {
@@ -94,76 +99,11 @@ func runGenFSK(output, amplitude, frequencies string, data, hex string, sampleRa
 	}
 
 	// Create FSK encoder
-	fskEncoder := dsp.NewMFSKEncoder(float32(sampleRate), float32(symbolRate), freqs32...)
+	fskEncoder := mfsk.NewMModulator(float32(sampleRate), float32(symbolRate), freqs32...)
+	fskEncoder.SetAmplitude(ampLinear)
 
-	// Estimate length needed
-	bitsPerSymbol := int(math.Log2(float64(modOrder)))
-	numSymbols := (len(dataBytes) * 8) / bitsPerSymbol
-	if (len(dataBytes)*8)%bitsPerSymbol != 0 {
-		numSymbols++
-	}
-	estimatedLength := numSymbols * int(float32(sampleRate)/float32(symbolRate))
-
-	// Generate signal
-	modulated := fskEncoder.GenerateSignal(dataBytes, ampLinear, estimatedLength)
-	modData := modulated.View().(vec.Vector)
-	numSamples := len(modData)
-
-	// Create tensor [frames, 1]
-	shape := tensor.NewShape(numSamples, 1)
-	t := tensor.New(tensor.DataType(dt), shape)
-
-	// Fill tensor
-	switch dt {
-	case types.INT16:
-		data := t.Data().([]int16)
-		for i := 0; i < numSamples; i++ {
-			val := modData[i] * 32767.0
-			if val > 32767.0 {
-				val = 32767.0
-			} else if val < -32768.0 {
-				val = -32768.0
-			}
-			data[i] = int16(val)
-		}
-	case types.INT32:
-		data := t.Data().([]int32)
-		for i := 0; i < numSamples; i++ {
-			val := modData[i] * 2147483647.0
-			if val > 2147483647.0 {
-				val = 2147483647.0
-			} else if val < -2147483648.0 {
-				val = -2147483648.0
-			}
-			data[i] = int32(val)
-		}
-	case types.FP32:
-		data := t.Data().([]float32)
-		for i := 0; i < numSamples; i++ {
-			data[i] = modData[i]
-		}
-	case types.UINT8:
-		data := t.Data().([]uint8)
-		for i := 0; i < numSamples; i++ {
-			val := (modData[i] + 1.0) * 127.5
-			if val > 255.0 {
-				val = 255.0
-			} else if val < 0.0 {
-				val = 0.0
-			}
-			data[i] = uint8(val)
-		}
-	default:
-		return fmt.Errorf("unsupported data type: %v", dt)
-	}
-
-	// Write to WAV file
-	file, err := os.Create(output)
-	if err != nil {
-		return fmt.Errorf("failed to create output file: %w", err)
-	}
-	defer file.Close()
-
+	// Create marshaller based on output config
+	ctx := context.Background()
 	m := audio.NewMarshaller(
 		audio.WithWAVPath(output),
 		audio.WithSampleRate(sampleRate),
@@ -171,8 +111,34 @@ func runGenFSK(output, amplitude, frequencies string, data, hex string, sampleRa
 		types.WithDestinationType(dt),
 	)
 
-	if err := m.Marshal(file, t); err != nil {
-		return fmt.Errorf("failed to write WAV file: %w", err)
+	// Encode entire signal first to calculate RMS statistics
+	expectedSize := fskEncoder.Encode(nil, dataBytes)
+	if expectedSize == 0 {
+		return fmt.Errorf("FSK modulator expects 0 samples (check modulator configuration or data)")
+	}
+
+	modulatedVec := vec.New(expectedSize)
+	samplesWritten := fskEncoder.Encode(modulatedVec, dataBytes)
+	if samplesWritten == 0 {
+		return fmt.Errorf("FSK modulator wrote 0 samples (check modulator configuration)")
+	}
+
+	modData := []float32(modulatedVec)[:samplesWritten]
+
+	// Calculate RMS statistics
+	if len(modData) > 0 {
+		signalVec := vec.NewFrom(modData...)
+		rmsStats := dsp.CalculateRMSStatistics(signalVec)
+		fmt.Printf("  RMS Statistics:\n")
+		fmt.Printf("    MIN RMS: %.2f dB\n", rmsStats.MinRMSDb)
+		fmt.Printf("    MAX RMS: %.2f dB\n", rmsStats.MaxRMSDb)
+		fmt.Printf("    AVG RMS: %.2f dB\n", rmsStats.AvgRMSDb)
+	}
+
+	// Reset encoder and use generic processAndWrite function
+	fskEncoder.Reset()
+	if err := processAndWrite(m, fskEncoder, dataBytes, sampleRate, dt, ctx); err != nil {
+		return fmt.Errorf("failed to process and write: %w", err)
 	}
 
 	fmt.Printf("Generated FSK signal: %s\n", output)
@@ -186,4 +152,3 @@ func runGenFSK(output, amplitude, frequencies string, data, hex string, sampleRa
 
 	return nil
 }
-

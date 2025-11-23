@@ -100,6 +100,9 @@ func NewDemodulator(sampleRate, carrierFreq, symbolRate float32, modulationOrder
 }
 
 // SetFilter sets the filter for baseband filtering.
+// SetFilter sets the low-pass filter for demodulation
+//
+// Deprecated: This method is not part of the Demodulator interface.
 func (mask *Demodulator) SetFilter(f filter.Processor[float32]) {
 	mask.lowPassFilter = f
 	if mask.iqDemodulator != nil {
@@ -159,6 +162,9 @@ func (mask *Demodulator) Decode(data []byte, amplitudes vecTypes.Vector) int {
 }
 
 // ProcessChunk processes a chunk of samples for streaming decoding.
+//
+// Deprecated: This method is not part of the Demodulator interface.
+// Use Decode instead.
 func (mask *Demodulator) ProcessChunk(samples []float32, output []byte) (bytesDecoded int, hasMore bool) {
 	// Apply AGC and signal detection
 	for i := range samples {
@@ -285,6 +291,9 @@ func (mask *Demodulator) quantizeAmplitude(amplitude float32) int {
 }
 
 // IsLocked returns true if demodulator is locked onto signal.
+// IsLocked returns true if demodulator is locked onto signal
+//
+// Deprecated: This method is not part of the Demodulator interface.
 func (mask *Demodulator) IsLocked() bool {
 	return mask.locked && mask.signalDetector != nil && mask.signalDetector.IsLocked()
 }
