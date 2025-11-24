@@ -37,7 +37,7 @@ func (b *Linear[T]) Write(p []T) (n int, err error) {
 }
 
 // Read reads the next len(p) elements from the buffer or until the buffer is drained.
-// Returns the number of elements read and io.EOF if the buffer is empty.
+// Returns the number of elements read and io.EOF if fewer elements were read than requested.
 func (b *Linear[T]) Read(p []T) (n int, err error) {
 	if len(p) == 0 {
 		return 0, nil
@@ -47,6 +47,10 @@ func (b *Linear[T]) Read(p []T) (n int, err error) {
 	}
 	n = copy(p, b.buf[b.off:])
 	b.off += n
+	// Return EOF if we read fewer items than requested
+	if n < len(p) {
+		return n, io.EOF
+	}
 	return n, nil
 }
 

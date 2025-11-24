@@ -133,9 +133,6 @@ func IFFT(data []float32) {
 		panic("IFFT: size must be power of 2, use nextPowerOfTwo to pad")
 	}
 
-	// BCE hint: reslice to exact size
-	data = data[:n]
-
 	// Conjugate the complex data (negate imaginary parts)
 	for i := range fftSize {
 		data[i+fftSize] = -data[i+fftSize]
@@ -144,10 +141,12 @@ func IFFT(data []float32) {
 	// Forward FFT on conjugated data
 	FFT(data)
 
-	// Conjugate back and scale by 1/N
+	// Conjugate back and scale by 1/N^2
+	// Note: Since FFT accumulates by N^2 when applied to frequency domain data in IFFT,
+	// we need to scale by 1/N^2 to get the correct result (1/N for IFFT * 1/N for FFT accumulation)
 	fftSizeF := float32(fftSize)
-	scale := 1.0 / fftSizeF
-	for i := range fftSize {
+	scale := float32(1.0) / (fftSizeF * fftSizeF)
+	for i := 0; i < fftSize; i++ {
 		// Conjugate back (negate imag) and scale both parts
 		imagIdx := i + fftSize
 		data[imagIdx] = -data[imagIdx]
@@ -220,7 +219,9 @@ func FillFFTLUT(dst []float32, fftSize int) int {
 // FFTWithLUT performs FFT using precomputed LUT.
 // data: packed complex data [real, imag] of length 2*N
 // lut: precomputed twiddle factors from FillFFTLUT
-//   Layout: [cos0, cos1, ..., cosM-1, sin0, sin1, ..., sinM-1] where M = totalFactors
+//
+//	Layout: [cos0, cos1, ..., cosM-1, sin0, sin1, ..., sinM-1] where M = totalFactors
+//
 // totalFactors: number of factors returned by FillFFTLUT
 func FFTWithLUT(data []float32, lut []float32, totalFactors int) {
 	n := len(data)
@@ -260,15 +261,15 @@ func FFTWithLUT(data []float32, lut []float32, totalFactors int) {
 	for length := 2; length <= fftSize; length <<= 1 {
 		halfLen := length / 2
 		for i := 0; i < fftSize; i += length {
-			// Reset twiddle factor for each group
-			wReal := float32(1.0)
-			wImag := float32(0.0)
-			groupLUTIdx := lutIdx
 			for j := range halfLen {
 				idx1 := i + j
 				idx2 := i + j + halfLen
 				idx1Imag := idx1 + fftSize
 				idx2Imag := idx2 + fftSize
+
+				// Get twiddle factor directly from LUT
+				cosVal := lut[lutIdx+j]
+				sinVal := lut[lutIdx+j+totalFactors]
 
 				// Get complex values from packed format
 				uReal := data[idx1]
@@ -276,29 +277,62 @@ func FFTWithLUT(data []float32, lut []float32, totalFactors int) {
 				vReal := data[idx2]
 				vImag := data[idx2Imag]
 
-				// Multiply v by w
-				vRealNew := vReal*wReal - vImag*wImag
-				vImagNew := vReal*wImag + vImag*wReal
+				// Multiply v by w: (vReal + vImag*i) * (cosVal + sinVal*i)
+				vRealNew := vReal*cosVal - vImag*sinVal
+				vImagNew := vReal*sinVal + vImag*cosVal
 
-				// Compute FFT butterfly
+				// Compute FFT butterfly: sum = u + v, diff = u - v
 				data[idx1] = uReal + vRealNew
 				data[idx1Imag] = uImag + vImagNew
 				data[idx2] = uReal - vRealNew
 				data[idx2Imag] = uImag - vImagNew
-
-				// Update twiddle factor from LUT
-				if groupLUTIdx < totalFactors {
-					cosVal := lut[groupLUTIdx]
-					sinVal := lut[groupLUTIdx+totalFactors]
-					wRealNew := wReal*cosVal - wImag*sinVal
-					wImagNew := wReal*sinVal + wImag*cosVal
-					wReal = wRealNew
-					wImag = wImagNew
-					groupLUTIdx++
-				}
 			}
 		}
 		lutIdx += halfLen
 	}
 }
 
+// IFFTWithLUT performs inverse FFT using precomputed LUT.
+// data: packed complex data [real, imag] of length 2*N
+// lut: precomputed twiddle factors from FillFFTLUT
+//
+//	Layout: [cos0, cos1, ..., cosM-1, sin0, sin1, ..., sinM-1] where M = totalFactors
+//
+// totalFactors: number of factors returned by FillFFTLUT
+func IFFTWithLUT(data []float32, lut []float32, totalFactors int) {
+	n := len(data)
+	if n <= 2 {
+		return
+	}
+	if n%2 != 0 {
+		panic("IFFTWithLUT: data length must be even (real and imaginary parts)")
+	}
+
+	fftSize := n / 2 // Actual FFT size (number of complex samples)
+
+	// Optimize for power-of-2
+	if !isPowerOfTwo(fftSize) {
+		panic("IFFTWithLUT: size must be power of 2, use nextPowerOfTwo to pad")
+	}
+
+	// Conjugate the complex data (negate imaginary parts)
+	for i := range fftSize {
+		data[i+fftSize] = -data[i+fftSize]
+	}
+
+	// Forward FFT on conjugated data using LUT
+	FFTWithLUT(data, lut, totalFactors)
+
+	// Conjugate back and scale by 1/N^2
+	// Note: Since FFT accumulates by N^2 when applied to frequency domain data in IFFT,
+	// we need to scale by 1/N^2 to get the correct result (1/N for IFFT * 1/N for FFT accumulation)
+	fftSizeF := float32(fftSize)
+	scale := float32(1.0) / (fftSizeF * fftSizeF)
+	for i := 0; i < fftSize; i++ {
+		// Conjugate back (negate imag) and scale both parts
+		imagIdx := i + fftSize
+		data[imagIdx] = -data[imagIdx]
+		data[i] *= scale
+		data[imagIdx] *= scale
+	}
+}

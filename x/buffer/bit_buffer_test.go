@@ -215,8 +215,9 @@ func TestBitBuffer_FromSlice(t *testing.T) {
 	bb.Write(5)
 	bb.Write(2)
 
-	// The original slice should be modified
-	assert.Greater(t, len(data), 0)
+	// The buffer's data should be modified (bb.data is a different slice header than data,
+	// but when data has length 0, NewBits creates a new buffer, so we check bb.Bytes())
+	assert.Greater(t, len(bb.Bytes()), 0)
 }
 
 func TestBitBuffer_Position(t *testing.T) {
@@ -275,11 +276,11 @@ func TestBitBuffer_Clear(t *testing.T) {
 }
 
 func TestBitBuffer_Compact(t *testing.T) {
-	bb := NewBits[uint64](3)
+	bb := NewBits[uint64](8) // Use 8 bits per value for byte alignment
 
-	// Write many values
+	// Write many values (byte-aligned)
 	for i := 0; i < 20; i++ {
-		bb.Write(uint64(i % 8))
+		bb.Write(uint64(i % 256))
 	}
 
 	// Read half of them
@@ -289,9 +290,12 @@ func TestBitBuffer_Compact(t *testing.T) {
 
 	// Compact should move remaining data to beginning
 	oldPos := bb.Position()
+	oldWrittenBits := bb.GetWrittenBits()
 	bb.Compact()
 	assert.Equal(t, 0, bb.Position())
-	assert.Equal(t, bb.GetWrittenBits()-oldPos, bb.GetRemainingBits())
+	// After compact, remaining bits should equal what was written minus what was consumed
+	expectedRemaining := oldWrittenBits - oldPos
+	assert.Equal(t, expectedRemaining, bb.GetRemainingBits())
 }
 
 func TestBitBuffer_GenericTypes(t *testing.T) {

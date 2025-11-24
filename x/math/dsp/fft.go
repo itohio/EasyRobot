@@ -24,13 +24,14 @@ type FFT struct {
 	rank     int         // Tensor rank (1D, 2D, etc.)
 	tempBuf  []float32   // temporary buffer for F32 operations (allocated when needed)
 	tempBufC []complex64 // temporary buffer for C64 operations (allocated when needed)
-	lut      []float32   // precomputed LUT for twiddle factors (optional)
+	lut      []float32   // precomputed LUT for F32 twiddle factors (optional)
+	lutC     []complex64 // precomputed LUT for C64 twiddle factors (optional)
 }
 
 // NewFFT creates an FFT processor for tensors of the specified shape.
 // The shape will be rounded up to the next power of 2 for each dimension.
 // If lut is provided (vararg), it will be used for optimized FFT operations.
-// The LUT can be created using fp32.NewFFTLUT or c64.NewFFTLUT.
+// For F32 tensors, use fp32.NewFFTLUT. For C64 tensors, use c64.NewFFTLUT.
 // Returns a value (not a pointer).
 func NewFFT(shape []int, lut ...[]float32) FFT {
 	if len(shape) == 0 {
@@ -60,6 +61,12 @@ func NewFFT(shape []int, lut ...[]float32) FFT {
 	}
 
 	return fft
+}
+
+// SetLUTC sets the complex LUT for C64 tensor operations.
+// The LUT can be created using c64.NewFFTLUT(fftSize).
+func (f *FFT) SetLUTC(lut []complex64) {
+	f.lutC = lut
 }
 
 // Forward performs a forward FFT transform on a tensor.
@@ -246,9 +253,9 @@ func (f *FFT) forwardC64(dst, src types.Tensor) {
 		}
 
 		// Perform FFT
-		if len(f.lut) > 0 {
-			totalFactors := len(f.lut) / 2
-			c64.FFTWithLUT(tempBuf, f.lut, totalFactors)
+		if len(f.lutC) > 0 {
+			totalFactors := len(f.lutC)
+			c64.FFTWithLUT(tempBuf, f.lutC, totalFactors)
 		} else {
 			c64.FFT(tempBuf)
 		}
@@ -266,7 +273,11 @@ func (f *FFT) forwardC64(dst, src types.Tensor) {
 	if f.rank == 2 {
 		rows := f.shape[0]
 		cols := f.shape[1]
-		fft2dc := NewFFT2DC(rows, cols, f.lut)
+		var lut []complex64
+		if len(f.lutC) > 0 {
+			lut = f.lutC
+		}
+		fft2dc := NewFFT2DC(rows, cols, lut)
 		fft2dc.Forward(dst, src)
 		return
 	}
@@ -306,8 +317,12 @@ func (f *FFT) backwardC64(dst, src types.Tensor) {
 		}
 
 		// Perform inverse FFT
-		// Note: IFFTWithLUT could be added later for optimization
-		c64.IFFT(tempBuf)
+		if len(f.lutC) > 0 {
+			totalFactors := len(f.lutC)
+			c64.IFFTWithLUT(tempBuf, f.lutC, totalFactors)
+		} else {
+			c64.IFFT(tempBuf)
+		}
 
 		// Copy result
 		copyLen := size
@@ -322,7 +337,11 @@ func (f *FFT) backwardC64(dst, src types.Tensor) {
 	if f.rank == 2 {
 		rows := f.shape[0]
 		cols := f.shape[1]
-		fft2dc := NewFFT2DC(rows, cols, f.lut)
+		var lut []complex64
+		if len(f.lutC) > 0 {
+			lut = f.lutC
+		}
+		fft2dc := NewFFT2DC(rows, cols, lut)
 		fft2dc.Backward(dst, src)
 		return
 	}

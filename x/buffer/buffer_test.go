@@ -233,7 +233,8 @@ func TestBuffer_ByteIO(t *testing.T) {
 	// Test io.Reader interface
 	readBuf := make([]byte, 10)
 	n, err = buf.Read(readBuf)
-	require.NoError(t, err)
+	// EOF is expected when reading more than available
+	assert.ErrorIs(t, err, io.EOF)
 	assert.Equal(t, len(data), n)
 	assert.Equal(t, data, readBuf[:n])
 }

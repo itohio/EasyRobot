@@ -9,11 +9,9 @@ import (
 	"math"
 )
 
-// clampableToInt is now in helpers package as ClampableToInt
-
 // elemConvertToInt handles conversions to int with clamping.
 // Handles: float32/float64/int64/complex64 -> int (needs clamping)
-func elemConvertToInt[U Numeric](dst []int, src []U) {
+func elemConvertToInt[U Number](dst []int, src []U) {
 	n := min(len(src), len(dst))
 	if n == 0 {
 		return
@@ -85,7 +83,7 @@ func clampToInt[U ClampableToInt](dst []int, src []U, n int) {
 }
 
 // elemConvertToIntStrided handles conversions to int with clamping.
-func elemConvertToIntStrided[U Numeric](dst []int, src []U, shape []int, srcStrides, dstStrides []int) {
+func elemConvertToIntStrided[U Number](dst []int, src []U, shape []int, srcStrides, dstStrides []int) {
 	switch s := any(src).(type) {
 	case []complex64:
 		clampToIntFromComplexStrided(dst, s, shape, srcStrides, dstStrides)

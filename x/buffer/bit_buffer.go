@@ -51,10 +51,10 @@ func NewBits[T types.Unsigned](bitLength int, data ...byte) Bits[T] {
 	}
 
 	return Bits[T]{
-		data:       buf,
-		pos:        0,
+		data:        buf,
+		pos:         0,
 		writtenBits: writtenBits,
-		bitLength:  bitLength,
+		bitLength:   bitLength,
 	}
 }
 
@@ -243,7 +243,9 @@ func (bb *Bits[T]) Compact() {
 			// Byte-aligned, simple case
 			copy(bb.data, bb.data[bytesConsumed:])
 			bb.data = bb.data[:len(bb.data)-bytesConsumed]
+			bitsConsumed := bytesConsumed << 3
 			bb.pos = 0
+			bb.writtenBits -= bitsConsumed
 		} else {
 			// Not byte-aligned, need to shift bits
 			// This is complex - for now, only compact if byte-aligned
@@ -324,4 +326,6 @@ func (bb *Bits[T]) ReadFromBytes(src []byte) {
 	if bb.pos > bb.writtenBits {
 		bb.writtenBits = bb.pos
 	}
+	// Reset position to 0 after loading so data can be read from the beginning
+	bb.pos = 0
 }

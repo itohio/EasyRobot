@@ -94,40 +94,6 @@ func BenchmarkHadamardProduct(b *testing.B) {
 	})
 }
 
-func BenchmarkConvolve1D(b *testing.B) {
-	N := 1000
-	M := 10
-	stride := 1
-	vec := make([]float32, N)
-	kernel := make([]float32, M)
-	dstSize := (N - M) / stride
-	if (N-M)%stride != 0 {
-		dstSize++
-	}
-	dst := make([]float32, dstSize)
-
-	for i := range vec {
-		vec[i] = float32(i)
-	}
-	for i := range kernel {
-		kernel[i] = float32(i)
-	}
-
-	b.Run("forward", func(b *testing.B) {
-		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
-			Convolve1D(dst, vec, kernel, N, M, stride, false)
-		}
-	})
-
-	b.Run("transposed", func(b *testing.B) {
-		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
-			Convolve1D(dst, vec, kernel, N, M, stride, true)
-		}
-	})
-}
-
 func BenchmarkNormalizeVec(b *testing.B) {
 	num := 500
 	src := make([]float32, num*2)

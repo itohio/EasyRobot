@@ -23,7 +23,7 @@ import (
 type FFT2DC struct {
 	rows, cols int         // matrix dimensions (next power of 2)
 	tempBuf    []complex64 // temporary buffer for optimizations
-	lut        []float32   // precomputed LUT for twiddle factors (optional)
+	lut        []complex64 // precomputed LUT for twiddle factors (optional)
 }
 
 // NewFFT2DC creates a 2D complex FFT processor for tensors of the specified dimensions.
@@ -31,7 +31,7 @@ type FFT2DC struct {
 // If lut is provided (vararg), it will be used for optimized FFT operations.
 // The LUT can be created using c64.NewFFTLUT(max(rows, cols)).
 // Returns a value (not a pointer).
-func NewFFT2DC(rows, cols int, lut ...[]float32) FFT2DC {
+func NewFFT2DC(rows, cols int, lut ...[]complex64) FFT2DC {
 	if rows <= 0 || cols <= 0 {
 		panic("FFT dimensions must be positive")
 	}
@@ -141,7 +141,7 @@ func (f *FFT2DC) forward(src, dst types.Tensor) {
 		row = row[:f.cols] // BCE hint
 		copy(tempRow, row)
 		if len(f.lut) > 0 {
-			totalFactors := len(f.lut) / 2
+			totalFactors := len(f.lut)
 			c64.FFTWithLUT(tempRow, f.lut, totalFactors)
 		} else {
 			c64.FFT(tempRow)
@@ -159,7 +159,7 @@ func (f *FFT2DC) forward(src, dst types.Tensor) {
 		}
 		// FFT the column
 		if len(f.lut) > 0 {
-			totalFactors := len(f.lut) / 2
+			totalFactors := len(f.lut)
 			c64.FFTWithLUT(tempBuf, f.lut, totalFactors)
 		} else {
 			c64.FFT(tempBuf)
@@ -219,8 +219,12 @@ func (f *FFT2DC) backward(src, dst types.Tensor) {
 			tempBuf[i] = dstData[i*f.cols+j]
 		}
 		// IFFT the column
-		// Note: IFFTWithLUT could be added later for optimization
-		c64.IFFT(tempBuf)
+		if len(f.lut) > 0 {
+			totalFactors := len(f.lut)
+			c64.IFFTWithLUT(tempBuf, f.lut, totalFactors)
+		} else {
+			c64.IFFT(tempBuf)
+		}
 		// Put back
 		for i := range f.rows {
 			dstData[i*f.cols+j] = tempBuf[i]
@@ -234,8 +238,12 @@ func (f *FFT2DC) backward(src, dst types.Tensor) {
 		row := dstData[rowStart : rowStart+f.cols]
 		row = row[:f.cols] // BCE hint
 		copy(tempRow, row)
-		// Note: IFFTWithLUT could be added later for optimization
-		c64.IFFT(tempRow)
+		if len(f.lut) > 0 {
+			totalFactors := len(f.lut)
+			c64.IFFTWithLUT(tempRow, f.lut, totalFactors)
+		} else {
+			c64.IFFT(tempRow)
+		}
 		copy(row, tempRow)
 	}
 }

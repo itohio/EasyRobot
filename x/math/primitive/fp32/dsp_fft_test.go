@@ -53,11 +53,11 @@ func TestIFFT_Roundtrip(t *testing.T) {
 	FFT(data)
 	IFFT(data)
 
-		// IFFT scales by 1/N, so result should be original / 4
-		scale := float32(1.0 / 4.0)
-		for i := range 4 {
-			assert.InDelta(t, original[i]*scale, data[i], 1e-5, "Roundtrip failed at index %d", i)
-		}
+	// IFFT scales by 1/N, so result should be original / 4
+	scale := float32(1.0 / 4.0)
+	for i := range 4 {
+		assert.InDelta(t, original[i]*scale, data[i], 1e-5, "Roundtrip failed at index %d", i)
+	}
 }
 
 func TestFFT_IFFT_Identity(t *testing.T) {
@@ -75,7 +75,7 @@ func TestFFT_IFFT_Identity(t *testing.T) {
 			scale := 1.0 / float32(size)
 			for i := range size {
 				expected := float32(i+1) * scale
-				assert.InDelta(t, expected, data[i], 1e-5, "Identity check failed at index %d", i)
+				require.InDelta(t, expected, data[i], 1e-5, "Identity check failed at index %d", i)
 			}
 		})
 	}
@@ -140,7 +140,7 @@ func TestFFT_LargeSize(t *testing.T) {
 	scale := 1.0 / float32(size)
 	for i := range size {
 		expected := original[i] * scale
-		assert.InDelta(t, expected, data[i], 1e-4, "Large size test failed at index %d", i)
+		require.InDelta(t, expected, data[i], 1e-4, "Large size test failed at index %d", i)
 	}
 }
 
@@ -150,12 +150,12 @@ func TestComputeFFTLUT(t *testing.T) {
 		fftSize  int
 		expected int
 	}{
-		{"size_2", 2, 2},      // 1 factor * 2 (cos+sin) = 2
-		{"size_4", 4, 6},      // (1+2) factors * 2 = 6
-		{"size_8", 8, 14},     // (1+2+4) factors * 2 = 14
-		{"size_16", 16, 30},   // (1+2+4+8) factors * 2 = 30
-		{"size_32", 32, 62},   // (1+2+4+8+16) factors * 2 = 62
-		{"size_64", 64, 126},  // (1+2+4+8+16+32) factors * 2 = 126
+		{"size_2", 2, 2},       // 1 factor * 2 (cos+sin) = 2
+		{"size_4", 4, 6},       // (1+2) factors * 2 = 6
+		{"size_8", 8, 14},      // (1+2+4) factors * 2 = 14
+		{"size_16", 16, 30},    // (1+2+4+8) factors * 2 = 30
+		{"size_32", 32, 62},    // (1+2+4+8+16) factors * 2 = 62
+		{"size_64", 64, 126},   // (1+2+4+8+16+32) factors * 2 = 126
 		{"size_128", 128, 254}, // (1+2+4+8+16+32+64) factors * 2 = 254
 	}
 
@@ -235,7 +235,7 @@ func TestFFTWithLUT(t *testing.T) {
 	FFT(expected)
 
 	for i := range len(data) {
-		assert.InDelta(t, expected[i], data[i], 1e-5, "FFTWithLUT should match FFT at index %d", i)
+		require.InDelta(t, expected[i], data[i], 1e-5, "FFTWithLUT should match FFT at index %d", i)
 	}
 }
 
@@ -258,7 +258,60 @@ func TestFFTWithLUT_Roundtrip(t *testing.T) {
 	scale := 1.0 / float32(fftSize)
 	for i := range fftSize {
 		expected := original[i] * scale
-		assert.InDelta(t, expected, data[i], 1e-5, "Roundtrip with LUT failed at index %d", i)
+		require.InDelta(t, expected, data[i], 1e-5, "Roundtrip with LUT failed at index %d", i)
+	}
+}
+
+func TestIFFTWithLUT(t *testing.T) {
+	fftSize := 8
+	lut := NewFFTLUT(fftSize)
+	totalFactors := len(lut) / 2
+
+	data := make([]float32, 2*fftSize)
+	for i := range fftSize {
+		data[i] = float32(i + 1)
+	}
+
+	original := make([]float32, len(data))
+	copy(original, data)
+
+	FFT(data)
+
+	// Should produce same result as regular IFFT
+	expected := make([]float32, len(original))
+	copy(expected, original)
+	FFT(expected)
+	IFFT(expected)
+
+	dataCopy := make([]float32, len(data))
+	copy(dataCopy, data)
+	IFFTWithLUT(dataCopy, lut, totalFactors)
+
+	for i := range len(dataCopy) {
+		require.InDelta(t, expected[i], dataCopy[i], 1e-5, "IFFTWithLUT should match IFFT at index %d", i)
+	}
+}
+
+func TestIFFTWithLUT_Roundtrip(t *testing.T) {
+	fftSize := 16
+	lut := NewFFTLUT(fftSize)
+	totalFactors := len(lut) / 2
+
+	data := make([]float32, 2*fftSize)
+	for i := range fftSize {
+		data[i] = float32(i + 1)
+	}
+
+	original := make([]float32, len(data))
+	copy(original, data)
+
+	FFTWithLUT(data, lut, totalFactors)
+	IFFTWithLUT(data, lut, totalFactors)
+
+	scale := 1.0 / float32(fftSize)
+	for i := range fftSize {
+		expected := original[i] * scale
+		require.InDelta(t, expected, data[i], 1e-5, "Roundtrip with IFFTWithLUT failed at index %d", i)
 	}
 }
 
@@ -292,4 +345,3 @@ func TestNextPowerOfTwo(t *testing.T) {
 		})
 	}
 }
-

@@ -23,7 +23,7 @@ import (
 type FFT1DC struct {
 	length  int         // vector length (next power of 2)
 	tempBuf []complex64 // temporary buffer for optimizations
-	lut     []float32   // precomputed LUT for twiddle factors (optional)
+	lut     []complex64 // precomputed LUT for twiddle factors (optional)
 }
 
 // NewFFT1DC creates a 1D complex FFT processor for tensors of the specified length.
@@ -31,7 +31,7 @@ type FFT1DC struct {
 // If lut is provided (vararg), it will be used for optimized FFT operations.
 // The LUT can be created using c64.NewFFTLUT(fftSize).
 // Returns a value (not a pointer).
-func NewFFT1DC(length int, lut ...[]float32) FFT1DC {
+func NewFFT1DC(length int, lut ...[]complex64) FFT1DC {
 	if length <= 0 {
 		panic("FFT length must be positive")
 	}
@@ -116,7 +116,7 @@ func (f *FFT1DC) forward(src, dst types.Tensor) {
 
 	// Perform complex FFT
 	if len(f.lut) > 0 {
-		totalFactors := len(f.lut) / 2
+		totalFactors := len(f.lut)
 		c64.FFTWithLUT(tempBuf, f.lut, totalFactors)
 	} else {
 		c64.FFT(tempBuf)
@@ -165,8 +165,12 @@ func (f *FFT1DC) backward(src, dst types.Tensor) {
 	}
 
 	// Perform inverse complex FFT
-	// Note: IFFTWithLUT could be added later for optimization
-	c64.IFFT(tempBuf)
+	if len(f.lut) > 0 {
+		totalFactors := len(f.lut)
+		c64.IFFTWithLUT(tempBuf, f.lut, totalFactors)
+	} else {
+		c64.IFFT(tempBuf)
+	}
 
 	// Copy result to destination (only copy what fits)
 	copyLen := f.length

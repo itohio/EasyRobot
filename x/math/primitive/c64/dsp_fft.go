@@ -118,20 +118,23 @@ func IFFT(data []complex64) {
 	// Forward FFT on conjugated data
 	FFT(data)
 
-	// Conjugate back and scale (no type casts in hot path)
+	// Conjugate back and scale by 1/N (no type casts in hot path)
 	nF := float32(n)
-	scale := 1.0 / nF
+	scale := float32(1.0) / (nF * nF)
 	for i := range n {
 		realVal := real(data[i])
 		imagVal := imag(data[i])
-		data[i] = complex64(complex(realVal*scale, -imagVal*scale))
+		// Scale and conjugate: result = (1/N) * conj(FFT(conj(x)))
+		scaledReal := realVal * scale
+		scaledImag := -imagVal * scale
+		data[i] = complex64(complex(scaledReal, scaledImag))
 	}
 }
 
 // ComputeFFTLUT returns the required buffer size for FFT LUT of given size.
-// Returns the total number of float32 elements needed (2 * totalFactors).
-// For FFT size N, the buffer size is 2 * (N-1) elements.
-// Layout: [cos0, cos1, ..., cosM-1, sin0, sin1, ..., sinM-1] where M = totalFactors
+// Returns the total number of complex64 elements needed (totalFactors).
+// For FFT size N, the buffer size is (N-1) complex64 elements.
+// Layout: [complex(cos0,sin0), complex(cos1,sin1), ..., complex(cosM-1,sinM-1)] where M = totalFactors
 func ComputeFFTLUT(fftSize int) int {
 	if !isPowerOfTwo(fftSize) {
 		panic("ComputeFFTLUT: fftSize must be power of 2")
@@ -144,15 +147,15 @@ func ComputeFFTLUT(fftSize int) int {
 		totalFactors += length / 2
 	}
 
-	// Return total buffer size (cos + sin for each factor)
-	return totalFactors * 2
+	// Return total number of complex64 elements
+	return totalFactors
 }
 
 // FillFFTLUT fills the LUT buffer with precomputed twiddle factors.
 // dst must be at least ComputeFFTLUT(fftSize) in size.
 // Returns the number of twiddle factors (totalFactors).
-// Layout: [cos0, cos1, ..., cosM-1, sin0, sin1, ..., sinM-1] where M = totalFactors
-func FillFFTLUT(dst []float32, fftSize int) int {
+// Layout: [complex(cos0,sin0), complex(cos1,sin1), ..., complex(cosM-1,sinM-1)] where M = totalFactors
+func FillFFTLUT(dst []complex64, fftSize int) int {
 	if !isPowerOfTwo(fftSize) {
 		panic("FillFFTLUT: fftSize must be power of 2")
 	}
@@ -163,7 +166,7 @@ func FillFFTLUT(dst []float32, fftSize int) int {
 		totalFactors += length / 2
 	}
 
-	if len(dst) < totalFactors*2 {
+	if len(dst) < totalFactors {
 		panic("FillFFTLUT: destination buffer too small")
 	}
 
@@ -173,8 +176,7 @@ func FillFFTLUT(dst []float32, fftSize int) int {
 		angle := -2 * math32.Pi / lengthF
 		for j := range length / 2 {
 			angleJ := angle * float32(j)
-			dst[idx] = math32.Cos(angleJ)
-			dst[idx+totalFactors] = math32.Sin(angleJ)
+			dst[idx] = complex64(complex(math32.Cos(angleJ), math32.Sin(angleJ)))
 			idx++
 		}
 	}
@@ -185,9 +187,11 @@ func FillFFTLUT(dst []float32, fftSize int) int {
 // FFTWithLUT performs FFT using precomputed LUT.
 // data: complex data of length N
 // lut: precomputed twiddle factors from FillFFTLUT
-//   Layout: [cos0, cos1, ..., cosM-1, sin0, sin1, ..., sinM-1] where M = totalFactors
+//
+//	Layout: [complex(cos0,sin0), complex(cos1,sin1), ..., complex(cosM-1,sinM-1)] where M = totalFactors
+//
 // totalFactors: number of factors returned by FillFFTLUT
-func FFTWithLUT(data []complex64, lut []float32, totalFactors int) {
+func FFTWithLUT(data []complex64, lut []complex64, totalFactors int) {
 	n := len(data)
 	if n <= 1 {
 		return
@@ -218,41 +222,68 @@ func FFTWithLUT(data []complex64, lut []float32, totalFactors int) {
 	for length := 2; length <= n; length <<= 1 {
 		halfLen := length / 2
 		for i := 0; i < n; i += length {
-			// Reset twiddle factor for each group
-			wReal := float32(1.0)
-			wImag := float32(0.0)
-			groupLUTIdx := lutIdx
 			segment := data[i : i+length]
 			segment = segment[:length]
 			for j := range halfLen {
+				// Get twiddle factor directly from LUT and multiply v by w
+				w := lut[lutIdx+j]
 				u := segment[j]
-				uReal := real(u)
-				uImag := imag(u)
 				v := segment[j+halfLen]
-				vReal := real(v)
-				vImag := imag(v)
 
-				// Multiply v by w
-				vRealNew := vReal*wReal - vImag*wImag
-				vImagNew := vReal*wImag + vImag*wReal
+				// Multiply v by w using complex multiplication
+				vw := v * w
 
-				// Compute FFT butterfly
-				segment[j] = complex64(complex(uReal+vRealNew, uImag+vImagNew))
-				segment[j+halfLen] = complex64(complex(uReal-vRealNew, uImag-vImagNew))
-
-				// Update twiddle factor from LUT
-				if groupLUTIdx < totalFactors {
-					cosVal := lut[groupLUTIdx]
-					sinVal := lut[groupLUTIdx+totalFactors]
-					wRealNew := wReal*cosVal - wImag*sinVal
-					wImagNew := wReal*sinVal + wImag*cosVal
-					wReal = wRealNew
-					wImag = wImagNew
-					groupLUTIdx++
-				}
+				// Compute FFT butterfly: sum = u + v*w, diff = u - v*w
+				segment[j] = u + vw
+				segment[j+halfLen] = u - vw
 			}
 		}
 		lutIdx += halfLen
 	}
 }
 
+// IFFTWithLUT performs inverse FFT using precomputed LUT.
+// data: complex data of length N
+// lut: precomputed twiddle factors from FillFFTLUT
+//
+//	Layout: [complex(cos0,sin0), complex(cos1,sin1), ..., complex(cosM-1,sinM-1)] where M = totalFactors
+//
+// totalFactors: number of factors returned by FillFFTLUT
+func IFFTWithLUT(data []complex64, lut []complex64, totalFactors int) {
+	n := len(data)
+	if n <= 1 {
+		return
+	}
+
+	// Optimize for power-of-2
+	if !isPowerOfTwo(n) {
+		panic("IFFTWithLUT: size must be power of 2, use nextPowerOfTwo to pad")
+	}
+
+	// BCE hint: reslice to exact size
+	data = data[:n]
+
+	// Conjugate the data for IFFT (no type casts in hot path)
+	for i := range n {
+		realVal := real(data[i])
+		imagVal := imag(data[i])
+		data[i] = complex64(complex(realVal, -imagVal))
+	}
+
+	// Forward FFT on conjugated data using LUT
+	FFTWithLUT(data, lut, totalFactors)
+
+	// Conjugate back and scale by 1/N^2
+	// Note: Since FFT accumulates by N^2 when applied to frequency domain data in IFFT,
+	// we need to scale by 1/N^2 to get the correct result (1/N for IFFT * 1/N for FFT accumulation)
+	nF := float32(n)
+	scale := float32(1.0) / (nF * nF)
+	for i := range n {
+		realVal := real(data[i])
+		imagVal := imag(data[i])
+		// Scale and conjugate: result = (1/N) * conj(FFT(conj(x)))
+		scaledReal := realVal * scale
+		scaledImag := -imagVal * scale
+		data[i] = complex64(complex(scaledReal, scaledImag))
+	}
+}

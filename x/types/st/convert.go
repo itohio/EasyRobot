@@ -7,28 +7,6 @@ import (
 	"math"
 )
 
-// Types that need clamping when converting to int8 (sorted by type size)
-type clampableToInt8 interface {
-	~float64 | ~int64 | ~float32 | ~int | ~int32 | ~int16
-}
-
-// Types that need clamping when converting to int16 (sorted by type size)
-type clampableToInt16 interface {
-	~float64 | ~int64 | ~float32 | ~int | ~int32
-}
-
-// Types that need clamping when converting to int32 (sorted by type size)
-type clampableToInt32 interface {
-	~float64 | ~int64 | ~float32 | ~int
-}
-
-// Types that need clamping when converting to int64 (sorted by type size)
-type clampableToInt64 interface {
-	~float64 | ~float32
-}
-
-// clampableToInt is platform-specific - see convert_i32.go and convert_i64.go
-
 // CastClamped converts src to dst for contiguous arrays.
 // This is a simple, optimized version for the common case of contiguous memory.
 // For strided or non-contiguous arrays, use ElemConvertStrided.
@@ -229,7 +207,7 @@ func elemConvertGeneric[T, U Number](dst []T, src []U) []T {
 		switch s := any(src).(type) {
 		case []complex64:
 			// complex64 -> float64: extract real part (up-conversion, no clamping needed)
-			clampToFloat64FromComplex(d[:n], s, n)
+			CastFromComplex(d[:n], s)
 			return dst
 		case []float64:
 			Cast[float64, float64](d[:n], s[:n])
@@ -257,7 +235,7 @@ func elemConvertGeneric[T, U Number](dst []T, src []U) []T {
 		switch s := any(src).(type) {
 		case []complex64:
 			// complex64 -> float32: extract real part (same range, no clamping needed but use function for consistency)
-			clampToFloat32FromComplex(d[:n], s, n)
+			CastFromComplex(d[:n], s)
 			return dst
 		case []float64:
 			Cast[float32, float64](d[:n], s[:n])
@@ -1261,32 +1239,6 @@ func elemConvertToInt8[U Number](dst []int8, src []U) {
 	}
 }
 
-// clampToFloat32FromComplex extracts real part from complex64 to float32.
-// No clamping needed (same range) but uses dedicated function for consistency.
-func clampToFloat32FromComplex(dst []float32, src []complex64, n int) {
-	if n == 0 {
-		return
-	}
-	_ = dst[n-1]
-	_ = src[n-1]
-	for i := 0; i < n; i++ {
-		dst[i] = float32(real(src[i]))
-	}
-}
-
-// clampToFloat64FromComplex extracts real part from complex64 to float64.
-// No clamping needed (up-conversion) but uses dedicated function for consistency.
-func clampToFloat64FromComplex(dst []float64, src []complex64, n int) {
-	if n == 0 {
-		return
-	}
-	_ = dst[n-1]
-	_ = src[n-1]
-	for i := 0; i < n; i++ {
-		dst[i] = float64(real(src[i]))
-	}
-}
-
 // clampToComplex64FromFloat64 clamps float64 to float32 range and converts to complex64.
 func clampToComplex64FromFloat64(dst []complex64, src []float64, n int) {
 	if n == 0 {
@@ -1352,7 +1304,7 @@ func clampToInt8FromComplex(dst []int8, src []complex64, n int) {
 // clampToInt8 implements the hot path inner loop for clamping to int8 range [-128, 127].
 // Generic over source types that need clamping (float32, float64, int16).
 // n is the number of elements to process (bounds checks eliminated by explicit length).
-func clampToInt8[U clampableToInt8](dst []int8, src []U, n int) {
+func clampToInt8[U ClampableToInt8](dst []int8, src []U, n int) {
 	if n == 0 {
 		return
 	}
@@ -1393,7 +1345,7 @@ func clampToInt64FromComplex(dst []int64, src []complex64, n int) {
 
 // clampToInt64 implements the hot path inner loop for clamping to int64 range.
 // Generic over source types that need clamping (float32, float64).
-func clampToInt64[U clampableToInt64](dst []int64, src []U, n int) {
+func clampToInt64[U ClampableToInt64](dst []int64, src []U, n int) {
 	if n == 0 {
 		return
 	}
@@ -1434,7 +1386,7 @@ func clampToInt32FromComplex(dst []int32, src []complex64, n int) {
 
 // clampToInt32 implements the hot path inner loop for clamping to int32 range [-2147483648, 2147483647].
 // Generic over source types that need clamping (float32, float64, int64).
-func clampToInt32[U clampableToInt32](dst []int32, src []U, n int) {
+func clampToInt32[U ClampableToInt32](dst []int32, src []U, n int) {
 	if n == 0 {
 		return
 	}
@@ -1475,7 +1427,7 @@ func clampToInt16FromComplex(dst []int16, src []complex64, n int) {
 
 // clampToInt16 implements the hot path inner loop for clamping to int16 range [-32768, 32767].
 // Generic over source types that need clamping (float32, float64).
-func clampToInt16[U clampableToInt16](dst []int16, src []U, n int) {
+func clampToInt16[U ClampableToInt16](dst []int16, src []U, n int) {
 	if n == 0 {
 		return
 	}
@@ -1556,7 +1508,7 @@ func elemConvertToInt8Strided[U Number](dst []int8, src []U, shape []int, srcStr
 // The entire iteration is implemented inside this function to avoid function call overhead.
 // Uses iterative approach instead of recursion for better performance.
 // Generic over source types that need clamping (float32, float64, int16).
-func clampToInt8Strided[U clampableToInt8](dst []int8, src []U, shape []int, srcStrides, dstStrides []int) {
+func clampToInt8Strided[U ClampableToInt8](dst []int8, src []U, shape []int, srcStrides, dstStrides []int) {
 	ndims := len(shape)
 	if ndims == 0 {
 		return
@@ -1587,7 +1539,7 @@ func clampToInt8Strided[U clampableToInt8](dst []int8, src []U, shape []int, src
 // The entire iteration is implemented inside this function to avoid function call overhead.
 // Uses iterative approach instead of recursion for better performance.
 // Generic over source types that need clamping (float32, float64).
-func clampToInt16Strided[U clampableToInt16](dst []int16, src []U, shape []int, srcStrides, dstStrides []int) {
+func clampToInt16Strided[U ClampableToInt16](dst []int16, src []U, shape []int, srcStrides, dstStrides []int) {
 	ndims := len(shape)
 	if ndims == 0 {
 		return
@@ -1616,7 +1568,7 @@ func clampToInt16Strided[U clampableToInt16](dst []int16, src []U, shape []int, 
 
 // clampToInt64Strided implements the hot path for strided copying with clamping to int64.
 // Generic over source types that need clamping (float32, float64).
-func clampToInt64Strided[U clampableToInt64](dst []int64, src []U, shape []int, srcStrides, dstStrides []int) {
+func clampToInt64Strided[U ClampableToInt64](dst []int64, src []U, shape []int, srcStrides, dstStrides []int) {
 	ndims := len(shape)
 	if ndims == 0 {
 		return
@@ -1645,7 +1597,7 @@ func clampToInt64Strided[U clampableToInt64](dst []int64, src []U, shape []int, 
 
 // clampToInt32Strided implements the hot path for strided copying with clamping to int32.
 // Generic over source types that need clamping (float32, float64).
-func clampToInt32Strided[U clampableToInt32](dst []int32, src []U, shape []int, srcStrides, dstStrides []int) {
+func clampToInt32Strided[U ClampableToInt32](dst []int32, src []U, shape []int, srcStrides, dstStrides []int) {
 	ndims := len(shape)
 	if ndims == 0 {
 		return
