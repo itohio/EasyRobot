@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const despreaderTestRolloffFactor = float32(0.5) // Raised cosine roll-off factor
+
 // TestDespreader_Isolated tests the Despreader component in complete isolation
 // Creates a known signal and verifies despreading works correctly
 func TestDespreader_Isolated(t *testing.T) {
@@ -28,7 +30,7 @@ func TestDespreader_Isolated(t *testing.T) {
 		code, codeTable, carrierFreq, sampleRate)
 	
 	// Create a known signal: encode a single symbol (bit=1)
-	modulator := NewModulator(sampleRate, carrierFreq, 500, code)
+	modulator := NewModulator(sampleRate, carrierFreq, 500, despreaderTestRolloffFactor, code)
 	testData := []byte{0x80} // Single bit = 1 (MSB)
 	expectedSize := modulator.Encode(nil, testData)
 	signal := vec.New(expectedSize)
@@ -93,7 +95,7 @@ func TestDespreader_Isolated_BinarySymbols(t *testing.T) {
 	
 	// Encode known pattern: 0x55 = 01010101
 	testData := []byte{0x55}
-	modulator := NewModulator(sampleRate, carrierFreq, 500, code)
+	modulator := NewModulator(sampleRate, carrierFreq, 500, despreaderTestRolloffFactor, code)
 	expectedSize := modulator.Encode(nil, testData)
 	signal := vec.New(expectedSize)
 	modulator.Encode(signal, testData)
@@ -156,7 +158,7 @@ func TestDespreader_Isolated_CodePhase(t *testing.T) {
 	
 	// Encode single bit = 1
 	testData := []byte{0x80}
-	modulator := NewModulator(sampleRate, carrierFreq, 500, code)
+	modulator := NewModulator(sampleRate, carrierFreq, 500, despreaderTestRolloffFactor, code)
 	expectedSize := modulator.Encode(nil, testData)
 	signal := vec.New(expectedSize)
 	modulator.Encode(signal, testData)
@@ -210,7 +212,7 @@ func TestDespreader_Isolated_PLLPhase(t *testing.T) {
 	
 	// Encode single bit = 1
 	testData := []byte{0x80}
-	modulator := NewModulator(sampleRate, carrierFreq, 500, code)
+	modulator := NewModulator(sampleRate, carrierFreq, 500, despreaderTestRolloffFactor, code)
 	expectedSize := modulator.Encode(nil, testData)
 	signal := vec.New(expectedSize)
 	modulator.Encode(signal, testData)

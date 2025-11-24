@@ -89,7 +89,7 @@ func TestDemodulator_Reset(t *testing.T) {
 	// Verify state is reset
 	assert.False(t, demodulator.locked)
 	assert.Equal(t, 0, len(demodulator.sampleBuffer))
-	assert.Equal(t, 0, len(demodulator.bitBuffer))
+	assert.Equal(t, 0, demodulator.bitBuffer.GetWrittenBits())
 	assert.Equal(t, float32(0), demodulator.phaseAcc)
 }
 

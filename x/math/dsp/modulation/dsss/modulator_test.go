@@ -12,9 +12,13 @@ import (
 
 const (
 	// Test parameters
-	testCarrierFreq = float32(1000)  // 1 kHz carrier frequency
-	testSymbolRate  = float32(1000)  // 1 kbaud symbol rate
-	testAmplitude   = float32(1.0)
+	// Note: Carrier frequency must be >= bandwidth/2 to avoid negative frequencies
+	// Bandwidth = chipRate * (1 + rolloff) = 7000 * 1.5 = 10500 Hz
+	// So carrierFreq >= 5250 Hz. Using 20kHz for better phase alignment and testing.
+	testCarrierFreq  = float32(20000) // 20 kHz carrier frequency (>= bandwidth/2)
+	testSymbolRate   = float32(1000)  // 1 kbaud symbol rate
+	testAmplitude    = float32(1.0)
+	testRolloffFactor = float32(0.5)  // Raised cosine roll-off factor
 )
 
 var (
@@ -24,9 +28,9 @@ var (
 	// Test sample rate: calculated to exceed recommended rate for reliable testing
 	// Recommended rate calculation:
 	//   chipRate = symbolRate * spreadingFactor = 1000 * 7 = 7000 chips/sec
-	//   recommendedRate = max(4*carrierFreq, chipRate*8) = max(4000, 56000) = 56000 Hz
-	// Using 1.15x recommended rate (~64000 Hz) for better test reliability
-	testSampleRate = CalculateRecommendedSampleRate(testSymbolRate, float32(testSpreadingFactor), testCarrierFreq) * 1.15
+	//   recommendedRate = max(4*carrierFreq, chipRate*8) = max(80000, 56000) = 80000 Hz
+	// Using 1.2x recommended rate (96000 Hz) for better test reliability and phase alignment
+	testSampleRate = CalculateRecommendedSampleRate(testSymbolRate, float32(testSpreadingFactor), testCarrierFreq) * 1.2
 )
 
 func init() {
@@ -39,7 +43,7 @@ func init() {
 
 func TestModulator_NewModulator(t *testing.T) {
 	code := GenerateMSequence(3, []int{2, 1, 0}, 1)
-	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
+	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, code)
 
 	require.NotNil(t, modulator)
 	assert.Equal(t, testSampleRate, modulator.sampleRate)
@@ -47,11 +51,12 @@ func TestModulator_NewModulator(t *testing.T) {
 	assert.Equal(t, testSymbolRate, modulator.symbolRate)
 	assert.Equal(t, code.Length(), modulator.spreadingFactor)
 	assert.Equal(t, 2, modulator.modulationOrder)
+	assert.Equal(t, testRolloffFactor, modulator.rolloffFactor)
 }
 
 func TestModulator_NewMModulator(t *testing.T) {
 	codeTable := GenerateWalshCodeTable(4)
-	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, codeTable...)
+	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, codeTable...)
 
 	require.NotNil(t, modulator)
 	assert.Equal(t, 4, modulator.modulationOrder)
@@ -60,7 +65,7 @@ func TestModulator_NewMModulator(t *testing.T) {
 
 func TestModulator_Encode_NilAmplitudes(t *testing.T) {
 	code := GenerateMSequence(3, []int{2, 1, 0}, 1)
-	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
+	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, code)
 	data := []byte{0x55, 0xAA}
 
 	expectedSize := modulator.Encode(nil, data)
@@ -70,7 +75,7 @@ func TestModulator_Encode_NilAmplitudes(t *testing.T) {
 
 func TestModulator_Encode_BinaryDSSS(t *testing.T) {
 	code := GenerateMSequence(3, []int{2, 1, 0}, 1)
-	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
+	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, code)
 	data := []byte{0x55} // 01010101
 
 	// Calculate required size (no padding - encoder doesn't add padding)
@@ -96,7 +101,7 @@ func TestModulator_Encode_BinaryDSSS(t *testing.T) {
 
 func TestModulator_Encode_MaryDSSS(t *testing.T) {
 	codeTable := GenerateWalshCodeTable(4)
-	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, codeTable...)
+	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, codeTable...)
 	data := []byte{0x12} // 00010010
 
 	// Calculate required size (no padding - encoder doesn't add padding)
@@ -120,7 +125,7 @@ func TestModulator_Encode_MaryDSSS(t *testing.T) {
 
 func TestModulator_Reset(t *testing.T) {
 	code := GenerateMSequence(3, []int{2, 1, 0}, 1)
-	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
+	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, code)
 
 	// Reset should not panic
 	modulator.Reset()
@@ -135,7 +140,7 @@ func TestModulator_Reset(t *testing.T) {
 
 func TestModulator_SetAmplitude(t *testing.T) {
 	code := GenerateMSequence(3, []int{2, 1, 0}, 1)
-	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
+	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, code)
 	newAmplitude := float32(0.5)
 
 	modulator.SetAmplitude(newAmplitude)
@@ -144,24 +149,24 @@ func TestModulator_SetAmplitude(t *testing.T) {
 
 func TestModulator_ModulationOrder(t *testing.T) {
 	code := GenerateMSequence(3, []int{2, 1, 0}, 1)
-	modulator2 := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
+	modulator2 := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, code)
 	codeTable := GenerateWalshCodeTable(4)
-	modulator4 := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, codeTable...)
+	modulator4 := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, codeTable...)
 
-	assert.Equal(t, 2, modulator2.ModulationOrder())
-	assert.Equal(t, 4, modulator4.ModulationOrder())
+	assert.Equal(t, 2, modulator2.modulationOrder)
+	assert.Equal(t, 4, modulator4.modulationOrder)
 }
 
 func TestModulator_SpreadingFactor(t *testing.T) {
 	code := GenerateMSequence(3, []int{2, 1, 0}, 1)
-	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
+	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, code)
 
-	assert.Equal(t, code.Length(), modulator.SpreadingFactor())
+	assert.Equal(t, code.Length(), modulator.spreadingFactor)
 }
 
 func TestModulator_InterfaceCompliance(t *testing.T) {
 	code := GenerateMSequence(3, []int{2, 1, 0}, 1)
-	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
+	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, code)
 
 	// Verify it implements the Modulator interface
 	var _ interface {

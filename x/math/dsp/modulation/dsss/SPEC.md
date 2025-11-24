@@ -1,425 +1,867 @@
-# Spec: DSSS Encoder / Decoder (High-level, mathematical)
+# Mathematical Specification: Modular DSSS Architecture
 
-> Purpose: provide a clear, implementation-ready specification for a Direct-Sequence Spread Spectrum (DSSS) encoder and decoder.  
-> Audience: DSP / radio engineer implementing encoder/decoder structs that maintain state.  
-> Output format: encoder consumes bytes and outputs DAC sample values; decoder consumes ADC samples and outputs recovered bytes (when signal detected). The implementation is samplerate-aware and accepts externally provided spreading codes.
+## Overview
 
----
-
-## 0. Assumptions & conventions
-
-- Continuous-time signals are represented discretely at sample rate `Fs` (samples/sec).  
-- Carrier frequency is `f_c` (Hz). Baseband processing (complex baseband) is assumed preferred: samples are complex (`I+jQ`). If implementing real-passband, map to real cosine/sine carriers as noted.  
-- Spreading code sequences are sequences of chips `c[n] ∈ {+1, -1}` (bipolar). Codes are provided to the encoder/decoder as arrays of `±1` (length `L`). For M-ary orthogonal signaling, a symbol selects one of `M` orthogonal codes `C_m[n]`.  
-- Symbol rate (data) is `R_sym` (symbols/sec). Each symbol is spread by `L` chips. Chip rate `R_chip = R_sym * L`.  
-- Chip period `T_chip = 1 / R_chip`. Sample period `T_s = 1 / Fs`. Samples per chip `N_sc = Fs / R_chip` (must be integer for simplicity, else handle fractional resampling).  
-- Use bipolar mapping for modulation: bit `0 -> +1`, bit `1 -> -1` (or vice versa), consistently.
+This document describes the mathematical operations each component must perform, without implementation details. Use this to map to your existing codebase and identify missing functionality.
 
 ---
 
-## 1. Mathematical model
+## TRANSMITTER CHAIN
 
-### 1.1 Encoded continuous-time transmitted signal (baseband view)
-Let data bits (or symbols) be `b[k] ∈ {+1, -1}` for k-th symbol (after bit-to-symbol mapping). Let spreading code (for symbol k) be `c_k[n] ∈ {+1, -1}`, n = 0..L-1.
+### Component 1: Symbol Mapper
 
-Continuous-time baseband transmitted waveform for symbol k:
-\[
-s_k(t) = A \cdot b[k] \cdot \sum_{n=0}^{L-1} c_k[n] \, p(t - (kL+n)T_{chip})
-\]
+**Purpose**: Convert byte stream to symbol values
+
+**Input**: 
+- B = [b₀, b₁, b₂, ..., bₙ₋₁] where bᵢ ∈ {0, 1, ..., 255}
+
+**Output**: 
+- S = [s₀, s₁, s₂, ..., sₘ₋₁] where sᵢ ∈ {0, 1, ..., M-1}
+
+**Parameters**:
+- k = bits per symbol = log₂(M)
+- M = modulation order (2 for binary, 4 for 4-ary, etc.)
+
+**Operation**:
+
+1. **Bit Extraction**: Convert bytes to bit stream
+   ```
+   For each byte bⱼ:
+     Extract 8 bits: [b₇, b₆, b₅, b₄, b₃, b₂, b₁, b₀]
+     where bᵢ = (bⱼ >> i) & 1
+   
+   Bit stream: B_bits = [b₀⁽⁰⁾, b₁⁽⁰⁾, ..., b₇⁽⁰⁾, b₀⁽¹⁾, ..., b₇⁽ⁿ⁻¹⁾]
+   ```
+
+2. **Symbol Packing**: Group k bits into symbols
+   ```
+   For i = 0 to m-1:
+     sᵢ = Σ(j=0 to k-1) B_bits[i*k + j] × 2^(k-1-j)
+   
+   Example (binary, k=1):
+     s₀ = B_bits[0]
+     s₁ = B_bits[1]
+   
+   Example (4-ary, k=2):
+     s₀ = B_bits[0]×2 + B_bits[1]×1
+     s₁ = B_bits[2]×2 + B_bits[3]×1
+   ```
+
+**Number of Symbols**:
+```
+m = ⌈(n × 8) / k⌉
+```
+
+**Mathematical Properties**:
+- Reversible mapping (bijection)
+- No information loss
+- Handles partial symbols (zero padding)
+
+---
+
+### Component 2: Chip Generator
+
+**Purpose**: Convert symbols to chip sequences using spreading codes
+
+**Input**: 
+- sᵢ = symbol value, sᵢ ∈ {0, 1, ..., M-1}
+
+**Output**: 
+- C⁽ⁱ⁾ = [c₀⁽ⁱ⁾, c₁⁽ⁱ⁾, ..., c_{L-1}⁽ⁱ⁾] where cⱼ⁽ⁱ⁾ ∈ {-1, +1}
+
+**Parameters**:
+- L = spreading factor (chips per symbol)
+- P = {P₀, P₁, ..., P_{M-1}} = set of M spreading codes
+- Pₘ = [p₀⁽ᵐ⁾, p₁⁽ᵐ⁾, ..., p_{L-1}⁽ᵐ⁾] where pⱼ⁽ᵐ⁾ ∈ {-1, +1}
+
+**Operation Types**:
+
+#### A. Direct Mapping (Binary, M=2)
+```
+If sᵢ = 0:
+  C⁽ⁱ⁾ = -P₀ = [-p₀, -p₁, ..., -p_{L-1}]
+
+If sᵢ = 1:
+  C⁽ⁱ⁾ = +P₀ = [+p₀, +p₁, ..., +p_{L-1}]
+```
+
+#### B. Code Selection (M-ary, M>2)
+```
+C⁽ⁱ⁾ = P_{sᵢ}
+
+Example (4-ary):
+  s=0 → C = P₀
+  s=1 → C = P₁
+  s=2 → C = P₂
+  s=3 → C = P₃
+```
+
+#### C. Differential Encoding (Optional)
+```
+Maintain state: s_prev (initialized to 0)
+
+Transmitted symbol:
+  s_tx = s_prev ⊕ sᵢ  (XOR for binary)
+  s_tx = (s_prev + sᵢ) mod M  (for M-ary)
+
+Then apply mapping A or B to s_tx
+
+Update state:
+  s_prev ← s_tx
+```
+
+**Code Requirements**:
+- All codes must have length L
+- For M-ary: need M distinct codes
+- Codes should be orthogonal or near-orthogonal:
+  ```
+  ⟨Pᵢ, Pⱼ⟩ = (1/L)Σ(k=0 to L-1) pₖ⁽ⁱ⁾ × pₖ⁽ʲ⁾ ≈ δᵢⱼ
+  
+  where δᵢⱼ = 1 if i=j, 0 otherwise
+  ```
+
+**Processing Gain**:
+```
+G_p = L (in linear scale)
+G_p[dB] = 10 log₁₀(L)
+
+Example: L=7 → G_p = 8.45 dB
+```
+
+---
+
+### Component 3: Pulse Shaper
+
+**Purpose**: Convert discrete chips to continuous baseband waveform
+
+**Input**: 
+- cⱼ = chip value, cⱼ ∈ {-1, +1}
+
+**Output**: 
+- x(t) = baseband waveform for chip duration T_c
+
+**Parameters**:
+- T_c = chip duration (seconds)
+- N_sc = samples per chip
+- f_s = sample rate (Hz)
+- T_s = 1/f_s = sample period
+- g(t) = pulse shape function
+
+**Sampling Constraint**:
+```
+N_sc = ⌊T_c × f_s⌋ = ⌊f_s / (R_s × L)⌋
+
 where:
-- `A` is amplitude scaling,
-- `p(t)` is the chip pulse waveform (unit energy or normalized; e.g., rectangular of duration `T_chip` or RRC-shaped pulse),
-- chips occupy consecutive `T_chip` intervals.
-
-Overall:
-\[
-s(t) = \sum_k s_k(t)
-\]
-
-If modulating onto real carrier `f_c` (passband):
-\[
-x(t) = \Re\{ s(t) e^{j 2\pi f_c t} \}
-\]
-
-### 1.2 Discrete-time sampled representation
-Samples indexed by `m`, `t_m = m T_s`.
-
-Chip index for sample `m`:
-\[
-n_{chip}(m) = \left\lfloor \frac{m T_s}{T_{chip}} \right\rfloor
-\]
-Symbol index:
-\[
-k(m) = \left\lfloor \frac{n_{chip}(m)}{L} \right\rfloor
-\]
-
-Discrete sample `s[m]`:
-\[
-s[m] = A \cdot b[k(m)] \cdot c_{k(m)}[ n_{chip}(m) \bmod L ] \cdot p_s[ m \bmod N_{sc} ]
-\]
-where `p_s[t]` is the discrete chip pulse sampled at `Fs` (length `N_sc` per chip).
-
----
-
-## 2. Code generation and requirements
-
-### 2.1 Code types (supported)
-- **m-sequences (maximal LFSR)**: generate using LFSR polynomials; length `L = 2^n - 1`. Good autocorrelation, used for long PN.  
-- **Gold codes**: combine two preferred m-sequences (XOR) to get large family with controlled cross-correlation. Candidate for many users.  
-- **Kasami codes**: smaller cross-correlation sets, often used where low cross-correlation required.  
-- **Walsh/Hadamard codes**: strictly orthogonal (length power-of-two) — good for synchronous orthogonal signaling (M-ary orthogonal).  
-- **Custom orthogonal sets**: e.g., using Gram-Schmidt on random sequences, or discrete Fourier/Zadoff-Chu sequences for constant amplitude.
-
-### 2.2 Code representation
-- Each code is stored as a bit-packed structure with 8 chips per byte (bits `c[0..L-1]` where each element is `0` or `1`).
-- For signal processing (modulation/demodulation), codes are converted to bipolar (`+1`/`-1`) on-the-fly using `GetBipolar(index)` method without allocation.
-- This representation saves memory (8x reduction: 1 bit per chip vs 1 byte per chip in previous implementation).
-- For orthogonal M-ary mapping, provide `M` codes each length `L`: `C_m[n]`. Codes should be pairwise (near-)orthogonal: inner product `Σ_n C_i[n] C_j[n] ≈ 0` for i≠j (computed in bipolar form).
-
-### 2.3 Code requirements for M-ary DSSS
-
-The number of codes required depends on the modulation order (symbol length):
-
-| Modulation Order | Bits per Symbol | Number of Codes Required | Symbol Values |
-|-----------------|-----------------|-------------------------|---------------|
-| Binary (2-ary)  | 1 bit           | **1 code**              | 0, 1          |
-| 4-ary           | 2 bits          | **4 codes**             | 00, 01, 10, 11 |
-| 8-ary           | 3 bits          | **8 codes**             | 000..111      |
-| 16-ary          | 4 bits          | **16 codes**            | 0000..1111    |
-| 32-ary          | 5 bits          | **32 codes**            | 00000..11111  |
-| M-ary           | log₂(M) bits    | **M codes**             | 0..M-1        |
-
-**Important constraints:**
-- M must be a power of 2 (2, 4, 8, 16, 32, 64, ...)
-- All codes must have the same length (spreading factor)
-- For binary DSSS: 1 code is reused with ±1 based on bit value
-- For M-ary DSSS: Each symbol value (0 to M-1) maps to a different code
-- Codes should be orthogonal or near-orthogonal for best performance
-
-### 2.4 Generating codes for M-ary DSSS
-
-#### Binary DSSS (1 code)
-```go
-// Generate a single m-sequence code
-code := GenerateMSequence(3, []int{2, 1, 0}, 1) // Length = 7 chips
-modulator := NewModulator(48000, 1000, 1000, code)
+  R_s = symbol rate (symbols/sec)
+  T_c = 1/(R_s × L) = chip duration
 ```
 
-#### 4-ary DSSS (4 codes)
-```go
-// Option 1: Walsh codes (orthogonal, deterministic)
-codeTable := GenerateWalshCodeTable(4) // 4 orthogonal codes of length 4
-modulator := NewModulator(48000, 1000, 1000, codeTable[0], codeTable[1], codeTable[2], codeTable[3])
-// Or using spread operator:
-modulator := NewModulator(48000, 1000, 1000, codeTable...)
+**Operation**:
 
-// Option 2: M-sequences with unique seeds (deterministic)
-codeTable := GenerateMSequenceCodeTable(3, []int{2, 1, 0}, 4, false) // 4 codes of length 7
-modulator := NewModulator(48000, 1000, 1000, codeTable...)
+#### A. Rectangular Pulse (Simplest)
+```
+For chip cⱼ, generate N_sc samples:
 
-// Option 3: M-sequences with random seeds (unique per session)
-codeTable := GenerateMSequenceCodeTable(3, []int{2, 1, 0}, 4, true) // 4 unique codes
-modulator := NewModulator(48000, 1000, 1000, codeTable...)
+x[n] = A × cⱼ,  n = 0, 1, ..., N_sc-1
+
+where A = amplitude
 ```
 
-#### 8-ary DSSS (8 codes)
-```go
-// Using GetUniqueSymbolCodeTable helper
-codeTable := GetUniqueSymbolCodeTable("walsh", 8, 8, false) // 8 Walsh codes
-modulator := NewModulator(48000, 1000, 1000, codeTable...)
+**Properties**:
+- No inter-chip interference
+- Maximum bandwidth (sinc spectrum)
+- Simple implementation
 
-// Or with unique m-sequences
-codeTable := GetUniqueSymbolCodeTable("m-sequence", 8, 15, true) // 8 unique codes of length 15
-modulator := NewModulator(48000, 1000, 1000, codeTable...)
+#### B. Raised Cosine Pulse (Bandwidth Efficient)
+```
+Pulse shape in time domain:
 
-// Or with Gold codes
-codeTable := GetUniqueSymbolCodeTable("gold", 8, 15, true) // 8 unique Gold codes
-modulator := NewModulator(48000, 1000, 1000, codeTable...)
+g(t) = sinc(πt/T_c) × cos(παt/T_c) / (1 - (2αt/T_c)²)
+
+where:
+  sinc(x) = sin(x)/x
+  α = roll-off factor ∈ [0, 1]
+  t = time relative to pulse center
+
+For chip cⱼ, generate samples:
+
+x[n] = A × cⱼ × g(n×T_s - T_c/2)
+
+where n = 0, 1, ..., N_sc-1
 ```
 
-#### 16-ary DSSS (16 codes)
-```go
-// Walsh codes (orthogonal, length = 16)
-codeTable := GenerateWalshCodeTable(16) // 16 codes of length 16
-modulator := NewModulator(48000, 1000, 1000, codeTable...)
-
-// M-sequences (longer codes, better autocorrelation)
-codeTable := GenerateMSequenceCodeTable(4, []int{3, 2, 0}, 16, false) // 16 codes of length 15
-modulator := NewModulator(48000, 1000, 1000, codeTable...)
+**Frequency Response**:
+```
+G(f) = {
+  T_c,                                           |f| ≤ (1-α)/(2T_c)
+  (T_c/2)[1 + cos(π(T_c|f| - (1-α))/(2α))],    (1-α)/(2T_c) < |f| ≤ (1+α)/(2T_c)
+  0,                                            |f| > (1+α)/(2T_c)
+}
 ```
 
-**Code selection guidelines:**
-- **Walsh codes**: Best for synchronous systems, strictly orthogonal, length must equal order (power of 2)
-- **M-sequences**: Good autocorrelation, can generate many codes with different seeds, length = 2^n - 1
-- **Gold codes**: Good for CDMA, controlled cross-correlation, large code families
-- **For unique codes**: Use `useRandom=true` in code generation functions to get different codes per session
+**Bandwidth**:
+```
+B_null = (1 + α)/(2T_c) Hz
 
-### 2.5 Generation APIs (mathematical spec)
-- **LFSR polynomial**: given register length `n` and tap positions `T = {t1, t2,...}`, produce sequence `s_i` where `s_{i+n} = XOR_{t∈T}(s_{i+t})`. Output is bits (0/1), stored in bit-packed `Code` struct.
-- **Gold code**: given two m-sequences `a[n]`, `b[n]` of same length, produce `g[n] = a[n] XOR b[n⊕τ]` (τ = shift). Output is bits (0/1).
-- **Walsh matrix**: generate Hadamard matrix of order `L=2^m`; rows are Walsh codes. Output is bits (0/1).
-
-**Code generation functions:**
-- `GenerateMSequence(n, taps, seed)`: Generate single m-sequence code
-- `GenerateMSequenceCodeTable(n, taps, numCodes, useRandomSeeds)`: Generate table of m-sequence codes
-- `GenerateGoldCode(a, b, shift)`: Generate single Gold code
-- `GenerateGoldCodeTable(n, tapsA, tapsB, seedA, seedB, numCodes, useRandomShifts)`: Generate table of Gold codes
-- `GenerateWalshCode(order, row)`: Generate single Walsh code
-- `GenerateWalshCodeTable(order)`: Generate complete Walsh code table
-- `GetUniqueSymbolCodeTable(method, order, codeLength, useRandom)`: High-level helper to generate code tables
-
-**Notes:**
-- Ensure seed/state choice avoids trivial all-zero LFSR state.
-- Provide code normalization if needed: divide by `sqrt(L)` for unit energy when used in correlation (normalization operates on bipolar representation).
-- **Unique code generation**: To generate unique codes across sessions/instances:
-  - For m-sequences: use `GenerateMSequenceCodeTable(n, taps, numCodes, useRandomSeeds=true)` to generate random seeds via `crypto/rand`.
-  - For Gold codes: use `GenerateGoldCodeTable(n, tapsA, tapsB, seedA, seedB, numCodes, useRandomShifts=true)` to generate random shifts, or use random seeds for the m-sequences.
-  - For Walsh codes: codes are deterministic by design (orthogonal set). To get different sets, use different orders or permute the code table after generation.
-- Inner product computation works directly with bits, converting to bipolar on-the-fly for efficiency.
-
----
-
-## 3. Modulation (encoder)
-
-### 3.1 Parameters
-- `Fs`: sample rate (Hz)  
-- `R_sym`: symbol (bit) rate (symbols/sec)  
-- `L`: chips per symbol (spreading factor)  
-- `R_chip = R_sym * L` (chip rate)  
-- `N_sc = Fs / R_chip` (samples per chip, integer)  
-- `p_s[i]` (i=0..N_sc-1): chip pulse samples (unit-energy normalized) — recommended: rectangular or RRC with rolloff α and span in chips.
-
-### 3.2 Encoder struct (abstract spec)
-- **State fields**
-  - `Fs`, `R_sym`, `L`, `N_sc` (ints/floats)
-  - `codes`: reference to codebook (for binary: single code; for M-ary: array)
-  - `chip_index` (current chip within symbol) — integer
-  - `sample_index_within_chip` — integer
-  - `symbol_queue` — FIFO of pending input symbols/bits
-  - `carrier_phase` (if passband; float)
-  - `amplitude_scale` (float)
-  - `pulse_shape` (array of N_sc samples) or pointer to pulse generator
-- **Primary methods**
-  - `Init(params)` — set rates, codes, pulse shape
-  - `FeedBytes(bytes[])` — queues bits/bytes into `symbol_queue` (define endianness and bit order)
-  - `NextSamples(n)` → returns `n` complex samples (or real samples if passband) ready to feed DAC. This method advances internal state (chip_index, sample_index).
-  - `Flush()` — pad remaining symbols with zeros or known termination code
-  - `Reset()` — clear state
-
-### 3.3 Encoder operation (algorithm)
-- On `FeedBytes` convert bytes into symbol sequence `b[k] ∈ {+1,-1}` or symbol indices for M-ary. Append to `symbol_queue`.
-- On each output sample:
-  1. If `symbol_queue` empty, output `0` (or idle code) until more data.
-  2. Determine current symbol `b = current symbol`.
-  3. Determine chip `c = code[chip_index]` (or `C_m[chip_index]` for M-ary, where m is symbol index).
-  4. Compute chip pulse sample value `p = pulse_shape[sample_index_within_chip]`.
-  5. Baseband sample contribution: `y = amplitude_scale * b * c * p`. (If M-ary, `b` folded into code selection — no separate `b`).
-  6. If implementing carrier: multiply by `e^{j 2π f_c t + φ}` or upconvert to stereo real samples.
-  7. Increment `sample_index_within_chip`. If it equals `N_sc`, set to 0 and increment `chip_index`. If `chip_index == L`, reset to 0 and pop next symbol.
-- Return samples as float32/float64 (I/Q complex) scaled to DAC range.
-
-### 3.4 Pulse shaping recommendations
-- Rectangular pulse (simple) low complexity. For spectral control, use root-raised-cosine (RRC) with roll-off α (e.g., 0.2–0.35). Ensure `pulse_shape` length = `N_sc` and normalized energy per chip.
-
----
-
-## 4. Demodulation (decoder)
-
-### 4.1 High-level tasks
-1. **Acquisition**: detect the presence of spreading code, estimate code phase (chip offset) and coarse carrier frequency offset (if passband).  
-2. **Tracking**: maintain fine synchronization in time (chip/symbol) and frequency/phase (carrier), typically using Delay-Locked Loop (DLL) for timing and Phase-Locked Loop (PLL) or Costas loop for carrier.  
-3. **Despreader & symbol decision**: correlate received samples with code to recover symbol energies, decide bits, and output bytes.  
-4. **De-framing / FEC**: handle framing, CRC, and optional error-correction.
-
-### 4.2 Decoder struct (abstract spec)
-- **State fields**
-  - `Fs`, `R_sym`, `L`, `N_sc`
-  - `codes`: codebook (same format used by encoder)
-  - `acquired` (bool)
-  - `code_phase` (chip offset in samples or fractional)
-  - `carrier_freq_offset` (Hz)
-  - `carrier_phase` (radians)
-  - `buffer` (ring buffer of incoming samples, length at least `L * N_sc + margin`)
-  - `DLL_state` parameters for timing lock
-  - `PLL_state` parameters for carrier lock
-  - `integration_window` length (in samples)
-  - `detection_threshold` (float)
-  - `symbol_buffer` (recovered symbol decisions)
-  - `confidence/metrics` (SNR estimate, correlation peak value)
-- **Primary methods**
-  - `Init(params)` — set rates, codes, thresholds
-  - `FeedSamples(samples[])` — push ADC samples into internal buffer and process (non-blocking)
-  - `Process()` — attempt acquisition/tracking/decoding using buffered samples; returns any newly recovered bytes
-  - `GetMetrics()` — returns SNR estimate, lock status, correlation peaks
-  - `Reset()` — reset all state
-
-### 4.3 Acquisition algorithm (mathematical)
-- Goal: find `τ` (code phase) and coarse `f_est` (carrier offset) maximizing correlation.
-- For baseband complex samples `r[m]`:
-  - For each candidate code phase offset (in sample units) `τ` over 0..(`L*N_sc -1`):
-    - Compute correlation `R(τ) = Σ_{n=0}^{L-1} Σ_{i=0}^{N_sc-1} r[ m0 + τ + n*N_sc + i ] * p_s[i] * c[n]` (complex inner product)
-    - Optionally, compute magnitude squared `|R(τ)|^2`.
-  - To discover carrier offset, either:
-    - perform this correlation across a grid of frequency bins (multiply `r` by `e^{-j2π f t}` candidates), or
-    - use FFT-based method: take block, multiply by code, and FFT to search frequency.
-- Detection criterion: if `|R(τ)|` (peak) exceeds `detection_threshold * rms_noise`, declare acquisition, set `code_phase = τ`, `carrier_phase = angle(R(τ))`, and compute coarse `carrier_freq_offset` from phase drift if multiple blocks used.
-- Complexity reduction: use FFT convolution: correlation across many τ can be computed rapidly by FFT-based matched-filtering.
-
-### 4.4 Tracking loops
-- **DLL (Delay-Locked Loop) for timing**:
-  - Use early/late correlators:
-    - `E = correlation at (code_phase - δ)`, `L = correlation at (code_phase + δ)`, `P = correlation at code_phase`.
-    - Timing error estimate: `ε_t = (|E| - |L|) / (|E| + |L|)` (or atan version).
-    - Update `code_phase` by `code_phase += K_t * ε_t`.
-- **PLL / Carrier tracking**:
-  - After coarse freq estimate, use Costas loop: multiply incoming sample by local carrier `e^{-j θ}`, compute phase error from I/Q, integrate to update `carrier_phase` and `carrier_freq_offset`.
-  - Phase error estimator: `ε_φ = atan2(Imag(P), Real(P))` for BPSK-like modulation.
-
-### 4.5 Despreading & symbol decision
-- With synchronized `code_phase` and carrier phase/freq corrected:
-  - Integrate over symbol window:
-    \[
-    z[k] = \sum_{n=0}^{L-1} \sum_{i=0}^{N_{sc}-1} r[ t_{start} + n N_{sc} + i ] \cdot p_s[i] \cdot c[n] \cdot e^{-j (2\pi f_{c_{est}} t + \phi_{est})}
-    \]
-  - `z[k]` is complex symbol energy; for BPSK data mapping, decision `b_hat = +1` if Re(z[k])>0 else -1.
-  - For M-ary orthogonal: compute inner product with each code `C_m`: `Z_m = Σ r * C_m` and choose `m` maximizing `|Z_m|`.
-- Output bit/byte packing: define symbol-to-bit mapping and handle endianness.
-
-### 4.6 Detection & false alarm control
-- Maintain noise power estimate `σ^2` by measuring off-peak correlation energy or using background samples.  
-- Use detection threshold `T = k * σ` where `k` determined from desired P_FA. Empirically tune `k` (e.g., 6–8 dB margin for reliable detection at low SNR).  
-- Provide confidence metric: `SNR_est ≈ (|R_peak|^2 / (L * noise_power)) - 1`.
-
-### 4.7 Frame alignment and byte extraction
-- Require known frame preamble (short unique spreading-coded symbol or known PN segment). Use correlator to detect preamble, then start demodulation for fixed number of symbols or until CRC.  
-- Implement bit/byte buffering with sequence numbers / CRC check. On CRC failure, re-acquisition.
-
----
-
-## 5. Implementation considerations & best practices
-
-### 5.1 Sample rate and integer ratios
-- Prefer `Fs` such that `N_sc` is integer. If not, use resampling (rational resampler) or fractional-N timing with interpolation filters.
-- Keep internal buffers at least `L * N_sc * 3` samples to allow acquisition windows and loop latency.
-
-### 5.2 Complexity / FFT optimization
-- For long codes, use FFT-based correlation:
-  - Precompute FFT(code_padded) and multiply with FFT(received_block) to compute cross-correlation fast.
-  - Use overlap-save or overlap-add for streaming correlation.
-- For multi-frequency search, compute correlation in frequency domain across bins, or use coarse FFT followed by fine time-domain refinement.
-
-### 5.3 Fixed-point vs floating
-- For embedded targets, consider fixed-point arithmetic:
-  - Normalize all gains and use headroom to avoid overflow.
-  - Use Q-format with sufficient bits for correlation accumulators (`bits >= log2(L * N_sc) + dynamic headroom`).
-
-### 5.4 Pulse shaping and spectral mask
-- RRC shaping reduces out-of-band emissions and inter-chip interference. If using RRC, reconstruct pulse response `p_s` carefully and ensure matched filtering at the decoder uses the same pulse.
-
-### 5.5 Handling Doppler / frequency offset
-- For passband with mobile platforms, carrier Doppler may be significant. Use wide acquisition frequency grids or frequency-locked loops to track drift.
-
-### 5.6 Multi-user separation (multiple codes)
-- If receiver must handle multiple simultaneous users/codes, implement successive interference cancellation (SIC) or perform multi-code correlators in parallel. Ensure near-orthogonality of codebook.
-
-### 5.7 Security (LPI & code secrecy)
-- For LPI / encrypted codes, treat codebook as secret; implement secure key storage and code hopping if needed. Implement code generation from key material (e.g., seed for LFSR) to allow synchronized pseudo-random code sequences.
-
----
-
-## 6. API / Data contracts
-
-### Encoder API
-```go
-// Unified constructor with varargs
-NewModulator(sampleRate, carrierFreq, symbolRate float32, codes ...Code) *Modulator
-
-// Binary DSSS: 1 code
-code := GenerateMSequence(3, []int{2, 1, 0}, 1)
-modulator := NewModulator(48000, 1000, 1000, code)
-
-// M-ary DSSS: M codes (M must be power of 2)
-codeTable := GenerateWalshCodeTable(4) // 4 codes
-modulator := NewModulator(48000, 1000, 1000, codeTable...)
-
-// Methods
-modulator.Encode(amplitudes vecTypes.Vector, data []byte) int
-modulator.Reset()
-modulator.SetAmplitude(amplitude float32)
-modulator.ModulationOrder() int
-modulator.SpreadingFactor() int
+Example:
+  α = 0: B = 1/(2T_c)  (minimum bandwidth)
+  α = 0.5: B = 0.75/T_c
+  α = 1: B = 1/T_c
 ```
 
-### Decoder API
-```go
-// Unified constructor with varargs
-NewDemodulator(sampleRate, carrierFreq, symbolRate float32, codes ...Code) *Demodulator
+**Properties**:
+- Zero ISI at optimal sampling points
+- Controlled bandwidth
+- Requires filter memory (spans multiple chips)
 
-// Binary DSSS: 1 code (must match encoder)
-code := GenerateMSequence(3, []int{2, 1, 0}, 1)
-demodulator := NewDemodulator(48000, 1000, 1000, code)
+#### C. Root Raised Cosine (Matched Filter Optimum)
+```
+Pulse shape:
 
-// M-ary DSSS: M codes in same order as encoder
-codeTable := GenerateWalshCodeTable(4)
-demodulator := NewDemodulator(48000, 1000, 1000, codeTable...)
+g_rrc(t) = {
+  (1-α+4α/π)/T_c,                                           t = 0
+  (α/√2T_c)[(1+2/π)sin(π/4α) + (1-2/π)cos(π/4α)],        |t| = T_c/4α
+  (sin(π(1-α)t/T_c) + 4α(t/T_c)cos(π(1+α)t/T_c)) / (πt(1-(4αt/T_c)²))  otherwise
+}
 
-// Methods
-demodulator.Decode(data []byte, amplitudes vecTypes.Vector) int
-demodulator.Reset()
-demodulator.IsLocked() bool
-demodulator.OnIsEndOfPacket(callback func([]byte) bool)
+Used when matched filter is implemented in receiver.
 ```
 
-**Code requirements:**
-- **Binary DSSS**: 1 code (reused with ±1 based on bit value)
-- **M-ary DSSS**: M codes where M = 2^k (k bits per symbol)
-  - Codes must be in order: code[0] for symbol 0, code[1] for symbol 1, ..., code[M-1] for symbol M-1
-  - All codes must have the same length (spreading factor)
-  - Codes should be orthogonal or near-orthogonal for best performance
-  - Encoder and decoder must use the same codes in the same order
-
-**Notes:**
-- All timestamps are sample-index-relative; provide API hooks to map sample index to wall-clock if needed.
-- The varargs API automatically detects binary vs M-ary based on number of codes provided.
-- M must be a power of 2 (2, 4, 8, 16, 32, 64, ...) for M-ary DSSS.
+**Total Sample Count per Symbol**:
+```
+N_symbol = L × N_sc
+```
 
 ---
 
-## 7. Test vectors & validation
+### Component 4: Upconverter (Carrier Modulation)
 
-- Provide deterministic test vectors:
-  - small code `L=31` m-sequence, `R_sym=1000` sym/s, `Fs=32000` => `N_sc=32` samples/chip. Generate a short byte sequence, pass through encoder with AWGN channel and verify decoder recovers bytes at given SNR.
-- Validate:
-  - autocorrelation sidelobes close to theoretical values,
-  - correlation-based acquisition peak-to-sidelobe ratio,
-  - timing jitter and carrier phase estimation accuracy,
-  - bit error rate vs SNR curve matches theoretical CDMA performance.
+**Purpose**: Translate baseband signal to passband
+
+**Input**: 
+- x[n] = baseband samples
+
+**Output**: 
+- y[n] = passband samples
+
+**Parameters**:
+- f_c = carrier frequency (Hz)
+- f_s = sample rate (Hz)
+- φ(n) = carrier phase at sample n
+
+**Operation Types**:
+
+#### A. Passthrough (Baseband, No Carrier)
+```
+y[n] = x[n]
+
+Use when testing or for baseband transmission.
+```
+
+#### B. Coherent BPSK/DSSS
+```
+y[n] = x[n] × cos(2πf_c n/f_s + φ₀)
+
+where:
+  φ₀ = initial phase (constant)
+  φ(n) = 2πf_c n/f_s + φ₀  (linear phase)
+```
+
+**Phase Continuity**:
+```
+Must maintain phase across multiple Encode() calls:
+
+φ(n) = 2πf_c (n_global)/f_s + φ₀
+
+where n_global = total samples processed since initialization
+
+To prevent overflow, wrap phase:
+  φ(n) mod 2π
+
+Or maintain as:
+  n_counter (mod f_s) and compute φ = 2πf_c × n_counter/f_s
+```
+
+#### C. Quadrature Modulation (Future Extension)
+```
+I(n) = x_I[n] × cos(2πf_c n/f_s)
+Q(n) = x_Q[n] × sin(2πf_c n/f_s)
+
+y[n] = I(n) + Q(n)
+```
+
+**Nyquist Constraint**:
+```
+f_s ≥ 2(f_c + B/2)
+
+where B = signal bandwidth
+
+For safety, typically:
+  f_s ≥ 4f_c
+```
+
+**Output Signal**:
+```
+Total samples for N bytes:
+  N_total = ⌈(N × 8)/k⌉ × L × N_sc
+  
+where:
+  k = bits per symbol
+  L = spreading factor
+  N_sc = samples per chip
+```
 
 ---
 
-## 8. Example parameter sets (for guidance)
-- **Low-rate LPI**: `R_sym = 10` sps, `L = 1023`, `Fs = 1023*8*10 = 81840` Hz (i.e. `N_sc=8`) — extreme spreading, very low PSD.  
-- **GNSS-like**: `R_sym = 50` bps, `L = 1023`, `Fs ≈ 1.023e6` for classic C/A-like sampling; but for embedded testbeds lower-rate scaled versions OK.  
-- **High-rate data**: `R_sym = 1000` sps, `L = 16` (chip rate 16k), `Fs = 160k` (N_sc=10).
+## RECEIVER CHAIN
+
+### Component 5: Chip Correlator
+
+**Purpose**: Compute correlation between received signal and spreading codes
+
+**Input**: 
+- r[n] = received samples for one symbol period
+- Length: N_symbol = L × N_sc samples
+
+**Output**: 
+- ρ = [ρ₀, ρ₁, ..., ρ_{M-1}] = correlation values
+- ρᵢ ∈ ℝ (correlation with code Pᵢ)
+
+**Parameters**:
+- P = {P₀, P₁, ..., P_{M-1}} = spreading codes
+- L = spreading factor
+- N_sc = samples per chip
+- f_c = carrier frequency (if coherent)
+- f_s = sample rate
+- φ̂ = estimated carrier phase
+
+**Operation Types**:
+
+#### A. Baseband Correlation
+```
+For each code Pᵢ:
+
+ρᵢ = (1/(L×N_sc)) Σ(l=0 to L-1) Σ(m=0 to N_sc-1) r[l×N_sc + m] × pₗ⁽ⁱ⁾
+
+where pₗ⁽ⁱ⁾ = l-th chip of code Pᵢ
+
+Simplified:
+  For each chip position l:
+    Integrate N_sc samples
+    Multiply by corresponding code chip
+    Accumulate
+```
+
+**Step-by-step**:
+```
+1. Divide r[n] into L chip-length segments
+   Segment l: r[l×N_sc] to r[(l+1)×N_sc - 1]
+
+2. For each segment l:
+   chip_sum = Σ(m=0 to N_sc-1) r[l×N_sc + m]
+   
+3. Multiply by code chip:
+   chip_corr = chip_sum × pₗ⁽ⁱ⁾
+   
+4. Accumulate:
+   ρᵢ = Σ(l=0 to L-1) chip_corr_l
+```
+
+#### B. Coherent Correlation (With Carrier)
+```
+For each code Pᵢ:
+
+ρᵢ = (1/(L×N_sc)) Σ(l=0 to L-1) Σ(m=0 to N_sc-1) r[l×N_sc + m] × cos(θ[l×N_sc + m]) × pₗ⁽ⁱ⁾
+
+where:
+  θ[n] = 2πf_c n/f_s + φ̂
+  φ̂ = estimated carrier phase
+
+This performs:
+  1. Carrier demodulation: r[n] × cos(θ[n])
+  2. Chip correlation: multiply by code, integrate
+```
+
+#### C. Non-Coherent Correlation (Envelope Detection)
+```
+For each code Pᵢ:
+
+I component:
+  Iᵢ = Σ(l=0 to L-1) Σ(m=0 to N_sc-1) r[l×N_sc + m] × cos(θ[l×N_sc + m]) × pₗ⁽ⁱ⁾
+
+Q component:
+  Qᵢ = Σ(l=0 to L-1) Σ(m=0 to N_sc-1) r[l×N_sc + m] × sin(θ[l×N_sc + m]) × pₗ⁽ⁱ⁾
+
+Envelope:
+  ρᵢ = √(Iᵢ² + Qᵢ²)
+```
+
+**Energy Normalization** (Optional but Recommended):
+```
+Compute signal energy:
+  E = Σ(n=0 to N_symbol-1) r[n]²
+
+Normalized correlation:
+  ρ̃ᵢ = ρᵢ / √E
+
+Benefits:
+  - Amplitude independent
+  - Improves threshold decisions
+  - Better AGC tolerance
+```
+
+**Theoretical Values** (Perfect Channel):
+```
+Transmitted symbol sⱼ using code Pⱼ:
+
+ρᵢ = {
+  +L,     i = j (matched code)
+  ≈ 0,    i ≠ j (orthogonal codes)
+}
+
+With noise:
+  ρᵢ ~ N(μᵢ, σ²)
+  
+where:
+  μⱼ = +L,  μᵢ = 0 for i≠j
+  σ² = noise variance
+```
 
 ---
 
-## 9. Deliverables for engineer
-- Implement `Encoder` and `Decoder` structs per the APIs above. Maintain internal state for timing and carrier loops.  
-- Provide selectable code generators (LFSR/Golomb/Gold/Walsh) with seed control.  
-- Implement acquisition using FFT correlation and fallback direct correlation in small windows.  
-- Implement DLL & PLL tracking loops with configurable gains and time constants.  
-- Provide unit tests with synthetic AWGN channel for BER vs SNR validation and deterministic vectors.  
-- Provide CLI/utility to export code sequences and sample dumps (for offline inspection).
+### Component 6: Symbol Decoder
+
+**Purpose**: Decide which symbol was transmitted based on correlations
+
+**Input**: 
+- ρ = [ρ₀, ρ₁, ..., ρ_{M-1}] = correlation values
+
+**Output**: 
+- ŝ = detected symbol, ŝ ∈ {0, 1, ..., M-1}
+- confidence metric (optional)
+
+**Operation Types**:
+
+#### A. Maximum Likelihood (Binary)
+```
+Given: single correlation ρ₀ with code P₀
+
+Decision:
+  ŝ = {
+    0,  if ρ₀ < 0
+    1,  if ρ₀ ≥ 0
+  }
+
+Confidence:
+  C = |ρ₀|  (distance from threshold)
+```
+
+**Rationale**:
+```
+Symbol 0 transmitted: -P₀ → ρ₀ < 0
+Symbol 1 transmitted: +P₀ → ρ₀ > 0
+```
+
+#### B. Maximum Likelihood (M-ary)
+```
+Decision:
+  ŝ = arg max_{i} |ρᵢ|
+
+i.e., choose symbol corresponding to code with highest absolute correlation.
+
+Confidence:
+  C = |ρ_ŝ|
+  
+or relative confidence:
+  C = (|ρ_ŝ| - max_{i≠ŝ}|ρᵢ|) / |ρ_ŝ|
+```
+
+#### C. Soft Decision (For FEC)
+```
+Instead of hard symbol ŝ, output:
+  - All correlation values ρ
+  - Or log-likelihood ratios:
+    
+    LLR_i = log(P(symbol=i | ρ) / P(symbol≠i | ρ))
+```
+
+#### D. Differential Decoding
+```
+Maintain state: ŝ_prev (initialized to 0)
+
+After detecting ŝ_current:
+  
+  ŝ_data = ŝ_prev ⊕ ŝ_current  (XOR for binary)
+  ŝ_data = (ŝ_current - ŝ_prev) mod M  (for M-ary)
+
+Update state:
+  ŝ_prev ← ŝ_current
+
+Output:
+  ŝ_data (the actual data symbol)
+```
+
+**Error Propagation**:
+```
+Differential decoding causes:
+  - 1 channel error → 2 decoded errors (error propagation)
+  - But immune to phase ambiguity (0° vs 180°)
+```
+
+**Decision Regions** (Binary):
+```
+Symbol space: ρ ∈ ℝ
+Threshold: τ = 0
+
+Decide 0: ρ < τ
+Decide 1: ρ ≥ τ
+
+Probability of error:
+  P_e = Q(√(2E_b/N_0))
+  
+where:
+  E_b/N_0 = energy per bit to noise ratio
+  Q(x) = (1/√(2π)) ∫(x to ∞) e^(-t²/2) dt
+```
 
 ---
 
-## 10. References (conceptual)
-- DSSS theory: correlation properties, CDMA multiuser detection.  
-- LFSR / Gold code construction mathematics.  
-- Standard tracking loops: DLL (early/late), Costas loop for BPSK.  
-- FFT-based convolution/correlation (Overlap-save method).
+### Component 7: Symbol Demapper
+
+**Purpose**: Convert symbol stream back to bytes
+
+**Input**: 
+- Ŝ = [ŝ₀, ŝ₁, ..., ŝₘ₋₁] where ŝᵢ ∈ {0, 1, ..., M-1}
+
+**Output**: 
+- B̂ = [b̂₀, b̂₁, ..., b̂ₙ₋₁] where b̂ᵢ ∈ {0, 1, ..., 255}
+
+**Parameters**:
+- k = bits per symbol = log₂(M)
+
+**Operation**:
+
+1. **Bit Extraction**: Convert symbols to bit stream
+   ```
+   For each symbol ŝᵢ:
+     Extract k bits:
+       bit_{i×k+j} = (ŝᵢ >> (k-1-j)) & 1,  j = 0, 1, ..., k-1
+   
+   Example (binary, k=1):
+     ŝ₀ = 1 → bit₀ = 1
+     ŝ₁ = 0 → bit₁ = 0
+   
+   Example (4-ary, k=2):
+     ŝ₀ = 3 = 0b11 → [bit₀=1, bit₁=1]
+     ŝ₁ = 2 = 0b10 → [bit₂=1, bit₃=0]
+   ```
+
+2. **Byte Packing**: Group 8 bits into bytes
+   ```
+   For j = 0 to n-1:
+     b̂ⱼ = Σ(i=0 to 7) bit_{j×8+i} × 2^(7-i)
+   
+   MSB-first packing.
+   ```
+
+**Handling Incomplete Bytes**:
+```
+If total_bits mod 8 ≠ 0:
+  - Last byte has fewer than 8 bits
+  - Zero-pad remaining bits
+  - Track actual bit count for trimming
+```
+
+**Number of Output Bytes**:
+```
+n = ⌊(m × k) / 8⌋
+
+where m = number of symbols
+```
 
 ---
 
-### End of spec
+## SYNCHRONIZATION REQUIREMENTS
+
+### Timing Synchronization
+
+**Symbol Timing**: Determine where symbols start/end
+
+**Coarse Acquisition** (Using Preamble):
+```
+Preamble: Known sequence of N_pre symbols
+
+Detection:
+  1. Compute correlation with preamble at different offsets
+  
+  2. For each offset τ:
+     R(τ) = Σ(i=0 to N_pre-1) r[τ + i×N_symbol] × p_pre[i]
+  
+  3. Find peak:
+     τ̂ = arg max_τ R(τ)
+  
+  4. Symbol boundary at sample τ̂
+```
+
+**Fine Tracking** (Early-Late Gate):
+```
+Compute correlations at three timing offsets:
+  - Early: τ - Δ
+  - Prompt: τ
+  - Late: τ + Δ
+
+Timing error estimate:
+  ε = |R(τ - Δ)| - |R(τ + Δ)|
+
+Update:
+  τ ← τ + μ × ε
+  
+where μ = loop gain
+```
+
+### Carrier Synchronization
+
+**Phase Estimation** (Data-Aided):
+```
+Using known symbols ŝ_known:
+
+Compute phase error for each symbol:
+  ε_i = ∠(ρ_i × conj(ŝ_known[i]))
+
+Average:
+  φ̂ = (1/N) Σ(i=0 to N-1) ε_i
+```
+
+**Phase Tracking** (Decision-Directed):
+```
+After each symbol decision:
+
+Phase error:
+  ε = ∠(ρ × conj(ŝ_decided))
+
+Update phase estimate:
+  φ̂ ← φ̂ + μ × ε
+  
+where μ = loop gain
+```
+
+**Costas Loop** (For BPSK):
+```
+I = ρ_I = Re{r × e^(-jφ̂)}
+Q = ρ_Q = Im{r × e^(-jφ̂)}
+
+Phase error:
+  ε = sign(I) × Q
+
+Update:
+  φ̂ ← φ̂ + μ × ε
+```
+
+---
+
+## PERFORMANCE METRICS
+
+### Signal-to-Noise Ratio
+
+**Input SNR**:
+```
+SNR_in = P_signal / P_noise
+
+where:
+  P_signal = average signal power
+  P_noise = noise power in chip bandwidth
+```
+
+**Output SNR** (After Despreading):
+```
+SNR_out = SNR_in × L
+
+where L = spreading factor (processing gain)
+
+In dB:
+  SNR_out[dB] = SNR_in[dB] + 10 log₁₀(L)
+```
+
+### Bit Error Rate
+
+**Theoretical BER** (BPSK, AWGN):
+```
+P_b = Q(√(2E_b/N_0))
+
+where:
+  E_b/N_0 = bit energy to noise ratio
+  E_b = E_s / k  (E_s = symbol energy, k = bits/symbol)
+```
+
+**With Spreading**:
+```
+E_b/N_0 = (E_s/N_0) / k = (SNR_out × T_s) / k
+
+Processing gain improves:
+  (E_b/N_0)_out = (E_b/N_0)_in × L
+```
+
+### Bandwidth Efficiency
+
+**Chip Rate**:
+```
+R_c = R_s × L
+
+where:
+  R_s = symbol rate
+  L = spreading factor
+```
+
+**Null Bandwidth**:
+```
+B_null = (1 + α) × R_c
+
+where α = pulse shaping roll-off
+
+Example:
+  R_s = 1000 symbols/s
+  L = 7
+  α = 0.5
+  
+  R_c = 7000 chips/s
+  B = 1.5 × 7000 = 10.5 kHz
+```
+
+**Spectral Efficiency**:
+```
+η = (R_s × k) / B_null  bits/s/Hz
+
+Example (binary, L=7, α=0.5):
+  η = (1000 × 1) / 10500 = 0.095 bits/s/Hz
+```
+
+---
+
+## IMPLEMENTATION CHECKLIST
+
+### Transmitter Components
+
+- [ ] **Symbol Mapper**
+  - [ ] Byte to bit stream conversion
+  - [ ] Bit grouping (k bits → symbol)
+  - [ ] Partial symbol handling (padding)
+  - [ ] State management for streaming
+
+- [ ] **Chip Generator**
+  - [ ] Code storage (bipolar format ±1)
+  - [ ] Symbol to chip mapping
+  - [ ] Differential encoding (optional)
+  - [ ] Support for M codes (M-ary)
+
+- [ ] **Pulse Shaper**
+  - [ ] Rectangular pulse (basic)
+  - [ ] Raised cosine (bandwidth efficient)
+  - [ ] Root raised cosine (matched filter)
+  - [ ] Filter state management
+
+- [ ] **Upconverter**
+  - [ ] Passthrough (baseband)
+  - [ ] Coherent modulation (cos carrier)
+  - [ ] Phase continuity across calls
+  - [ ] Phase wrapping (prevent overflow)
+
+### Receiver Components
+
+- [ ] **Chip Correlator**
+  - [ ] Baseband correlation
+  - [ ] Coherent demodulation + correlation
+  - [ ] Non-coherent (I/Q) correlation
+  - [ ] Energy normalization
+  - [ ] Support for M codes
+
+- [ ] **Symbol Decoder**
+  - [ ] Maximum likelihood decision
+  - [ ] Threshold detection (binary)
+  - [ ] Differential decoding
+  - [ ] Confidence metric calculation
+
+- [ ] **Symbol Demapper**
+  - [ ] Symbol to bit stream conversion
+  - [ ] Bit packing into bytes
+  - [ ] Partial byte handling
+  - [ ] State management for streaming
+
+### Synchronization (Optional but Recommended)
+
+- [ ] **Preamble Generator**
+  - [ ] Known symbol sequence
+  - [ ] Good autocorrelation properties
+
+- [ ] **Preamble Detector**
+  - [ ] Correlation-based search
+  - [ ] Threshold detection
+  - [ ] Timing offset estimation
+
+- [ ] **Phase Estimator**
+  - [ ] Data-aided estimation
+  - [ ] Decision-directed tracking
+  - [ ] Costas loop (continuous tracking)
+
+---
+
+## PARAMETER RELATIONSHIPS
+
+### Key Constraints
+
+```
+Sample Rate:
+  f_s ≥ max(4f_c, R_c × N_sc)
+  
+where:
+  R_c = chip rate = R_s × L
+  N_sc = samples per chip (≥ 4 recommended)
+
+Example:
+  R_s = 1000 symbols/s
+  L = 7 (spreading factor)
+  f_c = 5000 Hz (carrier)
+  
+  R_c = 7000 chips/s
+  
+  Constraint 1: f_s ≥ 4 × 5000 = 20000 Hz
+  Constraint 2: f_s ≥ 7000 × 4 = 28000 Hz
+  
+  Choose: f_s ≥ 28000 Hz (use 48000 Hz for standard)
+```
+
+### Throughput Calculation
+
+```
+Data Rate = R_s × k bits/s
+
+where:
+  R_s = symbol rate (symbols/s)
+  k = log₂(M) bits per symbol
+
+Example comparisons (R_s = 1000):
+  Binary (M=2):  1000 bits/s
+  4-ary (M=4):   2000 bits/s
+  8-ary (M=8):   3000 bits/s
+  16-ary (M=16): 4000 bits/s
+
+All use same chip rate: R_c = R_s × L
+```
+
+### Processing Gain vs Data Rate
+
+```
+Bandwidth fixed: B = R_c × (1 + α)
+
+Trade-off:
+  Higher L → More processing gain, lower data rate
+  Higher M → Higher data rate, lower code orthogonality
+
+Optimal choice depends on:
+  - Required data rate
+  - Channel SNR
+  - Interference environment
+```
+
+---
+
+This mathematical specification provides everything needed to implement or integrate DSSS components without prescribing specific code structures.

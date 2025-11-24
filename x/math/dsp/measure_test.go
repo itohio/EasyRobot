@@ -19,10 +19,10 @@ func TestMeasurements_Measure1D(t *testing.T) {
 		tol      float64
 	}{
 		{
-			name:   "empty signal",
-			signal: []float32{},
+			name:     "empty signal",
+			signal:   []float32{},
 			expected: MeasurementResult{},
-			tol:    1e-6,
+			tol:      1e-6,
 		},
 		{
 			name:   "constant signal",
@@ -103,7 +103,7 @@ func TestMeasurements_Measure2D(t *testing.T) {
 
 func TestMeasurements_Goertzel(t *testing.T) {
 	// Generate a 10Hz sine wave at 1000Hz sample rate
-	gen := NewSinusoidGenerator(1000.0, 10.0, 1.0, 0.0)
+	gen := NewSineGenerator(1000.0, 10.0, 1.0, 0.0)
 	data := make([]float32, 1000)
 	gen.Generate(data)
 	signal := vec.NewFrom(data...)
@@ -118,7 +118,6 @@ func TestMeasurements_Goertzel(t *testing.T) {
 		t.Errorf("Expected frequency ~10.0, got %f", result.Frequency)
 	}
 }
-
 
 func TestCalculateRMSStatistics(t *testing.T) {
 	tests := []struct {
@@ -189,10 +188,10 @@ func TestMeasurements_Measure1DC(t *testing.T) {
 		tol      float64
 	}{
 		{
-			name:   "empty signal",
-			signal: []complex64{},
+			name:     "empty signal",
+			signal:   []complex64{},
 			expected: MeasurementResult{},
-			tol:    1e-6,
+			tol:      1e-6,
 		},
 		{
 			name:   "constant signal",
@@ -351,4 +350,3 @@ func TestCalculateRMSStatisticsC(t *testing.T) {
 		})
 	}
 }
-

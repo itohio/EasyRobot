@@ -10,7 +10,7 @@ import (
 )
 
 func TestSinusoidGenerator_Generate(t *testing.T) {
-	gen := NewSinusoidGenerator(8.0, 1.0, 1.0, 0.0)
+	gen := NewSineGenerator(8.0, 1.0, 1.0, 0.0)
 	dst := make([]float32, 8)
 	n := gen.Generate(dst)
 
@@ -27,7 +27,7 @@ func TestSinusoidGenerator_Generate(t *testing.T) {
 }
 
 func TestSinusoidGenerator_Correlate(t *testing.T) {
-	gen := NewSinusoidGenerator(100.0, 10.0, 1.0, 0.0)
+	gen := NewSineGenerator(100.0, 10.0, 1.0, 0.0)
 	samples := make([]float32, 100)
 	gen.Generate(samples)
 
@@ -222,7 +222,7 @@ func TestRampGenerator_Reset(t *testing.T) {
 
 func TestGenerator_StateTracking(t *testing.T) {
 	// Test that generators maintain state across multiple Generate calls
-	gen := NewSinusoidGenerator(8.0, 1.0, 1.0, 0.0)
+	gen := NewSineGenerator(8.0, 1.0, 1.0, 0.0)
 
 	dst1 := make([]float32, 4)
 	gen.Generate(dst1)

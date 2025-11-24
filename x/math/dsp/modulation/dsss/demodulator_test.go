@@ -35,9 +35,10 @@ func addNoise(signal vecTypes.Vector, snrDb float32) vecTypes.Vector {
 	noiseStdDev := float32(math.Sqrt(noisePower))
 
 	// Generate Gaussian noise using dsp package
-	sg := dsp.NewSignalGenerator1D()
-	noise := sg.NoiseGaussian(len(signalData), noiseStdDev)
-	noiseData := []float32(noise.(vec.Vector))
+	sg := dsp.NewNoiseWhiteGenerator(noiseStdDev)
+	noise := vec.New(len(signalData))
+	sg.Generate(noise)
+	noiseData := []float32(noise)
 
 	// Add noise to signal
 	noisy := vec.New(len(signalData))
@@ -51,7 +52,7 @@ func addNoise(signal vecTypes.Vector, snrDb float32) vecTypes.Vector {
 
 func TestDemodulator_NewDemodulator(t *testing.T) {
 	code := GenerateMSequence(3, []int{2, 1, 0}, 1)
-	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
+	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, code)
 
 	require.NotNil(t, demodulator)
 	assert.Equal(t, testSampleRate, demodulator.sampleRate)
@@ -63,7 +64,7 @@ func TestDemodulator_NewDemodulator(t *testing.T) {
 
 func TestDemodulator_NewMDemodulator(t *testing.T) {
 	codeTable := GenerateWalshCodeTable(4)
-	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, codeTable...)
+	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, codeTable...)
 
 	require.NotNil(t, demodulator)
 	assert.Equal(t, 4, demodulator.modulationOrder)
@@ -72,7 +73,7 @@ func TestDemodulator_NewMDemodulator(t *testing.T) {
 
 func TestDemodulator_Decode_NilData(t *testing.T) {
 	code := GenerateMSequence(3, []int{2, 1, 0}, 1)
-	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
+	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, code)
 
 	expectedSize := demodulator.Decode(nil, vec.New(1000))
 	assert.GreaterOrEqual(t, expectedSize, 0, "Expected size should be non-negative")
@@ -80,26 +81,16 @@ func TestDemodulator_Decode_NilData(t *testing.T) {
 
 func TestDemodulator_Reset(t *testing.T) {
 	code := GenerateMSequence(3, []int{2, 1, 0}, 1)
-	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
+	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, code)
 
 	demodulator.Reset()
-	assert.False(t, demodulator.IsLocked())
-	assert.False(t, demodulator.acquired)
-}
-
-func TestDemodulator_IsLocked(t *testing.T) {
-	code := GenerateMSequence(3, []int{2, 1, 0}, 1)
-	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
-
-	// Initially should not be locked
-	assert.False(t, demodulator.IsLocked())
 }
 
 // TestRoundtrip_BinaryDSSS_Short_Clean tests round-trip with short clean data
 func TestRoundtrip_BinaryDSSS_Short_Clean(t *testing.T) {
 	code := GenerateMSequence(3, []int{2, 1, 0}, 1)
-	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
-	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
+	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, code)
+	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, code)
 
 	// Short test data (1 byte)
 	testData := []byte{0x55}
@@ -118,8 +109,8 @@ func TestRoundtrip_BinaryDSSS_Short_Clean(t *testing.T) {
 // TestRoundtrip_BinaryDSSS_Short_Noisy tests round-trip with short noisy data (6dB SNR)
 func TestRoundtrip_BinaryDSSS_Short_Noisy(t *testing.T) {
 	code := GenerateMSequence(3, []int{2, 1, 0}, 1)
-	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
-	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
+	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, code)
+	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, code)
 
 	// Short test data (1 byte)
 	testData := []byte{0x55}
@@ -144,8 +135,8 @@ func TestRoundtrip_BinaryDSSS_Short_Noisy(t *testing.T) {
 // TestRoundtrip_BinaryDSSS_Long_Clean tests round-trip with long clean data
 func TestRoundtrip_BinaryDSSS_Long_Clean(t *testing.T) {
 	code := GenerateMSequence(3, []int{2, 1, 0}, 1)
-	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
-	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
+	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, code)
+	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, code)
 
 	// Long test data (100 bytes)
 	testData := make([]byte, 100)
@@ -167,8 +158,8 @@ func TestRoundtrip_BinaryDSSS_Long_Clean(t *testing.T) {
 // TestRoundtrip_BinaryDSSS_Long_Noisy tests round-trip with long noisy data (6dB SNR)
 func TestRoundtrip_BinaryDSSS_Long_Noisy(t *testing.T) {
 	code := GenerateMSequence(3, []int{2, 1, 0}, 1)
-	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
-	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
+	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, code)
+	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, code)
 
 	// Long test data (100 bytes)
 	testData := make([]byte, 100)
@@ -195,8 +186,8 @@ func TestRoundtrip_BinaryDSSS_Long_Noisy(t *testing.T) {
 
 func TestRoundtrip_BinaryDSSS_Padding(t *testing.T) {
 	code := GenerateMSequence(3, []int{2, 1, 0}, 1)
-	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
-	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
+	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, code)
+	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, code)
 
 	testData := []byte{0x55}
 
@@ -240,8 +231,8 @@ func TestRoundtrip_BinaryDSSS_Padding(t *testing.T) {
 // TestRoundtrip_MaryDSSS_Short_Clean tests round-trip with short clean data (M-ary)
 func TestRoundtrip_MaryDSSS_Short_Clean(t *testing.T) {
 	codeTable := GenerateWalshCodeTable(4)
-	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, codeTable...)
-	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, codeTable...)
+	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, codeTable...)
+	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, codeTable...)
 
 	// Short test data (2 bytes)
 	testData := []byte{0x12, 0x34}
@@ -260,8 +251,8 @@ func TestRoundtrip_MaryDSSS_Short_Clean(t *testing.T) {
 // TestRoundtrip_MaryDSSS_Short_Noisy tests round-trip with short noisy data (6dB SNR, M-ary)
 func TestRoundtrip_MaryDSSS_Short_Noisy(t *testing.T) {
 	codeTable := GenerateWalshCodeTable(4)
-	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, codeTable...)
-	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, codeTable...)
+	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, codeTable...)
+	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, codeTable...)
 
 	// Short test data (2 bytes)
 	testData := []byte{0x12, 0x34}
@@ -286,8 +277,8 @@ func TestRoundtrip_MaryDSSS_Short_Noisy(t *testing.T) {
 // TestRoundtrip_MaryDSSS_Long_Clean tests round-trip with long clean data (M-ary)
 func TestRoundtrip_MaryDSSS_Long_Clean(t *testing.T) {
 	codeTable := GenerateWalshCodeTable(4)
-	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, codeTable...)
-	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, codeTable...)
+	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, codeTable...)
+	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, codeTable...)
 
 	// Long test data (100 bytes)
 	testData := make([]byte, 100)
@@ -309,8 +300,8 @@ func TestRoundtrip_MaryDSSS_Long_Clean(t *testing.T) {
 // TestRoundtrip_MaryDSSS_Long_Noisy tests round-trip with long noisy data (6dB SNR, M-ary)
 func TestRoundtrip_MaryDSSS_Long_Noisy(t *testing.T) {
 	codeTable := GenerateWalshCodeTable(4)
-	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, codeTable...)
-	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, codeTable...)
+	modulator := NewModulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, codeTable...)
+	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, codeTable...)
 
 	// Long test data (100 bytes)
 	testData := make([]byte, 100)
@@ -337,7 +328,7 @@ func TestRoundtrip_MaryDSSS_Long_Noisy(t *testing.T) {
 
 func TestDemodulator_InterfaceCompliance(t *testing.T) {
 	code := GenerateMSequence(3, []int{2, 1, 0}, 1)
-	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, code)
+	demodulator := NewDemodulator(testSampleRate, testCarrierFreq, testSymbolRate, testRolloffFactor, code)
 
 	// Verify it implements the Demodulator interface
 	var _ modulation.Demodulator = demodulator

@@ -49,7 +49,7 @@ func TestDemodulator_Reset(t *testing.T) {
 
 	// Verify state reset
 	assert.Equal(t, 0, len(demodulator.sampleBuffer), "Sample buffer should be empty")
-	assert.Equal(t, 0, len(demodulator.bitBuffer), "Bit buffer should be empty")
+	assert.Equal(t, 0, demodulator.bitBuffer.GetWrittenBits(), "Bit buffer should be empty")
 	assert.Equal(t, float32(0), demodulator.currentPhase, "Phase should be reset")
 	assert.False(t, demodulator.locked, "Should not be locked after reset")
 }
@@ -91,4 +91,3 @@ func TestDemodulator_QuantizeAmplitude_4ASK(t *testing.T) {
 	assert.Equal(t, 2, symbol2, "Medium amplitude should quantize to 2")
 	assert.Equal(t, 3, symbol3, "High amplitude should quantize to 3")
 }
-
