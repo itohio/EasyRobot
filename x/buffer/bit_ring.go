@@ -134,47 +134,16 @@ func (br *BitRing) WriteByte(value byte) error {
 }
 
 // Write implements Writer[byte] interface by writing bytes as a bit stream.
-// All 8 bits from each byte are written consecutively (not just bitLength bits).
+// Each byte is written using bitLength bits (calls WriteByte in a loop).
 // Returns the number of bits written and any error encountered.
 func (br *BitRing) Write(p []byte) (n int, err error) {
-	if len(p) == 0 {
-		return 0, nil
-	}
-
-	// Calculate how many values we can write (8 bits per byte, bitLength bits per value)
-	bitsToWrite := len(p) << 3
-	valuesCanWrite := bitsToWrite / br.bitLength
-	if valuesCanWrite > br.capacity-br.len {
-		valuesCanWrite = br.capacity - br.len
-	}
-	if valuesCanWrite == 0 {
-		return 0, io.ErrShortWrite
-	}
-
-	// Write all 8 bits from each byte consecutively
-	bitsToWriteActual := valuesCanWrite * br.bitLength
-	bitsWritten := 0
 	for _, b := range p {
-		if bitsWritten >= bitsToWriteActual {
-			break
+		if err := br.WriteByte(b); err != nil {
+			return n, err
 		}
-		// Write all 8 bits from this byte (MSB first)
-		for i := 7; i >= 0; i-- {
-			if bitsWritten >= bitsToWriteActual {
-				break
-			}
-			bit := (b >> uint(i)) & 1
-			br.writeBitAt(br.headPos, bit != 0)
-			br.headPos = (br.headPos + 1) % br.totalBits
-			bitsWritten++
-		}
+		n += br.bitLength
 	}
-
-	// Update length (number of values)
-	br.len += valuesCanWrite
-
-	// Return actual bits written
-	return bitsToWriteActual, nil
+	return n, nil
 }
 
 // ReadBit reads a single bit from the ring buffer.

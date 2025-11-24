@@ -172,47 +172,14 @@ func (bb *Bits) WriteByte(value byte) {
 }
 
 // Write implements Writer[byte] interface by writing bytes as a bit stream.
-// All 8 bits from each byte are written consecutively (not just bitLength bits).
+// Each byte is written using bitLength bits (calls WriteByte in a loop).
 // Returns the number of bits written and any error encountered.
 func (bb *Bits) Write(p []byte) (n int, err error) {
-	if len(p) == 0 {
-		return 0, nil
+	for _, b := range p {
+		bb.WriteByte(b)
+		n += bb.bitLength
 	}
-
-	// Write all 8 bits from each byte (like ReadFromBytes)
-	bitsNeeded := bb.pos + (len(p) << 3)
-	bytesNeeded := (bitsNeeded + 7) >> 3
-	if bytesNeeded > len(bb.data) {
-		bb.Grow(len(p) << 3)
-		bb.data = bb.data[:bytesNeeded]
-	}
-
-	byteIdx := bb.pos >> 3
-	bitOffset := bb.pos & 7
-
-	if bitOffset == 0 {
-		// Byte-aligned: can copy directly
-		copy(bb.data[byteIdx:], p)
-		bb.pos += len(p) << 3
-	} else {
-		// Not byte-aligned: need to shift bits
-		shiftRight := bitOffset
-		shiftLeft := 8 - bitOffset
-		for _, b := range p {
-			bb.data[byteIdx] |= b >> shiftRight
-			byteIdx++
-			if byteIdx < len(bb.data) {
-				bb.data[byteIdx] = b << shiftLeft
-			}
-			bb.pos += 8
-		}
-	}
-
-	if bb.pos > bb.writtenBits {
-		bb.writtenBits = bb.pos
-	}
-
-	return len(p) << 3, nil
+	return n, nil
 }
 
 // ReadBit reads a single bit from the buffer.
@@ -263,7 +230,7 @@ func (bb *Bits) ReadByte() (byte, bool) {
 }
 
 // Read implements Reader[byte] interface by reading bytes as a bit stream.
-// Each byte is read using bitLength bits.
+// Each byte is read using bitLength bits (calls ReadByte in a loop).
 // Returns the number of bits read and io.EOF if fewer bytes were read than requested.
 func (bb *Bits) Read(p []byte) (n int, err error) {
 	if len(p) == 0 {

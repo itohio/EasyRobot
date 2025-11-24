@@ -42,24 +42,24 @@ func TestBitRing_Basic(t *testing.T) {
 }
 
 func TestBitRing_WriteReadBytes_4Bit(t *testing.T) {
-	// Test 4-bit buffer, write 8 bytes, read 16 values
+	// Test 4-bit buffer, write 8 bytes, read 8 values
 	br, err := NewBitRing(4, 20)
 	require.NoError(t, err)
 
-	// Write 8 bytes
+	// Write 8 bytes - writes 4 bits from each byte
 	input := []byte{0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0}
 	n, err := br.Write(input)
 	require.NoError(t, err)
-	assert.Equal(t, 64, n) // 8 bytes * 8 bits = 64 bits
+	assert.Equal(t, 32, n) // 8 bytes * 4 bits = 32 bits
 
-	// Read 16 values (8 bytes * 8 bits / 4 bits per value)
-	output := make([]byte, 16)
+	// Read 8 values (4 bits each)
+	output := make([]byte, 8)
 	nRead, err := br.Read(output)
 	require.NoError(t, err)
-	assert.Equal(t, 64, nRead)
+	assert.Equal(t, 32, nRead)
 
-	// Verify: each byte contributes 2 values
-	expected := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0}
+	// Verify: each byte is masked to 4 bits
+	expected := []byte{0x02, 0x04, 0x06, 0x08, 0x0A, 0x0C, 0x0E, 0x00}
 	assert.Equal(t, expected, output)
 }
 
@@ -383,21 +383,15 @@ func TestBitRing_WriteReadBytes_4Bit_ConsecutiveBits(t *testing.T) {
 	require.NoError(t, err)
 
 	// Write single byte: 0xAB = 10101011
-	// Should produce 2 values: 1010 (10) and 1011 (11)
-	// Use Write() to write all 8 bits, not WriteByte() which only writes bitLength bits
+	// Write() writes 4 bits from this byte (0xAB & 0x0F = 0x0B = 11)
 	n, err := br.Write([]byte{0xAB})
 	require.NoError(t, err)
-	assert.Equal(t, 8, n) // 2 values * 4 bits = 8 bits
+	assert.Equal(t, 4, n) // 1 byte * 4 bits = 4 bits
 
-	// Read first 4 bits: 1010 = 10
+	// Read 1 value (4 bits): 0x0B = 11
 	val1, err := br.ReadByte()
 	require.NoError(t, err)
-	assert.Equal(t, byte(10), val1)
-
-	// Read next 4 bits: 1011 = 11
-	val2, err := br.ReadByte()
-	require.NoError(t, err)
-	assert.Equal(t, byte(11), val2)
+	assert.Equal(t, byte(0x0B), val1) // 0xAB & 0x0F = 0x0B
 
 	// No more values
 	_, err = br.ReadByte()
@@ -409,20 +403,20 @@ func TestBitRing_WriteReadBytes_4Bit_MultipleBytes(t *testing.T) {
 	require.NoError(t, err)
 
 	// Write 2 bytes: 0x12, 0x34
-	// 0x12 = 00010010 -> values: 0001 (1), 0010 (2)
-	// 0x34 = 00110100 -> values: 0011 (3), 0100 (4)
+	// Write() writes 4 bits from each byte
 	input := []byte{0x12, 0x34}
 	n, err := br.Write(input)
 	require.NoError(t, err)
-	assert.Equal(t, 16, n) // 2 bytes * 8 bits = 16 bits
+	assert.Equal(t, 8, n) // 2 bytes * 4 bits = 8 bits
 
-	// Read 4 values
-	output := make([]byte, 4)
+	// Read 2 values (4 bits each)
+	output := make([]byte, 2)
 	nRead, err := br.Read(output)
 	require.NoError(t, err)
-	assert.Equal(t, 16, nRead)
+	assert.Equal(t, 8, nRead)
 
-	expected := []byte{1, 2, 3, 4}
+	// Each byte is masked to 4 bits: 0x12 & 0x0F = 0x02, 0x34 & 0x0F = 0x04
+	expected := []byte{0x02, 0x04}
 	assert.Equal(t, expected, output)
 }
 

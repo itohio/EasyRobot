@@ -172,19 +172,18 @@ func TestRingBuffer_ByteIO(t *testing.T) {
 	backing := make([]byte, 0, 10)
 	rb := NewRing(backing)
 
-	// Test io.Writer interface
+	// Test io.Writer interface - calls WriteItem in a loop
 	data := []byte("hello")
 	n, err := rb.Write(data)
 	require.NoError(t, err)
-	assert.Equal(t, len(data), n)
+	assert.Equal(t, len(data), n) // 5 bytes written
 
-	// Test io.Reader interface
-	readBuf := make([]byte, 10)
+	// Test io.Reader interface - calls ReadItem in a loop
+	readBuf := make([]byte, 5)
 	n, err = rb.Read(readBuf)
-	// EOF is expected when reading more than available
-	assert.ErrorIs(t, err, io.EOF)
-	assert.Equal(t, len(data), n)
-	assert.Equal(t, data, readBuf[:n])
+	require.NoError(t, err)
+	assert.Equal(t, len(data), n) // 5 bytes read
+	assert.Equal(t, data, readBuf)
 }
 
 func TestRingBuffer_GenericTypes(t *testing.T) {

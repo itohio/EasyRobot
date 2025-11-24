@@ -53,29 +53,24 @@ func TestBits_WriteReadBytes_4Bit(t *testing.T) {
 	bb, err := NewBits(4)
 	require.NoError(t, err)
 
-	// Write 8 bytes: each byte contributes 8 bits, so we get 16 values (8*8/4)
+	// Write 8 bytes: each byte uses 4 bits, so we get 8 values
 	input := []byte{0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0}
 	n, err := bb.Write(input)
 	require.NoError(t, err)
-	assert.Equal(t, 64, n) // 8 bytes * 8 bits = 64 bits written
+	assert.Equal(t, 32, n) // 8 bytes * 4 bits = 32 bits written
 
 	// Reset to read
 	bb.Reset()
 
-	// Read 16 values (8 bytes * 8 bits / 4 bits per value)
-	output := make([]byte, 16)
+	// Read 8 values (each uses 4 bits)
+	output := make([]byte, 8)
 	nRead, err := bb.Read(output)
 	require.NoError(t, err)
-	assert.Equal(t, 64, nRead) // 16 values * 4 bits = 64 bits
+	assert.Equal(t, 32, nRead) // 8 values * 4 bits = 32 bits
 
-	// Verify: first byte 0x12 = 00010010
-	// First 4 bits (MSB): 0001 = 1
-	// Next 4 bits: 0010 = 2
-	// Second byte 0x34 = 00110100
-	// First 4 bits: 0011 = 3
-	// Next 4 bits: 0100 = 4
-	// And so on...
-	expected := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0}
+	// Verify: each byte is masked to 4 bits
+	// 0x12 & 0x0F = 0x02, 0x34 & 0x0F = 0x04, etc.
+	expected := []byte{0x02, 0x04, 0x06, 0x08, 0x0A, 0x0C, 0x0E, 0x00}
 	assert.Equal(t, expected, output)
 }
 
@@ -85,27 +80,19 @@ func TestBits_WriteReadBytes_4Bit_ConsecutiveBits(t *testing.T) {
 	require.NoError(t, err)
 
 	// Write single byte: 0xAB = 10101011
-	// Should produce 2 values: 1010 (10) and 1011 (11)
-	// Use Write() to write all 8 bits, not WriteByte() which only writes bitLength bits
+	// Write() writes 4 bits from this byte (0xAB & 0x0F = 0x0B = 11)
 	n, err := bb.Write([]byte{0xAB})
 	require.NoError(t, err)
-	assert.Equal(t, 8, n) // 2 values * 4 bits = 8 bits
+	assert.Equal(t, 4, n) // 1 byte * 4 bits = 4 bits
 
 	bb.Reset()
 
-	// Read first 4 bits: 1010 = 10
-	val1, ok := bb.ReadByte()
-	assert.True(t, ok)
-	assert.Equal(t, byte(10), val1)
-
-	// Read next 4 bits: 1011 = 11
-	val2, ok := bb.ReadByte()
-	assert.True(t, ok)
-	assert.Equal(t, byte(11), val2)
-
-	// No more values
-	_, ok = bb.ReadByte()
-	assert.False(t, ok)
+	// Read 1 value (4 bits)
+	output := make([]byte, 1)
+	nRead, err := bb.Read(output)
+	require.NoError(t, err)
+	assert.Equal(t, 4, nRead)              // 1 value * 4 bits = 4 bits
+	assert.Equal(t, byte(0x0B), output[0]) // 0xAB & 0x0F = 0x0B
 }
 
 func TestBits_WriteReadBytes_4Bit_MultipleBytes(t *testing.T) {
@@ -113,22 +100,22 @@ func TestBits_WriteReadBytes_4Bit_MultipleBytes(t *testing.T) {
 	require.NoError(t, err)
 
 	// Write 2 bytes: 0x12, 0x34
-	// 0x12 = 00010010 -> values: 0001 (1), 0010 (2)
-	// 0x34 = 00110100 -> values: 0011 (3), 0100 (4)
+	// Write() writes 4 bits from each byte
 	input := []byte{0x12, 0x34}
 	n, err := bb.Write(input)
 	require.NoError(t, err)
-	assert.Equal(t, 16, n) // 2 bytes * 8 bits = 16 bits
+	assert.Equal(t, 8, n) // 2 bytes * 4 bits = 8 bits
 
 	bb.Reset()
 
-	// Read 4 values
-	output := make([]byte, 4)
+	// Read 2 values (4 bits each)
+	output := make([]byte, 2)
 	nRead, err := bb.Read(output)
 	require.NoError(t, err)
-	assert.Equal(t, 16, nRead)
+	assert.Equal(t, 8, nRead)
 
-	expected := []byte{1, 2, 3, 4}
+	// Each byte is masked to 4 bits: 0x12 & 0x0F = 0x02, 0x34 & 0x0F = 0x04
+	expected := []byte{0x02, 0x04}
 	assert.Equal(t, expected, output)
 }
 
@@ -510,20 +497,21 @@ func TestBits_ReadInterface(t *testing.T) {
 	bb, err := NewBits(3)
 	require.NoError(t, err)
 
-	// Write some bytes
-	bb.WriteByte(5)
-	bb.WriteByte(2)
-	bb.WriteByte(7)
+	// Write bytes using Write() - writes 3 bits from each byte
+	input := []byte{5, 2, 7}
+	n, err := bb.Write(input)
+	require.NoError(t, err)
+	assert.Equal(t, 9, n) // 3 bytes * 3 bits = 9 bits
 	bb.Reset()
 
 	// Read multiple bytes using interface method
 	buf := make([]byte, 3)
-	n, err := bb.Read(buf)
+	nRead, err := bb.Read(buf)
 
 	assert.NoError(t, err)
 	// Should return bits read: 3 bytes * 3 bits = 9 bits
-	assert.Equal(t, 9, n)
-	assert.Equal(t, []byte{5, 2, 7}, buf)
+	assert.Equal(t, 9, nRead)
+	assert.Equal(t, input, buf)
 	assert.Equal(t, 9, bb.Position())
 }
 
@@ -531,18 +519,20 @@ func TestBits_ReadInterface_Partial(t *testing.T) {
 	bb, err := NewBits(3)
 	require.NoError(t, err)
 
-	// Write only 2 bytes (6 bits)
-	bb.WriteByte(5)
-	bb.WriteByte(2)
+	// Write only 2 bytes using Write() - writes 3 bits from each
+	input := []byte{5, 2}
+	n, err := bb.Write(input)
+	require.NoError(t, err)
+	assert.Equal(t, 6, n) // 2 bytes * 3 bits = 6 bits
 	bb.Reset()
 
 	// Try to read 3 bytes
 	buf := make([]byte, 3)
-	n, err := bb.Read(buf)
+	nRead, err := bb.Read(buf)
 
 	assert.Equal(t, io.EOF, err)
 	// Should return bits read: 2 bytes * 3 bits = 6 bits
-	assert.Equal(t, 6, n)
+	assert.Equal(t, 6, nRead)
 	assert.Equal(t, []byte{5, 2, 0}, buf) // Last byte remains zero
 }
 
@@ -591,14 +581,14 @@ func TestBits_WriteReadBytes_8Bits(t *testing.T) {
 	bb, err := NewBits(8)
 	require.NoError(t, err)
 
-	// Write bytes
+	// Write bytes - writes 8 bits from each byte
 	bytes := []byte{0x01, 0x02, 0x03, 0xFF}
 	n, err := bb.Write(bytes)
 	require.NoError(t, err)
 	// Should return bits: 4 bytes * 8 bits = 32 bits
 	assert.Equal(t, 32, n)
 
-	// Read bytes
+	// Read bytes - reads 8 bits per byte
 	bb.Reset()
 	readBuf := make([]byte, 4)
 	nRead, err := bb.Read(readBuf)
@@ -608,29 +598,26 @@ func TestBits_WriteReadBytes_8Bits(t *testing.T) {
 }
 
 func TestBits_WriteReadBytes_4Bits_8Bytes(t *testing.T) {
-	// Main test case: 4-bit buffer, write 8 bytes, read 16 values
+	// Main test case: 4-bit buffer, write 8 bytes, read 8 values
 	bb, err := NewBits(4)
 	require.NoError(t, err)
 
-	// Write 8 bytes
+	// Write 8 bytes - writes 4 bits from each byte
 	input := []byte{0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0}
 	n, err := bb.Write(input)
 	require.NoError(t, err)
-	assert.Equal(t, 64, n) // 8 bytes * 8 bits = 64 bits
+	assert.Equal(t, 32, n) // 8 bytes * 4 bits = 32 bits
 
 	bb.Reset()
 
-	// Read 16 values (8 bytes * 8 bits / 4 bits per value)
-	output := make([]byte, 16)
+	// Read 8 values (4 bits each)
+	output := make([]byte, 8)
 	nRead, err := bb.Read(output)
 	require.NoError(t, err)
-	assert.Equal(t, 64, nRead)
+	assert.Equal(t, 32, nRead)
 
-	// Verify: each byte contributes 2 values
-	// 0x12 = 00010010 -> 0001 (1), 0010 (2)
-	// 0x34 = 00110100 -> 0011 (3), 0100 (4)
-	// etc.
-	expected := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0}
+	// Each byte is masked to 4 bits
+	expected := []byte{0x02, 0x04, 0x06, 0x08, 0x0A, 0x0C, 0x0E, 0x00}
 	assert.Equal(t, expected, output)
 }
 
@@ -642,14 +629,14 @@ func TestBits_Interface_Compatibility(t *testing.T) {
 	bb, err := NewBits(8) // 8 bits = 1 byte per value
 	require.NoError(t, err)
 
-	// Write bytes
+	// Write bytes - writes 8 bits from each byte
 	bytes := []byte{0x01, 0x02, 0x03, 0xFF}
 	n, err := bb.Write(bytes)
 	require.NoError(t, err)
 	// Should return bits: 4 bytes * 8 bits = 32 bits
 	assert.Equal(t, 32, n)
 
-	// Read bytes
+	// Read bytes - reads 8 bits per byte
 	bb.Reset()
 	readBuf := make([]byte, 4)
 	nRead, err := bb.Read(readBuf)

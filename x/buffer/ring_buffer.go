@@ -32,77 +32,38 @@ func NewRing[T any](backing []T) *Ring[T] {
 }
 
 // Write writes elements from p into the ring buffer.
+// Calls WriteItem in a loop for each element.
 // Returns the number of elements written, which may be less than len(p) if the buffer is full.
 func (rb *Ring[T]) Write(p []T) (n int, err error) {
-	if len(p) == 0 {
-		return 0, nil
-	}
-	if rb.available() == 0 {
-		return 0, io.ErrShortWrite
-	}
-
-	cap := rb.capacity()
-	avail := rb.available()
-	toWrite := min(len(p), avail)
-
-	// Write in one or two chunks (if wrapping around)
-	firstChunk := min(toWrite, cap-rb.head)
-	for i := range firstChunk {
-		rb.buf[rb.head+i] = p[i]
-	}
-	n = firstChunk
-
-	if toWrite > firstChunk {
-		// Second chunk wraps around
-		secondChunk := toWrite - firstChunk
-		for i := range secondChunk {
-			rb.buf[i] = p[firstChunk+i]
+	for _, item := range p {
+		if err := rb.WriteItem(item); err != nil {
+			// If we wrote at least one item, return count without error
+			// Otherwise return the error
+			if n > 0 {
+				return n, nil
+			}
+			return n, err
 		}
-		n = toWrite
+		n++
 	}
-
-	rb.head = (rb.head + n) % cap
-	rb.len += n
 	return n, nil
 }
 
 // Read reads elements from the ring buffer into p.
+// Calls ReadItem in a loop for each element.
 // Returns the number of elements read, which may be less than len(p) if the buffer is empty.
 // Returns io.EOF when the buffer is empty or when fewer items are read than requested.
 func (rb *Ring[T]) Read(p []T) (n int, err error) {
-	if len(p) == 0 {
-		return 0, nil
-	}
-	if rb.len == 0 {
-		return 0, io.EOF
-	}
-
-	cap := rb.capacity()
-	toRead := min(len(p), rb.len)
-
-	// Read in one or two chunks (if wrapping around)
-	firstChunk := min(toRead, cap-rb.tail)
-	for i := range firstChunk {
-		p[i] = rb.buf[rb.tail+i]
-	}
-	n = firstChunk
-
-	if toRead > firstChunk {
-		// Second chunk wraps around
-		secondChunk := toRead - firstChunk
-		for i := range secondChunk {
-			p[firstChunk+i] = rb.buf[i]
+	for i := range p {
+		item, err := rb.ReadItem()
+		if err != nil {
+			if i > 0 {
+				return i, io.EOF
+			}
+			return 0, err
 		}
-		n = toRead
-	}
-
-	rb.tail = (rb.tail + n) % cap
-	rb.len -= n
-
-	// Return EOF if we read fewer items than requested and buffer is now empty
-	// This indicates end of stream (no more data available)
-	if n < len(p) && rb.len == 0 {
-		return n, io.EOF
+		p[i] = item
+		n++
 	}
 	return n, nil
 }
