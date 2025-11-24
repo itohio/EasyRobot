@@ -40,7 +40,7 @@ func TestBuffer_WriteRead(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			backing := make([]int, 0, 10)
-			buf := NewBuffer(backing)
+			buf := New(backing)
 
 			n, err := buf.Write(tt.write)
 			require.NoError(t, err)
@@ -62,7 +62,7 @@ func TestBuffer_WriteRead(t *testing.T) {
 
 func TestBuffer_WriteByteReadByte(t *testing.T) {
 	backing := make([]byte, 0, 10)
-	buf := NewBuffer(backing)
+	buf := New(backing)
 
 	// Write bytes
 	for i := byte(0); i < 5; i++ {
@@ -85,7 +85,7 @@ func TestBuffer_WriteByteReadByte(t *testing.T) {
 
 func TestBuffer_Bytes(t *testing.T) {
 	backing := make([]int, 0, 10)
-	buf := NewBuffer(backing)
+	buf := New(backing)
 
 	data := []int{1, 2, 3, 4, 5}
 	_, err := buf.Write(data)
@@ -107,7 +107,7 @@ func TestBuffer_Bytes(t *testing.T) {
 
 func TestBuffer_Next(t *testing.T) {
 	backing := make([]int, 0, 10)
-	buf := NewBuffer(backing)
+	buf := New(backing)
 
 	data := []int{1, 2, 3, 4, 5}
 	_, err := buf.Write(data)
@@ -126,7 +126,7 @@ func TestBuffer_Next(t *testing.T) {
 
 func TestBuffer_UnreadByte(t *testing.T) {
 	backing := make([]byte, 0, 10)
-	buf := NewBuffer(backing)
+	buf := New(backing)
 
 	data := []byte{1, 2, 3}
 	_, err := buf.Write(data)
@@ -156,7 +156,7 @@ func TestBuffer_UnreadByte(t *testing.T) {
 
 func TestBuffer_Reset(t *testing.T) {
 	backing := make([]int, 0, 10)
-	buf := NewBuffer(backing)
+	buf := New(backing)
 
 	data := []int{1, 2, 3, 4, 5}
 	_, err := buf.Write(data)
@@ -181,7 +181,7 @@ func TestBuffer_Reset(t *testing.T) {
 
 func TestBuffer_Grow(t *testing.T) {
 	backing := make([]int, 0, 4)
-	buf := NewBuffer(backing)
+	buf := New(backing)
 
 	initialCap := buf.Cap()
 	assert.Equal(t, 4, initialCap)
@@ -203,7 +203,7 @@ func TestBuffer_Grow(t *testing.T) {
 
 func TestBuffer_Truncate(t *testing.T) {
 	backing := make([]int, 0, 10)
-	buf := NewBuffer(backing)
+	buf := New(backing)
 
 	data := []int{1, 2, 3, 4, 5}
 	_, err := buf.Write(data)
@@ -222,7 +222,7 @@ func TestBuffer_Truncate(t *testing.T) {
 
 func TestBuffer_ByteIO(t *testing.T) {
 	backing := make([]byte, 0, 10)
-	buf := NewBuffer(backing)
+	buf := New(backing)
 
 	// Test io.Writer interface
 	data := []byte("hello")
@@ -242,7 +242,7 @@ func TestBuffer_ByteIO(t *testing.T) {
 func TestBuffer_GenericTypes(t *testing.T) {
 	// Test with float32
 	backing := make([]float32, 0, 10)
-	buf := NewBuffer(backing)
+	buf := New(backing)
 
 	data := []float32{1.1, 2.2, 3.3}
 	_, err := buf.Write(data)
@@ -257,7 +257,7 @@ func TestBuffer_GenericTypes(t *testing.T) {
 
 func TestBuffer_MultipleWrites(t *testing.T) {
 	backing := make([]int, 0, 5)
-	buf := NewBuffer(backing)
+	buf := New(backing)
 
 	// Write multiple times
 	_, err := buf.Write([]int{1, 2})
@@ -278,7 +278,7 @@ func TestBuffer_MultipleWrites(t *testing.T) {
 
 func TestBuffer_EmptyRead(t *testing.T) {
 	backing := make([]int, 0, 10)
-	buf := NewBuffer(backing)
+	buf := New(backing)
 
 	readBuf := make([]int, 5)
 	n, err := buf.Read(readBuf)
