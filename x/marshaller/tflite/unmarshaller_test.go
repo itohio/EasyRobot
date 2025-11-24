@@ -1,5 +1,4 @@
-//go:build tflite
-// +build tflite
+//go:build linux
 
 package tflite
 

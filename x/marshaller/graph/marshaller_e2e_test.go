@@ -51,7 +51,13 @@ func TestGraphMarshallerMatrixRoundTrip(t *testing.T) {
 	if err := unmar.Unmarshal(nil, &stored); err != nil {
 		t.Fatalf("Unmarshal() failed: %v", err)
 	}
-	t.Cleanup(func() { _ = stored.Close() })
+	// Ensure stored graph is closed before test cleanup runs
+	// This is important on Windows where file handles may not be released immediately
+	defer func() {
+		if err := stored.Close(); err != nil {
+			t.Logf("Error closing stored graph: %v", err)
+		}
+	}()
 
 	restored := mat.New(rows, cols)
 	if err := graphlib.ToMatrix[any, any](&stored, restored); err != nil {

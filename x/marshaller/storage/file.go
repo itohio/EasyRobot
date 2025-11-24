@@ -82,33 +82,68 @@ func newFileStorage(file *os.File, readOnly bool) (*fileStorage, error) {
 
 func (s *fileStorage) Map(offset, length int64) (types.MappedRegion, error) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	if s.file == nil {
+		s.mu.RUnlock()
 		return nil, errors.New("file storage: storage is closed")
 	}
 
-	if offset < 0 || offset > s.size {
-		return nil, fmt.Errorf("file storage: invalid offset %d (size: %d)", offset, s.size)
+	// Refresh size from file to ensure we have current size before mapping
+	// This is important to avoid stale size issues after file growth
+	info, err := s.file.Stat()
+	if err != nil {
+		s.mu.RUnlock()
+		return nil, fmt.Errorf("file storage: failed to stat file for size refresh: %w", err)
+	}
+	currentSize := info.Size()
+	s.mu.RUnlock()
+
+	// Validate offset and length using the fresh size (no lock needed for read-only validation)
+	if offset < 0 || offset > currentSize {
+		return nil, fmt.Errorf("file storage: invalid offset %d (size: %d)", offset, currentSize)
 	}
 
 	if length == 0 {
-		length = s.size - offset
+		length = currentSize - offset
 	}
 
-	if offset+length > s.size {
-		return nil, fmt.Errorf("file storage: region extends beyond file (offset: %d, length: %d, size: %d)", offset, length, s.size)
+	if offset+length > currentSize {
+		return nil, fmt.Errorf("file storage: region extends beyond file (offset: %d, length: %d, size: %d)", offset, length, currentSize)
 	}
 
 	if length <= 0 {
 		return nil, errors.New("file storage: cannot map empty region")
 	}
 
-	region, err := newFileRegion(s.file, offset, length, s.readOnly)
+	// Check if storage is closed and capture file reference
+	s.mu.RLock()
+	if s.file == nil {
+		s.mu.RUnlock()
+		return nil, errors.New("file storage: storage is closed")
+	}
+	fileToMap := s.file
+	readOnlyToMap := s.readOnly
+	s.mu.RUnlock()
+
+	// Create region while NOT holding lock to avoid blocking syscalls
+	// CreateFileMapping creates a separate handle, so closing the storage's
+	// file handle won't invalidate an already-created region
+	region, err := newFileRegion(fileToMap, offset, length, readOnlyToMap)
 	if err != nil {
 		return nil, err
 	}
+
+	// Acquire write lock to add region to map and verify storage is still open
+	s.mu.Lock()
+	if s.file == nil || s.regions == nil {
+		// Storage was closed while we were creating the region
+		s.mu.Unlock()
+		_ = region.Unmap() // Clean up region we just created
+		return nil, errors.New("file storage: storage is closed")
+	}
+
+	// Add to regions map atomically
 	s.regions[region] = struct{}{}
+	s.mu.Unlock()
 
 	return region, nil
 }
@@ -146,17 +181,25 @@ func (s *fileStorage) Grow(size int64) error {
 		return errors.New("file storage: storage is closed")
 	}
 
-	if size <= s.size {
+	// Refresh size from file to get current size (file might have grown externally)
+	info, err := s.file.Stat()
+	if err != nil {
+		return fmt.Errorf("file storage: failed to stat file: %w", err)
+	}
+	currentSize := info.Size()
+	s.size = currentSize
+
+	if size <= currentSize {
 		return nil // Already large enough
 	}
 
 	// Extend file by writing zeros at the end
-	if _, err := s.file.Seek(s.size, 0); err != nil {
+	if _, err := s.file.Seek(currentSize, 0); err != nil {
 		return fmt.Errorf("file storage: failed to seek: %w", err)
 	}
 
 	// Write zeros to extend file
-	zeros := make([]byte, size-s.size)
+	zeros := make([]byte, size-currentSize)
 	if _, err := s.file.Write(zeros); err != nil {
 		return fmt.Errorf("file storage: failed to grow file: %w", err)
 	}
@@ -171,20 +214,27 @@ func (s *fileStorage) Grow(size int64) error {
 
 func (s *fileStorage) Close() error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if s.file == nil {
+		s.mu.Unlock()
 		return nil // Already closed
 	}
 
-	// Unmap all regions
-	for region := range s.regions {
-		_ = region.Unmap()
-	}
-	s.regions = nil
-
-	err := s.file.Close()
+	// Mark storage as closed by setting file to nil
+	// This prevents new regions from being created
+	fileToClose := s.file
 	s.file = nil
+	// Don't clear regions map - regions will unmap themselves when their callers call Unmap()
+	// This prevents unmapping regions that are currently in use
+	s.mu.Unlock()
+
+	// Close the file handle
+	// On Windows, file handles can be closed even if mappings exist - the mappings
+	// remain valid until they are explicitly unmapped. This is safe because:
+	// 1. CreateFileMapping creates a separate handle that keeps the file open
+	// 2. Closing the file handle doesn't invalidate existing mappings
+	// 3. Regions will unmap themselves when their callers are done
+	err := fileToClose.Close()
+
 	return err
 }
 

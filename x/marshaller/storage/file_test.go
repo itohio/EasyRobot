@@ -269,3 +269,114 @@ func TestFileStorageReaderWriterSeeker(t *testing.T) {
 	}
 }
 
+func TestFileStorageMapWithStaleSize(t *testing.T) {
+	// This test reproduces the bug where Map(0, 0) uses stale cached size
+	// and can lead to invalid memory access when accessing records
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "test_stale.dat")
+
+	file, err := os.Create(filePath)
+	if err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+	file.Close()
+
+	file, err = os.OpenFile(filePath, os.O_RDWR, 0644)
+	if err != nil {
+		t.Fatalf("Failed to open file: %v", err)
+	}
+
+	storage, err := newFileStorage(file, false)
+	if err != nil {
+		t.Fatalf("newFileStorage() failed: %v", err)
+	}
+	defer storage.Close()
+
+	// Write initial data - this will update the file size
+	const headerSize = 64
+	const recordSize = 32
+	const numRecords = 10
+	initialData := make([]byte, headerSize+numRecords*recordSize)
+	for i := range initialData {
+		initialData[i] = byte(i % 256)
+	}
+
+	// Write via direct file access to simulate growing
+	if _, err := file.Write(initialData); err != nil {
+		t.Fatalf("Failed to write initial data: %v", err)
+	}
+	if err := file.Sync(); err != nil {
+		t.Fatalf("Failed to sync: %v", err)
+	}
+
+	// The storage's cached size might be stale at this point
+	// Map(0, 0) should refresh size, but if it doesn't, we have a bug
+	// Let's try to map and access a record that requires the full size
+	region, err := storage.Map(0, 0)
+	if err != nil {
+		t.Fatalf("Map(0, 0) failed: %v", err)
+	}
+	defer region.Unmap()
+
+	data := region.Bytes()
+	if len(data) < headerSize+numRecords*recordSize {
+		t.Fatalf("Mapped region too small: got %d, expected at least %d", len(data), headerSize+numRecords*recordSize)
+	}
+
+	// Try to access the last record - this will crash if region is too small
+	lastRecordOffset := headerSize + (numRecords-1)*recordSize
+	if len(data) < lastRecordOffset+recordSize {
+		t.Fatalf("Cannot access last record: data len %d, need %d", len(data), lastRecordOffset+recordSize)
+	}
+
+	// Access should succeed - this verifies the bug is fixed
+	lastRecord := data[lastRecordOffset : lastRecordOffset+recordSize]
+	if len(lastRecord) != recordSize {
+		t.Errorf("Last record has wrong size: got %d, expected %d", len(lastRecord), recordSize)
+	}
+}
+
+func TestFileStorageMapAfterGrow(t *testing.T) {
+	// Test that Map(0, 0) works correctly after Grow() is called
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "test_grow.dat")
+
+	file, err := os.Create(filePath)
+	if err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+	file.Close()
+
+	file, err = os.OpenFile(filePath, os.O_RDWR, 0644)
+	if err != nil {
+		t.Fatalf("Failed to open file: %v", err)
+	}
+
+	storage, err := newFileStorage(file, false)
+	if err != nil {
+		t.Fatalf("newFileStorage() failed: %v", err)
+	}
+	defer storage.Close()
+
+	// Grow the storage
+	const targetSize = 1024
+	if err := storage.Grow(targetSize); err != nil {
+		t.Fatalf("Grow() failed: %v", err)
+	}
+
+	// Map the entire file - should work and return correct size
+	region, err := storage.Map(0, 0)
+	if err != nil {
+		t.Fatalf("Map(0, 0) after Grow() failed: %v", err)
+	}
+	defer region.Unmap()
+
+	if region.Size() != targetSize {
+		t.Errorf("Expected region size %d, got %d", targetSize, region.Size())
+	}
+
+	data := region.Bytes()
+	if len(data) != targetSize {
+		t.Errorf("Expected data length %d, got %d", targetSize, len(data))
+	}
+}

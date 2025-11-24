@@ -1,9 +1,10 @@
-// go:build linux
+//go:build linux
+
 package v4l
 
 import (
-	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"github.com/itohio/EasyRobot/x/buffer"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
 	tensortypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 )
 

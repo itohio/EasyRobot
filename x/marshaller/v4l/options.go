@@ -1,12 +1,13 @@
-// go:build linux
+//go:build linux
+
 package v4l
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"github.com/itohio/EasyRobot/x/buffer"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
 )
 
 // DeviceOption configures device opening (legacy - use types.CameraOption)

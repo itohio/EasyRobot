@@ -1,4 +1,5 @@
-// go:build linux
+//go:build linux
+
 package v4l
 
 import (
@@ -13,10 +14,10 @@ import (
 
 // Unmarshaller implements the unmarshaller interface for V4L devices
 type Unmarshaller struct {
-	opts               types.Options
-	cfg                Options
-	activeControllers  map[string]types.CameraController // device path -> controller
-	activeStreams      map[string]types.CameraStream     // device path -> stream
+	opts              types.Options
+	cfg               Options
+	activeControllers map[string]types.CameraController // device path -> controller
+	activeStreams     map[string]types.CameraStream     // device path -> stream
 }
 
 // New creates a new V4L unmarshaller
@@ -123,7 +124,6 @@ func (u *Unmarshaller) unmarshalDeviceInfoList(r io.Reader, dst *[]types.CameraI
 	*dst = infos
 	return nil
 }
-
 
 // unmarshalFrameStream unmarshals a FrameStream (compatible with marshaller ecosystem)
 func (u *Unmarshaller) unmarshalFrameStream(r io.Reader, cfg Options) (types.FrameStream, error) {

@@ -312,7 +312,9 @@ func dataEntrySize(entry serializedDataEntry) (int64, error) {
 }
 
 func updateNodeRecordDataOffset(storage types.MappedStorage, index int, dataOffset uint64) error {
-	region, err := storage.Map(0, 0)
+	// Calculate exact size needed: header + all records up to and including this one
+	requiredSize := int64(NodeHeaderSize) + int64(index+1)*NodeRecordSize
+	region, err := storage.Map(0, requiredSize)
 	if err != nil {
 		return err
 	}
@@ -320,16 +322,22 @@ func updateNodeRecordDataOffset(storage types.MappedStorage, index int, dataOffs
 
 	data := region.Bytes()
 	recordOffset := int64(NodeHeaderSize) + int64(index)*NodeRecordSize
+	if recordOffset+NodeRecordSize > int64(len(data)) {
+		return fmt.Errorf("node record %d out of bounds: offset %d, data len %d", index, recordOffset+NodeRecordSize, len(data))
+	}
 	recordBytes := data[recordOffset : recordOffset+NodeRecordSize]
 	record, err := ReadNodeRecord(recordBytes)
 	if err != nil {
-		return err
+		return fmt.Errorf("read node record %d: %w", index, err)
 	}
 	record.DataOffset = dataOffset
 	if err := WriteNodeRecord(recordBytes, record); err != nil {
-		return err
+		return fmt.Errorf("write node record %d: %w", index, err)
 	}
-	return region.Sync()
+	if err := region.Sync(); err != nil {
+		return fmt.Errorf("sync node record %d: %w", index, err)
+	}
+	return nil
 }
 
 func updateNodeHeaderDataOffset(storage types.MappedStorage, dataOffset uint64) error {
@@ -372,7 +380,9 @@ func updateEdgeRecordDataOffset(storage types.MappedStorage, index int, dataOffs
 	if dataOffset > math.MaxUint32 {
 		return fmt.Errorf("edge data offset %d exceeds uint32 capacity", dataOffset)
 	}
-	region, err := storage.Map(0, 0)
+	// Calculate exact size needed: header + all records up to and including this one
+	requiredSize := int64(EdgeHeaderSize) + int64(index+1)*EdgeRecordSize
+	region, err := storage.Map(0, requiredSize)
 	if err != nil {
 		return err
 	}
@@ -380,14 +390,20 @@ func updateEdgeRecordDataOffset(storage types.MappedStorage, index int, dataOffs
 
 	data := region.Bytes()
 	recordOffset := int64(EdgeHeaderSize) + int64(index)*EdgeRecordSize
+	if recordOffset+EdgeRecordSize > int64(len(data)) {
+		return fmt.Errorf("edge record %d out of bounds: offset %d, data len %d", index, recordOffset+EdgeRecordSize, len(data))
+	}
 	recordBytes := data[recordOffset : recordOffset+EdgeRecordSize]
 	record, err := ReadEdgeRecord(recordBytes)
 	if err != nil {
-		return err
+		return fmt.Errorf("read edge record %d: %w", index, err)
 	}
 	record.DataOffset = uint32(dataOffset)
 	if err := WriteEdgeRecord(recordBytes, record); err != nil {
-		return err
+		return fmt.Errorf("write edge record %d: %w", index, err)
 	}
-	return region.Sync()
+	if err := region.Sync(); err != nil {
+		return fmt.Errorf("sync edge record %d: %w", index, err)
+	}
+	return nil
 }
