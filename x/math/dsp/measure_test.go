@@ -48,6 +48,7 @@ func TestMeasurements_Measure1D(t *testing.T) {
 			name:   "ramp signal",
 			signal: []float32{0.0, 1.0, 2.0, 3.0},
 			expected: MeasurementResult{
+				RMS:  float32(math.Sqrt(3.5)),
 				Mean: 1.5,
 				Peak: 3.0,
 			},

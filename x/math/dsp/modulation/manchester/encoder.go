@@ -36,7 +36,15 @@ func NewEncoderIEEE8023() *Encoder {
 // Optimized using 4-bit lookup tables (16 bytes per table, 64 bytes total).
 // Encode implements modulation.ByteEncoder interface
 func (m *Encoder) Encode(dst, src []byte) int {
+	if len(src) == 0 {
+		return 0
+	}
+
 	requiredLen := len(src) * 2
+	if dst == nil {
+		return requiredLen
+	}
+
 	if len(dst) < requiredLen {
 		return 0
 	}

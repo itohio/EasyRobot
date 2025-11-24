@@ -22,7 +22,9 @@ import (
 // For complex input/output, use FFT2DC.
 type FFT2D struct {
 	rows, cols int       // matrix dimensions (FFT size)
-	tempBuf    []float32 // temporary buffer for optimizations (size 2*rows*cols for packed format)
+	tempBuf    []float32 // workspace for packed matrix data (size 2*rows*cols)
+	colBuf     []float32 // scratch buffer for column transforms (size 2*rows)
+	rowBuf     []float32 // scratch buffer for row transforms (size 2*cols)
 	lut        []float32 // precomputed LUT for twiddle factors (optional)
 }
 
@@ -40,7 +42,9 @@ func NewFFT2D(rows, cols int, lut ...[]float32) FFT2D {
 	fft := FFT2D{
 		rows:    nextPow2Rows,
 		cols:    nextPow2Cols,
-		tempBuf: make([]float32, 2*nextPow2Rows*nextPow2Cols), // 2*rows*cols for packed format
+		tempBuf: make([]float32, 2*nextPow2Rows*nextPow2Cols),
+		colBuf:  make([]float32, 2*nextPow2Rows),
+		rowBuf:  make([]float32, 2*nextPow2Cols),
 	}
 
 	// Use LUT if provided
@@ -138,9 +142,8 @@ func (f *FFT2D) forward(src, dst matTypes.Matrix) {
 		f.fftRow(row.(vec.Vector))
 	}
 
-	// FFT columns using temp buffer (packed format: 2*rows)
-	// BCE optimization: reslice temp buffer and use for range
-	tempBuf := f.tempBuf[:2*f.rows]
+	// FFT columns using dedicated buffer (packed format: 2*rows)
+	tempBuf := f.colBuf[:2*f.rows]
 	for j := range f.cols {
 		// Extract column real and imag parts to temp buffer
 		for i := range f.rows {
@@ -197,8 +200,8 @@ func (f *FFT2D) backward(src, dst matTypes.Matrix) {
 		}
 	}
 
-	// IFFT columns first using temp buffer (packed format: 2*rows)
-	colBuf := f.tempBuf[:2*f.rows]
+	// IFFT columns first using dedicated buffer (packed format: 2*rows)
+	colBuf := f.colBuf[:2*f.rows]
 	for j := range f.cols {
 		// Extract column real and imag parts to colBuf
 		for i := range f.rows {
@@ -218,15 +221,23 @@ func (f *FFT2D) backward(src, dst matTypes.Matrix) {
 	}
 
 	// IFFT rows (each row is packed format: real[0:cols], imag[cols:2*cols])
-	rowBuf := f.tempBuf[:2*f.cols]
-	for i := range f.rows {
+	rowBuf := f.rowBuf[:2*f.cols]
+	dstCols := dst.Cols()
+	copyCols := f.cols
+	if dstCols < copyCols {
+		copyCols = dstCols
+	}
+	rowsToCopy := dst.Rows()
+	if rowsToCopy > f.rows {
+		rowsToCopy = f.rows
+	}
+	for i := 0; i < rowsToCopy; i++ {
 		rowStart := i * 2 * f.cols
 		copy(rowBuf, tempBuf[rowStart:rowStart+2*f.cols])
-		// Note: IFFTWithLUT could be added later for optimization
 		fp32.IFFT(rowBuf)
-		// Copy real part to destination
-		copy(dst.(mat.Matrix)[i][:f.cols], rowBuf[:f.cols])
+		copy(dst.(mat.Matrix)[i][:copyCols], rowBuf[:copyCols])
 	}
+
 }
 
 // fftRow performs FFT on a single row
@@ -260,23 +271,32 @@ func (f *FFT2D) Convolve(dst, signal, kernel matTypes.Matrix) {
 		panic("Convolve: destination buffer too small")
 	}
 
-	// Create temporary FFTs for signal and kernel
-	sigFFT := NewFFT2D(sigRows, sigCols)
-	kernFFT := NewFFT2D(kernRows, kernCols)
+	requiredRows := fp32.NextPowerOfTwo(resultRows)
+	requiredCols := fp32.NextPowerOfTwo(resultCols)
+	if f.rows != requiredRows || f.cols != requiredCols {
+		panic("Convolve: FFT dimensions mismatch, pad inputs or recreate FFT with proper size")
+	}
+	if sigRows > f.rows || sigCols > f.cols || kernRows > f.rows || kernCols > f.cols {
+		panic("Convolve: input dimensions exceed FFT dimensions")
+	}
 
-	// Temporary buffers
-	sigFreq := mat.New(f.rows, f.cols)
-	kernFreq := mat.New(f.rows, f.cols)
+	bufferSize := f.rows * 2 * f.cols
+	sigFreqBuf := fp32.Pool.Get(bufferSize)
+	defer fp32.Pool.Put(sigFreqBuf[:0])
+	sigFreq := mat.New(f.rows, 2*f.cols, sigFreqBuf...)
+
+	kernFreqBuf := fp32.Pool.Get(bufferSize)
+	defer fp32.Pool.Put(kernFreqBuf[:0])
+	kernFreq := mat.New(f.rows, 2*f.cols, kernFreqBuf...)
 
 	// Forward FFTs
-	sigFFT.Forward(sigFreq, signal)
-	kernFFT.Forward(kernFreq, kernel)
+	f.Forward(sigFreq, signal)
+	f.Forward(kernFreq, kernel)
 
 	// Multiply in frequency domain
-	// BCE optimization: reslice to exact size
 	sigFlat := sigFreq.Flat()
 	kernFlat := kernFreq.Flat()
-	size := f.rows * f.cols
+	size := bufferSize
 	if len(sigFlat) < size {
 		size = len(sigFlat)
 	}
@@ -292,17 +312,13 @@ func (f *FFT2D) Convolve(dst, signal, kernel matTypes.Matrix) {
 	// Inverse FFT to destination
 	f.Backward(dst, sigFreq)
 
-	// Scale result (FFT normalization)
-	// BCE optimization: reslice to exact size
 	dstFlat := dst.Flat()
 	resultSize := resultRows * resultCols
 	if resultSize > len(dstFlat) {
 		resultSize = len(dstFlat)
 	}
-	dstFlat = dstFlat[:resultSize]
-	scale := 1.0 / float32(f.rows*f.cols)
-	for i := range resultSize {
-		dstFlat[i] *= scale
+	for i := resultSize; i < len(dstFlat); i++ {
+		dstFlat[i] = 0
 	}
 }
 
@@ -320,23 +336,32 @@ func (f *FFT2D) Correlate(dst, signal1, signal2 matTypes.Matrix) {
 		panic("Correlate: destination buffer too small")
 	}
 
-	// Create temporary FFTs for signals
-	sig1FFT := NewFFT2D(sig1Rows, sig1Cols)
-	sig2FFT := NewFFT2D(sig2Rows, sig2Cols)
+	fftRows := fp32.NextPowerOfTwo(resultRows)
+	fftCols := fp32.NextPowerOfTwo(resultCols)
+	if f.rows != fftRows || f.cols != fftCols {
+		panic("Correlate: FFT dimensions mismatch, pad inputs or recreate FFT with proper size")
+	}
+	if sig1Rows > f.rows || sig1Cols > f.cols || sig2Rows > f.rows || sig2Cols > f.cols {
+		panic("Correlate: input dimensions exceed FFT dimensions")
+	}
 
-	// Temporary buffers
-	sig1Freq := mat.New(f.rows, f.cols)
-	sig2Freq := mat.New(f.rows, f.cols)
+	bufferSize := f.rows * 2 * f.cols
+	sig1FreqBuf := fp32.Pool.Get(bufferSize)
+	defer fp32.Pool.Put(sig1FreqBuf[:0])
+	sig1Freq := mat.New(f.rows, 2*f.cols, sig1FreqBuf...)
+
+	sig2FreqBuf := fp32.Pool.Get(bufferSize)
+	defer fp32.Pool.Put(sig2FreqBuf[:0])
+	sig2Freq := mat.New(f.rows, 2*f.cols, sig2FreqBuf...)
 
 	// Forward FFTs
-	sig1FFT.Forward(sig1Freq, signal1)
-	sig2FFT.Forward(sig2Freq, signal2)
+	f.Forward(sig1Freq, signal1)
+	f.Forward(sig2Freq, signal2)
 
 	// For correlation, multiply sig1 with sig2 (for real signals, no conjugation needed)
-	// BCE optimization: reslice to exact size
 	sig1Flat := sig1Freq.Flat()
 	sig2Flat := sig2Freq.Flat()
-	size := f.rows * f.cols
+	size := bufferSize
 	if len(sig1Flat) < size {
 		size = len(sig1Flat)
 	}
@@ -352,16 +377,12 @@ func (f *FFT2D) Correlate(dst, signal1, signal2 matTypes.Matrix) {
 	// Inverse FFT to destination
 	f.Backward(dst, sig1Freq)
 
-	// Scale result (FFT normalization)
-	// BCE optimization: reslice to exact size
 	dstFlat := dst.Flat()
 	resultSize := resultRows * resultCols
 	if resultSize > len(dstFlat) {
 		resultSize = len(dstFlat)
 	}
-	dstFlat = dstFlat[:resultSize]
-	scale := 1.0 / float32(f.rows*f.cols)
-	for i := range resultSize {
-		dstFlat[i] *= scale
+	for i := resultSize; i < len(dstFlat); i++ {
+		dstFlat[i] = 0
 	}
 }

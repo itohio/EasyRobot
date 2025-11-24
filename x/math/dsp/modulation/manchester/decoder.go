@@ -69,12 +69,16 @@ func (m *Decoder) SetBitOffset(offset int) {
 // Optimized using 4-bit lookup tables (16 bytes per table, 64 bytes total).
 // Decode implements modulation.ByteDecoder interface
 func (m *Decoder) Decode(dst, src []byte) int {
-	requiredLen := (len(src) + 1) / 2 // Round up
-	if len(dst) < requiredLen {
+	if len(src) == 0 {
 		return 0
 	}
 
-	if len(src) == 0 {
+	requiredLen := (len(src) + 1) / 2 // Round up
+	if dst == nil {
+		return requiredLen
+	}
+
+	if len(dst) < requiredLen {
 		return 0
 	}
 

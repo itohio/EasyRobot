@@ -141,11 +141,9 @@ func IFFT(data []float32) {
 	// Forward FFT on conjugated data
 	FFT(data)
 
-	// Conjugate back and scale by 1/N^2
-	// Note: Since FFT accumulates by N^2 when applied to frequency domain data in IFFT,
-	// we need to scale by 1/N^2 to get the correct result (1/N for IFFT * 1/N for FFT accumulation)
+	// Conjugate back and scale by 1/N
 	fftSizeF := float32(fftSize)
-	scale := float32(1.0) / (fftSizeF * fftSizeF)
+	scale := float32(1.0) / fftSizeF
 	for i := 0; i < fftSize; i++ {
 		// Conjugate back (negate imag) and scale both parts
 		imagIdx := i + fftSize
@@ -323,11 +321,9 @@ func IFFTWithLUT(data []float32, lut []float32, totalFactors int) {
 	// Forward FFT on conjugated data using LUT
 	FFTWithLUT(data, lut, totalFactors)
 
-	// Conjugate back and scale by 1/N^2
-	// Note: Since FFT accumulates by N^2 when applied to frequency domain data in IFFT,
-	// we need to scale by 1/N^2 to get the correct result (1/N for IFFT * 1/N for FFT accumulation)
+	// Conjugate back and scale by 1/N
 	fftSizeF := float32(fftSize)
-	scale := float32(1.0) / (fftSizeF * fftSizeF)
+	scale := float32(1.0) / fftSizeF
 	for i := 0; i < fftSize; i++ {
 		// Conjugate back (negate imag) and scale both parts
 		imagIdx := i + fftSize

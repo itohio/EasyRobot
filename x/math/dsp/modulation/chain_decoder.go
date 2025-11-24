@@ -1,35 +1,32 @@
-package byte_chain
+package modulation
 
-import (
-	"github.com/itohio/EasyRobot/x/math/dsp/modulation"
-)
-
-// ChainDecoder chains multiple ByteDecoders together in reverse order.
+// DecoderChain chains multiple ByteDecoders together in reverse order.
 // Decoding flow: data -> decoderN -> ... -> decoder2 -> decoder1 -> output
 // This undoes the encoding chain (e.g., manchester -> reed solomon -> decryption).
 //
 // The decoders must be provided in reverse order of the encoders:
 //   - If encoders were: encryption -> reed solomon -> manchester
 //   - Decoders should be: manchester -> reed solomon -> decryption
-type ChainDecoder struct {
-	decoders []modulation.ByteDecoder
+type DecoderChain struct {
+	decoders []ByteDecoder
 	buffers  [][]byte // Intermediate buffers for chaining
 }
 
-// NewChainDecoder creates a chain decoder that applies multiple ByteDecoders in sequence.
+// NewDecoderChain creates a chain decoder that applies multiple ByteDecoders in sequence.
 // The decoders are applied in the order provided (which should be reverse of encoding order):
 //   - First decoder processes the input data
 //   - Each subsequent decoder processes the output of the previous decoder
 //   - Final output is from the last decoder
 //
-// Example: NewChainDecoder(manchester, reedSolomon, decryption)
-//   Flow: data -> manchester -> reedSolomon -> decryption -> output
-func NewChainDecoder(decoders ...modulation.ByteDecoder) *ChainDecoder {
+// Example: NewDecoderChain(manchester, reedSolomon, decryption)
+//
+//	Flow: data -> manchester -> reedSolomon -> decryption -> output
+func NewDecoderChain(decoders ...ByteDecoder) *DecoderChain {
 	if len(decoders) == 0 {
 		panic("ChainDecoder: at least one decoder is required")
 	}
 
-	return &ChainDecoder{
+	return &DecoderChain{
 		decoders: decoders,
 		buffers:  make([][]byte, len(decoders)),
 	}
@@ -39,7 +36,7 @@ func NewChainDecoder(decoders ...modulation.ByteDecoder) *ChainDecoder {
 // Decode implements modulation.ByteDecoder interface.
 // Returns the number of bytes written to dst.
 // Returns expected dst length if dst is nil.
-func (c *ChainDecoder) Decode(dst, src []byte) int {
+func (c *DecoderChain) Decode(dst, src []byte) int {
 	if len(src) == 0 {
 		return 0
 	}
@@ -102,6 +99,10 @@ func (c *ChainDecoder) Decode(dst, src []byte) int {
 		// Decode through current decoder
 		bytesWritten := decoder.Decode(stageBuffer, currentInput)
 		if bytesWritten == 0 {
+			expected := decoder.Decode(nil, currentInput)
+			if expected == 0 && !isLast {
+				continue
+			}
 			return 0
 		}
 
@@ -120,7 +121,7 @@ func (c *ChainDecoder) Decode(dst, src []byte) int {
 
 // Reset resets all chained decoders.
 // Reset implements modulation.ByteDecoder interface.
-func (c *ChainDecoder) Reset() {
+func (c *DecoderChain) Reset() {
 	for _, decoder := range c.decoders {
 		decoder.Reset()
 	}
@@ -129,4 +130,3 @@ func (c *ChainDecoder) Reset() {
 		c.buffers[i] = c.buffers[i][:0]
 	}
 }
-

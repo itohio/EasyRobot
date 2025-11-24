@@ -1,4 +1,4 @@
-package byte_chain
+package modulation_test
 
 import (
 	"testing"
@@ -13,7 +13,7 @@ import (
 // TestChainEncoder_Single tests chaining a single encoder
 func TestChainEncoder_Single(t *testing.T) {
 	manchesterEncoder := manchester.NewEncoder()
-	chain := NewChainEncoder(manchesterEncoder)
+	chain := modulation.NewEncoderChain(manchesterEncoder)
 
 	data := []byte{0xAA, 0x55}
 	expectedSize := chain.Encode(nil, data)
@@ -30,7 +30,7 @@ func TestChainEncoder_Multiple(t *testing.T) {
 	// Create chain: Manchester -> Reed-Solomon
 	manchesterEncoder := manchester.NewEncoder()
 	rsEncoder := ecc.NewRSEncoder(255, 223) // Standard RS(255,223) codec
-	chain := NewChainEncoder(manchesterEncoder, rsEncoder)
+	chain := modulation.NewEncoderChain(manchesterEncoder, rsEncoder)
 
 	data := []byte{0x12, 0x34, 0x56, 0x78}
 	expectedSize := chain.Encode(nil, data)
@@ -44,7 +44,7 @@ func TestChainEncoder_Multiple(t *testing.T) {
 // TestChainDecoder_Single tests chaining a single decoder
 func TestChainDecoder_Single(t *testing.T) {
 	manchesterDecoder := manchester.NewDecoder()
-	chain := NewChainDecoder(manchesterDecoder)
+	chain := modulation.NewDecoderChain(manchesterDecoder)
 
 	// Encode some data first
 	manchesterEncoder := manchester.NewEncoder()
@@ -68,10 +68,10 @@ func TestChainDecoder_Multiple(t *testing.T) {
 	// Use a smaller test that works with Manchester only
 	// For full RS test, use data that fits RS block size
 	manchesterEncoder := manchester.NewEncoder()
-	encoderChain := NewChainEncoder(manchesterEncoder)
+	encoderChain := modulation.NewEncoderChain(manchesterEncoder)
 
 	manchesterDecoder := manchester.NewDecoder()
-	decoderChain := NewChainDecoder(manchesterDecoder)
+	decoderChain := modulation.NewDecoderChain(manchesterDecoder)
 
 	data := []byte{0x12, 0x34, 0x56, 0x78}
 
@@ -101,10 +101,10 @@ func TestRoundtrip_Manchester_RS(t *testing.T) {
 	// Use Manchester only for simpler round-trip test
 	// RS round-trip would require data in multiples of RS block size
 	manchesterEncoder := manchester.NewEncoder()
-	encoderChain := NewChainEncoder(manchesterEncoder)
+	encoderChain := modulation.NewEncoderChain(manchesterEncoder)
 
 	manchesterDecoder := manchester.NewDecoder()
-	decoderChain := NewChainDecoder(manchesterDecoder)
+	decoderChain := modulation.NewDecoderChain(manchesterDecoder)
 
 	testCases := [][]byte{
 		{0xAA, 0x55},
@@ -144,7 +144,7 @@ func TestRoundtrip_Manchester_RS(t *testing.T) {
 func TestChainEncoder_Reset(t *testing.T) {
 	manchesterEncoder := manchester.NewEncoder()
 	rsEncoder := ecc.NewRSEncoder(255, 223)
-	chain := NewChainEncoder(manchesterEncoder, rsEncoder)
+	chain := modulation.NewEncoderChain(manchesterEncoder, rsEncoder)
 
 	// Encode some data
 	data := []byte{0xAA, 0x55}
@@ -163,7 +163,7 @@ func TestChainEncoder_Reset(t *testing.T) {
 func TestChainDecoder_Reset(t *testing.T) {
 	manchesterDecoder := manchester.NewDecoder()
 	rsDecoder := ecc.NewRSDecoder(255, 223)
-	chain := NewChainDecoder(rsDecoder, manchesterDecoder)
+	chain := modulation.NewDecoderChain(rsDecoder, manchesterDecoder)
 
 	// Decode some data (even if empty)
 	input := make([]byte, 100)
@@ -181,7 +181,7 @@ func TestChainDecoder_Reset(t *testing.T) {
 // TestChainEncoder_EmptyData tests with empty data
 func TestChainEncoder_EmptyData(t *testing.T) {
 	manchesterEncoder := manchester.NewEncoder()
-	chain := NewChainEncoder(manchesterEncoder)
+	chain := modulation.NewEncoderChain(manchesterEncoder)
 
 	output := make([]byte, 100)
 	bytesWritten := chain.Encode(output, []byte{})
@@ -191,7 +191,7 @@ func TestChainEncoder_EmptyData(t *testing.T) {
 // TestChainDecoder_EmptyData tests with empty data
 func TestChainDecoder_EmptyData(t *testing.T) {
 	manchesterDecoder := manchester.NewDecoder()
-	chain := NewChainDecoder(manchesterDecoder)
+	chain := modulation.NewDecoderChain(manchesterDecoder)
 
 	output := make([]byte, 100)
 	bytesDecoded := chain.Decode(output, []byte{})
@@ -202,7 +202,7 @@ func TestChainDecoder_EmptyData(t *testing.T) {
 func TestChainEncoder_NilDst(t *testing.T) {
 	manchesterEncoder := manchester.NewEncoder()
 	rsEncoder := ecc.NewRSEncoder(255, 223)
-	chain := NewChainEncoder(manchesterEncoder, rsEncoder)
+	chain := modulation.NewEncoderChain(manchesterEncoder, rsEncoder)
 
 	data := []byte{0xAA, 0x55}
 	expectedSize := chain.Encode(nil, data)
@@ -213,7 +213,7 @@ func TestChainEncoder_NilDst(t *testing.T) {
 func TestChainDecoder_NilDst(t *testing.T) {
 	manchesterEncoder := manchester.NewEncoder()
 	rsEncoder := ecc.NewRSEncoder(255, 223)
-	encoderChain := NewChainEncoder(manchesterEncoder, rsEncoder)
+	encoderChain := modulation.NewEncoderChain(manchesterEncoder, rsEncoder)
 
 	// Encode first
 	data := []byte{0xAA, 0x55}
@@ -224,7 +224,7 @@ func TestChainDecoder_NilDst(t *testing.T) {
 	// Create decoder chain
 	rsDecoder := ecc.NewRSDecoder(255, 223)
 	manchesterDecoder := manchester.NewDecoder()
-	decoderChain := NewChainDecoder(rsDecoder, manchesterDecoder)
+	decoderChain := modulation.NewDecoderChain(rsDecoder, manchesterDecoder)
 
 	expectedSize := decoderChain.Decode(nil, encoded[:bytesEncoded])
 	assert.Greater(t, expectedSize, 0, "Should return expected size when dst is nil")
@@ -233,7 +233,7 @@ func TestChainDecoder_NilDst(t *testing.T) {
 // TestChainEncoder_InterfaceCompliance tests that ChainEncoder implements ByteEncoder
 func TestChainEncoder_InterfaceCompliance(t *testing.T) {
 	manchesterEncoder := manchester.NewEncoder()
-	chain := NewChainEncoder(manchesterEncoder)
+	chain := modulation.NewEncoderChain(manchesterEncoder)
 
 	var _ modulation.ByteEncoder = chain
 	assert.True(t, true, "ChainEncoder implements ByteEncoder interface")
@@ -242,9 +242,8 @@ func TestChainEncoder_InterfaceCompliance(t *testing.T) {
 // TestChainDecoder_InterfaceCompliance tests that ChainDecoder implements ByteDecoder
 func TestChainDecoder_InterfaceCompliance(t *testing.T) {
 	manchesterDecoder := manchester.NewDecoder()
-	chain := NewChainDecoder(manchesterDecoder)
+	chain := modulation.NewDecoderChain(manchesterDecoder)
 
 	var _ modulation.ByteDecoder = chain
 	assert.True(t, true, "ChainDecoder implements ByteDecoder interface")
 }
-

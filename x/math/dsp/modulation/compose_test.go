@@ -114,9 +114,9 @@ func TestRoundtrip_BFSK_Manchester(t *testing.T) {
 
 	// Test data - various patterns to ensure robustness
 	testCases := [][]byte{
-		{0xAA, 0x55},           // Alternating pattern
-		{0x12, 0x34, 0x56},    // Sequential pattern
-		{0x00, 0xFF},           // Min/max pattern
+		{0xAA, 0x55},             // Alternating pattern
+		{0x12, 0x34, 0x56},       // Sequential pattern
+		{0x00, 0xFF},             // Min/max pattern
 		{0x01, 0x02, 0x03, 0x04}, // Incremental pattern
 	}
 
@@ -220,25 +220,6 @@ func TestComposeDecoder_Reset(t *testing.T) {
 	_ = bytesDecoded
 }
 
-// TestComposeDecoder_OnIsEndOfPacket tests callback setting
-func TestComposeDecoder_OnIsEndOfPacket(t *testing.T) {
-	sampleRate := float32(48000)
-	freqLow := float32(800)
-	freqHigh := float32(1200)
-	symbolRate := float32(1000)
-
-	bfskDemodulator := mfsk.NewDemodulator(sampleRate, freqLow, freqHigh, symbolRate)
-	manchesterDecoder := manchester.NewDecoder()
-	composedDecoder := modulation.NewComposeDecoder(bfskDemodulator, manchesterDecoder)
-
-	// Set callback (should not panic)
-	callback := func([]byte) bool { return false }
-	composedDecoder.OnIsEndOfPacket(callback)
-
-	// Should work without error
-	assert.NotNil(t, composedDecoder)
-}
-
 // TestComposeEncoder_EmptyData tests with empty data
 func TestComposeEncoder_EmptyData(t *testing.T) {
 	sampleRate := float32(48000)
@@ -319,4 +300,3 @@ func TestComposeDecoder_IEEE8023_Manchester(t *testing.T) {
 	bytesDecoded := composedDecoder.Decode(output, signal)
 	assert.Greater(t, bytesDecoded, 0, "IEEE 802.3 Manchester decoding should succeed")
 }
-

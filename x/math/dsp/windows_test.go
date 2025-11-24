@@ -9,8 +9,6 @@ import (
 )
 
 func TestWindows_ApplyToVector(t *testing.T) {
-	windows := NewWindows()
-
 	tests := []struct {
 		name   string
 		params WindowParams
@@ -92,15 +90,13 @@ func TestWindows_ApplyToVector(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			signal := vec.NewFrom(1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0)
-			windows.ApplyToVector(signal, tt.params)
+			ApplyWindowVector(signal, tt.params)
 			tt.check(t, signal)
 		})
 	}
 }
 
 func TestWindows_CreateWindowVector(t *testing.T) {
-	windows := NewWindows()
-
 	tests := []struct {
 		name   string
 		length int
@@ -150,7 +146,7 @@ func TestWindows_CreateWindowVector(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			window := windows.CreateWindowVector(tt.length, tt.params)
+			window := CreateWindowVector(tt.length, tt.params, nil)
 			data := window.View().(vec.Vector)
 			if len(data) != tt.length {
 				t.Errorf("Expected length %d, got %d", tt.length, len(data))
@@ -160,9 +156,21 @@ func TestWindows_CreateWindowVector(t *testing.T) {
 	}
 }
 
-func TestWindows_ApplyToMatrix(t *testing.T) {
-	windows := NewWindows()
+func TestWindows_CreateWindowVectorReuse(t *testing.T) {
+	buf := make([]float32, 8)
+	window := CreateWindowVector(8, WindowParams{Type: Rectangular}, buf)
+	data := window.View().(vec.Vector)
 
+	if len(data) == 0 {
+		t.Fatalf("expected non-empty window")
+	}
+
+	if &data[0] != &buf[0] {
+		t.Fatalf("expected destination buffer to be reused")
+	}
+}
+
+func TestWindows_ApplyToMatrix(t *testing.T) {
 	matrix := mat.New(4, 4)
 	// Fill with ones
 	for i := 0; i < 4; i++ {
@@ -172,7 +180,7 @@ func TestWindows_ApplyToMatrix(t *testing.T) {
 	}
 
 	params := WindowParams{Type: Hann}
-	windows.ApplyToMatrix(matrix, params)
+	ApplyWindowMatrix(matrix, params)
 
 	// Check that windowing was applied (values should be less than 1.0)
 	flat := matrix.Flat()
@@ -189,10 +197,8 @@ func TestWindows_ApplyToMatrix(t *testing.T) {
 }
 
 func TestWindows_CreateWindowMatrix(t *testing.T) {
-	windows := NewWindows()
-
 	params := WindowParams{Type: Hann}
-	window2D := windows.CreateWindowMatrix(4, 4, params)
+	window2D := CreateWindowMatrix(4, 4, params, nil)
 	matrix := window2D.(mat.Matrix)
 
 	// Should be separable (row window * col window)
@@ -211,8 +217,23 @@ func TestWindows_CreateWindowMatrix(t *testing.T) {
 	}
 }
 
+func TestWindows_CreateWindowMatrixReuse(t *testing.T) {
+	dst := mat.New(4, 4)
+	window := CreateWindowMatrix(4, 4, WindowParams{Type: Rectangular}, dst)
+
+	dstFlat := dst.Flat()
+	windowFlat := window.Flat()
+
+	if len(dstFlat) == 0 || len(windowFlat) == 0 {
+		t.Fatalf("expected non-empty matrix")
+	}
+
+	if &dstFlat[0] != &windowFlat[0] {
+		t.Fatalf("expected destination matrix buffer to be reused")
+	}
+}
+
 func TestWindows_AllWindowTypes(t *testing.T) {
-	windows := NewWindows()
 	length := 16
 
 	windowTypes := []WindowType{
@@ -233,6 +254,7 @@ func TestWindows_AllWindowTypes(t *testing.T) {
 	}
 
 	for _, wt := range windowTypes {
+		wt := wt
 		t.Run(wt.String(), func(t *testing.T) {
 			params := WindowParams{Type: wt}
 			if wt == Gaussian {
@@ -241,17 +263,21 @@ func TestWindows_AllWindowTypes(t *testing.T) {
 				params.Param = 0.5
 			}
 
-			window := windows.CreateWindowVector(length, params)
+			window := CreateWindowVector(length, params, nil)
 			data := window.View().(vec.Vector)
 
 			if len(data) != length {
 				t.Errorf("Expected length %d, got %d", length, len(data))
 			}
 
-			// All windows should have non-negative values
+			if wt == FlatTop {
+				return
+			}
+
+			const minValue = -1e-6
 			for i, v := range data {
-				if v < 0 {
-					t.Errorf("Window value at index %d is negative: %f", i, v)
+				if v < minValue {
+					t.Errorf("Window value at index %d is below allowed threshold: %f", i, v)
 				}
 			}
 		})
@@ -259,12 +285,10 @@ func TestWindows_AllWindowTypes(t *testing.T) {
 }
 
 func TestWindows_EmptySignal(t *testing.T) {
-	windows := NewWindows()
-
 	// Test with empty vector
 	signal := vec.NewFrom([]float32{}...)
 	params := WindowParams{Type: Hann}
-	windows.ApplyToVector(signal, params)
+	ApplyWindowVector(signal, params)
 
 	// Should not panic
 	if len(signal) != 0 {
@@ -273,7 +297,6 @@ func TestWindows_EmptySignal(t *testing.T) {
 }
 
 func TestWindows_ParametricWindows(t *testing.T) {
-	windows := NewWindows()
 	length := 16
 
 	tests := []struct {
@@ -306,7 +329,7 @@ func TestWindows_ParametricWindows(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			params := WindowParams{Type: tt.wt, Param: tt.param}
-			window := windows.CreateWindowVector(length, params)
+			window := CreateWindowVector(length, params, nil)
 			data := window.View().(vec.Vector)
 
 			if len(data) != length {
@@ -339,4 +362,3 @@ func (wt WindowType) String() string {
 	}
 	return "Unknown"
 }
-

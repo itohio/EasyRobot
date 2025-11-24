@@ -30,55 +30,52 @@ const (
 
 // WindowParams holds window function parameters
 type WindowParams struct {
-	Type   WindowType
-	Param  float32 // Used for Gaussian (sigma) and Tukey (alpha) windows
+	Type  WindowType
+	Param float32 // Used for Gaussian (sigma) and Tukey (alpha) windows
 }
 
-// Windows provides windowing functions for vectors and matrices
-type Windows struct{}
-
-// NewWindows creates a new window processor
-func NewWindows() *Windows {
-	return &Windows{}
-}
-
-// ApplyToVector applies a window function to a vector in-place
-func (w *Windows) ApplyToVector(v vecTypes.Vector, params WindowParams) {
+// ApplyWindowVector applies a window function to a vector in-place
+func ApplyWindowVector(v vecTypes.Vector, params WindowParams) {
 	data := []float32(v.View().(vec.Vector))
-	w.applyWindow(data, params)
+	applyWindow(data, params)
 }
 
-// ApplyToMatrix applies a window function to each row of a matrix
-func (w *Windows) ApplyToMatrix(m matTypes.Matrix, params WindowParams) {
+// ApplyWindowMatrix applies a window function to each row of a matrix
+func ApplyWindowMatrix(m matTypes.Matrix, params WindowParams) {
 	rows := m.Rows()
 	for i := 0; i < rows; i++ {
 		row := m.Row(i)
-		w.ApplyToVector(row, params)
+		ApplyWindowVector(row, params)
 	}
 }
 
-// CreateWindowVector creates a new vector filled with the specified window function
-func (w *Windows) CreateWindowVector(length int, params WindowParams) vecTypes.Vector {
-	data := make([]float32, length)
-	w.applyWindow(data, params)
-	return vec.NewFrom(data...)
+// CreateWindowVector fills dst with the specified window and returns it as vec.Vector.
+// If dst has insufficient capacity, a new slice is allocated.
+func CreateWindowVector(length int, params WindowParams, dst []float32) vecTypes.Vector {
+	data := ensureBuffer(dst, length)
+	setOnes(data)
+	applyWindow(data, params)
+	return vec.Vector(data)
 }
 
-// CreateWindowMatrix creates a 2D window matrix (separable window applied to both dimensions)
-func (w *Windows) CreateWindowMatrix(rows, cols int, params WindowParams) matTypes.Matrix {
-	matrix := mat.New(rows, cols)
+// CreateWindowMatrix fills dst with a separable 2D window. If dst is nil or has
+// mismatched dimensions, a new matrix is allocated.
+func CreateWindowMatrix(rows, cols int, params WindowParams, dst matTypes.Matrix) matTypes.Matrix {
+	matrix := ensureMatrix(dst, rows, cols)
 
-	// Create 1D windows for rows and columns
-	rowWindow := make([]float32, rows)
-	colWindow := make([]float32, cols)
+	rowWindow := ensureBuffer(nil, rows)
+	colWindow := ensureBuffer(nil, cols)
 
-	w.applyWindow(rowWindow, params)
-	w.applyWindow(colWindow, params)
+	setOnes(rowWindow)
+	setOnes(colWindow)
+	applyWindow(rowWindow, params)
+	applyWindow(colWindow, params)
 
-	// Apply separable window
 	for i := 0; i < rows; i++ {
+		row := matrix.Row(i).(vec.Vector)
+		rowFactor := rowWindow[i]
 		for j := 0; j < cols; j++ {
-			matrix[i][j] = rowWindow[i] * colWindow[j]
+			row[j] = rowFactor * colWindow[j]
 		}
 	}
 
@@ -86,7 +83,7 @@ func (w *Windows) CreateWindowMatrix(rows, cols int, params WindowParams) matTyp
 }
 
 // applyWindow applies the window function to the data slice in-place
-func (w *Windows) applyWindow(data []float32, params WindowParams) {
+func applyWindow(data []float32, params WindowParams) {
 	n := len(data)
 	if n == 0 {
 		return
@@ -94,52 +91,72 @@ func (w *Windows) applyWindow(data []float32, params WindowParams) {
 
 	switch params.Type {
 	case Rectangular:
-		w.rectangular(data)
+		rectangular(data)
 	case Sine:
-		w.sine(data)
+		sine(data)
 	case Lanczos:
-		w.lanczos(data)
+		lanczos(data)
 	case Triangular:
-		w.triangular(data)
+		triangular(data)
 	case Hann:
-		w.hann(data)
+		hann(data)
 	case BartlettHann:
-		w.bartlettHann(data)
+		bartlettHann(data)
 	case Hamming:
-		w.hamming(data)
+		hamming(data)
 	case Blackman:
-		w.blackman(data)
+		blackman(data)
 	case BlackmanHarris:
-		w.blackmanHarris(data)
+		blackmanHarris(data)
 	case Nuttall:
-		w.nuttall(data)
+		nuttall(data)
 	case BlackmanNuttall:
-		w.blackmanNuttall(data)
+		blackmanNuttall(data)
 	case FlatTop:
-		w.flatTop(data)
+		flatTop(data)
 	case Gaussian:
-		w.gaussian(data, params.Param)
+		gaussian(data, params.Param)
 	case Tukey:
-		w.tukey(data, params.Param)
+		tukey(data, params.Param)
 	}
 }
 
+func setOnes(dst []float32) {
+	for i := range dst {
+		dst[i] = 1
+	}
+}
+
+func ensureBuffer(dst []float32, length int) []float32 {
+	if cap(dst) < length {
+		return make([]float32, length)
+	}
+	return dst[:length]
+}
+
+func ensureMatrix(dst matTypes.Matrix, rows, cols int) matTypes.Matrix {
+	if dst == nil || dst.Rows() != rows || dst.Cols() != cols {
+		return mat.New(rows, cols)
+	}
+	return dst
+}
+
 // Window function implementations
-func (w *Windows) rectangular(data []float32) {
+func rectangular(data []float32) {
 	// Rectangular window is just 1.0 for all values
 	for i := range data {
 		data[i] = 1.0
 	}
 }
 
-func (w *Windows) sine(data []float32) {
+func sine(data []float32) {
 	k := math32.Pi / float32(len(data)-1)
 	for i := range data {
 		data[i] *= math32.Sin(k * float32(i))
 	}
 }
 
-func (w *Windows) lanczos(data []float32) {
+func lanczos(data []float32) {
 	k := 2 / float32(len(data)-1)
 	for i := range data {
 		x := math32.Pi * (k*float32(i) - 1)
@@ -150,21 +167,21 @@ func (w *Windows) lanczos(data []float32) {
 	}
 }
 
-func (w *Windows) triangular(data []float32) {
+func triangular(data []float32) {
 	a := float32(len(data)-1) / 2
 	for i := range data {
 		data[i] *= 1 - math32.Abs(float32(i)/a-1)
 	}
 }
 
-func (w *Windows) hann(data []float32) {
+func hann(data []float32) {
 	k := 2 * math32.Pi / float32(len(data)-1)
 	for i := range data {
 		data[i] *= 0.5 * (1 - math32.Cos(k*float32(i)))
 	}
 }
 
-func (w *Windows) bartlettHann(data []float32) {
+func bartlettHann(data []float32) {
 	const (
 		a0 = 0.62
 		a1 = 0.48
@@ -178,7 +195,7 @@ func (w *Windows) bartlettHann(data []float32) {
 	}
 }
 
-func (w *Windows) hamming(data []float32) {
+func hamming(data []float32) {
 	const (
 		a0 = 0.54
 		a1 = 0.46
@@ -190,7 +207,7 @@ func (w *Windows) hamming(data []float32) {
 	}
 }
 
-func (w *Windows) blackman(data []float32) {
+func blackman(data []float32) {
 	const (
 		a0 = 0.42
 		a1 = 0.5
@@ -204,7 +221,7 @@ func (w *Windows) blackman(data []float32) {
 	}
 }
 
-func (w *Windows) blackmanHarris(data []float32) {
+func blackmanHarris(data []float32) {
 	const (
 		a0 = 0.35875
 		a1 = 0.48829
@@ -219,7 +236,7 @@ func (w *Windows) blackmanHarris(data []float32) {
 	}
 }
 
-func (w *Windows) nuttall(data []float32) {
+func nuttall(data []float32) {
 	const (
 		a0 = 0.355768
 		a1 = 0.487396
@@ -234,7 +251,7 @@ func (w *Windows) nuttall(data []float32) {
 	}
 }
 
-func (w *Windows) blackmanNuttall(data []float32) {
+func blackmanNuttall(data []float32) {
 	const (
 		a0 = 0.3635819
 		a1 = 0.4891775
@@ -249,7 +266,7 @@ func (w *Windows) blackmanNuttall(data []float32) {
 	}
 }
 
-func (w *Windows) flatTop(data []float32) {
+func flatTop(data []float32) {
 	const (
 		a0 = 0.21557895
 		a1 = 0.41663158
@@ -265,7 +282,7 @@ func (w *Windows) flatTop(data []float32) {
 	}
 }
 
-func (w *Windows) gaussian(data []float32, sigma float32) {
+func gaussian(data []float32, sigma float32) {
 	if sigma <= 0 {
 		sigma = 0.5 // Default sigma
 	}
@@ -277,14 +294,14 @@ func (w *Windows) gaussian(data []float32, sigma float32) {
 	}
 }
 
-func (w *Windows) tukey(data []float32, alpha float32) {
+func tukey(data []float32, alpha float32) {
 	if alpha <= 0 {
 		// Rectangular window
 		return
 	}
 	if alpha >= 1 {
 		// Hann window
-		w.hann(data)
+		hann(data)
 		return
 	}
 
@@ -295,9 +312,9 @@ func (w *Windows) tukey(data []float32, alpha float32) {
 	// Apply Hann window to edges
 	j := float32(0)
 	for i := 0; i < width; i++ {
-		w := 0.5 * (1 - math32.Cos(2*math32.Pi*j/alphaL))
-		data[i] *= w
-		data[n-1-i] *= w
+		coeff := 0.5 * (1 - math32.Cos(2*math32.Pi*j/alphaL))
+		data[i] *= coeff
+		data[n-1-i] *= coeff
 		j += 1
 	}
 }

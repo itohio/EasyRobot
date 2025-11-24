@@ -70,8 +70,10 @@ func NewRSEncoder(n, k int) *RSEncoder {
 // Encode implements modulation.ByteEncoder interface.
 func (rs *RSEncoder) Encode(dst, src []byte) int {
 	if dst == nil {
-		// Calculate expected output length
-		blocks := (len(src) + rs.k - 1) / rs.k // Ceiling division
+		if len(src) < rs.k {
+			return 0
+		}
+		blocks := len(src) / rs.k
 		return blocks * rs.n
 	}
 

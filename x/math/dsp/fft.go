@@ -4,6 +4,8 @@ package dsp
 import (
 	"github.com/itohio/EasyRobot/x/math/primitive/c64"
 	"github.com/itohio/EasyRobot/x/math/primitive/fp32"
+	"github.com/itohio/EasyRobot/x/math/shape"
+	"github.com/itohio/EasyRobot/x/math/tensor"
 	"github.com/itohio/EasyRobot/x/math/tensor/types"
 )
 
@@ -20,21 +22,133 @@ import (
 //
 // The FFT size is determined by the tensor shape, which will be padded to the next power of 2 if needed.
 type FFT struct {
-	shape    []int       // FFT dimensions (next power of 2 for each dimension)
-	rank     int         // Tensor rank (1D, 2D, etc.)
-	tempBuf  []float32   // temporary buffer for F32 operations (allocated when needed)
-	tempBufC []complex64 // temporary buffer for C64 operations (allocated when needed)
-	lut      []float32   // precomputed LUT for F32 twiddle factors (optional)
-	lutC     []complex64 // precomputed LUT for C64 twiddle factors (optional)
+	shape shape.Shape // FFT dimensions (next power of 2 for each dimension)
+	rank  int         // Tensor rank (1D, 2D, etc.)
+
+	dtype   types.DataType
+	withLUT bool
+
+	temp types.Tensor
+	lut  types.Tensor
+
+	lutFor     int
+	lutFactors int
+}
+
+// Release releases any pooled tensors owned by FFT.
+func (f *FFT) Release() {
+	f.releaseTemp()
+	f.releaseLUT()
+}
+
+func (f *FFT) releaseTemp() {
+	if tensor.IsNil(f.temp) {
+		return
+	}
+	f.temp.Release()
+	f.temp = nil
+}
+
+func (f *FFT) releaseLUT() {
+	if tensor.IsNil(f.lut) {
+		return
+	}
+	f.lut.Release()
+	f.lut = nil
+	f.lutFor = 0
+	f.lutFactors = 0
+}
+
+func (f *FFT) ensureType(dt types.DataType) {
+	if dt != types.FP32 && dt != types.C64 {
+		panic("FFT: unsupported tensor data type, must be FP32 or C64")
+	}
+	if f.dtype == types.DT_UNKNOWN {
+		f.dtype = dt
+		return
+	}
+	if f.dtype != dt {
+		panic("FFT: data type mismatch with previously locked type")
+	}
+}
+
+func (f *FFT) ensureTemp(size int) types.Tensor {
+	if f.dtype == types.DT_UNKNOWN {
+		panic("FFT: tensor data type not initialized")
+	}
+
+	var needed int
+	switch f.dtype {
+	case types.FP32:
+		needed = 2 * size
+	case types.C64:
+		needed = size
+	default:
+		panic("FFT: unsupported tensor data type")
+	}
+
+	if tensor.IsNil(f.temp) || f.temp.Size() < needed {
+		f.releaseTemp()
+		f.temp = tensor.New(f.dtype, shape.NewShape(needed))
+	}
+	return f.temp
+}
+
+func (f *FFT) ensureLUT(size int) (any, int) {
+	if !f.withLUT {
+		return nil, 0
+	}
+	if f.dtype == types.DT_UNKNOWN {
+		panic("FFT: tensor data type not initialized")
+	}
+
+	switch f.dtype {
+	case types.FP32:
+		required := fp32.ComputeFFTLUT(size)
+		if tensor.IsNil(f.lut) || f.lut.Size() < required {
+			f.releaseLUT()
+			f.lut = tensor.New(types.FP32, shape.NewShape(required))
+		}
+		if f.lutFor != size {
+			data := types.GetTensorData[[]float32](f.lut)
+			total := fp32.FillFFTLUT(data[:required], size)
+			f.lutFor = size
+			f.lutFactors = total
+		}
+		if tensor.IsNil(f.lut) || f.lutFactors == 0 {
+			return nil, 0
+		}
+		data := types.GetTensorData[[]float32](f.lut)
+		return data[:fp32.ComputeFFTLUT(size)], f.lutFactors
+	case types.C64:
+		required := c64.ComputeFFTLUT(size)
+		if tensor.IsNil(f.lut) || f.lut.Size() < required {
+			f.releaseLUT()
+			f.lut = tensor.New(types.C64, shape.NewShape(required))
+		}
+		if f.lutFor != size {
+			data := types.GetTensorData[[]complex64](f.lut)
+			total := c64.FillFFTLUT(data[:required], size)
+			f.lutFor = size
+			f.lutFactors = total
+		}
+		if tensor.IsNil(f.lut) || f.lutFactors == 0 {
+			return nil, 0
+		}
+		data := types.GetTensorData[[]complex64](f.lut)
+		return data[:c64.ComputeFFTLUT(size)], f.lutFactors
+	default:
+		panic("FFT: unsupported tensor data type")
+	}
 }
 
 // NewFFT creates an FFT processor for tensors of the specified shape.
 // The shape will be rounded up to the next power of 2 for each dimension.
-// If lut is provided (vararg), it will be used for optimized FFT operations.
-// For F32 tensors, use fp32.NewFFTLUT. For C64 tensors, use c64.NewFFTLUT.
+// When withLUT is true, FFT lazily creates twiddle factor LUTs sized to the
+// transform on first use and reuses them across calls.
 // Returns a value (not a pointer).
-func NewFFT(shape []int, lut ...[]float32) FFT {
-	if len(shape) == 0 {
+func NewFFT(shape shape.Shape, withLUT bool) FFT {
+	if shape.Rank() == 0 {
 		panic("FFT: shape must have at least one dimension")
 	}
 	for _, s := range shape {
@@ -49,24 +163,11 @@ func NewFFT(shape []int, lut ...[]float32) FFT {
 		nextPow2Shape[i] = fp32.NextPowerOfTwo(s)
 	}
 
-	fft := FFT{
-		shape: nextPow2Shape,
-		rank:  len(shape),
-		// Buffers allocated only when needed (lazy allocation)
+	return FFT{
+		shape:   nextPow2Shape,
+		rank:    len(shape),
+		withLUT: withLUT,
 	}
-
-	// Use LUT if provided
-	if len(lut) > 0 && len(lut[0]) > 0 {
-		fft.lut = lut[0]
-	}
-
-	return fft
-}
-
-// SetLUTC sets the complex LUT for C64 tensor operations.
-// The LUT can be created using c64.NewFFTLUT(fftSize).
-func (f *FFT) SetLUTC(lut []complex64) {
-	f.lutC = lut
 }
 
 // Forward performs a forward FFT transform on a tensor.
@@ -79,7 +180,9 @@ func (f *FFT) Forward(dst, src types.Tensor) {
 		panic("FFT.Forward: source and destination must have same data type")
 	}
 
-	switch srcType {
+	f.ensureType(srcType)
+
+	switch f.dtype {
 	case types.FP32:
 		f.forwardF32(dst, src)
 	case types.C64:
@@ -99,7 +202,9 @@ func (f *FFT) Backward(dst, src types.Tensor) {
 		panic("FFT.Backward: source and destination must have same data type")
 	}
 
-	switch srcType {
+	f.ensureType(srcType)
+
+	switch f.dtype {
 	case types.FP32:
 		f.backwardF32(dst, src)
 	case types.C64:
@@ -124,29 +229,28 @@ func (f *FFT) forwardF32(dst, src types.Tensor) {
 	// For 1D: use packed format directly
 	if f.rank == 1 {
 		size := f.shape[0]
-		// Allocate buffer only when needed
-		if len(f.tempBuf) < 2*size {
-			f.tempBuf = make([]float32, 2*size)
-		}
-		tempBuf := f.tempBuf[:2*size]
+		tempTensor := f.ensureTemp(size)
+		tempBuf := types.GetTensorData[[]float32](tempTensor)
+		tempBuf = tempBuf[:2*size]
+		realPart := tempBuf[:size]
+		imagPart := tempBuf[size:]
 		srcLen := len(srcData)
 		if srcLen > size {
 			srcLen = size
 		}
 
 		// Copy real input to real part of packed format, zero imaginary parts
-		copy(tempBuf[:srcLen], srcData[:srcLen])
+		copy(realPart[:srcLen], srcData[:srcLen])
 		for i := srcLen; i < size; i++ {
-			tempBuf[i] = 0
+			realPart[i] = 0
 		}
 		for i := range size {
-			tempBuf[i+size] = 0
+			imagPart[i] = 0
 		}
 
 		// Perform FFT
-		if len(f.lut) > 0 {
-			totalFactors := len(f.lut) / 2
-			fp32.FFTWithLUT(tempBuf, f.lut, totalFactors)
+		if lut, totalFactors := f.ensureLUT(size); totalFactors > 0 {
+			fp32.FFTWithLUT(tempBuf, lut.([]float32), totalFactors)
 		} else {
 			fp32.FFT(tempBuf)
 		}
@@ -184,11 +288,9 @@ func (f *FFT) backwardF32(dst, src types.Tensor) {
 	// For 1D: use packed format directly
 	if f.rank == 1 {
 		size := f.shape[0]
-		// Allocate buffer only when needed
-		if len(f.tempBuf) < 2*size {
-			f.tempBuf = make([]float32, 2*size)
-		}
-		tempBuf := f.tempBuf[:2*size]
+		tempTensor := f.ensureTemp(size)
+		tempBuf := types.GetTensorData[[]float32](tempTensor)
+		tempBuf = tempBuf[:2*size]
 		srcLen := len(srcData)
 		if srcLen > 2*size {
 			srcLen = 2 * size
@@ -201,8 +303,11 @@ func (f *FFT) backwardF32(dst, src types.Tensor) {
 		}
 
 		// Perform inverse FFT
-		// Note: IFFTWithLUT could be added later for optimization
-		fp32.IFFT(tempBuf)
+		if lut, totalFactors := f.ensureLUT(size); totalFactors > 0 {
+			fp32.IFFTWithLUT(tempBuf, lut.([]float32), totalFactors)
+		} else {
+			fp32.IFFT(tempBuf)
+		}
 
 		// Copy real part to destination
 		copyLen := size
@@ -236,11 +341,9 @@ func (f *FFT) forwardC64(dst, src types.Tensor) {
 	// For 1D
 	if f.rank == 1 {
 		size := f.shape[0]
-		// Allocate buffer only when needed
-		if len(f.tempBufC) < size {
-			f.tempBufC = make([]complex64, size)
-		}
-		tempBuf := f.tempBufC[:size]
+		tempTensor := f.ensureTemp(size)
+		tempBuf := types.GetTensorData[[]complex64](tempTensor)
+		tempBuf = tempBuf[:size]
 		srcLen := len(srcData)
 		if srcLen > size {
 			srcLen = size
@@ -253,9 +356,8 @@ func (f *FFT) forwardC64(dst, src types.Tensor) {
 		}
 
 		// Perform FFT
-		if len(f.lutC) > 0 {
-			totalFactors := len(f.lutC)
-			c64.FFTWithLUT(tempBuf, f.lutC, totalFactors)
+		if lut, totalFactors := f.ensureLUT(size); totalFactors > 0 {
+			c64.FFTWithLUT(tempBuf, lut.([]complex64), totalFactors)
 		} else {
 			c64.FFT(tempBuf)
 		}
@@ -273,11 +375,17 @@ func (f *FFT) forwardC64(dst, src types.Tensor) {
 	if f.rank == 2 {
 		rows := f.shape[0]
 		cols := f.shape[1]
-		var lut []complex64
-		if len(f.lutC) > 0 {
-			lut = f.lutC
+		var fft2dc FFT2DC
+		maxDim := rows
+		if cols > maxDim {
+			maxDim = cols
 		}
-		fft2dc := NewFFT2DC(rows, cols, lut)
+		if lut, totalFactors := f.ensureLUT(maxDim); totalFactors > 0 {
+			lutC := lut.([]complex64)
+			fft2dc = NewFFT2DC(rows, cols, lutC[:totalFactors])
+		} else {
+			fft2dc = NewFFT2DC(rows, cols)
+		}
 		fft2dc.Forward(dst, src)
 		return
 	}
@@ -300,11 +408,9 @@ func (f *FFT) backwardC64(dst, src types.Tensor) {
 	// For 1D
 	if f.rank == 1 {
 		size := f.shape[0]
-		// Allocate buffer only when needed
-		if len(f.tempBufC) < size {
-			f.tempBufC = make([]complex64, size)
-		}
-		tempBuf := f.tempBufC[:size]
+		tempTensor := f.ensureTemp(size)
+		tempBuf := types.GetTensorData[[]complex64](tempTensor)
+		tempBuf = tempBuf[:size]
 		srcLen := len(srcData)
 		if srcLen > size {
 			srcLen = size
@@ -317,9 +423,8 @@ func (f *FFT) backwardC64(dst, src types.Tensor) {
 		}
 
 		// Perform inverse FFT
-		if len(f.lutC) > 0 {
-			totalFactors := len(f.lutC)
-			c64.IFFTWithLUT(tempBuf, f.lutC, totalFactors)
+		if lut, totalFactors := f.ensureLUT(size); totalFactors > 0 {
+			c64.IFFTWithLUT(tempBuf, lut.([]complex64), totalFactors)
 		} else {
 			c64.IFFT(tempBuf)
 		}
@@ -337,11 +442,17 @@ func (f *FFT) backwardC64(dst, src types.Tensor) {
 	if f.rank == 2 {
 		rows := f.shape[0]
 		cols := f.shape[1]
-		var lut []complex64
-		if len(f.lutC) > 0 {
-			lut = f.lutC
+		maxDim := rows
+		if cols > maxDim {
+			maxDim = cols
 		}
-		fft2dc := NewFFT2DC(rows, cols, lut)
+		var fft2dc FFT2DC
+		if lut, totalFactors := f.ensureLUT(maxDim); totalFactors > 0 {
+			lutC := lut.([]complex64)
+			fft2dc = NewFFT2DC(rows, cols, lutC[:totalFactors])
+		} else {
+			fft2dc = NewFFT2DC(rows, cols)
+		}
 		fft2dc.Backward(dst, src)
 		return
 	}

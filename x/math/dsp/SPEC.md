@@ -115,20 +115,19 @@ fft2D.Convolve(signal2D, kernel2D, result2D)
 ### Usage Examples
 
 ```go
-windows := dsp.NewWindows()
-
 // Apply Hann window to vector
 params := dsp.WindowParams{Type: dsp.Hann}
-windows.ApplyToVector(signal, params)
+dsp.ApplyWindowVector(signal, params)
 
-// Create window vector
-windowVec := windows.CreateWindowVector(1024, params)
+// Create window vector into a destination buffer
+windowBuf := make([]float32, 1024)
+windowVec := dsp.CreateWindowVector(1024, params, windowBuf)
 
 // Apply separable window to matrix
-windows.ApplyToMatrix(signal2D, params)
+dsp.ApplyWindowMatrix(signal2D, params)
 
-// Create 2D window matrix
-window2D := windows.CreateWindowMatrix(256, 256, params)
+// Create 2D window matrix (allocates when dst is nil)
+window2D := dsp.CreateWindowMatrix(256, 256, params, nil)
 ```
 
 ### Parametric Windows
@@ -139,14 +138,14 @@ gaussianParams := dsp.WindowParams{
     Type:   dsp.Gaussian,
     Param:  0.5,
 }
-windows.ApplyToVector(signal, gaussianParams)
+dsp.ApplyWindowVector(signal, gaussianParams)
 
 // Tukey window with alpha=0.2
 tukeyParams := dsp.WindowParams{
     Type:   dsp.Tukey,
     Param:  0.2,
 }
-windows.ApplyToVector(signal, tukeyParams)
+dsp.ApplyWindowVector(signal, tukeyParams)
 ```
 
 ## Signal Generation
@@ -775,8 +774,7 @@ gen.NoiseGaussian1D(1024, 0.1, noise)
 fp32.Add(cleanSignal, noise, noisySignal)
 
 // Apply window
-windows := dsp.NewWindows()
-windows.ApplyToVector(noisySignal, dsp.WindowParams{Type: dsp.Hann})
+dsp.ApplyWindowVector(noisySignal, dsp.WindowParams{Type: dsp.Hann})
 
 // FFT analysis
 fft1D := dsp.NewFFT1D(1024)

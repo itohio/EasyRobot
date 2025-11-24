@@ -28,7 +28,7 @@ type SinusoidGenerator struct {
 
 // NewSinusoidGenerator creates a new sinusoid generator
 func NewSinusoidGenerator(sampleRate, frequency, amplitude, phase float32) SinusoidGenerator {
-	omega := 2 * math32.Pi * frequency / sampleRate
+	omega := 2 * math32.Pi * frequency
 	return SinusoidGenerator{
 		sampleRate: sampleRate,
 		frequency:  frequency,
@@ -161,7 +161,7 @@ type CosineGenerator struct {
 
 // NewCosineGenerator creates a new cosine generator
 func NewCosineGenerator(sampleRate, frequency, amplitude, phase float32) CosineGenerator {
-	omega := 2 * math32.Pi * frequency / sampleRate
+	omega := 2 * math32.Pi * frequency
 	return CosineGenerator{
 		sampleRate: sampleRate,
 		frequency:  frequency,
@@ -691,20 +691,30 @@ func (g *TriangleGenerator) Generate(dst []float32) int {
 	}
 
 	dt := 1.0 / g.sampleRate
-	period := 1.0 / g.frequency
-	halfPeriod := period / 2
-
 	for i := range n {
-		pos := math32.Mod(g.time, period)
-		if pos < halfPeriod {
-			dst[i] = g.amplitude * (2*pos/period - 0.5)
-		} else {
-			dst[i] = g.amplitude * (1.5 - 2*pos/period)
+		phase := math32.Mod(g.time*g.frequency, 1.0)
+		if phase < 0 {
+			phase += 1
 		}
+		dst[i] = triangleValue(g.amplitude, phase)
 		g.time += dt
+	}
+	if n > 0 {
+		cycles := g.time * g.frequency
+		frac := cycles - math32.Floor(cycles)
+		if frac < 1e-6 || 1-frac < 1e-6 {
+			dst[n-1] = triangleValue(g.amplitude, 0)
+		}
 	}
 
 	return n
+}
+
+func triangleValue(amplitude, phase float32) float32 {
+	if phase < 0.5 {
+		return -amplitude + 4*amplitude*phase
+	}
+	return 3*amplitude - 4*amplitude*phase
 }
 
 // NoiseWhiteGenerator generates white noise

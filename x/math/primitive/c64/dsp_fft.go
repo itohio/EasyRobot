@@ -120,7 +120,7 @@ func IFFT(data []complex64) {
 
 	// Conjugate back and scale by 1/N (no type casts in hot path)
 	nF := float32(n)
-	scale := float32(1.0) / (nF * nF)
+	scale := float32(1.0) / nF
 	for i := range n {
 		realVal := real(data[i])
 		imagVal := imag(data[i])
@@ -273,11 +273,9 @@ func IFFTWithLUT(data []complex64, lut []complex64, totalFactors int) {
 	// Forward FFT on conjugated data using LUT
 	FFTWithLUT(data, lut, totalFactors)
 
-	// Conjugate back and scale by 1/N^2
-	// Note: Since FFT accumulates by N^2 when applied to frequency domain data in IFFT,
-	// we need to scale by 1/N^2 to get the correct result (1/N for IFFT * 1/N for FFT accumulation)
+	// Conjugate back and scale by 1/N
 	nF := float32(n)
-	scale := float32(1.0) / (nF * nF)
+	scale := float32(1.0) / nF
 	for i := range n {
 		realVal := real(data[i])
 		imagVal := imag(data[i])

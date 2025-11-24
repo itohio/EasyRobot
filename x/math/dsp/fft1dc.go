@@ -192,13 +192,28 @@ func (f *FFT1DC) Convolve(dst, signal, kernel types.Tensor) {
 		panic("Convolve: destination buffer too small")
 	}
 
-	// Create temporary FFTs for signal and kernel
-	sigFFT := NewFFT1DC(sigLen)
-	kernFFT := NewFFT1DC(kernLen)
+	// Reuse f if sizes match (benefits from LUT if present), otherwise create new instances
+	sigLenPow2 := fp32.NextPowerOfTwo(sigLen)
+	kernLenPow2 := fp32.NextPowerOfTwo(kernLen)
+
+	var sigFFT, kernFFT *FFT1DC
+	if sigLenPow2 == f.length {
+		sigFFT = f
+	} else {
+		sigFFTInstance := NewFFT1DC(resultLen)
+		sigFFT = &sigFFTInstance
+	}
+	if kernLenPow2 == f.length {
+		kernFFT = f
+	} else {
+		kernFFTInstance := NewFFT1DC(resultLen)
+		kernFFT = &kernFFTInstance
+	}
 
 	// Temporary buffers
 	sigFreq := tensor.New(types.C64, shape.NewShape(f.length))
 	kernFreq := tensor.New(types.C64, shape.NewShape(f.length))
+	defer sigFreq.Release()
 
 	// Forward FFTs
 	sigFFT.Forward(sigFreq, signal)
@@ -221,19 +236,18 @@ func (f *FFT1DC) Convolve(dst, signal, kernel types.Tensor) {
 		sigFreqData[i] *= kernFreqData[i]
 	}
 
+	// Release kernFreq as it's no longer needed
+	kernFreq.Release()
+
 	// Inverse FFT to destination
 	f.Backward(dst, sigFreq)
 
-	// Scale result (FFT normalization)
-	// BCE optimization: reslice to exact size
 	dstData := types.GetTensorData[[]complex64](dst)
 	if resultLen > len(dstData) {
 		resultLen = len(dstData)
 	}
-	dstData = dstData[:resultLen]
-	scale := complex64(complex(1.0/float32(f.length), 0))
-	for i := range resultLen {
-		dstData[i] *= scale
+	for i := resultLen; i < len(dstData); i++ {
+		dstData[i] = 0
 	}
 }
 
@@ -287,15 +301,11 @@ func (f *FFT1DC) Correlate(dst, signal1, signal2 types.Tensor) {
 	corrFFT := NewFFT1DC(fftSize)
 	corrFFT.Backward(dst, sig1Freq)
 
-	// Scale result (FFT normalization)
-	// BCE optimization: reslice to exact size
 	dstData := types.GetTensorData[[]complex64](dst)
 	if resultLen > len(dstData) {
 		resultLen = len(dstData)
 	}
-	dstData = dstData[:resultLen]
-	scale := complex64(complex(1.0/float32(fftSize), 0))
-	for i := range resultLen {
-		dstData[i] *= scale
+	for i := resultLen; i < len(dstData); i++ {
+		dstData[i] = 0
 	}
 }

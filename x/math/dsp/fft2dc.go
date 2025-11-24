@@ -246,6 +246,7 @@ func (f *FFT2DC) backward(src, dst types.Tensor) {
 		}
 		copy(row, tempRow)
 	}
+
 }
 
 // Convolve performs 2D convolution of signal matrix with kernel matrix using complex FFT.
@@ -264,13 +265,28 @@ func (f FFT2DC) Convolve(dst, signal, kernel types.Tensor) {
 		panic("Convolve: destination buffer too small")
 	}
 
-	// Create temporary FFTs for signal and kernel
-	sigFFT := NewFFT2DC(sigRows, sigCols)
-	kernFFT := NewFFT2DC(kernRows, kernCols)
+	// Reuse f if sizes match (benefits from LUT if present), otherwise create new instances
+	sigRowsPow2 := fp32.NextPowerOfTwo(sigRows)
+	sigColsPow2 := fp32.NextPowerOfTwo(sigCols)
+	kernRowsPow2 := fp32.NextPowerOfTwo(kernRows)
+	kernColsPow2 := fp32.NextPowerOfTwo(kernCols)
+
+	var sigFFT, kernFFT FFT2DC
+	if sigRowsPow2 == f.rows && sigColsPow2 == f.cols {
+		sigFFT = f
+	} else {
+		sigFFT = NewFFT2DC(sigRows, sigCols)
+	}
+	if kernRowsPow2 == f.rows && kernColsPow2 == f.cols {
+		kernFFT = f
+	} else {
+		kernFFT = NewFFT2DC(kernRows, kernCols)
+	}
 
 	// Temporary buffers
 	sigFreq := tensor.New(types.C64, shape.NewShape(f.rows, f.cols))
 	kernFreq := tensor.New(types.C64, shape.NewShape(f.rows, f.cols))
+	defer sigFreq.Release()
 
 	// Forward FFTs
 	sigFFT.Forward(sigFreq, signal)
@@ -293,20 +309,19 @@ func (f FFT2DC) Convolve(dst, signal, kernel types.Tensor) {
 		sigFreqData[i] *= kernFreqData[i]
 	}
 
+	// Release kernFreq as it's no longer needed
+	kernFreq.Release()
+
 	// Inverse FFT to destination
 	f.Backward(dst, sigFreq)
 
-	// Scale result (FFT normalization)
-	// BCE optimization: reslice to exact size
 	dstData := types.GetTensorData[[]complex64](dst)
 	resultSize := resultRows * resultCols
 	if resultSize > len(dstData) {
 		resultSize = len(dstData)
 	}
-	dstData = dstData[:resultSize]
-	scale := complex64(complex(1.0/float32(f.rows*f.cols), 0))
-	for i := range resultSize {
-		dstData[i] *= scale
+	for i := resultSize; i < len(dstData); i++ {
+		dstData[i] = 0
 	}
 }
 
@@ -360,16 +375,12 @@ func (f *FFT2DC) Correlate(dst, signal1, signal2 types.Tensor) {
 	// Inverse FFT to destination
 	f.Backward(dst, sig1Freq)
 
-	// Scale result (FFT normalization)
-	// BCE optimization: reslice to exact size
 	dstData := types.GetTensorData[[]complex64](dst)
 	resultSize := resultRows * resultCols
 	if resultSize > len(dstData) {
 		resultSize = len(dstData)
 	}
-	dstData = dstData[:resultSize]
-	scale := complex64(complex(1.0/float32(f.rows*f.cols), 0))
-	for i := range resultSize {
-		dstData[i] *= scale
+	for i := resultSize; i < len(dstData); i++ {
+		dstData[i] = 0
 	}
 }

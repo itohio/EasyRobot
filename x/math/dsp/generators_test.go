@@ -17,9 +17,8 @@ func TestSinusoidGenerator_Generate(t *testing.T) {
 	require.Equal(t, 8, n)
 	// First sample should be sin(0) = 0
 	assert.InDelta(t, 0.0, dst[0], 1e-5)
-	// With 8 Hz sample rate and 1 Hz frequency, omega = π/4
-	// Sample 7 is at t=7/8, so value = sin(π/4 * 7/8) = sin(7π/32) ≈ 0.634
-	assert.InDelta(t, 0.634, dst[7], 0.01)
+	// Sample 7 is at t=7/8, so value = sin(2π * 7/8) = sin(7π/4) ≈ -√2/2
+	assert.InDelta(t, -math.Sqrt(2)/2, float64(dst[7]), 0.01)
 	// All values should be in valid range [-1, 1]
 	for i, v := range dst {
 		assert.GreaterOrEqual(t, v, float32(-1.0), "Value at index %d should be >= -1", i)
@@ -224,13 +223,13 @@ func TestRampGenerator_Reset(t *testing.T) {
 func TestGenerator_StateTracking(t *testing.T) {
 	// Test that generators maintain state across multiple Generate calls
 	gen := NewSinusoidGenerator(8.0, 1.0, 1.0, 0.0)
-	
+
 	dst1 := make([]float32, 4)
 	gen.Generate(dst1)
-	
+
 	dst2 := make([]float32, 4)
 	gen.Generate(dst2)
-	
+
 	// Concatenated should be continuous
 	// Check that the last sample of dst1 and first sample of dst2 are continuous
 	// (they should be, since phase continues)
@@ -240,13 +239,13 @@ func TestGenerator_StateTracking(t *testing.T) {
 
 func TestChirpGenerator_StateContinuity(t *testing.T) {
 	gen := NewChirpGenerator(1000.0, 1.0, 10.0, 1.0)
-	
+
 	dst1 := make([]float32, 50)
 	gen.Generate(dst1)
-	
+
 	dst2 := make([]float32, 50)
 	gen.Generate(dst2)
-	
+
 	// Frequency should continue increasing
 	// The frequency at the end of dst1 should be less than at the end of dst2
 	// (This is a simplified check - in practice you'd analyze the signal)

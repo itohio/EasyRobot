@@ -72,9 +72,6 @@ func (f *FFT1D) Forward(dst, src vec.Vector) {
 //   - Imaginary parts: src[N:2*N]
 //
 // Output (dst): Real-valued float32 vector (time domain signal) of length N.
-//
-//	The result is scaled by 1/N where N is the FFT length.
-//
 // Uses destination-based API with no allocations.
 func (f *FFT1D) Backward(dst, src vec.Vector) {
 	f.backward(src, dst)
@@ -156,7 +153,6 @@ func (f *FFT1D) backward(src, dst vec.Vector) {
 	fp32.IFFT(tempBuf)
 
 	// Copy real part to destination (imaginary parts should be ~0 for real output)
-	// Note: ifftReal already scales by 1/N, so we just copy the scaled values
 	copyLen = f.length
 	if copyLen > len(dstData) {
 		copyLen = len(dstData)
@@ -176,17 +172,26 @@ func (f *FFT1D) Convolve(dst, signal, kernel vec.Vector) {
 		panic("Convolve: destination buffer too small")
 	}
 
-	// Create temporary FFTs for signal and kernel
-	sigFFT := NewFFT1D(sigLen)
-	kernFFT := NewFFT1D(kernLen)
+	requiredFFTSize := fp32.NextPowerOfTwo(resultLen)
+	if f.length != requiredFFTSize {
+		panic("Convolve: FFT length mismatch, pad inputs or recreate FFT with proper size")
+	}
+	if sigLen > f.length || kernLen > f.length {
+		panic("Convolve: input length exceeds FFT length")
+	}
 
 	// Temporary buffers (need 2*N for packed format)
-	sigFreq := vec.New(2 * f.length)
-	kernFreq := vec.New(2 * f.length)
+	sigFreqBuf := fp32.Pool.Get(2 * f.length)
+	defer fp32.Pool.Put(sigFreqBuf[:0])
+	sigFreq := vec.Vector(sigFreqBuf)
+
+	kernFreqBuf := fp32.Pool.Get(2 * f.length)
+	defer fp32.Pool.Put(kernFreqBuf[:0])
+	kernFreq := vec.Vector(kernFreqBuf)
 
 	// Forward FFTs
-	sigFFT.Forward(sigFreq, signal)
-	kernFFT.Forward(kernFreq, kernel)
+	f.Forward(sigFreq, signal)
+	f.Forward(kernFreq, kernel)
 
 	// Multiply in frequency domain (complex multiplication on packed format)
 	// BCE optimization: reslice and use for range
@@ -212,16 +217,12 @@ func (f *FFT1D) Convolve(dst, signal, kernel vec.Vector) {
 	// Inverse FFT to destination
 	f.Backward(dst, sigFreq)
 
-	// Scale result (FFT normalization)
-	// BCE optimization: reslice to exact size
 	dstData := []float32(dst)
 	if resultLen > len(dstData) {
 		resultLen = len(dstData)
 	}
-	dstData = dstData[:resultLen]
-	scale := 1.0 / float32(f.length)
-	for i := range resultLen {
-		dstData[i] *= scale
+	for i := resultLen; i < len(dstData); i++ {
+		dstData[i] = 0
 	}
 }
 
@@ -240,18 +241,24 @@ func (f *FFT1D) Correlate(dst, signal1, signal2 vec.Vector) {
 
 	// FFT size must be at least resultLen to avoid aliasing
 	fftSize := fp32.NextPowerOfTwo(resultLen)
-
-	// Create temporary FFTs for signals (use fftSize to ensure no aliasing)
-	sig1FFT := NewFFT1D(fftSize)
-	sig2FFT := NewFFT1D(fftSize)
+	if f.length != fftSize {
+		panic("Correlate: FFT length mismatch, pad inputs or recreate FFT with proper size")
+	}
+	if sig1Len > f.length || sig2Len > f.length {
+		panic("Correlate: input length exceeds FFT length")
+	}
 
 	// Temporary buffers (use fftSize, need 2*fftSize for packed format)
-	sig1Freq := vec.New(2 * fftSize)
-	sig2Freq := vec.New(2 * fftSize)
+	sig1FreqBuf := fp32.Pool.Get(2 * fftSize)
+	defer fp32.Pool.Put(sig1FreqBuf[:0])
+	sig1Freq := vec.Vector(sig1FreqBuf)
+	sig2FreqBuf := fp32.Pool.Get(2 * fftSize)
+	defer fp32.Pool.Put(sig2FreqBuf[:0])
+	sig2Freq := vec.Vector(sig2FreqBuf)
 
 	// Forward FFTs (will zero-pad to fftSize)
-	sig1FFT.Forward(sig1Freq, signal1)
-	sig2FFT.Forward(sig2Freq, signal2)
+	f.Forward(sig1Freq, signal1)
+	f.Forward(sig2Freq, signal2)
 
 	// For correlation, multiply sig1 with conjugate of sig2 in frequency domain
 	// Correlation: multiply by conjugate (a+bi)*(c-di) = (ac+bd) + (bc-ad)i
@@ -275,19 +282,14 @@ func (f *FFT1D) Correlate(dst, signal1, signal2 vec.Vector) {
 		sig1FreqData[i+size] = imag1*real2 - real1*imag2
 	}
 
-	// Inverse FFT to destination (need to use fftSize FFT)
-	corrFFT := NewFFT1D(fftSize)
-	corrFFT.Backward(dst, sig1Freq)
+	// Inverse FFT to destination
+	f.Backward(dst, sig1Freq)
 
-	// Scale result (FFT normalization)
-	// BCE optimization: reslice to exact size
-	dstData := []float32(dst)
-	if resultLen > len(dstData) {
-		resultLen = len(dstData)
+	if resultLen > len(dst) {
+		resultLen = len(dst)
 	}
-	dstData = dstData[:resultLen]
-	scale := 1.0 / float32(fftSize)
-	for i := range resultLen {
-		dstData[i] *= scale
+	dstData := []float32(dst)
+	for i := resultLen; i < len(dstData); i++ {
+		dstData[i] = 0
 	}
 }

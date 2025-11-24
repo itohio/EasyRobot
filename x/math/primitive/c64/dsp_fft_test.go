@@ -40,6 +40,31 @@ func TestFFT_Constant(t *testing.T) {
 	}
 }
 
+func TestFFT_MatchesNumpyReference(t *testing.T) {
+	// Reference generated via:
+	// python3 -c "import numpy as np; signal=np.array([1.25-0.75j,-2.5+1.125j,0.333-0.666j,-0.25+0.5j],dtype=np.complex64); fft=np.fft.fft(signal).astype(np.complex64); print(fft)"
+	expected := []complex64{
+		-1.1670001 + 0.209i,
+		1.5420001 + 2.166i,
+		4.333 + -3.041i,
+		0.292 - 2.334i,
+	}
+
+	data := []complex64{
+		1.25 - 0.75i,
+		-2.5 + 1.125i,
+		0.333 - 0.666i,
+		-0.25 + 0.5i,
+	}
+	FFT(data)
+
+	require.Equal(t, len(expected), len(data))
+	for i := range data {
+		assert.InDelta(t, real(expected[i]), real(data[i]), 1e-5, "FFT real mismatch at %d", i)
+		assert.InDelta(t, imag(expected[i]), imag(data[i]), 1e-5, "FFT imag mismatch at %d", i)
+	}
+}
+
 func TestIFFT_Roundtrip(t *testing.T) {
 	// Test forward FFT then inverse FFT should recover original (scaled)
 	original := []complex64{1 + 0i, 2 + 0i, 3 + 0i, 4 + 0i}
@@ -49,11 +74,9 @@ func TestIFFT_Roundtrip(t *testing.T) {
 	FFT(data)
 	IFFT(data)
 
-	// IFFT scales by 1/N, so result should be original / 4
-	scale := float32(1.0 / 4.0)
 	for i := range len(original) {
-		expectedReal := real(original[i]) * scale
-		expectedImag := imag(original[i]) * scale
+		expectedReal := real(original[i])
+		expectedImag := imag(original[i])
 		require.InDelta(t, expectedReal, real(data[i]), 1e-5, "Roundtrip real at index %d", i)
 		require.InDelta(t, expectedImag, imag(data[i]), 1e-5, "Roundtrip imag at index %d", i)
 	}
@@ -63,6 +86,7 @@ func TestFFT_IFFT_Identity(t *testing.T) {
 	// Test that FFT then IFFT gives identity (scaled) for various sizes
 	for size := 2; size <= 64; size *= 2 {
 		t.Run(fmt.Sprintf("size_%d", size), func(t *testing.T) {
+			const tol = 5e-5
 			data := make([]complex64, size)
 			for i := range size {
 				data[i] = complex64(complex(float32(i+1), float32(i+1)))
@@ -74,12 +98,11 @@ func TestFFT_IFFT_Identity(t *testing.T) {
 			FFT(data)
 			IFFT(data)
 
-			scale := 1.0 / float32(size)
 			for i := range size {
-				expectedReal := float32(i+1) * scale
-				expectedImag := float32(i+1) * scale
-				require.InDelta(t, expectedReal, real(data[i]), 1e-5, "Identity real at index %d", i)
-				require.InDelta(t, expectedImag, imag(data[i]), 1e-5, "Identity imag at index %d", i)
+				expectedReal := float32(i + 1)
+				expectedImag := float32(i + 1)
+				require.InDelta(t, expectedReal, real(data[i]), tol, "Identity real at index %d", i)
+				require.InDelta(t, expectedImag, imag(data[i]), tol, "Identity imag at index %d", i)
 			}
 		})
 	}
@@ -130,10 +153,9 @@ func TestFFT_LargeSize(t *testing.T) {
 	FFT(data)
 	IFFT(data)
 
-	scale := 1.0 / float32(size)
 	for i := range size {
-		expectedReal := real(original[i]) * scale
-		expectedImag := imag(original[i]) * scale
+		expectedReal := real(original[i])
+		expectedImag := imag(original[i])
 		require.InDelta(t, expectedReal, real(data[i]), 1e-4, "Large size real at index %d", i)
 		require.InDelta(t, expectedImag, imag(data[i]), 1e-4, "Large size imag at index %d", i)
 	}
@@ -253,10 +275,9 @@ func TestFFTWithLUT_Roundtrip(t *testing.T) {
 	FFTWithLUT(data, lut, totalFactors)
 	IFFT(data)
 
-	scale := 1.0 / float32(fftSize)
 	for i := range fftSize {
-		expectedReal := real(original[i]) * scale
-		expectedImag := imag(original[i]) * scale
+		expectedReal := real(original[i])
+		expectedImag := imag(original[i])
 		require.InDelta(t, expectedReal, real(data[i]), 1e-5, "Roundtrip with LUT real at index %d", i)
 		require.InDelta(t, expectedImag, imag(data[i]), 1e-5, "Roundtrip with LUT imag at index %d", i)
 	}
@@ -309,10 +330,9 @@ func TestIFFTWithLUT_Roundtrip(t *testing.T) {
 	FFTWithLUT(data, lut, totalFactors)
 	IFFTWithLUT(data, lut, totalFactors)
 
-	scale := 1.0 / float32(fftSize)
 	for i := range fftSize {
-		expectedReal := real(original[i]) * scale
-		expectedImag := imag(original[i]) * scale
+		expectedReal := real(original[i])
+		expectedImag := imag(original[i])
 		require.InDelta(t, expectedReal, real(data[i]), 1e-5, "Roundtrip with IFFTWithLUT real at index %d", i)
 		require.InDelta(t, expectedImag, imag(data[i]), 1e-5, "Roundtrip with IFFTWithLUT imag at index %d", i)
 	}

@@ -1,31 +1,28 @@
-package byte_chain
+package modulation
 
-import (
-	"github.com/itohio/EasyRobot/x/math/dsp/modulation"
-)
-
-// ChainEncoder chains multiple ByteEncoders together.
+// EncoderChain chains multiple ByteEncoders together.
 // Encoding flow: data -> encoder1 -> encoder2 -> ... -> encoderN -> output
 // This allows combining multiple encoding layers (e.g., encryption -> reed solomon -> manchester).
-type ChainEncoder struct {
-	encoders []modulation.ByteEncoder
+type EncoderChain struct {
+	encoders []ByteEncoder
 	buffers  [][]byte // Intermediate buffers for chaining
 }
 
-// NewChainEncoder creates a chain encoder that applies multiple ByteEncoders in sequence.
+// NewEncoderChain creates a chain encoder that applies multiple ByteEncoders in sequence.
 // The encoders are applied in the order provided:
 //   - First encoder processes the input data
 //   - Each subsequent encoder processes the output of the previous encoder
 //   - Final output is from the last encoder
 //
-// Example: NewChainEncoder(encryption, reedSolomon, manchester)
-//   Flow: data -> encryption -> reedSolomon -> manchester -> output
-func NewChainEncoder(encoders ...modulation.ByteEncoder) *ChainEncoder {
+// Example: NewEncoderChain(encryption, reedSolomon, manchester)
+//
+//	Flow: data -> encryption -> reedSolomon -> manchester -> output
+func NewEncoderChain(encoders ...ByteEncoder) *EncoderChain {
 	if len(encoders) == 0 {
 		panic("ChainEncoder: at least one encoder is required")
 	}
 
-	return &ChainEncoder{
+	return &EncoderChain{
 		encoders: encoders,
 		buffers:  make([][]byte, len(encoders)),
 	}
@@ -35,7 +32,7 @@ func NewChainEncoder(encoders ...modulation.ByteEncoder) *ChainEncoder {
 // Encode implements modulation.ByteEncoder interface.
 // Returns the number of bytes written to dst.
 // Returns expected dst length if dst is nil.
-func (c *ChainEncoder) Encode(dst, src []byte) int {
+func (c *EncoderChain) Encode(dst, src []byte) int {
 	if len(src) == 0 {
 		return 0
 	}
@@ -95,6 +92,17 @@ func (c *ChainEncoder) Encode(dst, src []byte) int {
 		// Encode through current encoder
 		bytesWritten := encoder.Encode(stageBuffer, currentInput)
 		if bytesWritten == 0 {
+			expected := encoder.Encode(nil, currentInput)
+			if expected == 0 && i > 0 {
+				if isLast {
+					if len(dst) < len(currentInput) {
+						return 0
+					}
+					copy(dst, currentInput)
+					return len(currentInput)
+				}
+				continue
+			}
 			return 0
 		}
 
@@ -113,7 +121,7 @@ func (c *ChainEncoder) Encode(dst, src []byte) int {
 
 // Reset resets all chained encoders.
 // Reset implements modulation.ByteEncoder interface.
-func (c *ChainEncoder) Reset() {
+func (c *EncoderChain) Reset() {
 	for _, encoder := range c.encoders {
 		encoder.Reset()
 	}
@@ -122,4 +130,3 @@ func (c *ChainEncoder) Reset() {
 		c.buffers[i] = c.buffers[i][:0]
 	}
 }
-
