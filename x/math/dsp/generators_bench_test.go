@@ -27,8 +27,8 @@ func BenchmarkSineGenerator_GenerateWithOp(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		gen.GenerateWithOp(dst, false, func(idx int, value float32) {
-			dst[idx] = value
+		gen.GenerateWithOp(dst, false, func(d *float32, value float32) {
+			*d = value
 		})
 	}
 }
@@ -51,8 +51,8 @@ func BenchmarkCosineGenerator_GenerateWithOp(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		gen.GenerateWithOp(dst, false, func(idx int, value float32) {
-			dst[idx] = value
+		gen.GenerateWithOp(dst, false, func(d *float32, value float32) {
+			*d = value
 		})
 	}
 }
@@ -68,8 +68,8 @@ func BenchmarkCosineGenerator_GenerateWithOp_Multiply(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		gen.GenerateWithOp(baseband, false, func(idx int, carrierValue float32) {
-			baseband[idx] *= carrierValue
+		gen.GenerateWithOp(baseband, false, func(d *float32, carrierValue float32) {
+			*d *= carrierValue
 		})
 	}
 }
@@ -92,8 +92,8 @@ func BenchmarkSincGenerator_GenerateWithOp(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		gen.GenerateWithOp(dst, func(idx int, value float32) {
-			dst[idx] = value
+		gen.GenerateWithOp(dst, false, func(d *float32, value float32) {
+			*d = value
 		})
 	}
 }
@@ -116,8 +116,8 @@ func BenchmarkGaussianGenerator_GenerateWithOp(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		gen.GenerateWithOp(dst, func(idx int, value float32) {
-			dst[idx] = value
+		gen.GenerateWithOp(dst, false, func(d *float32, value float32) {
+			*d = value
 		})
 	}
 }
@@ -140,8 +140,8 @@ func BenchmarkSquareGenerator_GenerateWithOp(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		gen.GenerateWithOp(dst, func(idx int, value float32) {
-			dst[idx] = value
+		gen.GenerateWithOp(dst, false, func(d *float32, value float32) {
+			*d = value
 		})
 	}
 }
@@ -164,8 +164,8 @@ func BenchmarkTriangleGenerator_GenerateWithOp(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		gen.GenerateWithOp(dst, func(idx int, value float32) {
-			dst[idx] = value
+		gen.GenerateWithOp(dst, false, func(d *float32, value float32) {
+			*d = value
 		})
 	}
 }
@@ -188,8 +188,8 @@ func BenchmarkNoiseWhiteGenerator_GenerateWithOp(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		gen.GenerateWithOp(dst, func(idx int, value float32) {
-			dst[idx] = value
+		gen.GenerateWithOp(dst, false, func(d *float32, value float32) {
+			*d = value
 		})
 	}
 }
@@ -251,6 +251,54 @@ func BenchmarkSmallBuffer_CosineGenerator(b *testing.B) {
 	}
 }
 
+func BenchmarkPinkChirpGenerator_Generate(b *testing.B) {
+	gen := NewPinkChirpGenerator(benchSampleRate, 1000.0, 20000.0, 1.0)
+	dst := make([]float32, benchSamples)
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		gen.Generate(dst)
+	}
+}
+
+func BenchmarkPinkChirpGenerator_GenerateWithOp(b *testing.B) {
+	gen := NewPinkChirpGenerator(benchSampleRate, 1000.0, 20000.0, 1.0)
+	dst := make([]float32, benchSamples)
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		gen.GenerateWithOp(dst, false, func(d *float32, value float32) {
+			*d = value
+		})
+	}
+}
+
+func BenchmarkPinkLogarithmicChirpGenerator_Generate(b *testing.B) {
+	gen := NewPinkLogarithmicChirpGenerator(benchSampleRate, 1000.0, 20000.0, 1.0)
+	dst := make([]float32, benchSamples)
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		gen.Generate(dst)
+	}
+}
+
+func BenchmarkPinkLogarithmicChirpGenerator_GenerateWithOp(b *testing.B) {
+	gen := NewPinkLogarithmicChirpGenerator(benchSampleRate, 1000.0, 20000.0, 1.0)
+	dst := make([]float32, benchSamples)
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		gen.GenerateWithOp(dst, false, func(d *float32, value float32) {
+			*d = value
+		})
+	}
+}
+
 func BenchmarkSmallBuffer_CosineGenerator_GenerateWithOp(b *testing.B) {
 	gen := NewCosineGenerator(benchSampleRate, 20000.0, 1.0, 0.0)
 	baseband := make([]float32, 8) // Small buffer for chip samples
@@ -261,8 +309,8 @@ func BenchmarkSmallBuffer_CosineGenerator_GenerateWithOp(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		gen.GenerateWithOp(baseband, false, func(idx int, carrierValue float32) {
-			baseband[idx] *= carrierValue
+		gen.GenerateWithOp(baseband, false, func(d *float32, carrierValue float32) {
+			*d *= carrierValue
 		})
 	}
 }
@@ -282,3 +330,29 @@ func BenchmarkStateContinuity_CosineGenerator(b *testing.B) {
 	}
 }
 
+// Benchmark to show samples per second more clearly
+func BenchmarkSamplesPerSecond_SquareGenerator(b *testing.B) {
+	gen := NewSquareGenerator(benchSampleRate, 20000.0, 1.0)
+	dst := make([]float32, benchSamples)
+	b.ResetTimer()
+
+	totalSamples := int64(0)
+	for i := 0; i < b.N; i++ {
+		gen.Generate(dst)
+		totalSamples += int64(benchSamples)
+	}
+	b.SetBytes(totalSamples * 4) // 4 bytes per float32
+}
+
+func BenchmarkSamplesPerSecond_NoiseWhiteGenerator(b *testing.B) {
+	gen := NewNoiseWhiteGenerator(1.0)
+	dst := make([]float32, benchSamples)
+	b.ResetTimer()
+
+	totalSamples := int64(0)
+	for i := 0; i < b.N; i++ {
+		gen.Generate(dst)
+		totalSamples += int64(benchSamples)
+	}
+	b.SetBytes(totalSamples * 4) // 4 bytes per float32
+}

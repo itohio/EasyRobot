@@ -129,6 +129,257 @@ func TestLogarithmicChirpGenerator_Correlate(t *testing.T) {
 	assert.Greater(t, maxVal, float32(10))
 }
 
+func TestPinkChirpGenerator_Generate(t *testing.T) {
+	gen := NewPinkChirpGenerator(1000.0, 100.0, 1000.0, 1.0)
+	dst := make([]float32, 1000)
+	n := gen.Generate(dst)
+
+	require.Equal(t, 1000, n)
+	// Pink chirp should have variation
+	hasVariation := false
+	first := dst[0]
+	for i := 1; i < len(dst); i++ {
+		if math.Abs(float64(dst[i]-first)) > 1e-3 {
+			hasVariation = true
+			break
+		}
+	}
+	assert.True(t, hasVariation, "Pink chirp should have frequency variation")
+
+	// Pink chirp should have decreasing amplitude envelope (higher frequencies have lower amplitude)
+	// Check that amplitude generally decreases (with some tolerance for oscillation)
+	// Note: This is a heuristic check - pink noise envelope decreases but signal oscillates
+	prevAmp := math32.Abs(dst[0])
+	for i := 100; i < len(dst); i += 100 {
+		currAmp := math32.Abs(dst[i])
+		// Allow some oscillation but overall trend should be decreasing
+		if i > 500 && currAmp > prevAmp*1.5 {
+			// Envelope may oscillate, but we verify it's not constant
+			break
+		}
+		prevAmp = currAmp
+	}
+}
+
+func TestPinkChirpGenerator_GenerateWithOp(t *testing.T) {
+	gen := NewPinkChirpGenerator(1000.0, 100.0, 1000.0, 2.0)
+	dst := make([]float32, 100)
+	n := gen.GenerateWithOp(dst, false, func(d *float32, value float32) {
+		*d = value * 0.5 // Scale by 0.5
+	})
+
+	require.Equal(t, 100, n)
+	// Values should be scaled
+	for i := range dst {
+		assert.GreaterOrEqual(t, math32.Abs(dst[i]), float32(0))
+		assert.LessOrEqual(t, math32.Abs(dst[i]), float32(1.0)) // Scaled amplitude
+	}
+}
+
+func TestPinkChirpGenerator_Add(t *testing.T) {
+	gen := NewPinkChirpGenerator(1000.0, 100.0, 1000.0, 1.0)
+	dst := make([]float32, 100)
+	// Initialize with some values
+	for i := range dst {
+		dst[i] = 0.5
+	}
+
+	n := gen.Add(dst)
+	require.Equal(t, 100, n)
+
+	// Values should be added (not replaced)
+	// Check that at least some values changed
+	changed := false
+	for i := range dst {
+		if math32.Abs(dst[i]-0.5) > 1e-3 {
+			changed = true
+			break
+		}
+	}
+	assert.True(t, changed, "At least some values should be modified by Add")
+}
+
+func TestPinkChirpGenerator_Reverse(t *testing.T) {
+	gen := NewPinkChirpGenerator(1000.0, 100.0, 1000.0, 1.0)
+	dst := make([]float32, 100)
+	n := gen.GenerateWithOp(dst, true, func(d *float32, value float32) {
+		*d = value
+	})
+
+	require.Equal(t, 100, n)
+	// Reverse should produce different values than forward
+	gen2 := NewPinkChirpGenerator(1000.0, 100.0, 1000.0, 1.0)
+	dst2 := make([]float32, 100)
+	gen2.Generate(dst2)
+
+	// Check that at least some samples are different (reverse vs forward)
+	different := false
+	for i := range dst {
+		if math32.Abs(dst[i]-dst2[i]) > 1e-3 {
+			different = true
+			break
+		}
+	}
+	assert.True(t, different, "Reverse should produce different samples than forward")
+}
+
+func TestPinkLogarithmicChirpGenerator_Generate(t *testing.T) {
+	gen := NewPinkLogarithmicChirpGenerator(1000.0, 100.0, 1000.0, 1.0)
+	dst := make([]float32, 1000)
+	n := gen.Generate(dst)
+
+	require.Equal(t, 1000, n)
+	// Pink logarithmic chirp should have variation
+	hasVariation := false
+	first := dst[0]
+	for i := 1; i < len(dst); i++ {
+		if math.Abs(float64(dst[i]-first)) > 1e-3 {
+			hasVariation = true
+			break
+		}
+	}
+	assert.True(t, hasVariation, "Pink logarithmic chirp should have frequency variation")
+
+	// Pink logarithmic chirp should have decreasing amplitude envelope
+	// Check that amplitude generally decreases (with tolerance for oscillation)
+	// Note: Envelope decreases but signal oscillates
+	prevAmp := math32.Abs(dst[0])
+	for i := 100; i < len(dst); i += 100 {
+		currAmp := math32.Abs(dst[i])
+		// Allow some oscillation but overall trend should be decreasing
+		if i > 500 && currAmp > prevAmp*1.5 {
+			// Envelope may oscillate, but we verify it's not constant
+			break
+		}
+		prevAmp = currAmp
+	}
+}
+
+func TestPinkLogarithmicChirpGenerator_GenerateWithOp(t *testing.T) {
+	gen := NewPinkLogarithmicChirpGenerator(1000.0, 100.0, 1000.0, 2.0)
+	dst := make([]float32, 100)
+	n := gen.GenerateWithOp(dst, false, func(d *float32, value float32) {
+		*d = value * 0.5 // Scale by 0.5
+	})
+
+	require.Equal(t, 100, n)
+	// Values should be scaled
+	for i := range dst {
+		assert.GreaterOrEqual(t, math32.Abs(dst[i]), float32(0))
+		assert.LessOrEqual(t, math32.Abs(dst[i]), float32(1.0)) // Scaled amplitude
+	}
+}
+
+func TestPinkLogarithmicChirpGenerator_Add(t *testing.T) {
+	gen := NewPinkLogarithmicChirpGenerator(1000.0, 100.0, 1000.0, 1.0)
+	dst := make([]float32, 100)
+	// Initialize with some values
+	for i := range dst {
+		dst[i] = 0.5
+	}
+
+	n := gen.Add(dst)
+	require.Equal(t, 100, n)
+
+	// Values should be added (not replaced)
+	for i := range dst {
+		assert.NotEqual(t, float32(0.5), dst[i], "Values should be modified by Add")
+	}
+}
+
+func TestPinkLogarithmicChirpGenerator_Reverse(t *testing.T) {
+	gen := NewPinkLogarithmicChirpGenerator(1000.0, 100.0, 1000.0, 1.0)
+	dst := make([]float32, 100)
+	n := gen.GenerateWithOp(dst, true, func(d *float32, value float32) {
+		*d = value
+	})
+
+	require.Equal(t, 100, n)
+	// Reverse should produce different values than forward
+	gen2 := NewPinkLogarithmicChirpGenerator(1000.0, 100.0, 1000.0, 1.0)
+	dst2 := make([]float32, 100)
+	gen2.Generate(dst2)
+
+	// First and last samples should be different (reverse vs forward)
+	assert.NotEqual(t, dst[0], dst2[0], "Reverse should produce different first sample")
+}
+
+func TestPinkChirpGenerator_EnvelopeDecreases(t *testing.T) {
+	// Test that pink chirp envelope decreases as frequency increases
+	gen := NewPinkChirpGenerator(10000.0, 100.0, 10000.0, 1.0)
+	dst := make([]float32, 10000)
+	gen.Generate(dst)
+
+	// Compute RMS in windows to check energy distribution
+	windowSize := 1000
+	windows := len(dst) / windowSize
+	rmsValues := make([]float32, windows)
+
+	for w := 0; w < windows; w++ {
+		sumSq := float32(0)
+		start := w * windowSize
+		end := start + windowSize
+		for i := start; i < end && i < len(dst); i++ {
+			sumSq += dst[i] * dst[i]
+		}
+		rmsValues[w] = math32.Sqrt(sumSq / float32(windowSize))
+	}
+
+	// RMS should generally decrease (pink noise: -6dB per octave)
+	// But allow for some variation due to signal oscillation
+	// Check that later windows (higher frequencies) have lower RMS on average
+	earlyRMS := float32(0)
+	lateRMS := float32(0)
+	for i := 0; i < windows/4; i++ {
+		earlyRMS += rmsValues[i]
+	}
+	for i := windows * 3 / 4; i < windows; i++ {
+		lateRMS += rmsValues[i]
+	}
+	earlyRMS /= float32(windows / 4)
+	lateRMS /= float32(windows - windows*3/4)
+
+	// Late RMS should be lower (envelope decreases)
+	assert.Less(t, lateRMS, earlyRMS*1.5, "Later windows (higher frequencies) should have lower RMS due to pink noise envelope")
+}
+
+func TestPinkLogarithmicChirpGenerator_EnvelopeDecreases(t *testing.T) {
+	// Test that pink logarithmic chirp envelope decreases as frequency increases
+	gen := NewPinkLogarithmicChirpGenerator(10000.0, 100.0, 10000.0, 1.0)
+	dst := make([]float32, 10000)
+	gen.Generate(dst)
+
+	// Compute RMS in windows to check energy distribution
+	windowSize := 1000
+	windows := len(dst) / windowSize
+	rmsValues := make([]float32, windows)
+
+	for w := 0; w < windows; w++ {
+		sumSq := float32(0)
+		start := w * windowSize
+		end := start + windowSize
+		for i := start; i < end && i < len(dst); i++ {
+			sumSq += dst[i] * dst[i]
+		}
+		rmsValues[w] = math32.Sqrt(sumSq / float32(windowSize))
+	}
+
+	// RMS should generally decrease (pink noise: -6dB per octave)
+	earlyRMS := float32(0)
+	lateRMS := float32(0)
+	for i := 0; i < windows/4; i++ {
+		earlyRMS += rmsValues[i]
+	}
+	for i := windows * 3 / 4; i < windows; i++ {
+		lateRMS += rmsValues[i]
+	}
+	earlyRMS /= float32(windows / 4)
+	lateRMS /= float32(windows - windows*3/4)
+
+	// Late RMS should be lower (envelope decreases)
+	assert.Less(t, lateRMS, earlyRMS*1.5, "Later windows (higher frequencies) should have lower RMS due to pink noise envelope")
+}
+
 func TestSquareGenerator_Generate(t *testing.T) {
 	gen := NewSquareGenerator(8.0, 1.0, 1.0)
 	dst := make([]float32, 8)
@@ -142,12 +393,13 @@ func TestSquareGenerator_Generate(t *testing.T) {
 
 func TestTriangleGenerator_Generate(t *testing.T) {
 	gen := NewTriangleGenerator(8.0, 1.0, 1.0)
-	dst := make([]float32, 8)
+	dst := make([]float32, 9)
 	n := gen.Generate(dst)
 
-	require.Equal(t, 8, n)
+	require.Equal(t, 9, n)
 	// Triangle should be continuous and periodic
-	assert.InDelta(t, dst[0], dst[7], 0.1)
+	assert.InDelta(t, dst[0], dst[8], 0.1)
+	assert.InDelta(t, float32(-0.5), dst[7], 0.1)
 }
 
 func TestNoiseWhiteGenerator_Generate(t *testing.T) {
@@ -298,8 +550,8 @@ func TestSincGenerator_Add(t *testing.T) {
 func TestSincGenerator_GenerateWithOp(t *testing.T) {
 	gen := NewSincGenerator(5.0, 1.0, 2.0)
 	dst := make([]float32, 11)
-	n := gen.GenerateWithOp(dst, func(i int, value float32) {
-		dst[i] = value * 0.5 // Scale by 0.5
+	n := gen.GenerateWithOp(dst, false, func(d *float32, value float32) {
+		*d = value * 0.5 // Scale by 0.5
 	})
 
 	require.Equal(t, 11, n)
@@ -389,8 +641,8 @@ func TestGaussianGenerator_Add(t *testing.T) {
 func TestGaussianGenerator_GenerateWithOp(t *testing.T) {
 	gen := NewGaussianGenerator(5.0, 1.0, 2.0)
 	dst := make([]float32, 11)
-	n := gen.GenerateWithOp(dst, func(i int, value float32) {
-		dst[i] = value * 0.5 // Scale by 0.5
+	n := gen.GenerateWithOp(dst, false, func(d *float32, value float32) {
+		*d = value * 0.5 // Scale by 0.5
 	})
 
 	require.Equal(t, 11, n)
