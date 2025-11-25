@@ -302,7 +302,57 @@ with κ ~ 6–10 depending on desired P_FA.
 
 ---
 
-## 18. Current Implementation Status
+## 18. Theoretical SNR Limits and Practical Margins
+
+### 18.1 Coherent M-FSK SNR Requirements
+
+For coherent M-FSK detection, the theoretical minimum Eb/N0 (energy per bit to noise power spectral density ratio) depends on the modulation order M and target BER:
+
+**Theoretical Eb/N0 (dB) for BER = 10^-5:**
+- 2-FSK (M=2): ~12.5 dB
+- 4-FSK (M=4): ~14.5 dB  
+- 8-FSK (M=8): ~16.5 dB
+- 16-FSK (M=16): ~18.5 dB
+
+**Implementation Margins:**
+Due to implementation losses (non-ideal detection, timing errors, phase noise, etc.), practical systems require additional margin:
+- **Standard margin**: 2.5 dB (recommended for 2-FSK, 4-FSK)
+- **High M-FSK margin**: 3-5 dB (required for 8-FSK, 16-FSK due to frequency resolution limits)
+
+**Practical Minimum SNR (dB) for BER = 10^-5:**
+- 2-FSK: ~15 dB (theoretical 12.5 + 2.5 margin)
+- 4-FSK: ~17 dB (theoretical 14.5 + 2.5 margin)
+- 8-FSK: ~20-22 dB (theoretical 16.5 + 3-5 margin, higher due to Goertzel frequency resolution limits)
+- 16-FSK: ~22-24 dB (theoretical 18.5 + 3-5 margin)
+
+**Note on 8-FSK and Higher:**
+For 8-FSK (256 tones) and above, the current non-coherent Goertzel-based detection has limitations:
+- Tone spacing becomes very small (e.g., 109.59 Hz for 8-FSK with 96 kHz sample rate)
+- Frequency resolution of Goertzel algorithm may not be sufficient with noise
+- Requires higher SNR margins or coherent detection with proper phase tracking
+- Current implementation may require 20+ dB SNR for reliable 8-FSK operation
+
+**SNR Conversion:**
+The relationship between Eb/N0 and SNR depends on bandwidth:
+- SNR (dB) ≈ Eb/N0 (dB) - 10*log10(BitsPerSymbol) + ProcessingGain
+- Processing gain from symbol integration: ~10*log10(SamplesPerSymbol)
+
+### 18.2 Test Scenarios and Expected Performance
+
+**Roundtrip Tests:**
+- **Baseline (no noise)**: All M-FSK configurations should pass
+- **2-FSK with noise**: Passes at 15+ dB SNR
+- **4-FSK with noise**: Passes at 17+ dB SNR  
+- **8-FSK with noise**: Requires 20+ dB SNR with current implementation
+
+**Limitations:**
+- Current implementation uses non-coherent Goertzel detection
+- 8-FSK and higher may require coherent detection for optimal performance
+- Frequency resolution limits affect high M-FSK performance
+
+---
+
+## 19. Current Implementation Status
 
 ### 18.1 What's Implemented
 

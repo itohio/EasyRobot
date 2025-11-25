@@ -12,7 +12,14 @@ type GeneratorAssignOp func(d *float32, value float32)
 
 // Generator is the interface for all signal generators
 type Generator interface {
+	// Overwrites dst with generated samples
 	Generate(dst []float32) int
+	// Adds generated samples to dst samples
+	Add(dst []float32) int
+	// Applies assignment operation to dst samples
+	// reverse: if true, generates samples in reverse order
+	// op: the assignment operation to apply to each destination element
+	GenerateWithOp(dst []float32, reverse bool, op GeneratorAssignOp) int
 }
 
 // Correlator is the interface for generators that support correlation

@@ -184,6 +184,15 @@ exponential := gen1D.Exponential(1024, 0.01)
 chirp := gen1D.Chirp(1024, 1.0, 50.0, 1.0, 1000.0)
 ```
 
+#### Generator Implementation Notes
+
+- All oscillators and pulse generators (sine, cosine, square, triangle, sinc, raised cosine, etc.) use *iterative* phase/angle updates to avoid recomputing expensive trigonometric functions per sample. Each generator keeps `sin(angle)` / `cos(angle)` state and updates it with precomputed `sinΔ`/`cosΔ` terms inside tight loops.
+- Raised-cosine and other pulse-shaping generators reuse the same incremental math to apply roll-off factors without per-sample divisions. Singularities such as `θ → 0` or `|2αt/Tc| → 1` have analytic limits cached up front, so the hot path devolves to a couple of fused multiply-add operations.
+- `GenerateWithOp(dst, reverse, op)` is the primary entry point for every generator. `reverse=true` replays samples backward without extra allocations, which powers both `AddReverse` (additive reverse generation) and `Correlate` (reverse-convolution) helpers while keeping BCE (bounds-check elimination) intact.
+- Addition (`Add`, `AddReverse`) never allocates: they take a destination slice, prove its length once (`_ = dst[n-1]`), and stream directly.
+- Correlation helpers (sine, cosine, raised cosine, etc.) reuse the reverse-generation path to produce time-reversed references, then compute the sliding dot product using destination slices as scratch buffers to avoid heap churn.
+- Benchmarks (`Benchmark*Generator`) live under `x/math/dsp/generators_test.go` and verify that optimizations stay within expected nanosecond budgets.
+
 ### 2D Signals
 
 ```go
@@ -392,6 +401,26 @@ symbols := askDecoder.Demodulate(receivedSignal)
 // symbols will contain 0s and 1s for ASK
 ```
 
+### Direct Sequence Spread Spectrum (DSSS)
+
+- `dsss.Modulator` implements `chain.Processor[float32, byte]` (bytes → float32 samples). `Process` streams Manchester/FEC output into spread-spectrum samples, padding with preamble and handling `dst == nil` by reporting `⌈bits/k⌉ × spreadingFactor × samplesPerChip`.
+- `dsss.Demodulator` implements `chain.Processor[byte, float32]` (float32 samples → decoded bytes) with streaming correlation, carrier tracking, and energy-gated output. `Process` supports partial sample chunks and uses the same nil-destination sizing contract.
+- Because both stages satisfy the processor interface, DSSS can be chained with other processors:
+
+```go
+rs := reedsolomon.NewEncoder(cfg)
+man := manchester.NewEncoder()
+dsssMod, _ := dsss.NewModulator(cfg)
+
+proc := chain.NewProcessorChain[float32, byte](
+    chain.DefaultBufferFactory[byte, float32](),
+    rs, man, dsssMod,
+)
+samplesWritten := proc.Process(outSamples, inBytes)
+```
+
+- Demodulator chains mirror this layout in reverse (DSSS demodulator → Manchester decoder → Reed-Solomon decoder), enabling full streaming pipelines without bespoke glue code.
+
 ### QAM (Quadrature Amplitude Modulation)
 
 ```go
@@ -433,6 +462,16 @@ decoder.Decode(decoded, signal)
 ### Manchester Line Coding
 
 Manchester encoding is a line coding scheme where each data bit is encoded as a transition, providing built-in clock recovery and DC balance. The implementation uses optimized 4-bit lookup tables (64 bytes total) for high performance.
+
+#### Processor-Based API
+
+- `manchester.Encoder` and `manchester.Decoder` now implement `chain.Processor[byte, byte]`.
+- `Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int`
+  - Reads as many bytes as the source can provide (streaming-friendly).
+  - Writes encoded/decoded bytes directly to `dst`. When `dst == nil`, the method returns the theoretical maximum write size so chains can preflight buffer sizes.
+  - Returns the number of bytes written (Manchester encoder: `2 × input`, decoder: `input/2` once a full symbol is available).
+- `Reset()` satisfies the processor interface (no-op for the encoder/decoder, but mandatory for consistent chain semantics).
+- Because they satisfy `chain.Processor`, Manchester stages can be composed with other byte processors (e.g. Reed-Solomon, scrambling) using `chain.New` or encoder/decoder chains without custom glue code.
 
 #### Encoding Variants
 
@@ -562,68 +601,42 @@ Manchester encoding is commonly used in:
 
 #### Composition with Other Encoders/Decoders
 
-Manchester encoder/decoder can be composed with other byte-level encoders/decoders or modulator encoders/decoders for flexible signal processing chains.
-
-**Byte-Level Composition:**
+Manchester encoder/decoder plug into streaming pipelines via the `chain` package. Because each stage implements `chain.Processor`, you can compose byte processors and modulators without bespoke adapters.
 
 ```go
-// Chain multiple byte encoders together
-manchester1 := dsp.NewManchesterEncoder()
-manchester2 := dsp.NewManchesterEncoder() // or another encoder
-composedEncoder := dsp.NewComposedByteEncoder(manchester1, manchester2)
+rsEnc := ecc.NewRSEncoder(cfg)
+manEnc := manchester.NewEncoder()
+dsssMod, _ := dsss.NewModulator(dsssCfg)
 
-// Encode through both encoders
-data := []byte{0xAA, 0x55}
-encoded := make([]byte, len(data)*4) // Estimate size
-composedEncoder.Encode(encoded, data)
+pipeline := chain.NewProcessorChain[float32, byte](
+    chain.DefaultBufferFactory[byte, float32](),
+    rsEnc, manEnc, dsssMod,
+)
 
-// Chain multiple byte decoders (applied in reverse order)
-composedDecoder := dsp.NewComposedByteDecoder(decoder1, decoder2)
-decoded := make([]byte, len(encoded)/4)
-composedDecoder.Decode(decoded, encoded)
+out := buffer.New(make([]float32, 0, pipeline.Process(nil, srcBytes)))
+pipeline.Process(out, srcBytes) // bytes -> RS -> Manchester -> DSSS samples
 ```
 
-**Composition with Modulator Encoders/Decoders:**
-
-```go
-// Chain Manchester encoder with BFSK encoder
-manchesterEncoder := dsp.NewManchesterEncoder()
-fskEncoder := dsp.NewFSKEncoder(sampleRate, freqLow, freqHigh, symbolRate)
-
-// Create composed encoder: bytes -> Manchester -> bytes -> BFSK -> amplitudes
-composedEncoder := dsp.NewModulatorEncoderWithByteEncoder(manchesterEncoder, fskEncoder)
-
-data := []byte("Hello")
-amplitudes := vec.New(1000)
-composedEncoder.Encode(amplitudes, data)
-
-// Chain BFSK decoder with Manchester decoder
-fskDecoder := dsp.NewFSKDecoder(sampleRate, freqLow, freqHigh, symbolRate)
-manchesterDecoder := dsp.NewManchesterDecoder()
-
-// Create composed decoder: amplitudes -> BFSK -> bytes -> Manchester -> bytes
-composedDecoder := dsp.NewModulatorDecoderWithByteDecoder(fskDecoder, manchesterDecoder)
-
-decoded := make([]byte, len(data))
-composedDecoder.Decode(decoded, amplitudes)
-```
-
-**Interface Compliance:**
-
-- `ManchesterEncoder` implements `ByteEncoder` interface
-- `ManchesterDecoder` implements `ByteDecoder` interface
-- `ComposedByteEncoder` implements `ByteEncoder` interface
-- `ComposedByteDecoder` implements `ByteDecoder` interface
-- `ModulatorEncoderWithByteEncoder` implements `ModulatorEncoder` interface
-- `ModulatorDecoderWithByteDecoder` implements `ModulatorDecoder` interface
-
-This allows flexible composition of encoding/decoding stages in your signal processing pipeline.
+Decoding chains mirror this layout in reverse order (DSSS demodulator  Manchester decoder  Reed-Solomon decoder), using the same processor interface.
 
 ## Modulator Interfaces
 
-The DSP package provides interfaces for implementing custom modulators:
+The DSP package provides interfaces for implementing custom modulators. In addition to the legacy encoder/decoder interfaces, all concrete modulation stages now implement `chain.Processor` so they can participate in streaming chains (Manchester → FEC → QAM, etc.).
 
-```go
+### Processor Contracts
+
+- **Modulators (e.g. DSSS, QAM, FSK):**
+  - Implement `chain.Processor[float32, byte]` (bytes in, float32 amplitudes out).
+  - `Process(dst buffer.Writer[float32], src buffer.Reader[byte]) int`
+    - Supports `dst == nil` for size estimation (`⌈bits/k⌉ × samplesPerSymbol` semantics).
+    - Maintains internal state across calls so partial buffers are safe.
+  - `Reset()` clears streaming state (carrier phase, symbol counters, filters, etc.).
+- **Demodulators:**
+  - Implement `chain.Processor[byte, float32]` (float32 samples in, decoded bytes out).
+  - Same `Process/Reset` behavior, including nil-destination sizing.
+- Because these stages satisfy `chain.Processor`, higher-level pipelines can be assembled with `chain.NewProcessorChain(...)` and mixed with other processors (Reed-Solomon encoders, scramblers, Manchester, etc.) without bespoke adapter code.
+
+go
 // Encoder interface for modulation
 type ModulatorEncoder interface {
     Encode(amplitudes vecTypes.Vector, data []byte) bool
@@ -815,3 +828,6 @@ Planned enhancements include:
 - Filter design (FIR, IIR)
 - Wavelet transforms
 - Real-time processing pipelines
+
+
+

@@ -250,8 +250,8 @@ func generateRaisedCosine(rolloff float32, samplesPerChip int, span int) []float
 carrierGen := dsp.NewCosineGenerator(sampleRate, carrierFreq, 1.0, 0.0)
 
 // For each chip's samples, multiply baseband by carrier directly:
-carrierGen.GenerateWithOp(basebandSamples[:N_sc], false, func(i int, carrierValue float32) {
-    basebandSamples[i] *= carrierValue
+carrierGen.GenerateWithOp(basebandSamples[:N_sc], false, func(d *float32, carrierValue float32) {
+    *d *= carrierValue
 })
 ```
 
@@ -280,7 +280,7 @@ sample = basebandSample × cos(phase)
 phase = phase - 2π × floor(phase / 2π)
 ```
 
-**Note**: `GenerateWithOp` allows direct application of the generated value to existing samples without requiring an intermediate buffer, which is more efficient for hot paths. The closure can access the `dst` slice directly if needed.
+**Note**: `GenerateWithOp` allows direct application of the generated value to existing samples without requiring an intermediate buffer, which is more efficient for hot paths. The closure receives a pointer to the destination element, allowing direct modification.
 
 #### Demodulator: Chip Correlation
 
@@ -387,6 +387,289 @@ func (c *Config) ValidateSampleRate(sampleRate float32) error {
 }
 ```
 
+### SNR and Processing Gain Calculations
+
+```go
+// CalculateProcessingGain calculates the processing gain in linear and dB scale
+func (c *Config) CalculateProcessingGain() (linear float32, dB float32) {
+    linear = float32(c.SpreadingFactor)
+    dB = 10.0 * math32.Log10(linear)
+    return linear, dB
+}
+
+// CalculateOutputSNR calculates output SNR after despreading from input SNR
+func (c *Config) CalculateOutputSNR(inputSNRdB float32) float32 {
+    // SNR_out[dB] = SNR_in[dB] + 10*log10(L)
+    _, processingGainDB := c.CalculateProcessingGain()
+    return inputSNRdB + processingGainDB
+}
+
+// CalculateInputSNR calculates required input SNR to achieve target output SNR
+func (c *Config) CalculateInputSNR(targetOutputSNRdB float32) float32 {
+    // SNR_in[dB] = SNR_out[dB] - 10*log10(L)
+    _, processingGainDB := c.CalculateProcessingGain()
+    return targetOutputSNRdB - processingGainDB
+}
+
+// CalculateMinimumSNR calculates minimum input SNR required for reliable demodulation
+// Returns minimum SNR in dB for given target BER
+func (c *Config) CalculateMinimumSNR(targetBER float32) float32 {
+    // For BPSK: P_b = Q(√(2*E_b/N_0))
+    // E_b/N_0 = (SNR_out * T_s) / k
+    // SNR_out[dB] = E_b/N_0[dB] + 10*log10(k) - 10*log10(T_s)
+    // For reliable demodulation, typically need E_b/N_0 > 10dB (BER < 10^-5)
+    
+    // Approximate: E_b/N_0 ≈ 10dB for BER ≈ 10^-5
+    // For higher order modulations, need more margin
+    bitsPerSymbol := float32(c.BitsPerSymbol)
+    
+    // Base E_b/N_0 requirement (in dB)
+    // Binary (k=1): ~10dB for BER 10^-5
+    // Higher order: add margin based on modulation order
+    baseEbN0 := 10.0 + 3.0*(bitsPerSymbol-1.0) // Add 3dB per extra bit
+    
+    // Convert to output SNR
+    // SNR_out = E_b/N_0 + 10*log10(k) - 10*log10(T_s)
+    // For simplicity, assume T_s = 1/R_s, and R_s is normalized
+    // SNR_out ≈ E_b/N_0 + 10*log10(k)
+    outputSNR := baseEbN0 + 10.0*math32.Log10(bitsPerSymbol)
+    
+    // Convert to input SNR
+    return c.CalculateInputSNR(outputSNR)
+}
+
+// CalculateMaximumAchievableSNR calculates maximum achievable output SNR
+// given input SNR and processing gain
+func (c *Config) CalculateMaximumAchievableSNR(inputSNRdB float32) float32 {
+    return c.CalculateOutputSNR(inputSNRdB)
+}
+
+// CalculateEbN0 calculates bit energy to noise ratio from output SNR
+func (c *Config) CalculateEbN0(outputSNRdB float32, symbolRate float32) float32 {
+    // E_b/N_0 = (SNR_out * T_s) / k
+    // E_b/N_0[dB] = SNR_out[dB] + 10*log10(T_s) - 10*log10(k)
+    // T_s = 1/R_s
+    bitsPerSymbol := float32(c.BitsPerSymbol)
+    symbolPeriod := 1.0 / symbolRate
+    
+    ebN0Linear := math32.Pow(10.0, outputSNRdB/10.0) * symbolPeriod / bitsPerSymbol
+    return 10.0 * math32.Log10(ebN0Linear)
+}
+
+// EstimateBER estimates bit error rate from output SNR
+// Returns approximate BER for BPSK-like modulation
+func (c *Config) EstimateBER(outputSNRdB float32, symbolRate float32) float32 {
+    // For BPSK: P_b = Q(√(2*E_b/N_0))
+    // Q(x) ≈ 0.5 * erfc(x/√2)
+    // For higher order modulations, BER is more complex
+    
+    ebN0dB := c.CalculateEbN0(outputSNRdB, symbolRate)
+    ebN0Linear := math32.Pow(10.0, ebN0dB/10.0)
+    
+    // Approximate Q function for BPSK
+    // Q(√(2*E_b/N_0)) ≈ 0.5 * erfc(√(E_b/N_0))
+    sqrtEbN0 := math32.Sqrt(2.0 * ebN0Linear)
+    
+    // Use erfc approximation: erfc(x) ≈ exp(-x²) / (x*√π) for large x
+    // For small x, use series expansion
+    if sqrtEbN0 > 3.0 {
+        // Large argument approximation
+        return 0.5 * math32.Exp(-sqrtEbN0*sqrtEbN0/2.0) / (sqrtEbN0 * 1.772) // 1.772 ≈ √π
+    } else {
+        // Small argument: use Q function approximation
+        // Q(x) ≈ 0.5 * (1 - erf(x/√2))
+        // For simplicity, use exponential approximation
+        return 0.5 * math32.Exp(-ebN0Linear)
+    }
+}
+
+// CalculateSNRLimit calculates the SNR limit for reliable communication
+// Returns the minimum input SNR required to achieve target BER
+func (c *Config) CalculateSNRLimit(targetBER float32) float32 {
+    return c.CalculateMinimumSNR(targetBER)
+}
+
+// IsSNRSufficient checks if given input SNR is sufficient for reliable demodulation
+func (c *Config) IsSNRSufficient(inputSNRdB float32, targetBER float32) bool {
+    minSNR := c.CalculateSNRLimit(targetBER)
+    return inputSNRdB >= minSNR
+}
+```
+
+### Symbol Separation and Code Correlation Calculations
+
+```go
+// CalculateCodeCorrelation calculates normalized correlation between two codes
+// Returns correlation value in range [-1, 1]
+// For orthogonal codes: correlation ≈ 0 for different codes, ≈ 1 for same code
+func (c *Config) CalculateCodeCorrelation(codeI, codeJ []int8) float32 {
+    if len(codeI) != len(codeJ) || len(codeI) != c.SpreadingFactor {
+        return 0.0 // Invalid codes
+    }
+    
+    // Normalized correlation: ⟨Pᵢ, Pⱼ⟩ = (1/L)Σ(k=0 to L-1) pₖ⁽ⁱ⁾ × pₖ⁽ʲ⁾
+    var sum float32
+    L := float32(c.SpreadingFactor)
+    
+    for k := range c.SpreadingFactor {
+        sum += float32(codeI[k] * codeJ[k])
+    }
+    
+    return sum / L
+}
+
+// CalculateMaximumCrossCorrelation calculates maximum cross-correlation between any two different codes
+// Lower values indicate better code separation
+func (c *Config) CalculateMaximumCrossCorrelation() float32 {
+    if len(c.Codes) < 2 {
+        return 1.0 // Single code or no codes
+    }
+    
+    maxCorr := float32(0.0)
+    
+    // Check all pairs of different codes
+    for i := range len(c.Codes) {
+        for j := i + 1; j < len(c.Codes); j++ {
+            corr := math32.Abs(c.CalculateCodeCorrelation(c.Codes[i], c.Codes[j]))
+            if corr > maxCorr {
+                maxCorr = corr
+            }
+        }
+    }
+    
+    return maxCorr
+}
+
+// CalculateMinimumCodeSeparation calculates minimum separation between codes
+// Returns the minimum distance between any two different codes
+// Higher values indicate better symbol separation
+func (c *Config) CalculateMinimumCodeSeparation() float32 {
+    if len(c.Codes) < 2 {
+        return 2.0 // Binary case: separation is 2 (between -1 and +1)
+    }
+    
+    minSep := float32(2.0) // Maximum possible separation
+    
+    // For each pair of codes, calculate separation
+    for i := range len(c.Codes) {
+        for j := i + 1; j < len(c.Codes); j++ {
+            // Separation = 1 - |correlation| (normalized)
+            // For orthogonal codes: correlation ≈ 0, separation ≈ 1
+            corr := math32.Abs(c.CalculateCodeCorrelation(c.Codes[i], c.Codes[j]))
+            sep := 1.0 - corr
+            if sep < minSep {
+                minSep = sep
+            }
+        }
+    }
+    
+    return minSep
+}
+
+// CalculateCodeOrthogonality calculates orthogonality metric for code set
+// Returns value in range [0, 1] where 1 = perfectly orthogonal, 0 = identical codes
+func (c *Config) CalculateCodeOrthogonality() float32 {
+    if len(c.Codes) < 2 {
+        return 1.0 // Single code is trivially orthogonal
+    }
+    
+    // Orthogonality = 1 - max_cross_correlation
+    maxCrossCorr := c.CalculateMaximumCrossCorrelation()
+    return 1.0 - maxCrossCorr
+}
+
+// CalculateSymbolSeparationDistance calculates Euclidean distance between symbols in signal space
+// For DSSS: separation depends on code correlation and modulation scheme
+func (c *Config) CalculateSymbolSeparationDistance(symbolI, symbolJ int) float32 {
+    if symbolI == symbolJ {
+        return 0.0 // Same symbol
+    }
+    
+    if symbolI < 0 || symbolI >= len(c.Codes) || symbolJ < 0 || symbolJ >= len(c.Codes) {
+        return 0.0 // Invalid symbols
+    }
+    
+    // For binary (M=2): separation is 2 (between -code and +code)
+    if c.ModulationOrder == 2 {
+        return 2.0 * c.Amplitude
+    }
+    
+    // For M-ary: separation = √(2L × (1 - correlation))
+    // This is the Euclidean distance in L-dimensional signal space
+    corr := c.CalculateCodeCorrelation(c.Codes[symbolI], c.Codes[symbolJ])
+    L := float32(c.SpreadingFactor)
+    separation := math32.Sqrt(2.0 * L * (1.0 - corr)) * c.Amplitude
+    
+    return separation
+}
+
+// CalculateMinimumSymbolSeparation calculates minimum separation between any two different symbols
+// This is the worst-case separation and determines demodulation reliability
+func (c *Config) CalculateMinimumSymbolSeparation() float32 {
+    if c.ModulationOrder == 2 {
+        // Binary: separation is always 2 (between -code and +code)
+        return 2.0 * c.Amplitude
+    }
+    
+    if len(c.Codes) < 2 {
+        return 0.0 // Need at least 2 codes
+    }
+    
+    minSep := float32(math32.MaxFloat32)
+    
+    // Find minimum separation between any two different symbols
+    for i := range len(c.Codes) {
+        for j := i + 1; j < len(c.Codes); j++ {
+            sep := c.CalculateSymbolSeparationDistance(i, j)
+            if sep < minSep {
+                minSep = sep
+            }
+        }
+    }
+    
+    return minSep
+}
+
+// CalculateMinimumDetectableSeparation calculates minimum separation required for reliable detection
+// Based on noise floor and SNR requirements
+func (c *Config) CalculateMinimumDetectableSeparation(inputSNRdB float32) float32 {
+    // Minimum detectable separation ≈ 2 × noise_amplitude × margin
+    // noise_amplitude = signal_amplitude / √(SNR_linear)
+    // margin accounts for correlation threshold (typically 2-3 sigma)
+    
+    inputSNRLinear := math32.Pow(10.0, inputSNRdB/10.0)
+    noiseAmplitude := c.Amplitude / math32.Sqrt(inputSNRLinear)
+    
+    // Detection margin: typically 2-3 standard deviations for reliable detection
+    // Use 2.5 as compromise between sensitivity and false alarm rate
+    detectionMargin := float32(2.5)
+    
+    minDetectable := 2.0 * noiseAmplitude * detectionMargin
+    
+    return minDetectable
+}
+
+// IsSymbolSeparationSufficient checks if symbol separation is sufficient for reliable demodulation
+func (c *Config) IsSymbolSeparationSufficient(inputSNRdB float32) bool {
+    minSep := c.CalculateMinimumSymbolSeparation()
+    minDetectable := c.CalculateMinimumDetectableSeparation(inputSNRdB)
+    
+    // Separation should be at least 2× the minimum detectable for reliable operation
+    // This provides margin for noise and interference
+    return minSep >= 2.0*minDetectable
+}
+
+// CalculateSymbolSeparationMargin calculates margin between actual and required separation
+// Returns positive value if sufficient, negative if insufficient
+func (c *Config) CalculateSymbolSeparationMargin(inputSNRdB float32) float32 {
+    minSep := c.CalculateMinimumSymbolSeparation()
+    minDetectable := c.CalculateMinimumDetectableSeparation(inputSNRdB)
+    
+    // Margin = actual_separation - 2×required_separation
+    return minSep - 2.0*minDetectable
+}
+```
+
 ## Test Cases
 
 ### Test 1: Basic Roundtrip (1 byte, infinite SNR)
@@ -484,12 +767,30 @@ func (c *Config) ValidateSampleRate(sampleRate float32) error {
 2. ✅ Add preamble detection to demodulator
 3. ✅ Ignore preamble in demodulator output (don't write preamble bytes)
 
-### Phase 4: Bandwidth Calculation
+### Phase 4: Bandwidth, SNR, and Symbol Separation Calculations
 1. ✅ Implement `CalculateRequiredBandwidth()` method
 2. ✅ Implement `CalculateMinimumSampleRate()` method
 3. ✅ Implement `CalculateSamplesPerChip()` method
 4. ✅ Implement `ValidateSampleRate()` method
 5. ✅ Add validation to ensure sample rate meets requirements
+6. ✅ Implement `CalculateProcessingGain()` method (linear and dB)
+7. ✅ Implement `CalculateOutputSNR()` method
+8. ✅ Implement `CalculateInputSNR()` method
+9. ✅ Implement `CalculateMinimumSNR()` method
+10. ✅ Implement `CalculateMaximumAchievableSNR()` method
+11. ✅ Implement `CalculateEbN0()` method
+12. ✅ Implement `EstimateBER()` method
+13. ✅ Implement `CalculateSNRLimit()` method
+14. ✅ Implement `IsSNRSufficient()` method
+15. ✅ Implement `CalculateCodeCorrelation()` method
+16. ✅ Implement `CalculateMaximumCrossCorrelation()` method
+17. ✅ Implement `CalculateMinimumCodeSeparation()` method
+18. ✅ Implement `CalculateCodeOrthogonality()` method
+19. ✅ Implement `CalculateSymbolSeparationDistance()` method
+20. ✅ Implement `CalculateMinimumSymbolSeparation()` method
+21. ✅ Implement `CalculateMinimumDetectableSeparation()` method
+22. ✅ Implement `IsSymbolSeparationSufficient()` method
+23. ✅ Implement `CalculateSymbolSeparationMargin()` method
 
 ### Phase 5: Testing
 1. ✅ Implement Test 1: Basic roundtrip (1 byte)
@@ -563,12 +864,12 @@ x/math/dsp/modulation/dsss/
 - `github.com/itohio/EasyRobot/x/math/dsp` - CosineGenerator, SineGenerator, SquareGenerator, TriangleGenerator, and noise generators (all support `GenerateWithOp` for efficient buffer-free operations)
 - `github.com/itohio/EasyRobot/x/math/filter/fir` - sinc function (or implement inline)
 
-**Note on Generators**: The `dsp` package has `CosineGenerator`, `SineGenerator`, `SquareGenerator`, `TriangleGenerator`, and noise generators that all support `GenerateWithOp(dst []float32, op func(i int, value float32))`. This allows direct application of generated values to existing samples without requiring an intermediate buffer allocation. 
+**Note on Generators**: The `dsp` package has `CosineGenerator`, `SineGenerator`, `SquareGenerator`, `TriangleGenerator`, and noise generators that all support `GenerateWithOp(dst []float32, reverse bool, op GeneratorAssignOp)` where `GeneratorAssignOp` is `func(d *float32, value float32)`. This allows direct application of generated values to existing samples without requiring an intermediate buffer allocation. 
 
 For DSSS carrier modulation, we can use `CosineGenerator.GenerateWithOp()` to multiply baseband samples directly:
 ```go
-carrierGen.GenerateWithOp(basebandSamples, false, func(i int, carrierValue float32) {
-    basebandSamples[i] *= carrierValue
+carrierGen.GenerateWithOp(basebandSamples, false, func(d *float32, carrierValue float32) {
+    *d *= carrierValue
 })
 ```
 
@@ -606,4 +907,11 @@ This is more efficient than using `Generate()` with a small stack array because 
 - Transmission detection prevents writing noise as data
 - Processing gain: G_p = L (8 for 8-bit codes = 9dB gain)
 - Lower SNR tests (10dB, 5dB) may not be feasible depending on processing gain and noise characteristics
+- Use `CalculateSNRLimit()` and `IsSNRSufficient()` to determine if test SNR levels are theoretically achievable
+- Use `CalculateOutputSNR()` to verify processing gain improvement (e.g., 5dB input → 14dB output with L=8)
+- Use `EstimateBER()` to predict bit error rates for given SNR conditions
+- Use `CalculateCodeOrthogonality()` to verify code set quality (should be > 0.9 for good separation)
+- Use `CalculateMinimumSymbolSeparation()` and `IsSymbolSeparationSufficient()` to verify codes are distinguishable at given SNR
+- Use `CalculateSymbolSeparationMargin()` to determine safety margin for reliable demodulation
+- Symbol separation depends on modulation scheme: binary uses sign separation (2×amplitude), M-ary uses code cross-correlation
 

@@ -1,142 +1,109 @@
 package pll
 
-import (
-	"math"
-)
+import "github.com/chewxy/math32"
 
-// Filter implements a Phase-Locked Loop for carrier phase and frequency tracking
-// Used by M-FSK, M-PSK, QAM, and M-ASK demodulators
-type Filter struct {
-	// PI controller gains
-	kp float32 // Proportional gain
-	ki float32 // Integral gain
+// Loop implements a float32 PLL (phase + frequency tracking) suitable for coherent demodulators.
+// It exposes helpers to rotate complex samples and to estimate residual CFO.
+type Loop struct {
+	kp float32
+	ki float32
 
-	// State (no allocations - all pre-allocated)
-	phase      float32 // Current phase estimate (radians)
-	freqOffset float32 // Frequency offset accumulator (radians/symbol)
-
-	// Symbol rate for frequency conversion (Hz)
 	symbolRate float32
+
+	phase float32
+	freq  float32
+
+	sin float32
+	cos float32
 }
 
-// New creates a new PLL filter with specified gains
-// kp: proportional gain (typically 0.05-0.2)
-// ki: integral gain (typically 0.005-0.02)
-// symbolRate: symbol rate in Hz (for frequency offset conversion)
-func New(kp, ki, symbolRate float32) *Filter {
-	return &Filter{
+// New returns a loop configured with explicit proportional / integral gains.
+func New(kp, ki, symbolRate float32) *Loop {
+	return &Loop{
 		kp:         kp,
 		ki:         ki,
 		symbolRate: symbolRate,
+		cos:        1,
 	}
 }
 
-// NewFromLoopBandwidth creates a PLL filter with gains computed from loop bandwidth
-// loopBandwidth: desired loop bandwidth in Hz (typically 0.01-0.1 * symbol_rate)
-// symbolRate: symbol rate in Hz
-// dampingRatio: damping ratio (typically 0.707 for critical damping)
-func NewFromLoopBandwidth(loopBandwidth, symbolRate float32, dampingRatio float32) *Filter {
-	// Natural frequency: ωn = 2π * B_loop / R_sym
-	omegaN := 2 * math.Pi * loopBandwidth / symbolRate
+// NewFromLoopBandwidth derives gains from loop bandwidth (Hz) and damping ratio (default 0.707).
+func NewFromLoopBandwidth(loopBandwidth, symbolRate, dampingRatio float32) *Loop {
+	if dampingRatio <= 0 {
+		dampingRatio = 0.707
+	}
+	if loopBandwidth <= 0 {
+		loopBandwidth = symbolRate * 0.05
+	}
 
-	// PI controller gains from control theory
+	omegaN := 2 * math32.Pi * loopBandwidth / symbolRate
 	kp := 2 * dampingRatio * omegaN
 	ki := omegaN * omegaN
+	return New(kp, ki, symbolRate)
+}
 
-	return &Filter{
-		kp:         float32(kp),
-		ki:         float32(ki),
-		symbolRate: symbolRate,
+// SetLoopBandwidth updates the loop gains based on a desired bandwidth and damping ratio.
+func (l *Loop) SetLoopBandwidth(loopBandwidth, dampingRatio float32) {
+	if l == nil {
+		return
+	}
+	if dampingRatio <= 0 {
+		dampingRatio = 0.707
+	}
+	if loopBandwidth <= 0 {
+		loopBandwidth = l.symbolRate * 0.05
+	}
+	omegaN := 2 * math32.Pi * loopBandwidth / l.symbolRate
+	l.kp = 2 * dampingRatio * omegaN
+	l.ki = omegaN * omegaN
+}
+
+// Update ingests a phase error (radians) and advances the loop. Returns the new phase estimate.
+func (l *Loop) Update(phaseError float32) float32 {
+	phaseError = wrapPi(phaseError)
+	l.freq += l.ki * phaseError
+	l.phase = wrapPi(l.phase + l.kp*phaseError + l.freq)
+	l.sin, l.cos = math32.Sincos(l.phase)
+	return l.phase
+}
+
+// Phase returns the current phase estimate.
+func (l *Loop) Phase() float32 {
+	return l.phase
+}
+
+// FrequencyOffset returns the estimated carrier offset in Hz.
+func (l *Loop) FrequencyOffset() float32 {
+	return l.freq * l.symbolRate / (2 * math32.Pi)
+}
+
+// Rotate rotates a complex sample (I,Q) by the negative loop phase.
+func (l *Loop) Rotate(i, q float32) (float32, float32) {
+	return i*l.cos + q*l.sin, -i*l.sin + q*l.cos
+}
+
+// RotateInterleaved rotates interleaved IQ samples in-place.
+func (l *Loop) RotateInterleaved(samples []float32) {
+	for i := 0; i+1 < len(samples); i += 2 {
+		samples[i], samples[i+1] = l.Rotate(samples[i], samples[i+1])
 	}
 }
 
-// Update updates the PLL with a phase error (in radians)
-// phaseError: phase error from correlator output, typically arg(Z) where Z is complex correlator output
-// The phase error is the difference between the actual phase and the estimated phase
-func (p *Filter) Update(phaseError float32) {
-	// Normalize phase error to [-π, π] range
-	// This prevents large phase jumps from causing instability
-	if phaseError > math.Pi {
-		phaseError -= 2 * math.Pi
-	} else if phaseError < -math.Pi {
-		phaseError += 2 * math.Pi
-	}
+// Reset clears the loop state.
+func (l *Loop) Reset() {
+	l.phase = 0
+	l.freq = 0
+	l.sin = 0
+	l.cos = 1
+}
 
-	// Update frequency offset (integral term)
-	// This accumulates the phase error to track frequency offset
-	p.freqOffset += p.ki * phaseError
-
-	// Update phase estimate (proportional + integral)
-	// Proportional term: immediate correction
-	// Integral term: accumulated frequency offset
-	p.phase += p.kp*phaseError + p.freqOffset
-
-	// Normalize phase to [-π, π] range
-	// This prevents phase wrapping issues
-	if p.phase > math.Pi {
-		p.phase -= 2 * math.Pi
-	} else if p.phase < -math.Pi {
-		p.phase += 2 * math.Pi
+func wrapPi(x float32) float32 {
+	switch {
+	case x > math32.Pi:
+		return x - 2*math32.Pi
+	case x < -math32.Pi:
+		return x + 2*math32.Pi
+	default:
+		return x
 	}
 }
-
-// Phase returns the current phase estimate (in radians)
-// Use this to correct samples: corrected = sample * e^(-j*phase)
-func (p *Filter) Phase() float32 {
-	return p.phase
-}
-
-// FrequencyOffset returns the current frequency offset estimate (in Hz)
-// This is the estimated CFO (Carrier Frequency Offset)
-func (p *Filter) FrequencyOffset() float32 {
-	// Convert from radians/symbol to Hz
-	// freqOffset is in radians/symbol, so Hz = (radians/symbol) * (symbols/sec) / (2π)
-	return p.freqOffset * p.symbolRate / (2 * math.Pi)
-}
-
-// SetGains sets the proportional and integral gains
-func (p *Filter) SetGains(kp, ki float32) {
-	p.kp = kp
-	p.ki = ki
-}
-
-// Reset resets the PLL state
-func (p *Filter) Reset() {
-	p.phase = 0
-	p.freqOffset = 0
-}
-
-// RotatePhase rotates a complex sample by the negative of the current phase estimate
-// This corrects for phase offset: corrected = sample * e^(-j*phase)
-// Returns I and Q components
-func (p *Filter) RotatePhase(i, q float32) (correctedI, correctedQ float32) {
-	phase := -p.phase
-	cosPhase := float32(math.Cos(float64(phase)))
-	sinPhase := float32(math.Sin(float64(phase)))
-
-	// Rotation: [I'] = [cos -sin] [I]
-	//           [Q']   [sin  cos] [Q]
-	correctedI = i*cosPhase - q*sinPhase
-	correctedQ = i*sinPhase + q*cosPhase
-
-	return correctedI, correctedQ
-}
-
-// RotatePhaseBatch rotates a batch of complex samples
-// This is more efficient than calling RotatePhase for each sample
-// samples: interleaved I/Q samples [I0, Q0, I1, Q1, ...]
-func (p *Filter) RotatePhaseBatch(samples []float32) {
-	phase := -p.phase
-	cosPhase := float32(math.Cos(float64(phase)))
-	sinPhase := float32(math.Sin(float64(phase)))
-
-	// Rotate each I/Q pair
-	for i := 0; i < len(samples)-1; i += 2 {
-		iVal := samples[i]
-		qVal := samples[i+1]
-
-		samples[i] = iVal*cosPhase - qVal*sinPhase
-		samples[i+1] = iVal*sinPhase + qVal*cosPhase
-	}
-}
-

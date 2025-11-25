@@ -425,3 +425,210 @@ func (g *SincGenerator) Add(dst []float32) int {
 		*d += value
 	})
 }
+
+// RaisedCosineGenerator generates a raised cosine pulse shape
+// Commonly used for pulse shaping in digital communications
+type RaisedCosineGenerator struct {
+	center    float32
+	scale     float32
+	rolloff   float32
+	amplitude float32
+}
+
+// NewRaisedCosineGenerator creates a new raised cosine generator
+// center: center sample position
+// scale: scaling factor for normalized time (typically 1/Tc)
+// rolloff: excess bandwidth factor (0 <= rolloff <= 1)
+// amplitude: amplitude scaling factor
+func NewRaisedCosineGenerator(center, scale, rolloff, amplitude float32) RaisedCosineGenerator {
+	if scale == 0 {
+		scale = 1
+	}
+	if rolloff < 0 {
+		rolloff = -rolloff
+	}
+	if rolloff > 1 {
+		rolloff = 1
+	}
+	return RaisedCosineGenerator{
+		center:    center,
+		scale:     scale,
+		rolloff:   rolloff,
+		amplitude: amplitude,
+	}
+}
+
+// GenerateWithOp generates raised cosine samples with optional reverse traversal
+func (g *RaisedCosineGenerator) GenerateWithOp(dst []float32, reverse bool, op GeneratorAssignOp) int {
+	n := len(dst)
+	if n == 0 {
+		return 0
+	}
+
+	_ = dst[n-1]
+	dst = dst[:n]
+
+	scale := g.scale
+	if scale == 0 {
+		scale = 1
+	}
+	alpha := g.rolloff
+	if alpha < 0 {
+		alpha = -alpha
+	}
+
+	start := -g.center
+	step := scale
+	if reverse {
+		start = float32(n-1) - g.center
+		step = -scale
+	}
+
+	xScaled := start * scale
+	twoAlpha := 2 * alpha
+	xAlpha := twoAlpha * xScaled
+
+	theta := math32.Pi * xScaled
+	deltaTheta := math32.Pi * step
+
+	phi := math32.Pi * alpha * xScaled
+	deltaPhi := math32.Pi * alpha * step
+
+	sinTheta := math32.Sin(theta)
+	cosTheta := math32.Cos(theta)
+	sinDeltaTheta := math32.Sin(deltaTheta)
+	cosDeltaTheta := math32.Cos(deltaTheta)
+
+	useAlpha := alpha >= 1e-6
+	sinPhi := float32(0)
+	cosPhi := float32(1)
+	sinDeltaPhi := float32(0)
+	cosDeltaPhi := float32(1)
+	if useAlpha {
+		sinPhi = math32.Sin(phi)
+		cosPhi = math32.Cos(phi)
+		sinDeltaPhi = math32.Sin(deltaPhi)
+		cosDeltaPhi = math32.Cos(deltaPhi)
+	}
+	deltaAlpha := twoAlpha * step
+
+	idx := 0
+	incrementIndex := 1
+	if reverse {
+		idx = n - 1
+		incrementIndex = -1
+	}
+
+	const thetaEps = 1e-6
+	const denomEps = 1e-5
+	amp := g.amplitude
+	limitValue := float32(0)
+	if useAlpha && alpha > denomEps {
+		limitValue = amp * (alpha / 2) * math32.Sin(math32.Pi/(2*alpha))
+	}
+
+	for i := 0; i < n; i++ {
+		value := amp
+		if useAlpha {
+			denom := 1 - xAlpha*xAlpha
+			if math32.Abs(denom) < denomEps {
+				value = limitValue
+			} else {
+				sinc := float32(1)
+				if math32.Abs(theta) >= thetaEps {
+					sinc = sinTheta / theta
+				}
+				value = amp * (sinc * cosPhi / denom)
+			}
+		} else if math32.Abs(theta) >= thetaEps {
+			value = amp * sinTheta / theta
+		}
+
+		op(&dst[idx], value)
+
+		idx += incrementIndex
+		theta += deltaTheta
+		xScaled += step
+		xAlpha += deltaAlpha
+
+		nextSinTheta := sinTheta*cosDeltaTheta + cosTheta*sinDeltaTheta
+		nextCosTheta := cosTheta*cosDeltaTheta - sinTheta*sinDeltaTheta
+		sinTheta = nextSinTheta
+		cosTheta = nextCosTheta
+
+		if useAlpha {
+			nextSinPhi := sinPhi*cosDeltaPhi + cosPhi*sinDeltaPhi
+			nextCosPhi := cosPhi*cosDeltaPhi - sinPhi*sinDeltaPhi
+			sinPhi = nextSinPhi
+			cosPhi = nextCosPhi
+		}
+	}
+
+	return n
+}
+
+// Generate fills dst with raised cosine samples
+func (g *RaisedCosineGenerator) Generate(dst []float32) int {
+	return g.GenerateWithOp(dst, false, func(d *float32, value float32) {
+		*d = value
+	})
+}
+
+// Add adds raised cosine samples to dst
+func (g *RaisedCosineGenerator) Add(dst []float32) int {
+	return g.GenerateWithOp(dst, false, func(d *float32, value float32) {
+		*d += value
+	})
+}
+
+// AddReverse adds raised cosine samples in reverse order to dst
+func (g *RaisedCosineGenerator) AddReverse(dst []float32) int {
+	return g.GenerateWithOp(dst, true, func(d *float32, value float32) {
+		*d += value
+	})
+}
+
+// Correlate computes correlation with the provided samples using reversed signal
+func (g *RaisedCosineGenerator) Correlate(dst, samples []float32) int {
+	refLen := len(samples)
+	resultLen := len(samples) + refLen - 1
+	if len(dst) < resultLen {
+		resultLen = len(dst)
+		if resultLen < refLen {
+			refLen = resultLen
+		}
+	}
+
+	var reversed []float32
+	needsAlloc := len(dst) < resultLen+refLen
+	if !needsAlloc {
+		reversed = dst[resultLen : resultLen+refLen]
+	} else {
+		if refLen <= 64 {
+			var buf [64]float32
+			reversed = buf[:refLen]
+		} else {
+			reversed = make([]float32, refLen)
+		}
+	}
+
+	revGen := *g
+	revGen.GenerateWithOp(reversed, true, func(d *float32, value float32) {
+		*d = value
+	})
+
+	nSamples := len(samples)
+	nRef := len(reversed)
+	for i := range resultLen {
+		sum := float32(0)
+		for j := range nSamples {
+			k := i - j
+			if k >= 0 && k < nRef {
+				sum += samples[j] * reversed[k]
+			}
+		}
+		dst[i] = sum
+	}
+
+	return resultLen
+}

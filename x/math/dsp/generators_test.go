@@ -650,6 +650,64 @@ func TestGaussianGenerator_GenerateWithOp(t *testing.T) {
 	assert.InDelta(t, 1.0, dst[5], 1e-5, "GenerateWithOp should apply operation")
 }
 
+func TestRaisedCosineGeneratorMatchesFormula(t *testing.T) {
+	gen := NewRaisedCosineGenerator(16, 1.0/32.0, 0.35, 1.0)
+	buf := make([]float32, 64)
+	gen.Generate(buf)
+
+	xScaled := -gen.center * gen.scale
+	const tol = 1e-5
+	for i, sample := range buf {
+		expected := raisedCosineReferenceValue(xScaled, gen.rolloff, gen.amplitude)
+		assert.InDeltaf(t, expected, sample, tol, "sample mismatch at %d (x=%f expected=%f got=%f)", i, xScaled, expected, sample)
+		xScaled += gen.scale
+	}
+}
+
+func BenchmarkRaisedCosineGenerator(b *testing.B) {
+	gen := NewRaisedCosineGenerator(32, 1.0/64.0, 0.35, 1.0)
+	buf := make([]float32, 256)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		gen.Generate(buf)
+	}
+}
+
+func raisedCosineReferenceValue(x, rolloff, amplitude float32) float32 {
+	alpha := rolloff
+	if alpha < 0 {
+		alpha = -alpha
+	}
+
+	const thetaEps = 1e-6
+	const denomEps = 1e-5
+
+	theta := math32.Pi * x
+	sinTheta := math32.Sin(theta)
+	cosPhi := math32.Cos(math32.Pi * alpha * x)
+	xAlpha := 2 * alpha * x
+	useAlpha := alpha >= 1e-6
+
+	if !useAlpha {
+		if math32.Abs(theta) < thetaEps {
+			return amplitude
+		}
+		return amplitude * sinTheta / theta
+	}
+
+	sinc := float32(1)
+	if math32.Abs(theta) >= thetaEps {
+		sinc = sinTheta / theta
+	}
+
+	denom := 1 - xAlpha*xAlpha
+	if math32.Abs(denom) < denomEps {
+		return amplitude * (alpha / 2) * math32.Sin(math32.Pi/(2*alpha))
+	}
+
+	return amplitude * (sinc * cosPhi / denom)
+}
+
 func TestSineGenerator_PhaseWrapping(t *testing.T) {
 	// Test that phase wrapping prevents calculation errors
 	// Use a very large phase that would overflow without wrapping
