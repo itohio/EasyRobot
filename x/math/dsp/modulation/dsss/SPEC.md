@@ -367,20 +367,31 @@ Simplified:
    ρᵢ = Σ(l=0 to L-1) chip_corr_l
 ```
 
-#### B. Coherent Correlation (With Carrier)
+#### B. Coherent Correlation (With Carrier and Pulse Shaping)
 ```
 For each code Pᵢ:
 
-ρᵢ = (1/(L×N_sc)) Σ(l=0 to L-1) Σ(m=0 to N_sc-1) r[l×N_sc + m] × cos(θ[l×N_sc + m]) × pₗ⁽ⁱ⁾
+ρᵢ = (1/(L×N_sc)) Σ(l=0 to L-1) Σ(m=0 to N_sc-1) r[l×N_sc + m] × cos(θ[l×N_sc + m]) × h[m] × pₗ⁽ⁱ⁾
 
 where:
   θ[n] = 2πf_c n/f_s + φ̂
   φ̂ = estimated carrier phase
+  h[m] = pulse shape (matched filter) at sample m within chip
 
 This performs:
   1. Carrier demodulation: r[n] × cos(θ[n])
-  2. Chip correlation: multiply by code, integrate
+  2. Matched filtering: multiply by pulse shape h[m]
+  3. Chip correlation: multiply by code, integrate
+  4. Normalization: divide by total samples (L×N_sc)
 ```
+
+**Important Note on Normalization:**
+The normalization by `(L×N_sc)` means the correlation value is scaled down from the raw sum.
+For a perfect match with amplitude A=1.0:
+- Raw correlation sum ≈ A × L × N_sc (if all samples align perfectly)
+- After normalization: ρᵢ ≈ A × L × N_sc / (L×N_sc) = A
+- However, with pulse shaping (raised cosine), the effective amplitude is reduced
+- Typical normalized correlation for matched code: ρᵢ ≈ 0.3-0.7 × A (depending on rolloff factor)
 
 #### C. Non-Coherent Correlation (Envelope Detection)
 ```
@@ -410,22 +421,32 @@ Benefits:
   - Better AGC tolerance
 ```
 
-**Theoretical Values** (Perfect Channel):
+**Theoretical Values** (Perfect Channel, After Normalization):
 ```
-Transmitted symbol sⱼ using code Pⱼ:
+Transmitted symbol sⱼ using code Pⱼ, with amplitude A=1.0:
 
-ρᵢ = {
-  +L,     i = j (matched code)
-  ≈ 0,    i ≠ j (orthogonal codes)
-}
-
+For normalized correlation (divided by L×N_sc):
+  ρᵢ = {
+    ≈ A × α,     i = j (matched code)
+    ≈ 0,         i ≠ j (orthogonal codes)
+  }
+  
+where:
+  α = pulse shape energy factor (typically 0.3-0.7 for raised cosine)
+  
 With noise:
   ρᵢ ~ N(μᵢ, σ²)
   
 where:
-  μⱼ = +L,  μᵢ = 0 for i≠j
-  σ² = noise variance
+  μⱼ ≈ A × α,  μᵢ = 0 for i≠j
+  σ² = noise variance / (L×N_sc)
 ```
+
+**Signal Detection Threshold:**
+For reliable signal detection, the threshold should be:
+- Minimum: 3×σ (noise standard deviation)
+- Recommended: 0.05-0.1 for normalized correlation with A=1.0
+- This accounts for pulse shaping reducing peak correlation values
 
 ---
 
@@ -861,6 +882,116 @@ Optimal choice depends on:
   - Channel SNR
   - Interference environment
 ```
+
+---
+
+## Encoder/Decoder Composition Patterns
+
+### EncoderChain and DecoderChain
+
+**Purpose**: Chain multiple encoders/decoders together in sequence.
+
+**EncoderChain Flow**:
+```
+src -> encoder1 -> buffer1 -> encoder2 -> buffer2 -> ... -> encoderN -> dst
+```
+
+**DecoderChain Flow**:
+```
+src -> decoder1 -> buffer1 -> decoder2 -> buffer2 -> ... -> decoderN -> dst
+```
+
+**Type Parameters**:
+- `DST`: Destination sample type (output type of all encoders/decoders)
+- `SRC`: Source sample type (input type, must equal DST for chains)
+- `BUF`: Buffer type for intermediate storage (must implement `WriterReader[DST]`)
+
+**Type Constraints**:
+- All encoders/decoders in chain must be `Encoder[DST, SRC]` / `Decoder[DST, SRC]`
+- For chains to work, **SRC == DST** (all stages work on same type)
+- `BUF` must implement `WriterReader[DST]` interface:
+  - `buffer.Writer[DST]` (Write method)
+  - `buffer.Reader[DST]` (Read method)
+  - `Reset()` method
+  - `Cap() int` method
+  - `Len() int` method
+- Type adapter handles conversion between `buffer.Reader[DST]` and `buffer.Reader[SRC]`
+
+**Usage with Ring Buffer** (for byte-based encoders):
+```go
+factory := func(cap int) *buffer.Ring[float32] {
+    return buffer.NewRing(make([]float32, 0, cap))
+}
+chain := NewEncoderChain[float32, float32, *buffer.Ring[float32]](factory, encoder1, encoder2, encoder3)
+samplesWritten := chain.Encode(dst, src)
+```
+
+**Usage with BitsRing** (for bit-based encoders like DSSS, FSK):
+```go
+// When BitsRing is implemented
+factory := func(cap int) *buffer.BitsRing[byte] {
+    return buffer.NewBitsRing(make([]byte, 0, cap))
+}
+chain := NewEncoderChain[byte, byte, *buffer.BitsRing[byte]](factory, encoder1, encoder2, encoder3)
+samplesWritten := chain.Encode(dst, src)
+```
+
+**Buffer Management**:
+- Intermediate buffers are allocated on first call with non-nil dst
+- Buffer factory function creates buffers with specified capacity
+- Buffer sizes are calculated by propagating size estimates through all encoders
+- Buffers are reset between calls but retain capacity
+
+### ComposeEncoder and ComposeDecoder
+
+**Purpose**: Compose two encoders/decoders with different intermediate types.
+
+**ComposeEncoder Flow**:
+```
+src (SRC) -> src.Encode() -> intermediate buffer (MID) -> dst.Encode() -> dst (DST)
+```
+
+**ComposeDecoder Flow**:
+```
+src (SRC) -> src.Decode() -> intermediate buffer (MID) -> dst.Decode() -> dst (DST)
+```
+
+**Type Parameters**:
+- `DST`: Destination sample type (output type of second encoder/decoder)
+- `MID`: Intermediate sample type (output of first, input to second)
+- `SRC`: Source sample type (input type of first encoder/decoder)
+- `BUF`: Buffer type for intermediate storage (must implement `WriterReader[MID]`)
+
+**Usage with Ring Buffer**:
+```go
+factory := func(cap int) *buffer.Ring[[]byte] {
+    return buffer.NewRing(make([][]byte, 0, cap))
+}
+compose := NewComposeEncoder[float32, []byte, byte, *buffer.Ring[[]byte]](factory, dstEncoder, srcEncoder)
+samplesWritten := compose.Encode(dst, src)
+```
+
+**Usage with BitsRing** (for bit-based intermediate stages):
+```go
+// When BitsRing is implemented
+factory := func(cap int) *buffer.BitsRing[byte] {
+    return buffer.NewBitsRing(make([]byte, 0, cap))
+}
+compose := NewComposeEncoder[float32, byte, byte, *buffer.BitsRing[byte]](factory, dstEncoder, srcEncoder)
+samplesWritten := compose.Encode(dst, src)
+```
+
+**Buffer Management**:
+- Intermediate buffer is allocated on first call with non-nil dst
+- Buffer factory function creates buffer with specified capacity
+- Buffer size is calculated from src encoder output size estimate
+- Buffer is reset between calls but retains capacity
+
+**Benefits**:
+- Allows type transformations: SRC -> MID -> DST
+- More flexible than chains (supports different intermediate types)
+- User can choose appropriate buffer type (Ring for bytes, BitsRing for bits)
+- Useful for multi-stage encoding/decoding pipelines
 
 ---
 

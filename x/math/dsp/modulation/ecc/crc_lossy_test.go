@@ -4,6 +4,7 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/itohio/EasyRobot/x/buffer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -15,13 +16,18 @@ func TestCRC_LossyRoundtrip_ValidCRC(t *testing.T) {
 	original := []byte{0x12, 0x34, 0x56, 0x78}
 
 	// Encode
-	expectedSize := encoder.Encode(nil, original)
-	encoded := make([]byte, expectedSize)
-	encoder.Encode(encoded, original)
+	srcReader := buffer.New(original)
+	expectedSize := encoder.Process(nil, srcReader)
+	encodedBuf := buffer.New(make([]byte, 0, expectedSize*2))
+	srcReader = buffer.New(original)
+	encoder.Process(encodedBuf, srcReader)
+	encoded := encodedBuf.Items()
 
 	// Decode (CRC should be valid)
-	decoded := make([]byte, len(original))
-	bytesDecoded := decoder.Decode(decoded, encoded)
+	encodedReader := buffer.New(encoded)
+	decodedBuf := buffer.New(make([]byte, 0, len(original)))
+	bytesDecoded := decoder.Process(decodedBuf, encodedReader)
+	decoded := decodedBuf.Items()
 
 	// Should decode successfully
 	require.Equal(t, len(original), bytesDecoded)
@@ -35,9 +41,12 @@ func TestCRC_LossyRoundtrip_InvalidCRC_DataCorrupted(t *testing.T) {
 	original := []byte{0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0} // Longer data for better CRC detection
 
 	// Encode
-	expectedSize := encoder.Encode(nil, original)
-	encoded := make([]byte, expectedSize)
-	encoder.Encode(encoded, original)
+	srcReader := buffer.New(original)
+	expectedSize := encoder.Process(nil, srcReader)
+	encodedBuf := buffer.New(make([]byte, 0, expectedSize*2))
+	srcReader = buffer.New(original)
+	encoder.Process(encodedBuf, srcReader)
+	encoded := encodedBuf.Items()
 
 	// Corrupt data (not CRC) - corrupt multiple bytes to ensure detection
 	corrupted := make([]byte, len(encoded))
@@ -47,8 +56,9 @@ func TestCRC_LossyRoundtrip_InvalidCRC_DataCorrupted(t *testing.T) {
 	corrupted[2] ^= 0x55 // Corrupt third byte
 
 	// Decode
-	decoded := make([]byte, len(original))
-	bytesDecoded := decoder.Decode(decoded, corrupted)
+	corruptedReader := buffer.New(corrupted)
+	decodedBuf := buffer.New(make([]byte, 0, len(original)))
+	bytesDecoded := decoder.Process(decodedBuf, corruptedReader)
 
 	// Should detect error and return 0 bytes
 	// Note: Simplified CRC implementation may not detect all error patterns
@@ -71,9 +81,12 @@ func TestCRC_LossyRoundtrip_InvalidCRC_CRCCorrupted(t *testing.T) {
 	original := []byte{0x12, 0x34, 0x56, 0x78}
 
 	// Encode
-	expectedSize := encoder.Encode(nil, original)
-	encoded := make([]byte, expectedSize)
-	encoder.Encode(encoded, original)
+	srcReader := buffer.New(original)
+	expectedSize := encoder.Process(nil, srcReader)
+	encodedBuf := buffer.New(make([]byte, 0, expectedSize*2))
+	srcReader = buffer.New(original)
+	encoder.Process(encodedBuf, srcReader)
+	encoded := encodedBuf.Items()
 
 	// Corrupt CRC byte
 	corrupted := make([]byte, len(encoded))
@@ -81,8 +94,9 @@ func TestCRC_LossyRoundtrip_InvalidCRC_CRCCorrupted(t *testing.T) {
 	corrupted[len(corrupted)-1] ^= 0xFF // Flip CRC byte
 
 	// Decode
-	decoded := make([]byte, len(original))
-	bytesDecoded := decoder.Decode(decoded, corrupted)
+	corruptedReader := buffer.New(corrupted)
+	decodedBuf := buffer.New(make([]byte, 0, len(original)))
+	bytesDecoded := decoder.Process(decodedBuf, corruptedReader)
 
 	// Should detect error and return 0 bytes
 	assert.Equal(t, 0, bytesDecoded, "Should detect CRC error")
@@ -98,9 +112,12 @@ func TestCRC_LossyRoundtrip_RandomErrors(t *testing.T) {
 	}
 
 	// Encode
-	expectedSize := encoder.Encode(nil, original)
-	encoded := make([]byte, expectedSize)
-	encoder.Encode(encoded, original)
+	srcReader := buffer.New(original)
+	expectedSize := encoder.Process(nil, srcReader)
+	encodedBuf := buffer.New(make([]byte, 0, expectedSize*2))
+	srcReader = buffer.New(original)
+	encoder.Process(encodedBuf, srcReader)
+	encoded := encodedBuf.Items()
 
 	// Introduce random errors
 	rng := rand.New(rand.NewSource(42))
@@ -114,8 +131,9 @@ func TestCRC_LossyRoundtrip_RandomErrors(t *testing.T) {
 	}
 
 	// Decode
-	decoded := make([]byte, len(original))
-	bytesDecoded := decoder.Decode(decoded, corrupted)
+	corruptedReader := buffer.New(corrupted)
+	decodedBuf := buffer.New(make([]byte, 0, len(original)))
+	bytesDecoded := decoder.Process(decodedBuf, corruptedReader)
 
 	// Should detect error (CRC cannot correct, only detect)
 	assert.Equal(t, 0, bytesDecoded, "Should detect errors")
@@ -128,9 +146,12 @@ func TestCRC_LossyRoundtrip_CRC16(t *testing.T) {
 	original := []byte{0x12, 0x34, 0x56, 0x78}
 
 	// Encode
-	expectedSize := encoder.Encode(nil, original)
-	encoded := make([]byte, expectedSize)
-	encoder.Encode(encoded, original)
+	srcReader := buffer.New(original)
+	expectedSize := encoder.Process(nil, srcReader)
+	encodedBuf := buffer.New(make([]byte, 0, expectedSize*2))
+	srcReader = buffer.New(original)
+	encoder.Process(encodedBuf, srcReader)
+	encoded := encodedBuf.Items()
 
 	// Corrupt data
 	corrupted := make([]byte, len(encoded))
@@ -138,8 +159,9 @@ func TestCRC_LossyRoundtrip_CRC16(t *testing.T) {
 	corrupted[0] ^= 0xFF
 
 	// Decode
-	decoded := make([]byte, len(original))
-	bytesDecoded := decoder.Decode(decoded, corrupted)
+	corruptedReader := buffer.New(corrupted)
+	decodedBuf := buffer.New(make([]byte, 0, len(original)))
+	bytesDecoded := decoder.Process(decodedBuf, corruptedReader)
 
 	// Should detect error
 	assert.Equal(t, 0, bytesDecoded, "CRC-16 should detect errors")
@@ -152,9 +174,12 @@ func TestCRC_LossyRoundtrip_CRC32(t *testing.T) {
 	original := []byte{0x12, 0x34, 0x56, 0x78}
 
 	// Encode
-	expectedSize := encoder.Encode(nil, original)
-	encoded := make([]byte, expectedSize)
-	encoder.Encode(encoded, original)
+	srcReader := buffer.New(original)
+	expectedSize := encoder.Process(nil, srcReader)
+	encodedBuf := buffer.New(make([]byte, 0, expectedSize*2))
+	srcReader = buffer.New(original)
+	encoder.Process(encodedBuf, srcReader)
+	encoded := encodedBuf.Items()
 
 	// Corrupt data
 	corrupted := make([]byte, len(encoded))
@@ -162,8 +187,9 @@ func TestCRC_LossyRoundtrip_CRC32(t *testing.T) {
 	corrupted[0] ^= 0xFF
 
 	// Decode
-	decoded := make([]byte, len(original))
-	bytesDecoded := decoder.Decode(decoded, corrupted)
+	corruptedReader := buffer.New(corrupted)
+	decodedBuf := buffer.New(make([]byte, 0, len(original)))
+	bytesDecoded := decoder.Process(decodedBuf, corruptedReader)
 
 	// Should detect error
 	assert.Equal(t, 0, bytesDecoded, "CRC-32 should detect errors")

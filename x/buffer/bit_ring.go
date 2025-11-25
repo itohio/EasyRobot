@@ -6,7 +6,8 @@ import (
 
 var _ Writer[byte] = (*BitRing)(nil)
 var _ Reader[byte] = (*BitRing)(nil)
-var _ BitsBuffer = (*BitRing)(nil)
+var _ BitsReader = (*BitRing)(nil)
+var _ BitsWriter = (*BitRing)(nil)
 var _ Initializer = (*BitRing)(nil)
 
 // BitRing is a circular buffer for bit-level data with a fixed capacity.
@@ -92,8 +93,13 @@ func (br *BitRing) Init(numBits, bufLen, bufCap int) error {
 }
 
 // Bits returns the number of bits per value.
-func (br *BitRing) Bits() int {
+func (br *BitRing) BitsLength() int {
 	return br.bitLength
+}
+
+// Bits returns the number of bits written.
+func (br *BitRing) Bits() int {
+	return br.len * br.bitLength
 }
 
 // WriteBit writes a single bit to the ring buffer.

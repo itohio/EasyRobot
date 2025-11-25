@@ -1,12 +1,16 @@
 package ecc
 
 import (
-	"github.com/itohio/EasyRobot/x/math/dsp/modulation"
+	"io"
+
+	"github.com/itohio/EasyRobot/x/buffer"
+	"github.com/itohio/EasyRobot/x/chain"
 )
 
 // CRCEncoder implements CRC (Cyclic Redundancy Check) encoding at the byte level.
-// It implements the modulation.ByteEncoder interface for composability.
+// It implements the chain.Processor[byte, byte] interface for composability.
 // CRC provides error detection but not error correction.
+// Encodes data by appending CRC bytes (data + CRC).
 type CRCEncoder struct {
 	polynomial uint32
 	initial    uint32
@@ -140,37 +144,77 @@ func (c *CRCEncoder) generateTable() []uint32 {
 	return table
 }
 
-// Encode encodes input bytes to CRC-encoded bytes (data + CRC).
-// Returns the number of bytes written to dst.
-// Returns expected dst length if dst is nil.
-// Encode implements modulation.ByteEncoder interface.
-func (c *CRCEncoder) Encode(dst, src []byte) int {
-	if dst == nil {
-		// Calculate expected output length: data + CRC bytes
-		crcBytes := c.width / 8
-		return len(src) + crcBytes
-	}
-
-	// Allow encoding empty data (will produce only CRC bytes)
-
+// Process processes input bytes to CRC-encoded bytes (data + CRC).
+// Reads from buffer.Reader[byte] and writes to buffer.Writer[byte].
+// If dst is nil, calculates and returns the theoretical maximum output size.
+// Process implements chain.Processor[byte, byte] interface.
+func (c *CRCEncoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+	var srcBuf [256]byte
+	var dataBuf []byte // Buffer to accumulate all data for CRC calculation
+	totalRead := 0
+	var readErr error
 	crcBytes := c.width / 8
-	requiredLen := len(src) + crcBytes
-	if len(dst) < requiredLen {
-		return 0
+
+	// Read all available data from source
+	for readErr == nil {
+		n, err := src.Read(srcBuf[:])
+		if n == 0 {
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				break
+			}
+			continue
+		}
+
+		totalRead += n
+
+		// If dst is nil, calculate and return size
+		if dst == nil {
+			if err == io.EOF {
+				break
+			}
+			continue
+		}
+
+		// Buffer data for CRC calculation
+		dataBuf = append(dataBuf, srcBuf[:n]...)
+
+		// Write data to destination
+		_, writeErr := dst.Write(srcBuf[:n])
+		if writeErr != nil {
+			// Return bytes written so far (data only, CRC not appended yet)
+			return totalRead
+		}
+
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			break
+		}
 	}
 
-	// Copy data
-	copy(dst, src)
-
-	// Calculate CRC
-	crc := c.calculateCRC(src)
-
-	// Append CRC bytes (little-endian)
-	for i := 0; i < crcBytes; i++ {
-		dst[len(src)+i] = byte(crc >> (i * 8))
+	// If dst was nil, return calculated size
+	if dst == nil {
+		return totalRead + crcBytes
 	}
 
-	return requiredLen
+	// Calculate and append CRC if we read any data
+	if len(dataBuf) > 0 {
+		// Calculate CRC
+		crc := c.calculateCRC(dataBuf)
+
+		// Append CRC bytes (little-endian)
+		crcData := make([]byte, crcBytes)
+		for i := 0; i < crcBytes; i++ {
+			crcData[i] = byte(crc >> (i * 8))
+		}
+		_, _ = dst.Write(crcData)
+	}
+
+	return totalRead + crcBytes
 }
 
 // calculateCRC calculates the CRC value for the given data.
@@ -190,7 +234,7 @@ func (c *CRCEncoder) calculateCRC(data []byte) uint32 {
 }
 
 // Reset resets the encoder state.
-// Reset implements modulation.ByteEncoder interface.
+// Reset implements chain.Processor interface.
 func (c *CRCEncoder) Reset() {
 	// No state to reset (stateless)
 }
@@ -201,4 +245,4 @@ func (c *CRCEncoder) Width() int {
 }
 
 // Verify interface compliance
-var _ modulation.ByteEncoder = (*CRCEncoder)(nil)
+var _ chain.Processor[byte, byte] = (*CRCEncoder)(nil)

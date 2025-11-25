@@ -43,9 +43,9 @@ func NewChirpGenerator(sampleRate, f0, f1, amplitude float32) ChirpGenerator {
 	}
 }
 
-// generate is the common generation function that takes a binary operation closure and reverse flag
+// GenerateWithOp is the common generation function that takes a binary operation closure and reverse flag
 // For reverse: generates f1->f0 chirp (time-reversed version of f0->f1)
-func (g *ChirpGenerator) generate(dst []float32, reverse bool, op func(i int, value float32)) int {
+func (g *ChirpGenerator) GenerateWithOp(dst []float32, reverse bool, op func(i int, value float32)) int {
 	n := len(dst)
 	if n == 0 {
 		return 0
@@ -92,14 +92,14 @@ func (g *ChirpGenerator) generate(dst []float32, reverse bool, op func(i int, va
 
 // Generate fills dst with chirp samples and returns the number of samples filled
 func (g *ChirpGenerator) Generate(dst []float32) int {
-	return g.generate(dst, false, func(i int, value float32) {
+	return g.GenerateWithOp(dst, false, func(i int, value float32) {
 		dst[i] = value
 	})
 }
 
 // Add adds chirp samples to dst (additive generation)
 func (g *ChirpGenerator) Add(dst []float32) int {
-	return g.generate(dst, false, func(i int, value float32) {
+	return g.GenerateWithOp(dst, false, func(i int, value float32) {
 		dst[i] += value
 	})
 }
@@ -108,14 +108,14 @@ func (g *ChirpGenerator) Add(dst []float32) int {
 // This generates the time-reversed chirp directly: generates f1->f0 which is equivalent to
 // time-reversed f0->f1, avoiding the need to reverse the array
 func (g *ChirpGenerator) GenerateReverse(dst []float32) int {
-	return g.generate(dst, true, func(i int, value float32) {
+	return g.GenerateWithOp(dst, true, func(i int, value float32) {
 		dst[i] = value
 	})
 }
 
 // AddReverse adds chirp samples in reverse time order to dst (additive generation)
 func (g *ChirpGenerator) AddReverse(dst []float32) int {
-	return g.generate(dst, true, func(i int, value float32) {
+	return g.GenerateWithOp(dst, true, func(i int, value float32) {
 		dst[i] += value
 	})
 }
@@ -202,9 +202,9 @@ func NewLogarithmicChirpGenerator(sampleRate, f0, f1, amplitude float32) Logarit
 	}
 }
 
-// generate is the common generation function that takes a binary operation closure and reverse flag
+// GenerateWithOp is the common generation function that takes a binary operation closure and reverse flag
 // For reverse: generates f1->f0 logarithmic chirp (time-reversed version of f0->f1)
-func (g *LogarithmicChirpGenerator) generate(dst []float32, reverse bool, op func(i int, value float32)) int {
+func (g *LogarithmicChirpGenerator) GenerateWithOp(dst []float32, reverse bool, op func(i int, value float32)) int {
 	n := len(dst)
 	if n == 0 {
 		return 0
@@ -274,14 +274,14 @@ func (g *LogarithmicChirpGenerator) generate(dst []float32, reverse bool, op fun
 
 // Generate fills dst with logarithmic chirp samples
 func (g *LogarithmicChirpGenerator) Generate(dst []float32) int {
-	return g.generate(dst, false, func(i int, value float32) {
+	return g.GenerateWithOp(dst, false, func(i int, value float32) {
 		dst[i] = value
 	})
 }
 
 // Add adds logarithmic chirp samples to dst (additive generation)
 func (g *LogarithmicChirpGenerator) Add(dst []float32) int {
-	return g.generate(dst, false, func(i int, value float32) {
+	return g.GenerateWithOp(dst, false, func(i int, value float32) {
 		dst[i] += value
 	})
 }
@@ -290,14 +290,14 @@ func (g *LogarithmicChirpGenerator) Add(dst []float32) int {
 // This generates the time-reversed chirp directly: generates f1->f0 which is equivalent to
 // time-reversed f0->f1, avoiding the need to reverse the array
 func (g *LogarithmicChirpGenerator) GenerateReverse(dst []float32) int {
-	return g.generate(dst, true, func(i int, value float32) {
+	return g.GenerateWithOp(dst, true, func(i int, value float32) {
 		dst[i] = value
 	})
 }
 
 // AddReverse adds logarithmic chirp samples in reverse time order to dst (additive generation)
 func (g *LogarithmicChirpGenerator) AddReverse(dst []float32) int {
-	return g.generate(dst, true, func(i int, value float32) {
+	return g.GenerateWithOp(dst, true, func(i int, value float32) {
 		dst[i] += value
 	})
 }
@@ -375,8 +375,8 @@ func NewSquareGenerator(sampleRate, frequency, amplitude float32) SquareGenerato
 	}
 }
 
-// Generate fills dst with square wave samples
-func (g *SquareGenerator) Generate(dst []float32) int {
+// GenerateWithOp is the common generation function that takes a binary operation closure
+func (g *SquareGenerator) GenerateWithOp(dst []float32, op func(i int, value float32)) int {
 	n := len(dst)
 	if n == 0 {
 		return 0
@@ -386,15 +386,31 @@ func (g *SquareGenerator) Generate(dst []float32) int {
 	for i := range n {
 		// Use period to determine square wave value
 		periodPos := math32.Mod(g.time*g.frequency, 1.0)
+		var value float32
 		if periodPos < 0.5 {
-			dst[i] = g.amplitude
+			value = g.amplitude
 		} else {
-			dst[i] = -g.amplitude
+			value = -g.amplitude
 		}
+		op(i, value)
 		g.time += dt
 	}
 
 	return n
+}
+
+// Generate fills dst with square wave samples
+func (g *SquareGenerator) Generate(dst []float32) int {
+	return g.GenerateWithOp(dst, func(i int, value float32) {
+		dst[i] = value
+	})
+}
+
+// Add adds square wave samples to dst (additive generation)
+func (g *SquareGenerator) Add(dst []float32) int {
+	return g.GenerateWithOp(dst, func(i int, value float32) {
+		dst[i] += value
+	})
 }
 
 // TriangleGenerator generates a triangle wave signal
@@ -418,8 +434,8 @@ func NewTriangleGenerator(sampleRate, frequency, amplitude float32) TriangleGene
 	}
 }
 
-// Generate fills dst with triangle wave samples
-func (g *TriangleGenerator) Generate(dst []float32) int {
+// GenerateWithOp is the common generation function that takes a binary operation closure
+func (g *TriangleGenerator) GenerateWithOp(dst []float32, op func(i int, value float32)) int {
 	n := len(dst)
 	if n == 0 {
 		return 0
@@ -431,18 +447,34 @@ func (g *TriangleGenerator) Generate(dst []float32) int {
 		if phase < 0 {
 			phase += 1
 		}
-		dst[i] = triangleValue(g.amplitude, phase)
+		value := triangleValue(g.amplitude, phase)
+		op(i, value)
 		g.time += dt
 	}
 	if n > 0 {
 		cycles := g.time * g.frequency
 		frac := cycles - math32.Floor(cycles)
 		if frac < 1e-6 || 1-frac < 1e-6 {
-			dst[n-1] = triangleValue(g.amplitude, 0)
+			value := triangleValue(g.amplitude, 0)
+			op(n-1, value)
 		}
 	}
 
 	return n
+}
+
+// Generate fills dst with triangle wave samples
+func (g *TriangleGenerator) Generate(dst []float32) int {
+	return g.GenerateWithOp(dst, func(i int, value float32) {
+		dst[i] = value
+	})
+}
+
+// Add adds triangle wave samples to dst (additive generation)
+func (g *TriangleGenerator) Add(dst []float32) int {
+	return g.GenerateWithOp(dst, func(i int, value float32) {
+		dst[i] += value
+	})
 }
 
 func triangleValue(amplitude, phase float32) float32 {
@@ -464,13 +496,21 @@ func NewNoiseWhiteGenerator(amplitude float32) NoiseWhiteGenerator {
 	}
 }
 
-// Generate fills dst with white noise samples
-func (g *NoiseWhiteGenerator) Generate(dst []float32) int {
+// GenerateWithOp is the common generation function that takes a binary operation closure
+func (g *NoiseWhiteGenerator) GenerateWithOp(dst []float32, op func(i int, value float32)) int {
 	n := len(dst)
 	for i := range n {
-		dst[i] = g.amplitude * (rand.Float32()*2 - 1)
+		value := g.amplitude * (rand.Float32()*2 - 1)
+		op(i, value)
 	}
 	return n
+}
+
+// Generate fills dst with white noise samples
+func (g *NoiseWhiteGenerator) Generate(dst []float32) int {
+	return g.GenerateWithOp(dst, func(i int, value float32) {
+		dst[i] = value
+	})
 }
 
 // NoisePinkGenerator generates pink noise (1/f noise)
@@ -495,13 +535,13 @@ func NewNoisePinkGenerator(amplitude float32) NoisePinkGenerator {
 	}
 }
 
-// Generate fills dst with pink noise samples
-func (g *NoisePinkGenerator) Generate(dst []float32) int {
+// GenerateWithOp is the common generation function that takes a binary operation closure
+func (g *NoisePinkGenerator) GenerateWithOp(dst []float32, op func(i int, value float32)) int {
 	n := len(dst)
 	for i := range n {
 		white := g.amplitude * (rand.Float32()*2 - 1)
 		y0 := g.b0*white + g.b1*g.y1 + g.b2*g.y2 + g.b3*g.y3 + g.b4*g.y4 + g.b5*g.y5
-		dst[i] = y0
+		op(i, y0)
 
 		// Update filter state
 		g.y5 = g.y4
@@ -511,6 +551,13 @@ func (g *NoisePinkGenerator) Generate(dst []float32) int {
 		g.y1 = y0
 	}
 	return n
+}
+
+// Generate fills dst with pink noise samples
+func (g *NoisePinkGenerator) Generate(dst []float32) int {
+	return g.GenerateWithOp(dst, func(i int, value float32) {
+		dst[i] = value
+	})
 }
 
 // NoiseBrownGenerator generates brown noise (1/f^2 noise)
@@ -529,20 +576,22 @@ func NewNoiseBrownGenerator(amplitude float32) NoiseBrownGenerator {
 	}
 }
 
-// Generate fills dst with brown noise samples
-func (g *NoiseBrownGenerator) Generate(dst []float32) int {
+// GenerateWithOp is the common generation function that takes a binary operation closure
+func (g *NoiseBrownGenerator) GenerateWithOp(dst []float32, op func(i int, value float32)) int {
 	n := len(dst)
 	for i := range n {
 		white := g.amplitude * (rand.Float32()*2 - 1)
 		g.accumulator += white * 0.02
 
 		// High-pass filter to remove DC component
+		var value float32
 		if i > 0 {
-			dst[i] = g.accumulator - g.prev*0.99
+			value = g.accumulator - g.prev*0.99
 		} else {
-			dst[i] = g.accumulator
+			value = g.accumulator
 		}
-		g.prev = dst[i]
+		op(i, value)
+		g.prev = value
 
 		// Normalize to prevent drift
 		if g.accumulator > g.amplitude {
@@ -552,6 +601,13 @@ func (g *NoiseBrownGenerator) Generate(dst []float32) int {
 		}
 	}
 	return n
+}
+
+// Generate fills dst with brown noise samples
+func (g *NoiseBrownGenerator) Generate(dst []float32) int {
+	return g.GenerateWithOp(dst, func(i int, value float32) {
+		dst[i] = value
+	})
 }
 
 // ConstantGenerator generates a constant value
@@ -566,13 +622,27 @@ func NewConstantGenerator(value float32) ConstantGenerator {
 	}
 }
 
-// Generate fills dst with constant value
-func (g *ConstantGenerator) Generate(dst []float32) int {
+// GenerateWithOp is the common generation function that takes a binary operation closure
+func (g *ConstantGenerator) GenerateWithOp(dst []float32, op func(i int, value float32)) int {
 	n := len(dst)
 	for i := range n {
-		dst[i] = g.value
+		op(i, g.value)
 	}
 	return n
+}
+
+// Generate fills dst with constant value
+func (g *ConstantGenerator) Generate(dst []float32) int {
+	return g.GenerateWithOp(dst, func(i int, value float32) {
+		dst[i] = value
+	})
+}
+
+// Add adds constant value to dst (additive generation)
+func (g *ConstantGenerator) Add(dst []float32) int {
+	return g.GenerateWithOp(dst, func(i int, value float32) {
+		dst[i] += value
+	})
 }
 
 // RampGenerator generates a linear ramp signal
@@ -591,17 +661,142 @@ func NewRampGenerator(start, increment float32) RampGenerator {
 	}
 }
 
-// Generate fills dst with ramp samples
-func (g *RampGenerator) Generate(dst []float32) int {
+// GenerateWithOp is the common generation function that takes a binary operation closure
+func (g *RampGenerator) GenerateWithOp(dst []float32, op func(i int, value float32)) int {
 	n := len(dst)
 	for i := range n {
-		dst[i] = g.current
+		value := g.current
+		op(i, value)
 		g.current += g.increment
 	}
 	return n
 }
 
+// Generate fills dst with ramp samples
+func (g *RampGenerator) Generate(dst []float32) int {
+	return g.GenerateWithOp(dst, func(i int, value float32) {
+		dst[i] = value
+	})
+}
+
+// Add adds ramp samples to dst (additive generation)
+func (g *RampGenerator) Add(dst []float32) int {
+	return g.GenerateWithOp(dst, func(i int, value float32) {
+		dst[i] += value
+	})
+}
+
 // Reset resets the ramp to its start value
 func (g *RampGenerator) Reset() {
 	g.current = g.start
+}
+
+// SincGenerator generates a sinc function (sin(πx)/(πx))
+// Used for pulse shaping in digital communications
+type SincGenerator struct {
+	center    float32 // Center position (typically 0)
+	scale     float32 // Scale factor (typically 1.0)
+	amplitude float32 // Amplitude scaling
+}
+
+// NewSincGenerator creates a new sinc generator
+// center: center position of the sinc function (typically 0)
+// scale: scale factor for the argument (typically 1.0)
+// amplitude: amplitude scaling factor
+func NewSincGenerator(center, scale, amplitude float32) SincGenerator {
+	return SincGenerator{
+		center:    center,
+		scale:     scale,
+		amplitude: amplitude,
+	}
+}
+
+// GenerateWithOp is the common generation function that takes a binary operation closure
+func (g *SincGenerator) GenerateWithOp(dst []float32, op func(i int, value float32)) int {
+	n := len(dst)
+	for i := range n {
+		x := float32(i) - g.center
+		xScaled := x * g.scale
+		var value float32
+		if xScaled == 0 {
+			value = g.amplitude
+		} else {
+			value = g.amplitude * math32.Sin(math32.Pi*xScaled) / (math32.Pi * xScaled)
+		}
+		op(i, value)
+	}
+	return n
+}
+
+// Generate fills dst with sinc function samples
+func (g *SincGenerator) Generate(dst []float32) int {
+	return g.GenerateWithOp(dst, func(i int, value float32) {
+		dst[i] = value
+	})
+}
+
+// Add adds sinc function samples to dst (additive generation)
+func (g *SincGenerator) Add(dst []float32) int {
+	return g.GenerateWithOp(dst, func(i int, value float32) {
+		dst[i] += value
+	})
+}
+
+// GaussianGenerator generates a Gaussian (normal) distribution function
+// Used for pulse shaping and symbol envelope shaping in digital communications
+// Gaussian(x) = amplitude × exp(-(x - center)² / (2 × sigma²))
+type GaussianGenerator struct {
+	center    float32 // Center position (mean)
+	sigma     float32 // Standard deviation (controls width)
+	amplitude float32 // Amplitude scaling
+}
+
+// NewGaussianGenerator creates a new Gaussian generator
+// center: center position of the Gaussian (mean)
+// sigma: standard deviation (controls the width, larger = wider)
+// amplitude: amplitude scaling factor
+func NewGaussianGenerator(center, sigma, amplitude float32) GaussianGenerator {
+	return GaussianGenerator{
+		center:    center,
+		sigma:     sigma,
+		amplitude: amplitude,
+	}
+}
+
+// GenerateWithOp is the common generation function that takes a binary operation closure
+func (g *GaussianGenerator) GenerateWithOp(dst []float32, op func(i int, value float32)) int {
+	n := len(dst)
+	if g.sigma <= 0 {
+		// Invalid sigma, return zeros
+		for i := range n {
+			op(i, 0)
+		}
+		return n
+	}
+
+	// Pre-compute 1/(2*sigma²) for efficiency
+	invTwoSigmaSq := 1.0 / (2.0 * g.sigma * g.sigma)
+
+	for i := range n {
+		x := float32(i) - g.center
+		// Gaussian: exp(-x²/(2σ²))
+		exponent := -x * x * invTwoSigmaSq
+		value := g.amplitude * math32.Exp(exponent)
+		op(i, value)
+	}
+	return n
+}
+
+// Generate fills dst with Gaussian function samples
+func (g *GaussianGenerator) Generate(dst []float32) int {
+	return g.GenerateWithOp(dst, func(i int, value float32) {
+		dst[i] = value
+	})
+}
+
+// Add adds Gaussian function samples to dst (additive generation)
+func (g *GaussianGenerator) Add(dst []float32) int {
+	return g.GenerateWithOp(dst, func(i int, value float32) {
+		dst[i] += value
+	})
 }

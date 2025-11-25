@@ -700,8 +700,10 @@ func TestBits_Init(t *testing.T) {
 	err := bb.Init(4, 0, 16)
 	require.NoError(t, err)
 
-	assert.Equal(t, 4, bb.Bits())
-	assert.Equal(t, 16, bb.Cap())
+	assert.Equal(t, 4, bb.BitsLength()) // BitsLength returns bits per value
+	assert.Equal(t, 0, bb.Bits())       // Bits returns bits written (0 initially)
+	assert.Equal(t, 16, bb.Cap())       // Cap returns capacity in bytes
+	assert.Equal(t, 0, bb.Len())        // Len returns length in bytes
 	assert.Equal(t, 0, bb.Position())
 }
 
@@ -721,4 +723,83 @@ func TestBits_Init_Invalid(t *testing.T) {
 
 	err = bb.Init(4, 10, 5)
 	assert.Error(t, err)
+}
+
+// TestBits_CapLenBitsBitsLength verifies the meaning of Cap, Len, Bits, and BitsLength
+func TestBits_CapLenBitsBitsLength(t *testing.T) {
+	tests := []struct {
+		name      string
+		bitLength int
+	}{
+		{"1_bit", 1},
+		{"2_bits", 2},
+		{"4_bits", 4},
+		{"8_bits", 8},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bb, err := NewBits(tt.bitLength)
+			require.NoError(t, err)
+
+			// Initial state
+			initialCap := bb.Cap()
+			assert.GreaterOrEqual(t, initialCap, 8, "Cap() should return capacity in bytes (at least 8 bytes default)")
+			assert.Equal(t, 0, bb.Len(), "Len() should return length in bytes (0 initially)")
+			assert.Equal(t, 0, bb.Bits(), "Bits() should return number of bits written (0 initially)")
+			assert.Equal(t, tt.bitLength, bb.BitsLength(), "BitsLength() should return bits per value")
+
+			// Write some bytes (each byte uses bitLength bits)
+			bytesToWrite := []byte{0x12, 0x34, 0x56}
+			_, err = bb.Write(bytesToWrite)
+			require.NoError(t, err)
+			expectedBitsWritten := len(bytesToWrite) * tt.bitLength
+
+			// After writing
+			assert.Equal(t, tt.bitLength, bb.BitsLength(), "BitsLength() should remain constant (bits per value)")
+			assert.Equal(t, expectedBitsWritten, bb.Bits(), "Bits() should return total bits written")
+
+			// Len() and Cap() are in bytes - they depend on how bits are packed
+			// For example, 3 bytes with 4-bit encoding = 12 bits = 2 bytes (rounded up)
+			expectedBytes := (expectedBitsWritten + 7) / 8
+			assert.GreaterOrEqual(t, bb.Len(), expectedBytes, "Len() should return length in bytes (at least enough for bits written)")
+			assert.GreaterOrEqual(t, bb.Cap(), bb.Len(), "Cap() should be >= Len()")
+
+			// Read some bytes (read less than written to avoid EOF)
+			// Read returns number of bytes read, each byte uses bitLength bits
+			readBuf := make([]byte, 1)
+			bytesRead, err := bb.Read(readBuf)
+			if err != nil && err != io.EOF {
+				require.NoError(t, err)
+			}
+			bitsRead := bytesRead * tt.bitLength
+
+			// After reading
+			remainingBits := expectedBitsWritten - bitsRead
+			assert.Equal(t, tt.bitLength, bb.BitsLength(), "BitsLength() should remain constant")
+			// Bits() returns total bits written, not remaining bits
+			assert.Equal(t, expectedBitsWritten, bb.Bits(), "Bits() should return total bits written (doesn't decrease on read)")
+
+			// GetRemainingBits() shows remaining bits available to read
+			remainingBitsFromMethod := bb.GetRemainingBits()
+			if bytesRead > 0 {
+				assert.Equal(t, remainingBits, remainingBitsFromMethod, "GetRemainingBits() should return bits available to read")
+			}
+		})
+	}
+}
+
+// TestBits_CapLenBitsBitsLength_WithPreAllocated verifies methods with pre-allocated buffer
+func TestBits_CapLenBitsBitsLength_WithPreAllocated(t *testing.T) {
+	// Create Bits with pre-allocated data
+	preAllocatedData := make([]byte, 16)
+	bb, err := NewBits(4, preAllocatedData...)
+	require.NoError(t, err)
+
+	// With pre-allocated data, writtenBits should be initialized
+	expectedInitialBits := len(preAllocatedData) * 8 // 16 bytes * 8 bits = 128 bits
+	assert.Equal(t, expectedInitialBits, bb.Bits(), "Bits() should return bits in pre-allocated data")
+	assert.Equal(t, len(preAllocatedData), bb.Len(), "Len() should return length of pre-allocated data in bytes")
+	assert.Equal(t, cap(preAllocatedData), bb.Cap(), "Cap() should return capacity of pre-allocated data in bytes")
+	assert.Equal(t, 4, bb.BitsLength(), "BitsLength() should return bits per value")
 }

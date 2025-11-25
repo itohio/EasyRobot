@@ -16,10 +16,14 @@ func (e *InitError) Error() string {
 
 type Writer[T any] interface {
 	Write(p []T) (n int, err error)
+	Len() int
+	Cap() int
 }
 
 type Reader[T any] interface {
 	Read(p []T) (n int, err error)
+	Len() int
+	Cap() int
 }
 
 type Initializer interface {
@@ -29,8 +33,20 @@ type Initializer interface {
 	Reset()
 }
 
-type BitsBuffer interface {
+type BitsReader interface {
+	Reader[byte]
+	// Bits returns the number of bits written.
 	Bits() int
+	// BitsLength returns the number of bits per value.
+	BitsLength() int
+}
+
+type BitsWriter interface {
+	Writer[byte]
+	// Bits returns the number of bits written.
+	Bits() int
+	// BitsLength returns the number of bits per value.
+	BitsLength() int
 }
 
 var _ Writer[byte] = (*Values[byte])(nil)

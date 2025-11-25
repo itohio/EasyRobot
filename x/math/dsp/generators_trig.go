@@ -27,8 +27,8 @@ func NewSineGenerator(sampleRate, frequency, amplitude, phase float32) SineGener
 	}
 }
 
-// generate is the common generation function that takes a binary operation closure and reverse flag
-func (g *SineGenerator) generate(dst []float32, reverse bool, op func(i int, value float32)) int {
+// GenerateWithOp is the common generation function that takes a binary operation closure and reverse flag
+func (g *SineGenerator) GenerateWithOp(dst []float32, reverse bool, op func(i int, value float32)) int {
 	n := len(dst)
 	if n == 0 {
 		return 0
@@ -51,7 +51,13 @@ func (g *SineGenerator) generate(dst []float32, reverse bool, op func(i int, val
 			idx = i
 			g.time += dt
 		}
-		value := g.amplitude * math32.Sin(g.omega*t+g.phase)
+		// Wrap phase to [0, 2π) to avoid calculation errors
+		phase := g.omega*t + g.phase
+		phase = math32.Mod(phase, 2*math32.Pi)
+		if phase < 0 {
+			phase += 2 * math32.Pi
+		}
+		value := g.amplitude * math32.Sin(phase)
 		op(idx, value)
 	}
 
@@ -64,28 +70,28 @@ func (g *SineGenerator) generate(dst []float32, reverse bool, op func(i int, val
 
 // Generate fills dst with sinusoidal samples and returns the number of samples filled
 func (g *SineGenerator) Generate(dst []float32) int {
-	return g.generate(dst, false, func(i int, value float32) {
+	return g.GenerateWithOp(dst, false, func(i int, value float32) {
 		dst[i] = value
 	})
 }
 
 // Add adds sinusoidal samples to dst (additive generation)
 func (g *SineGenerator) Add(dst []float32) int {
-	return g.generate(dst, false, func(i int, value float32) {
+	return g.GenerateWithOp(dst, false, func(i int, value float32) {
 		dst[i] += value
 	})
 }
 
 // GenerateReverse fills dst with sinusoidal samples in reverse time order
 func (g *SineGenerator) GenerateReverse(dst []float32) int {
-	return g.generate(dst, true, func(i int, value float32) {
+	return g.GenerateWithOp(dst, true, func(i int, value float32) {
 		dst[i] = value
 	})
 }
 
 // AddReverse adds sinusoidal samples in reverse time order to dst
 func (g *SineGenerator) AddReverse(dst []float32) int {
-	return g.generate(dst, true, func(i int, value float32) {
+	return g.GenerateWithOp(dst, true, func(i int, value float32) {
 		dst[i] += value
 	})
 }
@@ -160,8 +166,8 @@ func NewCosineGenerator(sampleRate, frequency, amplitude, phase float32) CosineG
 	}
 }
 
-// generate is the common generation function that takes a binary operation closure and reverse flag
-func (g *CosineGenerator) generate(dst []float32, reverse bool, op func(i int, value float32)) int {
+// GenerateWithOp is the common generation function that takes a binary operation closure and reverse flag
+func (g *CosineGenerator) GenerateWithOp(dst []float32, reverse bool, op func(i int, value float32)) int {
 	n := len(dst)
 	if n == 0 {
 		return 0
@@ -184,7 +190,13 @@ func (g *CosineGenerator) generate(dst []float32, reverse bool, op func(i int, v
 			idx = i
 			g.time += dt
 		}
-		value := g.amplitude * math32.Cos(g.omega*t+g.phase)
+		// Wrap phase to [0, 2π) to avoid calculation errors
+		phase := g.omega*t + g.phase
+		phase = math32.Mod(phase, 2*math32.Pi)
+		if phase < 0 {
+			phase += 2 * math32.Pi
+		}
+		value := g.amplitude * math32.Cos(phase)
 		op(idx, value)
 	}
 
@@ -197,28 +209,28 @@ func (g *CosineGenerator) generate(dst []float32, reverse bool, op func(i int, v
 
 // Generate fills dst with cosine samples and returns the number of samples filled
 func (g *CosineGenerator) Generate(dst []float32) int {
-	return g.generate(dst, false, func(i int, value float32) {
+	return g.GenerateWithOp(dst, false, func(i int, value float32) {
 		dst[i] = value
 	})
 }
 
 // Add adds cosine samples to dst (additive generation)
 func (g *CosineGenerator) Add(dst []float32) int {
-	return g.generate(dst, false, func(i int, value float32) {
+	return g.GenerateWithOp(dst, false, func(i int, value float32) {
 		dst[i] += value
 	})
 }
 
 // GenerateReverse fills dst with cosine samples in reverse time order
 func (g *CosineGenerator) GenerateReverse(dst []float32) int {
-	return g.generate(dst, true, func(i int, value float32) {
+	return g.GenerateWithOp(dst, true, func(i int, value float32) {
 		dst[i] = value
 	})
 }
 
 // AddReverse adds cosine samples in reverse time order to dst
 func (g *CosineGenerator) AddReverse(dst []float32) int {
-	return g.generate(dst, true, func(i int, value float32) {
+	return g.GenerateWithOp(dst, true, func(i int, value float32) {
 		dst[i] += value
 	})
 }

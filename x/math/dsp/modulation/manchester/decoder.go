@@ -1,7 +1,15 @@
 package manchester
 
+import (
+	"io"
+
+	"github.com/itohio/EasyRobot/x/buffer"
+	"github.com/itohio/EasyRobot/x/chain"
+)
+
 // Decoder handles Manchester line coding decoding.
 // Decodes Manchester-encoded bytes back to original bytes.
+// Implements chain.Processor[byte, byte] - reads bytes, writes bytes (2 bytes -> 1 byte)
 type Decoder struct {
 	// IEEE 802.3 variant: if true, 0 = high-to-low (10), 1 = low-to-high (01)
 	ieee8023 bool
@@ -9,6 +17,9 @@ type Decoder struct {
 	decodeTable *[16]byte
 	// Bit alignment offset (0-7) for handling misaligned signals
 	bitOffset int
+	// State for handling partial bytes across Process calls
+	currentByte byte
+	bitPos      int // Current bit position (0-7, -1 means no partial byte)
 }
 
 // NewDecoder creates a new Manchester decoder with standard encoding.
@@ -18,6 +29,7 @@ func NewDecoder() *Decoder {
 		ieee8023:    false,
 		decodeTable: &decodeTable4Std,
 		bitOffset:   0,
+		bitPos:      7, // Start at MSB
 	}
 }
 
@@ -28,6 +40,7 @@ func NewDecoderIEEE8023() *Decoder {
 		ieee8023:    true,
 		decodeTable: &decodeTable4IEEE,
 		bitOffset:   0,
+		bitPos:      7, // Start at MSB
 	}
 }
 
@@ -61,55 +74,111 @@ func (m *Decoder) SetBitOffset(offset int) {
 	m.bitOffset = offset
 }
 
-// Decode decodes Manchester-encoded bytes to original bytes using destination pattern.
-// Each 2 bits in input represent 1 bit in output.
-// Input: []byte of Manchester-encoded data
-// Output: []byte of decoded data (half the size of input)
-// Returns the number of bytes written to dst.
-// Optimized using 4-bit lookup tables (16 bytes per table, 64 bytes total).
-// Decode implements modulation.ByteDecoder interface
-func (m *Decoder) Decode(dst, src []byte) int {
+// Process processes Manchester-encoded bytes to original bytes.
+// Each 2 input bytes produce 1 output byte (2 bytes -> 1 byte).
+// Reads from buffer.Reader[byte] and writes to buffer.Writer[byte].
+// Decodes and writes bytes as soon as pairs of input bytes are available.
+// If dst is nil, calculates and returns the theoretical maximum output size.
+// Process implements chain.Processor[byte, byte] interface
+func (m *Decoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+	// Small buffer for reading chunks - enough for a few complete output bytes
+	// Manchester: 2 input bytes -> 1 output byte, so 16 input bytes = 8 output bytes
+	var srcBuf [16]byte
+	totalRead := 0
+	totalWritten := 0
+	var readErr error
+
+	// If dst is nil, calculate and return size
+	if dst == nil {
+		for readErr == nil {
+			n, err := src.Read(srcBuf[:])
+			if n == 0 {
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					break
+				}
+				continue
+			}
+			totalRead += n
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				break
+			}
+		}
+		return (totalRead + 1) / 2
+	}
+
+	// Process incrementally - write decoded bytes as soon as we have pairs of input bytes
+	for readErr == nil {
+		n, err := src.Read(srcBuf[:])
+		if n == 0 {
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				break
+			}
+			continue
+		}
+
+		totalRead += n
+
+		// Process the input bytes and write decoded bytes immediately
+		written := m.processBytes(dst, srcBuf[:n])
+		totalWritten += written
+
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			break
+		}
+	}
+
+	return totalWritten
+}
+
+// processBytes processes a slice of input bytes and writes decoded bytes to dst.
+// Returns the number of bytes written.
+func (m *Decoder) processBytes(dst buffer.Writer[byte], src []byte) int {
 	if len(src) == 0 {
 		return 0
 	}
 
-	requiredLen := (len(src) + 1) / 2 // Round up
-	if dst == nil {
-		return requiredLen
-	}
-
-	if len(dst) < requiredLen {
-		return 0
-	}
-
+	var dstBuf [128]byte // Max output size for 256 input bytes
 	dstIdx := 0
 	srcIdx := 0
-	var currentByte byte
-	bitPos := 7 // Start at MSB
 
-	// Handle bit offset for misaligned signals
-	if m.bitOffset > 0 {
-		srcIdx, dstIdx, currentByte, bitPos = m.decodeWithBitOffset(dst, src, srcIdx, dstIdx, currentByte, bitPos)
-		if dstIdx >= len(dst) {
+	// Handle bit offset for misaligned signals (only on first call)
+	if m.bitOffset > 0 && m.bitPos == 7 {
+		srcIdx, dstIdx, m.currentByte, m.bitPos = m.decodeWithBitOffset(dstBuf[:], src, srcIdx, dstIdx, m.currentByte, m.bitPos)
+		if dstIdx >= len(dstBuf) {
+			// Write what we have
+			dst.Write(dstBuf[:dstIdx])
 			return dstIdx
 		}
 	}
 
-	// Fast path: process bytes when aligned (bitOffset == 0)
-	if m.bitOffset == 0 && bitPos == 7 {
-		srcIdx, dstIdx = m.decodeFastPath(dst, src, srcIdx, dstIdx)
-		if dstIdx >= len(dst) {
+	// Fast path: process bytes when aligned (bitOffset == 0 and no partial byte)
+	if m.bitOffset == 0 && m.bitPos == 7 {
+		srcIdx, dstIdx = m.decodeFastPath(dstBuf[:], src, srcIdx, dstIdx)
+		if dstIdx >= len(dstBuf) {
+			// Write what we have
+			dst.Write(dstBuf[:dstIdx])
 			return dstIdx
 		}
 	}
 
 	// Continue with remaining bytes using lookup table
-	srcIdx, dstIdx, currentByte, bitPos = m.decodeRemaining(dst, src, srcIdx, dstIdx, currentByte, bitPos)
+	srcIdx, dstIdx, m.currentByte, m.bitPos = m.decodeRemaining(dstBuf[:], src, srcIdx, dstIdx, m.currentByte, m.bitPos)
 
-	// Write final byte if complete
-	if bitPos < 7 && dstIdx < len(dst) {
-		dst[dstIdx] = currentByte
-		dstIdx++
+	// Write output buffer
+	if dstIdx > 0 {
+		_, _ = dst.Write(dstBuf[:dstIdx])
 	}
 
 	return dstIdx
@@ -117,6 +186,10 @@ func (m *Decoder) Decode(dst, src []byte) int {
 
 // decodeWithBitOffset handles decoding with bit alignment offset for misaligned signals.
 func (m *Decoder) decodeWithBitOffset(dst, src []byte, srcIdx, dstIdx int, currentByte byte, bitPos int) (int, int, byte, int) {
+	if srcIdx >= len(src) {
+		return srcIdx, dstIdx, currentByte, bitPos
+	}
+
 	firstByte := src[srcIdx]
 	srcIdx++
 	bitOffset := m.bitOffset
@@ -125,7 +198,7 @@ func (m *Decoder) decodeWithBitOffset(dst, src []byte, srcIdx, dstIdx int, curre
 	shift7 := uint(7)
 	shift6 := uint(6)
 
-	for bitOffset < 8 && srcIdx < len(src) {
+	for bitOffset < 8 && srcIdx <= len(src) {
 		if bitOffset+1 >= 8 {
 			// Need to get second bit from next byte
 			if srcIdx >= len(src) {
@@ -322,8 +395,12 @@ func (m *Decoder) decodeManchesterSymbol(bit1, bit2 byte) byte {
 }
 
 // Reset resets the decoder state.
-// Reset implements modulation.ByteDecoder interface
+// Reset implements chain.Processor interface
 func (m *Decoder) Reset() {
 	m.bitOffset = 0
+	m.currentByte = 0
+	m.bitPos = 7 // Reset to MSB
 }
 
+// Ensure Decoder implements chain.Processor[byte, byte]
+var _ chain.Processor[byte, byte] = (*Decoder)(nil)

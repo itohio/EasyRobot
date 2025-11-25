@@ -4,6 +4,7 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/itohio/EasyRobot/x/buffer"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -59,9 +60,12 @@ func TestRS_LossyRoundtrip_LowErrorRate(t *testing.T) {
 	}
 
 	// Encode
-	expectedSize := encoder.Encode(nil, original)
-	encoded := make([]byte, expectedSize)
-	encoder.Encode(encoded, original)
+	srcReader := buffer.New(original)
+	expectedSize := encoder.Process(nil, srcReader)
+	encodedBuf := buffer.New(make([]byte, 0, expectedSize*2))
+	srcReader = buffer.New(original)
+	encoder.Process(encodedBuf, srcReader)
+	encoded := encodedBuf.Items()
 
 	// Introduce small number of errors (within correction capability)
 	// RS(255, 223) can correct up to t = (255-223)/2 = 16 errors
@@ -69,8 +73,9 @@ func TestRS_LossyRoundtrip_LowErrorRate(t *testing.T) {
 	corrupted := introduceByteErrors(encoded, tMax/2) // Half of max correctable
 
 	// Decode
-	decoded := make([]byte, len(original))
-	bytesDecoded := decoder.Decode(decoded, corrupted)
+	corruptedReader := buffer.New(corrupted)
+	decodedBuf := buffer.New(make([]byte, 0, len(original)))
+	bytesDecoded := decoder.Process(decodedBuf, corruptedReader)
 
 	// Note: Simplified RS implementation may not actually correct errors
 	// This test verifies the interface works, but error correction requires a full RS implementation
@@ -87,17 +92,21 @@ func TestRS_LossyRoundtrip_MediumErrorRate(t *testing.T) {
 	}
 
 	// Encode
-	expectedSize := encoder.Encode(nil, original)
-	encoded := make([]byte, expectedSize)
-	encoder.Encode(encoded, original)
+	srcReader := buffer.New(original)
+	expectedSize := encoder.Process(nil, srcReader)
+	encodedBuf := buffer.New(make([]byte, 0, expectedSize*2))
+	srcReader = buffer.New(original)
+	encoder.Process(encodedBuf, srcReader)
+	encoded := encodedBuf.Items()
 
 	// Introduce errors near correction limit
 	tMax := encoder.T()
 	corrupted := introduceByteErrors(encoded, tMax) // At correction limit
 
 	// Decode
-	decoded := make([]byte, len(original))
-	bytesDecoded := decoder.Decode(decoded, corrupted)
+	corruptedReader := buffer.New(corrupted)
+	decodedBuf := buffer.New(make([]byte, 0, len(original)))
+	bytesDecoded := decoder.Process(decodedBuf, corruptedReader)
 
 	// May or may not decode depending on error distribution
 	// At the limit, some blocks may fail
@@ -114,17 +123,21 @@ func TestRS_LossyRoundtrip_HighErrorRate(t *testing.T) {
 	}
 
 	// Encode
-	expectedSize := encoder.Encode(nil, original)
-	encoded := make([]byte, expectedSize)
-	encoder.Encode(encoded, original)
+	srcReader := buffer.New(original)
+	expectedSize := encoder.Process(nil, srcReader)
+	encodedBuf := buffer.New(make([]byte, 0, expectedSize*2))
+	srcReader = buffer.New(original)
+	encoder.Process(encodedBuf, srcReader)
+	encoded := encodedBuf.Items()
 
 	// Introduce errors beyond correction capability
 	tMax := encoder.T()
 	corrupted := introduceByteErrors(encoded, tMax*2) // Beyond correction limit
 
 	// Decode
-	decoded := make([]byte, len(original))
-	bytesDecoded := decoder.Decode(decoded, corrupted)
+	corruptedReader := buffer.New(corrupted)
+	decodedBuf := buffer.New(make([]byte, 0, len(original)))
+	bytesDecoded := decoder.Process(decodedBuf, corruptedReader)
 
 	// May fail to decode (returns 0) or decode incorrectly
 	// This is expected behavior when errors exceed correction capability
@@ -141,16 +154,20 @@ func TestRS_LossyRoundtrip_BitErrors(t *testing.T) {
 	}
 
 	// Encode
-	expectedSize := encoder.Encode(nil, original)
-	encoded := make([]byte, expectedSize)
-	encoder.Encode(encoded, original)
+	srcReader := buffer.New(original)
+	expectedSize := encoder.Process(nil, srcReader)
+	encodedBuf := buffer.New(make([]byte, 0, expectedSize*2))
+	srcReader = buffer.New(original)
+	encoder.Process(encodedBuf, srcReader)
+	encoded := encodedBuf.Items()
 
 	// Introduce bit-level errors (low rate)
 	corrupted := introduceErrors(encoded, 0.01) // 1% bit error rate
 
 	// Decode
-	decoded := make([]byte, len(original))
-	bytesDecoded := decoder.Decode(decoded, corrupted)
+	corruptedReader := buffer.New(corrupted)
+	decodedBuf := buffer.New(make([]byte, 0, len(original)))
+	bytesDecoded := decoder.Process(decodedBuf, corruptedReader)
 
 	// Should handle bit errors (they may affect byte-level correction)
 	assert.GreaterOrEqual(t, bytesDecoded, 0, "Should handle bit errors")
@@ -167,9 +184,12 @@ func TestRS_LossyRoundtrip_MultipleBlocks(t *testing.T) {
 	}
 
 	// Encode
-	expectedSize := encoder.Encode(nil, original)
-	encoded := make([]byte, expectedSize)
-	encoder.Encode(encoded, original)
+	srcReader := buffer.New(original)
+	expectedSize := encoder.Process(nil, srcReader)
+	encodedBuf := buffer.New(make([]byte, 0, expectedSize*2))
+	srcReader = buffer.New(original)
+	encoder.Process(encodedBuf, srcReader)
+	encoded := encodedBuf.Items()
 
 	// Introduce errors in one block only
 	tMax := encoder.T()
@@ -181,8 +201,9 @@ func TestRS_LossyRoundtrip_MultipleBlocks(t *testing.T) {
 	copy(corrupted, corruptedFirstBlock)
 
 	// Decode
-	decoded := make([]byte, len(original))
-	bytesDecoded := decoder.Decode(decoded, corrupted)
+	corruptedReader := buffer.New(corrupted)
+	decodedBuf := buffer.New(make([]byte, 0, len(original)))
+	bytesDecoded := decoder.Process(decodedBuf, corruptedReader)
 
 	// Should decode (one block may be corrected, other should be fine)
 	assert.Greater(t, bytesDecoded, 0, "Should decode with errors in one block")
@@ -198,9 +219,12 @@ func TestRS_LossyRoundtrip_ErrorCorrectionCapability(t *testing.T) {
 	}
 
 	// Encode
-	expectedSize := encoder.Encode(nil, original)
-	encoded := make([]byte, expectedSize)
-	encoder.Encode(encoded, original)
+	srcReader := buffer.New(original)
+	expectedSize := encoder.Process(nil, srcReader)
+	encodedBuf := buffer.New(make([]byte, 0, expectedSize*2))
+	srcReader = buffer.New(original)
+	encoder.Process(encodedBuf, srcReader)
+	encoded := encodedBuf.Items()
 
 	tMax := encoder.T()
 
@@ -221,8 +245,9 @@ func TestRS_LossyRoundtrip_ErrorCorrectionCapability(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			corrupted := introduceByteErrors(encoded, tt.numErrors)
 
-			decoded := make([]byte, len(original))
-			bytesDecoded := decoder.Decode(decoded, corrupted)
+			corruptedReader := buffer.New(corrupted)
+			decodedBuf := buffer.New(make([]byte, 0, len(original)))
+			bytesDecoded := decoder.Process(decodedBuf, corruptedReader)
 
 			// Note: Simplified RS implementation doesn't actually correct errors
 			// This test verifies the interface, but real error correction requires full RS implementation
@@ -230,4 +255,3 @@ func TestRS_LossyRoundtrip_ErrorCorrectionCapability(t *testing.T) {
 		})
 	}
 }
-

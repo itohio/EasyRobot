@@ -3,6 +3,7 @@ package ecc
 import (
 	"testing"
 
+	"github.com/itohio/EasyRobot/x/buffer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,7 +26,7 @@ func TestCRCEncoder_NewCRC32Encoder(t *testing.T) {
 	assert.Equal(t, 32, encoder.Width())
 }
 
-func TestCRCEncoder_Encode(t *testing.T) {
+func TestCRCEncoder_Process(t *testing.T) {
 	tests := []struct {
 		name    string
 		encoder *CRCEncoder
@@ -43,30 +44,50 @@ func TestCRCEncoder_Encode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Test nil dst (size query)
-			expectedSize := tt.encoder.Encode(nil, tt.src)
+			srcReader := buffer.New(tt.src)
+			expectedSize := tt.encoder.Process(nil, srcReader)
 			crcBytes := tt.encoder.Width() / 8
 			expected := len(tt.src) + crcBytes
 			assert.Equal(t, expected, expectedSize)
 
 			// Test actual encoding
-			dst := make([]byte, expectedSize)
-			written := tt.encoder.Encode(dst, tt.src)
+			srcReader = buffer.New(tt.src)
+			dstBuf := buffer.New(make([]byte, 0, expectedSize*2))
+			written := tt.encoder.Process(dstBuf, srcReader)
 			assert.Equal(t, expectedSize, written)
 			if len(tt.src) > 0 {
 				assert.Greater(t, written, len(tt.src), "Should include CRC bytes")
+			}
+
+			// Verify data is preserved
+			dst := dstBuf.Items()
+			if len(tt.src) > 0 {
+				assert.Equal(t, tt.src, dst[:len(tt.src)], "Data should be preserved")
 			}
 		})
 	}
 }
 
-func TestCRCEncoder_Encode_DestinationTooSmall(t *testing.T) {
+func TestCRCEncoder_Process_SizeCalculation(t *testing.T) {
 	encoder := NewCRC8Encoder()
-	src := []byte{0x12, 0x34}
 
-	// Destination too small
-	dst := make([]byte, 1) // Need at least len(src) + 1
-	written := encoder.Encode(dst, src)
-	assert.Equal(t, 0, written)
+	tests := []struct {
+		name     string
+		src      []byte
+		expected int
+	}{
+		{"empty", []byte{}, 1}, // CRC-8: 1 byte
+		{"single byte", []byte{0x12}, 2}, // 1 data + 1 CRC
+		{"multiple bytes", []byte{0x12, 0x34, 0x56}, 4}, // 3 data + 1 CRC
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srcReader := buffer.New(tt.src)
+			size := encoder.Process(nil, srcReader)
+			assert.Equal(t, tt.expected, size)
+		})
+	}
 }
 
 func TestCRCDecoder_NewCRCDecoder(t *testing.T) {
@@ -83,33 +104,57 @@ func TestCRCDecoder_NewCRCDecoder(t *testing.T) {
 	assert.Equal(t, 32, decoder32.Width())
 }
 
-func TestCRCDecoder_Decode(t *testing.T) {
+func TestCRCDecoder_Process(t *testing.T) {
+	// First encode some data to get valid CRC-encoded data
+	encoder := NewCRC8Encoder()
+	testData := []byte{0x12, 0x34, 0x56}
+	srcReader := buffer.New(testData)
+	encodedBuf := buffer.New(make([]byte, 0, len(testData)*2))
+	encoder.Process(encodedBuf, srcReader)
+	encoded := encodedBuf.Items()
+
+	// Now decode it
+	decoder := NewCRC8Decoder()
+	encodedReader := buffer.New(encoded)
+	decodedBuf := buffer.New(make([]byte, 0, len(testData)))
+	written := decoder.Process(decodedBuf, encodedReader)
+	assert.Equal(t, len(testData), written)
+
+	decoded := decodedBuf.Items()
+	assert.Equal(t, testData, decoded)
+}
+
+func TestCRCDecoder_Process_SizeCalculation(t *testing.T) {
+	decoder := NewCRC8Decoder()
+
 	tests := []struct {
-		name    string
-		decoder *CRCDecoder
-		src     []byte
+		name     string
+		src      []byte
+		expected int
 	}{
-		{"CRC-8 too short", NewCRC8Decoder(), []byte{}},
-		{"CRC-8 incomplete", NewCRC8Decoder(), []byte{0x12}},
-		{"CRC-16 too short", NewCRC16Decoder(), []byte{}},
-		{"CRC-16 incomplete", NewCRC16Decoder(), []byte{0x12}},
-		{"CRC-32 too short", NewCRC32Decoder(), []byte{}},
-		{"CRC-32 incomplete", NewCRC32Decoder(), []byte{0x12}},
+		{"too short", []byte{}, 0},
+		{"incomplete", []byte{0x12}, 0}, // Need at least 1 CRC byte
+		{"valid", []byte{0x12, 0x34}, 1}, // 2 bytes - 1 CRC = 1 data
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Test nil dst (size query)
-			expectedSize := tt.decoder.Decode(nil, tt.src)
-			crcBytes := tt.decoder.Width() / 8
-			if len(tt.src) < crcBytes {
-				assert.Equal(t, 0, expectedSize)
-			} else {
-				expected := len(tt.src) - crcBytes
-				assert.Equal(t, expected, expectedSize)
-			}
+			srcReader := buffer.New(tt.src)
+			size := decoder.Process(nil, srcReader)
+			assert.Equal(t, tt.expected, size)
 		})
 	}
+}
+
+func TestCRCDecoder_Process_InvalidCRC(t *testing.T) {
+	decoder := NewCRC8Decoder()
+	// Create invalid CRC data (corrupted)
+	invalidData := []byte{0x12, 0x34, 0x56, 0x99} // Last byte is wrong CRC
+	srcReader := buffer.New(invalidData)
+	decodedBuf := buffer.New(make([]byte, 0, 10))
+	written := decoder.Process(decodedBuf, srcReader)
+	// Should return 0 because CRC validation failed
+	assert.Equal(t, 0, written)
 }
 
 func TestCRCEncoder_Reset(t *testing.T) {
@@ -123,3 +168,4 @@ func TestCRCDecoder_Reset(t *testing.T) {
 	// Reset should not panic
 	decoder.Reset()
 }
+

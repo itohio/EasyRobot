@@ -2,12 +2,14 @@ package ecc
 
 import (
 	"fmt"
+	"io"
 
-	"github.com/itohio/EasyRobot/x/math/dsp/modulation"
+	"github.com/itohio/EasyRobot/x/buffer"
+	"github.com/itohio/EasyRobot/x/chain"
 )
 
 // RSEncoder implements Reed-Solomon encoding at the byte level.
-// It implements the modulation.ByteEncoder interface for composability.
+// It implements the chain.Processor[byte, byte] interface for composability.
 type RSEncoder struct {
 	// RS code parameters
 	n int // Total codeword length (data + parity)
@@ -16,9 +18,12 @@ type RSEncoder struct {
 
 	// Internal state
 	encoder rsEncoderImpl
-	
+
 	// Reusable buffer for block encoding (avoids allocations in hot path)
 	blockBuf []byte
+
+	// Buffer for partial blocks (less than k bytes)
+	buffer []byte
 }
 
 // rsEncoderImpl is the internal encoder implementation interface.
@@ -63,69 +68,122 @@ func NewRSEncoder(n, k int) *RSEncoder {
 	return encoder
 }
 
-// Encode encodes input bytes to Reed-Solomon encoded bytes.
+// Process processes input bytes to Reed-Solomon encoded bytes.
 // Input data is split into blocks of k bytes, each block encoded to n bytes.
-// Returns the number of bytes written to dst.
-// Returns expected dst length if dst is nil.
-// Encode implements modulation.ByteEncoder interface.
-func (rs *RSEncoder) Encode(dst, src []byte) int {
+// Reads from buffer.Reader[byte] and writes to buffer.Writer[byte].
+// Encodes and writes blocks as soon as complete blocks (k bytes) are available.
+// If dst is nil, calculates and returns the theoretical maximum output size.
+// Process implements chain.Processor[byte, byte] interface.
+func (rs *RSEncoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+	// Small buffer for reading chunks
+	var srcBuf [256]byte
+	totalWritten := 0
+	var readErr error
+
+	// If dst is nil, calculate and return size
 	if dst == nil {
-		if len(src) < rs.k {
+		totalRead := len(rs.buffer)
+		for readErr == nil {
+			n, err := src.Read(srcBuf[:])
+			if n == 0 {
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					break
+				}
+				continue
+			}
+			totalRead += n
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				break
+			}
+		}
+		if totalRead < rs.k {
 			return 0
 		}
-		blocks := len(src) / rs.k
+		blocks := totalRead / rs.k
 		return blocks * rs.n
 	}
 
-	if len(src) == 0 {
-		return 0
-	}
+	// Process incrementally - encode and write blocks as soon as we have complete blocks (k bytes)
+	for readErr == nil {
+		n, err := src.Read(srcBuf[:])
+		if n == 0 {
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				break
+			}
+			continue
+		}
 
-	// Process data in blocks of k bytes
-	written := 0
-	srcIdx := 0
-	
-	// Use encoder's pre-allocated block buffer (zero allocations in hot path)
-	block := rs.blockBuf[:rs.k]
+		// Combine buffered data with new chunk
+		combinedSize := len(rs.buffer) + n
+		if cap(rs.blockBuf) < combinedSize {
+			// Grow buffer with some extra capacity
+			rs.blockBuf = make([]byte, combinedSize, combinedSize*2)
+		}
+		combined := rs.blockBuf[:combinedSize]
+		copy(combined, rs.buffer)
+		copy(combined[len(rs.buffer):], srcBuf[:n])
 
-	for srcIdx < len(src) {
-		// Only encode complete blocks (no padding - encoder doesn't add padding)
-		if srcIdx+rs.k > len(src) {
-			// Incomplete block - don't encode it (no padding)
+		// Clear buffer (we'll rebuild it with any remaining partial block)
+		rs.buffer = rs.buffer[:0]
+
+		// Process complete blocks and write immediately
+		processedIdx := 0
+		for processedIdx+rs.k <= len(combined) {
+			// Get complete block of k bytes
+			block := combined[processedIdx : processedIdx+rs.k]
+
+			// Encode block
+			encoded, encodeErr := rs.encoder.Encode(block)
+			if encodeErr != nil {
+				// Encoding failed, save remaining data to buffer
+				rs.buffer = append(rs.buffer, combined[processedIdx:]...)
+				return totalWritten
+			}
+
+			// Write encoded block to dst immediately
+			_, writeErr := dst.Write(encoded)
+			if writeErr != nil {
+				// Write failed, save remaining data to buffer
+				rs.buffer = append(rs.buffer, combined[processedIdx:]...)
+				return totalWritten
+			}
+
+			totalWritten += len(encoded)
+			processedIdx += rs.k
+		}
+
+		// Save any remaining partial block to buffer (less than k bytes)
+		if processedIdx < len(combined) {
+			rs.buffer = append(rs.buffer, combined[processedIdx:]...)
+		}
+
+		if err == io.EOF {
 			break
 		}
-
-		// Get complete block of k bytes
-		block = block[:rs.k]
-		copy(block, src[srcIdx:srcIdx+rs.k])
-
-		// Encode block
-		encoded, err := rs.encoder.Encode(block)
 		if err != nil {
-			// Encoding failed, return bytes written so far
-			return written
+			break
 		}
-
-		// Check if we have space in dst
-		if written+len(encoded) > len(dst) {
-			return written
-		}
-
-		// Copy encoded block to dst
-		copy(dst[written:], encoded)
-		written += len(encoded)
-		srcIdx += rs.k
 	}
 
-	return written
+	return totalWritten
 }
 
 // Reset resets the encoder state.
-// Reset implements modulation.ByteEncoder interface.
+// Reset implements chain.Processor interface.
 func (rs *RSEncoder) Reset() {
 	if rs.encoder != nil {
 		rs.encoder.Reset()
 	}
+	rs.buffer = rs.buffer[:0] // Clear buffer but keep capacity
 }
 
 // N returns the total codeword length.
@@ -144,5 +202,4 @@ func (rs *RSEncoder) T() int {
 }
 
 // Verify interface compliance
-var _ modulation.ByteEncoder = (*RSEncoder)(nil)
-
+var _ chain.Processor[byte, byte] = (*RSEncoder)(nil)

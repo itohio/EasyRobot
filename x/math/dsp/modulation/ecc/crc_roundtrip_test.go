@@ -3,6 +3,7 @@ package ecc
 import (
 	"testing"
 
+	"github.com/itohio/EasyRobot/x/buffer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -34,15 +35,21 @@ func TestCRC_Roundtrip_CRC8(t *testing.T) {
 			}
 
 			// Encode
-			expectedSize := encoder.Encode(nil, original)
-			encoded := make([]byte, expectedSize)
-			bytesWritten := encoder.Encode(encoded, original)
+			srcReader := buffer.New(original)
+			expectedSize := encoder.Process(nil, srcReader)
+			encodedBuf := buffer.New(make([]byte, 0, expectedSize*2))
+			srcReader = buffer.New(original)
+			bytesWritten := encoder.Process(encodedBuf, srcReader)
 			require.Equal(t, expectedSize, bytesWritten)
+			encoded := encodedBuf.Items()
 
 			// Decode
-			expectedDecodedSize := decoder.Decode(nil, encoded)
-			decoded := make([]byte, expectedDecodedSize)
-			bytesDecoded := decoder.Decode(decoded, encoded)
+			encodedReader := buffer.New(encoded)
+			expectedDecodedSize := decoder.Process(nil, encodedReader)
+			decodedBuf := buffer.New(make([]byte, 0, expectedDecodedSize*2))
+			encodedReader = buffer.New(encoded)
+			bytesDecoded := decoder.Process(decodedBuf, encodedReader)
+			decoded := decodedBuf.Items()
 
 			// Verify
 			require.Equal(t, len(original), bytesDecoded, "Should decode all bytes")
@@ -125,10 +132,13 @@ func TestCRC_Roundtrip_WithBadDataPadding(t *testing.T) {
 			decoder.Reset()
 
 			// Encode original data
-			expectedSize := encoder.Encode(nil, tt.data)
-			encoded := make([]byte, expectedSize)
-			bytesWritten := encoder.Encode(encoded, tt.data)
+			srcReader := buffer.New(tt.data)
+			expectedSize := encoder.Process(nil, srcReader)
+			encodedBuf := buffer.New(make([]byte, 0, expectedSize*2))
+			srcReader = buffer.New(tt.data)
+			bytesWritten := encoder.Process(encodedBuf, srcReader)
 			require.Equal(t, expectedSize, bytesWritten, "Should encode all data")
+			encoded := encodedBuf.Items()
 
 			// Add bad data padding
 			paddedEncoded := addBadDataPaddingForCRC(encoded, tt.prefixLen, tt.suffixLen)
@@ -140,16 +150,19 @@ func TestCRC_Roundtrip_WithBadDataPadding(t *testing.T) {
 
 			// However, if we extract just the good data (without padding),
 			// it should decode correctly
-			decodedClean := make([]byte, len(tt.data))
-			bytesDecodedClean := decoder.Decode(decodedClean, encoded)
+			decodedCleanBuf := buffer.New(make([]byte, 0, len(tt.data)))
+			encodedReader := buffer.New(encoded)
+			bytesDecodedClean := decoder.Process(decodedCleanBuf, encodedReader)
+			decodedClean := decodedCleanBuf.Items()
 
 			require.Equal(t, len(tt.data), bytesDecodedClean, "Should decode clean data")
 			assert.Equal(t, tt.data, decodedClean, "Clean decoded data should match original")
 
 			// Test that padded data (with bad prefix/suffix) is rejected
 			// This verifies CRC's error detection works correctly
-			decoded := make([]byte, len(tt.data)*2)
-			bytesDecodedPadded := decoder.Decode(decoded, paddedEncoded)
+			decodedBuf := buffer.New(make([]byte, 0, len(tt.data)*2))
+			paddedReader := buffer.New(paddedEncoded)
+			bytesDecodedPadded := decoder.Process(decodedBuf, paddedReader)
 			// CRC decoder should reject padded data (CRC validation fails)
 			// This is correct behavior - CRC detects corruption
 			_ = bytesDecodedPadded // Verify behavior is consistent (should be 0 or partial)
@@ -183,13 +196,18 @@ func TestCRC_Roundtrip_CRC16(t *testing.T) {
 			}
 
 			// Encode
-			expectedSize := encoder.Encode(nil, original)
-			encoded := make([]byte, expectedSize)
-			encoder.Encode(encoded, original)
+			srcReader := buffer.New(original)
+			expectedSize := encoder.Process(nil, srcReader)
+			encodedBuf := buffer.New(make([]byte, 0, expectedSize*2))
+			srcReader = buffer.New(original)
+			encoder.Process(encodedBuf, srcReader)
+			encoded := encodedBuf.Items()
 
 			// Decode
-			decoded := make([]byte, len(original))
-			bytesDecoded := decoder.Decode(decoded, encoded)
+			encodedReader := buffer.New(encoded)
+			decodedBuf := buffer.New(make([]byte, 0, len(original)))
+			bytesDecoded := decoder.Process(decodedBuf, encodedReader)
+			decoded := decodedBuf.Items()
 
 			// Verify
 			require.Equal(t, len(original), bytesDecoded)
@@ -224,13 +242,18 @@ func TestCRC_Roundtrip_CRC32(t *testing.T) {
 			}
 
 			// Encode
-			expectedSize := encoder.Encode(nil, original)
-			encoded := make([]byte, expectedSize)
-			encoder.Encode(encoded, original)
+			srcReader := buffer.New(original)
+			expectedSize := encoder.Process(nil, srcReader)
+			encodedBuf := buffer.New(make([]byte, 0, expectedSize*2))
+			srcReader = buffer.New(original)
+			encoder.Process(encodedBuf, srcReader)
+			encoded := encodedBuf.Items()
 
 			// Decode
-			decoded := make([]byte, len(original))
-			bytesDecoded := decoder.Decode(decoded, encoded)
+			encodedReader := buffer.New(encoded)
+			decodedBuf := buffer.New(make([]byte, 0, len(original)))
+			bytesDecoded := decoder.Process(decodedBuf, encodedReader)
+			decoded := decodedBuf.Items()
 
 			// Verify
 			require.Equal(t, len(original), bytesDecoded)

@@ -6,6 +6,7 @@ import "io"
 // Used by Chain and Adapter when calculating theoretical output sizes.
 type sizeReader[T any] struct {
 	size int
+	cap  int
 }
 
 // Read implements buffer.Reader interface.
@@ -18,4 +19,10 @@ func (r *sizeReader[T]) Read(p []T) (n int, err error) {
 // This allows size calculations to work with processors that check source length.
 func (r *sizeReader[T]) Len() int {
 	return r.size
+}
+
+// Len returns the reported size (if the reader implements Len interface).
+// This allows size calculations to work with processors that check source length.
+func (r *sizeReader[T]) Cap() int {
+	return r.cap
 }

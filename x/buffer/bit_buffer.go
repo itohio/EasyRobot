@@ -4,7 +4,8 @@ import "io"
 
 var _ Writer[byte] = (*Bits)(nil)
 var _ Reader[byte] = (*Bits)(nil)
-var _ BitsBuffer = (*Bits)(nil)
+var _ BitsReader = (*Bits)(nil)
+var _ BitsWriter = (*Bits)(nil)
 var _ Initializer = (*Bits)(nil)
 
 // Bits provides unified bit-level reading and writing with shared state.
@@ -66,8 +67,13 @@ func NewBits(bitLength int, data ...byte) (*Bits, error) {
 }
 
 // Bits returns the number of bits per value.
-func (bb *Bits) Bits() int {
+func (bb *Bits) BitsLength() int {
 	return bb.bitLength
+}
+
+// Length returns the number of bits written.
+func (bb *Bits) Bits() int {
+	return bb.writtenBits
 }
 
 // Init initializes the buffer with the given number of bits, length, and capacity.
@@ -290,6 +296,10 @@ func (bb *Bits) SetPosition(pos int) error {
 // Cap returns the capacity of the buffer's underlying byte slice.
 func (bb *Bits) Cap() int {
 	return cap(bb.data)
+}
+
+func (bb *Bits) Len() int {
+	return len(bb.data)
 }
 
 // Bytes returns the underlying byte slice.

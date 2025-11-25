@@ -459,7 +459,73 @@ func TestBitRing_Cap(t *testing.T) {
 	br, err := NewBitRing(4, 10)
 	require.NoError(t, err)
 
-	assert.Equal(t, 10, br.Cap())
+	assert.Equal(t, 10, br.Cap()) // Cap returns capacity in values
+}
+
+// TestBitRing_CapLenBitsBitsLength verifies the meaning of Cap, Len, Bits, and BitsLength
+func TestBitRing_CapLenBitsBitsLength(t *testing.T) {
+	tests := []struct {
+		name      string
+		bitLength int
+		capacity  int
+	}{
+		{"1_bit", 1, 10},
+		{"2_bits", 2, 10},
+		{"4_bits", 4, 10},
+		{"8_bits", 8, 10},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			br, err := NewBitRing(tt.bitLength, tt.capacity)
+			require.NoError(t, err)
+
+			// Initial state
+			assert.Equal(t, tt.capacity, br.Cap(), "Cap() should return capacity in values")
+			assert.Equal(t, 0, br.Len(), "Len() should return number of values currently stored")
+			assert.Equal(t, 0, br.Bits(), "Bits() should return number of bits written (0 values * bitLength = 0)")
+			assert.Equal(t, tt.bitLength, br.BitsLength(), "BitsLength() should return bits per value")
+
+			// Write some values
+			valuesToWrite := 3
+			for i := 0; i < valuesToWrite; i++ {
+				err := br.WriteByte(byte(i))
+				require.NoError(t, err)
+			}
+
+			// After writing
+			assert.Equal(t, tt.capacity, br.Cap(), "Cap() should remain constant (capacity in values)")
+			assert.Equal(t, valuesToWrite, br.Len(), "Len() should return number of values written")
+			assert.Equal(t, valuesToWrite*tt.bitLength, br.Bits(), "Bits() should return bits written (values * bitLength)")
+			assert.Equal(t, tt.bitLength, br.BitsLength(), "BitsLength() should remain constant (bits per value)")
+
+			// Read some values
+			valuesToRead := 2
+			for i := 0; i < valuesToRead; i++ {
+				_, err := br.ReadByte()
+				require.NoError(t, err)
+			}
+
+			// After reading
+			remainingValues := valuesToWrite - valuesToRead
+			assert.Equal(t, tt.capacity, br.Cap(), "Cap() should remain constant")
+			assert.Equal(t, remainingValues, br.Len(), "Len() should return remaining values")
+			assert.Equal(t, remainingValues*tt.bitLength, br.Bits(), "Bits() should return bits for remaining values")
+			assert.Equal(t, tt.bitLength, br.BitsLength(), "BitsLength() should remain constant")
+
+			// Fill to capacity
+			for br.Len() < br.Cap() {
+				err := br.WriteByte(0xFF)
+				require.NoError(t, err)
+			}
+
+			// At capacity
+			assert.Equal(t, tt.capacity, br.Cap(), "Cap() should remain constant")
+			assert.Equal(t, tt.capacity, br.Len(), "Len() should equal capacity when full")
+			assert.Equal(t, tt.capacity*tt.bitLength, br.Bits(), "Bits() should be capacity * bitLength when full")
+			assert.Equal(t, tt.bitLength, br.BitsLength(), "BitsLength() should remain constant")
+		})
+	}
 }
 
 func TestBitRing_Init(t *testing.T) {
@@ -469,8 +535,9 @@ func TestBitRing_Init(t *testing.T) {
 	err := br.Init(4, 0, 16)
 	require.NoError(t, err)
 
-	assert.Equal(t, 4, br.Bits())
-	assert.Equal(t, 0, br.Len())
+	assert.Equal(t, 4, br.BitsLength()) // BitsLength returns bits per value
+	assert.Equal(t, 0, br.Bits())      // Bits returns bits written (0 values * 4 bits = 0)
+	assert.Equal(t, 0, br.Len())        // Len returns number of values
 }
 
 func TestBitRing_Init_Invalid(t *testing.T) {

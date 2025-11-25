@@ -3,6 +3,7 @@ package ecc
 import (
 	"testing"
 
+	"github.com/itohio/EasyRobot/x/buffer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -39,7 +40,7 @@ func TestRSEncoder_NewRSEncoder(t *testing.T) {
 	}
 }
 
-func TestRSEncoder_Encode(t *testing.T) {
+func TestRSEncoder_Process(t *testing.T) {
 	encoder := NewRSEncoder(255, 223)
 
 	tests := []struct {
@@ -56,7 +57,8 @@ func TestRSEncoder_Encode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Test nil dst (size query)
-			expectedSize := encoder.Encode(nil, tt.src)
+			srcReader := buffer.New(tt.src)
+			expectedSize := encoder.Process(nil, srcReader)
 			if len(tt.src) == 0 {
 				assert.Equal(t, 0, expectedSize)
 			} else {
@@ -67,9 +69,10 @@ func TestRSEncoder_Encode(t *testing.T) {
 			}
 
 			// Test actual encoding
-			if len(tt.src) > 0 {
-				dst := make([]byte, expectedSize)
-				written := encoder.Encode(dst, tt.src)
+			if len(tt.src) > 0 && expectedSize > 0 {
+				srcReader = buffer.New(tt.src)
+				dstBuf := buffer.New(make([]byte, 0, expectedSize*2))
+				written := encoder.Process(dstBuf, srcReader)
 				assert.Equal(t, expectedSize, written)
 				assert.Greater(t, written, 0)
 			}
@@ -77,14 +80,27 @@ func TestRSEncoder_Encode(t *testing.T) {
 	}
 }
 
-func TestRSEncoder_Encode_DestinationTooSmall(t *testing.T) {
+func TestRSEncoder_Process_SizeCalculation(t *testing.T) {
 	encoder := NewRSEncoder(255, 223)
-	src := make([]byte, 100)
 
-	// Destination too small
-	dst := make([]byte, 10)
-	written := encoder.Encode(dst, src)
-	assert.Equal(t, 0, written)
+	tests := []struct {
+		name     string
+		src      []byte
+		expected int
+	}{
+		{"empty", []byte{}, 0},
+		{"incomplete block", make([]byte, 100), 0}, // Less than k bytes
+		{"exact block", make([]byte, 223), 255},    // 1 block: 223 -> 255
+		{"two blocks", make([]byte, 446), 510},     // 2 blocks: 446 -> 510
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srcReader := buffer.New(tt.src)
+			size := encoder.Process(nil, srcReader)
+			assert.Equal(t, tt.expected, size)
+		})
+	}
 }
 
 func TestRSDecoder_NewRSDecoder(t *testing.T) {
@@ -118,7 +134,8 @@ func TestRSDecoder_NewRSDecoder(t *testing.T) {
 	}
 }
 
-func TestRSDecoder_Decode(t *testing.T) {
+func TestRSDecoder_Process(t *testing.T) {
+	encoder := NewRSEncoder(255, 223)
 	decoder := NewRSDecoder(255, 223)
 
 	tests := []struct {
@@ -127,36 +144,68 @@ func TestRSDecoder_Decode(t *testing.T) {
 	}{
 		{"empty", []byte{}},
 		{"incomplete block", make([]byte, 100)},
-		{"single block", make([]byte, 255)},
-		{"multiple blocks", make([]byte, 510)},
+		{"single block", make([]byte, 223)}, // Will be encoded to 255
+		{"multiple blocks", make([]byte, 446)}, // Will be encoded to 510
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Test nil dst (size query)
-			expectedSize := decoder.Decode(nil, tt.src)
-			blocks := len(tt.src) / decoder.N()
-			expected := blocks * decoder.K()
-			assert.Equal(t, expected, expectedSize)
+			if len(tt.src) >= encoder.K() {
+				// Encode first
+				srcReader := buffer.New(tt.src)
+				encodedBuf := buffer.New(make([]byte, 0, len(tt.src)*2))
+				encodedSize := encoder.Process(encodedBuf, srcReader)
+				if encodedSize > 0 {
+					encoded := encodedBuf.Items()
 
-			// Test actual decoding
-			if len(tt.src) >= decoder.N() {
-				dst := make([]byte, expectedSize)
-				written := decoder.Decode(dst, tt.src)
-				assert.GreaterOrEqual(t, written, 0)
+					// Test nil dst (size query)
+					encodedReader := buffer.New(encoded)
+					expectedSize := decoder.Process(nil, encodedReader)
+					blocks := len(encoded) / decoder.N()
+					expected := blocks * decoder.K()
+					assert.Equal(t, expected, expectedSize)
+
+					// Test actual decoding
+					encodedReader = buffer.New(encoded)
+					decodedBuf := buffer.New(make([]byte, 0, len(tt.src)))
+					written := decoder.Process(decodedBuf, encodedReader)
+					assert.GreaterOrEqual(t, written, 0)
+					if written > 0 {
+						decoded := decodedBuf.Items()
+						// Verify decoded data matches original (for complete blocks)
+						completeBlocks := len(tt.src) / encoder.K()
+						expectedDecodedLen := completeBlocks * encoder.K()
+						if written == expectedDecodedLen {
+							assert.Equal(t, tt.src[:expectedDecodedLen], decoded)
+						}
+					}
+				}
 			}
 		})
 	}
 }
 
-func TestRSDecoder_Decode_DestinationTooSmall(t *testing.T) {
+func TestRSDecoder_Process_SizeCalculation(t *testing.T) {
 	decoder := NewRSDecoder(255, 223)
-	src := make([]byte, 255) // One complete block
 
-	// Destination too small
-	dst := make([]byte, 0)
-	written := decoder.Decode(dst, src)
-	assert.Equal(t, 0, written)
+	tests := []struct {
+		name     string
+		src      []byte
+		expected int
+	}{
+		{"empty", []byte{}, 0},
+		{"incomplete block", make([]byte, 100), 0}, // Less than n bytes
+		{"single block", make([]byte, 255), 223},   // 1 block: 255 -> 223
+		{"two blocks", make([]byte, 510), 446},    // 2 blocks: 510 -> 446
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srcReader := buffer.New(tt.src)
+			size := decoder.Process(nil, srcReader)
+			assert.Equal(t, tt.expected, size)
+		})
+	}
 }
 
 func TestRSEncoder_Reset(t *testing.T) {
@@ -170,4 +219,3 @@ func TestRSDecoder_Reset(t *testing.T) {
 	// Reset should not panic
 	decoder.Reset()
 }
-
