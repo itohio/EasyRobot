@@ -1,4 +1,4 @@
-package ecc
+package rs
 
 import (
 	"testing"
@@ -9,8 +9,8 @@ import (
 )
 
 func TestRS_Roundtrip(t *testing.T) {
-	encoder := NewRSEncoder(255, 223)
-	decoder := NewRSDecoder(255, 223)
+	encoder := NewEncoder(255, 223)
+	decoder := NewDecoder(255, 223)
 
 	testCases := [][]byte{
 		{0x12},
@@ -106,14 +106,14 @@ func addBadDataPadding(goodData []byte, prefixLen, suffixLen int) []byte {
 // Simulates real-world scenario: bursts of actual data mixed with bad data
 // when sender was not active but receiver got corrupted/noise data
 func TestRS_Roundtrip_WithBadDataPadding(t *testing.T) {
-	encoder := NewRSEncoder(255, 223)
-	decoder := NewRSDecoder(255, 223)
+	encoder := NewEncoder(255, 223)
+	decoder := NewDecoder(255, 223)
 
 	testCases := []struct {
-		name       string
-		data       []byte
-		prefixLen  int // Bytes of bad data before good data
-		suffixLen  int // Bytes of bad data after good data
+		name      string
+		data      []byte
+		prefixLen int // Bytes of bad data before good data
+		suffixLen int // Bytes of bad data after good data
 	}{
 		{
 			name:      "small_data_small_padding",
@@ -156,7 +156,7 @@ func TestRS_Roundtrip_WithBadDataPadding(t *testing.T) {
 		}
 	}
 
-		for _, tt := range testCases {
+	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
 			if len(tt.data) == 0 {
 				return
@@ -242,8 +242,8 @@ func TestRS_Roundtrip_WithBadDataPadding(t *testing.T) {
 }
 
 func TestRS_Roundtrip_ExactBlock(t *testing.T) {
-	encoder := NewRSEncoder(255, 223)
-	decoder := NewRSDecoder(255, 223)
+	encoder := NewEncoder(255, 223)
+	decoder := NewDecoder(255, 223)
 
 	// Test with exact block size (no padding)
 	original := make([]byte, 223)
@@ -271,8 +271,8 @@ func TestRS_Roundtrip_ExactBlock(t *testing.T) {
 }
 
 func TestRS_Roundtrip_MultipleBlocks(t *testing.T) {
-	encoder := NewRSEncoder(255, 223)
-	decoder := NewRSDecoder(255, 223)
+	encoder := NewEncoder(255, 223)
+	decoder := NewDecoder(255, 223)
 
 	// Test with multiple blocks
 	original := make([]byte, 446) // Exactly 2 blocks

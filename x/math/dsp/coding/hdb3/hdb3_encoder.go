@@ -1,4 +1,4 @@
-package ecc
+package hdb3
 
 import (
 	"io"
@@ -12,15 +12,15 @@ import (
 // HDB3 is an AMI variant that limits consecutive zeros to maximum of 3.
 // Used in E1 lines (European telecom).
 // Encodes data by converting binary to HDB3 (1:1 mapping, no size change).
-type HDB3Encoder struct {
+type Encoder struct {
 	nextPolarity bool // Next polarity for marks
 	zeroCount    int  // Consecutive zero count
 	lastViolation bool // Last violation type (B or V)
 }
 
-// NewHDB3Encoder creates a new HDB3 encoder.
-func NewHDB3Encoder() *HDB3Encoder {
-	return &HDB3Encoder{
+// NewEncoder creates a new HDB3 encoder.
+func NewEncoder() *Encoder {
+	return &Encoder{
 		nextPolarity: true,
 		zeroCount:    0,
 		lastViolation: false,
@@ -31,7 +31,7 @@ func NewHDB3Encoder() *HDB3Encoder {
 // Reads from buffer.Reader[byte] and writes to buffer.Writer[byte].
 // If dst is nil, calculates and returns the theoretical maximum output size.
 // Process implements chain.Processor[byte, byte] interface.
-func (h *HDB3Encoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+func (h *Encoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
 	var srcBuf [256]byte
 	totalWritten := 0
 	var readErr error
@@ -134,12 +134,12 @@ func (h *HDB3Encoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) 
 
 // Reset resets the encoder state.
 // Reset implements chain.Processor interface.
-func (h *HDB3Encoder) Reset() {
+func (h *Encoder) Reset() {
 	h.nextPolarity = true
 	h.zeroCount = 0
 	h.lastViolation = false
 }
 
 // Verify interface compliance
-var _ chain.Processor[byte, byte] = (*HDB3Encoder)(nil)
+var _ chain.Processor[byte, byte] = (*Encoder)(nil)
 

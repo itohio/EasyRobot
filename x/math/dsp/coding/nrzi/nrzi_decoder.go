@@ -1,4 +1,4 @@
-package ecc
+package nrzi
 
 import (
 	"io"
@@ -7,17 +7,17 @@ import (
 	"github.com/itohio/EasyRobot/x/chain"
 )
 
-// NRZIDecoder implements Non-Return-to-Zero Inverted (NRZI) decoding.
+// Decoder implements Non-Return-to-Zero Inverted (NRZI) decoding.
 // It implements the chain.Processor[byte, byte] interface for composability.
 // NRZI decodes transitions: transition = '1', no transition = '0'.
 // Decodes data by converting NRZI values back to binary (1:1 mapping, no size change).
-type NRZIDecoder struct {
+type Decoder struct {
 	lastState bool // Last input state (for detecting transitions)
 }
 
-// NewNRZIDecoder creates a new NRZI decoder.
-func NewNRZIDecoder() *NRZIDecoder {
-	return &NRZIDecoder{
+// NewDecoder creates a new NRZI decoder.
+func NewDecoder() *Decoder {
+	return &Decoder{
 		lastState: false, // Start with low state
 	}
 }
@@ -26,7 +26,7 @@ func NewNRZIDecoder() *NRZIDecoder {
 // Reads from buffer.Reader[byte] and writes to buffer.Writer[byte].
 // If dst is nil, calculates and returns the theoretical maximum output size.
 // Process implements chain.Processor[byte, byte] interface.
-func (n *NRZIDecoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+func (n *Decoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
 	var srcBuf [256]byte
 	totalWritten := 0
 	var readErr error
@@ -110,10 +110,10 @@ func (n *NRZIDecoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) 
 
 // Reset resets the decoder state.
 // Reset implements chain.Processor interface.
-func (n *NRZIDecoder) Reset() {
+func (n *Decoder) Reset() {
 	n.lastState = false // Reset to low state
 }
 
 // Verify interface compliance
-var _ chain.Processor[byte, byte] = (*NRZIDecoder)(nil)
+var _ chain.Processor[byte, byte] = (*Decoder)(nil)
 

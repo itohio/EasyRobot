@@ -1,4 +1,4 @@
-package ecc
+package four5b
 
 import (
 	"testing"
@@ -9,8 +9,8 @@ import (
 )
 
 func TestFourB5B_Roundtrip(t *testing.T) {
-	encoder := NewFourB5BEncoder()
-	decoder := NewFourB5BDecoder()
+	encoder := NewEncoder()
+	decoder := NewDecoder()
 
 	testCases := [][]byte{
 		{0x12},

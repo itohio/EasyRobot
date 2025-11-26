@@ -1,4 +1,4 @@
-package ecc
+package rll
 
 import (
 	"io"
@@ -13,21 +13,21 @@ import (
 // Common variants: RLL(1,7), RLL(2,7) - (d,k) where d=min, k=max run length.
 // This implementation uses RLL(1,7) which is common for magnetic storage.
 // Encodes data with size expansion (variable, typically ~1.5x).
-type RLLEncoder struct {
+type Encoder struct {
 	d, k int // RLL(d,k) parameters: minimum and maximum run length
 }
 
-// NewRLLEncoder creates a new RLL(1,7) encoder.
-func NewRLLEncoder() *RLLEncoder {
-	return NewRLLEncoderWithParams(1, 7)
+// NewEncoder creates a new RLL(1,7) encoder.
+func NewEncoder() *Encoder {
+	return NewEncoderWithParams(1, 7)
 }
 
-// NewRLLEncoderWithParams creates a new RLL encoder with custom (d,k) parameters.
-func NewRLLEncoderWithParams(d, k int) *RLLEncoder {
+// NewEncoderWithParams creates a new RLL encoder with custom (d,k) parameters.
+func NewEncoderWithParams(d, k int) *Encoder {
 	if d < 0 || k < d {
 		panic("RLL: invalid parameters, must have 0 <= d <= k")
 	}
-	return &RLLEncoder{
+	return &Encoder{
 		d: d,
 		k: k,
 	}
@@ -38,7 +38,7 @@ func NewRLLEncoderWithParams(d, k int) *RLLEncoder {
 // If dst is nil, calculates and returns the theoretical maximum output size.
 // Process implements chain.Processor[byte, byte] interface.
 // Note: RLL encoding is complex and variable-length. This is a simplified implementation.
-func (r *RLLEncoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+func (r *Encoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
 	var srcBuf [256]byte
 	totalWritten := 0
 	var readErr error
@@ -108,10 +108,10 @@ func (r *RLLEncoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) i
 
 // Reset resets the encoder state.
 // Reset implements chain.Processor interface.
-func (r *RLLEncoder) Reset() {
+func (r *Encoder) Reset() {
 	// No state to reset
 }
 
 // Verify interface compliance
-var _ chain.Processor[byte, byte] = (*RLLEncoder)(nil)
+var _ chain.Processor[byte, byte] = (*Encoder)(nil)
 

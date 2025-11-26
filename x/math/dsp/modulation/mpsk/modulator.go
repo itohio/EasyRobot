@@ -89,10 +89,13 @@ func (m *Modulator) estimateSamples(br buffer.BitsReader) int {
 
 func (m *Modulator) nextSymbol(br buffer.BitsReader) (int, bool) {
 	if m.preambleEmitted < m.cfg.PreambleLength {
-		idx := 0
-		if m.preambleEmitted&1 == 1 {
-			idx = m.cfg.constellationSize() / 2
-		}
+		// Optimized preamble pattern for fast PLL lock:
+		// 1. First M symbols: cover all M phases (0, 1, 2, 3 for QPSK) - resolves ambiguity
+		// 2. Next symbols: maximize phase transitions to help PLL track quickly
+		// Pattern: 0, 1, 2, 3, 0, 2, 1, 3, 0, 1, 2, 3, ...
+		// This provides: all phases covered quickly, then good transitions (0→2=180°, 1→3=180°)
+		// followed by adjacent transitions (0→1=90°, 2→3=90°)
+		idx := m.preamblePattern(m.preambleEmitted)
 		m.preambleEmitted++
 		return idx, true
 	}
@@ -104,6 +107,7 @@ func (m *Modulator) nextSymbol(br buffer.BitsReader) (int, bool) {
 	if err != nil && !errors.Is(err, io.EOF) {
 		return 0, false
 	}
+	m.renderSymbol(symbol)
 	return symbol, true
 }
 
@@ -116,6 +120,52 @@ func (m *Modulator) renderSymbol(idx int) {
 		val := env[i]
 		m.scratch[base] = val * c
 		m.scratch[base+1] = val * s
+	}
+}
+
+// preamblePattern returns an optimized preamble symbol index for fast PLL lock.
+// Pattern design:
+// - First M symbols: cover all M phases (0, 1, 2, 3 for QPSK) - resolves phase ambiguity
+// - Next symbols: maximize phase transitions to help PLL track quickly
+// - For QPSK: 0, 1, 2, 3, 0, 2, 1, 3, 0, 1, 2, 3, ...
+//   This provides: all phases covered quickly, then good transitions (0→2=180°, 1→3=180°)
+//   followed by adjacent transitions (0→1=90°, 2→3=90°)
+func (m *Modulator) preamblePattern(index int) int {
+	M := m.cfg.constellationSize()
+	
+	// First M symbols: cover all phases (0, 1, 2, 3 for QPSK)
+	if index < M {
+		return index
+	}
+	
+	// After covering all phases, use optimized pattern for fast PLL tracking
+	// Pattern repeats every 2*M symbols: [0, 1, 2, 3, 0, 2, 1, 3] for QPSK
+	// This maximizes phase transitions: 0→2 (180°), 1→3 (180°), then 0→1 (90°), 2→3 (90°)
+	patternIndex := (index - M) % (2 * M)
+	if patternIndex < M {
+		// First half: sequential 0, 1, 2, 3
+		return patternIndex
+	} else {
+		// Second half: optimized transitions 0, 2, 1, 3
+		// Maps: 0→0, 1→2, 2→1, 3→3
+		offset := patternIndex - M
+		switch offset {
+		case 0:
+			return 0
+		case 1:
+			return (M / 2) % M // 2 for QPSK
+		case 2:
+			return 1
+		case 3:
+			return (M/2 + 1) % M // 3 for QPSK
+		default:
+			// For M > 4, use a pattern that maximizes phase differences
+			if offset%2 == 0 {
+				return offset / 2
+			} else {
+				return (offset/2 + M/2) % M
+			}
+		}
 	}
 }
 

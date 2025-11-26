@@ -1,4 +1,4 @@
-package ecc
+package ami
 
 import (
 	"io"
@@ -13,13 +13,13 @@ import (
 // Provides DC balance and error detection (violations indicate errors).
 // Encodes data by converting binary to AMI (1:1 mapping, no size change).
 // Note: Uses 3-level encoding: 0, +1, -1. We encode as: 0=0x00, +1=0x01, -1=0x02.
-type AMIEncoder struct {
+type Encoder struct {
 	nextPolarity bool // Next polarity for '1' (true = positive, false = negative)
 }
 
-// NewAMIEncoder creates a new AMI encoder.
-func NewAMIEncoder() *AMIEncoder {
-	return &AMIEncoder{
+// NewEncoder creates a new AMI encoder.
+func NewEncoder() *Encoder {
+	return &Encoder{
 		nextPolarity: true, // Start with positive
 	}
 }
@@ -28,7 +28,7 @@ func NewAMIEncoder() *AMIEncoder {
 // Reads from buffer.Reader[byte] and writes to buffer.Writer[byte].
 // If dst is nil, calculates and returns the theoretical maximum output size.
 // Process implements chain.Processor[byte, byte] interface.
-func (a *AMIEncoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+func (a *Encoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
 	var srcBuf [256]byte
 	totalWritten := 0
 	var readErr error
@@ -124,10 +124,10 @@ func (a *AMIEncoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) i
 
 // Reset resets the encoder state.
 // Reset implements chain.Processor interface.
-func (a *AMIEncoder) Reset() {
+func (a *Encoder) Reset() {
 	a.nextPolarity = true
 }
 
 // Verify interface compliance
-var _ chain.Processor[byte, byte] = (*AMIEncoder)(nil)
+var _ chain.Processor[byte, byte] = (*Encoder)(nil)
 

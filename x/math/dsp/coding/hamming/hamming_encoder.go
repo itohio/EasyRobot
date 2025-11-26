@@ -1,4 +1,4 @@
-package ecc
+package hamming
 
 import (
 	"io"
@@ -13,12 +13,12 @@ import (
 // It can correct single-bit errors and detect double-bit errors.
 // Encodes data by processing bytes as nibbles (4-bit chunks).
 // Each input byte (2 nibbles) produces 2 output bytes (each 7-bit codeword in a byte).
-type HammingEncoder struct {
+type Encoder struct {
 }
 
-// NewHammingEncoder creates a new Hamming(7,4) encoder.
-func NewHammingEncoder() *HammingEncoder {
-	return &HammingEncoder{}
+// NewEncoder creates a new Hamming(7,4) encoder.
+func NewEncoder() *Encoder {
+	return &Encoder{}
 }
 
 // encodeNibble encodes a 4-bit nibble into a 7-bit Hamming codeword.
@@ -26,7 +26,7 @@ func NewHammingEncoder() *HammingEncoder {
 // Hamming(7,4) uses positions 1, 2, 4 for parity (1-indexed).
 // Data bits go in positions 3, 5, 6, 7 (1-indexed).
 // Returns the encoded 7-bit value (bits 0-6, bit 7 is unused).
-func (h *HammingEncoder) encodeNibble(nibble uint8) uint8 {
+func (h *Encoder) encodeNibble(nibble uint8) uint8 {
 	// Extract 4 data bits from nibble
 	d1 := (nibble >> 0) & 1 // Data bit 1 (goes to position 3, 0-indexed: 2)
 	d2 := (nibble >> 1) & 1 // Data bit 2 (goes to position 5, 0-indexed: 4)
@@ -60,7 +60,7 @@ func (h *HammingEncoder) encodeNibble(nibble uint8) uint8 {
 // Processes bytes as nibbles (4-bit chunks), encoding each nibble to 7 bits.
 // If dst is nil, calculates and returns the theoretical maximum output size.
 // Process implements chain.Processor[byte, byte] interface.
-func (h *HammingEncoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+func (h *Encoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
 	var srcBuf [256]byte
 	totalWritten := 0
 	var readErr error
@@ -147,10 +147,10 @@ func (h *HammingEncoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte
 
 // Reset resets the encoder state.
 // Reset implements chain.Processor interface.
-func (h *HammingEncoder) Reset() {
+func (h *Encoder) Reset() {
 	// No state to reset (stateless)
 }
 
 // Verify interface compliance
-var _ chain.Processor[byte, byte] = (*HammingEncoder)(nil)
+var _ chain.Processor[byte, byte] = (*Encoder)(nil)
 

@@ -1,4 +1,4 @@
-package ecc
+package biphase
 
 import (
 	"io"
@@ -11,14 +11,14 @@ import (
 // It implements the chain.Processor[byte, byte] interface for composability.
 // Decodes Biphase-L-encoded bytes back to original bytes.
 // Each 2 input bytes produce 1 output byte (2 bytes -> 1 byte).
-type BiphaseLDecoder struct {
+type Decoder struct {
 	lastState bool   // Last input state
 	buffer    []byte // Buffer for partial bytes
 }
 
 // NewBiphaseLDecoder creates a new Biphase-L decoder.
-func NewBiphaseLDecoder() *BiphaseLDecoder {
-	return &BiphaseLDecoder{
+func NewDecoder() *Decoder {
+	return &Decoder{
 		lastState: false,
 	}
 }
@@ -28,7 +28,7 @@ func NewBiphaseLDecoder() *BiphaseLDecoder {
 // Each 2 input bytes produce 1 output byte.
 // If dst is nil, calculates and returns the theoretical maximum output size.
 // Process implements chain.Processor[byte, byte] interface.
-func (b *BiphaseLDecoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+func (b *Decoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
 	var srcBuf [256]byte
 	totalWritten := 0
 	var readErr error
@@ -163,11 +163,10 @@ func (b *BiphaseLDecoder) Process(dst buffer.Writer[byte], src buffer.Reader[byt
 
 // Reset resets the decoder state.
 // Reset implements chain.Processor interface.
-func (b *BiphaseLDecoder) Reset() {
+func (b *Decoder) Reset() {
 	b.lastState = false
 	b.buffer = b.buffer[:0]
 }
 
 // Verify interface compliance
-var _ chain.Processor[byte, byte] = (*BiphaseLDecoder)(nil)
-
+var _ chain.Processor[byte, byte] = (*Decoder)(nil)

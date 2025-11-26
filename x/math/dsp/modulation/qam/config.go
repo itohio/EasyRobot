@@ -109,24 +109,30 @@ func (c Config) SymbolRate() float32 {
 // with noise rejection. The bandwidth is adjusted based on preamble length:
 // - Longer preambles allow wider bandwidth for faster acquisition
 // - Shorter preambles require narrower bandwidth for better noise filtering
+// 
+// Note: With AGC applied before PLL, signals are normalized, allowing slightly wider
+// bandwidth since amplitude variations are reduced. However, we keep conservative values
+// to maintain stability.
 func (c Config) OptimalLoopBandwidth(targetSNRDb float32) float32 {
 	symbolRate := c.SymbolRate()
 	
 	// Base bandwidth from SNR table (for 25dB: 0.020 = 2% of symbol rate)
+	// With AGC normalization before PLL, we can use slightly wider bandwidth
+	// since amplitude variations are reduced, but we keep conservative values
 	var baseBw float32
 	switch {
 	case targetSNRDb >= 25:
-		baseBw = 0.020 // 2% - optimal for 25-30dB
+		baseBw = 0.025 // 2.5% - slightly wider with AGC normalization
 	case targetSNRDb >= 20:
-		baseBw = 0.050 // 5% - for 20-25dB
+		baseBw = 0.060 // 6% - for 20-25dB
 	case targetSNRDb >= 15:
-		baseBw = 0.020 // 2% - for 15-20dB
+		baseBw = 0.025 // 2.5% - for 15-20dB
 	case targetSNRDb >= 10:
-		baseBw = 0.010 // 1% - for 10-15dB
+		baseBw = 0.015 // 1.5% - for 10-15dB
 	case targetSNRDb >= 8:
-		baseBw = 0.010 // 1% - for 8-10dB
+		baseBw = 0.012 // 1.2% - for 8-10dB
 	default: // 3-7 dB
-		baseBw = 0.005 // 0.5% - for very low SNR
+		baseBw = 0.006 // 0.6% - for very low SNR
 	}
 	
 	// Adjust based on preamble length
@@ -167,11 +173,13 @@ func (c Config) OptimalLoopDamping(targetSNRDb float32) float32 {
 
 // OptimalAcquisitionBandwidth returns the loop bandwidth for acquisition phase.
 // This is typically wider than tracking bandwidth for faster convergence.
+// With AGC normalization, we can use slightly wider acquisition bandwidth
+// since amplitude is normalized before PLL processing.
 func (c Config) OptimalAcquisitionBandwidth(targetSNRDb float32) float32 {
-	// Use wider bandwidth for acquisition (1.5-2x tracking bandwidth)
+	// Use wider bandwidth for acquisition (1.8x tracking bandwidth with AGC)
 	// but cap at reasonable maximum
-	acqBw := c.OptimalLoopBandwidth(targetSNRDb) * 1.5
-	maxBw := c.SymbolRate() * 0.1 // Cap at 10% of symbol rate
+	acqBw := c.OptimalLoopBandwidth(targetSNRDb) * 1.8
+	maxBw := c.SymbolRate() * 0.12 // Cap at 12% of symbol rate (slightly higher with AGC)
 	if acqBw > maxBw {
 		acqBw = maxBw
 	}
@@ -279,6 +287,49 @@ func (c Config) MinimumSNR(targetBER, marginDb float32) float32 {
 // IsSNRSufficient reports whether snrDb meets the requirement for the given BER and margin.
 func (c Config) IsSNRSufficient(snrDb, targetBER, marginDb float32) bool {
 	return snrDb >= c.MinimumSNR(targetBER, marginDb)
+}
+
+// EnergyThresholdForSNR calculates the minimum energy threshold to distinguish signal+noise from noise-only.
+// At SNR dB, signal power is 10^(SNR/10) times noise power.
+// We want a threshold that:
+// - Is above noise-only power (to reject padding noise)
+// - Is below signal+noise power (to detect actual signal)
+// Returns threshold in energy units (average power over symbol period).
+// For QAM, we use average symbol power from the constellation normalization.
+func (c Config) EnergyThresholdForSNR(snrDb float32) float32 {
+	// Expected signal power (for QAM with normalized constellation)
+	// Average symbol power is normalized to 1.0 by ConstellationNormalization()
+	// But we need to account for the actual amplitude scaling
+	signalPower := c.Amplitude * c.Amplitude
+	
+	// Noise power at given SNR
+	// SNR = 10*log10(signal_power / noise_power)
+	// noise_power = signal_power / 10^(SNR/10)
+	noisePower := signalPower / math32.Pow(10, snrDb/10)
+	
+	// Threshold should be between noise-only and signal+noise
+	// Use noise_power * factor, where factor accounts for:
+	// - Noise variance (use 3-5 sigma for reliable detection)
+	// - Margin for noise fluctuations
+	// At 25dB SNR: noise_power = signal_power / 316 ≈ 0.002
+	// Threshold = noise_power * 5 = 0.01 (well above noise, well below signal)
+	// This ensures we reject noise-only padding but detect signal+noise
+	factor := float32(5.0) // 5-sigma threshold for reliable detection
+	threshold := noisePower * factor
+	
+	// Ensure threshold is reasonable (not too high, not too low)
+	// Minimum: 2x noise power (to reject pure noise)
+	// Maximum: 0.1x signal power (to detect weak signals)
+	minThreshold := noisePower * 2.0
+	maxThreshold := signalPower * 0.1
+	if threshold < minThreshold {
+		threshold = minThreshold
+	}
+	if threshold > maxThreshold {
+		threshold = maxThreshold
+	}
+	
+	return threshold
 }
 
 func (c *Config) ensureWithinNyquist() error {

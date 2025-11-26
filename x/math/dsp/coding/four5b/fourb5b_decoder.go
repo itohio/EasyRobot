@@ -1,4 +1,4 @@
-package ecc
+package four5b
 
 import (
 	"io"
@@ -7,18 +7,18 @@ import (
 	"github.com/itohio/EasyRobot/x/chain"
 )
 
-// FourB5BDecoder implements 4b/5b decoding.
+// Decoder implements 4b/5b decoding.
 // It implements the chain.Processor[byte, byte] interface for composability.
 // 4b/5b decodes 5-bit symbols back to 4-bit nibbles.
 // Each 2 input bytes (2 symbols, 10 bits) produce 1 output byte (2 nibbles).
 // Input size: output_size * 2 (2 bytes per output byte)
-type FourB5BDecoder struct {
+type Decoder struct {
 	decodeTable [32]byte // Lookup table for 5-bit to 4-bit mapping
 	buffer      []byte   // Buffer for partial symbols
 }
 
 // Build 4b/5b reverse lookup table (5-bit -> 4-bit)
-func buildFourB5BDecodeTable() [32]byte {
+func buildDecodeTable() [32]byte {
 	var table [32]byte
 	// Initialize with invalid marker (0xFF)
 	for i := range table {
@@ -26,18 +26,18 @@ func buildFourB5BDecodeTable() [32]byte {
 	}
 	// Fill valid mappings
 	for nibble := byte(0); nibble < 16; nibble++ {
-		symbol := fourB5BTable[nibble]
+		symbol := encodeTable[nibble]
 		table[symbol] = nibble
 	}
 	return table
 }
 
-var fourB5BDecodeTable = buildFourB5BDecodeTable()
+var decodeTable = buildDecodeTable()
 
-// NewFourB5BDecoder creates a new 4b/5b decoder.
-func NewFourB5BDecoder() *FourB5BDecoder {
-	return &FourB5BDecoder{
-		decodeTable: fourB5BDecodeTable,
+// NewDecoder creates a new 4b/5b decoder.
+func NewDecoder() *Decoder {
+	return &Decoder{
+		decodeTable: decodeTable,
 	}
 }
 
@@ -46,7 +46,7 @@ func NewFourB5BDecoder() *FourB5BDecoder {
 // Each 2 input bytes (2 symbols) produce 1 output byte (2 nibbles).
 // If dst is nil, calculates and returns the theoretical maximum output size.
 // Process implements chain.Processor[byte, byte] interface.
-func (f *FourB5BDecoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+func (f *Decoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
 	var srcBuf [256]byte
 	totalWritten := 0
 	var readErr error
@@ -166,10 +166,10 @@ func (f *FourB5BDecoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte
 
 // Reset resets the decoder state.
 // Reset implements chain.Processor interface.
-func (f *FourB5BDecoder) Reset() {
+func (f *Decoder) Reset() {
 	f.buffer = f.buffer[:0]
 }
 
 // Verify interface compliance
-var _ chain.Processor[byte, byte] = (*FourB5BDecoder)(nil)
+var _ chain.Processor[byte, byte] = (*Decoder)(nil)
 

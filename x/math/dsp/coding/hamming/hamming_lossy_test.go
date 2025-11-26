@@ -1,4 +1,4 @@
-package ecc
+package hamming
 
 import (
 	"math/rand"
@@ -10,8 +10,8 @@ import (
 )
 
 func TestHamming_LossyRoundtrip_SingleBitErrors(t *testing.T) {
-	encoder := NewHammingEncoder()
-	decoder := NewHammingDecoder()
+	encoder := NewEncoder()
+	decoder := NewDecoder()
 
 	testCases := []struct {
 		name string
@@ -81,8 +81,8 @@ func TestHamming_LossyRoundtrip_SingleBitErrors(t *testing.T) {
 }
 
 func TestHamming_LossyRoundtrip_MultipleSingleBitErrors(t *testing.T) {
-	encoder := NewHammingEncoder()
-	decoder := NewHammingDecoder()
+	encoder := NewEncoder()
+	decoder := NewDecoder()
 
 	original := []byte{0x12, 0x34, 0x56, 0x78}
 
@@ -114,8 +114,8 @@ func TestHamming_LossyRoundtrip_MultipleSingleBitErrors(t *testing.T) {
 }
 
 func TestHamming_LossyRoundtrip_RandomSingleBitErrors(t *testing.T) {
-	encoder := NewHammingEncoder()
-	decoder := NewHammingDecoder()
+	encoder := NewEncoder()
+	decoder := NewDecoder()
 
 	original := make([]byte, 50)
 	for i := range original {
@@ -167,8 +167,8 @@ func TestHamming_LossyRoundtrip_RandomSingleBitErrors(t *testing.T) {
 }
 
 func TestHamming_LossyRoundtrip_DoubleBitErrors(t *testing.T) {
-	encoder := NewHammingEncoder()
-	decoder := NewHammingDecoder()
+	encoder := NewEncoder()
+	decoder := NewDecoder()
 
 	original := []byte{0x12, 0x34, 0x56}
 
@@ -204,8 +204,8 @@ func TestHamming_LossyRoundtrip_DoubleBitErrors(t *testing.T) {
 }
 
 func TestHamming_LossyRoundtrip_NoErrors(t *testing.T) {
-	encoder := NewHammingEncoder()
-	decoder := NewHammingDecoder()
+	encoder := NewEncoder()
+	decoder := NewDecoder()
 
 	original := []byte{0x12, 0x34, 0x56, 0x78}
 

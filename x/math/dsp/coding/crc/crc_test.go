@@ -1,4 +1,4 @@
-package ecc
+package crc
 
 import (
 	"testing"
@@ -8,20 +8,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCRCEncoder_NewCRC8Encoder(t *testing.T) {
-	encoder := NewCRC8Encoder()
+func TestCRCEncoder_NewEncoderCRC8(t *testing.T) {
+	encoder := NewEncoder()
 	require.NotNil(t, encoder)
 	assert.Equal(t, 8, encoder.Width())
 }
 
-func TestCRCEncoder_NewCRC16Encoder(t *testing.T) {
-	encoder := NewCRC16Encoder()
+func TestCRCEncoder_NewEncoderCRC16(t *testing.T) {
+	encoder := NewEncoder()
 	require.NotNil(t, encoder)
 	assert.Equal(t, 16, encoder.Width())
 }
 
-func TestCRCEncoder_NewCRC32Encoder(t *testing.T) {
-	encoder := NewCRC32Encoder()
+func TestCRCEncoder_NewEncoderCRC32(t *testing.T) {
+	encoder := NewEncoder()
 	require.NotNil(t, encoder)
 	assert.Equal(t, 32, encoder.Width())
 }
@@ -29,16 +29,16 @@ func TestCRCEncoder_NewCRC32Encoder(t *testing.T) {
 func TestCRCEncoder_Process(t *testing.T) {
 	tests := []struct {
 		name    string
-		encoder *CRCEncoder
+		encoder *Encoder
 		src     []byte
 	}{
-		{"CRC-8 empty", NewCRC8Encoder(), []byte{}},
-		{"CRC-8 single byte", NewCRC8Encoder(), []byte{0x12}},
-		{"CRC-8 multiple bytes", NewCRC8Encoder(), []byte{0x12, 0x34, 0x56}},
-		{"CRC-16 empty", NewCRC16Encoder(), []byte{}},
-		{"CRC-16 single byte", NewCRC16Encoder(), []byte{0x12}},
-		{"CRC-32 empty", NewCRC32Encoder(), []byte{}},
-		{"CRC-32 multiple bytes", NewCRC32Encoder(), []byte{0x12, 0x34, 0x56, 0x78}},
+		{"CRC-8 empty", NewEncoder(), []byte{}},
+		{"CRC-8 single byte", NewEncoder(), []byte{0x12}},
+		{"CRC-8 multiple bytes", NewEncoder(), []byte{0x12, 0x34, 0x56}},
+		{"CRC-16 empty", NewEncoder(), []byte{}},
+		{"CRC-16 single byte", NewEncoder(), []byte{0x12}},
+		{"CRC-32 empty", NewEncoder(), []byte{}},
+		{"CRC-32 multiple bytes", NewEncoder(), []byte{0x12, 0x34, 0x56, 0x78}},
 	}
 
 	for _, tt := range tests {
@@ -69,15 +69,15 @@ func TestCRCEncoder_Process(t *testing.T) {
 }
 
 func TestCRCEncoder_Process_SizeCalculation(t *testing.T) {
-	encoder := NewCRC8Encoder()
+	encoder := NewEncoder()
 
 	tests := []struct {
 		name     string
 		src      []byte
 		expected int
 	}{
-		{"empty", []byte{}, 1}, // CRC-8: 1 byte
-		{"single byte", []byte{0x12}, 2}, // 1 data + 1 CRC
+		{"empty", []byte{}, 1},                          // CRC-8: 1 byte
+		{"single byte", []byte{0x12}, 2},                // 1 data + 1 CRC
 		{"multiple bytes", []byte{0x12, 0x34, 0x56}, 4}, // 3 data + 1 CRC
 	}
 
@@ -91,22 +91,22 @@ func TestCRCEncoder_Process_SizeCalculation(t *testing.T) {
 }
 
 func TestCRCDecoder_NewCRCDecoder(t *testing.T) {
-	decoder8 := NewCRC8Decoder()
+	decoder8 := NewDecoder()
 	require.NotNil(t, decoder8)
 	assert.Equal(t, 8, decoder8.Width())
 
-	decoder16 := NewCRC16Decoder()
+	decoder16 := NewDecoder()
 	require.NotNil(t, decoder16)
 	assert.Equal(t, 16, decoder16.Width())
 
-	decoder32 := NewCRC32Decoder()
+	decoder32 := NewDecoder()
 	require.NotNil(t, decoder32)
 	assert.Equal(t, 32, decoder32.Width())
 }
 
 func TestCRCDecoder_Process(t *testing.T) {
 	// First encode some data to get valid CRC-encoded data
-	encoder := NewCRC8Encoder()
+	encoder := NewEncoder()
 	testData := []byte{0x12, 0x34, 0x56}
 	srcReader := buffer.New(testData)
 	encodedBuf := buffer.New(make([]byte, 0, len(testData)*2))
@@ -114,7 +114,7 @@ func TestCRCDecoder_Process(t *testing.T) {
 	encoded := encodedBuf.Items()
 
 	// Now decode it
-	decoder := NewCRC8Decoder()
+	decoder := NewDecoder()
 	encodedReader := buffer.New(encoded)
 	decodedBuf := buffer.New(make([]byte, 0, len(testData)))
 	written := decoder.Process(decodedBuf, encodedReader)
@@ -125,7 +125,7 @@ func TestCRCDecoder_Process(t *testing.T) {
 }
 
 func TestCRCDecoder_Process_SizeCalculation(t *testing.T) {
-	decoder := NewCRC8Decoder()
+	decoder := NewDecoder()
 
 	tests := []struct {
 		name     string
@@ -133,7 +133,7 @@ func TestCRCDecoder_Process_SizeCalculation(t *testing.T) {
 		expected int
 	}{
 		{"too short", []byte{}, 0},
-		{"incomplete", []byte{0x12}, 0}, // Need at least 1 CRC byte
+		{"incomplete", []byte{0x12}, 0},  // Need at least 1 CRC byte
 		{"valid", []byte{0x12, 0x34}, 1}, // 2 bytes - 1 CRC = 1 data
 	}
 
@@ -147,7 +147,7 @@ func TestCRCDecoder_Process_SizeCalculation(t *testing.T) {
 }
 
 func TestCRCDecoder_Process_InvalidCRC(t *testing.T) {
-	decoder := NewCRC8Decoder()
+	decoder := NewDecoder()
 	// Create invalid CRC data (corrupted)
 	invalidData := []byte{0x12, 0x34, 0x56, 0x99} // Last byte is wrong CRC
 	srcReader := buffer.New(invalidData)
@@ -158,14 +158,13 @@ func TestCRCDecoder_Process_InvalidCRC(t *testing.T) {
 }
 
 func TestCRCEncoder_Reset(t *testing.T) {
-	encoder := NewCRC8Encoder()
+	encoder := NewEncoder()
 	// Reset should not panic
 	encoder.Reset()
 }
 
 func TestCRCDecoder_Reset(t *testing.T) {
-	decoder := NewCRC8Decoder()
+	decoder := NewDecoder()
 	// Reset should not panic
 	decoder.Reset()
 }
-

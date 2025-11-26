@@ -1,4 +1,4 @@
-package ecc
+package gray
 
 import (
 	"io"
@@ -7,33 +7,33 @@ import (
 	"github.com/itohio/EasyRobot/x/chain"
 )
 
-// GrayDecoder implements Gray code decoding at the byte level.
+// Decoder implements Gray code decoding at the byte level.
 // It implements the chain.Processor[byte, byte] interface for composability.
 // Gray codes provide noise resilience by ensuring adjacent values differ by only one bit.
 // Decodes data by converting Gray code values back to binary (1:1 mapping, no size change).
-type GrayDecoder struct {
+type Decoder struct {
 	bitsPerSymbol int // Number of bits per symbol (typically 4 for nibbles or 8 for bytes)
 }
 
-// NewGrayDecoder creates a new Gray code decoder with default 8-bit decoding.
-func NewGrayDecoder() *GrayDecoder {
-	return NewGrayDecoderWithBits(8)
+// NewDecoder creates a new Gray code decoder with default 8-bit decoding.
+func NewDecoder() *Decoder {
+	return NewDecoderWithBits(8)
 }
 
-// NewGrayDecoderWithBits creates a new Gray code decoder with specified bits per symbol.
+// NewDecoderWithBits creates a new Gray code decoder with specified bits per symbol.
 // bitsPerSymbol must be 1-8 (typically 4 for nibbles or 8 for bytes).
-func NewGrayDecoderWithBits(bitsPerSymbol int) *GrayDecoder {
+func NewDecoderWithBits(bitsPerSymbol int) *Decoder {
 	if bitsPerSymbol < 1 || bitsPerSymbol > 8 {
 		panic("Gray code bits per symbol must be 1-8")
 	}
-	return &GrayDecoder{
+	return &Decoder{
 		bitsPerSymbol: bitsPerSymbol,
 	}
 }
 
 // decodeFromGray converts a Gray code value back to binary.
 // Formula: binary = gray ^ (gray >> 1) ^ (gray >> 2) ^ ... (for n bits)
-func (g *GrayDecoder) decodeFromGray(gray uint8) uint8 {
+func (g *Decoder) decodeFromGray(gray uint8) uint8 {
 	mask := uint8((1 << g.bitsPerSymbol) - 1)
 	gray &= mask
 	binary := gray
@@ -48,7 +48,7 @@ func (g *GrayDecoder) decodeFromGray(gray uint8) uint8 {
 // Reads from buffer.Reader[byte] and writes to buffer.Writer[byte].
 // If dst is nil, calculates and returns the theoretical maximum output size.
 // Process implements chain.Processor[byte, byte] interface.
-func (g *GrayDecoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+func (g *Decoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
 	var srcBuf [256]byte
 	totalWritten := 0
 	var readErr error
@@ -133,15 +133,15 @@ func (g *GrayDecoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) 
 
 // Reset resets the decoder state.
 // Reset implements chain.Processor interface.
-func (g *GrayDecoder) Reset() {
+func (g *Decoder) Reset() {
 	// No state to reset (stateless)
 }
 
 // BitsPerSymbol returns the number of bits per symbol.
-func (g *GrayDecoder) BitsPerSymbol() int {
+func (g *Decoder) BitsPerSymbol() int {
 	return g.bitsPerSymbol
 }
 
 // Verify interface compliance
-var _ chain.Processor[byte, byte] = (*GrayDecoder)(nil)
+var _ chain.Processor[byte, byte] = (*Decoder)(nil)
 

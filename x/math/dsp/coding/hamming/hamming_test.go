@@ -1,4 +1,4 @@
-package ecc
+package hamming
 
 import (
 	"testing"
@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestHammingEncoder_NewHammingEncoder(t *testing.T) {
-	encoder := NewHammingEncoder()
+func TestHammingEncoder_NewEncoder(t *testing.T) {
+	encoder := NewEncoder()
 	require.NotNil(t, encoder)
 }
 
@@ -27,7 +27,7 @@ func TestHammingEncoder_Process(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			encoder := NewHammingEncoder()
+			encoder := NewEncoder()
 
 			// Test nil dst (size query)
 			srcReader := buffer.New(tt.src)
@@ -49,7 +49,7 @@ func TestHammingEncoder_Process(t *testing.T) {
 }
 
 func TestHammingEncoder_Process_SizeCalculation(t *testing.T) {
-	encoder := NewHammingEncoder()
+	encoder := NewEncoder()
 
 	tests := []struct {
 		name     string
@@ -70,14 +70,14 @@ func TestHammingEncoder_Process_SizeCalculation(t *testing.T) {
 	}
 }
 
-func TestHammingDecoder_NewHammingDecoder(t *testing.T) {
-	decoder := NewHammingDecoder()
+func TestHammingDecoder_NewDecoder(t *testing.T) {
+	decoder := NewDecoder()
 	require.NotNil(t, decoder)
 }
 
 func TestHammingDecoder_Process(t *testing.T) {
 	// First encode some data to get valid Hamming-encoded data
-	encoder := NewHammingEncoder()
+	encoder := NewEncoder()
 	testData := []byte{0x12, 0x34, 0x56}
 	srcReader := buffer.New(testData)
 	encodedBuf := buffer.New(make([]byte, 0, len(testData)*2))
@@ -85,7 +85,7 @@ func TestHammingDecoder_Process(t *testing.T) {
 	encoded := encodedBuf.Items()
 
 	// Now decode it
-	decoder := NewHammingDecoder()
+	decoder := NewDecoder()
 	encodedReader := buffer.New(encoded)
 	decodedBuf := buffer.New(make([]byte, 0, len(testData)))
 	written := decoder.Process(decodedBuf, encodedReader)
@@ -96,7 +96,7 @@ func TestHammingDecoder_Process(t *testing.T) {
 }
 
 func TestHammingDecoder_Process_SizeCalculation(t *testing.T) {
-	decoder := NewHammingDecoder()
+	decoder := NewDecoder()
 
 	tests := []struct {
 		name     string
@@ -120,7 +120,7 @@ func TestHammingDecoder_Process_SizeCalculation(t *testing.T) {
 
 func TestHammingDecoder_Process_SingleBitError(t *testing.T) {
 	// Encode data
-	encoder := NewHammingEncoder()
+	encoder := NewEncoder()
 	testData := []byte{0x12}
 	srcReader := buffer.New(testData)
 	encodedBuf := buffer.New(make([]byte, 0, 10))
@@ -132,7 +132,7 @@ func TestHammingDecoder_Process_SingleBitError(t *testing.T) {
 	encoded[0] ^= 0x01
 
 	// Decode should correct the error
-	decoder := NewHammingDecoder()
+	decoder := NewDecoder()
 	encodedReader := buffer.New(encoded)
 	decodedBuf := buffer.New(make([]byte, 0, 10))
 	written := decoder.Process(decodedBuf, encodedReader)
@@ -143,13 +143,13 @@ func TestHammingDecoder_Process_SingleBitError(t *testing.T) {
 }
 
 func TestHammingEncoder_Reset(t *testing.T) {
-	encoder := NewHammingEncoder()
+	encoder := NewEncoder()
 	// Reset should not panic
 	encoder.Reset()
 }
 
 func TestHammingDecoder_Reset(t *testing.T) {
-	decoder := NewHammingDecoder()
+	decoder := NewDecoder()
 	// Reset should not panic
 	decoder.Reset()
 }

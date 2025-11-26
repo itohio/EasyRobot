@@ -1,4 +1,4 @@
-package ecc
+package crc
 
 import (
 	"io"
@@ -11,7 +11,7 @@ import (
 // It implements the chain.Processor[byte, byte] interface for composability.
 // CRC provides error detection but not error correction.
 // Encodes data by appending CRC bytes (data + CRC).
-type CRCEncoder struct {
+type Encoder struct {
 	polynomial uint32
 	initial    uint32
 	xorOut     uint32
@@ -43,28 +43,33 @@ const (
 	CRC32TableSize  = 256
 )
 
-// NewCRC8Encoder creates a new CRC-8 encoder.
-func NewCRC8Encoder() *CRCEncoder {
-	return NewCRCEncoder(CRC8Polynomial, CRC8Initial, CRC8XOROut, CRC8Width)
+// NewEncoder creates a new CRC-32 encoder (default, most common).
+func NewEncoder() *Encoder {
+	return NewEncoderWith(CRC32Polynomial, CRC32Initial, CRC32XOROut, CRC32Width)
 }
 
-// NewCRC16Encoder creates a new CRC-16 encoder.
-func NewCRC16Encoder() *CRCEncoder {
-	return NewCRCEncoder(CRC16Polynomial, CRC16Initial, CRC16XOROut, CRC16Width)
+// NewEncoderCRC8 creates a new CRC-8 encoder.
+func NewEncoderCRC8() *Encoder {
+	return NewEncoderWith(CRC8Polynomial, CRC8Initial, CRC8XOROut, CRC8Width)
 }
 
-// NewCRC32Encoder creates a new CRC-32 encoder.
-func NewCRC32Encoder() *CRCEncoder {
-	return NewCRCEncoder(CRC32Polynomial, CRC32Initial, CRC32XOROut, CRC32Width)
+// NewEncoderCRC16 creates a new CRC-16 encoder.
+func NewEncoderCRC16() *Encoder {
+	return NewEncoderWith(CRC16Polynomial, CRC16Initial, CRC16XOROut, CRC16Width)
 }
 
-// NewCRCEncoder creates a new CRC encoder with custom parameters.
-func NewCRCEncoder(polynomial, initial, xorOut uint32, width int) *CRCEncoder {
+// NewEncoderCRC32 creates a new CRC-32 encoder.
+func NewEncoderCRC32() *Encoder {
+	return NewEncoderWith(CRC32Polynomial, CRC32Initial, CRC32XOROut, CRC32Width)
+}
+
+// NewEncoderWith creates a new CRC encoder with custom parameters.
+func NewEncoderWith(polynomial, initial, xorOut uint32, width int) *Encoder {
 	if width != 8 && width != 16 && width != 32 {
 		panic("CRC width must be 8, 16, or 32")
 	}
 
-	encoder := &CRCEncoder{
+	encoder := &Encoder{
 		polynomial: polynomial,
 		initial:    initial,
 		xorOut:     xorOut,
@@ -78,7 +83,7 @@ func NewCRCEncoder(polynomial, initial, xorOut uint32, width int) *CRCEncoder {
 }
 
 // generateTable generates the CRC lookup table for fast computation.
-func (c *CRCEncoder) generateTable() []uint32 {
+func (c *Encoder) generateTable() []uint32 {
 	table := make([]uint32, CRC32TableSize)
 	mask := uint32((1 << c.width) - 1)
 	if c.width == 32 {
@@ -148,7 +153,7 @@ func (c *CRCEncoder) generateTable() []uint32 {
 // Reads from buffer.Reader[byte] and writes to buffer.Writer[byte].
 // If dst is nil, calculates and returns the theoretical maximum output size.
 // Process implements chain.Processor[byte, byte] interface.
-func (c *CRCEncoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+func (c *Encoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
 	var srcBuf [256]byte
 	var dataBuf []byte // Buffer to accumulate all data for CRC calculation
 	totalRead := 0
@@ -218,7 +223,7 @@ func (c *CRCEncoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) i
 }
 
 // calculateCRC calculates the CRC value for the given data.
-func (c *CRCEncoder) calculateCRC(data []byte) uint32 {
+func (c *Encoder) calculateCRC(data []byte) uint32 {
 	crc := c.initial
 	mask := uint32((1 << c.width) - 1)
 	if c.width == 32 {
@@ -235,14 +240,14 @@ func (c *CRCEncoder) calculateCRC(data []byte) uint32 {
 
 // Reset resets the encoder state.
 // Reset implements chain.Processor interface.
-func (c *CRCEncoder) Reset() {
+func (c *Encoder) Reset() {
 	// No state to reset (stateless)
 }
 
 // Width returns the CRC width in bits.
-func (c *CRCEncoder) Width() int {
+func (c *Encoder) Width() int {
 	return c.width
 }
 
 // Verify interface compliance
-var _ chain.Processor[byte, byte] = (*CRCEncoder)(nil)
+var _ chain.Processor[byte, byte] = (*Encoder)(nil)

@@ -1,4 +1,4 @@
-package ecc
+package miller
 
 import (
 	"io"
@@ -12,14 +12,14 @@ import (
 // Miller encoding: '1' = transition in middle of bit period, '0' = no transition (or transition at start if previous was '0').
 // Better spectral efficiency than Manchester while maintaining clock recovery.
 // Each input byte produces 2 output bytes (1 byte -> 2 bytes).
-type MillerEncoder struct {
+type Encoder struct {
 	lastState bool // Last output state
 	lastBit   bool // Last input bit (for '0' encoding rule)
 }
 
-// NewMillerEncoder creates a new Miller encoder.
-func NewMillerEncoder() *MillerEncoder {
-	return &MillerEncoder{
+// NewEncoder creates a new Miller encoder.
+func NewEncoder() *Encoder {
+	return &Encoder{
 		lastState: false,
 		lastBit:   false,
 	}
@@ -30,7 +30,7 @@ func NewMillerEncoder() *MillerEncoder {
 // Each input byte produces 2 output bytes.
 // If dst is nil, calculates and returns the theoretical maximum output size.
 // Process implements chain.Processor[byte, byte] interface.
-func (m *MillerEncoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+func (m *Encoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
 	var srcBuf [256]byte
 	totalWritten := 0
 	var readErr error
@@ -142,11 +142,11 @@ func (m *MillerEncoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]
 
 // Reset resets the encoder state.
 // Reset implements chain.Processor interface.
-func (m *MillerEncoder) Reset() {
+func (m *Encoder) Reset() {
 	m.lastState = false
 	m.lastBit = false
 }
 
 // Verify interface compliance
-var _ chain.Processor[byte, byte] = (*MillerEncoder)(nil)
+var _ chain.Processor[byte, byte] = (*Encoder)(nil)
 

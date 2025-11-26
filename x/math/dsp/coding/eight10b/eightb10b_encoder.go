@@ -1,4 +1,4 @@
-package ecc
+package eight10b
 
 import (
 	"io"
@@ -14,13 +14,13 @@ import (
 // Output size: input_size * 2 (2 bytes per input byte)
 // Note: This is a simplified implementation without running disparity (RD) tracking.
 // For full DC balance, RD tracking would be needed to alternate between positive and negative disparity symbols.
-type EightB10BEncoder struct {
+type Encoder struct {
 	encodeTable [256]uint16 // Lookup table for 8-bit to 10-bit mapping
 }
 
-// NewEightB10BEncoder creates a new 8b/10b encoder.
-func NewEightB10BEncoder() *EightB10BEncoder {
-	return &EightB10BEncoder{
+// NewEncoder creates a new 8b/10b encoder.
+func NewEncoder() *Encoder {
+	return &Encoder{
 		encodeTable: eightB10BEncodeTable,
 	}
 }
@@ -30,7 +30,7 @@ func NewEightB10BEncoder() *EightB10BEncoder {
 // Each input byte produces 2 output bytes (10 bits total, stored in 2 bytes).
 // If dst is nil, calculates and returns the theoretical maximum output size.
 // Process implements chain.Processor[byte, byte] interface.
-func (e *EightB10BEncoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+func (e *Encoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
 	var srcBuf [256]byte
 	totalWritten := 0
 	var readErr error
@@ -110,10 +110,10 @@ func (e *EightB10BEncoder) Process(dst buffer.Writer[byte], src buffer.Reader[by
 
 // Reset resets the encoder state.
 // Reset implements chain.Processor interface.
-func (e *EightB10BEncoder) Reset() {
+func (e *Encoder) Reset() {
 	// No state to reset (stateless, simplified version)
 }
 
 // Verify interface compliance
-var _ chain.Processor[byte, byte] = (*EightB10BEncoder)(nil)
+var _ chain.Processor[byte, byte] = (*Encoder)(nil)
 

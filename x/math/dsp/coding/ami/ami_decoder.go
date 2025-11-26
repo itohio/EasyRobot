@@ -1,4 +1,4 @@
-package ecc
+package ami
 
 import (
 	"io"
@@ -11,13 +11,13 @@ import (
 // It implements the chain.Processor[byte, byte] interface for composability.
 // Decodes AMI-encoded bytes back to binary.
 // Note: Simplified implementation - full AMI requires 3-level detection.
-type AMIDecoder struct {
+type Decoder struct {
 	lastPolarity bool // Last detected polarity
 }
 
 // NewAMIDecoder creates a new AMI decoder.
-func NewAMIDecoder() *AMIDecoder {
-	return &AMIDecoder{
+func NewDecoder() *Decoder {
+	return &Decoder{
 		lastPolarity: true,
 	}
 }
@@ -26,7 +26,7 @@ func NewAMIDecoder() *AMIDecoder {
 // Reads from buffer.Reader[byte] and writes to buffer.Writer[byte].
 // If dst is nil, calculates and returns the theoretical maximum output size.
 // Process implements chain.Processor[byte, byte] interface.
-func (a *AMIDecoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+func (a *Decoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
 	var srcBuf [256]byte
 	totalWritten := 0
 	var readErr error
@@ -105,10 +105,10 @@ func (a *AMIDecoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) i
 
 // Reset resets the decoder state.
 // Reset implements chain.Processor interface.
-func (a *AMIDecoder) Reset() {
+func (a *Decoder) Reset() {
 	a.lastPolarity = true
 }
 
 // Verify interface compliance
-var _ chain.Processor[byte, byte] = (*AMIDecoder)(nil)
+var _ chain.Processor[byte, byte] = (*Decoder)(nil)
 

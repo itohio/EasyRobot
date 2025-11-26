@@ -1,4 +1,4 @@
-package ecc
+package rs
 
 import (
 	"math/rand"
@@ -11,8 +11,8 @@ import (
 // TestRS_Streaming_Roundtrip tests roundtrip with streaming data
 // that may have padding and unknown boundaries.
 func TestRS_Streaming_Roundtrip(t *testing.T) {
-	encoder := NewRSEncoder(255, 223)
-	decoder := NewRSDecoder(255, 223)
+	encoder := NewEncoder(255, 223)
+	decoder := NewDecoder(255, 223)
 
 	testCases := []struct {
 		name    string
@@ -107,8 +107,8 @@ func TestRS_Streaming_Roundtrip(t *testing.T) {
 
 // TestRS_Streaming_Chunked tests decoding in chunks (simulating real streaming).
 func TestRS_Streaming_Chunked(t *testing.T) {
-	encoder := NewRSEncoder(255, 223)
-	decoder := NewRSDecoder(255, 223)
+	encoder := NewEncoder(255, 223)
+	decoder := NewDecoder(255, 223)
 
 	original := make([]byte, 446) // 2 blocks
 	for i := range original {
@@ -176,8 +176,8 @@ func TestRS_Streaming_Chunked(t *testing.T) {
 
 // TestRS_Streaming_ArbitraryOffset tests decoding when data starts at arbitrary offset.
 func TestRS_Streaming_ArbitraryOffset(t *testing.T) {
-	encoder := NewRSEncoder(255, 223)
-	decoder := NewRSDecoder(255, 223)
+	encoder := NewEncoder(255, 223)
+	decoder := NewDecoder(255, 223)
 
 	original := make([]byte, 223)
 	for i := range original {
@@ -242,8 +242,8 @@ func TestRS_Streaming_ArbitraryOffset(t *testing.T) {
 
 // TestRS_Streaming_PartialBlocks tests handling of partial blocks at boundaries.
 func TestRS_Streaming_PartialBlocks(t *testing.T) {
-	encoder := NewRSEncoder(255, 223)
-	decoder := NewRSDecoder(255, 223)
+	encoder := NewEncoder(255, 223)
+	decoder := NewDecoder(255, 223)
 
 	original := make([]byte, 223)
 	for i := range original {
@@ -285,8 +285,8 @@ func TestRS_Streaming_PartialBlocks(t *testing.T) {
 // to ensure the decoder correctly buffers and resumes decoding when batches end in the middle
 // of an encoded block (n bytes).
 func TestRS_Streaming_PartialBlocksVariousSizes(t *testing.T) {
-	encoder := NewRSEncoder(255, 223)
-	decoder := NewRSDecoder(255, 223)
+	encoder := NewEncoder(255, 223)
+	decoder := NewDecoder(255, 223)
 
 	original := make([]byte, 223)
 	for i := range original {
@@ -308,7 +308,7 @@ func TestRS_Streaming_PartialBlocksVariousSizes(t *testing.T) {
 	// - Large partial (close to n)
 	// - Exactly n-1 (maximum partial block size)
 	testCases := []struct {
-		name       string
+		name        string
 		partialSize int
 	}{
 		{"small_partial", 50},   // Less than n/2
@@ -355,8 +355,8 @@ func TestRS_Streaming_PartialBlocksVariousSizes(t *testing.T) {
 // TestRS_Streaming_PartialBlocksMultipleBatches tests multiple partial batches
 // to ensure state is correctly maintained across multiple Process calls.
 func TestRS_Streaming_PartialBlocksMultipleBatches(t *testing.T) {
-	encoder := NewRSEncoder(255, 223)
-	decoder := NewRSDecoder(255, 223)
+	encoder := NewEncoder(255, 223)
+	decoder := NewDecoder(255, 223)
 
 	original := make([]byte, 223)
 	for i := range original {
@@ -399,8 +399,8 @@ func TestRS_Streaming_PartialBlocksMultipleBatches(t *testing.T) {
 
 // TestRS_Streaming_MultiplePackets tests handling multiple encoded packets in stream.
 func TestRS_Streaming_MultiplePackets(t *testing.T) {
-	encoder := NewRSEncoder(255, 223)
-	decoder := NewRSDecoder(255, 223)
+	encoder := NewEncoder(255, 223)
+	decoder := NewDecoder(255, 223)
 
 	packet1 := make([]byte, 223)
 	packet2 := make([]byte, 223)
@@ -481,8 +481,8 @@ func TestRS_Streaming_MultiplePackets(t *testing.T) {
 
 // TestRS_Streaming_RandomPadding tests with random padding data.
 func TestRS_Streaming_RandomPadding(t *testing.T) {
-	encoder := NewRSEncoder(255, 223)
-	decoder := NewRSDecoder(255, 223)
+	encoder := NewEncoder(255, 223)
+	decoder := NewDecoder(255, 223)
 
 	original := make([]byte, 223)
 	rng := rand.New(rand.NewSource(42))
@@ -539,7 +539,7 @@ func TestRS_Streaming_RandomPadding(t *testing.T) {
 
 // TestRS_Streaming_Reset tests that Reset clears internal buffer.
 func TestRS_Streaming_Reset(t *testing.T) {
-	decoder := NewRSDecoder(255, 223)
+	decoder := NewDecoder(255, 223)
 
 	// Add some data to buffer (partial block)
 	partial := make([]byte, 100)
@@ -552,7 +552,7 @@ func TestRS_Streaming_Reset(t *testing.T) {
 
 	// After reset, processing a complete block should work
 	// (if buffer wasn't cleared, it might have leftover data)
-	encoder := NewRSEncoder(255, 223)
+	encoder := NewEncoder(255, 223)
 	testData := make([]byte, 223)
 	for i := range testData {
 		testData[i] = byte(i)

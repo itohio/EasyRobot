@@ -49,9 +49,14 @@ type BitsWriter interface {
 	BitsLength() int
 }
 
+type Viewer[T any] interface {
+	Items() []T
+}
+
 var _ Writer[byte] = (*Values[byte])(nil)
 var _ Reader[byte] = (*Values[byte])(nil)
 var _ Initializer = (*Values[byte])(nil)
+var _ Viewer[byte] = (*Values[byte])(nil)
 
 // Values is a generic buffer that mimics bytes.Buffer functionality.
 // It uses a provided backing slice and grows it as needed.

@@ -1,4 +1,4 @@
-package ecc
+package rs
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 
 // RSEncoder implements Reed-Solomon encoding at the byte level.
 // It implements the chain.Processor[byte, byte] interface for composability.
-type RSEncoder struct {
+type Encoder struct {
 	// RS code parameters
 	n int // Total codeword length (data + parity)
 	k int // Data symbols per codeword
@@ -33,13 +33,13 @@ type rsEncoderImpl interface {
 	Reset()
 }
 
-// NewRSEncoder creates a new Reed-Solomon encoder.
+// NewEncoder creates a new Reed-Solomon encoder.
 // Parameters:
 //   - n: Total codeword length (must be > k, typically 255 for byte-level)
 //   - k: Data symbols per codeword (must be < n)
 //
 // The encoder can correct up to t = (n-k)/2 errors.
-func NewRSEncoder(n, k int) *RSEncoder {
+func NewEncoder(n, k int) *Encoder {
 	if n <= k {
 		panic(fmt.Sprintf("RS encoder: n (%d) must be greater than k (%d)", n, k))
 	}
@@ -55,7 +55,7 @@ func NewRSEncoder(n, k int) *RSEncoder {
 		panic(fmt.Sprintf("RS encoder: t (%d) must be positive (n=%d, k=%d)", t, n, k))
 	}
 
-	encoder := &RSEncoder{
+	encoder := &Encoder{
 		n:        n,
 		k:        k,
 		t:        t,
@@ -74,7 +74,7 @@ func NewRSEncoder(n, k int) *RSEncoder {
 // Encodes and writes blocks as soon as complete blocks (k bytes) are available.
 // If dst is nil, calculates and returns the theoretical maximum output size.
 // Process implements chain.Processor[byte, byte] interface.
-func (rs *RSEncoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+func (rs *Encoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
 	// Small buffer for reading chunks
 	var srcBuf [256]byte
 	totalWritten := 0
@@ -179,7 +179,7 @@ func (rs *RSEncoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) i
 
 // Reset resets the encoder state.
 // Reset implements chain.Processor interface.
-func (rs *RSEncoder) Reset() {
+func (rs *Encoder) Reset() {
 	if rs.encoder != nil {
 		rs.encoder.Reset()
 	}
@@ -187,19 +187,19 @@ func (rs *RSEncoder) Reset() {
 }
 
 // N returns the total codeword length.
-func (rs *RSEncoder) N() int {
+func (rs *Encoder) N() int {
 	return rs.n
 }
 
 // K returns the data symbols per codeword.
-func (rs *RSEncoder) K() int {
+func (rs *Encoder) K() int {
 	return rs.k
 }
 
 // T returns the maximum correctable errors.
-func (rs *RSEncoder) T() int {
+func (rs *Encoder) T() int {
 	return rs.t
 }
 
 // Verify interface compliance
-var _ chain.Processor[byte, byte] = (*RSEncoder)(nil)
+var _ chain.Processor[byte, byte] = (*Encoder)(nil)

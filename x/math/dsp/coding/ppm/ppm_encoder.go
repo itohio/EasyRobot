@@ -1,4 +1,4 @@
-package ecc
+package ppm
 
 import (
 	"io"
@@ -14,21 +14,21 @@ import (
 // This implementation uses 4-PPM: 2 bits per symbol, 4 possible positions.
 // Each input byte (4 symbols) produces variable output (typically 4-8 bytes depending on implementation).
 // Simplified: encodes as position markers (1:1 mapping for simplicity).
-type PPMEncoder struct {
+type Encoder struct {
 	positions int // Number of positions per symbol (2, 4, or 8)
 }
 
-// NewPPMEncoder creates a new 4-PPM encoder.
-func NewPPMEncoder() *PPMEncoder {
-	return NewPPMEncoderWithPositions(4)
+// NewEncoder creates a new 4-PPM encoder.
+func NewEncoder() *Encoder {
+	return NewEncoderWithPositions(4)
 }
 
-// NewPPMEncoderWithPositions creates a new PPM encoder with specified positions.
-func NewPPMEncoderWithPositions(positions int) *PPMEncoder {
+// NewEncoderWithPositions creates a new PPM encoder with specified positions.
+func NewEncoderWithPositions(positions int) *Encoder {
 	if positions != 2 && positions != 4 && positions != 8 {
 		panic("PPM positions must be 2, 4, or 8")
 	}
-	return &PPMEncoder{
+	return &Encoder{
 		positions: positions,
 	}
 }
@@ -38,7 +38,7 @@ func NewPPMEncoderWithPositions(positions int) *PPMEncoder {
 // If dst is nil, calculates and returns the theoretical maximum output size.
 // Process implements chain.Processor[byte, byte] interface.
 // Note: Full PPM would require timing information. This is a simplified byte-level implementation.
-func (p *PPMEncoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+func (p *Encoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
 	var srcBuf [256]byte
 	totalWritten := 0
 	var readErr error
@@ -118,10 +118,10 @@ func (p *PPMEncoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) i
 
 // Reset resets the encoder state.
 // Reset implements chain.Processor interface.
-func (p *PPMEncoder) Reset() {
+func (p *Encoder) Reset() {
 	// No state to reset
 }
 
 // Verify interface compliance
-var _ chain.Processor[byte, byte] = (*PPMEncoder)(nil)
+var _ chain.Processor[byte, byte] = (*Encoder)(nil)
 

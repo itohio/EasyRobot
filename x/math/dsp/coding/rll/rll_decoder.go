@@ -1,4 +1,4 @@
-package ecc
+package rll
 
 import (
 	"io"
@@ -10,21 +10,21 @@ import (
 // RLLDecoder implements Run-Length Limited (RLL) decoding.
 // It implements the chain.Processor[byte, byte] interface for composability.
 // Decodes RLL-encoded bytes back to original bytes.
-type RLLDecoder struct {
+type Decoder struct {
 	d, k int // RLL(d,k) parameters (must match encoder)
 }
 
 // NewRLLDecoder creates a new RLL(1,7) decoder.
-func NewRLLDecoder() *RLLDecoder {
-	return NewRLLDecoderWithParams(1, 7)
+func NewDecoder() *Decoder {
+	return NewDecoderWithParams(1, 7)
 }
 
-// NewRLLDecoderWithParams creates a new RLL decoder with custom (d,k) parameters.
-func NewRLLDecoderWithParams(d, k int) *RLLDecoder {
+// NewDecoderWithParams creates a new RLL decoder with custom (d,k) parameters.
+func NewDecoderWithParams(d, k int) *Decoder {
 	if d < 0 || k < d {
 		panic("RLL: invalid parameters, must have 0 <= d <= k")
 	}
-	return &RLLDecoder{
+	return &Decoder{
 		d: d,
 		k: k,
 	}
@@ -34,7 +34,7 @@ func NewRLLDecoderWithParams(d, k int) *RLLDecoder {
 // Reads from buffer.Reader[byte] and writes to buffer.Writer[byte].
 // If dst is nil, calculates and returns the theoretical maximum output size.
 // Process implements chain.Processor[byte, byte] interface.
-func (r *RLLDecoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+func (r *Decoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
 	var srcBuf [256]byte
 	totalWritten := 0
 	var readErr error
@@ -100,10 +100,10 @@ func (r *RLLDecoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) i
 
 // Reset resets the decoder state.
 // Reset implements chain.Processor interface.
-func (r *RLLDecoder) Reset() {
+func (r *Decoder) Reset() {
 	// No state to reset
 }
 
 // Verify interface compliance
-var _ chain.Processor[byte, byte] = (*RLLDecoder)(nil)
+var _ chain.Processor[byte, byte] = (*Decoder)(nil)
 

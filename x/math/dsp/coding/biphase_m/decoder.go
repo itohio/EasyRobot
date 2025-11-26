@@ -1,4 +1,4 @@
-package ecc
+package biphase_m
 
 import (
 	"io"
@@ -7,18 +7,18 @@ import (
 	"github.com/itohio/EasyRobot/x/chain"
 )
 
-// DiffManchesterDecoder implements Differential Manchester decoding.
+// Decoder implements Differential Manchester decoding.
 // It implements the chain.Processor[byte, byte] interface for composability.
 // Decodes Differential Manchester-encoded bytes back to original bytes.
 // Each 2 input bytes produce 1 output byte (2 bytes -> 1 byte).
-type DiffManchesterDecoder struct {
+type Decoder struct {
 	lastState bool   // Last input state (for detecting transitions)
 	buffer    []byte // Buffer for partial bytes
 }
 
-// NewDiffManchesterDecoder creates a new Differential Manchester decoder.
-func NewDiffManchesterDecoder() *DiffManchesterDecoder {
-	return &DiffManchesterDecoder{
+// NewDecoder creates a new Differential Manchester decoder.
+func NewDecoder() *Decoder {
+	return &Decoder{
 		lastState: false,
 	}
 }
@@ -28,7 +28,7 @@ func NewDiffManchesterDecoder() *DiffManchesterDecoder {
 // Each 2 input bytes produce 1 output byte.
 // If dst is nil, calculates and returns the theoretical maximum output size.
 // Process implements chain.Processor[byte, byte] interface.
-func (d *DiffManchesterDecoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+func (d *Decoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
 	var srcBuf [256]byte
 	totalWritten := 0
 	var readErr error
@@ -172,11 +172,10 @@ func (d *DiffManchesterDecoder) Process(dst buffer.Writer[byte], src buffer.Read
 
 // Reset resets the decoder state.
 // Reset implements chain.Processor interface.
-func (d *DiffManchesterDecoder) Reset() {
+func (d *Decoder) Reset() {
 	d.lastState = false
 	d.buffer = d.buffer[:0]
 }
 
 // Verify interface compliance
-var _ chain.Processor[byte, byte] = (*DiffManchesterDecoder)(nil)
-
+var _ chain.Processor[byte, byte] = (*Decoder)(nil)

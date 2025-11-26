@@ -1,4 +1,4 @@
-package ecc
+package rs
 
 import (
 	"fmt"
@@ -12,7 +12,7 @@ import (
 // It implements the chain.Processor[byte, byte] interface for composability.
 // The decoder handles streaming data with unknown boundaries.
 // Note: Decoder doesn't expect padding - it only decodes complete blocks (no padding).
-type RSDecoder struct {
+type Decoder struct {
 	// RS code parameters
 	n int // Total codeword length (data + parity)
 	k int // Data symbols per codeword
@@ -34,11 +34,11 @@ type rsDecoderImpl interface {
 	Reset()
 }
 
-// NewRSDecoder creates a new Reed-Solomon decoder.
+// NewDecoder creates a new Reed-Solomon decoder.
 // Parameters must match the encoder:
 //   - n: Total codeword length
 //   - k: Data symbols per codeword
-func NewRSDecoder(n, k int) *RSDecoder {
+func NewDecoder(n, k int) *Decoder {
 	if n <= k {
 		panic(fmt.Sprintf("RS decoder: n (%d) must be greater than k (%d)", n, k))
 	}
@@ -54,7 +54,7 @@ func NewRSDecoder(n, k int) *RSDecoder {
 		panic(fmt.Sprintf("RS decoder: t (%d) must be positive (n=%d, k=%d)", t, n, k))
 	}
 
-	decoder := &RSDecoder{
+	decoder := &Decoder{
 		n: n,
 		k: k,
 		t: t,
@@ -73,7 +73,7 @@ func NewRSDecoder(n, k int) *RSDecoder {
 // Decodes and writes bytes as soon as complete blocks (n bytes) are available.
 // If dst is nil, calculates and returns the theoretical maximum output size.
 // Process implements chain.Processor[byte, byte] interface.
-func (rs *RSDecoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+func (rs *Decoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
 	// Buffer size: enough for one complete block (n bytes) plus some extra for partial blocks
 	// We only need to buffer up to n-1 bytes for partial blocks
 	var srcBuf [256]byte // Small buffer for reading chunks
@@ -218,7 +218,7 @@ func (rs *RSDecoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) i
 
 // Reset resets the decoder state.
 // Reset implements chain.Processor interface.
-func (rs *RSDecoder) Reset() {
+func (rs *Decoder) Reset() {
 	if rs.decoder != nil {
 		rs.decoder.Reset()
 	}
@@ -227,19 +227,19 @@ func (rs *RSDecoder) Reset() {
 }
 
 // N returns the total codeword length.
-func (rs *RSDecoder) N() int {
+func (rs *Decoder) N() int {
 	return rs.n
 }
 
 // K returns the data symbols per codeword.
-func (rs *RSDecoder) K() int {
+func (rs *Decoder) K() int {
 	return rs.k
 }
 
 // T returns the maximum correctable errors.
-func (rs *RSDecoder) T() int {
+func (rs *Decoder) T() int {
 	return rs.t
 }
 
 // Verify interface compliance
-var _ chain.Processor[byte, byte] = (*RSDecoder)(nil)
+var _ chain.Processor[byte, byte] = (*Decoder)(nil)

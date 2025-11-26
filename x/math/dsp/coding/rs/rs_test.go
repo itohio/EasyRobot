@@ -1,4 +1,4 @@
-package ecc
+package rs
 
 import (
 	"testing"
@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRSEncoder_NewRSEncoder(t *testing.T) {
+func TestRSEncoder_NewEncoder(t *testing.T) {
 	tests := []struct {
 		name    string
 		n, k    int
@@ -27,10 +27,10 @@ func TestRSEncoder_NewRSEncoder(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.wantErr {
 				assert.Panics(t, func() {
-					NewRSEncoder(tt.n, tt.k)
+					NewEncoder(tt.n, tt.k)
 				})
 			} else {
-				encoder := NewRSEncoder(tt.n, tt.k)
+				encoder := NewEncoder(tt.n, tt.k)
 				require.NotNil(t, encoder)
 				assert.Equal(t, tt.n, encoder.N())
 				assert.Equal(t, tt.k, encoder.K())
@@ -41,7 +41,7 @@ func TestRSEncoder_NewRSEncoder(t *testing.T) {
 }
 
 func TestRSEncoder_Process(t *testing.T) {
-	encoder := NewRSEncoder(255, 223)
+	encoder := NewEncoder(255, 223)
 
 	tests := []struct {
 		name string
@@ -81,7 +81,7 @@ func TestRSEncoder_Process(t *testing.T) {
 }
 
 func TestRSEncoder_Process_SizeCalculation(t *testing.T) {
-	encoder := NewRSEncoder(255, 223)
+	encoder := NewEncoder(255, 223)
 
 	tests := []struct {
 		name     string
@@ -103,7 +103,7 @@ func TestRSEncoder_Process_SizeCalculation(t *testing.T) {
 	}
 }
 
-func TestRSDecoder_NewRSDecoder(t *testing.T) {
+func TestRSDecoder_NewDecoder(t *testing.T) {
 	tests := []struct {
 		name    string
 		n, k    int
@@ -121,10 +121,10 @@ func TestRSDecoder_NewRSDecoder(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.wantErr {
 				assert.Panics(t, func() {
-					NewRSDecoder(tt.n, tt.k)
+					NewDecoder(tt.n, tt.k)
 				})
 			} else {
-				decoder := NewRSDecoder(tt.n, tt.k)
+				decoder := NewDecoder(tt.n, tt.k)
 				require.NotNil(t, decoder)
 				assert.Equal(t, tt.n, decoder.N())
 				assert.Equal(t, tt.k, decoder.K())
@@ -135,8 +135,8 @@ func TestRSDecoder_NewRSDecoder(t *testing.T) {
 }
 
 func TestRSDecoder_Process(t *testing.T) {
-	encoder := NewRSEncoder(255, 223)
-	decoder := NewRSDecoder(255, 223)
+	encoder := NewEncoder(255, 223)
+	decoder := NewDecoder(255, 223)
 
 	tests := []struct {
 		name string
@@ -144,7 +144,7 @@ func TestRSDecoder_Process(t *testing.T) {
 	}{
 		{"empty", []byte{}},
 		{"incomplete block", make([]byte, 100)},
-		{"single block", make([]byte, 223)}, // Will be encoded to 255
+		{"single block", make([]byte, 223)},    // Will be encoded to 255
 		{"multiple blocks", make([]byte, 446)}, // Will be encoded to 510
 	}
 
@@ -186,7 +186,7 @@ func TestRSDecoder_Process(t *testing.T) {
 }
 
 func TestRSDecoder_Process_SizeCalculation(t *testing.T) {
-	decoder := NewRSDecoder(255, 223)
+	decoder := NewDecoder(255, 223)
 
 	tests := []struct {
 		name     string
@@ -196,7 +196,7 @@ func TestRSDecoder_Process_SizeCalculation(t *testing.T) {
 		{"empty", []byte{}, 0},
 		{"incomplete block", make([]byte, 100), 0}, // Less than n bytes
 		{"single block", make([]byte, 255), 223},   // 1 block: 255 -> 223
-		{"two blocks", make([]byte, 510), 446},    // 2 blocks: 510 -> 446
+		{"two blocks", make([]byte, 510), 446},     // 2 blocks: 510 -> 446
 	}
 
 	for _, tt := range tests {
@@ -209,13 +209,13 @@ func TestRSDecoder_Process_SizeCalculation(t *testing.T) {
 }
 
 func TestRSEncoder_Reset(t *testing.T) {
-	encoder := NewRSEncoder(255, 223)
+	encoder := NewEncoder(255, 223)
 	// Reset should not panic
 	encoder.Reset()
 }
 
 func TestRSDecoder_Reset(t *testing.T) {
-	decoder := NewRSDecoder(255, 223)
+	decoder := NewDecoder(255, 223)
 	// Reset should not panic
 	decoder.Reset()
 }

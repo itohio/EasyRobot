@@ -1,4 +1,4 @@
-package ecc
+package b8zs
 
 import (
 	"io"
@@ -10,13 +10,13 @@ import (
 // B8ZSDecoder implements Bipolar 8-Zero Substitution (B8ZS) decoding.
 // It implements the chain.Processor[byte, byte] interface for composability.
 // Decodes B8ZS-encoded bytes back to binary.
-type B8ZSDecoder struct {
+type Decoder struct {
 	zeroCount int // Consecutive zero count
 }
 
 // NewB8ZSDecoder creates a new B8ZS decoder.
-func NewB8ZSDecoder() *B8ZSDecoder {
-	return &B8ZSDecoder{
+func NewDecoder() *Decoder {
+	return &Decoder{
 		zeroCount: 0,
 	}
 }
@@ -25,7 +25,7 @@ func NewB8ZSDecoder() *B8ZSDecoder {
 // Reads from buffer.Reader[byte] and writes to buffer.Writer[byte].
 // If dst is nil, calculates and returns the theoretical maximum output size.
 // Process implements chain.Processor[byte, byte] interface.
-func (b *B8ZSDecoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+func (b *Decoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
 	var srcBuf [256]byte
 	totalWritten := 0
 	var readErr error
@@ -109,10 +109,10 @@ func (b *B8ZSDecoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) 
 
 // Reset resets the decoder state.
 // Reset implements chain.Processor interface.
-func (b *B8ZSDecoder) Reset() {
+func (b *Decoder) Reset() {
 	b.zeroCount = 0
 }
 
 // Verify interface compliance
-var _ chain.Processor[byte, byte] = (*B8ZSDecoder)(nil)
+var _ chain.Processor[byte, byte] = (*Decoder)(nil)
 

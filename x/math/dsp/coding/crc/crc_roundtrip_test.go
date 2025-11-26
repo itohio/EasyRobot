@@ -1,4 +1,4 @@
-package ecc
+package crc
 
 import (
 	"testing"
@@ -9,8 +9,8 @@ import (
 )
 
 func TestCRC_Roundtrip_CRC8(t *testing.T) {
-	encoder := NewCRC8Encoder()
-	decoder := NewCRC8Decoder()
+	encoder := NewEncoderCRC8()
+	decoder := NewDecoderCRC8()
 
 	testCases := [][]byte{
 		{0x12},
@@ -84,8 +84,8 @@ func addBadDataPaddingForCRC(goodData []byte, prefixLen, suffixLen int) []byte {
 // when sender was not active but receiver got corrupted/noise data
 // CRC decoder should reject bad data (CRC mismatch) and only decode valid data
 func TestCRC_Roundtrip_WithBadDataPadding(t *testing.T) {
-	encoder := NewCRC8Encoder()
-	decoder := NewCRC8Decoder()
+	encoder := NewEncoderCRC8()
+	decoder := NewDecoderCRC8()
 
 	testCases := []struct {
 		name      string
@@ -171,8 +171,8 @@ func TestCRC_Roundtrip_WithBadDataPadding(t *testing.T) {
 }
 
 func TestCRC_Roundtrip_CRC16(t *testing.T) {
-	encoder := NewCRC16Encoder()
-	decoder := NewCRC16Decoder()
+	encoder := NewEncoderCRC16()
+	decoder := NewDecoderCRC16()
 
 	testCases := [][]byte{
 		{0x12},
@@ -217,8 +217,8 @@ func TestCRC_Roundtrip_CRC16(t *testing.T) {
 }
 
 func TestCRC_Roundtrip_CRC32(t *testing.T) {
-	encoder := NewCRC32Encoder()
-	decoder := NewCRC32Decoder()
+	encoder := NewEncoderCRC32()
+	decoder := NewDecoderCRC32()
 
 	testCases := [][]byte{
 		{0x12},

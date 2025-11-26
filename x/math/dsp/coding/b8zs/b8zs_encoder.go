@@ -1,4 +1,4 @@
-package ecc
+package b8zs
 
 import (
 	"io"
@@ -12,14 +12,14 @@ import (
 // B8ZS is an AMI variant that substitutes 8 consecutive zeros with a special pattern.
 // Used in T1 lines (North American telecom).
 // Encodes data by converting binary to B8ZS (1:1 mapping, no size change).
-type B8ZSEncoder struct {
+type Encoder struct {
 	nextPolarity bool // Next polarity for marks
 	zeroCount    int  // Consecutive zero count
 }
 
-// NewB8ZSEncoder creates a new B8ZS encoder.
-func NewB8ZSEncoder() *B8ZSEncoder {
-	return &B8ZSEncoder{
+// NewEncoder creates a new B8ZS encoder.
+func NewEncoder() *Encoder {
+	return &Encoder{
 		nextPolarity: true,
 		zeroCount:    0,
 	}
@@ -29,7 +29,7 @@ func NewB8ZSEncoder() *B8ZSEncoder {
 // Reads from buffer.Reader[byte] and writes to buffer.Writer[byte].
 // If dst is nil, calculates and returns the theoretical maximum output size.
 // Process implements chain.Processor[byte, byte] interface.
-func (b *B8ZSEncoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+func (b *Encoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
 	var srcBuf [256]byte
 	totalWritten := 0
 	var readErr error
@@ -122,11 +122,11 @@ func (b *B8ZSEncoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) 
 
 // Reset resets the encoder state.
 // Reset implements chain.Processor interface.
-func (b *B8ZSEncoder) Reset() {
+func (b *Encoder) Reset() {
 	b.nextPolarity = true
 	b.zeroCount = 0
 }
 
 // Verify interface compliance
-var _ chain.Processor[byte, byte] = (*B8ZSEncoder)(nil)
+var _ chain.Processor[byte, byte] = (*Encoder)(nil)
 

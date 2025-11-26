@@ -1,4 +1,4 @@
-package ecc
+package hamming
 
 import (
 	"io"
@@ -12,22 +12,22 @@ import (
 // Hamming(7,4) can correct single-bit errors and detect double-bit errors.
 // Decodes data by processing 7-bit codewords back to 4-bit nibbles.
 // Each 2 input bytes (2 codewords) produce 1 output byte (2 nibbles).
-type HammingDecoder struct {
+type Decoder struct {
 	// Buffer for partial codewords (less than 2 bytes = 2 codewords)
 	buffer []byte
 	// Reusable buffer for combining buffer + src (avoids allocations in hot path)
 	combinedBuf []byte
 }
 
-// NewHammingDecoder creates a new Hamming(7,4) decoder.
-func NewHammingDecoder() *HammingDecoder {
-	return &HammingDecoder{}
+// NewDecoder creates a new Hamming(7,4) decoder.
+func NewDecoder() *Decoder {
+	return &Decoder{}
 }
 
 // decodeCodeword decodes a 7-bit Hamming codeword to a 4-bit nibble.
 // Also detects and corrects single-bit errors.
 // Returns the decoded nibble and a boolean indicating if an error was corrected.
-func (h *HammingDecoder) decodeCodeword(codeword uint8) (uint8, bool) {
+func (h *Decoder) decodeCodeword(codeword uint8) (uint8, bool) {
 	// Extract bits (0-indexed positions)
 	// Position 0: P1, 1: P2, 2: D1, 3: P4, 4: D2, 5: D3, 6: D4
 	p1 := (codeword >> 0) & 1
@@ -83,7 +83,7 @@ func (h *HammingDecoder) decodeCodeword(codeword uint8) (uint8, bool) {
 // Processes pairs of bytes (2 codewords) to produce 1 output byte (2 nibbles).
 // If dst is nil, calculates and returns the theoretical maximum output size.
 // Process implements chain.Processor[byte, byte] interface.
-func (h *HammingDecoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+func (h *Decoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
 	var srcBuf [256]byte
 	totalWritten := 0
 	var readErr error
@@ -183,11 +183,11 @@ func (h *HammingDecoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte
 
 // Reset resets the decoder state.
 // Reset implements chain.Processor interface.
-func (h *HammingDecoder) Reset() {
+func (h *Decoder) Reset() {
 	h.buffer = h.buffer[:0]           // Clear buffer but keep capacity
 	h.combinedBuf = h.combinedBuf[:0] // Clear combined buffer but keep capacity
 }
 
 // Verify interface compliance
-var _ chain.Processor[byte, byte] = (*HammingDecoder)(nil)
+var _ chain.Processor[byte, byte] = (*Decoder)(nil)
 

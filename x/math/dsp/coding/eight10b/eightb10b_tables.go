@@ -1,4 +1,4 @@
-package ecc
+package eight10b
 
 // 8b/10b encoding tables
 // Based on standard 8b/10b encoding used in PCIe, SATA, DisplayPort, etc.

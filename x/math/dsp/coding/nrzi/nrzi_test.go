@@ -1,4 +1,4 @@
-package ecc
+package nrzi
 
 import (
 	"testing"
@@ -9,8 +9,8 @@ import (
 )
 
 func TestNRZI_Roundtrip(t *testing.T) {
-	encoder := NewNRZIEncoder()
-	decoder := NewNRZIDecoder()
+	encoder := NewEncoder()
+	decoder := NewDecoder()
 
 	testCases := [][]byte{
 		{0x12},
@@ -65,8 +65,8 @@ func TestNRZI_Roundtrip(t *testing.T) {
 }
 
 func TestNRZI_Transitions(t *testing.T) {
-	encoder := NewNRZIEncoder()
-	decoder := NewNRZIDecoder()
+	encoder := NewEncoder()
+	decoder := NewDecoder()
 
 	// Test that '1' causes transition, '0' maintains state
 	testData := []byte{0x01} // Binary: 00000001 (only LSB is 1)

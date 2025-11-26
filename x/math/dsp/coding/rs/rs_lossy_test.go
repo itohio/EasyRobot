@@ -1,4 +1,4 @@
-package ecc
+package rs
 
 import (
 	"math/rand"
@@ -51,8 +51,8 @@ func introduceByteErrors(data []byte, numErrors int) []byte {
 }
 
 func TestRS_LossyRoundtrip_LowErrorRate(t *testing.T) {
-	encoder := NewRSEncoder(255, 223)
-	decoder := NewRSDecoder(255, 223)
+	encoder := NewEncoder(255, 223)
+	decoder := NewDecoder(255, 223)
 
 	original := make([]byte, 223)
 	for i := range original {
@@ -83,8 +83,8 @@ func TestRS_LossyRoundtrip_LowErrorRate(t *testing.T) {
 }
 
 func TestRS_LossyRoundtrip_MediumErrorRate(t *testing.T) {
-	encoder := NewRSEncoder(255, 223)
-	decoder := NewRSDecoder(255, 223)
+	encoder := NewEncoder(255, 223)
+	decoder := NewDecoder(255, 223)
 
 	original := make([]byte, 223)
 	for i := range original {
@@ -114,8 +114,8 @@ func TestRS_LossyRoundtrip_MediumErrorRate(t *testing.T) {
 }
 
 func TestRS_LossyRoundtrip_HighErrorRate(t *testing.T) {
-	encoder := NewRSEncoder(255, 223)
-	decoder := NewRSDecoder(255, 223)
+	encoder := NewEncoder(255, 223)
+	decoder := NewDecoder(255, 223)
 
 	original := make([]byte, 223)
 	for i := range original {
@@ -145,8 +145,8 @@ func TestRS_LossyRoundtrip_HighErrorRate(t *testing.T) {
 }
 
 func TestRS_LossyRoundtrip_BitErrors(t *testing.T) {
-	encoder := NewRSEncoder(255, 223)
-	decoder := NewRSDecoder(255, 223)
+	encoder := NewEncoder(255, 223)
+	decoder := NewDecoder(255, 223)
 
 	original := make([]byte, 223)
 	for i := range original {
@@ -174,8 +174,8 @@ func TestRS_LossyRoundtrip_BitErrors(t *testing.T) {
 }
 
 func TestRS_LossyRoundtrip_MultipleBlocks(t *testing.T) {
-	encoder := NewRSEncoder(255, 223)
-	decoder := NewRSDecoder(255, 223)
+	encoder := NewEncoder(255, 223)
+	decoder := NewDecoder(255, 223)
 
 	// Test with multiple blocks
 	original := make([]byte, 446) // 2 blocks
@@ -210,8 +210,8 @@ func TestRS_LossyRoundtrip_MultipleBlocks(t *testing.T) {
 }
 
 func TestRS_LossyRoundtrip_ErrorCorrectionCapability(t *testing.T) {
-	encoder := NewRSEncoder(255, 223)
-	decoder := NewRSDecoder(255, 223)
+	encoder := NewEncoder(255, 223)
+	decoder := NewDecoder(255, 223)
 
 	original := make([]byte, 223)
 	for i := range original {

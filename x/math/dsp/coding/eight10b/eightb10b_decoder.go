@@ -1,4 +1,4 @@
-package ecc
+package eight10b
 
 import (
 	"io"
@@ -12,14 +12,14 @@ import (
 // 8b/10b decodes 10-bit symbols back to 8-bit bytes.
 // Each 2 input bytes (10 bits) produce 1 output byte.
 // Input size: output_size * 2 (2 bytes per output byte)
-type EightB10BDecoder struct {
+type Decoder struct {
 	decodeTable [1024]byte // Lookup table for 10-bit to 8-bit mapping
 	buffer      []byte     // Buffer for partial symbols
 }
 
 // NewEightB10BDecoder creates a new 8b/10b decoder.
-func NewEightB10BDecoder() *EightB10BDecoder {
-	return &EightB10BDecoder{
+func NewDecoder() *Decoder {
+	return &Decoder{
 		decodeTable: eightB10BDecodeTable,
 	}
 }
@@ -29,7 +29,7 @@ func NewEightB10BDecoder() *EightB10BDecoder {
 // Each 2 input bytes (10 bits) produce 1 output byte.
 // If dst is nil, calculates and returns the theoretical maximum output size.
 // Process implements chain.Processor[byte, byte] interface.
-func (e *EightB10BDecoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+func (e *Decoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
 	var srcBuf [256]byte
 	totalWritten := 0
 	var readErr error
@@ -141,10 +141,10 @@ func (e *EightB10BDecoder) Process(dst buffer.Writer[byte], src buffer.Reader[by
 
 // Reset resets the decoder state.
 // Reset implements chain.Processor interface.
-func (e *EightB10BDecoder) Reset() {
+func (e *Decoder) Reset() {
 	e.buffer = e.buffer[:0]
 }
 
 // Verify interface compliance
-var _ chain.Processor[byte, byte] = (*EightB10BDecoder)(nil)
+var _ chain.Processor[byte, byte] = (*Decoder)(nil)
 

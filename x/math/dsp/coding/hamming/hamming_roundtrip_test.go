@@ -1,4 +1,4 @@
-package ecc
+package hamming
 
 import (
 	"testing"
@@ -9,8 +9,8 @@ import (
 )
 
 func TestHamming_Roundtrip(t *testing.T) {
-	encoder := NewHammingEncoder()
-	decoder := NewHammingDecoder()
+	encoder := NewEncoder()
+	decoder := NewDecoder()
 
 	testCases := [][]byte{
 		{0x12},
@@ -62,8 +62,8 @@ func TestHamming_Roundtrip(t *testing.T) {
 }
 
 func TestHamming_Roundtrip_EdgeCases(t *testing.T) {
-	encoder := NewHammingEncoder()
-	decoder := NewHammingDecoder()
+	encoder := NewEncoder()
+	decoder := NewDecoder()
 
 	testCases := []struct {
 		name string

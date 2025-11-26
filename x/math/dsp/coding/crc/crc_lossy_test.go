@@ -1,4 +1,4 @@
-package ecc
+package crc
 
 import (
 	"math/rand"
@@ -10,8 +10,8 @@ import (
 )
 
 func TestCRC_LossyRoundtrip_ValidCRC(t *testing.T) {
-	encoder := NewCRC8Encoder()
-	decoder := NewCRC8Decoder()
+	encoder := NewEncoderCRC8()
+	decoder := NewDecoderCRC8()
 
 	original := []byte{0x12, 0x34, 0x56, 0x78}
 
@@ -35,8 +35,8 @@ func TestCRC_LossyRoundtrip_ValidCRC(t *testing.T) {
 }
 
 func TestCRC_LossyRoundtrip_InvalidCRC_DataCorrupted(t *testing.T) {
-	encoder := NewCRC8Encoder()
-	decoder := NewCRC8Decoder()
+	encoder := NewEncoderCRC8()
+	decoder := NewDecoderCRC8()
 
 	original := []byte{0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0} // Longer data for better CRC detection
 
@@ -75,8 +75,8 @@ func TestCRC_LossyRoundtrip_InvalidCRC_DataCorrupted(t *testing.T) {
 }
 
 func TestCRC_LossyRoundtrip_InvalidCRC_CRCCorrupted(t *testing.T) {
-	encoder := NewCRC8Encoder()
-	decoder := NewCRC8Decoder()
+	encoder := NewEncoderCRC8()
+	decoder := NewDecoderCRC8()
 
 	original := []byte{0x12, 0x34, 0x56, 0x78}
 
@@ -103,8 +103,8 @@ func TestCRC_LossyRoundtrip_InvalidCRC_CRCCorrupted(t *testing.T) {
 }
 
 func TestCRC_LossyRoundtrip_RandomErrors(t *testing.T) {
-	encoder := NewCRC8Encoder()
-	decoder := NewCRC8Decoder()
+	encoder := NewEncoderCRC8()
+	decoder := NewDecoderCRC8()
 
 	original := make([]byte, 100)
 	for i := range original {
@@ -140,8 +140,8 @@ func TestCRC_LossyRoundtrip_RandomErrors(t *testing.T) {
 }
 
 func TestCRC_LossyRoundtrip_CRC16(t *testing.T) {
-	encoder := NewCRC16Encoder()
-	decoder := NewCRC16Decoder()
+	encoder := NewEncoderCRC16()
+	decoder := NewDecoderCRC16()
 
 	original := []byte{0x12, 0x34, 0x56, 0x78}
 
@@ -168,8 +168,8 @@ func TestCRC_LossyRoundtrip_CRC16(t *testing.T) {
 }
 
 func TestCRC_LossyRoundtrip_CRC32(t *testing.T) {
-	encoder := NewCRC32Encoder()
-	decoder := NewCRC32Decoder()
+	encoder := NewEncoderCRC32()
+	decoder := NewDecoderCRC32()
 
 	original := []byte{0x12, 0x34, 0x56, 0x78}
 

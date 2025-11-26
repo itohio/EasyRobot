@@ -1,4 +1,4 @@
-package ecc
+package hdb3
 
 import (
 	"io"
@@ -10,13 +10,13 @@ import (
 // HDB3Decoder implements High Density Bipolar 3 (HDB3) decoding.
 // It implements the chain.Processor[byte, byte] interface for composability.
 // Decodes HDB3-encoded bytes back to binary.
-type HDB3Decoder struct {
+type Decoder struct {
 	zeroCount int // Consecutive zero count
 }
 
 // NewHDB3Decoder creates a new HDB3 decoder.
-func NewHDB3Decoder() *HDB3Decoder {
-	return &HDB3Decoder{
+func NewDecoder() *Decoder {
+	return &Decoder{
 		zeroCount: 0,
 	}
 }
@@ -25,7 +25,7 @@ func NewHDB3Decoder() *HDB3Decoder {
 // Reads from buffer.Reader[byte] and writes to buffer.Writer[byte].
 // If dst is nil, calculates and returns the theoretical maximum output size.
 // Process implements chain.Processor[byte, byte] interface.
-func (h *HDB3Decoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+func (h *Decoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
 	var srcBuf [256]byte
 	totalWritten := 0
 	var readErr error
@@ -109,10 +109,9 @@ func (h *HDB3Decoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) 
 
 // Reset resets the decoder state.
 // Reset implements chain.Processor interface.
-func (h *HDB3Decoder) Reset() {
+func (h *Decoder) Reset() {
 	h.zeroCount = 0
 }
 
 // Verify interface compliance
-var _ chain.Processor[byte, byte] = (*HDB3Decoder)(nil)
-
+var _ chain.Processor[byte, byte] = (*Decoder)(nil)

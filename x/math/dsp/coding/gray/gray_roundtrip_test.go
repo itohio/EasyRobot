@@ -1,4 +1,4 @@
-package ecc
+package gray
 
 import (
 	"testing"
@@ -9,8 +9,8 @@ import (
 )
 
 func TestGray_Roundtrip_8Bit(t *testing.T) {
-	encoder := NewGrayEncoder()
-	decoder := NewGrayDecoder()
+	encoder := NewEncoder()
+	decoder := NewDecoder()
 
 	testCases := [][]byte{
 		{0x12},
@@ -62,8 +62,8 @@ func TestGray_Roundtrip_8Bit(t *testing.T) {
 }
 
 func TestGray_Roundtrip_4Bit(t *testing.T) {
-	encoder := NewGrayEncoderWithBits(4)
-	decoder := NewGrayDecoderWithBits(4)
+	encoder := NewEncoderWithBits(4)
+	decoder := NewDecoderWithBits(4)
 
 	testCases := [][]byte{
 		{0x12},
@@ -115,8 +115,8 @@ func TestGray_Roundtrip_4Bit(t *testing.T) {
 }
 
 func TestGray_Roundtrip_EdgeCases(t *testing.T) {
-	encoder := NewGrayEncoder()
-	decoder := NewGrayDecoder()
+	encoder := NewEncoder()
+	decoder := NewDecoder()
 
 	testCases := []struct {
 		name string
@@ -178,7 +178,7 @@ func TestGray_Roundtrip_EdgeCases(t *testing.T) {
 
 func TestGray_AdjacentValues(t *testing.T) {
 	// Test that adjacent values in Gray code differ by only one bit
-	encoder := NewGrayEncoder()
+	encoder := NewEncoder()
 
 	// Test for 8-bit values
 	for i := 0; i < 255; i++ {
@@ -205,8 +205,8 @@ func TestGray_AllBitWidths(t *testing.T) {
 	// Test all supported bit widths
 	for bits := 1; bits <= 8; bits++ {
 		t.Run("", func(t *testing.T) {
-			encoder := NewGrayEncoderWithBits(bits)
-			decoder := NewGrayDecoderWithBits(bits)
+		encoder := NewEncoderWithBits(bits)
+		decoder := NewDecoderWithBits(bits)
 
 			// Test all possible values for this bit width
 			maxVal := (1 << bits) - 1

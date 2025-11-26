@@ -976,7 +976,6 @@ Combine with adaptive coding for link adaptation
 - MIMO (multiple antenna diversity)
 - Cognitive radio (dynamic scheme selection)
 
-
 References:
 - MD in Telecommunications physics
 - Claude hallucinations (did not verify the math, trust me bro)

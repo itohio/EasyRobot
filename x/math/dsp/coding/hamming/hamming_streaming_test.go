@@ -1,4 +1,4 @@
-package ecc
+package hamming
 
 import (
 	"testing"
@@ -12,8 +12,8 @@ import (
 // can handle streaming data by encoding into a buffer, then decoding
 // by splitting the encoded data into multiple parts.
 func TestHamming_Streaming_EncodeDecode(t *testing.T) {
-	encoder := NewHammingEncoder()
-	decoder := NewHammingDecoder()
+	encoder := NewEncoder()
+	decoder := NewDecoder()
 
 	testCases := []struct {
 		name string
@@ -95,8 +95,8 @@ func TestHamming_Streaming_EncodeDecode(t *testing.T) {
 // TestHamming_Streaming_MultipleChunks tests decoding with multiple chunks
 // Uses chunk sizes that ensure proper alignment (multiples of 2 bytes)
 func TestHamming_Streaming_MultipleChunks(t *testing.T) {
-	encoder := NewHammingEncoder()
-	decoder := NewHammingDecoder()
+	encoder := NewEncoder()
+	decoder := NewDecoder()
 
 	original := make([]byte, 50)
 	for i := range original {
@@ -140,8 +140,8 @@ func TestHamming_Streaming_MultipleChunks(t *testing.T) {
 
 // TestHamming_Streaming_EncoderMultipleChunks tests encoding with multiple chunks
 func TestHamming_Streaming_EncoderMultipleChunks(t *testing.T) {
-	encoder := NewHammingEncoder()
-	decoder := NewHammingDecoder()
+	encoder := NewEncoder()
+	decoder := NewDecoder()
 
 	original := []byte{0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC, 0xDE, 0xF0}
 
@@ -178,8 +178,8 @@ func TestHamming_Streaming_EncoderMultipleChunks(t *testing.T) {
 
 // TestHamming_Streaming_EncoderDecoderInterleaved tests interleaved encoding and decoding
 func TestHamming_Streaming_EncoderDecoderInterleaved(t *testing.T) {
-	encoder := NewHammingEncoder()
-	decoder := NewHammingDecoder()
+	encoder := NewEncoder()
+	decoder := NewDecoder()
 
 	original := []byte{0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC}
 

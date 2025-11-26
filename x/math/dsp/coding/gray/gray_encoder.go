@@ -1,4 +1,4 @@
-package ecc
+package gray
 
 import (
 	"io"
@@ -7,34 +7,34 @@ import (
 	"github.com/itohio/EasyRobot/x/chain"
 )
 
-// GrayEncoder implements Gray code encoding at the byte level.
+// Encoder implements Gray code encoding at the byte level.
 // It implements the chain.Processor[byte, byte] interface for composability.
 // Gray codes provide noise resilience by ensuring adjacent values differ by only one bit.
 // This reduces the chance of multiple bit errors when a symbol is misdetected.
 // Encodes data by converting binary values to Gray code (1:1 mapping, no size change).
-type GrayEncoder struct {
+type Encoder struct {
 	bitsPerSymbol int // Number of bits per symbol (typically 4 for nibbles or 8 for bytes)
 }
 
-// NewGrayEncoder creates a new Gray code encoder with default 8-bit encoding.
-func NewGrayEncoder() *GrayEncoder {
-	return NewGrayEncoderWithBits(8)
+// NewEncoder creates a new Gray code encoder with default 8-bit encoding.
+func NewEncoder() *Encoder {
+	return NewEncoderWithBits(8)
 }
 
-// NewGrayEncoderWithBits creates a new Gray code encoder with specified bits per symbol.
+// NewEncoderWithBits creates a new Gray code encoder with specified bits per symbol.
 // bitsPerSymbol must be 1-8 (typically 4 for nibbles or 8 for bytes).
-func NewGrayEncoderWithBits(bitsPerSymbol int) *GrayEncoder {
+func NewEncoderWithBits(bitsPerSymbol int) *Encoder {
 	if bitsPerSymbol < 1 || bitsPerSymbol > 8 {
 		panic("Gray code bits per symbol must be 1-8")
 	}
-	return &GrayEncoder{
+	return &Encoder{
 		bitsPerSymbol: bitsPerSymbol,
 	}
 }
 
 // encodeToGray converts a binary value to Gray code.
 // Formula: gray = binary ^ (binary >> 1)
-func (g *GrayEncoder) encodeToGray(binary uint8) uint8 {
+func (g *Encoder) encodeToGray(binary uint8) uint8 {
 	mask := uint8((1 << g.bitsPerSymbol) - 1)
 	binary &= mask
 	return (binary ^ (binary >> 1)) & mask
@@ -44,7 +44,7 @@ func (g *GrayEncoder) encodeToGray(binary uint8) uint8 {
 // Reads from buffer.Reader[byte] and writes to buffer.Writer[byte].
 // If dst is nil, calculates and returns the theoretical maximum output size.
 // Process implements chain.Processor[byte, byte] interface.
-func (g *GrayEncoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+func (g *Encoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
 	var srcBuf [256]byte
 	totalWritten := 0
 	var readErr error
@@ -129,15 +129,15 @@ func (g *GrayEncoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) 
 
 // Reset resets the encoder state.
 // Reset implements chain.Processor interface.
-func (g *GrayEncoder) Reset() {
+func (g *Encoder) Reset() {
 	// No state to reset (stateless)
 }
 
 // BitsPerSymbol returns the number of bits per symbol.
-func (g *GrayEncoder) BitsPerSymbol() int {
+func (g *Encoder) BitsPerSymbol() int {
 	return g.bitsPerSymbol
 }
 
 // Verify interface compliance
-var _ chain.Processor[byte, byte] = (*GrayEncoder)(nil)
+var _ chain.Processor[byte, byte] = (*Encoder)(nil)
 

@@ -1,4 +1,4 @@
-package ecc
+package crc
 
 import (
 	"io"
@@ -11,7 +11,7 @@ import (
 // It implements the chain.Processor[byte, byte] interface for composability.
 // CRC provides error detection but not error correction.
 // Decodes data by validating CRC and returning data only (CRC removed).
-type CRCDecoder struct {
+type Decoder struct {
 	polynomial uint32
 	initial    uint32
 	xorOut     uint32
@@ -23,28 +23,33 @@ type CRCDecoder struct {
 	combinedBuf []byte // Reusable buffer for combining crcBuf + new chunk
 }
 
-// NewCRC8Decoder creates a new CRC-8 decoder.
-func NewCRC8Decoder() *CRCDecoder {
-	return NewCRCDecoder(CRC8Polynomial, CRC8Initial, CRC8XOROut, CRC8Width)
+// NewDecoder creates a new CRC-32 decoder (default, most common).
+func NewDecoder() *Decoder {
+	return NewDecoderWith(CRC32Polynomial, CRC32Initial, CRC32XOROut, CRC32Width)
 }
 
-// NewCRC16Decoder creates a new CRC-16 decoder.
-func NewCRC16Decoder() *CRCDecoder {
-	return NewCRCDecoder(CRC16Polynomial, CRC16Initial, CRC16XOROut, CRC16Width)
+// NewDecoderCRC8 creates a new CRC-8 decoder.
+func NewDecoderCRC8() *Decoder {
+	return NewDecoderWith(CRC8Polynomial, CRC8Initial, CRC8XOROut, CRC8Width)
 }
 
-// NewCRC32Decoder creates a new CRC-32 decoder.
-func NewCRC32Decoder() *CRCDecoder {
-	return NewCRCDecoder(CRC32Polynomial, CRC32Initial, CRC32XOROut, CRC32Width)
+// NewDecoderCRC16 creates a new CRC-16 decoder.
+func NewDecoderCRC16() *Decoder {
+	return NewDecoderWith(CRC16Polynomial, CRC16Initial, CRC16XOROut, CRC16Width)
 }
 
-// NewCRCDecoder creates a new CRC decoder with custom parameters.
-func NewCRCDecoder(polynomial, initial, xorOut uint32, width int) *CRCDecoder {
+// NewDecoderCRC32 creates a new CRC-32 decoder.
+func NewDecoderCRC32() *Decoder {
+	return NewDecoderWith(CRC32Polynomial, CRC32Initial, CRC32XOROut, CRC32Width)
+}
+
+// NewDecoderWith creates a new CRC decoder with custom parameters.
+func NewDecoderWith(polynomial, initial, xorOut uint32, width int) *Decoder {
 	if width != 8 && width != 16 && width != 32 {
 		panic("CRC width must be 8, 16, or 32")
 	}
 
-	decoder := &CRCDecoder{
+	decoder := &Decoder{
 		polynomial: polynomial,
 		initial:    initial,
 		xorOut:     xorOut,
@@ -58,7 +63,7 @@ func NewCRCDecoder(polynomial, initial, xorOut uint32, width int) *CRCDecoder {
 }
 
 // generateTable generates the CRC lookup table for fast computation.
-func (c *CRCDecoder) generateTable() []uint32 {
+func (c *Decoder) generateTable() []uint32 {
 	table := make([]uint32, CRC32TableSize)
 	mask := uint32((1 << c.width) - 1)
 	if c.width == 32 {
@@ -130,7 +135,7 @@ func (c *CRCDecoder) generateTable() []uint32 {
 // If dst is nil, calculates and returns the theoretical maximum output size.
 // If CRC validation fails, returns 0 bytes written (but data may have already been written).
 // Process implements chain.Processor[byte, byte] interface.
-func (c *CRCDecoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+func (c *Decoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
 	// Small buffer for reading chunks - enough for data bytes
 	// CRC bytes are small (1, 2, or 4 bytes), so we buffer them separately
 	var srcBuf [256]byte
@@ -256,7 +261,7 @@ func (c *CRCDecoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) i
 }
 
 // extractCRC extracts the CRC value from the CRC bytes (little-endian).
-func (c *CRCDecoder) extractCRC(crcBytes []byte) uint32 {
+func (c *Decoder) extractCRC(crcBytes []byte) uint32 {
 	var crc uint32
 	for i, b := range crcBytes {
 		crc |= uint32(b) << (i * 8)
@@ -269,7 +274,7 @@ func (c *CRCDecoder) extractCRC(crcBytes []byte) uint32 {
 }
 
 // calculateCRC calculates the CRC value for the given data.
-func (c *CRCDecoder) calculateCRC(data []byte) uint32 {
+func (c *Decoder) calculateCRC(data []byte) uint32 {
 	crc := c.initial
 	mask := uint32((1 << c.width) - 1)
 	if c.width == 32 {
@@ -286,16 +291,16 @@ func (c *CRCDecoder) calculateCRC(data []byte) uint32 {
 
 // Reset resets the decoder state.
 // Reset implements chain.Processor interface.
-func (c *CRCDecoder) Reset() {
+func (c *Decoder) Reset() {
 	c.crcBuf = c.crcBuf[:0]
 	c.dataBuf = c.dataBuf[:0]
 	c.combinedBuf = c.combinedBuf[:0]
 }
 
 // Width returns the CRC width in bits.
-func (c *CRCDecoder) Width() int {
+func (c *Decoder) Width() int {
 	return c.width
 }
 
 // Verify interface compliance
-var _ chain.Processor[byte, byte] = (*CRCDecoder)(nil)
+var _ chain.Processor[byte, byte] = (*Decoder)(nil)

@@ -1,4 +1,4 @@
-package ecc
+package miller
 
 import (
 	"io"
@@ -11,15 +11,15 @@ import (
 // It implements the chain.Processor[byte, byte] interface for composability.
 // Decodes Miller-encoded bytes back to original bytes.
 // Each 2 input bytes produce 1 output byte (2 bytes -> 1 byte).
-type MillerDecoder struct {
+type Decoder struct {
 	lastState bool   // Last input state
 	lastBit   bool   // Last decoded bit
 	buffer    []byte // Buffer for partial bytes
 }
 
 // NewMillerDecoder creates a new Miller decoder.
-func NewMillerDecoder() *MillerDecoder {
-	return &MillerDecoder{
+func NewDecoder() *Decoder {
+	return &Decoder{
 		lastState: false,
 		lastBit:   false,
 	}
@@ -30,7 +30,7 @@ func NewMillerDecoder() *MillerDecoder {
 // Each 2 input bytes produce 1 output byte.
 // If dst is nil, calculates and returns the theoretical maximum output size.
 // Process implements chain.Processor[byte, byte] interface.
-func (m *MillerDecoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+func (m *Decoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
 	var srcBuf [256]byte
 	totalWritten := 0
 	var readErr error
@@ -167,12 +167,12 @@ func (m *MillerDecoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]
 
 // Reset resets the decoder state.
 // Reset implements chain.Processor interface.
-func (m *MillerDecoder) Reset() {
+func (m *Decoder) Reset() {
 	m.lastState = false
 	m.lastBit = false
 	m.buffer = m.buffer[:0]
 }
 
 // Verify interface compliance
-var _ chain.Processor[byte, byte] = (*MillerDecoder)(nil)
+var _ chain.Processor[byte, byte] = (*Decoder)(nil)
 

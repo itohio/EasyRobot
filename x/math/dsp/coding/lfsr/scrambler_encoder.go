@@ -1,4 +1,4 @@
-package ecc
+package lfsr
 
 import (
 	"io"
@@ -13,7 +13,7 @@ import (
 // This reduces long runs of zeros/ones, spreads spectrum, and reduces EMI.
 // Encodes data by XORing with pseudo-random sequence (1:1 mapping, no size change).
 // Common polynomials: x^7 + x^4 + 1 (7-bit), x^15 + x^14 + 1 (15-bit), x^23 + x^18 + 1 (23-bit)
-type ScramblerEncoder struct {
+type Encoder struct {
 	polynomial uint32 // LFSR polynomial (taps)
 	state      uint32 // Current LFSR state
 	width      int    // LFSR width in bits
@@ -34,19 +34,19 @@ const (
 	Scrambler23Width      = 23
 )
 
-// NewScramblerEncoder creates a new scrambler encoder with default 7-bit polynomial.
-func NewScramblerEncoder() *ScramblerEncoder {
-	return NewScramblerEncoderWithPolynomial(Scrambler7Polynomial, Scrambler7Width)
+// NewEncoder creates a new scrambler encoder with default 7-bit polynomial.
+func NewEncoder() *Encoder {
+	return NewEncoderWithPolynomial(Scrambler7Polynomial, Scrambler7Width)
 }
 
-// NewScramblerEncoderWithPolynomial creates a new scrambler encoder with custom polynomial.
-func NewScramblerEncoderWithPolynomial(polynomial uint32, width int) *ScramblerEncoder {
+// NewEncoderWithPolynomial creates a new scrambler encoder with custom polynomial.
+func NewEncoderWithPolynomial(polynomial uint32, width int) *Encoder {
 	if width < 1 || width > 32 {
 		panic("scrambler width must be 1-32")
 	}
 	// Initialize state to non-zero value (all ones is common)
 	initialState := uint32((1 << width) - 1)
-	return &ScramblerEncoder{
+	return &Encoder{
 		polynomial: polynomial,
 		state:      initialState,
 		width:      width,
@@ -54,7 +54,7 @@ func NewScramblerEncoderWithPolynomial(polynomial uint32, width int) *ScramblerE
 }
 
 // nextBit generates the next bit from the LFSR.
-func (s *ScramblerEncoder) nextBit() byte {
+func (s *Encoder) nextBit() byte {
 	mask := uint32((1 << s.width) - 1)
 	// Calculate feedback: XOR of tapped bits
 	feedback := s.state & s.polynomial
@@ -73,7 +73,7 @@ func (s *ScramblerEncoder) nextBit() byte {
 // Reads from buffer.Reader[byte] and writes to buffer.Writer[byte].
 // If dst is nil, calculates and returns the theoretical maximum output size.
 // Process implements chain.Processor[byte, byte] interface.
-func (s *ScramblerEncoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+func (s *Encoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
 	var srcBuf [256]byte
 	totalWritten := 0
 	var readErr error
@@ -155,11 +155,11 @@ func (s *ScramblerEncoder) Process(dst buffer.Writer[byte], src buffer.Reader[by
 
 // Reset resets the encoder state.
 // Reset implements chain.Processor interface.
-func (s *ScramblerEncoder) Reset() {
+func (s *Encoder) Reset() {
 	// Reset to initial state (all ones)
 	s.state = uint32((1 << s.width) - 1)
 }
 
 // Verify interface compliance
-var _ chain.Processor[byte, byte] = (*ScramblerEncoder)(nil)
+var _ chain.Processor[byte, byte] = (*Encoder)(nil)
 

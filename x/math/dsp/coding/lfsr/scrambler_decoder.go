@@ -1,4 +1,4 @@
-package ecc
+package lfsr
 
 import (
 	"io"
@@ -12,25 +12,25 @@ import (
 // Descrambling XORs scrambled data with the same pseudo-random sequence to recover original.
 // Decodes data by XORing with pseudo-random sequence (1:1 mapping, no size change).
 // Must use the same polynomial and initial state as the encoder.
-type ScramblerDecoder struct {
+type Decoder struct {
 	polynomial uint32 // LFSR polynomial (must match encoder)
 	state      uint32 // Current LFSR state (must match encoder)
 	width      int    // LFSR width in bits
 }
 
 // NewScramblerDecoder creates a new scrambler decoder with default 7-bit polynomial.
-func NewScramblerDecoder() *ScramblerDecoder {
-	return NewScramblerDecoderWithPolynomial(Scrambler7Polynomial, Scrambler7Width)
+func NewDecoder() *Decoder {
+	return NewDecoderWithPolynomial(Scrambler7Polynomial, Scrambler7Width)
 }
 
-// NewScramblerDecoderWithPolynomial creates a new scrambler decoder with custom polynomial.
-func NewScramblerDecoderWithPolynomial(polynomial uint32, width int) *ScramblerDecoder {
+// NewDecoderWithPolynomial creates a new scrambler decoder with custom polynomial.
+func NewDecoderWithPolynomial(polynomial uint32, width int) *Decoder {
 	if width < 1 || width > 32 {
 		panic("scrambler width must be 1-32")
 	}
 	// Initialize state to non-zero value (must match encoder)
 	initialState := uint32((1 << width) - 1)
-	return &ScramblerDecoder{
+	return &Decoder{
 		polynomial: polynomial,
 		state:      initialState,
 		width:      width,
@@ -38,7 +38,7 @@ func NewScramblerDecoderWithPolynomial(polynomial uint32, width int) *ScramblerD
 }
 
 // nextBit generates the next bit from the LFSR (same as encoder).
-func (s *ScramblerDecoder) nextBit() byte {
+func (s *Decoder) nextBit() byte {
 	mask := uint32((1 << s.width) - 1)
 	feedback := s.state & s.polynomial
 	parity := byte(0)
@@ -54,7 +54,7 @@ func (s *ScramblerDecoder) nextBit() byte {
 // Reads from buffer.Reader[byte] and writes to buffer.Writer[byte].
 // If dst is nil, calculates and returns the theoretical maximum output size.
 // Process implements chain.Processor[byte, byte] interface.
-func (s *ScramblerDecoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+func (s *Decoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
 	var srcBuf [256]byte
 	totalWritten := 0
 	var readErr error
@@ -136,11 +136,11 @@ func (s *ScramblerDecoder) Process(dst buffer.Writer[byte], src buffer.Reader[by
 
 // Reset resets the decoder state.
 // Reset implements chain.Processor interface.
-func (s *ScramblerDecoder) Reset() {
+func (s *Decoder) Reset() {
 	// Reset to initial state (must match encoder)
 	s.state = uint32((1 << s.width) - 1)
 }
 
 // Verify interface compliance
-var _ chain.Processor[byte, byte] = (*ScramblerDecoder)(nil)
+var _ chain.Processor[byte, byte] = (*Decoder)(nil)
 

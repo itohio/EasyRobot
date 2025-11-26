@@ -1,4 +1,4 @@
-package ecc
+package four5b
 
 import (
 	"io"
@@ -7,19 +7,19 @@ import (
 	"github.com/itohio/EasyRobot/x/chain"
 )
 
-// FourB5BEncoder implements 4b/5b encoding.
+// Encoder implements 4b/5b encoding.
 // It implements the chain.Processor[byte, byte] interface for composability.
 // 4b/5b maps 4-bit nibbles to 5-bit symbols for DC balance and clock recovery.
 // Each input byte (2 nibbles) produces 2 output bytes (2 symbols, 10 bits total).
 // Output size: input_size * 1.25 (5 bits per 4 bits = 1.25x)
-type FourB5BEncoder struct {
+type Encoder struct {
 	encodeTable [16]byte // Lookup table for 4-bit to 5-bit mapping
 }
 
 // 4b/5b encoding table (standard Fast Ethernet mapping)
 // Maps 4-bit value (0-15) to 5-bit symbol
 // Ensures no more than 3 consecutive zeros for clock recovery
-var fourB5BTable = [16]byte{
+var encodeTable = [16]byte{
 	0b11110, // 0x0 -> 0x1E (0000 -> 11110)
 	0b01001, // 0x1 -> 0x09 (0001 -> 01001)
 	0b10100, // 0x2 -> 0x14 (0010 -> 10100)
@@ -38,10 +38,10 @@ var fourB5BTable = [16]byte{
 	0b11101, // 0xF -> 0x1D (1111 -> 11101)
 }
 
-// NewFourB5BEncoder creates a new 4b/5b encoder.
-func NewFourB5BEncoder() *FourB5BEncoder {
-	return &FourB5BEncoder{
-		encodeTable: fourB5BTable,
+// NewEncoder creates a new 4b/5b encoder.
+func NewEncoder() *Encoder {
+	return &Encoder{
+		encodeTable: encodeTable,
 	}
 }
 
@@ -50,7 +50,7 @@ func NewFourB5BEncoder() *FourB5BEncoder {
 // Each input byte (2 nibbles) produces 2 output bytes (10 bits total, stored in 2 bytes).
 // If dst is nil, calculates and returns the theoretical maximum output size.
 // Process implements chain.Processor[byte, byte] interface.
-func (f *FourB5BEncoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
+func (f *Encoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte]) int {
 	var srcBuf [256]byte
 	totalWritten := 0
 	var readErr error
@@ -140,10 +140,10 @@ func (f *FourB5BEncoder) Process(dst buffer.Writer[byte], src buffer.Reader[byte
 
 // Reset resets the encoder state.
 // Reset implements chain.Processor interface.
-func (f *FourB5BEncoder) Reset() {
+func (f *Encoder) Reset() {
 	// No state to reset (stateless)
 }
 
 // Verify interface compliance
-var _ chain.Processor[byte, byte] = (*FourB5BEncoder)(nil)
+var _ chain.Processor[byte, byte] = (*Encoder)(nil)
 
