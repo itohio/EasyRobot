@@ -148,7 +148,7 @@ func (d *Demodulator) Process(dst buffer.Writer[byte], src buffer.Reader[float32
 		// Copy remaining samples (from symbolSamples to end) to beginning
 		remaining := d.buffered - symbolSamples
 		if remaining > 0 {
-			copy(d.fifo, d.fifo[symbolSamples:d.buffered])
+		copy(d.fifo, d.fifo[symbolSamples:d.buffered])
 		}
 		d.buffered = remaining
 	}
@@ -322,8 +322,8 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 		maxAllowedError := d.cfg.SymbolSeparationMetric() * 0.5
 		phaseErrorAbs := math32.Abs(phaseError)
 		if phaseErrorAbs < maxAllowedError && energy >= baseThreshold*1.5 {
-			d.pllLocked = true
-			d.setTrackingBandwidth()
+		d.pllLocked = true
+		d.setTrackingBandwidth()
 			d.lastLockState = true
 			if d.debugLogging {
 				log.Printf("[SYMBOL %d] PLL LOCK ACHIEVED: phaseError=%.6f (max=%.6f), energy=%.6f, symbol=%d (0x%x)",
@@ -402,7 +402,7 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 				d.symbolIndex, phaseError)
 		}
 	}
-	
+
 	d.symbolIndex++
 	return symbol
 }

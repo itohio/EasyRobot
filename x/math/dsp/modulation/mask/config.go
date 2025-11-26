@@ -19,6 +19,7 @@ type Config struct {
 	AmplitudeLevels []float32 // A_0, A_1, ..., A_{M-1}
 	LevelSpacing     string    // "even" or "power_efficient"
 	MinAmplitude     float32   // For power-efficient (non-zero minimum)
+	Depth            float32   // Depth parameter (0-100%): 100% means lowest is 0, lower means non-zero minimum
 
 	// Pulse shaping
 	Envelope         string
@@ -29,10 +30,11 @@ type Config struct {
 	PreamblePattern []int // Alternating pattern for sync
 
 	// Demodulator parameters
-	EnergyThreshold  float32
-	TransmissionGap  int
-	AGCWindow        int
-	CoherentMode     bool // true for coherent, false for envelope detection
+	EnergyThreshold    float32
+	TransmissionGap    int   // Silence detection gap (at least 4 symbols)
+	LockLossThreshold  int   // Consecutive zero symbols to lose lock (default 20)
+	AGCWindow          int
+	CoherentMode       bool // true for coherent, false for envelope detection
 
 	// Carrier recovery (for coherent mode)
 	LoopBandwidth float32
@@ -52,11 +54,13 @@ func DefaultConfig() Config {
 		Amplitude:        0.8,
 		LevelSpacing:     "even",
 		MinAmplitude:     0.1,
+		Depth:            100.0, // 100% means lowest is 0 (full depth)
 		Envelope:         "raised_cosine",
 		RaisedCosineBeta: 0.35,
-		PreambleLength:   0, // TODO: Fix preamble detection for passband
-		EnergyThreshold:  1e-3,
-		TransmissionGap:  4,
+		PreambleLength:   20, // Default preamble length (lowest, highest alternating) - required for normalization
+		EnergyThreshold:   1e-3,
+		TransmissionGap:   4,  // At least 4 symbols of silence required
+		LockLossThreshold: 20, // Lose lock after 20 consecutive zero symbols
 		AGCWindow:        32,
 		CoherentMode:     false, // Start with envelope detection
 		LoopBandwidth:    0,     // Will be set in Validate()
@@ -81,8 +85,18 @@ func (c *Config) Validate() error {
 	if c.Amplitude <= 0 {
 		c.Amplitude = 1
 	}
-	if c.PreambleLength < 0 {
-		c.PreambleLength = 0
+	if c.Depth <= 0 || c.Depth > 100 {
+		c.Depth = 100.0 // Default: 100% depth (lowest is 0)
+	}
+	// Preamble is required for amplitude normalization - cannot be disabled
+	if c.PreambleLength <= 0 {
+		c.PreambleLength = 20 // Default: 20 symbols (lowest/highest alternating)
+	}
+	if c.TransmissionGap < 4 {
+		c.TransmissionGap = 4 // Minimum 4 symbols for silence detection
+	}
+	if c.LockLossThreshold <= 0 {
+		c.LockLossThreshold = 20 // Default: lose lock after 20 consecutive zero symbols
 	}
 	if c.RaisedCosineBeta <= 0 {
 		c.RaisedCosineBeta = 0.35
@@ -109,10 +123,11 @@ func (c *Config) Validate() error {
 	// Calculate amplitude levels
 	c.AmplitudeLevels = c.calculateAmplitudeLevels()
 
-	// Set default preamble pattern if not set
-	if len(c.PreamblePattern) == 0 {
+	// Set default preamble pattern if not set and preamble is enabled
+	if c.PreambleLength > 0 && len(c.PreamblePattern) == 0 {
 		M := c.constellationSize()
-		c.PreamblePattern = []int{M - 1, 0} // Alternating high/low
+		// Preamble pattern: highest symbol, lowest symbol (alternating)
+		c.PreamblePattern = []int{M - 1, 0} // Alternating highest/lowest
 	}
 
 	if err := c.ensureWithinNyquist(); err != nil {
@@ -205,24 +220,72 @@ func (c Config) IsSNRSufficient(snrDb, targetBER, marginDb float32) bool {
 	return snrDb >= c.MinimumSNR(targetBER, marginDb)
 }
 
+// EnergyThresholdForSNR calculates the minimum energy threshold to distinguish signal+noise from noise-only.
+// At SNR dB, signal power is 10^(SNR/10) times noise power.
+// For M-ASK, signal power is based on the amplitude.
+// Returns threshold in energy units (average power over symbol period).
+// Returns 0 for infinite SNR (noise-free signals).
+func (c Config) EnergyThresholdForSNR(snrDb float32) float32 {
+	// For infinite SNR (noise-free), return 0 to use fixed threshold fallback
+	if math32.IsInf(snrDb, 1) || snrDb <= 0 {
+		return 0
+	}
+
+	// Expected signal power (for M-ASK, power is amplitude squared)
+	signalPower := c.Amplitude * c.Amplitude
+
+	// Noise power at given SNR
+	// SNR = 10*log10(signal_power / noise_power)
+	// noise_power = signal_power / 10^(SNR/10)
+	noisePower := signalPower / math32.Pow(10, snrDb/10)
+
+	// Threshold should be between noise-only and signal+noise
+	// Use noise_power * factor for reliable detection (5-sigma threshold)
+	factor := float32(5.0)
+	threshold := noisePower * factor
+
+	// Ensure threshold is reasonable (not too high, not too low)
+	// Minimum: 2x noise power (to reject pure noise)
+	// Maximum: 0.1x signal power (to detect weak signals)
+	minThreshold := noisePower * 2.0
+	maxThreshold := signalPower * 0.1
+	if threshold < minThreshold {
+		threshold = minThreshold
+	}
+	if threshold > maxThreshold {
+		threshold = maxThreshold
+	}
+
+	return threshold
+}
+
 func (c *Config) calculateAmplitudeLevels() []float32 {
 	M := c.constellationSize()
 	levels := make([]float32, M)
 
+	// Calculate minimum amplitude based on depth parameter
+	// Depth 100% = lowest is 0, Depth 0% = lowest equals highest (no depth)
+	depthFactor := c.Depth / 100.0
+	minAmp := c.Amplitude * (1.0 - depthFactor)
+
 	if c.LevelSpacing == "power_efficient" {
+		// Use provided MinAmplitude if set, otherwise use calculated minAmp
+		if c.MinAmplitude > 0 {
+			minAmp = c.MinAmplitude
+		}
 		// A_m = A_min + m * (A_max - A_min) / (M-1)
-		delta := (c.Amplitude - c.MinAmplitude) / float32(M-1)
+		delta := (c.Amplitude - minAmp) / float32(M-1)
 		for m := range M {
-			levels[m] = c.MinAmplitude + float32(m)*delta
+			levels[m] = minAmp + float32(m)*delta
 		}
 	} else {
-		// Evenly spaced: A_m = m * A_max / (M-1)
+		// Evenly spaced: A_m = A_min + m * (A_max - A_min) / (M-1)
 		if M == 1 {
 			levels[0] = c.Amplitude
 		} else {
-			delta := c.Amplitude / float32(M-1)
+			delta := (c.Amplitude - minAmp) / float32(M-1)
 			for m := range M {
-				levels[m] = float32(m) * delta
+				levels[m] = minAmp + float32(m)*delta
 			}
 		}
 	}

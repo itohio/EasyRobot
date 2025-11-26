@@ -256,10 +256,17 @@ func (g *NoiseWhiteGenerator) GenerateWithOp(dst []float32, reverse bool, op Gen
 	return n
 }
 
-// Generate fills dst with white noise samples
+// Generate fills dst with white noise samples (overwrite)
 func (g *NoiseWhiteGenerator) Generate(dst []float32) int {
 	return g.GenerateWithOp(dst, false, func(d *float32, value float32) {
 		*d = value
+	})
+}
+
+// Add adds white noise samples to the dst slice (in-place addition)
+func (g *NoiseWhiteGenerator) Add(dst []float32) int {
+	return g.GenerateWithOp(dst, false, func(d *float32, value float32) {
+		*d += value
 	})
 }
 
@@ -328,10 +335,17 @@ func (g *NoisePinkGenerator) GenerateWithOp(dst []float32, reverse bool, op Gene
 	return n
 }
 
-// Generate fills dst with pink noise samples
+// Generate fills dst with pink noise samples (overwrite contents)
 func (g *NoisePinkGenerator) Generate(dst []float32) int {
 	return g.GenerateWithOp(dst, false, func(d *float32, value float32) {
 		*d = value
+	})
+}
+
+// Add fills dst with pink noise samples (sums into existing buffer)
+func (g *NoisePinkGenerator) Add(dst []float32) int {
+	return g.GenerateWithOp(dst, false, func(d *float32, value float32) {
+		*d += value
 	})
 }
 
@@ -416,6 +430,13 @@ func (g *NoiseBrownGenerator) GenerateWithOp(dst []float32, reverse bool, op Gen
 func (g *NoiseBrownGenerator) Generate(dst []float32) int {
 	return g.GenerateWithOp(dst, false, func(d *float32, value float32) {
 		*d = value
+	})
+}
+
+// Add adds brown noise samples to dst (additive generation)
+func (g *NoiseBrownGenerator) Add(dst []float32) int {
+	return g.GenerateWithOp(dst, false, func(d *float32, value float32) {
+		*d += value
 	})
 }
 

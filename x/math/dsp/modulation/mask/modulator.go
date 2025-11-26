@@ -94,7 +94,9 @@ func (m *Modulator) nextSymbol(br buffer.BitsReader) (int, bool) {
 	if m.preambleEmitted < m.cfg.PreambleLength {
 		pattern := m.cfg.PreamblePattern
 		if len(pattern) == 0 {
-			pattern = []int{m.cfg.constellationSize() - 1, 0}
+			// Default: highest symbol (M-1), lowest symbol (0) alternating
+			M := m.cfg.constellationSize()
+			pattern = []int{M - 1, 0}
 		}
 		idx := pattern[m.preambleEmitted%len(pattern)]
 		m.preambleEmitted++

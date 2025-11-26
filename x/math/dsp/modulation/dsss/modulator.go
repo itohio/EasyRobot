@@ -4,12 +4,17 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/chewxy/math32"
 	"github.com/itohio/EasyRobot/x/buffer"
 	"github.com/itohio/EasyRobot/x/chain"
 	"github.com/itohio/EasyRobot/x/math/dsp"
+	"github.com/itohio/EasyRobot/x/math/dsp/modulation"
 )
 
-var _ chain.Processor[float32, byte] = (*Modulator)(nil)
+var (
+	_ chain.Processor[float32, byte] = (*Modulator)(nil)
+	_ modulation.Transmitter         = (*Modulator)(nil)
+)
 
 // Modulator converts bit symbols into DSSS passband samples.
 type Modulator struct {
@@ -61,16 +66,15 @@ func NewModulator(config Config) (*Modulator, error) {
 }
 
 func (m *Modulator) Process(dst buffer.Writer[float32], src buffer.Reader[byte]) int {
-	if dst == nil {
-		return m.estimateSamples(src)
-	}
-
 	bitsReader, ok := src.(buffer.BitsReader)
 	if !ok || bitsReader == nil {
 		return 0
 	}
 	if bitsReader.BitsLength() != m.config.BitsPerSymbol {
 		return 0
+	}
+	if dst == nil {
+		return m.estimateSamples(bitsReader)
 	}
 
 	totalSamples := 0
@@ -172,14 +176,16 @@ func (m *Modulator) renderChip(chipValue float32) {
 	})
 }
 
-func (m *Modulator) estimateSamples(src buffer.Reader[byte]) int {
-	symbols := src.Len()
-	samplesPerSymbol := m.config.SpreadingFactor * m.config.SamplesPerChip
-	total := symbols * samplesPerSymbol
-	if !m.preambleSent {
-		total += m.config.PreambleLength * samplesPerSymbol
+func (m *Modulator) estimateSamples(br buffer.BitsReader) int {
+	totalBits := br.Bits()
+	if totalBits <= 0 {
+		return 0
 	}
-	return total
+	symbols := (totalBits + m.config.BitsPerSymbol - 1) / m.config.BitsPerSymbol
+	samplesPerSymbol := m.config.SpreadingFactor * m.config.SamplesPerChip
+	// Always include preamble in estimate (matches mfsk pattern)
+	// The actual processing will send preamble if preambleSent is false
+	return (m.config.PreambleLength + symbols) * samplesPerSymbol
 }
 
 func (m *Modulator) Reset() {
@@ -189,4 +195,25 @@ func (m *Modulator) Reset() {
 	m.preambleSent = false
 	m.preambleIndex = 0
 	m.carrier = dsp.NewCosineGenerator(m.config.SampleRate, m.config.CarrierFreq, 1.0, 0.0)
+}
+
+// Params implements modulation.Transmitter.
+func (m *Modulator) Params() modulation.TransmitterParams {
+	// Calculate signal strength in dB (power: 10*log10(power/reference))
+	// Reference is normalized to 1.0, so power = amplitude^2
+	power := m.config.Amplitude * m.config.Amplitude
+	signalStrength := float32(0)
+	if power > 0 {
+		signalStrength = 10.0 * math32.Log10(power)
+	}
+
+	bandwidth := m.config.CalculateRequiredBandwidth()
+
+	return modulation.TransmitterParams{
+		BaudRate:         m.config.SymbolRate,
+		SampleRate:       m.config.SampleRate,
+		SignalStrength:   signalStrength,
+		Bandwidth:        bandwidth,
+		CarrierFrequency: m.config.CarrierFreq,
+	}
 }

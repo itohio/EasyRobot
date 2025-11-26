@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	test_utils "github.com/itohio/EasyRobot/x/math/dsp/modulation/test_utils"
 )
 
 // TestLongPackets tests PLL stability for long packet transmissions at 16dB SNR.
@@ -29,7 +30,7 @@ func TestLongPackets(t *testing.T) {
 
 	for _, size := range packetSizes {
 		t.Run(fmt.Sprintf("%d_bytes", size), func(t *testing.T) {
-			payload := makePayload(size)
+			payload := test_utils.MakeData(size)
 			runRoundtrip(t, cfg, payload, snrDb)
 		})
 	}

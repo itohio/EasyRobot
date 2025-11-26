@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	test_utils "github.com/itohio/EasyRobot/x/math/dsp/modulation/test_utils"
 )
 
 // Test8FSK_Noise tests 8-FSK specifically with various noise levels
@@ -16,7 +17,7 @@ func Test8FSK_Noise(t *testing.T) {
 	// Verify it's actually 8-FSK
 	require.Equal(t, 8, cfg.toneCount(), "8-FSK should have 8 frequencies")
 	
-	payload := makePayload(5)
+	payload := test_utils.MakeData(5)
 	targetBER := float32(1e-5)
 	marginDb := float32(2.5)
 	
@@ -45,7 +46,7 @@ func Test16FSK_Noise(t *testing.T) {
 	// Verify it's actually 16-FSK
 	require.Equal(t, 16, cfg.toneCount(), "16-FSK should have 16 frequencies")
 	
-	payload := makePayload(5)
+	payload := test_utils.MakeData(5)
 	targetBER := float32(1e-5)
 	marginDb := float32(2.5)
 	

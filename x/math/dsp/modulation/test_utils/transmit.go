@@ -30,6 +30,11 @@ type BytesToBits func([]byte) (buffer.Reader[byte], error)
 // Transmit processes multiple data packets through a modulator with padding between them,
 // adds noise, and returns the complete samples buffer.
 //
+// This function follows the zero-copy pattern from TUNING.md:
+// - Allocates a single buffer for everything
+// - Uses slice views (three-argument slices) for zero-copy operations
+// - Buffer writes directly to the original array (no copying needed)
+//
 // Parameters:
 //   - sampleRate: Sample rate in Hz
 //   - modulator: Modulator processor (chain.Processor[float32, byte])
@@ -62,19 +67,22 @@ func Transmit(
 		paddingSamples *= 2
 	}
 
-	// Estimate total samples needed
+	// Estimate total samples needed for all packets
+	// Follow the pattern from working tests: estimate first, then allocate
 	totalSamples := paddingSamples // Initial padding
 	signalStarts := make([]int, len(data))
 	signalEnds := make([]int, len(data))
 
 	for i, payload := range data {
-		// Build bits from payload using provided converter
+		// Build bits from payload for estimation
 		bits, err := bytesToBits(payload)
 		if err != nil || bits == nil {
 			continue
 		}
 
 		// Estimate samples for this packet
+		// Note: Don't reset modulator - keep state consistent between estimation and processing
+		// This matches the working mfsk/mpsk test pattern
 		estimate := modulator.Process(nil, bits)
 		if estimate <= 0 {
 			continue
@@ -92,34 +100,63 @@ func Transmit(
 	}
 
 	// Allocate single buffer for everything (zero-copy!)
+	// This matches the pattern: make([]float32, totalSamples)
 	samples = make([]float32, totalSamples)
 	signalRegions = make([][]float32, 0, len(data))
 
 	// Process each data packet into its position
+	// Follow the exact pattern from working tests
 	for i, payload := range data {
 		if signalStarts[i] >= signalEnds[i] {
 			continue
 		}
 
+		// Build bits from payload for processing
 		bits, err := bytesToBits(payload)
 		if err != nil || bits == nil {
 			continue
 		}
 
-		// Use slice view of the buffer for modulation output (zero-copy)
-		signalStart := signalStarts[i]
-		signalEnd := signalEnds[i]
-		signalBuf := buffer.New(samples[signalStart:signalStart:signalEnd])
-		written := modulator.Process(signalBuf, bits)
-
-		if written > 0 && signalStart+written <= len(samples) {
-			// Store signal region view for noise calculation
-			signalRegions = append(signalRegions, samples[signalStart:signalStart+written])
+		// Reset bits reader (matching working test pattern: inputBits.Reset())
+		// Don't reset modulator - keep state consistent with estimation
+		if bitsResetter, ok := bits.(interface{ Reset() }); ok {
+			bitsResetter.Reset()
 		}
 
-		// Reset modulator between packets
-		if resetter, ok := modulator.(interface{ Reset() }); ok {
-			resetter.Reset()
+		// Use three-argument slice view: samples[signalStart:signalStart:signalEnd]
+		// This creates a slice view that shares the backing array with samples
+		// The buffer will write directly into the original array - zero copy!
+		// This is the exact pattern from mfsk/mpsk tests
+		signalStart := signalStarts[i]
+		signalEnd := signalEnds[i]
+		// Create a slice view into the large samples buffer with the Go three-index slice syntax:
+		// samples[low:high:max] creates a slice that starts at 'low', ends BEFORE 'high', and
+		// has capacity up to 'max'. Here, signalStart is the index where this packet's signal should begin,
+		// and signalEnd is where it ends in the overall samples buffer.
+		// Using samples[signalStart:signalStart:signalEnd] makes a zero-length slice (for writing output),
+		// whose underlying array can grow up to signalEnd, allowing the modulator to write directly into
+		// the proper region of the buffer with no copying. This matches working test patterns (e.g. mfsk/mpsk).
+		sliceView := samples[signalStart:signalStart:signalEnd]
+		signalBuf := buffer.New(sliceView)
+		written := modulator.Process(signalBuf, bits)
+
+		if written > 0 {
+			// The buffer wrote directly to samples[signalStart:signalStart+written]
+			// because the slice view shares the backing array - zero copy!
+			// Use the estimate (signalEnd - signalStart) for signal region, matching working tests
+			estimatedSize := signalEnd - signalStart
+			if signalStart+estimatedSize <= len(samples) {
+				// Store signal region view for noise calculation (zero-copy slice view)
+				signalRegions = append(signalRegions, samples[signalStart:signalStart+estimatedSize])
+			}
+		}
+
+		// Reset modulator between packets (but not between estimation and processing of same packet)
+		// This ensures each packet is processed independently
+		if i < len(data)-1 {
+			if resetter, ok := modulator.(interface{ Reset() }); ok {
+				resetter.Reset()
+			}
 		}
 	}
 
@@ -136,7 +173,6 @@ func Transmit(
 
 	return samples, signalRegions
 }
-
 
 // addNoiseToBuffer adds noise to the entire buffer at the same SNR level as the signal region.
 // This ensures padding has noise too, not pure silence, which is more realistic for noise tests.
@@ -173,11 +209,7 @@ func addNoiseToBuffer(buffer []float32, signalRegion []float32, snrDb float32) {
 
 	// Generate noise for entire buffer (signal + padding) at same level
 	gen := dsp.NewNoiseWhiteGenerator(noiseAmp)
-	noise := make([]float32, len(buffer))
-	gen.Generate(noise)
-	for i := range buffer {
-		buffer[i] += noise[i]
-	}
+	gen.Add(buffer)
 }
 
 // addNoise adds noise to samples, calculating SNR from the samples themselves.
@@ -199,10 +231,5 @@ func addNoise(samples []float32, snrDb float32) {
 	noisePower := signalPower / math32.Pow(10, snrDb/10)
 	noiseAmp := math32.Sqrt(noisePower)
 	gen := dsp.NewNoiseWhiteGenerator(noiseAmp)
-	noise := make([]float32, len(samples))
-	gen.Generate(noise)
-	for i := range samples {
-		samples[i] += noise[i]
-	}
+	gen.Add(samples)
 }
-

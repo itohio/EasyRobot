@@ -8,13 +8,14 @@ import (
 
 	"github.com/itohio/EasyRobot/x/buffer"
 	"github.com/itohio/EasyRobot/x/math/dsp"
+	test_utils "github.com/itohio/EasyRobot/x/math/dsp/modulation/test_utils"
 )
 
 func TestRoundtrip_Basics(t *testing.T) {
 	payloads := [][]byte{
 		{0x5a},
 		{0x10, 0x20, 0x30, 0x40},
-		makePayload(33),
+		test_utils.MakeData(33),
 	}
 
 	for _, payload := range payloads {
@@ -25,7 +26,7 @@ func TestRoundtrip_Basics(t *testing.T) {
 
 func TestRoundtrip_NoiseScenarios(t *testing.T) {
 	cfg := DefaultConfig()
-	payload := makePayload(7)
+	payload := test_utils.MakeData(7)
 	targetBER := float32(1e-5)
 	marginDb := float32(2.5)
 
@@ -65,80 +66,70 @@ func TestRoundtrip_SingleSymbol_NoPreamble(t *testing.T) {
 	cfg.PreambleLength = 0
 	require.NoError(t, cfg.Validate())
 
-	mod, err := NewModulator(cfg)
-	require.NoError(t, err)
-	demod, err := NewDemodulator(cfg)
-	require.NoError(t, err)
-
 	payload := []byte{0x2a}
-	symbols := bytesToSymbols(payload, cfg.BitsPerSymbol)
-	bits := buildBits(t, cfg.BitsPerSymbol, symbols)
-
-	estimate := mod.Process(nil, bits)
-	bits.Reset()
-	sampleBuf := buffer.New(make([]float32, 0, estimate))
-	written := mod.Process(sampleBuf, bits)
-	require.Equal(t, estimate, written)
-
-	outputBits, err := buffer.NewBits(cfg.BitsPerSymbol)
-	require.NoError(t, err)
-	reader := buffer.New(sampleBuf.Items())
-	decoded := demod.Process(outputBits, reader)
-	require.Greater(t, decoded, 0, "expected decoded bytes")
+	runRoundtrip(t, cfg, payload, math32.Inf(1))
 }
 
 func runRoundtrip(t *testing.T, cfg Config, payload []byte, snrDb float32) {
 	t.Helper()
-	symbols := bytesToSymbols(payload, cfg.BitsPerSymbol)
 
 	mod, err := NewModulator(cfg)
 	require.NoError(t, err)
 
-	inputBits := buildBits(t, cfg.BitsPerSymbol, symbols)
-
-	estimate := mod.Process(nil, inputBits)
-	require.Greaterf(t, estimate, 0, "bits=%d snr=%.1f", cfg.BitsPerSymbol, snrDb)
-
-	// Calculate total samples needed: signal + padding (0.5s before and after)
-	// estimateSamples already accounts for interleaved IQ (multiplies by 2)
-	paddingSamples := int(0.5 * cfg.SampleRate) * 2 // IQ interleaved
-	signalSamples := estimate
-	totalSamples := paddingSamples*2 + signalSamples
-
-	// Allocate single buffer for everything (no copying!)
-	sampleBuffer := make([]float32, totalSamples)
-	signalStart := paddingSamples
-	signalEnd := paddingSamples + signalSamples
-
-	inputBits.Reset()
-	// Use slice of the buffer for modulation output (grow the slice as we write)
-	// Use three-argument slice to set capacity limit
-	signalBuf := buffer.New(sampleBuffer[signalStart:signalStart:signalEnd])
-	written := mod.Process(signalBuf, inputBits)
-	require.Equalf(t, signalSamples, written, "bits=%d snr=%.1f", cfg.BitsPerSymbol, snrDb)
-
-	// Add noise to entire buffer (signal + padding) at the same SNR level
-	// This is more realistic - padding should have noise too, not pure silence
-	addNoiseToBuffer(sampleBuffer, sampleBuffer[signalStart:signalEnd], snrDb)
-
 	demod, err := NewDemodulator(cfg)
 	require.NoError(t, err)
+
+	// Create bytesToBits converter for MPSK
+	bytesToBits := func(data []byte) (buffer.Reader[byte], error) {
+		symbols := bytesToSymbols(data, cfg.BitsPerSymbol)
+		bits, err := buffer.NewBits(cfg.BitsPerSymbol)
+		if err != nil {
+			return nil, err
+		}
+		_, err = bits.Write(symbols)
+		if err != nil {
+			return nil, err
+		}
+		bits.Reset()
+		return bits, nil
+	}
+
+	// Transmit: padding + payload + padding
+	opts := test_utils.DefaultTransmitOptions()
+	opts.IQInterleaved = true // MPSK uses IQ interleaved samples
+	samples, _ := test_utils.Transmit(
+		cfg.SampleRate,
+		mod,
+		[][]byte{payload},
+		0.5, // 0.5s padding (matching original test)
+		snrDb,
+		bytesToBits,
+		&opts,
+	)
+	require.NotNil(t, samples, "samples should not be nil")
+	require.Greater(t, len(samples), 0, "samples should not be empty")
+
+	// Receive: process samples through demodulator
+	// Reset demodulator to ensure clean state
+	demod.Reset()
+
 	outputBits, err := buffer.NewBits(cfg.BitsPerSymbol)
 	require.NoError(t, err)
 
-	// Simulate streaming by splitting into chunks
-	// Each chunk is a slice view of the same buffer (no copying!)
-	chunks := splitIntoChunksFromBuffer(sampleBuffer, 3)
-	totalDecoded := 0
-	for _, chunk := range chunks {
-		// chunk is already a slice view, use it directly
-		reader := buffer.New(chunk)
-		decoded := demod.Process(outputBits, reader)
-		totalDecoded += decoded
-	}
+	receiveOpts := test_utils.DefaultReceiveOptions()
+	receiveOpts.ChunkParts = 3 // Match original test chunk count
+	totalDecoded := test_utils.Receive(
+		cfg.SampleRate,
+		demod,
+		outputBits,
+		samples,
+		&receiveOpts,
+	)
 	require.Greaterf(t, totalDecoded, 0, "bits=%d snr=%.1f", cfg.BitsPerSymbol, snrDb)
 
+	// Verify decoded data
 	outputBits.Reset()
+	symbols := bytesToSymbols(payload, cfg.BitsPerSymbol)
 	decodedSymbols := make([]byte, len(symbols))
 	readBits, err := outputBits.Read(decodedSymbols)
 	require.NoError(t, err)
@@ -160,15 +151,6 @@ func runRoundtrip(t *testing.T, cfg Config, payload []byte, snrDb float32) {
 	require.Equalf(t, payload, decodedBytes, "bits=%d snr=%.1f", cfg.BitsPerSymbol, snrDb)
 }
 
-func buildBits(t *testing.T, bitsPerSymbol int, symbols []byte) *buffer.Bits {
-	t.Helper()
-	bits, err := buffer.NewBits(bitsPerSymbol)
-	require.NoError(t, err)
-	_, err = bits.Write(symbols)
-	require.NoError(t, err)
-	bits.Reset()
-	return bits
-}
 
 func bytesToSymbols(data []byte, bitsPerSymbol int) []byte {
 	if bitsPerSymbol <= 0 {
@@ -229,13 +211,6 @@ func symbolsToBytes(symbols []byte, bitsPerSymbol int, expectedBytes int) []byte
 	return result
 }
 
-func makePayload(n int) []byte {
-	payload := make([]byte, n)
-	for i := range payload {
-		payload[i] = byte(i*37 + 13)
-	}
-	return payload
-}
 
 func equalSymbols(a, b []byte) bool {
 	if len(a) != len(b) {
@@ -249,35 +224,24 @@ func equalSymbols(a, b []byte) bool {
 	return true
 }
 
+// Internal helper functions for other test files in this package
+func buildBits(t *testing.T, bitsPerSymbol int, symbols []byte) *buffer.Bits {
+	t.Helper()
+	bits, err := buffer.NewBits(bitsPerSymbol)
+	require.NoError(t, err)
+	_, err = bits.Write(symbols)
+	require.NoError(t, err)
+	bits.Reset()
+	return bits
+}
+
 func surroundWithSilence(samples []float32, cfg Config) []float32 {
-	silence := int(0.5 * cfg.SampleRate)
-	totalSilence := silence * 2
-	total := make([]float32, totalSilence+len(samples)+totalSilence)
-	copy(total[totalSilence:], samples)
+	silence := int(0.5 * cfg.SampleRate) * 2 // IQ interleaved
+	total := make([]float32, silence*2+len(samples))
+	copy(total[silence:], samples)
 	return total
 }
 
-// splitIntoChunksFromBuffer splits a buffer into chunk slices (views, no copying)
-// All chunks are views into the same underlying buffer
-func splitIntoChunksFromBuffer(samples []float32, parts int) [][]float32 {
-	if parts <= 1 {
-		return [][]float32{samples}
-	}
-	chunks := make([][]float32, 0, parts)
-	chunkSize := len(samples) / parts
-	for i := 0; i < parts; i++ {
-		start := i * chunkSize
-		end := start + chunkSize
-		if i == parts-1 {
-			end = len(samples)
-		}
-		// Use slice view (no copying) - all chunks point to same underlying buffer
-		chunks = append(chunks, samples[start:end])
-	}
-	return chunks
-}
-
-// splitIntoChunks splits samples into chunks with copying (for backward compatibility)
 func splitIntoChunks(samples []float32, parts int) [][]float32 {
 	if parts <= 1 {
 		return [][]float32{samples}
@@ -297,7 +261,6 @@ func splitIntoChunks(samples []float32, parts int) [][]float32 {
 	return chunks
 }
 
-// addNoise adds noise to samples, calculating SNR from the samples themselves.
 func addNoise(samples []float32, snrDb float32) {
 	if math32.IsInf(snrDb, 1) || snrDb <= 0 {
 		return
@@ -316,25 +279,17 @@ func addNoise(samples []float32, snrDb float32) {
 	noisePower := signalPower / math32.Pow(10, snrDb/10)
 	noiseAmp := math32.Sqrt(noisePower)
 	gen := dsp.NewNoiseWhiteGenerator(noiseAmp)
-	noise := make([]float32, len(samples))
-	gen.Generate(noise)
-	for i := range samples {
-		samples[i] += noise[i]
-	}
+	gen.Add(samples)
 }
 
-// addNoiseToBuffer adds noise to the entire buffer at the same SNR level as the signal region.
-// This ensures padding has noise too, not pure silence, which is more realistic for noise tests.
 func addNoiseToBuffer(buffer []float32, signalRegion []float32, snrDb float32) {
 	if math32.IsInf(snrDb, 1) || snrDb <= 0 {
 		return
 	}
 	if len(signalRegion) == 0 {
-		// If no signal region, just add noise to buffer
 		addNoise(buffer, snrDb)
 		return
 	}
-	// Calculate signal power from the signal region only (non-zero samples)
 	signalPower := float32(0)
 	signalSamples := 0
 	for _, v := range signalRegion {
@@ -344,7 +299,6 @@ func addNoiseToBuffer(buffer []float32, signalRegion []float32, snrDb float32) {
 		}
 	}
 	if signalSamples == 0 {
-		// No signal, just add noise
 		addNoise(buffer, snrDb)
 		return
 	}
@@ -352,15 +306,26 @@ func addNoiseToBuffer(buffer []float32, signalRegion []float32, snrDb float32) {
 	if signalPower == 0 {
 		return
 	}
-	// Calculate noise power based on signal power and desired SNR
 	noisePower := signalPower / math32.Pow(10, snrDb/10)
 	noiseAmp := math32.Sqrt(noisePower)
-	
-	// Generate noise for entire buffer (signal + padding) at same level
 	gen := dsp.NewNoiseWhiteGenerator(noiseAmp)
-	noise := make([]float32, len(buffer))
-	gen.Generate(noise)
-	for i := range buffer {
-		buffer[i] += noise[i]
-	}
+	gen.Add(buffer)
 }
+
+func splitIntoChunksFromBuffer(samples []float32, parts int) [][]float32 {
+	if parts <= 1 {
+		return [][]float32{samples}
+	}
+	chunks := make([][]float32, 0, parts)
+	chunkSize := len(samples) / parts
+	for i := 0; i < parts; i++ {
+		start := i * chunkSize
+		end := start + chunkSize
+		if i == parts-1 {
+			end = len(samples)
+		}
+		chunks = append(chunks, samples[start:end])
+	}
+	return chunks
+}
+

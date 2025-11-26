@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	test_utils "github.com/itohio/EasyRobot/x/math/dsp/modulation/test_utils"
 )
 
 // TestSNRLimits tests actual performance at various SNR levels, bypassing theoretical checks.
@@ -14,7 +15,7 @@ func TestSNRLimits(t *testing.T) {
 	cfg.BitsPerSymbol = 2 // QPSK
 	require.NoError(t, cfg.Validate())
 
-	payload := makePayload(7) // 7 bytes
+	payload := test_utils.MakeData(7) // 7 bytes
 
 	// Test SNR values from high to low
 	// QPSK theoretically should work at ~10dB SNR for coherent detection

@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/itohio/EasyRobot/x/buffer"
+	test_utils "github.com/itohio/EasyRobot/x/math/dsp/modulation/test_utils"
 )
 
 func formatFloat(f float32) string {
@@ -353,7 +354,7 @@ func TestPhaseDetection_PreambleTransition(t *testing.T) {
 // TestPhaseDetection_Roundtrip25dB tests the full roundtrip at 25dB without chunking
 func TestPhaseDetection_Roundtrip25dB(t *testing.T) {
 	cfg := DefaultConfig()
-	payload := makePayload(7)
+	payload := test_utils.MakeData(7)
 	symbols := bytesToSymbols(payload, cfg.BitsPerSymbol)
 
 	mod, err := NewModulator(cfg)
