@@ -25,7 +25,8 @@ type Demodulator struct {
 	preambleErrors int
 	silenceCount   int
 
-	pllLoop *pll.Loop
+	pllLoop   *pll.Loop
+	targetSNR float32 // Target SNR for threshold calculation
 
 	tmpSymbol [1]byte
 }
@@ -35,10 +36,11 @@ func NewDemodulator(cfg Config) (*Demodulator, error) {
 		return nil, err
 	}
 	d := &Demodulator{
-		cfg:     cfg,
-		tones:   newToneTable(cfg),
-		fifo:    make([]float32, cfg.SamplesPerSymbol*2),
-		pllLoop: pll.NewFromLoopBandwidth(cfg.LoopBandwidth, cfg.SymbolRate(), cfg.LoopDamping),
+		cfg:       cfg,
+		tones:     newToneTable(cfg),
+		fifo:      make([]float32, cfg.SamplesPerSymbol*2),
+		pllLoop:   pll.NewFromLoopBandwidth(cfg.LoopBandwidth, cfg.SymbolRate(), cfg.LoopDamping),
+		targetSNR: 25.0, // Default target SNR for threshold calculation
 	}
 	return d, nil
 }
@@ -90,8 +92,13 @@ func (d *Demodulator) Process(dst buffer.Writer[byte], src buffer.Reader[float32
 			totalBytes += writtenBits / d.cfg.BitsPerSymbol
 		}
 
-		copy(d.fifo, d.fifo[d.cfg.SamplesPerSymbol:d.cfg.SamplesPerSymbol+d.buffered])
-		d.buffered -= d.cfg.SamplesPerSymbol
+		// Advance buffer by one symbol period
+		// Copy remaining samples (from SamplesPerSymbol to end) to beginning
+		remaining := d.buffered - d.cfg.SamplesPerSymbol
+		if remaining > 0 {
+			copy(d.fifo, d.fifo[d.cfg.SamplesPerSymbol:d.buffered])
+		}
+		d.buffered = remaining
 	}
 
 	return totalBytes
@@ -102,18 +109,66 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 		return -1
 	}
 
+	// Coarse detection: quick energy check to avoid wasting CPU on noise
+	// When no lock on a signal - coarse detection avoids calculations
+	// When coarse detection triggers and lock is achieved - disable coarse detection until lock is lost
+	// Coarse detection should NOT be active during active lock
 	energy := symbolEnergy(samples)
-	if energy < d.cfg.EnergyThreshold {
-		d.active = false
-		d.preambleCount = 0
-		d.preambleErrors = 0
-		d.silenceCount++
-		if d.silenceCount >= d.cfg.TransmissionGap {
-			d.silenceCount = 0
-		}
+	coarseThreshold := d.cfg.EnergyThresholdForSNR(d.targetSNR) * 0.1 // Very lenient for coarse check
+
+	// Coarse detection should NOT be active during active lock
+	// Only use coarse detection when not active (no lock yet)
+	useCoarseDetection := !d.active
+	if useCoarseDetection && energy < coarseThreshold {
+		// Not active and energy too low - likely noise, skip expensive processing
 		return -1
 	}
-	d.active = true
+
+	// Full energy check with SNR-based adaptive threshold
+	baseThreshold := d.cfg.EnergyThresholdForSNR(d.targetSNR)
+
+	// Use adaptive threshold based on state
+	var threshold float32
+	if d.active {
+		// During active transmission: be lenient (noise might reduce energy)
+		threshold = baseThreshold * 0.3
+	} else if d.preambleCount > 0 {
+		// During preamble: moderate threshold
+		threshold = baseThreshold * 0.5
+	} else {
+		// Initial detection: use full SNR-based threshold
+		threshold = baseThreshold
+		// Fallback to fixed threshold if SNR-based calculation fails
+		if threshold <= 0 {
+			threshold = d.cfg.EnergyThreshold
+		}
+	}
+
+	if energy < threshold {
+		// Only reset if we're NOT in active transmission
+		// During active transmission, low energy might be due to noise
+		if !d.active {
+			d.silenceCount++
+			if d.silenceCount >= d.cfg.TransmissionGap {
+				// Enough silence detected - reset for new transmission
+				d.active = false
+				d.preambleCount = 0
+				d.preambleErrors = 0
+				d.silenceCount = 0
+				if d.pllLoop != nil {
+					d.pllLoop.Reset()
+				}
+			}
+			return -1
+		}
+		// During active transmission, low energy might be due to noise
+		// Still try to decode - PLL might correct it
+	}
+
+	// Signal detected or continuing active transmission
+	if !d.active {
+		d.active = true
+	}
 	d.silenceCount = 0
 
 	toneIdx, phase, magnitude := d.detectTone(samples)
@@ -253,7 +308,9 @@ func (d *Demodulator) Reset() {
 	d.preambleCount = 0
 	d.preambleErrors = 0
 	d.silenceCount = 0
-	d.pllLoop.Reset()
+	if d.pllLoop != nil {
+		d.pllLoop.Reset()
+	}
 }
 
 func symbolEnergy(samples []float32) float32 {

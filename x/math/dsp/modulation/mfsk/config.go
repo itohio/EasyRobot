@@ -225,6 +225,39 @@ func (c Config) ProcessingGain() float32 {
 	return 10 * math32.Log10(float32(c.SamplesPerSymbol))
 }
 
+// EnergyThresholdForSNR calculates the minimum energy threshold to distinguish signal+noise from noise-only.
+// At SNR dB, signal power is 10^(SNR/10) times noise power.
+// For M-FSK, signal power is based on the tone amplitude.
+// Returns threshold in energy units (average power over symbol period).
+func (c Config) EnergyThresholdForSNR(snrDb float32) float32 {
+	// Expected signal power (for M-FSK, power is amplitude squared)
+	signalPower := c.Amplitude * c.Amplitude
+
+	// Noise power at given SNR
+	// SNR = 10*log10(signal_power / noise_power)
+	// noise_power = signal_power / 10^(SNR/10)
+	noisePower := signalPower / math32.Pow(10, snrDb/10)
+
+	// Threshold should be between noise-only and signal+noise
+	// Use noise_power * factor for reliable detection (5-sigma threshold)
+	factor := float32(5.0)
+	threshold := noisePower * factor
+
+	// Ensure threshold is reasonable (not too high, not too low)
+	// Minimum: 2x noise power (to reject pure noise)
+	// Maximum: 0.1x signal power (to detect weak signals)
+	minThreshold := noisePower * 2.0
+	maxThreshold := signalPower * 0.1
+	if threshold < minThreshold {
+		threshold = minThreshold
+	}
+	if threshold > maxThreshold {
+		threshold = maxThreshold
+	}
+
+	return threshold
+}
+
 func (c *Config) ensureSpacingWithinNyquist() error {
 	// Calculate required bandwidth for all tones
 	toneCount := c.toneCount()
