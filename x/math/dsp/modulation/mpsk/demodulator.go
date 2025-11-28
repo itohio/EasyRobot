@@ -6,11 +6,15 @@ import (
 	"github.com/chewxy/math32"
 	"github.com/itohio/EasyRobot/x/buffer"
 	"github.com/itohio/EasyRobot/x/chain"
+	"github.com/itohio/EasyRobot/x/math/dsp/modulation"
 	"github.com/itohio/EasyRobot/x/math/filter/agc"
 	"github.com/itohio/EasyRobot/x/math/filter/pll"
 )
 
-var _ chain.Processor[byte, float32] = (*Demodulator)(nil)
+var (
+	_ chain.Processor[byte, float32] = (*Demodulator)(nil)
+	_ modulation.Receiver            = (*Demodulator)(nil)
+)
 
 // Demodulator converts complex baseband samples back to M-PSK symbols.
 type Demodulator struct {
@@ -37,10 +41,32 @@ type Demodulator struct {
 	usingTrackingBandwidth bool
 	targetSNR              float32 // Target SNR for threshold calculation
 
-	// SNR tracking
-	signalPowerSum float32 // Sum of signal power (ideal symbol magnitudes)
-	noisePowerSum  float32 // Sum of noise power (error between received and ideal)
-	snrSampleCount int     // Number of samples used for SNR calculation
+	// Statistics tracking for Receiver interface
+	totalSamplesProcessed int
+	transmissionStartIdx  int
+	transmissionEndIdx    int
+	preambleStartIdx      int
+	packetStartIdx        int
+	lockAcquiredIdx       int
+	lockLostIdx           int
+	lockCount             int
+	unlockCount           int
+
+	// Error statistics
+	phaseErrorSumSq         float32
+	phaseErrorMin           float32
+	phaseErrorMax           float32
+	constellationErrorSum   float32
+	constellationErrorCount int
+	constellationErrorMin   float32
+	constellationErrorMax   float32
+	constellationErrorSumSq float32
+
+	// Signal strength tracking
+	signalStrengthSum    float32
+	signalStrengthCount  int
+	silenceStrengthSum   float32
+	silenceStrengthCount int
 
 	tmpSymbol [1]byte
 }
@@ -117,6 +143,9 @@ func (d *Demodulator) Process(dst buffer.Writer[byte], src buffer.Reader[float32
 			break
 		}
 
+		// Track total samples processed (always, even if decode fails)
+		d.totalSamplesProcessed += symbolSamples
+
 		symbol := d.decodeSymbol(d.fifo[:symbolSamples])
 		if symbol >= 0 {
 			d.tmpSymbol[0] = byte(symbol)
@@ -149,6 +178,7 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 	energy := symbolEnergy(samples)
 	coarseThreshold := d.cfg.EnergyThresholdForSNR(d.targetSNR) * 0.1 // Very lenient for coarse check
 	if !d.active && energy < coarseThreshold {
+		d.recordSilenceStrength(energy)
 		// Not active and energy too low - likely noise, skip expensive processing
 		return -1
 	}
@@ -185,7 +215,15 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 			d.silenceCount++
 			if d.silenceCount >= d.cfg.TransmissionGap {
 				// Enough silence detected - reset for new transmission
+				// Track transmission end
+				if d.active && d.transmissionEndIdx == 0 {
+					d.transmissionEndIdx = d.totalSamplesProcessed
+				}
 				// This prepares the demodulator to re-acquire the next transmission
+				if d.pllLocked {
+					d.lockLostIdx = d.totalSamplesProcessed
+					d.unlockCount++
+				}
 				d.active = false
 				d.preambleCount = 0
 				d.preambleErrors = 0
@@ -202,6 +240,7 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 				}
 			}
 			// Not in active transmission and low energy - likely silence, skip
+			d.recordSilenceStrength(energy)
 			return -1
 		}
 		// During active transmission, low energy might be due to noise
@@ -209,10 +248,19 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 		// Don't skip symbols during active transmission
 	}
 
+	if d.pllLocked {
+		d.recordSignalStrength(energy)
+	} else {
+		d.recordSilenceStrength(energy)
+	}
+
 	// Signal detected or continuing active transmission
 	if !d.active {
 		// Just detected signal - mark as active
 		d.active = true
+		if d.transmissionStartIdx == 0 {
+			d.transmissionStartIdx = d.totalSamplesProcessed
+		}
 	}
 	d.silenceCount = 0
 
@@ -360,6 +408,9 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 		d.phaseErrorCount++
 
 		if symbolMatch {
+			if d.preambleCount == 0 && d.preambleStartIdx == 0 {
+				d.preambleStartIdx = d.totalSamplesProcessed
+			}
 			d.preambleCount++
 			d.preambleErrors = 0
 			// Consider PLL locked after we've seen enough correct preamble symbols
@@ -378,6 +429,10 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 						if !d.pllLocked {
 							d.pllLocked = true
 							d.setTrackingBandwidth()
+							if d.lockAcquiredIdx == 0 {
+								d.lockAcquiredIdx = d.totalSamplesProcessed
+								d.lockCount++
+							}
 						}
 					}
 				} else if d.preambleCount >= d.cfg.PreambleLength-2 {
@@ -416,6 +471,10 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 	if d.cfg.PreambleLength > 0 && d.preambleCount < d.cfg.PreambleLength {
 		return -1
 	}
+	// Track packet start (after preamble completion)
+	if d.cfg.PreambleLength > 0 && d.packetStartIdx == 0 && d.preambleCount >= d.cfg.PreambleLength {
+		d.packetStartIdx = d.totalSamplesProcessed + d.cfg.SamplesPerSymbol*2
+	}
 	// If we have a preamble but PLL isn't locked yet, check if we can safely start decoding
 	// Don't force lock if PLL hasn't converged - this causes phase errors
 	if d.cfg.PreambleLength > 0 && !d.pllLocked && d.preambleCount >= d.cfg.PreambleLength {
@@ -431,6 +490,10 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 			if avgPhaseError < maxAllowedError {
 				d.pllLocked = true
 				d.setTrackingBandwidth()
+				if d.lockAcquiredIdx == 0 {
+					d.lockAcquiredIdx = d.totalSamplesProcessed
+					d.lockCount++
+				}
 			} else {
 				// PLL not converged yet - don't decode payload
 				// At 25dB SNR, PLL should converge, but if it doesn't, don't force it
@@ -452,25 +515,50 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 	// Quantize to nearest constellation point
 	symbol := d.quantizePhase(phase)
 
-	// Track SNR: signal power (ideal) and noise power (error)
 	idealPhase := d.table.phases[symbol]
 	idealI := math32.Cos(idealPhase)
 	idealQ := math32.Sin(idealPhase)
-	idealMag := math32.Hypot(idealI, idealQ)
-
-	// Signal power: magnitude of ideal symbol
-	d.signalPowerSum += idealMag * idealMag
-
-	// Noise power: error between received and ideal
 	errorI := iRot - idealI
 	errorQ := qRot - idealQ
 	noiseMag := math32.Hypot(errorI, errorQ)
-	d.noisePowerSum += noiseMag * noiseMag
-	d.snrSampleCount++
 
 	// Decision-directed PLL update for payload symbols
 	// Use the corrected phase to compute error
 	phaseError := wrapPi(phase - idealPhase)
+
+	// Track phase error statistics
+	phaseErrorAbs := math32.Abs(phaseError)
+	d.phaseErrorSum += phaseErrorAbs
+	d.phaseErrorSumSq += phaseErrorAbs * phaseErrorAbs
+	d.phaseErrorCount++
+	if d.phaseErrorCount == 1 {
+		d.phaseErrorMin = phaseErrorAbs
+		d.phaseErrorMax = phaseErrorAbs
+	} else {
+		if phaseErrorAbs < d.phaseErrorMin {
+			d.phaseErrorMin = phaseErrorAbs
+		}
+		if phaseErrorAbs > d.phaseErrorMax {
+			d.phaseErrorMax = phaseErrorAbs
+		}
+	}
+
+	// Track constellation error (Euclidean distance from ideal)
+	constellationError := noiseMag
+	d.constellationErrorSum += constellationError
+	d.constellationErrorSumSq += constellationError * constellationError
+	d.constellationErrorCount++
+	if d.constellationErrorCount == 1 {
+		d.constellationErrorMin = constellationError
+		d.constellationErrorMax = constellationError
+	} else {
+		if constellationError < d.constellationErrorMin {
+			d.constellationErrorMin = constellationError
+		}
+		if constellationError > d.constellationErrorMax {
+			d.constellationErrorMax = constellationError
+		}
+	}
 
 	// Always update PLL - the loop bandwidth naturally filters noise
 	// Use adaptive update: full for small errors, reduced for large errors
@@ -598,10 +686,10 @@ func (d *Demodulator) Reset() {
 	if d.agc != nil {
 		d.agc.Reset()
 	}
-	// Reset SNR tracking
-	d.signalPowerSum = 0
-	d.noisePowerSum = 0
-	d.snrSampleCount = 0
+	d.signalStrengthSum = 0
+	d.signalStrengthCount = 0
+	d.silenceStrengthSum = 0
+	d.silenceStrengthCount = 0
 }
 
 func symbolEnergy(samples []float32) float32 {
@@ -636,28 +724,144 @@ func (d *Demodulator) unlockPLL() {
 	d.pllLocked = false
 	d.phaseErrorSum = 0
 	d.phaseErrorCount = 0
-	// Reset SNR tracking when unlocking
-	d.signalPowerSum = 0
-	d.noisePowerSum = 0
-	d.snrSampleCount = 0
+	d.signalStrengthSum = 0
+	d.signalStrengthCount = 0
+	// Reset lock indices
+	d.lockAcquiredIdx = 0
+}
+
+func (d *Demodulator) recordSignalStrength(power float32) {
+	if power <= 0 {
+		return
+	}
+	d.signalStrengthSum += power
+	d.signalStrengthCount++
+}
+
+func (d *Demodulator) recordSilenceStrength(power float32) {
+	if power <= 0 {
+		return
+	}
+	d.silenceStrengthSum += power
+	d.silenceStrengthCount++
+}
+
+func (d *Demodulator) averageSignalStrength() float32 {
+	if d.signalStrengthCount == 0 {
+		return 0
+	}
+	return d.signalStrengthSum / float32(d.signalStrengthCount)
+}
+
+func (d *Demodulator) averageSilenceStrength() float32 {
+	if d.silenceStrengthCount == 0 {
+		return 0
+	}
+	return d.silenceStrengthSum / float32(d.silenceStrengthCount)
 }
 
 // SNR returns the estimated SNR (in dB) of the last decoded symbols.
 // Returns 0 if insufficient samples have been processed.
 func (d *Demodulator) SNR() float32 {
-	if d.snrSampleCount == 0 || d.noisePowerSum <= 0 {
+	signalAvg := d.averageSignalStrength()
+	silenceAvg := d.averageSilenceStrength()
+	if signalAvg <= 0 || silenceAvg <= 0 {
 		return 0
 	}
-	signalPower := d.signalPowerSum / float32(d.snrSampleCount)
-	noisePower := d.noisePowerSum / float32(d.snrSampleCount)
-	if noisePower <= 0 {
-		return 0
-	}
-	snrLinear := signalPower / noisePower
+	snrLinear := signalAvg / silenceAvg
 	if snrLinear <= 0 {
 		return 0
 	}
 	return 10 * math32.Log10(snrLinear)
+}
+
+// Quality implements modulation.Receiver.
+func (d *Demodulator) Quality() modulation.QualityStats {
+	stats := modulation.QualityStats{}
+
+	// Calculate SNR from signal/silence strengths
+	stats.SNR = d.SNR()
+
+	// Average signal strength (in dB)
+	signalAvg := d.averageSignalStrength()
+	if signalAvg > 0 {
+		stats.SignalStrength = 10.0 * math32.Log10(signalAvg)
+	}
+
+	// Phase error statistics
+	if d.phaseErrorCount > 0 {
+		avg := d.phaseErrorSum / float32(d.phaseErrorCount)
+		var stdDev float32
+		if d.phaseErrorCount > 1 {
+			variance := (d.phaseErrorSumSq / float32(d.phaseErrorCount)) - (avg * avg)
+			if variance > 0 {
+				stdDev = math32.Sqrt(variance)
+			}
+		}
+		stats.PhaseError = modulation.Stats{
+			Average:     avg,
+			Min:         d.phaseErrorMin,
+			Max:         d.phaseErrorMax,
+			StdDev:      stdDev,
+			SampleCount: d.phaseErrorCount,
+		}
+	}
+
+	// Frequency error: not implemented (would require frequency offset estimation)
+	stats.FrequencyError = modulation.Stats{}
+
+	// Constellation error statistics
+	if d.constellationErrorCount > 0 {
+		avg := d.constellationErrorSum / float32(d.constellationErrorCount)
+		var stdDev float32
+		if d.constellationErrorCount > 1 {
+			variance := (d.constellationErrorSumSq / float32(d.constellationErrorCount)) - (avg * avg)
+			if variance > 0 {
+				stdDev = math32.Sqrt(variance)
+			}
+		}
+		stats.ConstellationError = modulation.Stats{
+			Average:     avg,
+			Min:         d.constellationErrorMin,
+			Max:         d.constellationErrorMax,
+			StdDev:      stdDev,
+			SampleCount: d.constellationErrorCount,
+		}
+	}
+
+	return stats
+}
+
+// Transmission implements modulation.Receiver.
+func (d *Demodulator) Transmission() modulation.TransmissionStats {
+	isLocked := d.pllLocked && d.active
+	return modulation.TransmissionStats{
+		TransmissionStart: d.transmissionStartIdx,
+		TransmissionEnd:   d.transmissionEndIdx,
+		PacketStart:       d.packetStartIdx,
+		PreambleStart:     d.preambleStartIdx,
+		IsLocked:          isLocked,
+		LockStart:         d.lockAcquiredIdx,
+		LockEnd:           d.lockLostIdx,
+		LockCount:         d.lockCount,
+		UnlockCount:       d.unlockCount,
+	}
+}
+
+// Params implements modulation.Receiver.
+func (d *Demodulator) Params() modulation.TransmitterParams {
+	power := d.cfg.Amplitude * d.cfg.Amplitude
+	signalStrength := float32(0)
+	if power > 0 {
+		signalStrength = 10.0 * math32.Log10(power)
+	}
+	return modulation.TransmitterParams{
+		BaudRate:         d.cfg.SymbolRate(),
+		SampleRate:       d.cfg.SampleRate,
+		SignalStrength:   signalStrength,
+		Bandwidth:        d.cfg.RequiredBandwidth(),
+		CarrierFrequency: d.cfg.CarrierHz,
+	}
 }
 
 // preamblePattern returns the expected preamble symbol index for fast PLL lock.

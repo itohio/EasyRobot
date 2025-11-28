@@ -8,6 +8,7 @@ import (
 
 	"github.com/itohio/EasyRobot/x/buffer"
 	"github.com/itohio/EasyRobot/x/math/dsp"
+	"github.com/itohio/EasyRobot/x/math/dsp/modulation"
 	test_utils "github.com/itohio/EasyRobot/x/math/dsp/modulation/test_utils"
 )
 
@@ -94,9 +95,34 @@ func runRoundtrip(t *testing.T, cfg Config, payload []byte, snrDb float32) {
 		return bits, nil
 	}
 
+	// Calculate expected transmitter signal strength from config
+	expectedTxPower := cfg.Amplitude * cfg.Amplitude
+	expectedTxSignalStrength := float32(0)
+	if expectedTxPower > 0 {
+		expectedTxSignalStrength = 10.0 * math32.Log10(expectedTxPower)
+	}
+
+	// Track transmission statistics for inspection
+	transmitSignalStart := -1
+	transmitSignalEnd := -1
+
 	// Transmit: padding + payload + padding
 	opts := test_utils.DefaultTransmitOptions()
 	opts.IQInterleaved = true // MPSK uses IQ interleaved samples
+
+	// Inspect callback to verify transmitter stats
+	opts.Inspect = func(startBufIdx, endBufIdx int, startSampleIdx, endSampleIdx int, tx modulation.Transmitter) {
+		params := tx.Params()
+		require.Equal(t, cfg.SymbolRate(), params.BaudRate, "BaudRate should match config")
+		require.Equal(t, cfg.SampleRate, params.SampleRate, "SampleRate should match config")
+		require.Equal(t, cfg.CarrierHz, params.CarrierFrequency, "CarrierFrequency should match config")
+		require.InDeltaf(t, expectedTxSignalStrength, params.SignalStrength, 0.1,
+			"SignalStrength should match expected value from config")
+
+		transmitSignalStart = startSampleIdx
+		transmitSignalEnd = endSampleIdx
+	}
+
 	samples, _ := test_utils.Transmit(
 		cfg.SampleRate,
 		mod,
@@ -118,6 +144,37 @@ func runRoundtrip(t *testing.T, cfg Config, payload []byte, snrDb float32) {
 
 	receiveOpts := test_utils.DefaultReceiveOptions()
 	receiveOpts.ChunkParts = 3 // Match original test chunk count
+
+	// Inspect callback to verify receiver stats
+	var lockedQuality modulation.QualityStats
+	var finalTransmission modulation.TransmissionStats
+	var wasLocked bool
+
+	receiveOpts.Inspect = func(startSampleIdx, endSampleIdx int, startBufIdx, endBufIdx int, rx modulation.Receiver) {
+		quality := rx.Quality()
+		transmission := rx.Transmission()
+		params := rx.Params()
+
+		require.Equal(t, cfg.SymbolRate(), params.BaudRate, "BaudRate should match config")
+		require.Equal(t, cfg.SampleRate, params.SampleRate, "SampleRate should match config")
+		require.Equal(t, cfg.CarrierHz, params.CarrierFrequency, "CarrierFrequency should match config")
+
+		if transmission.IsLocked {
+			wasLocked = true
+			lockedQuality = quality
+			require.False(t, math32.IsNaN(quality.SNR), "SNR should not be NaN when locked")
+			require.False(t, math32.IsInf(quality.SNR, 0), "SNR should not be Inf when locked")
+			if snrDb < math32.Inf(1) {
+				require.Greaterf(t, quality.SNR, float32(0),
+					"SNR should be positive when locked (simulated SNR=%.2f dB)", snrDb)
+			}
+			require.False(t, math32.IsNaN(quality.SignalStrength), "SignalStrength should not be NaN when locked")
+			require.False(t, math32.IsInf(quality.SignalStrength, 0), "SignalStrength should not be Inf when locked")
+		}
+
+		finalTransmission = transmission
+	}
+
 	totalDecoded := test_utils.Receive(
 		cfg.SampleRate,
 		demod,
@@ -126,6 +183,31 @@ func runRoundtrip(t *testing.T, cfg Config, payload []byte, snrDb float32) {
 		&receiveOpts,
 	)
 	require.Greaterf(t, totalDecoded, 0, "bits=%d snr=%.1f", cfg.BitsPerSymbol, snrDb)
+
+	// Verify receiver stats
+	require.Greater(t, finalTransmission.LockCount, 0, "Demodulator should have locked at least once during transmission")
+
+	if wasLocked && snrDb < math32.Inf(1) {
+		require.InDeltaf(t, snrDb, lockedQuality.SNR, 8.0,
+			"Measured SNR should be close to simulated SNR (simulated=%.2f dB, measured=%.2f dB)",
+			snrDb, lockedQuality.SNR)
+	}
+
+	if wasLocked {
+		require.InDeltaf(t, expectedTxSignalStrength, lockedQuality.SignalStrength, 10.0,
+			"Receiver SignalStrength should be in same ballpark as transmitter (tx=%.2f dB, rx=%.2f dB)",
+			expectedTxSignalStrength, lockedQuality.SignalStrength)
+	}
+
+	// Verify transmission indices
+	if transmitSignalStart >= 0 && transmitSignalEnd > transmitSignalStart {
+		require.Greater(t, finalTransmission.TransmissionStart, 0, "TransmissionStart must be set")
+		paddingSamples := int(0.5 * cfg.SampleRate * 2) // MPSK uses IQ interleaved, so double
+		require.GreaterOrEqualf(t, finalTransmission.TransmissionStart, transmitSignalStart-paddingSamples,
+			"TransmissionStart should be within reasonable range of actual signal start")
+		require.LessOrEqualf(t, finalTransmission.TransmissionStart, transmitSignalEnd,
+			"TransmissionStart should be before signal end")
+	}
 
 	// Verify decoded data
 	outputBits.Reset()
@@ -150,7 +232,6 @@ func runRoundtrip(t *testing.T, cfg Config, payload []byte, snrDb float32) {
 	decodedBytes := symbolsToBytes(decodedSymbols, cfg.BitsPerSymbol, len(payload))
 	require.Equalf(t, payload, decodedBytes, "bits=%d snr=%.1f", cfg.BitsPerSymbol, snrDb)
 }
-
 
 func bytesToSymbols(data []byte, bitsPerSymbol int) []byte {
 	if bitsPerSymbol <= 0 {
@@ -211,7 +292,6 @@ func symbolsToBytes(symbols []byte, bitsPerSymbol int, expectedBytes int) []byte
 	return result
 }
 
-
 func equalSymbols(a, b []byte) bool {
 	if len(a) != len(b) {
 		return false
@@ -236,7 +316,7 @@ func buildBits(t *testing.T, bitsPerSymbol int, symbols []byte) *buffer.Bits {
 }
 
 func surroundWithSilence(samples []float32, cfg Config) []float32 {
-	silence := int(0.5 * cfg.SampleRate) * 2 // IQ interleaved
+	silence := int(0.5*cfg.SampleRate) * 2 // IQ interleaved
 	total := make([]float32, silence*2+len(samples))
 	copy(total[silence:], samples)
 	return total
@@ -328,4 +408,3 @@ func splitIntoChunksFromBuffer(samples []float32, parts int) [][]float32 {
 	}
 	return chunks
 }
-

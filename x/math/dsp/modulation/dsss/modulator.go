@@ -27,9 +27,6 @@ type Modulator struct {
 	hasPending    bool
 	pendingSymbol int
 	pendingChip   int
-
-	preambleSent  bool
-	preambleIndex int
 }
 
 func NewModulator(config Config) (*Modulator, error) {
@@ -99,19 +96,6 @@ func (m *Modulator) Process(dst buffer.Writer[float32], src buffer.Reader[byte])
 }
 
 func (m *Modulator) nextSymbol(reader buffer.Reader[byte]) (int, bool) {
-	if !m.preambleSent && m.preambleIndex < m.config.PreambleLength {
-		pattern := m.config.PreamblePattern
-		if len(pattern) == 0 {
-			pattern = []int{1, 0}
-		}
-		symbol := pattern[m.preambleIndex%len(pattern)]
-		m.preambleIndex++
-		if m.preambleIndex >= m.config.PreambleLength {
-			m.preambleSent = true
-		}
-		return symbol, true
-	}
-
 	var buf [1]byte
 	n, err := reader.Read(buf[:])
 	if err != nil && n == 0 {
@@ -183,17 +167,14 @@ func (m *Modulator) estimateSamples(br buffer.BitsReader) int {
 	}
 	symbols := (totalBits + m.config.BitsPerSymbol - 1) / m.config.BitsPerSymbol
 	samplesPerSymbol := m.config.SpreadingFactor * m.config.SamplesPerChip
-	// Always include preamble in estimate (matches mfsk pattern)
-	// The actual processing will send preamble if preambleSent is false
-	return (m.config.PreambleLength + symbols) * samplesPerSymbol
+	// DSSS doesn't use preamble - code correlation provides sync
+	return symbols * samplesPerSymbol
 }
 
 func (m *Modulator) Reset() {
 	m.hasPending = false
 	m.pendingSymbol = 0
 	m.pendingChip = 0
-	m.preambleSent = false
-	m.preambleIndex = 0
 	m.carrier = dsp.NewCosineGenerator(m.config.SampleRate, m.config.CarrierFreq, 1.0, 0.0)
 }
 

@@ -1,6 +1,7 @@
 package workers
 
 import (
+	"context"
 	"errors"
 	"math"
 	"runtime"
@@ -246,4 +247,313 @@ func BenchmarkWorkerPoolSigmoid(b *testing.B) {
 
 func sigmoid(x float64) float64 {
 	return 1 / (1 + math.Exp(-x))
+}
+
+func TestWorkerPoolDo(t *testing.T) {
+	t.Parallel()
+
+	pool := newTestPool(t, &WorkerPool{Size: 4})
+	defer pool.Close()
+
+	const numCallbacks = 10
+	executed := make([]bool, numCallbacks)
+	var mu sync.Mutex
+
+	callbacks := make([]SimpleCallback, numCallbacks)
+	for i := range callbacks {
+		idx := i
+		callbacks[i] = func(ctx context.Context) error {
+			mu.Lock()
+			executed[idx] = true
+			mu.Unlock()
+			return nil
+		}
+	}
+
+	ctx := context.Background()
+	err := pool.Do(ctx, callbacks...)
+	if err != nil {
+		t.Fatalf("Do returned error: %v", err)
+	}
+
+	for i, exec := range executed {
+		if !exec {
+			t.Fatalf("callback %d was not executed", i)
+		}
+	}
+}
+
+func TestWorkerPoolDoBeforeInit(t *testing.T) {
+	t.Parallel()
+
+	var pool WorkerPool
+	ctx := context.Background()
+	err := pool.Do(ctx, func(ctx context.Context) error { return nil })
+	if !errors.Is(err, ErrPoolNotInitialized) {
+		t.Fatalf("expected ErrPoolNotInitialized, got %v", err)
+	}
+}
+
+func TestWorkerPoolDoNilContext(t *testing.T) {
+	t.Parallel()
+
+	pool := newTestPool(t, &WorkerPool{Size: 2})
+	defer pool.Close()
+
+	err := pool.Do(nil, func(ctx context.Context) error { return nil })
+	if err == nil {
+		t.Fatal("expected error for nil context, got nil")
+	}
+}
+
+func TestWorkerPoolDoAfterClose(t *testing.T) {
+	t.Parallel()
+
+	pool := newTestPool(t, &WorkerPool{Size: 2})
+	pool.Close()
+
+	ctx := context.Background()
+	err := pool.Do(ctx, func(ctx context.Context) error { return nil })
+	if !errors.Is(err, ErrPoolClosed) {
+		t.Fatalf("expected ErrPoolClosed, got %v", err)
+	}
+}
+
+func TestWorkerPoolDoEmptyCallbacks(t *testing.T) {
+	t.Parallel()
+
+	pool := newTestPool(t, &WorkerPool{Size: 2})
+	defer pool.Close()
+
+	ctx := context.Background()
+	err := pool.Do(ctx)
+	if err != nil {
+		t.Fatalf("expected nil error for empty callbacks, got %v", err)
+	}
+}
+
+func TestWorkerPoolDoNilCallbacks(t *testing.T) {
+	t.Parallel()
+
+	pool := newTestPool(t, &WorkerPool{Size: 2})
+	defer pool.Close()
+
+	executed := false
+	ctx := context.Background()
+	err := pool.Do(ctx,
+		nil,
+		func(ctx context.Context) error {
+			executed = true
+			return nil
+		},
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("Do returned error: %v", err)
+	}
+	if !executed {
+		t.Fatal("non-nil callback was not executed")
+	}
+}
+
+func TestWorkerPoolDoError(t *testing.T) {
+	t.Parallel()
+
+	pool := newTestPool(t, &WorkerPool{Size: 3})
+	defer pool.Close()
+
+	wantErr := errors.New("callback error")
+	ctx := context.Background()
+	err := pool.Do(ctx,
+		func(ctx context.Context) error { return nil },
+		func(ctx context.Context) error { return wantErr },
+		func(ctx context.Context) error { return nil },
+	)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected error %v, got %v", wantErr, err)
+	}
+}
+
+func TestWorkerPoolDoContextCancellation(t *testing.T) {
+	t.Parallel()
+
+	pool := newTestPool(t, &WorkerPool{Size: 2})
+	defer pool.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	started := make(chan struct{})
+	done := make(chan struct{})
+
+	go func() {
+		err := pool.Do(ctx,
+			func(ctx context.Context) error {
+				close(started)
+				time.Sleep(100 * time.Millisecond)
+				return nil
+			},
+			func(ctx context.Context) error {
+				time.Sleep(100 * time.Millisecond)
+				return nil
+			},
+		)
+		if err == nil {
+			t.Error("expected context cancellation error, got nil")
+		}
+		close(done)
+	}()
+
+	<-started
+	cancel()
+	<-done
+}
+
+func TestWorkerPoolDoContextTimeout(t *testing.T) {
+	t.Parallel()
+
+	pool := newTestPool(t, &WorkerPool{Size: 2})
+	defer pool.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	err := pool.Do(ctx,
+		func(ctx context.Context) error {
+			time.Sleep(100 * time.Millisecond)
+			return nil
+		},
+		func(ctx context.Context) error {
+			time.Sleep(100 * time.Millisecond)
+			return nil
+		},
+	)
+	if err == nil {
+		t.Fatal("expected context timeout error, got nil")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected context.DeadlineExceeded, got %v", err)
+	}
+}
+
+func TestWorkerPoolDoParallelExecution(t *testing.T) {
+	t.Parallel()
+
+	pool := newTestPool(t, &WorkerPool{Size: 2})
+	defer pool.Close()
+
+	const numCallbacks = 5
+	order := make([]int, 0, numCallbacks)
+	var mu sync.Mutex
+	barrier := make(chan struct{})
+
+	callbacks := make([]SimpleCallback, numCallbacks)
+	for i := range callbacks {
+		idx := i
+		callbacks[i] = func(ctx context.Context) error {
+			<-barrier
+			mu.Lock()
+			order = append(order, idx)
+			mu.Unlock()
+			return nil
+		}
+	}
+
+	ctx := context.Background()
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		for range numCallbacks {
+			barrier <- struct{}{}
+		}
+	}()
+
+	err := pool.Do(ctx, callbacks...)
+	if err != nil {
+		t.Fatalf("Do returned error: %v", err)
+	}
+
+	if len(order) != numCallbacks {
+		t.Fatalf("expected %d callbacks executed, got %d", numCallbacks, len(order))
+	}
+}
+
+func TestWorkerPoolDoContextPassedToCallbacks(t *testing.T) {
+	t.Parallel()
+
+	pool := newTestPool(t, &WorkerPool{Size: 2})
+	defer pool.Close()
+
+	ctx := context.WithValue(context.Background(), "test-key", "test-value")
+	receivedCtx := make(chan context.Context, 1)
+
+	err := pool.Do(ctx, func(cbCtx context.Context) error {
+		receivedCtx <- cbCtx
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Do returned error: %v", err)
+	}
+
+	cbCtx := <-receivedCtx
+	val := cbCtx.Value("test-key")
+	if val != "test-value" {
+		t.Fatalf("expected context value 'test-value', got %v", val)
+	}
+}
+
+func TestWorkerPoolDoBlocksWhenNoWorkers(t *testing.T) {
+	t.Parallel()
+
+	pool := newTestPool(t, &WorkerPool{Size: 1})
+	defer pool.Close()
+
+	first := make(chan struct{})
+	second := make(chan struct{})
+	release := make(chan struct{})
+	done := make(chan struct{})
+
+	ctx := context.Background()
+	go func() {
+		_ = pool.Do(ctx,
+			func(ctx context.Context) error {
+				close(first)
+				<-release
+				return nil
+			},
+			func(ctx context.Context) error {
+				close(second)
+				return nil
+			},
+		)
+		close(done)
+	}()
+
+	<-first
+	select {
+	case <-second:
+		t.Fatal("second callback started before first released worker")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(release)
+	<-second
+	<-done
+}
+
+func BenchmarkWorkerPoolDo(b *testing.B) {
+	pool := newTestPool(b, &WorkerPool{Size: 4})
+	defer pool.Close()
+
+	ctx := context.Background()
+	callbacks := make([]SimpleCallback, 100)
+	for i := range callbacks {
+		callbacks[i] = func(ctx context.Context) error {
+			return nil
+		}
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := pool.Do(ctx, callbacks...); err != nil {
+			b.Fatalf("Do failed: %v", err)
+		}
+	}
 }

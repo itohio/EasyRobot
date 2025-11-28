@@ -10,8 +10,8 @@ import (
 	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"github.com/itohio/EasyRobot/x/math/dsp/modulation/tc"
 	"github.com/itohio/EasyRobot/x/math/tensor"
-	"github.com/itohio/EasyRobot/x/math/vec"
 	tensortypes "github.com/itohio/EasyRobot/x/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/math/vec"
 	"github.com/spf13/cobra"
 )
 
@@ -226,4 +226,3 @@ func runGenTC(output, deviceID, amplitude, frameRate, timecode string, sampleRat
 
 	return nil
 }
-

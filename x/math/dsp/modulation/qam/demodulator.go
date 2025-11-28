@@ -7,11 +7,15 @@ import (
 	"github.com/chewxy/math32"
 	"github.com/itohio/EasyRobot/x/buffer"
 	"github.com/itohio/EasyRobot/x/chain"
+	"github.com/itohio/EasyRobot/x/math/dsp/modulation"
 	"github.com/itohio/EasyRobot/x/math/filter/agc"
 	"github.com/itohio/EasyRobot/x/math/filter/pll"
 )
 
-var _ chain.Processor[byte, float32] = (*Demodulator)(nil)
+var (
+	_ chain.Processor[byte, float32] = (*Demodulator)(nil)
+	_ modulation.Receiver            = (*Demodulator)(nil)
+)
 
 // Demodulator converts IQ samples back into QAM symbols using PLL + AGC.
 type Demodulator struct {
@@ -29,7 +33,7 @@ type Demodulator struct {
 	loopDamping            float32
 	usingTrackingBandwidth bool
 	pllLocked              bool    // Track if PLL has converged
-	targetSNR               float32 // Target SNR for threshold calculation
+	targetSNR              float32 // Target SNR for threshold calculation
 
 	silenceCount int
 	active       bool // Track if we're in an active transmission
@@ -39,12 +43,37 @@ type Demodulator struct {
 	noisePowerSum  float32 // Sum of noise power (error between received and ideal)
 	snrSampleCount int     // Number of samples used for SNR calculation
 
+	// Statistics tracking for Receiver interface
+	totalSamplesProcessed int
+	transmissionStartIdx  int
+	transmissionEndIdx    int
+	preambleStartIdx      int
+	packetStartIdx        int
+	lockAcquiredIdx       int
+	lockLostIdx           int
+	lockCount             int
+	unlockCount           int
+	rawSignalSum          float32
+	rawSignalCount        int
+
+	// Error statistics
+	phaseErrorSum           float32
+	phaseErrorCount         int
+	phaseErrorSumSq         float32
+	phaseErrorMin           float32
+	phaseErrorMax           float32
+	constellationErrorSum   float32
+	constellationErrorCount int
+	constellationErrorMin   float32
+	constellationErrorMax   float32
+	constellationErrorSumSq float32
+
 	tmpSymbol [1]byte
-	
+
 	// Debug state tracking
-	symbolIndex    int  // Current symbol index for debugging
-	debugLogging   bool // Enable debug logging
-	lastLockState  bool // Track lock state changes
+	symbolIndex   int  // Current symbol index for debugging
+	debugLogging  bool // Enable debug logging
+	lastLockState bool // Track lock state changes
 }
 
 // NewDemodulator builds a streaming demodulator with PLL and AGC enabled.
@@ -68,7 +97,7 @@ func NewDemodulator(cfg Config) (*Demodulator, error) {
 	}
 	damping := cfg.OptimalLoopDamping(targetSNR)
 	pllLoop := pll.NewFromLoopBandwidth(loopBw, cfg.SymbolRate(), damping)
-	
+
 	agcFilter := agc.New(1.0, 0.001)
 	agcFilter.SetSampleRate(cfg.SymbolRate())
 
@@ -134,6 +163,9 @@ func (d *Demodulator) Process(dst buffer.Writer[byte], src buffer.Reader[float32
 			break
 		}
 
+		// Track total samples processed (always, even if decode fails)
+		d.totalSamplesProcessed += symbolSamples
+
 		sym := d.decodeSymbol(d.fifo[:symbolSamples])
 		if sym >= 0 {
 			d.tmpSymbol[0] = byte(sym)
@@ -148,7 +180,7 @@ func (d *Demodulator) Process(dst buffer.Writer[byte], src buffer.Reader[float32
 		// Copy remaining samples (from symbolSamples to end) to beginning
 		remaining := d.buffered - symbolSamples
 		if remaining > 0 {
-		copy(d.fifo, d.fifo[symbolSamples:d.buffered])
+			copy(d.fifo, d.fifo[symbolSamples:d.buffered])
 		}
 		d.buffered = remaining
 	}
@@ -160,13 +192,13 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 	if len(samples) == 0 {
 		return -1
 	}
-	
+
 	// Coarse detection: quick energy check to avoid wasting CPU on noise
 	// When no lock on a signal - coarse detection avoids calculations
 	// When coarse detection triggers and lock is achieved - disable coarse detection until lock is lost
 	energy := symbolEnergy(samples)
 	coarseThreshold := d.cfg.EnergyThresholdForSNR(d.targetSNR) * 0.1 // Very lenient for coarse check
-	
+
 	// Coarse detection should NOT be active during active lock
 	// Only use coarse detection when not active AND not locked
 	useCoarseDetection := !d.active && !d.pllLocked
@@ -178,18 +210,18 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 		}
 		return -1
 	}
-	
+
 	if d.debugLogging && useCoarseDetection && energy >= coarseThreshold {
 		log.Printf("[SYMBOL %d] Coarse detection: passed (energy=%.6f >= threshold=%.6f), continuing processing",
 			d.symbolIndex, energy, coarseThreshold)
 	}
-	
+
 	// Full energy check with adaptive threshold
 	energy = symbolEnergy(samples)
-	
+
 	// Calculate threshold based on expected SNR
 	baseThreshold := d.cfg.EnergyThresholdForSNR(d.targetSNR)
-	
+
 	// Use adaptive threshold: if we're in an active transmission, be more lenient
 	var threshold float32
 	if d.active {
@@ -205,6 +237,14 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 		if !d.active {
 			d.silenceCount++
 			if d.silenceCount >= d.cfg.TransmissionGap {
+				// Track transmission end
+				if d.active && d.transmissionEndIdx == 0 {
+					d.transmissionEndIdx = d.totalSamplesProcessed
+				}
+				if d.pllLocked {
+					d.lockLostIdx = d.totalSamplesProcessed
+					d.unlockCount++
+				}
 				d.active = false
 				d.unlockPLL()
 				d.resetLoops()
@@ -214,10 +254,18 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 		// During active transmission, low energy might be due to noise
 		// Still try to decode - PLL/AGC might correct it
 	}
-	
+
 	// Signal detected or continuing active transmission
 	if !d.active {
 		d.active = true
+		// Track transmission start
+		if d.transmissionStartIdx == 0 {
+			d.transmissionStartIdx = d.totalSamplesProcessed
+		}
+		// For QAM without preamble, packet also starts at transmission start
+		if d.packetStartIdx == 0 {
+			d.packetStartIdx = d.totalSamplesProcessed
+		}
 		if d.debugLogging {
 			log.Printf("[SYMBOL %d] Signal detected: active=true (energy=%.6f >= threshold=%.6f)",
 				d.symbolIndex, energy, threshold)
@@ -227,7 +275,7 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 
 	iAcc, qAcc := d.integrateSymbol(samples)
 	iAccRaw, qAccRaw := iAcc, qAcc // Save original values for debugging
-	
+
 	// Update AGC with magnitude for convergence (always train AGC)
 	mag := math32.Hypot(iAcc, qAcc)
 	magRaw := mag // Save original magnitude
@@ -235,17 +283,17 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 		// Always update AGC gain for convergence (but don't apply if signal is perfect)
 		d.agc.Process(mag)
 	}
-	
+
 	// Get AGC gain before applying
 	agcGainBefore := float32(1.0)
 	if mag > 0 && d.pllLocked {
 		normalizedMagTest := d.agc.Process(mag)
 		agcGainBefore = normalizedMagTest / mag
 	}
-	
+
 	// Apply AGC normalization BEFORE PLL (per TUNING.md)
 	// CRITICAL BUG FIX: For noise-free signals (infinite SNR), AGC normalization causes quantization errors
-	// 
+	//
 	// ROOT CAUSE IDENTIFIED:
 	// - Symbol 10 has magnitude 0.447214 (I=Q=0.316228)
 	// - AGC tries to normalize to target 1.0, applying gain ~2.17
@@ -278,7 +326,7 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 				break
 			}
 		}
-		
+
 		// If magnitude matches expected constellation point, it's a perfect signal - don't normalize
 		// For noisy signals, magnitude won't match exactly, so AGC normalization will be applied
 		// This gives us the best of both worlds:
@@ -293,7 +341,7 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 			agcApplied = true
 		}
 	}
-	
+
 	if d.debugLogging && (d.symbolIndex >= 48 && d.symbolIndex <= 54 || d.symbolIndex == 19) {
 		magAfterAGC := math32.Hypot(iAcc, qAcc)
 		log.Printf("[SYMBOL %d] INTEGRATION: iAcc=%.6f qAcc=%.6f, mag=%.6f",
@@ -301,30 +349,39 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 		log.Printf("[SYMBOL %d] AGC: gain=%.6f, applied=%v, after: iAcc=%.6f qAcc=%.6f, mag=%.6f",
 			d.symbolIndex, agcGainBefore, agcApplied, iAcc, qAcc, magAfterAGC)
 	}
-	
+
 	// Apply PLL correction to (normalized if locked, raw if not) samples
 	iRot, qRot := d.pllLoop.Rotate(iAcc, qAcc)
-	
+
 	// Compute phase for lock detection and quantization
 	phase := math32.Atan2(qRot, iRot)
-	
+
 	// Quantize to get symbol for lock detection
 	symbol := d.quantizeSymbol(iRot, qRot)
 	ideal := d.table.points[symbol]
-	
+
 	// Calculate phase error for lock detection
 	idealPhase := math32.Atan2(ideal.q, ideal.i)
 	phaseError := wrapPi(phase - idealPhase)
-	
+
 	// PLL lock detection: validate phase error is reasonable
 	// For QAM without preamble, detect lock based on phase error consistency
 	if !d.pllLocked {
 		maxAllowedError := d.cfg.SymbolSeparationMetric() * 0.5
 		phaseErrorAbs := math32.Abs(phaseError)
 		if phaseErrorAbs < maxAllowedError && energy >= baseThreshold*1.5 {
-		d.pllLocked = true
-		d.setTrackingBandwidth()
+			d.pllLocked = true
+			d.setTrackingBandwidth()
 			d.lastLockState = true
+			// Track lock acquisition
+			if d.lockAcquiredIdx == 0 {
+				d.lockAcquiredIdx = d.totalSamplesProcessed
+				d.lockCount++
+				// For QAM without preamble, packet starts when lock is acquired
+				if d.packetStartIdx == 0 {
+					d.packetStartIdx = d.totalSamplesProcessed
+				}
+			}
 			if d.debugLogging {
 				log.Printf("[SYMBOL %d] PLL LOCK ACHIEVED: phaseError=%.6f (max=%.6f), energy=%.6f, symbol=%d (0x%x)",
 					d.symbolIndex, phaseError, maxAllowedError, energy, symbol, symbol)
@@ -334,7 +391,7 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 				d.symbolIndex, phaseErrorAbs, maxAllowedError, energy)
 		}
 	}
-	
+
 	// Log lock state changes
 	if d.debugLogging && d.pllLocked != d.lastLockState {
 		if !d.pllLocked {
@@ -343,35 +400,79 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 		d.lastLockState = d.pllLocked
 	}
 
-	// Track SNR: signal power (ideal) and noise power (error)
+	// Track SNR: signal power (ideal symbol) and noise power (error)
+	// Signal power: magnitude of ideal symbol (expected signal power)
 	idealMag := math32.Hypot(ideal.i, ideal.q)
-	
-	// Signal power: magnitude of ideal symbol
-	d.signalPowerSum += idealMag * idealMag
-	
-	// Noise power: error between received and ideal
+	signalPower := idealMag * idealMag
+	d.signalPowerSum += signalPower
+
+	// Noise power: error between received and ideal (deviation from expected)
 	errorI := iRot - ideal.i
 	errorQ := qRot - ideal.q
 	noiseMag := math32.Hypot(errorI, errorQ)
-	d.noisePowerSum += noiseMag * noiseMag
+	noisePower := noiseMag * noiseMag
+	// For very clean signals, noise power can be extremely small (rounding errors)
+	// Add a small floor to prevent division issues and more realistic SNR
+	if noisePower < 1e-10 {
+		noisePower = 1e-10
+	}
+	d.noisePowerSum += noisePower
 	d.snrSampleCount++
+	
+	// Track received signal magnitude for signal strength calculation (after rotation/correction)
+	receivedMag := math32.Hypot(iRot, qRot)
+	d.rawSignalSum += receivedMag
+	d.rawSignalCount++
 
 	// Decision-directed PLL update for payload symbols
 	// Recompute phase error after AGC normalization (if applied)
 	phase = math32.Atan2(qRot, iRot)
 	idealPhase = math32.Atan2(ideal.q, ideal.i)
 	phaseError = wrapPi(phase - idealPhase)
-	
+
+	// Track phase error statistics
+	phaseErrorAbs := math32.Abs(phaseError)
+	d.phaseErrorSum += phaseErrorAbs
+	d.phaseErrorSumSq += phaseErrorAbs * phaseErrorAbs
+	d.phaseErrorCount++
+	if d.phaseErrorCount == 1 {
+		d.phaseErrorMin = phaseErrorAbs
+		d.phaseErrorMax = phaseErrorAbs
+	} else {
+		if phaseErrorAbs < d.phaseErrorMin {
+			d.phaseErrorMin = phaseErrorAbs
+		}
+		if phaseErrorAbs > d.phaseErrorMax {
+			d.phaseErrorMax = phaseErrorAbs
+		}
+	}
+
+	// Track constellation error (Euclidean distance from ideal)
+	constellationError := noiseMag
+	d.constellationErrorSum += constellationError
+	d.constellationErrorSumSq += constellationError * constellationError
+	d.constellationErrorCount++
+	if d.constellationErrorCount == 1 {
+		d.constellationErrorMin = constellationError
+		d.constellationErrorMax = constellationError
+	} else {
+		if constellationError < d.constellationErrorMin {
+			d.constellationErrorMin = constellationError
+		}
+		if constellationError > d.constellationErrorMax {
+			d.constellationErrorMax = constellationError
+		}
+	}
+
 	// Calculate rotation error (magnitude error in I/Q space)
 	rotationErrorI := iRot - ideal.i
 	rotationErrorQ := qRot - ideal.q
 	rotationErrorMag := math32.Hypot(rotationErrorI, rotationErrorQ)
-	
+
 	// Always update PLL - the loop bandwidth naturally filters noise
 	// Use adaptive update: full for small errors, reduced for large errors
 	maxPhaseError := d.cfg.SymbolSeparationMetric() * 0.7
-	phaseErrorAbs := math32.Abs(phaseError)
-	
+
 	if d.debugLogging {
 		agcGain := float32(1.0)
 		if mag > 0 && d.pllLocked {
@@ -383,14 +484,14 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 			d.symbolIndex, symbol, symbol, iRot, qRot, ideal.i, ideal.q)
 		log.Printf("[SYMBOL %d] Errors: phase=%.6f rad, rotation=%.6f, AGC_gain=%.6f, locked=%v",
 			d.symbolIndex, phaseError, rotationErrorMag, agcGain, d.pllLocked)
-		
+
 		// Special logging for position 51 or around symbol 10
 		if d.symbolIndex >= 48 && d.symbolIndex <= 54 {
 			log.Printf("[SYMBOL %d] *** POSITION 51 REGION ***: iRot=%.6f qRot=%.6f, energy=%.6f",
 				d.symbolIndex, iRot, qRot, energy)
 		}
 	}
-	
+
 	if phaseErrorAbs < maxPhaseError {
 		// Normal update - PLL should track small phase errors
 		d.pllLoop.Update(phaseError)
@@ -404,6 +505,13 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 	}
 
 	d.symbolIndex++
+	
+	// Track transmission end: update whenever we successfully decode a symbol
+	// This marks the last sample where transmission was successfully detected
+	if d.active {
+		d.transmissionEndIdx = d.totalSamplesProcessed
+	}
+	
 	return symbol
 }
 
@@ -494,6 +602,110 @@ func (d *Demodulator) unlockPLL() {
 	d.signalPowerSum = 0
 	d.noisePowerSum = 0
 	d.snrSampleCount = 0
+	// Reset lock indices
+	d.lockAcquiredIdx = 0
+}
+
+// Quality implements modulation.Receiver.
+func (d *Demodulator) Quality() modulation.QualityStats {
+	stats := modulation.QualityStats{}
+
+	// Calculate SNR
+	if d.snrSampleCount > 0 && d.noisePowerSum > 0 {
+		signalPower := d.signalPowerSum / float32(d.snrSampleCount)
+		noisePower := d.noisePowerSum / float32(d.snrSampleCount)
+		if noisePower > 0 {
+			snrLinear := signalPower / noisePower
+			if snrLinear > 0 {
+				stats.SNR = 10.0 * math32.Log10(snrLinear)
+			}
+		}
+	}
+
+	// Calculate signal strength from received signal magnitude (after PLL correction)
+	// This represents the actual received signal strength
+	if d.rawSignalCount > 0 {
+		avgMagnitude := d.rawSignalSum / float32(d.rawSignalCount)
+		power := avgMagnitude * avgMagnitude
+		if power > 0 {
+			stats.SignalStrength = 10.0 * math32.Log10(power)
+		}
+	}
+
+	// Phase error statistics
+	if d.phaseErrorCount > 0 {
+		avg := d.phaseErrorSum / float32(d.phaseErrorCount)
+		var stdDev float32
+		if d.phaseErrorCount > 1 {
+			variance := (d.phaseErrorSumSq / float32(d.phaseErrorCount)) - (avg * avg)
+			if variance > 0 {
+				stdDev = math32.Sqrt(variance)
+			}
+		}
+		stats.PhaseError = modulation.Stats{
+			Average:     avg,
+			Min:         d.phaseErrorMin,
+			Max:         d.phaseErrorMax,
+			StdDev:      stdDev,
+			SampleCount: d.phaseErrorCount,
+		}
+	}
+
+	// Frequency error: not implemented (would require frequency offset estimation)
+	stats.FrequencyError = modulation.Stats{}
+
+	// Constellation error statistics
+	if d.constellationErrorCount > 0 {
+		avg := d.constellationErrorSum / float32(d.constellationErrorCount)
+		var stdDev float32
+		if d.constellationErrorCount > 1 {
+			variance := (d.constellationErrorSumSq / float32(d.constellationErrorCount)) - (avg * avg)
+			if variance > 0 {
+				stdDev = math32.Sqrt(variance)
+			}
+		}
+		stats.ConstellationError = modulation.Stats{
+			Average:     avg,
+			Min:         d.constellationErrorMin,
+			Max:         d.constellationErrorMax,
+			StdDev:      stdDev,
+			SampleCount: d.constellationErrorCount,
+		}
+	}
+
+	return stats
+}
+
+// Transmission implements modulation.Receiver.
+func (d *Demodulator) Transmission() modulation.TransmissionStats {
+	isLocked := d.pllLocked && d.active
+	return modulation.TransmissionStats{
+		TransmissionStart: d.transmissionStartIdx,
+		TransmissionEnd:   d.transmissionEndIdx,
+		PacketStart:       d.packetStartIdx,
+		PreambleStart:     d.preambleStartIdx,
+		IsLocked:          isLocked,
+		LockStart:         d.lockAcquiredIdx,
+		LockEnd:           d.lockLostIdx,
+		LockCount:         d.lockCount,
+		UnlockCount:       d.unlockCount,
+	}
+}
+
+// Params implements modulation.Receiver.
+func (d *Demodulator) Params() modulation.TransmitterParams {
+	power := d.cfg.Amplitude * d.cfg.Amplitude
+	signalStrength := float32(0)
+	if power > 0 {
+		signalStrength = 10.0 * math32.Log10(power)
+	}
+	return modulation.TransmitterParams{
+		BaudRate:         d.cfg.SymbolRate(),
+		SampleRate:       d.cfg.SampleRate,
+		SignalStrength:   signalStrength,
+		Bandwidth:        d.cfg.RequiredBandwidth(),
+		CarrierFrequency: d.cfg.CarrierHz,
+	}
 }
 
 // SNR returns the estimated SNR (in dB) of the last decoded symbols.

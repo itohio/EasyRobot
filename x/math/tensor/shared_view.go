@@ -12,28 +12,28 @@ type refCount struct {
 	count int64
 }
 
-// SmartTensor wraps a Tensor with reference counting.
-// It embeds Tensor interface to promote all methods, allowing direct calls like smartA.Mul(...).
+// SharedTensor wraps a Tensor with reference counting.
+// It embeds Tensor interface to promote all methods, allowing direct calls like sharedA.Mul(...).
 //
 // Example usage:
 //
-//	smartA := tensor.NewSmart(tensor.DTFP32, tensor.Shape{2, 3})  // Same signature as tensor.New()
-//	// Or: smartA := tensor.NewSmart(tensor.DTFP32, []int{2, 3})
-//	a1 := smartA.View()
-//	a2 := smartA.View()
+//	sharedA := tensor.NewShared(tensor.DTFP32, tensor.Shape{2, 3})  // Same signature as tensor.New()
+//	// Or: sharedA := tensor.NewShared(tensor.DTFP32, []int{2, 3})
+//	a1 := sharedA.View()
+//	a2 := sharedA.View()
 //	a1.Mul(...)  // Direct method call - no .Value() needed!
 //	a1.Release()
 //	a2.Release() // Last reference released, underlying tensor is released
-type SmartTensor struct {
+type SharedTensor struct {
 	tensorTypes.Tensor
 	refs *refCount
 }
 
-// NewSmart creates a new SmartTensor with reference counting.
+// NewShared creates a new SharedTensor with reference counting.
 // It accepts the same parameters as New() for consistency.
 // The initial reference count is 1.
-func NewSmart(dtype DataType, shape shape.Shape) *SmartTensor {
-	return &SmartTensor{
+func NewShared(dtype DataType, shape shape.Shape) *SharedTensor {
+	return &SharedTensor{
 		Tensor: New(dtype, shape),
 		refs:   &refCount{count: 1},
 	}
@@ -41,8 +41,8 @@ func NewSmart(dtype DataType, shape shape.Shape) *SmartTensor {
 
 // WithRefcount wraps an existing Tensor with reference counting.
 // The initial reference count is 1.
-func WithRefcount(t tensorTypes.Tensor) *SmartTensor {
-	return &SmartTensor{
+func WithRefcount(t tensorTypes.Tensor) *SharedTensor {
+	return &SharedTensor{
 		Tensor: t,
 		refs:   &refCount{count: 1},
 	}
@@ -50,7 +50,7 @@ func WithRefcount(t tensorTypes.Tensor) *SmartTensor {
 
 // View creates a new view of the wrapped tensor.
 // The view implements the Tensor interface and can be used directly.
-func (s *SmartTensor) View() *TensorView {
+func (s *SharedTensor) View() *TensorView {
 	atomic.AddInt64(&s.refs.count, 1)
 	return &TensorView{
 		Tensor: s.Tensor,
@@ -60,7 +60,7 @@ func (s *SmartTensor) View() *TensorView {
 
 // Release decrements the reference count and releases the wrapped tensor when count reaches zero.
 // Safe to call multiple times (idempotent).
-func (s *SmartTensor) Release() {
+func (s *SharedTensor) Release() {
 	if s.refs == nil {
 		return // already released
 	}
@@ -70,7 +70,7 @@ func (s *SmartTensor) Release() {
 	}
 }
 
-// TensorView is an independent view of a SmartTensor.
+// TensorView is an independent view of a SharedTensor.
 // It embeds Tensor interface to promote all methods, allowing direct calls like view.Mul(...).
 type TensorView struct {
 	tensorTypes.Tensor
@@ -89,7 +89,7 @@ func (v *TensorView) Release() {
 	}
 }
 
-// Note: SmartTensor and TensorView shadow the View() method from the Tensor interface,
+// Note: SharedTensor and TensorView shadow the View() method from the Tensor interface,
 // so they don't fully satisfy the Tensor interface. This is intentional - they are
 // wrapper types that provide reference counting. All other Tensor methods are promoted
-// via embedding and can be called directly (e.g., smartA.Mul(...)).
+// via embedding and can be called directly (e.g., sharedA.Mul(...)).

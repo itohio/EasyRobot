@@ -26,16 +26,12 @@ type Demodulator struct {
 	readBuf      []float32
 	buffered     int
 
-	active           bool
-	preambleDetected bool
-	preambleProgress int
-	preambleErrors   int
-	silenceSymbols   int
+	active         bool
+	silenceSymbols int
 
 	// Statistics tracking
 	totalSamplesProcessed int
 	transmissionStartIdx  int
-	preambleStartIdx      int
 	packetStartIdx        int
 	lockAcquiredIdx       int
 	lockLostIdx           int
@@ -45,6 +41,7 @@ type Demodulator struct {
 	// SNR and signal strength tracking
 	signalPowerSum float32
 	noisePowerSum  float32
+	corrSum        float32 // Sum of correlation magnitudes for signal level estimation
 	snrSampleCount int
 	rawSignalSum   float32
 	rawSignalCount int
@@ -124,11 +121,17 @@ func (d *Demodulator) Process(dst buffer.Writer[byte], src buffer.Reader[float32
 
 		// Track total samples processed (before processing symbol)
 		symbolsWritten := d.processSymbol(bitsWriter, d.sampleBuffer[:d.samplesPerSymbol])
-		if symbolsWritten > 0 {
-			d.totalSamplesProcessed += d.samplesPerSymbol
-		}
+		// Always advance by one symbol period, even if no symbol was written (preamble processing)
+		d.totalSamplesProcessed += d.samplesPerSymbol
 		writtenSymbols += symbolsWritten
-		d.buffered = 0
+
+		// Advance buffer by one symbol period
+		// Copy remaining samples (from samplesPerSymbol to end) to beginning
+		remaining := d.buffered - d.samplesPerSymbol
+		if remaining > 0 {
+			copy(d.sampleBuffer, d.sampleBuffer[d.samplesPerSymbol:d.buffered])
+		}
+		d.buffered = remaining
 	}
 
 	return writtenSymbols
@@ -152,11 +155,18 @@ func (d *Demodulator) processSymbol(dst buffer.BitsWriter, samples []float32) in
 	if !d.active {
 		if energy > d.config.EnergyThreshold {
 			d.active = true
-			d.preambleDetected = false
-			d.preambleProgress = 0
 			// Track transmission start
 			if d.transmissionStartIdx == 0 {
 				d.transmissionStartIdx = d.totalSamplesProcessed
+			}
+			// Track lock acquisition (code correlation provides sync)
+			if d.lockAcquiredIdx == 0 {
+				d.lockAcquiredIdx = d.totalSamplesProcessed
+				d.lockCount++
+			}
+			// Track packet start
+			if d.packetStartIdx == 0 {
+				d.packetStartIdx = d.totalSamplesProcessed
 			}
 		} else {
 			return 0
@@ -170,53 +180,10 @@ func (d *Demodulator) processSymbol(dst buffer.BitsWriter, samples []float32) in
 
 	symbol := d.detectSymbol(samples)
 
-	if !d.preambleDetected && d.config.PreambleLength > 0 {
-		pattern := d.config.PreamblePattern
-		if len(pattern) == 0 {
-			pattern = []int{1, 0}
-		}
-		expected := pattern[d.preambleProgress%len(pattern)]
-		if symbol == expected {
-			if d.preambleProgress == 0 && d.preambleStartIdx == 0 {
-				d.preambleStartIdx = d.totalSamplesProcessed
-			}
-			d.preambleProgress++
-			d.preambleErrors = 0
-			if d.preambleProgress >= d.config.PreambleLength {
-				d.preambleDetected = true
-				d.silenceSymbols = 0
-				// Track packet start (after preamble)
-				if d.packetStartIdx == 0 {
-					d.packetStartIdx = d.totalSamplesProcessed + d.samplesPerSymbol
-				}
-				// Track lock acquisition
-				if d.lockAcquiredIdx == 0 {
-					d.lockAcquiredIdx = d.totalSamplesProcessed
-					d.lockCount++
-				}
-			}
-		} else {
-			// Allow some preamble errors before resetting (more robust with noise)
-			// Allow up to 1 error per 4 preamble symbols, but reset if too many errors
-			maxErrors := d.config.PreambleLength / 4
-			if maxErrors < 1 {
-				maxErrors = 1
-			}
-			d.preambleErrors++
-			if d.preambleErrors > maxErrors {
-				d.preambleProgress = 0
-				d.preambleErrors = 0
-			}
-		}
-		return 0
-	}
-
 	if energy < d.config.EnergyThreshold {
 		d.silenceSymbols++
 		if d.silenceSymbols >= d.config.TransmissionTimeout {
 			d.active = false
-			d.preambleDetected = false
-			d.preambleProgress = 0
 			d.silenceSymbols = 0
 			// Track lock loss
 			if d.lockAcquiredIdx > 0 {
@@ -319,14 +286,37 @@ func (d *Demodulator) trackSymbolStatistics(samples []float32, detectedSymbol in
 
 	actualCorr := d.codeCorrelation(samples, idealCode)
 
-	// For DSSS, "constellation error" is the difference between ideal and actual correlation
-	// Ideal correlation should be close to spreading factor for correct symbol
-	// For binary DSSS with symbol 0, correlation is negated
-	idealCorrValue := float32(d.config.SpreadingFactor)
+	// For binary DSSS with symbol 0, correlation is negated for comparison
+	corrMagnitude := actualCorr
 	if d.config.ModulationOrder == 2 && detectedSymbol == 0 {
-		actualCorr = -actualCorr
+		corrMagnitude = -actualCorr
 	}
-	correlationError := math32.Abs(idealCorrValue - actualCorr)
+
+	// Normalize correlation to signal amplitude
+	// Ideal correlation = amplitude * samplesPerChip * spreadingFactor
+	normalizationFactor := float32(d.config.SamplesPerChip) * float32(d.config.SpreadingFactor)
+	signalAmplitude := math32.Abs(corrMagnitude) / (normalizationFactor + 1e-6)
+
+	// Track correlation magnitude for signal level estimation
+	d.corrSum += math32.Abs(corrMagnitude)
+
+	// Estimate ideal signal amplitude from average correlation
+	var idealAmplitude float32
+	if d.snrSampleCount > 10 {
+		// Use average correlation to estimate signal amplitude
+		avgCorr := d.corrSum / float32(d.snrSampleCount+1)
+		idealAmplitude = avgCorr / normalizationFactor
+	} else {
+		// Use configured amplitude as initial estimate
+		idealAmplitude = d.config.Amplitude
+	}
+
+	// Calculate amplitude error (noise component)
+	amplitudeError := math32.Abs(signalAmplitude - idealAmplitude)
+
+	// For constellation error tracking, convert back to correlation domain
+	idealCorrValue := idealAmplitude * normalizationFactor
+	correlationError := math32.Abs(idealCorrValue - math32.Abs(corrMagnitude))
 
 	// Track constellation error statistics
 	d.constellationErrorCount++
@@ -349,10 +339,10 @@ func (d *Demodulator) trackSymbolStatistics(samples []float32, detectedSymbol in
 	// Frequency error tracking would require frequency offset estimation (not implemented)
 
 	// Track SNR: signal power vs noise power
-	// Signal power: ideal correlation squared
-	signalPower := idealCorrValue * idealCorrValue
-	// Noise power: error squared
-	noisePower := correlationError * correlationError
+	// Signal power: ideal amplitude squared (represents signal power)
+	signalPower := idealAmplitude * idealAmplitude
+	// Noise power: amplitude error squared (represents noise power)
+	noisePower := amplitudeError * amplitudeError
 
 	d.signalPowerSum += signalPower
 	d.noisePowerSum += noisePower
@@ -372,16 +362,12 @@ func (d *Demodulator) estimateBytes(src buffer.Reader[float32]) int {
 func (d *Demodulator) Reset() {
 	d.buffered = 0
 	d.active = false
-	d.preambleDetected = false
-	d.preambleProgress = 0
-	d.preambleErrors = 0
 	d.silenceSymbols = 0
 	d.downconverter = dsp.NewCosineGenerator(d.config.SampleRate, d.config.CarrierFreq, 1.0, 0.0)
 
 	// Reset statistics
 	d.totalSamplesProcessed = 0
 	d.transmissionStartIdx = 0
-	d.preambleStartIdx = 0
 	d.packetStartIdx = 0
 	d.lockAcquiredIdx = 0
 	d.lockLostIdx = 0
@@ -390,6 +376,7 @@ func (d *Demodulator) Reset() {
 
 	d.signalPowerSum = 0
 	d.noisePowerSum = 0
+	d.corrSum = 0
 	d.snrSampleCount = 0
 	d.rawSignalSum = 0
 	d.rawSignalCount = 0
@@ -429,13 +416,14 @@ func (d *Demodulator) Quality() modulation.QualityStats {
 		}
 	}
 
-	// Calculate signal strength (raw signal magnitude before normalization)
+	// Calculate signal strength (relative to reference amplitude 1.0 = 0 dB)
+	// Use raw signal magnitude (before correlation) as it represents actual received signal level
 	if d.rawSignalCount > 0 {
 		avgMagnitude := d.rawSignalSum / float32(d.rawSignalCount)
-		// Convert to power and then to dB: 10*log10(power)
-		power := avgMagnitude * avgMagnitude
-		if power > 0 {
-			stats.SignalStrength = 10.0 * math32.Log10(power)
+		// Signal strength in dB relative to 1.0 = 0 dB
+		// Use 20*log10 for amplitude (voltage) signals
+		if avgMagnitude > 0 {
+			stats.SignalStrength = 20.0 * math32.Log10(avgMagnitude)
 		}
 	}
 
@@ -469,15 +457,15 @@ func (d *Demodulator) Quality() modulation.QualityStats {
 
 // Transmission implements modulation.Receiver.
 func (d *Demodulator) Transmission() modulation.TransmissionStats {
-	isLocked := d.preambleDetected && d.active && d.lockAcquiredIdx > 0
+	isLocked := d.active && d.lockAcquiredIdx > 0
 
 	return modulation.TransmissionStats{
 		TransmissionStart: d.transmissionStartIdx,
 		PacketStart:       d.packetStartIdx,
-		PreambleIndex:     d.preambleStartIdx,
+		PreambleStart:     0, // DSSS doesn't use preamble
 		IsLocked:          isLocked,
-		LockinIndex:       d.lockAcquiredIdx,
-		LockoutIndex:      d.lockLostIdx,
+		LockStart:         d.lockAcquiredIdx,
+		LockEnd:           d.lockLostIdx,
 		LockCount:         d.lockCount,
 		UnlockCount:       d.unlockCount,
 	}

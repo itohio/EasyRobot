@@ -453,9 +453,14 @@ func (m *Marshaller) Health() map[string]int64
 - `types.Tensor`: Audio tensor to write to WAV file(s) and/or device(s)
   - Multiple outputs: channels distributed across outputs
   - Example: 4-channel tensor → 2 stereo devices (ch 0-1 → dev 0, ch 2-3 → dev 1)
+  - **Tensor ownership**: The marshaller may consume/release the tensor after processing when `ReleaseAfterProcessing` option is enabled (see Configuration Options). 
+    - To reuse the tensor: Create a copy using `tensor.Clone()` before passing it to the marshaller.
+    - **For efficiency**: Use `SharedTensor` (from `tensor` package) with reference counting to avoid cloning when sending the same tensor to multiple marshallers. The reference-counted wrapper automatically manages tensor lifetime across multiple consumers.
 - `types.FrameStream`: Stream audio frames to device(s) (reuses FrameStream from types package)
   - Multiple devices: channels distributed, synchronized writes
   - Mixed outputs: WAV file + devices supported
+  - **Frame ownership**: Frames in the stream may be consumed/released after processing when `ReleaseAfterProcessing` option is enabled.
+    - To send the same frame to multiple marshallers: Create copies of the tensors using `tensor.Clone()`, or use `SharedTensor` with reference counting for better efficiency.
 
 **Format Selection:**
 - Marshaller automatically selects best format based on tensor dtype and target capabilities
@@ -495,7 +500,14 @@ func WithPlaybackDevice(deviceID int) types.Option // Explicit output device (ma
 // Stream options
 func WithFrameSize(frames int) types.Option // Frames per read/write
 func WithBufferSize(size int) types.Option // Buffer size in frames
+
+// Resource management
+func WithReleaseAfterProcessing(release bool) types.Option // Release tensors after processing (default: false)
 ```
+
+**Resource Management:**
+- `WithReleaseAfterProcessing(true)`: When enabled, the marshaller will automatically call `Release()` on tensors after processing them. This helps with memory management but means you cannot reuse the tensors. Use `SharedTensor` (from `tensor` package) with reference counting to avoid cloning when sending the same tensor to multiple marshallers. The reference-counted wrapper automatically manages tensor lifetime across multiple consumers.
+- Default: `false` (tensors are not automatically released)
 
 ## Implementation Details
 

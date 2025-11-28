@@ -5,65 +5,71 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"time"
 
 	"github.com/itohio/EasyRobot/x/marshaller/audio"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"github.com/itohio/EasyRobot/x/math/dsp"
 	"github.com/itohio/EasyRobot/x/math/dsp/modulation/mpsk"
 	"github.com/itohio/EasyRobot/x/math/tensor"
-	tensortypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 	"github.com/itohio/EasyRobot/x/math/vec"
 	"github.com/spf13/cobra"
 )
 
 func newGenPSKCmd() *cobra.Command {
 	var (
-		output         string
-		deviceID       string
-		amplitude      string
-		frequency      float64
-		data           string
-		hex            string
-		sampleRate     int
-		symbolRate     float64
+		output          string
+		deviceID        string
+		amplitude       string
+		frequency       float64
+		data            string
+		hex             string
+		sampleRate      int
+		symbolRate      float64
 		modulationOrder int
-		dataType       string
-		pad            float64
-		padType        string
-		padAmplitude   string
-		noise          string
-		noiseType      string
+		dataType        string
+		pad             time.Duration
+		padType         string
+		padAmplitude    string
+		noise           string
+		noiseType       string
+		encoding        string
+		rsN             int
+		rsK             int
 	)
 
 	cmd := &cobra.Command{
 		Use:   "gen-psk",
 		Short: "Generate PSK modulated signal",
-		Long:  "Generate a Phase Shift Keying (PSK) modulated signal from data. Supports protocol wrapping, padding, and noise.",
+		Long:  "Generate a Phase Shift Keying (PSK) modulated signal from data. Supports Hamming/Reed-Solomon/Gray encoding, protocol wrapping, padding, and noise.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runGenPSK(output, deviceID, amplitude, frequency, data, hex, sampleRate, symbolRate, modulationOrder, dataType, pad, padType, padAmplitude, noise, noiseType)
+			return runGenPSK(output, deviceID, amplitude, frequency, data, hex, sampleRate, symbolRate, modulationOrder, dataType, pad, padType, padAmplitude, noise, noiseType, encoding, rsN, rsK)
 		},
 	}
 
 	cmd.Flags().StringVarP(&output, "output", "o", "", "Output WAV file path (or use --device-id for audio device)")
 	cmd.Flags().StringVar(&deviceID, "device-id", "", "Playback device ID (alternative to --output)")
 	cmd.Flags().StringVarP(&amplitude, "amplitude", "a", "-6", "Amplitude in dB (default: -6dB)")
-	cmd.Flags().Float64VarP(&frequency, "frequency", "f", 1000, "Carrier frequency in Hz (default: 1000)")
+	cmd.Flags().Float64VarP(&frequency, "frequency", "f", 5000, "Carrier frequency in Hz (default: 5000)")
 	cmd.Flags().StringVar(&data, "data", "Hello", "Data as string (default: \"Hello\")")
 	cmd.Flags().StringVar(&hex, "hex", "", "Data as hex string (alternative to -data)")
 	cmd.Flags().IntVarP(&sampleRate, "sample-rate", "r", 48000, "Sample rate (Hz)")
 	cmd.Flags().Float64Var(&symbolRate, "symbol-rate", 1000, "Symbol rate in baud (default: 1000)")
-	cmd.Flags().IntVar(&modulationOrder, "modulation-order", 2, "Modulation order (2=BPSK, 4=QPSK, default: 2)")
+	cmd.Flags().IntVarP(&modulationOrder, "modulation-order", "m", 4, "Modulation order (2=BPSK, 4=QPSK, 8=8-PSK, 16=16-PSK, default: 4)")
 	cmd.Flags().StringVar(&dataType, "data-type", "INT16", "Data type (INT16, INT32, FP32, UINT8, default: INT16)")
-	cmd.Flags().Float64Var(&pad, "pad", 1.0, "Padding duration in seconds (adds padding at beginning and end, default: 1.0)")
+	cmd.Flags().DurationVar(&pad, "pad", 1*time.Second, "Padding duration (adds padding at beginning and end, e.g., 1s, 100ms)")
 	cmd.Flags().StringVar(&padType, "pad-type", "zero", "Padding type: \"zero\" or \"noise\" (default: zero)")
 	cmd.Flags().StringVar(&padAmplitude, "pad-amplitude", "-20", "Padding noise amplitude in dB (only used if pad-type=noise, default: -20dB)")
 	cmd.Flags().StringVar(&noise, "noise", "-120", "Noise amplitude in dB to add on top of signal (default: -120, meaning no noise)")
 	cmd.Flags().StringVar(&noiseType, "noise-type", "white", "Noise type: \"white\", \"pink\", or \"brown\" (default: white)")
+	cmd.Flags().StringVar(&encoding, "encoding", "none", "Data encoding: \"none\", \"gray\", \"hamming\", or \"rs\" (default: none)")
+	cmd.Flags().IntVar(&rsN, "rs-n", 255, "Reed-Solomon total codeword length (n, default: 255)")
+	cmd.Flags().IntVar(&rsK, "rs-k", 223, "Reed-Solomon data symbols per codeword (k, default: 223)")
 
 	return cmd
 }
 
-func runGenPSK(output, deviceID, amplitude string, frequency float64, data, hex string, sampleRate int, symbolRate float64, modulationOrder int, dataType string, pad float64, padType, padAmplitude, noise, noiseType string) error {
+func runGenPSK(output, deviceID, amplitude string, frequency float64, data, hex string, sampleRate int, symbolRate float64, modulationOrder int, dataType string, pad time.Duration, padType, padAmplitude, noise, noiseType, encoding string, rsN, rsK int) error {
 	// Validate output
 	if output == "" && deviceID == "" {
 		return fmt.Errorf("either --output or --device-id must be specified")
@@ -90,27 +96,49 @@ func runGenPSK(output, deviceID, amplitude string, frequency float64, data, hex 
 		return err
 	}
 
-	// Validate modulation order
 	if modulationOrder != 2 && modulationOrder != 4 && modulationOrder != 8 && modulationOrder != 16 {
 		return fmt.Errorf("modulation order must be 2, 4, 8, or 16, got %d", modulationOrder)
 	}
 
-	// Create PSK encoder
-	pskEncoder := mpsk.NewModulator(float32(sampleRate), float32(frequency), float32(symbolRate), modulationOrder)
-	pskEncoder.SetAmplitude(ampLinear)
-
-	// Estimate length needed (symbols * samples per symbol)
 	bitsPerSymbol := int(math.Log2(float64(modulationOrder)))
-	numSymbols := (len(dataBytes) * 8) / bitsPerSymbol
-	if (len(dataBytes)*8)%bitsPerSymbol != 0 {
-		numSymbols++
+	if bitsPerSymbol <= 0 {
+		return fmt.Errorf("invalid modulation order %d", modulationOrder)
 	}
-	estimatedLength := numSymbols * int(float32(sampleRate)/float32(symbolRate))
 
-	// Generate signal
-	modulated := pskEncoder.GenerateSignal(dataBytes, ampLinear, estimatedLength)
-	modData := []float32(modulated)
-	numSamples := len(modData)
+	samplesPerSymbol := int(math.Round(float64(sampleRate) / symbolRate))
+	if samplesPerSymbol < 2 {
+		return fmt.Errorf("sample-rate %d and symbol-rate %.2f yield <2 samples per symbol", sampleRate, symbolRate)
+	}
+
+	cfg := mpsk.DefaultConfig()
+	cfg.SampleRate = float32(sampleRate)
+	cfg.CarrierHz = float32(frequency)
+	cfg.BitsPerSymbol = bitsPerSymbol
+	cfg.SamplesPerSymbol = samplesPerSymbol
+	cfg.Amplitude = ampLinear
+
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("invalid PSK config: %w", err)
+	}
+
+	pskMod, err := mpsk.NewModulator(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to build PSK modulator: %w", err)
+	}
+
+	// Create encoded modulator if encoding is requested
+	encodedMod, encodingName, err := createEncodedModulator(pskMod, encoding, rsN, rsK)
+	if err != nil {
+		return fmt.Errorf("failed to create encoded modulator: %w", err)
+	}
+
+	modData, err := modulateSamples(encodedMod, bitsPerSymbol, dataBytes)
+	if err != nil {
+		return fmt.Errorf("failed to modulate data: %w", err)
+	}
+	if len(modData) == 0 {
+		return fmt.Errorf("PSK modulator generated no samples")
+	}
 
 	// Calculate RMS statistics (before padding/noise)
 	if len(modData) > 0 {
@@ -124,9 +152,9 @@ func runGenPSK(output, deviceID, amplitude string, frequency float64, data, hex 
 
 	// Apply padding if requested
 	if pad > 0 {
-		padSamples := int(float64(sampleRate) * pad)
-		modData = applyPadding(modData, padSamples, padType, padAmplitude, float32(sampleRate))
-		numSamples = len(modData)
+		padScalars := int(float64(sampleRate)*pad.Seconds()) * 2
+		vector := applyPadding(vec.NewFrom(modData...), padScalars, padType, padAmplitude, float32(sampleRate))
+		modData = []float32(vector)
 	}
 
 	// Apply noise if requested (if noise > -120 dB)
@@ -136,62 +164,24 @@ func runGenPSK(output, deviceID, amplitude string, frequency float64, data, hex 
 	}
 	if noiseDb > -120 {
 		noiseAmp := dbToAmplitude(noiseDb)
-		modData = applyNoise(modData, noiseAmp, noiseType, float32(sampleRate))
+		vector := applyNoise(vec.NewFrom(modData...), noiseAmp, noiseType, float32(sampleRate))
+		modData = []float32(vector)
 	}
 
-	// Create tensor [frames, 1]
-	shape := tensor.NewShape(numSamples, 1)
-	t := tensor.New(tensortypes.DataType(dt), shape)
-
-	// Fill tensor
-	switch dt {
-	case types.INT16:
-		data := t.Data().([]int16)
-		for i := 0; i < numSamples; i++ {
-			val := modData[i] * 32767.0
-			if val > 32767.0 {
-				val = 32767.0
-			} else if val < -32768.0 {
-				val = -32768.0
-			}
-			data[i] = int16(val)
-		}
-	case types.INT32:
-		data := t.Data().([]int32)
-		for i := 0; i < numSamples; i++ {
-			val := modData[i] * 2147483647.0
-			if val > 2147483647.0 {
-				val = 2147483647.0
-			} else if val < -2147483648.0 {
-				val = -2147483648.0
-			}
-			data[i] = int32(val)
-		}
-	case types.FP32:
-		data := t.Data().([]float32)
-		for i := 0; i < numSamples; i++ {
-			data[i] = modData[i]
-		}
-	case types.UINT8:
-		data := t.Data().([]uint8)
-		for i := 0; i < numSamples; i++ {
-			val := (modData[i] + 1.0) * 127.5
-			if val > 255.0 {
-				val = 255.0
-			} else if val < 0.0 {
-				val = 0.0
-			}
-			data[i] = uint8(val)
-		}
-	default:
-		return fmt.Errorf("unsupported data type: %v", dt)
+	// Create FP32 tensor from samples, marshaller will handle type conversion
+	frames := len(modData) / 2
+	shape := tensor.NewShape(frames, 2)
+	t := tensor.FromFloat32(shape, modData)
+	if t.Empty() {
+		return fmt.Errorf("failed to create tensor")
 	}
+	defer t.Release()
 
 	// Create marshaller based on output config
 	ctx := context.Background()
 	opts := []types.Option{
 		audio.WithSampleRate(sampleRate),
-		audio.WithChannels(1),
+		audio.WithChannels(2),
 		types.WithDestinationType(dt),
 	}
 	if output != "" {
@@ -215,6 +205,7 @@ func runGenPSK(output, deviceID, amplitude string, frequency float64, data, hex 
 	}
 
 	fmt.Printf("  Sample rate: %d Hz\n", sampleRate)
+	fmt.Printf("  Channels: 2 (IQ interleaved)\n")
 	fmt.Printf("  Data type: %s\n", dataType)
 	fmt.Printf("  Amplitude: %.2f dB\n", ampDb)
 	fmt.Printf("  Carrier frequency: %.0f Hz\n", frequency)
@@ -231,9 +222,12 @@ func runGenPSK(output, deviceID, amplitude string, frequency float64, data, hex 
 		fmt.Print("16-PSK")
 	}
 	fmt.Printf(")\n")
+	if encodingName != "none" {
+		fmt.Printf("  Encoding: %s\n", encodingName)
+	}
 	fmt.Printf("  Data: %d bytes\n", len(dataBytes))
 	if pad > 0 {
-		fmt.Printf("  Padding: %.2f s (%s)\n", pad, padType)
+		fmt.Printf("  Padding: %v (%s)\n", pad, padType)
 	}
 	if noiseDb > -120 {
 		fmt.Printf("  Noise: %.2f dB (%s)\n", noiseDb, noiseType)
@@ -241,4 +235,3 @@ func runGenPSK(output, deviceID, amplitude string, frequency float64, data, hex 
 
 	return nil
 }
-

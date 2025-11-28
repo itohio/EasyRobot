@@ -4,15 +4,15 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/itohio/EasyRobot/x/marshaller/audio"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
-	"github.com/itohio/EasyRobot/x/math/dsp"
+	"github.com/itohio/EasyRobot/x/math/dsp/modulation"
 	"github.com/itohio/EasyRobot/x/math/dsp/modulation/dsss"
-	"github.com/itohio/EasyRobot/x/math/vec"
 	"github.com/spf13/cobra"
 )
 
@@ -26,6 +26,7 @@ func newRecvDSSSCmd() *cobra.Command {
 		spreadingFactor int
 		chips           int
 		codes           []string
+		modulationOrder int
 	)
 
 	cmd := &cobra.Command{
@@ -33,14 +34,15 @@ func newRecvDSSSCmd() *cobra.Command {
 		Short: "Receive DSSS modulated data from audio device or WAV file",
 		Long:  "Listens for DSSS modulated signals and decodes them, printing received data.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runRecvDSSS(deviceID, input, frequency, sampleRate, symbolRate, spreadingFactor, chips, codes)
+			return runRecvDSSS(deviceID, input, frequency, sampleRate, symbolRate, spreadingFactor, chips, codes, modulationOrder)
 		},
 	}
 
 	cmd.Flags().StringVar(&deviceID, "device-id", "", "Capture device ID (optional, uses default if not specified)")
 	cmd.Flags().StringVarP(&input, "input", "i", "", "Input WAV file (alternative to device capture)")
-	cmd.Flags().Float64VarP(&frequency, "frequency", "f", 1000, "Carrier frequency in Hz (default: 1000)")
-	cmd.Flags().IntVarP(&sampleRate, "sample-rate", "r", 48000, "Sample rate (Hz)")
+	cmd.Flags().Float64VarP(&frequency, "frequency", "f", 10000, "Carrier frequency in Hz (default: 10000)")
+	cmd.Flags().IntVarP(&sampleRate, "sample-rate", "r", 96000, "Sample rate (Hz)")
+	cmd.Flags().IntVarP(&modulationOrder, "modulation-order", "m", 4, "Modulation order (default: 4)")
 	cmd.Flags().Float64Var(&symbolRate, "symbol-rate", 1000, "Symbol rate in baud (default: 1000)")
 	cmd.Flags().IntVar(&spreadingFactor, "spreading-factor", 31, "Spreading factor (chips per symbol, default: 31)")
 	cmd.Flags().IntVar(&chips, "chips", 0, "Code length in chips (required when using --code, inferred from hex string if not specified)")
@@ -49,10 +51,15 @@ func newRecvDSSSCmd() *cobra.Command {
 	return cmd
 }
 
-func runRecvDSSS(deviceID, input string, frequency float64, sampleRate int, symbolRate float64, spreadingFactor, chips int, codes []string) error {
+func runRecvDSSS(deviceID, input string, frequency float64, sampleRate int, symbolRate float64, spreadingFactor, chips int, codes []string, modulationOrder int) error {
 	// Parse spreading codes from hex strings (must match encoder)
 	if len(codes) == 0 {
 		return fmt.Errorf("--code is required (can specify multiple for M-ary DSSS, e.g., --code A5 --code F3)")
+	}
+	
+	// Ensure number of codes matches modulation order
+	if len(codes) != modulationOrder {
+		return fmt.Errorf("number of codes (%d) must match modulation order (%d)", len(codes), modulationOrder)
 	}
 
 	// Determine code length: use --chips if provided, otherwise infer from hex string
@@ -67,7 +74,7 @@ func runRecvDSSS(deviceID, input string, frequency float64, sampleRate int, symb
 		}
 		codeLength = len(hexBytes) * 8
 		if codeLength == 0 {
-			return fmt.Errorf("invalid hex code: %s (must have at least 2 hex characters). Use --chips to specify code length explicitly", codes[0])
+			codeLength = 16 // Default key size is 16 bits
 		}
 	}
 
@@ -75,25 +82,58 @@ func runRecvDSSS(deviceID, input string, frequency float64, sampleRate int, symb
 		return fmt.Errorf("code length (--chips) must be positive, got %d", codeLength)
 	}
 
-	// Parse all hex codes
-	dsssCodes := make([]dsss.Code, len(codes))
-	var err error
+	// Parse all hex codes to [][]int8
+	dsssCodes := make([][]int8, len(codes))
 	for i, hexStr := range codes {
-		dsssCodes[i], err = dsss.CodeFromHex(hexStr, codeLength)
+		hexBytes, err := hex.DecodeString(hexStr)
 		if err != nil {
-			return fmt.Errorf("failed to parse code %d from hex %s: %w", i, hexStr, err)
+			return fmt.Errorf("invalid hex code %d: %s: %w", i, hexStr, err)
 		}
-		if dsssCodes[i].Length() != codeLength {
-			return fmt.Errorf("code %d has length %d, expected %d", i, dsssCodes[i].Length(), codeLength)
+		// Convert bytes to bipolar int8 codes (-1, +1)
+		code := make([]int8, codeLength)
+		for j := 0; j < codeLength && j < len(hexBytes)*8; j++ {
+			byteIdx := j / 8
+			bitIdx := j % 8
+			if (hexBytes[byteIdx]>>bitIdx)&1 == 1 {
+				code[j] = 1
+			} else {
+				code[j] = -1
+			}
 		}
+		dsssCodes[i] = code
+	}
+
+	// Calculate bits per symbol from modulation order
+	bitsPerSymbol := int(math.Log2(float64(len(dsssCodes))))
+	if bitsPerSymbol == 0 {
+		bitsPerSymbol = 1
+	}
+
+	// Create DSSS config
+	config := dsss.Config{
+		BitsPerSymbol:   bitsPerSymbol,
+		ModulationOrder: len(dsssCodes),
+		Codes:           dsssCodes,
+		SpreadingFactor: spreadingFactor,
+		SampleRate:      float32(sampleRate),
+		SymbolRate:      float32(symbolRate),
+		CarrierFreq:     float32(frequency),
+		PulseShape:      "raised_cosine",
+		Rolloff:         0.35,
+		PulseFilterSpan: 4,
+		PreambleLength:  0,
+		Amplitude:       1.0,
 	}
 
 	// Validation will be done by demodulator constructor
 	fmt.Printf("  Code length: %d chips\n", codeLength)
 	fmt.Printf("  Modulation order: %d\n", len(dsssCodes))
 
-	// Create DSSS decoder with varargs codes
-	dsssDecoder := dsss.NewDemodulator(float32(sampleRate), float32(frequency), float32(symbolRate), dsssCodes...)
+	// Create DSSS decoder
+	dsssDecoder, err := dsss.NewDemodulator(config)
+	if err != nil {
+		return fmt.Errorf("failed to create DSSS demodulator: %w", err)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -126,27 +166,27 @@ func runRecvDSSS(deviceID, input string, frequency float64, sampleRate int, symb
 
 	fmt.Println("Press Ctrl+C to stop")
 
-	// Use generic readAndProcess function - work directly with decoded user data
-	return readAndProcess(unmarshaller, dsssDecoder, ctx, func(decodedData []byte) error {
-		if len(decodedData) == 0 {
-			return nil
-		}
+	// Use generic demodulateAudio function - work directly with decoded user data
+	return demodulateAudio(unmarshaller, dsssDecoder, ctx, demodProcessConfig{
+		BitsPerSymbol: bitsPerSymbol,
+		Channels:      1,
+		ChunkParts:    defaultChunkParts,
+		OnDecoded: func(decodedData []byte) error {
+			if len(decodedData) == 0 {
+				return nil
+			}
 
-		// Print decoded user data directly
-		fmt.Printf("  Detector lock: %v\n", dsssDecoder.IsLocked())
-		if isASCII(decodedData) {
-			fmt.Printf("  Decoded: %s\n", string(decodedData))
-		} else {
-			fmt.Printf("  Decoded (hex): %s\n", hex.EncodeToString(decodedData))
-		}
-		return nil
-	}, func(floatData []float32) error {
-		// Calculate RMS statistics per frame
-		if len(floatData) > 0 {
-			signalVec := vec.NewFrom(floatData...)
-			rmsStats := dsp.CalculateRMSStatistics(signalVec)
-			fmt.Printf("  Frame RMS: %.2f dB\n", rmsStats.AvgRMSDb)
-		}
-		return nil
+			// Print decoded user data directly
+			if rx, ok := any(dsssDecoder).(modulation.Receiver); ok {
+				stats := rx.Transmission()
+				fmt.Printf("  Detector lock: %v (locks=%d unlocks=%d)\n", stats.IsLocked, stats.LockCount, stats.UnlockCount)
+			}
+			if isASCII(decodedData) {
+				fmt.Printf("  Decoded: %s\n", string(decodedData))
+			} else {
+				fmt.Printf("  Decoded (hex): %s\n", hex.EncodeToString(decodedData))
+			}
+			return nil
+		},
 	})
 }

@@ -1,6 +1,7 @@
 package workers
 
 import (
+	"context"
 	"errors"
 	"iter"
 	"runtime"
@@ -10,18 +11,22 @@ import (
 
 var (
 	// ErrPoolClosed is returned when submitting work to a closed worker pool.
-	ErrPoolClosed = errors.New("generics: worker pool closed")
+	ErrPoolClosed = errors.New("workers: worker pool closed")
 	// ErrWorkerCallbackNil is returned when the provided callback is nil.
-	ErrWorkerCallbackNil = errors.New("generics: worker callback cannot be nil")
+	ErrWorkerCallbackNil = errors.New("workers: worker callback cannot be nil")
 	// ErrPoolAlreadyInitialized is returned when Init is called twice without Close.
-	ErrPoolAlreadyInitialized = errors.New("generics: worker pool already initialized")
+	ErrPoolAlreadyInitialized = errors.New("workers: worker pool already initialized")
 	// ErrPoolNotInitialized is returned when operations are attempted before Init.
-	ErrPoolNotInitialized = errors.New("generics: worker pool not initialized")
+	ErrPoolNotInitialized = errors.New("workers: worker pool not initialized")
 )
 
 // WorkerCallback defines the shape of the function invoked for each processed chunk.
 // Implementations must be concurrency-safe and return an error to signal failure.
 type WorkerCallback func(start, end int) error
+
+// SimpleCallback defines the shape of a simple function executed by the worker pool.
+// Implementations must be concurrency-safe and return an error to signal failure.
+type SimpleCallback func(ctx context.Context) error
 
 // ChunkSizer controls how many elements belong to a chunk for a given workload.
 type ChunkSizer func(total, workers int) int
@@ -51,15 +56,19 @@ type WorkerPool struct {
 }
 
 type poolJob struct {
-	start int
-	end   int
-	state *executionState
+	start       int
+	end         int
+	state       *executionState
+	simpleCb    SimpleCallback
+	simpleState *simpleExecutionState
 }
 
 func (j *poolJob) reset() {
 	j.start = 0
 	j.end = 0
 	j.state = nil
+	j.simpleCb = nil
+	j.simpleState = nil
 }
 
 type executionState struct {
@@ -67,6 +76,13 @@ type executionState struct {
 	wg      sync.WaitGroup
 	failure atomic.Uint32
 	err     error
+}
+
+type simpleExecutionState struct {
+	wg      sync.WaitGroup
+	failure atomic.Uint32
+	err     error
+	ctx     context.Context
 }
 
 func newExecutionState(cb WorkerCallback) *executionState {
@@ -102,11 +118,54 @@ func (s *executionState) Err() error {
 	return s.err
 }
 
+func newSimpleExecutionState(ctx context.Context) *simpleExecutionState {
+	return &simpleExecutionState{ctx: ctx}
+}
+
+func (s *simpleExecutionState) add(delta int) {
+	s.wg.Add(delta)
+}
+
+func (s *simpleExecutionState) done() {
+	s.wg.Done()
+}
+
+func (s *simpleExecutionState) wait(ctx context.Context) error {
+	done := make(chan struct{})
+	go func() {
+		s.wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-done:
+		return s.err
+	}
+}
+
+func (s *simpleExecutionState) setErr(err error) {
+	if err == nil {
+		return
+	}
+	if s.failure.CompareAndSwap(0, 1) {
+		s.err = err
+	}
+}
+
+func (s *simpleExecutionState) shouldSkip() bool {
+	return s.failure.Load() == 1 || s.ctx.Err() != nil
+}
+
+func (s *simpleExecutionState) Err() error {
+	return s.err
+}
+
 // Init prepares the worker pool for use. Init must be called before Execute or Iterator.
 // The receiver must not be copied after initialization.
 func (p *WorkerPool) Init(opts ...WorkerPoolOption) error {
 	if p == nil {
-		return errors.New("generics: nil worker pool")
+		return errors.New("workers: nil worker pool")
 	}
 	if p.initialized.Load() {
 		return ErrPoolAlreadyInitialized
@@ -182,6 +241,47 @@ func (p *WorkerPool) Execute(total int, fn WorkerCallback) error {
 	return nil
 }
 
+// Do executes the provided callbacks in parallel using available workers and waits for all to finish.
+// The method respects context cancellation and returns an error if any callback fails or the context is cancelled.
+func (p *WorkerPool) Do(ctx context.Context, callbacks ...SimpleCallback) error {
+	if ctx == nil {
+		return errors.New("workers: context cannot be nil")
+	}
+	if len(callbacks) == 0 {
+		return nil
+	}
+	if p.closed.Load() {
+		return ErrPoolClosed
+	}
+	if !p.initialized.Load() {
+		return ErrPoolNotInitialized
+	}
+
+	state := newSimpleExecutionState(ctx)
+
+	for _, cb := range callbacks {
+		if cb == nil {
+			continue
+		}
+		state.add(1)
+		if err := p.dispatchSimple(ctx, state, cb); err != nil {
+			state.wait(ctx)
+			return err
+		}
+	}
+
+	if err := state.wait(ctx); err != nil {
+		return err
+	}
+	if err := state.Err(); err != nil {
+		return err
+	}
+	if p.closed.Load() {
+		return ErrPoolClosed
+	}
+	return nil
+}
+
 // Iterator returns a Go 1.22+ sequence compatible with range-over-func syntax.
 func (p *WorkerPool) Iterator(total int) iter.Seq2[int, int] {
 	if total <= 0 {
@@ -237,6 +337,24 @@ func (p *WorkerPool) worker() {
 			if job == nil {
 				continue
 			}
+			if job.simpleState != nil {
+				if job.simpleState.shouldSkip() {
+					job.simpleState.done()
+					job.reset()
+					p.jobPool.Put(job)
+					continue
+				}
+				if job.simpleCb != nil {
+					err := job.simpleCb(job.simpleState.ctx)
+					if err != nil {
+						job.simpleState.setErr(err)
+					}
+				}
+				job.simpleState.done()
+				job.reset()
+				p.jobPool.Put(job)
+				continue
+			}
 			state := job.state
 			if state == nil {
 				job.reset()
@@ -266,6 +384,20 @@ func (p *WorkerPool) dispatch(state *executionState, start, end int) error {
 	job.start = start
 	job.end = end
 	job.state = state
+
+	if err := p.submit(job); err != nil {
+		state.done()
+		job.reset()
+		p.jobPool.Put(job)
+		return err
+	}
+	return nil
+}
+
+func (p *WorkerPool) dispatchSimple(ctx context.Context, state *simpleExecutionState, cb SimpleCallback) error {
+	job := p.jobPool.Get().(*poolJob)
+	job.simpleCb = cb
+	job.simpleState = state
 
 	if err := p.submit(job); err != nil {
 		state.done()

@@ -4,11 +4,16 @@ import (
 	"errors"
 	"io"
 
+	"github.com/chewxy/math32"
 	"github.com/itohio/EasyRobot/x/buffer"
 	"github.com/itohio/EasyRobot/x/chain"
+	"github.com/itohio/EasyRobot/x/math/dsp/modulation"
 )
 
-var _ chain.Processor[float32, byte] = (*Modulator)(nil)
+var (
+	_ chain.Processor[float32, byte] = (*Modulator)(nil)
+	_ modulation.Transmitter         = (*Modulator)(nil)
+)
 
 // Modulator converts bit symbols into M-QAM IQ samples.
 type Modulator struct {
@@ -123,4 +128,20 @@ func (m *Modulator) Reset() {
 	m.pendingSample = 0
 	m.pendingSymbol = 0
 	m.preambleEmitted = 0
+}
+
+// Params implements modulation.Transmitter.
+func (m *Modulator) Params() modulation.TransmitterParams {
+	power := m.cfg.Amplitude * m.cfg.Amplitude
+	signalStrength := float32(0)
+	if power > 0 {
+		signalStrength = 10.0 * math32.Log10(power)
+	}
+	return modulation.TransmitterParams{
+		BaudRate:        m.cfg.SymbolRate(),
+		SampleRate:       m.cfg.SampleRate,
+		SignalStrength:   signalStrength,
+		Bandwidth:        m.cfg.RequiredBandwidth(),
+		CarrierFrequency: m.cfg.CarrierHz,
+	}
 }

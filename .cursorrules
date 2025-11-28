@@ -20,6 +20,7 @@
   - Reuse and extend existing functionality rather than duplicating
 - prefer go run ./path instead of go build and then run
 - prefer tmp folder for temporary code, program output and so on
+- prefer x/workers for SHORT concurrent tasks if number of tasks is known or for general short parallelization tasks (don't use it forfunctions that should run a long time)
 
 # General rules
 - Prefer composition over inheritance

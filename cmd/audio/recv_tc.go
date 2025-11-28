@@ -10,6 +10,7 @@ import (
 	"github.com/itohio/EasyRobot/x/marshaller/audio"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"github.com/itohio/EasyRobot/x/math/dsp/modulation/tc"
+	tensortypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 	"github.com/itohio/EasyRobot/x/math/vec"
 	"github.com/spf13/cobra"
 )
@@ -91,10 +92,15 @@ func recvTCFromWAV(input string, decoder *tc.LTCDemodulator, ctx context.Context
 		return fmt.Errorf("failed to read WAV file: %w", err)
 	}
 
-	// Convert tensor to float32 vector for decoding using tensor conversion facilities
-	floatData, err := extractFloat32FromTensor(tensor)
-	if err != nil {
-		return err
+	// Convert tensor to float32 vector for decoding
+	tensorData := tensor.Data()
+	convertedData := tensortypes.CloneTensorDataTo(tensortypes.FP32, tensorData)
+	if convertedData == nil {
+		return fmt.Errorf("failed to convert tensor data to float32")
+	}
+	floatData, ok := convertedData.([]float32)
+	if !ok {
+		return fmt.Errorf("converted data is not []float32: %T", convertedData)
 	}
 
 	// Decode signal to timecode
@@ -163,11 +169,18 @@ func recvTCFromDevice(deviceID string, sampleRate int, decoder *tc.LTCDemodulato
 			frameTensor := frame.Tensors[0]
 			frameData := frameTensor.Data()
 
-			// Convert frame tensor data to float32 using tensor conversion facilities
-			floatData, err := extractFloat32FromTensorData(frameData)
-			if err != nil {
-				continue // Skip if conversion failed
+			// Convert frame tensor data to float32
+			convertedData := tensortypes.CloneTensorDataTo(tensortypes.FP32, frameData)
+			if convertedData == nil {
+				frameTensor.Release()
+				continue
 			}
+			floatData, ok := convertedData.([]float32)
+			if !ok {
+				frameTensor.Release()
+				continue
+			}
+			frameTensor.Release()
 
 			// Decode frame to timecode
 			signalVec := vec.NewFrom(floatData...)

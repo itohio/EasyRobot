@@ -10,8 +10,8 @@ import (
 	cv "gocv.io/x/gocv"
 
 	"github.com/itohio/EasyRobot/x/marshaller/types"
-	tensorgocv "github.com/itohio/EasyRobot/x/math/tensor/gocv"
 	"github.com/itohio/EasyRobot/x/math/tensor"
+	tensorgocv "github.com/itohio/EasyRobot/x/math/tensor/gocv"
 )
 
 // Marshaller encodes GoCV-friendly values using gob envelopes.
@@ -35,6 +35,12 @@ func (m *Marshaller) Format() string {
 }
 
 // Marshal serialises Mat, image, or tensor values.
+//
+// Note: The marshaller may consume/release tensors after processing when ReleaseAfterProcessing option is enabled.
+// If you need to reuse a tensor after passing it to Marshal, create a copy using tensor.Clone() before calling Marshal.
+// For efficiency when sending the same tensor to multiple marshallers, use SharedTensor with reference counting
+// (via tensor.WithRefcount()) to avoid cloning overhead. The marshaller automatically uses shared tensors when
+// writing FrameStream to multiple outputs.
 func (m *Marshaller) Marshal(w io.Writer, value any, opts ...types.Option) error {
 	if value == nil {
 		return types.NewError("marshal", "gocv", "nil value", nil)
@@ -170,7 +176,7 @@ func (m *Marshaller) writeFrameStream(w io.Writer, stream types.FrameStream, cfg
 		if stop {
 			return false
 		}
-		
+
 		// Check context cancellation before reading frame
 		select {
 		case <-ctx.Done():
@@ -178,7 +184,7 @@ func (m *Marshaller) writeFrameStream(w io.Writer, stream types.FrameStream, cfg
 			return false
 		default:
 		}
-		
+
 		frame, ok := <-frames
 		if !ok {
 			return false
@@ -189,16 +195,16 @@ func (m *Marshaller) writeFrameStream(w io.Writer, stream types.FrameStream, cfg
 		numWriters := len(writers)
 		if numWriters > 1 && len(frame.Tensors) > 0 {
 			// Wrap all tensors with reference counting
-			smartTensors := make([]*tensor.SmartTensor, len(frame.Tensors))
+			sharedTensors := make([]*tensor.SharedTensor, len(frame.Tensors))
 			for i, t := range frame.Tensors {
-				smartTensors[i] = tensor.WithRefcount(t)
+				sharedTensors[i] = tensor.WithRefcount(t)
 			}
-			
+
 			// Create views for each writer (N-1 views needed)
 			viewFrames := make([]types.Frame, numWriters-1)
 			for i := 0; i < numWriters-1; i++ {
-				viewTensors := make([]types.Tensor, len(smartTensors))
-				for j, st := range smartTensors {
+				viewTensors := make([]types.Tensor, len(sharedTensors))
+				for j, st := range sharedTensors {
 					viewTensors[j] = st.View()
 				}
 				viewFrames[i] = types.Frame{
@@ -208,18 +214,18 @@ func (m *Marshaller) writeFrameStream(w io.Writer, stream types.FrameStream, cfg
 					Tensors:   viewTensors,
 				}
 			}
-			
-			// Create frame with smart tensors for first writer
-			smartFrame := types.Frame{
+
+			// Create frame with shared tensors for first writer
+			sharedFrame := types.Frame{
 				Index:     frame.Index,
 				Timestamp: frame.Timestamp,
 				Metadata:  frame.Metadata,
-				Tensors:   make([]types.Tensor, len(smartTensors)),
+				Tensors:   make([]types.Tensor, len(sharedTensors)),
 			}
-			for i, st := range smartTensors {
-				smartFrame.Tensors[i] = st
+			for i, st := range sharedTensors {
+				sharedFrame.Tensors[i] = st
 			}
-			
+
 			// Send to first writer with smart tensors
 			if numWriters > 0 {
 				if stop {
@@ -232,7 +238,7 @@ func (m *Marshaller) writeFrameStream(w io.Writer, stream types.FrameStream, cfg
 					return false
 				default:
 				}
-				if err := writers[0].WriteFrame(smartFrame); err != nil {
+				if err := writers[0].WriteFrame(sharedFrame); err != nil {
 					if errors.Is(err, errStopLoop) {
 						stop = true
 						// errStopLoop indicates loop should stop - just set stop flag
@@ -243,7 +249,7 @@ func (m *Marshaller) writeFrameStream(w io.Writer, stream types.FrameStream, cfg
 					}
 				}
 			}
-			
+
 			// Send views to remaining writers
 			for i := 1; i < numWriters; i++ {
 				if stop {
@@ -291,7 +297,7 @@ func (m *Marshaller) writeFrameStream(w io.Writer, stream types.FrameStream, cfg
 					}
 				}
 			}
-			
+
 			// Release objects that implement Releaser if WithRelease is enabled
 			// Only release if ReleaseAfterProcessing is explicitly set to true
 			if cfg.ReleaseAfterProcessing {

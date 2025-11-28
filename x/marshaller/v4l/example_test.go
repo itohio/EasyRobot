@@ -1,4 +1,5 @@
-// go:build linux
+//go:build linux
+
 package v4l_test
 
 import (

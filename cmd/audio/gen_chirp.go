@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/itohio/EasyRobot/x/marshaller/audio"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
@@ -21,8 +23,9 @@ func newGenChirpCmd() *cobra.Command {
 		freqMax    float64
 		channels   int
 		sampleRate int
-		duration   float64
+		duration   time.Duration
 		dataType   string
+		chirpType  string
 	)
 
 	cmd := &cobra.Command{
@@ -30,7 +33,7 @@ func newGenChirpCmd() *cobra.Command {
 		Short: "Generate chirp signal (frequency sweep)",
 		Long:  "Generate a linear chirp signal that sweeps from minimum to maximum frequency.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runGenChirp(output, amplitude, freqMin, freqMax, channels, sampleRate, duration, dataType)
+			return runGenChirp(output, amplitude, freqMin, freqMax, channels, sampleRate, duration, dataType, chirpType)
 		},
 	}
 
@@ -40,15 +43,16 @@ func newGenChirpCmd() *cobra.Command {
 	cmd.Flags().Float64Var(&freqMax, "freq-max", 10000, "Maximum frequency in Hz (default: 10000)")
 	cmd.Flags().IntVarP(&channels, "channels", "c", 1, "Number of channels")
 	cmd.Flags().IntVarP(&sampleRate, "sample-rate", "r", 48000, "Sample rate (Hz)")
-	cmd.Flags().Float64VarP(&duration, "duration", "d", 5.0, "Duration in seconds")
+	cmd.Flags().DurationVarP(&duration, "duration", "d", 5*time.Second, "Duration (e.g., 5s, 100ms)")
 	cmd.Flags().StringVar(&dataType, "data-type", "INT16", "Data type (INT16, INT32, FP32, UINT8, default: INT16)")
+	cmd.Flags().StringVar(&chirpType, "chirp-type", "linear", "Chirp type: linear, log, or pink-log (default: linear)")
 
 	cmd.MarkFlagRequired("output")
 
 	return cmd
 }
 
-func runGenChirp(output, amplitude string, freqMin, freqMax float64, channels, sampleRate int, duration float64, dataType string) error {
+func runGenChirp(output, amplitude string, freqMin, freqMax float64, channels, sampleRate int, duration time.Duration, dataType string, chirpType string) error {
 	// Parse amplitude (dB)
 	ampDb, err := strconv.ParseFloat(amplitude, 64)
 	if err != nil {
@@ -62,13 +66,27 @@ func runGenChirp(output, amplitude string, freqMin, freqMax float64, channels, s
 		return err
 	}
 
-	// Generate chirp
-	numSamples := int(float64(sampleRate) * duration)
-	sg := dsp.NewSignalGenerator1D()
+	numSamples := int(float64(sampleRate) * duration.Seconds())
+	if numSamples <= 0 {
+		return fmt.Errorf("duration %v yields no samples at %d Hz", duration, sampleRate)
+	}
 
-	// Generate chirp signal
-	chirpSignal := sg.Chirp(numSamples, float32(freqMin), float32(freqMax), ampLinear, float32(sampleRate))
-	chirpData := chirpSignal.View().(vec.Vector)
+	chirpBuffer := make([]float32, numSamples)
+	switch strings.ToLower(chirpType) {
+	case "linear":
+		gen := dsp.NewChirpGenerator(float32(sampleRate), float32(freqMin), float32(freqMax), ampLinear)
+		gen.Generate(chirpBuffer)
+	case "log", "logarithmic":
+		gen := dsp.NewLogarithmicChirpGenerator(float32(sampleRate), float32(freqMin), float32(freqMax), ampLinear)
+		gen.Generate(chirpBuffer)
+	case "pink-log", "pink":
+		gen := dsp.NewPinkLogarithmicChirpGenerator(float32(sampleRate), float32(freqMin), float32(freqMax), ampLinear)
+		gen.Generate(chirpBuffer)
+	default:
+		return fmt.Errorf("unsupported chirp type: %s (use linear, log, or pink-log)", chirpType)
+	}
+
+	chirpData := vec.NewFrom(chirpBuffer...)
 
 	// Combine channels into tensor [frames, channels]
 	shape := tensor.NewShape(numSamples, channels)
@@ -148,11 +166,11 @@ func runGenChirp(output, amplitude string, freqMin, freqMax float64, channels, s
 	fmt.Printf("Generated chirp: %s\n", output)
 	fmt.Printf("  Channels: %d\n", channels)
 	fmt.Printf("  Sample rate: %d Hz\n", sampleRate)
-	fmt.Printf("  Duration: %.2f s\n", duration)
+	fmt.Printf("  Duration: %v\n", duration)
 	fmt.Printf("  Data type: %s\n", dataType)
 	fmt.Printf("  Amplitude: %.2f dB\n", ampDb)
 	fmt.Printf("  Frequency range: %.0f - %.0f Hz\n", freqMin, freqMax)
+	fmt.Printf("  Chirp type: %s\n", chirpType)
 
 	return nil
 }
-

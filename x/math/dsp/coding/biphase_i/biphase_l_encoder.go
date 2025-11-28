@@ -1,4 +1,4 @@
-package biphase
+package biphase_i
 
 import (
 	"io"

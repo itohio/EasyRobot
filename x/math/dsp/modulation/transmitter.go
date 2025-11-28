@@ -45,20 +45,24 @@ type TransmissionStats struct {
 	// was first detected (where signal energy exceeded threshold).
 	// Returns 0 if no transmission has been detected.
 	TransmissionStart int
+	// TransmissionEnd is the sample index where the current transmission
+	// was last detected (where signal energy fell below threshold).
+	// Returns 0 if no transmission has been detected.
+	TransmissionEnd int
 	// PacketStart is the sample index where the packet payload begins
 	// (after preamble completion). This is the index where decoding of actual
 	// data symbols starts.
 	// Returns 0 if preamble has not been completed or no preamble is used.
 	PacketStart int
-	// PreambleIndex is the sample index where the last preamble was detected.
+	// PreambleStart is the sample index where the last preamble was detected.
 	// Returns 0 if no preamble has been detected.
-	PreambleIndex int
+	PreambleStart int
 	// Whether the demodulator is currently locked
 	IsLocked bool
 	// Sample index where lock was last acquired (0 if never locked)
-	LockinIndex int
+	LockStart int
 	// Sample index where lock was last lost (0 if never lost or currently locked)
-	LockoutIndex int
+	LockEnd int
 	// Number of lock acquisitions since last reset
 	LockCount int
 	// Number of lock losses since last reset

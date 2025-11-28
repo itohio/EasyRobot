@@ -3,14 +3,19 @@ package mfsk
 import (
 	"io"
 
+	"github.com/chewxy/math32"
 	"github.com/itohio/EasyRobot/x/buffer"
 	"github.com/itohio/EasyRobot/x/chain"
 	"github.com/itohio/EasyRobot/x/math/dsp"
+	"github.com/itohio/EasyRobot/x/math/dsp/modulation"
 	"github.com/itohio/EasyRobot/x/math/filter/pll"
 	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
-var _ chain.Processor[byte, float32] = (*Demodulator)(nil)
+var (
+	_ chain.Processor[byte, float32] = (*Demodulator)(nil)
+	_ modulation.Receiver            = (*Demodulator)(nil)
+)
 
 type Demodulator struct {
 	cfg   Config
@@ -29,6 +34,24 @@ type Demodulator struct {
 	targetSNR float32 // Target SNR for threshold calculation
 
 	tmpSymbol [1]byte
+
+	// Statistics tracking for Receiver interface
+	totalSamplesProcessed int
+	transmissionStartIdx  int
+	transmissionEndIdx    int
+	preambleStartIdx      int
+	packetStartIdx        int
+	lockAcquiredIdx       int
+	lockLostIdx           int
+	lockCount             int
+	unlockCount           int
+	rawSignalSum          float32
+	rawSignalCount        int
+
+	// SNR tracking
+	signalPowerSum float32 // Sum of signal power (tone magnitudes)
+	noisePowerSum  float32 // Sum of noise power (error between detected and ideal)
+	snrSampleCount int     // Number of samples used for SNR calculation
 }
 
 func NewDemodulator(cfg Config) (*Demodulator, error) {
@@ -83,6 +106,8 @@ func (d *Demodulator) Process(dst buffer.Writer[byte], src buffer.Reader[float32
 		}
 
 		symbol := d.decodeSymbol(d.fifo[:d.cfg.SamplesPerSymbol])
+		// Track total samples processed
+		d.totalSamplesProcessed += d.cfg.SamplesPerSymbol
 		if symbol >= 0 {
 			d.tmpSymbol[0] = byte(symbol)
 			writtenBits, _ := bitsWriter.Write(d.tmpSymbol[:])
@@ -151,6 +176,15 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 			d.silenceCount++
 			if d.silenceCount >= d.cfg.TransmissionGap {
 				// Enough silence detected - reset for new transmission
+				// Track transmission end
+				if d.active && d.transmissionEndIdx == 0 {
+					d.transmissionEndIdx = d.totalSamplesProcessed
+				}
+				// Track lock loss
+				if d.lockAcquiredIdx > 0 {
+					d.lockLostIdx = d.totalSamplesProcessed
+					d.unlockCount++
+				}
 				d.active = false
 				d.preambleCount = 0
 				d.preambleErrors = 0
@@ -168,10 +202,19 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 	// Signal detected or continuing active transmission
 	if !d.active {
 		d.active = true
+		// Track transmission start
+		if d.transmissionStartIdx == 0 {
+			d.transmissionStartIdx = d.totalSamplesProcessed
+		}
 	}
 	d.silenceCount = 0
 
-	toneIdx, phase, magnitude := d.detectTone(samples)
+	// Track raw signal strength (before any processing)
+	rawMag := math32.Sqrt(energy)
+	d.rawSignalSum += rawMag
+	d.rawSignalCount++
+
+	toneIdx, phase, magnitude, secondBestMag := d.detectTone(samples)
 	if toneIdx < 0 {
 		// Invalid detection (noise or ambiguous)
 		return -1
@@ -234,8 +277,24 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 		}
 
 		if toneMatch {
+			// Track preamble start on first preamble symbol
+			if d.preambleCount == 0 && d.preambleStartIdx == 0 {
+				d.preambleStartIdx = d.totalSamplesProcessed
+			}
 			d.preambleCount++
 			d.preambleErrors = 0
+			// Check if preamble is complete
+			if d.preambleCount >= d.cfg.PreambleLength {
+				// Track packet start (after preamble)
+				if d.packetStartIdx == 0 {
+					d.packetStartIdx = d.totalSamplesProcessed + d.cfg.SamplesPerSymbol
+				}
+				// Track lock acquisition
+				if d.lockAcquiredIdx == 0 {
+					d.lockAcquiredIdx = d.totalSamplesProcessed
+					d.lockCount++
+				}
+			}
 		} else {
 			// Allow some preamble errors before resetting (more robust with noise)
 			// For high M-FSK, allow more errors due to increased noise sensitivity
@@ -252,13 +311,36 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 		return -1
 	}
 
+	// Track SNR for payload symbols (after preamble)
+	// Signal power: detected tone magnitude squared
+	signalPower := magnitude * magnitude
+	d.signalPowerSum += signalPower
+
+	// Noise power: second-best tone magnitude squared (interference/noise indicator)
+	// For clean signals, second-best should be much smaller than best
+	// For noisy signals, second-best will be closer to best
+	noisePower := secondBestMag * secondBestMag
+	if noisePower <= 0 {
+		// Fallback: use a small fraction of signal power as baseline noise
+		noisePower = signalPower * 0.0001
+	}
+
+	d.noisePowerSum += noisePower
+	d.snrSampleCount++
+
+	// Track transmission end: update whenever we successfully decode a payload symbol
+	// This marks the last sample where transmission was successfully detected
+	if d.active {
+		d.transmissionEndIdx = d.totalSamplesProcessed
+	}
+
 	return toneIdx
 }
 
-func (d *Demodulator) detectTone(samples []float32) (idx int, phase float32, magnitude float32) {
+func (d *Demodulator) detectTone(samples []float32) (idx int, phase float32, magnitude float32, secondBestMag float32) {
 	count := d.cfg.toneCount()
 	bestMag := float32(0)
-	secondBestMag := float32(0)
+	secondBestMagVal := float32(0)
 	bestIdx := 0
 	bestPhase := float32(0)
 	window := vec.Vector(samples)
@@ -266,28 +348,28 @@ func (d *Demodulator) detectTone(samples []float32) (idx int, phase float32, mag
 	for i := range count {
 		measurement := dsp.Goertzel(window, d.cfg.ToneFrequency(i), d.cfg.SampleRate)
 		if measurement.Amplitude > bestMag {
-			secondBestMag = bestMag
+			secondBestMagVal = bestMag
 			bestMag = measurement.Amplitude
 			bestPhase = measurement.Phase
 			bestIdx = i
-		} else if measurement.Amplitude > secondBestMag {
-			secondBestMag = measurement.Amplitude
+		} else if measurement.Amplitude > secondBestMagVal {
+			secondBestMagVal = measurement.Amplitude
 		}
 	}
 
 	// Require best tone to be significantly stronger than second best (helps reject noise)
 	// For high M-FSK, this check can be too strict due to frequency resolution limits
 	// Only apply for moderate M-FSK (4-FSK, 8-FSK), skip for very high M-FSK
-	if count > 4 && count <= 16 && bestMag > 0 && secondBestMag > 0 {
-		ratio := bestMag / secondBestMag
+	if count > 4 && count <= 16 && bestMag > 0 && secondBestMagVal > 0 {
+		ratio := bestMag / secondBestMagVal
 		if ratio < 1.15 {
 			// Too close, likely noise - return invalid
-			return -1, 0, 0
+			return -1, 0, 0, 0
 		}
 	}
 	// For 8-FSK and above, skip this check as frequency resolution limits make it unreliable
 
-	return bestIdx, bestPhase, bestMag
+	return bestIdx, bestPhase, bestMag, secondBestMagVal
 }
 
 func (d *Demodulator) estimateBytes(src buffer.Reader[float32]) int {
@@ -310,6 +392,87 @@ func (d *Demodulator) Reset() {
 	d.silenceCount = 0
 	if d.pllLoop != nil {
 		d.pllLoop.Reset()
+	}
+
+	// Reset statistics
+	d.totalSamplesProcessed = 0
+	d.transmissionStartIdx = 0
+	d.transmissionEndIdx = 0
+	d.preambleStartIdx = 0
+	d.packetStartIdx = 0
+	d.lockAcquiredIdx = 0
+	d.lockLostIdx = 0
+	d.lockCount = 0
+	d.unlockCount = 0
+}
+
+// Quality implements modulation.Receiver.
+func (d *Demodulator) Quality() modulation.QualityStats {
+	stats := modulation.QualityStats{}
+
+	// Calculate SNR
+	if d.snrSampleCount > 0 && d.noisePowerSum > 0 {
+		signalPower := d.signalPowerSum / float32(d.snrSampleCount)
+		noisePower := d.noisePowerSum / float32(d.snrSampleCount)
+		if noisePower > 0 {
+			snrLinear := signalPower / noisePower
+			if snrLinear > 0 {
+				stats.SNR = 10.0 * math32.Log10(snrLinear)
+			}
+		}
+	}
+
+	// Calculate signal strength from tone magnitudes (more accurate for MFSK)
+	// Use average signal power from SNR tracking
+	if d.snrSampleCount > 0 {
+		avgSignalPower := d.signalPowerSum / float32(d.snrSampleCount)
+		if avgSignalPower > 0 {
+			// Signal strength in dB: 10*log10(power) for power signals
+			// For amplitude signals, use 20*log10(amplitude)
+			// Since we have power, use 10*log10
+			stats.SignalStrength = 10.0 * math32.Log10(avgSignalPower)
+		}
+	} else if d.rawSignalCount > 0 {
+		// Fallback to raw signal magnitude
+		avgMagnitude := d.rawSignalSum / float32(d.rawSignalCount)
+		power := avgMagnitude * avgMagnitude
+		if power > 0 {
+			stats.SignalStrength = 10.0 * math32.Log10(power)
+		}
+	}
+
+	return stats
+}
+
+// Transmission implements modulation.Receiver.
+func (d *Demodulator) Transmission() modulation.TransmissionStats {
+	isLocked := d.active && d.preambleCount >= d.cfg.PreambleLength
+	return modulation.TransmissionStats{
+		TransmissionStart: d.transmissionStartIdx,
+		TransmissionEnd:   d.transmissionEndIdx,
+		PacketStart:       d.packetStartIdx,
+		PreambleStart:     d.preambleStartIdx,
+		IsLocked:          isLocked,
+		LockStart:         d.lockAcquiredIdx,
+		LockEnd:           d.lockLostIdx,
+		LockCount:         d.lockCount,
+		UnlockCount:       d.unlockCount,
+	}
+}
+
+// Params implements modulation.Receiver.
+func (d *Demodulator) Params() modulation.TransmitterParams {
+	power := d.cfg.Amplitude * d.cfg.Amplitude
+	signalStrength := float32(0)
+	if power > 0 {
+		signalStrength = 10.0 * math32.Log10(power)
+	}
+	return modulation.TransmitterParams{
+		BaudRate:         d.cfg.SymbolRate(),
+		SampleRate:       d.cfg.SampleRate,
+		SignalStrength:   signalStrength,
+		Bandwidth:        d.cfg.RequiredBandwidth(),
+		CarrierFrequency: d.cfg.CarrierHz,
 	}
 }
 

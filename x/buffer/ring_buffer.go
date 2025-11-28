@@ -3,6 +3,7 @@ package buffer
 import (
 	"errors"
 	"io"
+	"sync"
 )
 
 var _ Writer[byte] = (*Ring[byte])(nil)
@@ -12,7 +13,9 @@ var _ Initializer = (*Ring[byte])(nil)
 // Ring is a generic ring buffer that uses a provided backing slice.
 // When instantiated with byte type, it implements io.Reader and io.Writer.
 // The buffer uses a circular array pattern with head (write) and tail (read) positions.
+// Ring is thread-safe for concurrent read/write operations using mutex synchronization.
 type Ring[T any] struct {
+	mu   sync.RWMutex // Protects head, tail, and len
 	buf  []T
 	head int // write position (where new data is written)
 	tail int // read position (where data is read from)
@@ -32,98 +35,220 @@ func NewRing[T any](backing []T) *Ring[T] {
 }
 
 // Write writes elements from p into the ring buffer.
-// Calls WriteItem in a loop for each element.
+// Uses bulk copy operations for better performance.
 // Returns the number of elements written, which may be less than len(p) if the buffer is full.
+// Thread-safe: uses mutex for synchronization.
 func (rb *Ring[T]) Write(p []T) (n int, err error) {
-	for _, item := range p {
-		if err := rb.WriteItem(item); err != nil {
-			// If we wrote at least one item, return count without error
-			// Otherwise return the error
-			if n > 0 {
-				return n, nil
-			}
-			return n, err
-		}
-		n++
+	if len(p) == 0 {
+		return 0, nil
 	}
-	return n, nil
+
+	capacity := cap(rb.buf)
+	if capacity == 0 {
+		return 0, io.ErrShortWrite
+	}
+
+	rb.mu.Lock()
+	defer rb.mu.Unlock()
+
+	// Check available space
+	available := capacity - rb.len
+	if available == 0 {
+		return 0, io.ErrShortWrite
+	}
+
+	toWrite := len(p)
+	if toWrite > available {
+		toWrite = available
+	}
+
+	head := rb.head
+	spaceUntilWrap := capacity - head
+
+	if toWrite <= spaceUntilWrap {
+		// Single contiguous copy
+		copy(rb.buf[head:head+toWrite], p[:toWrite])
+		head += toWrite
+		if head >= capacity {
+			head = 0
+		}
+		rb.head = head
+		rb.len += toWrite
+		return toWrite, nil
+	}
+
+	// Two-part copy (wraps around)
+	firstPart := spaceUntilWrap
+	secondPart := toWrite - firstPart
+	copy(rb.buf[head:], p[:firstPart])
+	copy(rb.buf[:secondPart], p[firstPart:toWrite])
+	rb.head = secondPart
+	rb.len += toWrite
+	return toWrite, nil
 }
 
 // Read reads elements from the ring buffer into p.
-// Calls ReadItem in a loop for each element.
+// Uses bulk copy operations for better performance.
 // Returns the number of elements read, which may be less than len(p) if the buffer is empty.
 // Returns io.EOF when the buffer is empty or when fewer items are read than requested.
+// Thread-safe: uses mutex for synchronization.
 func (rb *Ring[T]) Read(p []T) (n int, err error) {
-	for i := range p {
-		item, err := rb.ReadItem()
-		if err != nil {
-			if i > 0 {
-				return i, io.EOF
-			}
-			return 0, err
-		}
-		p[i] = item
-		n++
+	if len(p) == 0 {
+		return 0, nil
 	}
-	return n, nil
+
+	capacity := cap(rb.buf)
+	if capacity == 0 {
+		return 0, io.EOF
+	}
+
+	rb.mu.Lock()
+	defer rb.mu.Unlock()
+
+	// Check if buffer is empty
+	if rb.len == 0 {
+		return 0, io.EOF
+	}
+
+	toRead := len(p)
+	if toRead > rb.len {
+		toRead = rb.len
+	}
+
+	tail := rb.tail
+	availableUntilWrap := capacity - tail
+
+	if toRead <= availableUntilWrap {
+		// Single contiguous copy
+		copy(p[:toRead], rb.buf[tail:tail+toRead])
+		tail += toRead
+		if tail >= capacity {
+			tail = 0
+		}
+		rb.tail = tail
+		rb.len -= toRead
+		if toRead < len(p) {
+			return toRead, io.EOF
+		}
+		return toRead, nil
+	}
+
+	// Two-part copy (wraps around)
+	firstPart := availableUntilWrap
+	secondPart := toRead - firstPart
+	copy(p[:firstPart], rb.buf[tail:])
+	copy(p[firstPart:toRead], rb.buf[:secondPart])
+	rb.tail = secondPart
+	rb.len -= toRead
+	if toRead < len(p) {
+		return toRead, io.EOF
+	}
+	return toRead, nil
 }
 
 // WriteItem writes a single element to the ring buffer.
 // Returns an error if the buffer is full.
+// Thread-safe: uses mutex.
 func (rb *Ring[T]) WriteItem(c T) error {
-	if rb.available() == 0 {
+	capacity := cap(rb.buf)
+	if capacity == 0 {
 		return io.ErrShortWrite
 	}
-	cap := rb.capacity()
+
+	rb.mu.Lock()
+	defer rb.mu.Unlock()
+
+	// Check if buffer is full
+	if rb.len >= capacity {
+		return io.ErrShortWrite
+	}
+
 	rb.buf[rb.head] = c
-	rb.head = (rb.head + 1) % cap
+	rb.head++
+	if rb.head >= capacity {
+		rb.head = 0
+	}
 	rb.len++
 	return nil
 }
 
 // ReadItem reads a single element from the ring buffer.
 // Returns an error if the buffer is empty.
+// Thread-safe: uses mutex.
 func (rb *Ring[T]) ReadItem() (T, error) {
 	var zero T
+	capacity := cap(rb.buf)
+	if capacity == 0 {
+		return zero, io.EOF
+	}
+
+	rb.mu.Lock()
+	defer rb.mu.Unlock()
+
+	// Check if buffer is empty
 	if rb.len == 0 {
 		return zero, io.EOF
 	}
-	cap := rb.capacity()
+
 	c := rb.buf[rb.tail]
-	rb.tail = (rb.tail + 1) % cap
+	rb.tail++
+	if rb.tail >= capacity {
+		rb.tail = 0
+	}
 	rb.len--
 	return c, nil
 }
 
 // Len returns the number of elements currently in the buffer.
+// Thread-safe: uses read lock.
 func (rb *Ring[T]) Len() int {
+	rb.mu.RLock()
+	defer rb.mu.RUnlock()
 	return rb.len
 }
 
 // Cap returns the capacity of the ring buffer.
+// Thread-safe: reads from cap(buf) which is constant.
 func (rb *Ring[T]) Cap() int {
-	return rb.capacity()
+	return cap(rb.buf)
 }
 
 // Available returns the number of elements that can be written without overwriting unread data.
+// Thread-safe: uses read lock.
 func (rb *Ring[T]) Available() int {
-	return rb.available()
+	rb.mu.RLock()
+	defer rb.mu.RUnlock()
+	capacity := cap(rb.buf)
+	return capacity - rb.len
 }
 
 // Reset clears the buffer by resetting head, tail positions and length.
+// Thread-safe: uses mutex.
 func (rb *Ring[T]) Reset() {
+	rb.mu.Lock()
+	defer rb.mu.Unlock()
 	rb.head = 0
 	rb.tail = 0
 	rb.len = 0
 }
 
 // Full returns true if the buffer is full (no space available).
+// Thread-safe: uses read lock.
 func (rb *Ring[T]) Full() bool {
-	return rb.available() == 0
+	rb.mu.RLock()
+	defer rb.mu.RUnlock()
+	capacity := cap(rb.buf)
+	if capacity == 0 {
+		return true
+	}
+	return rb.len >= capacity
 }
 
 // Empty returns true if the buffer is empty.
+// Thread-safe: uses read lock.
 func (rb *Ring[T]) Empty() bool {
+	rb.mu.RLock()
+	defer rb.mu.RUnlock()
 	return rb.len == 0
 }
 
@@ -133,13 +258,18 @@ func (rb *Ring[T]) capacity() int {
 }
 
 // available returns the number of available slots.
+// Must be called with lock held.
 func (rb *Ring[T]) available() int {
-	return rb.capacity() - rb.len
+	capacity := cap(rb.buf)
+	return capacity - rb.len
 }
 
 // Grow grows the buffer's capacity to guarantee space for n more elements.
 // After Grow(n), at least n elements can be written without another allocation.
 // Note: Growing a ring buffer requires reallocating and copying existing data.
+//
+// WARNING: Grow is NOT thread-safe. It must not be called concurrently with
+// Read or Write operations. Use external synchronization if needed.
 func (rb *Ring[T]) Grow(n int) {
 	if n < 0 {
 		panic("Ring.Grow: negative count")
@@ -163,10 +293,14 @@ func (rb *Ring[T]) Grow(n int) {
 	newBuf := make([]T, newCap)
 
 	// Copy existing data preserving order
-	if rb.len > 0 {
+	rb.mu.Lock()
+	currentLen := rb.len
+	readPos := rb.tail
+	rb.mu.Unlock()
+
+	if currentLen > 0 {
 		oldCap := currentCap
-		toRead := rb.len
-		readPos := rb.tail
+		toRead := currentLen
 
 		// Copy in chunks (handle wrapping)
 		firstChunk := min(toRead, oldCap-readPos)
@@ -179,9 +313,13 @@ func (rb *Ring[T]) Grow(n int) {
 	}
 
 	// Update buffer and positions
+	// Note: Not thread-safe - caller must ensure no concurrent access
+	rb.mu.Lock()
 	rb.buf = newBuf
 	rb.tail = 0
-	rb.head = rb.len
+	rb.head = currentLen
+	rb.len = currentLen
+	rb.mu.Unlock()
 }
 
 // Init initializes the ring buffer with the given parameters.

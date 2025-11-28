@@ -285,7 +285,14 @@ gocv.WithImageEncoding("png")          // "png", "jpeg", "bmp", "tiff"
 
 // Tensor conversion options
 gocv.WithTensorOptions(tensorgocv.WithDevice("cuda"))
+
+// Resource management
+gocv.WithReleaseAfterProcessing(release bool) types.Option // Release tensors after processing (default: false)
 ```
+
+**Resource Management:**
+- `WithReleaseAfterProcessing(true)`: When enabled, the marshaller will automatically call `Release()` on tensors after processing them. This helps with memory management but means you cannot reuse the tensors. Use `SharedTensor` with reference counting (via `tensor.WithRefcount()`) to avoid cloning when sending the same tensor to multiple marshallers. The marshaller automatically uses shared tensors when writing to multiple outputs.
+- Default: `false` (tensors are not automatically released)
 
 ### Display Configuration
 
@@ -317,6 +324,38 @@ gocv.WithDNNFormat("onnx")             // "onnx", "caffe", "tensorflow"
 gocv.WithNetBackend(cv.NetBackendCUDA)
 gocv.WithNetTarget(cv.NetTargetGPU)
 ```
+
+## Marshaller Interface
+
+The marshaller supports various source types for writing frames to files or displays:
+
+```go
+type Marshaller struct {
+    opts types.Options
+    cfg  config
+}
+
+func NewMarshaller(opts ...types.Option) *Marshaller
+
+func (m *Marshaller) Format() string // Returns "gocv"
+
+func (m *Marshaller) Marshal(w io.Writer, value any, opts ...types.Option) error
+```
+
+**Supported source types:**
+- `gocv.Mat` / `*gocv.Mat`: Single image Mat to write
+- `image.Image` / `*image.Image`: Single image to write  
+- `types.Tensor`: Tensor to write (must expose GoCV accessor)
+- `types.FrameStream`: Stream frames to file(s) and/or display(s)
+  - Multiple outputs: Automatically uses shared tensors with reference counting for efficient fan-out to multiple writers
+  - **Frame ownership**: Frames in the stream may be consumed/released after processing when `ReleaseAfterProcessing` option is enabled.
+    - The marshaller automatically uses `SharedTensor` with reference counting when writing to multiple outputs (file + display), avoiding cloning overhead.
+    - If you manually send frames to multiple marshallers: Use `tensor.WithRefcount()` to wrap tensors for efficient sharing, or create copies using `tensor.Clone()`.
+
+**Tensor Ownership:**
+- The marshaller may consume/release tensors after processing when `ReleaseAfterProcessing` option is enabled.
+- To reuse the tensor: Create a copy using `tensor.Clone()` before passing it to the marshaller.
+- **For efficiency**: Use `SharedTensor` with reference counting (via `tensor.WithRefcount()`) to avoid cloning when sending the same tensor to multiple marshallers. The marshaller automatically uses shared tensors when writing frames to multiple outputs.
 
 ## Camera Control Interface
 

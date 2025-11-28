@@ -8,9 +8,14 @@ import (
 	"github.com/itohio/EasyRobot/x/buffer"
 	"github.com/itohio/EasyRobot/x/chain"
 	"github.com/itohio/EasyRobot/x/math/dsp"
+	"github.com/itohio/EasyRobot/x/math/dsp/modulation"
+	"github.com/itohio/EasyRobot/x/math/dsp/modulation/internal"
 )
 
-var _ chain.Processor[byte, float32] = (*Demodulator)(nil)
+var (
+	_ chain.Processor[byte, float32] = (*Demodulator)(nil)
+	_ modulation.Receiver            = (*Demodulator)(nil)
+)
 
 // Demodulator converts M-ASK samples back to symbols.
 type Demodulator struct {
@@ -45,6 +50,25 @@ type Demodulator struct {
 	// Debug logging
 	debugLogging bool
 	symbolIndex  int // Track symbol index for debug output
+
+	// Statistics tracking for Receiver interface
+	totalSamplesProcessed int
+	transmissionStartIdx  int
+	transmissionEndIdx    int
+	preambleStartIdx      int
+	packetStartIdx        int
+	lockAcquiredIdx       int
+	lockLostIdx           int
+	lockCount             int
+	unlockCount           int
+	rawSignalSum          float32
+	rawSignalCount        int
+
+	// Power tracking using single PowerTracker with EMA snapshots
+	powerTracker internal.PowerTracker[float32]
+	// EMA snapshots taken at different events
+	backgroundEMASnapshot float32 // EMA snapshot during silence/background
+	signalEMASnapshot     float32 // EMA snapshot during active transmission
 }
 
 // NewDemodulator builds a streaming demodulator instance.
@@ -52,16 +76,23 @@ func NewDemodulator(cfg Config) (*Demodulator, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
+	// Calculate alpha for EMA decay of ~200 symbols
+	// EMA effective length ≈ 2/alpha - 1, so alpha ≈ 2/(200+1) ≈ 0.01
+	// Using slightly lower alpha for longer memory: 0.005 ≈ 400 symbol memory
+	alpha := float32(0.005) // Decay factor for ~400 symbol memory (at least 200)
 	d := &Demodulator{
-		cfg:          cfg,
-		table:        newAmplitudeTable(cfg),
-		fifo:         make([]float32, cfg.SamplesPerSymbol*2),
-		carrier:      dsp.NewCosineGenerator(cfg.SampleRate, cfg.CarrierHz, 1.0, 0.0),
-		agcGain:      1.0,
-		agcReference: 1.0,
-		agcMinLevel:  0.0,
-		agcMaxLevel:  1.0,
-		targetSNR:    35.0, // Default target SNR for threshold calculation (higher for M-ASK)
+		cfg:                   cfg,
+		table:                 newAmplitudeTable(cfg),
+		fifo:                  make([]float32, cfg.SamplesPerSymbol*2),
+		carrier:               dsp.NewCosineGenerator(cfg.SampleRate, cfg.CarrierHz, 1.0, 0.0),
+		agcGain:               1.0,
+		agcReference:          1.0,
+		agcMinLevel:           0.0,
+		agcMaxLevel:           1.0,
+		targetSNR:             35.0, // Default target SNR for threshold calculation (higher for M-ASK)
+		powerTracker:          internal.NewPowerTracker[float32](alpha),
+		backgroundEMASnapshot: 0,
+		signalEMASnapshot:     0,
 	}
 	// Preamble is always required for normalization, so always allocate AGC samples buffer
 	d.agcSamples = make([]float32, 0, cfg.PreambleLength)
@@ -108,6 +139,8 @@ func (d *Demodulator) Process(dst buffer.Writer[byte], src buffer.Reader[float32
 		}
 
 		symbol := d.decodeSymbol(d.fifo[:d.cfg.SamplesPerSymbol])
+		// Track total samples processed
+		d.totalSamplesProcessed += d.cfg.SamplesPerSymbol
 		if symbol >= 0 {
 			d.tmpSymbol[0] = byte(symbol)
 			writtenBits, _ := bitsWriter.Write(d.tmpSymbol[:])
@@ -136,61 +169,56 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 
 	energy := symbolEnergy(samples)
 
-	// Debug: log symbol index and energy
-	if d.debugLogging {
-		if d.preambleDetected {
-			// Only log after preamble (payload symbols)
-		}
-	}
-
-	// Full energy check with SNR-based adaptive threshold
+	// Calculate threshold first (for detection logic)
 	baseThreshold := d.cfg.EnergyThresholdForSNR(d.targetSNR)
-	// Fallback to fixed threshold if SNR-based calculation fails or for infinite SNR
 	if baseThreshold <= 0 {
 		baseThreshold = d.cfg.EnergyThreshold
-	}
-
-	// Coarse detection: quick energy check to avoid wasting CPU on noise
-	// When no lock on a signal - coarse detection avoids calculations
-	// When coarse detection triggers and lock is achieved - disable coarse detection until lock is lost
-	// Coarse detection should NOT be active during active lock
-	// Only enable coarse detection if we have a valid SNR-based threshold (not infinite SNR)
-	useCoarseDetection := !d.active && baseThreshold > 0 && baseThreshold != d.cfg.EnergyThreshold
-	if useCoarseDetection {
-		coarseThreshold := baseThreshold * 0.1 // Very lenient for coarse check
-		if energy < coarseThreshold {
-			// Not active and energy too low - likely noise, skip expensive processing
-			return -1
-		}
 	}
 
 	// Use adaptive threshold based on state
 	var threshold float32
 	if baseThreshold <= 0 || baseThreshold == d.cfg.EnergyThreshold {
 		// Infinite SNR or using fixed threshold - use very lenient thresholds
-		// For infinite SNR, any non-zero signal should be detected (even symbol 0)
 		if d.active {
-			// During active transmission: be very lenient (symbol 0 might have low energy)
-			threshold = d.cfg.EnergyThreshold * 0.01 // Very low to catch symbol 0
+			threshold = d.cfg.EnergyThreshold * 0.01
 		} else if d.preambleProgress > 0 {
 			threshold = d.cfg.EnergyThreshold * 0.1
 		} else {
-			// Initial detection: use lenient threshold to catch first symbol
-			threshold = d.cfg.EnergyThreshold * 0.1 // Low enough to catch symbol 0
+			threshold = d.cfg.EnergyThreshold * 0.1
 		}
 	} else {
 		// SNR-based threshold
 		if d.active {
-			// During active transmission: be lenient (noise might reduce energy)
 			threshold = baseThreshold * 0.3
 		} else if d.preambleProgress > 0 {
-			// During preamble: moderate threshold
 			threshold = baseThreshold * 0.5
 		} else {
-			// Initial detection: use full SNR-based threshold
 			threshold = baseThreshold
 		}
 	}
+
+	// Coarse detection: quick power check to avoid wasting CPU on noise
+	useCoarseDetection := !d.active && baseThreshold > 0 && baseThreshold != d.cfg.EnergyThreshold
+	if useCoarseDetection {
+		coarseThreshold := baseThreshold * 0.1
+		if energy < coarseThreshold {
+			// Track background power - update tracker and continue
+			d.powerTracker.UpdatePower(energy)
+			return -1
+		}
+	}
+
+	// Check if signal is detected (transitioning from silence to signal)
+	// Save background EMA snapshot BEFORE updating PowerTracker with signal sample
+	signalDetected := !d.active && energy >= threshold
+	if signalDetected && d.powerTracker.Count() > 0 {
+		// Save background EMA snapshot - this is the clean background measurement
+		d.backgroundEMASnapshot = d.powerTracker.EMA()
+	}
+
+	// Track raw sample energy for power measurement (single tracker, continuous EMA)
+	// This represents the actual received signal power (for SignalStrength and SNR)
+	d.powerTracker.UpdatePower(energy)
 
 	// After preamble is detected, always try to decode (ignore energy threshold)
 	// Lock is lost only when we get consecutive zero symbols
@@ -219,8 +247,17 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 	// Signal detected or continuing active transmission
 	if !d.active {
 		d.active = true
+		// Track transmission start
+		if d.transmissionStartIdx == 0 {
+			d.transmissionStartIdx = d.totalSamplesProcessed
+		}
 	}
 	d.silenceCount = 0
+
+	// Track raw signal strength (before any processing)
+	rawMag := math32.Sqrt(energy)
+	d.rawSignalSum += rawMag
+	d.rawSignalCount++
 
 	// Detect amplitude
 	var amplitude float32
@@ -235,6 +272,9 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 		// Baseband: direct amplitude (RMS or average)
 		amplitude = envelopeDetection(samples)
 	}
+
+	// Note: Power tracker is updated with raw sample energy above
+	// This provides accurate received signal power for SignalStrength measurement
 
 	// Preamble processing (always required for normalization)
 	var symbol int
@@ -272,11 +312,25 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 		// After collecting PreambleLength samples, mark as detected (next symbol will be payload)
 		if d.preambleProgress >= d.cfg.PreambleLength {
 			d.preambleDetected = true
+			// Track preamble start
+			if d.preambleStartIdx == 0 {
+				d.preambleStartIdx = d.totalSamplesProcessed - (d.cfg.PreambleLength * d.cfg.SamplesPerSymbol)
+			}
+			// Track packet start (after preamble)
+			if d.packetStartIdx == 0 {
+				d.packetStartIdx = d.totalSamplesProcessed + d.cfg.SamplesPerSymbol
+			}
+			// Track lock acquisition
+			if d.lockAcquiredIdx == 0 {
+				d.lockAcquiredIdx = d.totalSamplesProcessed
+				d.lockCount++
+			}
 			// Finalize AGC normalization based on preamble min/max
 			if len(d.agcSamples) > 0 {
 				// Find min and max from preamble samples
 				d.agcMinLevel = d.agcSamples[0]
 				d.agcMaxLevel = d.agcSamples[0]
+				var sumPower float32
 				for _, amp := range d.agcSamples {
 					if amp < d.agcMinLevel {
 						d.agcMinLevel = amp
@@ -284,7 +338,17 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 					if amp > d.agcMaxLevel {
 						d.agcMaxLevel = amp
 					}
+					// Accumulate power for average calculation
+					sumPower += amp * amp
 				}
+
+				// Calculate signal power from preamble amplitudes
+				// Average power from preamble: represents signal power
+				avgPower := sumPower / float32(len(d.agcSamples))
+				// Also calculate from max amplitude (peak signal power)
+				maxPower := d.agcMaxLevel * d.agcMaxLevel
+				// Use average power as signal power (more stable than max)
+				d.signalEMASnapshot = avgPower
 
 				// Calculate normalization reference
 				// Expected: preamble alternates between lowest and highest levels
@@ -310,10 +374,9 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 					}
 				}
 
-				// Debug: log AGC calibration
 				if d.debugLogging {
-					log.Printf("[AGC] preamble_detected min=%.6f max=%.6f gain=%.6f ref=%.6f",
-						d.agcMinLevel, d.agcMaxLevel, d.agcGain, d.agcReference)
+					log.Printf("[AGC] preamble_detected min=%.6f max=%.6f gain=%.6f ref=%.6f signal_power=%.6f (avg) %.6f (max)",
+						d.agcMinLevel, d.agcMaxLevel, d.agcGain, d.agcReference, avgPower, maxPower)
 				}
 			}
 		}
@@ -341,6 +404,8 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 				d.logSymbolQuantization(d.symbolIndex, normalized, symbol, d.table.levels)
 			}
 
+			// Signal snapshot is already updated continuously above during active transmission
+
 			// Increment symbol index for debug logging (only count payload symbols after preamble)
 			d.symbolIndex++
 		} else {
@@ -362,6 +427,11 @@ func (d *Demodulator) decodeSymbol(samples []float32) int {
 			if d.zeroSymbolCount >= d.cfg.LockLossThreshold {
 				// Lock lost: too many consecutive zero symbols
 				d.lockLost = true
+				// Track lock loss
+				if d.lockAcquiredIdx > 0 {
+					d.lockLostIdx = d.totalSamplesProcessed
+					d.unlockCount++
+				}
 				d.resetLock()
 				return -1
 			}
@@ -458,6 +528,10 @@ func (d *Demodulator) estimateBytes(src buffer.Reader[float32]) int {
 
 // resetLock resets lock-related state (called when lock is lost)
 func (d *Demodulator) resetLock() {
+	// Track transmission end
+	if d.active && d.transmissionEndIdx == 0 {
+		d.transmissionEndIdx = d.totalSamplesProcessed
+	}
 	d.active = false
 	d.preambleDetected = false
 	d.preambleProgress = 0
@@ -467,6 +541,9 @@ func (d *Demodulator) resetLock() {
 	d.symbolIndex = 0
 	d.agcGain = 1.0
 	d.agcReference = 1.0
+	// Don't reset power tracker on lock loss - keep tracking for continuous measurements
+	// Don't reset signal/background snapshots - preserve them for quality reporting
+	// Even after lock loss, we want to report the last known signal quality
 	d.agcMinLevel = 0.0
 	d.agcMaxLevel = 1.0
 	if d.agcSamples != nil {
@@ -481,6 +558,22 @@ func (d *Demodulator) Reset() {
 	d.resetLock()
 	d.symbolIndex = 0
 	d.debugLogging = false
+
+	// Reset statistics
+	d.totalSamplesProcessed = 0
+	d.transmissionStartIdx = 0
+	d.transmissionEndIdx = 0
+	d.preambleStartIdx = 0
+	d.packetStartIdx = 0
+	d.lockAcquiredIdx = 0
+	d.lockLostIdx = 0
+	d.lockCount = 0
+	d.unlockCount = 0
+	d.rawSignalSum = 0
+	d.rawSignalCount = 0
+	d.powerTracker.Reset()
+	d.backgroundEMASnapshot = 0
+	d.signalEMASnapshot = 0
 }
 
 // SetDebugLogging enables or disables debug logging for amplitude detection

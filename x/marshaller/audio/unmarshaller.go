@@ -6,15 +6,17 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/go-audio/audio"
 	"github.com/go-audio/wav"
-	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"github.com/itohio/EasyRobot/x/buffer"
+	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"github.com/itohio/EasyRobot/x/math/tensor"
 	tensortypes "github.com/itohio/EasyRobot/x/math/tensor/types"
+	"github.com/itohio/EasyRobot/x/workers"
 )
 
 // stats tracks statistics for the unmarshaller using atomic counters.
@@ -38,16 +40,34 @@ type Unmarshaller struct {
 
 	// Buffer pools
 	intPool *buffer.Pool[int] // Pool for PCM int buffers
+	
+	// Worker pool for parallel operations
+	workerPool *workers.WorkerPool
+	
+	// Active devices for flush
+	activeDevices []deviceInterface
+	devicesMu     sync.RWMutex
 }
 
 // NewUnmarshaller constructs an audio unmarshaller instance.
 func NewUnmarshaller(opts ...types.Option) *Unmarshaller {
 	baseOpts, baseCfg := applyOptions(types.Options{}, defaultConfig(), opts)
+	
+	// Initialize worker pool
+	wp := &workers.WorkerPool{}
+	if err := wp.Init(); err != nil {
+		// Fallback to default if init fails
+		wp = &workers.WorkerPool{}
+		_ = wp.Init()
+	}
+	
 	return &Unmarshaller{
-		opts:         baseOpts,
-		cfg:          baseCfg,
-		lastDataType: tensortypes.DT_UNKNOWN,
-		intPool:      &buffer.Pool[int]{},
+		opts:          baseOpts,
+		cfg:           baseCfg,
+		lastDataType:  tensortypes.DT_UNKNOWN,
+		intPool:       &buffer.Pool[int]{},
+		workerPool:    wp,
+		activeDevices: make([]deviceInterface, 0),
 	}
 }
 
@@ -115,6 +135,22 @@ func (u *Unmarshaller) Health() map[string]int64 {
 		"frames": atomic.LoadInt64(&u.stats.frames),
 		"bytes":  atomic.LoadInt64(&u.stats.bytes),
 	}
+}
+
+// Flush instructs all malgo handlers to skip buffer writes, clears all ring buffers,
+// and enables parallel processing. This ensures all devices process buffers simultaneously.
+func (u *Unmarshaller) Flush() error {
+	u.devicesMu.RLock()
+	devices := make([]deviceInterface, len(u.activeDevices))
+	copy(devices, u.activeDevices)
+	u.devicesMu.RUnlock()
+	
+	if len(devices) == 0 {
+		return nil
+	}
+	
+	// Flush all devices in parallel using worker pool
+	return flushDevices(devices, u.workerPool)
 }
 
 // unmarshalTensor creates a tensor from WAV file(s) or device(s).
@@ -582,6 +618,19 @@ func (u *Unmarshaller) unmarshalStream(r io.Reader, cfg config) (types.FrameStre
 	return u.createMultiDeviceStream(cfg.device.deviceIDs, cfg)
 }
 
+func stopDevicesOnce(devices []deviceInterface) func() {
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			for _, dev := range devices {
+				if dev != nil {
+					dev.stop()
+				}
+			}
+		})
+	}
+}
+
 // createDeviceStream creates a FrameStream from a single device.
 func (u *Unmarshaller) createDeviceStream(deviceID string, cfg config) (types.FrameStream, error) {
 	dev, err := newAudioDevice(deviceID, "capture", cfg.device, cfg.stream, cfg.ctx)
@@ -589,20 +638,44 @@ func (u *Unmarshaller) createDeviceStream(deviceID string, cfg config) (types.Fr
 		return types.FrameStream{}, types.NewError("unmarshal", "audio", fmt.Sprintf("failed to create device: %v", err), err)
 	}
 
+	// Register device for flush
+	u.devicesMu.Lock()
+	u.activeDevices = append(u.activeDevices, dev)
+	u.devicesMu.Unlock()
+
 	if err := dev.start(); err != nil {
+		u.devicesMu.Lock()
+		// Remove from active devices
+		for i, active := range u.activeDevices {
+			if active == dev {
+				u.activeDevices = append(u.activeDevices[:i], u.activeDevices[i+1:]...)
+				break
+			}
+		}
+		u.devicesMu.Unlock()
 		return types.FrameStream{}, types.NewError("unmarshal", "audio", fmt.Sprintf("failed to start device: %v", err), err)
 	}
 
 	// Create frame stream channel
 	ch := make(chan types.Frame, 32)
-	stream := types.NewFrameStream(ch, func() {
-		dev.stop()
-	})
+	stopFunc := stopDevicesOnce([]deviceInterface{dev})
+	stream := types.NewFrameStream(ch, stopFunc)
 
 	// Start goroutine to capture frames
 	go func() {
 		defer close(ch)
-		defer dev.stop()
+		defer func() {
+			stopFunc()
+			// Unregister device
+			u.devicesMu.Lock()
+			for i, active := range u.activeDevices {
+				if active == dev {
+					u.activeDevices = append(u.activeDevices[:i], u.activeDevices[i+1:]...)
+					break
+				}
+			}
+			u.devicesMu.Unlock()
+		}()
 
 		frameSize := cfg.stream.frameSize
 		if frameSize == 0 {
@@ -679,31 +752,51 @@ func (u *Unmarshaller) createMultiDeviceStream(deviceIDs []string, cfg config) (
 		devices = append(devices, dev)
 	}
 
-	// Start all devices
-	for _, dev := range devices {
-		if err := dev.start(); err != nil {
-			for _, d := range devices {
-				d.stop()
+	// Register devices for flush
+	u.devicesMu.Lock()
+	u.activeDevices = append(u.activeDevices, devices...)
+	u.devicesMu.Unlock()
+
+	// Start all devices in parallel using worker pool for synchronized start
+	if err := startCaptureDevices(devices, u.workerPool); err != nil {
+		u.devicesMu.Lock()
+		// Remove from active devices
+		for _, dev := range devices {
+			for i, active := range u.activeDevices {
+				if active == dev {
+					u.activeDevices = append(u.activeDevices[:i], u.activeDevices[i+1:]...)
+					break
+				}
 			}
-			return types.FrameStream{}, types.NewError("unmarshal", "audio", fmt.Sprintf("failed to start device: %v", err), err)
 		}
+		u.devicesMu.Unlock()
+		for _, d := range devices {
+			d.stop()
+		}
+		return types.FrameStream{}, types.NewError("unmarshal", "audio", fmt.Sprintf("failed to start devices: %v", err), err)
 	}
 
 	// Create frame stream channel
 	ch := make(chan types.Frame, 32)
-	stream := types.NewFrameStream(ch, func() {
-		for _, dev := range devices {
-			dev.stop()
-		}
-	})
+	stopFunc := stopDevicesOnce(devices)
+	stream := types.NewFrameStream(ch, stopFunc)
 
-	// Start goroutine to capture frames from all devices
+	// Start goroutine to capture frames from all devices using worker pool for parallel reading
 	go func() {
 		defer close(ch)
 		defer func() {
+			stopFunc()
+			// Unregister devices
+			u.devicesMu.Lock()
 			for _, dev := range devices {
-				dev.stop()
+				for i, active := range u.activeDevices {
+					if active == dev {
+						u.activeDevices = append(u.activeDevices[:i], u.activeDevices[i+1:]...)
+						break
+					}
+				}
 			}
+			u.devicesMu.Unlock()
 		}()
 
 		frameSize := cfg.stream.frameSize
@@ -727,20 +820,32 @@ func (u *Unmarshaller) createMultiDeviceStream(deviceIDs []string, cfg config) (
 			case <-cfg.ctx.Done():
 				return
 			default:
-				// Read from all devices
+				// Read from all devices in parallel using worker pool
 				frames := make([][]byte, len(devices))
-				allRead := true
+				readErrs := make([]error, len(devices))
+				
+				// Create callbacks for parallel reading
+				callbacks := make([]workers.SimpleCallback, len(devices))
 				for i, dev := range devices {
-					buf, err := dev.readFrame(100 * time.Millisecond)
-					if err != nil {
-						allRead = false
-						break
+					i, dev := i, dev // Capture for closure
+					callbacks[i] = func(ctx context.Context) error {
+						buf, err := dev.readFrame(100 * time.Millisecond)
+						if err != nil {
+							readErrs[i] = err
+							return err
+						}
+						frames[i] = buf
+						return nil
 					}
-					frames[i] = buf
 				}
-
-				if !allRead {
-					// Release frames we did read
+				
+				// Execute parallel reads
+				readCtx, readCancel := context.WithTimeout(cfg.ctx, 200*time.Millisecond)
+				readErr := u.workerPool.Do(readCtx, callbacks...)
+				readCancel()
+				
+				if readErr != nil || len(frames) == 0 || frames[0] == nil {
+					// Release any frames we did read
 					for i, frame := range frames {
 						if frame != nil {
 							if md, ok := devices[i].(*malgoDevice); ok {
@@ -755,43 +860,87 @@ func (u *Unmarshaller) createMultiDeviceStream(deviceIDs []string, cfg config) (
 				}
 
 				// Combine channels from all devices
-				// For simplicity, use first device's frame count
 				channels0 := getDeviceChannels(devices[0])
 				actualFrames := len(frames[0]) / (channels0 * sampleSizeFromFormat(format))
-
-				shape := tensor.NewShape(actualFrames, totalChannels)
-				t := tensor.New(dtype, shape)
-				if t.Empty() {
+				if actualFrames == 0 {
+					// Release frames
+					for i, frame := range frames {
+						if frame != nil {
+							if md, ok := devices[i].(*malgoDevice); ok {
+								md.bytePool.Put(frame)
+							}
+						}
+					}
 					continue
 				}
 
-				// Copy data from all devices
-				channelOffset := 0
-				for devIdx, dev := range devices {
-					channels := getDeviceChannels(dev)
-					framePCM := frames[devIdx]
-					tensorData, err := pcmToTensor(framePCM, format, channels, actualFrames, dtype)
-					if err != nil {
-						continue
+				// Allocate tensor (callee allocates)
+				shape := tensor.NewShape(actualFrames, totalChannels)
+				t := tensor.New(dtype, shape)
+				if t.Empty() {
+					// Release frames
+					for i, frame := range frames {
+						if frame != nil {
+							if md, ok := devices[i].(*malgoDevice); ok {
+								md.bytePool.Put(frame)
+							}
+						}
 					}
-
-					// Copy to combined tensor
-					if err := copyDeviceChannelsToTensor(t, tensorData, dtype, 0, channelOffset, channels, totalChannels); err != nil {
-						// Continue on error
-					}
-
-					channelOffset += channels
-
-					// Release frame
-					if md, ok := dev.(*malgoDevice); ok {
-						md.bytePool.Put(framePCM)
-					}
+					continue
 				}
 
-				// Send frame
+				// Copy data from all devices in parallel using worker pool
+				channelOffset := 0
+				copyCallbacks := make([]workers.SimpleCallback, len(devices))
+				for devIdx, dev := range devices {
+					devIdx, dev, channelOffset := devIdx, dev, channelOffset // Capture for closure
+					channels := getDeviceChannels(dev)
+					framePCM := frames[devIdx]
+					
+					copyCallbacks[devIdx] = func(ctx context.Context) error {
+						tensorData, err := pcmToTensor(framePCM, format, channels, actualFrames, dtype)
+						if err != nil {
+							return err
+						}
+
+						// Copy to combined tensor
+						if err := copyDeviceChannelsToTensor(t, tensorData, dtype, 0, channelOffset, channels, totalChannels); err != nil {
+							return err
+						}
+
+						// Release frame
+						if md, ok := dev.(*malgoDevice); ok {
+							md.bytePool.Put(framePCM)
+						}
+						
+						return nil
+					}
+					
+					channelOffset += channels
+				}
+				
+				// Execute parallel copies
+				copyCtx, copyCancel := context.WithTimeout(cfg.ctx, 100*time.Millisecond)
+				if err := u.workerPool.Do(copyCtx, copyCallbacks...); err != nil {
+					copyCancel()
+					// Release tensor on error
+					var tensorInterface types.Tensor = t
+					if releaser, ok := tensorInterface.(types.Releaser); ok {
+						releaser.Release()
+					}
+					continue
+				}
+				copyCancel()
+
+				// Send frame (caller is responsible for releasing tensor)
 				select {
 				case ch <- types.Frame{Tensors: []types.Tensor{t}}:
 				case <-cfg.ctx.Done():
+					// Release tensor on context cancel
+					var tensorInterface types.Tensor = t
+					if releaser, ok := tensorInterface.(types.Releaser); ok {
+						releaser.Release()
+					}
 					return
 				}
 			}
@@ -997,71 +1146,84 @@ func (u *Unmarshaller) captureMultipleDevices(deviceIDs []string, cfg config, ds
 		}
 	}
 
-	// Capture frames from all devices in lockstep
-	frameSize := cfg.stream.frameSize
-	if frameSize == 0 {
-		frameSize = 1024
-	}
+	sampleSize := sampleSizeFromFormat(format)
+	devicePCM := make([][]byte, len(devices))
+	deviceFrameCounts := make([]int, len(devices))
 
-	// Accumulate frames from all devices
-	var allDeviceFrames [][][]byte // [device][frame][data]
-	for range devices {
-		allDeviceFrames = append(allDeviceFrames, make([][]byte, 0))
-	}
-	totalFrames := 0
-
-	// Capture frames in lockstep
+captureLoop:
 	for {
 		select {
 		case <-cfg.ctx.Done():
-			goto done
+			break captureLoop
 		default:
-			// Read frame from each device
-			var deviceFrames [][]byte
-			allRead := true
-			for _, dev := range devices {
+			chunkData := make([][]byte, len(devices))
+			chunkFrames := make([]int, len(devices))
+
+			for i, dev := range devices {
 				buf, err := dev.readFrame(100 * time.Millisecond)
 				if err != nil {
 					if err == context.Canceled || err == context.DeadlineExceeded {
-						goto done
+						break captureLoop
 					}
-					allRead = false
-					break
+					break captureLoop
 				}
-				deviceFrames = append(deviceFrames, buf)
+
+				channels := deviceChannels[i]
+				frames := len(buf) / (channels * sampleSize)
+				if frames == 0 {
+					if md, ok := dev.(*malgoDevice); ok {
+						md.bytePool.Put(buf)
+					}
+					continue captureLoop
+				}
+
+				bytesNeeded := frames * channels * sampleSize
+				copyBuf := make([]byte, bytesNeeded)
+				copy(copyBuf, buf[:bytesNeeded])
+				chunkData[i] = copyBuf
+				chunkFrames[i] = frames
+
+				if md, ok := dev.(*malgoDevice); ok {
+					md.bytePool.Put(buf)
+				}
 			}
 
-			if !allRead || len(deviceFrames) != len(devices) {
-				// Not all devices have data, break
-				goto done
+			// Ensure we have data from all devices
+			for _, data := range chunkData {
+				if data == nil {
+					continue captureLoop
+				}
 			}
 
-			// Store frames for each device
-			for i, frame := range deviceFrames {
-				allDeviceFrames[i] = append(allDeviceFrames[i], frame)
+			minChunkFrames := chunkFrames[0]
+			for _, frames := range chunkFrames {
+				if frames < minChunkFrames {
+					minChunkFrames = frames
+				}
 			}
-			totalFrames += frameSize
+			if minChunkFrames == 0 {
+				break captureLoop
+			}
+
+			for i := range devices {
+				channels := deviceChannels[i]
+				bytesToUse := minChunkFrames * channels * sampleSize
+				devicePCM[i] = append(devicePCM[i], chunkData[i][:bytesToUse]...)
+				deviceFrameCounts[i] += minChunkFrames
+			}
 		}
 	}
 
-done:
-	if totalFrames == 0 {
+	minFrames := deviceFrameCounts[0]
+	for _, frames := range deviceFrameCounts {
+		if frames < minFrames {
+			minFrames = frames
+		}
+	}
+	if minFrames == 0 {
 		return nil, types.NewError("unmarshal", "audio", "no frames captured", nil)
 	}
 
-	// Find minimum frames (devices may have different amounts)
-	minFrames := totalFrames
-	for _, frames := range allDeviceFrames {
-		deviceFrameCount := 0
-		for _, frame := range frames {
-			deviceFrameCount += len(frame) / (deviceChannels[len(allDeviceFrames)-1] * sampleSizeFromFormat(format))
-		}
-		if deviceFrameCount < minFrames {
-			minFrames = deviceFrameCount
-		}
-	}
-
-	// Combine PCM data from all devices
 	actualFrames := minFrames
 	combinedShape := tensor.NewShape(actualFrames, totalDeviceChannels)
 
@@ -1076,102 +1238,28 @@ done:
 		return nil, types.NewError("unmarshal", "audio", "failed to create combined tensor", nil)
 	}
 
-	// Convert and combine channels from all devices
-	combinedData := combined.Data()
-	if combinedData == nil {
-		return nil, types.NewError("unmarshal", "audio", "combined tensor data is nil", nil)
-	}
-
 	// Convert each device's frames and combine channels
 	channelOffset := 0
-	for devIdx, devFrames := range allDeviceFrames {
+	for devIdx := range devices {
 		devChannels := deviceChannels[devIdx]
-		dev := devices[devIdx]
-
-		// Combine all frames from this device
-		totalBytes := 0
-		for _, frame := range devFrames {
-			totalBytes += len(frame)
+		framesAvailable := len(devicePCM[devIdx]) / (devChannels * sampleSize)
+		if framesAvailable == 0 {
+			channelOffset += devChannels
+			continue
 		}
-
-		combinedPCM := make([]byte, 0, totalBytes)
-		for _, frame := range devFrames {
-			combinedPCM = append(combinedPCM, frame...)
-			if md, ok := dev.(*malgoDevice); ok {
-				md.bytePool.Put(frame)
-			}
+		if framesAvailable > actualFrames {
+			framesAvailable = actualFrames
 		}
+		bytesToUse := framesAvailable * devChannels * sampleSize
+		deviceData := devicePCM[devIdx][:bytesToUse]
 
-		// Calculate actual frames for this device (may be less than totalFrames)
-		devActualFrames := len(combinedPCM) / (devChannels * sampleSizeFromFormat(format))
-		if devActualFrames > actualFrames {
-			devActualFrames = actualFrames
-			combinedPCM = combinedPCM[:actualFrames*devChannels*sampleSizeFromFormat(format)]
-		}
-
-		// Convert this device's PCM to tensor data
-		devTensorData, err := pcmToTensor(combinedPCM, format, devChannels, devActualFrames, deviceDtype)
+		devTensorData, err := pcmToTensor(deviceData, format, devChannels, framesAvailable, deviceDtype)
 		if err != nil {
 			return nil, types.NewError("unmarshal", "audio", fmt.Sprintf("failed to convert PCM for device %d: %v", devIdx, err), err)
 		}
 
-		// Copy device channels to combined tensor
-		switch deviceDtype {
-		case tensortypes.INT16:
-			dst := combinedData.([]int16)
-			src := devTensorData.([]int16)
-			for frame := 0; frame < devActualFrames; frame++ {
-				for ch := 0; ch < devChannels; ch++ {
-					dst[frame*totalDeviceChannels+channelOffset+ch] = src[frame*devChannels+ch]
-				}
-			}
-			// Pad remaining frames with zeros if needed
-			for frame := devActualFrames; frame < actualFrames; frame++ {
-				for ch := 0; ch < devChannels; ch++ {
-					dst[frame*totalDeviceChannels+channelOffset+ch] = 0
-				}
-			}
-		case tensortypes.INT32:
-			dst := combinedData.([]int32)
-			src := devTensorData.([]int32)
-			for frame := 0; frame < devActualFrames; frame++ {
-				for ch := 0; ch < devChannels; ch++ {
-					dst[frame*totalDeviceChannels+channelOffset+ch] = src[frame*devChannels+ch]
-				}
-			}
-			for frame := devActualFrames; frame < actualFrames; frame++ {
-				for ch := 0; ch < devChannels; ch++ {
-					dst[frame*totalDeviceChannels+channelOffset+ch] = 0
-				}
-			}
-		case tensortypes.FP32:
-			dst := combinedData.([]float32)
-			src := devTensorData.([]float32)
-			for frame := 0; frame < devActualFrames; frame++ {
-				for ch := 0; ch < devChannels; ch++ {
-					dst[frame*totalDeviceChannels+channelOffset+ch] = src[frame*devChannels+ch]
-				}
-			}
-			for frame := devActualFrames; frame < actualFrames; frame++ {
-				for ch := 0; ch < devChannels; ch++ {
-					dst[frame*totalDeviceChannels+channelOffset+ch] = 0
-				}
-			}
-		case tensortypes.UINT8:
-			dst := combinedData.([]uint8)
-			src := devTensorData.([]uint8)
-			for frame := 0; frame < devActualFrames; frame++ {
-				for ch := 0; ch < devChannels; ch++ {
-					dst[frame*totalDeviceChannels+channelOffset+ch] = src[frame*devChannels+ch]
-				}
-			}
-			for frame := devActualFrames; frame < actualFrames; frame++ {
-				for ch := 0; ch < devChannels; ch++ {
-					dst[frame*totalDeviceChannels+channelOffset+ch] = 0
-				}
-			}
-		default:
-			return nil, types.NewError("unmarshal", "audio", fmt.Sprintf("unsupported dtype for multi-device: %v", deviceDtype), nil)
+		if err := copyDeviceChannelsToTensor(combined, devTensorData, deviceDtype, 0, channelOffset, devChannels, totalDeviceChannels); err != nil {
+			return nil, err
 		}
 
 		channelOffset += devChannels

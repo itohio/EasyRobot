@@ -12,6 +12,7 @@ import (
 	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"github.com/itohio/EasyRobot/x/math/dsp"
 	"github.com/itohio/EasyRobot/x/math/tensor"
+	tensortypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 	"github.com/spf13/cobra"
 )
 
@@ -277,7 +278,7 @@ func mixAudio(
 		sources[i] = &inputSource{
 			unmarshaller:   unm,
 			stream:         stream,
-			offsetSamples: offsetSamples[i],
+			offsetSamples:  offsetSamples[i],
 			rmsAccumulator: &rmsAccumulator{},
 		}
 	}
@@ -393,8 +394,16 @@ func mixAudio(
 
 					// Extract float32 data from tensor
 					t := frame.Tensors[0]
-					floatData, err := extractFloat32FromTensor(t)
-					if err != nil {
+					tensorData := t.Data()
+					convertedData := tensortypes.CloneTensorDataTo(tensortypes.FP32, tensorData)
+					if convertedData == nil {
+						if t != nil {
+							t.Release()
+						}
+						continue
+					}
+					floatData, ok := convertedData.([]float32)
+					if !ok {
 						if t != nil {
 							t.Release()
 						}
@@ -497,4 +506,3 @@ func mixAudio(
 
 	return nil
 }
-

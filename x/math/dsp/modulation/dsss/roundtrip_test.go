@@ -6,6 +6,7 @@ import (
 
 	"github.com/chewxy/math32"
 	"github.com/itohio/EasyRobot/x/buffer"
+	"github.com/itohio/EasyRobot/x/math/dsp/modulation"
 	test_utils "github.com/itohio/EasyRobot/x/math/dsp/modulation/test_utils"
 	"github.com/stretchr/testify/require"
 )
@@ -33,8 +34,8 @@ func createTestConfig(bitsPerSymbol int) Config {
 		PulseShape:          "raised_cosine",
 		Rolloff:             0.35,
 		PulseFilterSpan:     4,
-		PreambleLength:      4,
-		PreamblePattern:     []int{0, 1, 0, 1},
+		PreambleLength:      0,     // DSSS doesn't use preamble - code correlation provides sync
+		PreamblePattern:     nil,   // Not used
 		EnergyThreshold:     0.001, // Will be overridden by SNR-based threshold
 		DetectionWindow:     samplesPerChip * spreadingFactor,
 		TransmissionTimeout: 3,
@@ -172,9 +173,34 @@ func runRoundtrip(t *testing.T, cfg Config, payload []byte, snrDb float32) {
 		return bits, nil
 	}
 
+	// Calculate expected transmitter signal strength from config
+	expectedTxPower := cfg.Amplitude * cfg.Amplitude
+	expectedTxSignalStrength := float32(0)
+	if expectedTxPower > 0 {
+		expectedTxSignalStrength = 10.0 * math32.Log10(expectedTxPower)
+	}
+
+	// Track transmission statistics for inspection
+	transmitSignalStart := -1
+	transmitSignalEnd := -1
+
 	// Transmit: padding + payload + padding
 	opts := test_utils.DefaultTransmitOptions()
 	opts.IQInterleaved = false // DSSS uses real samples
+
+	// Inspect callback to verify transmitter stats
+	opts.Inspect = func(startBufIdx, endBufIdx int, startSampleIdx, endSampleIdx int, tx modulation.Transmitter) {
+		params := tx.Params()
+		require.Equal(t, cfg.SymbolRate, params.BaudRate, "BaudRate should match config")
+		require.Equal(t, cfg.SampleRate, params.SampleRate, "SampleRate should match config")
+		require.Equal(t, cfg.CarrierFreq, params.CarrierFrequency, "CarrierFrequency should match config")
+		require.InDeltaf(t, expectedTxSignalStrength, params.SignalStrength, 0.1,
+			"SignalStrength should match expected value from config")
+
+		transmitSignalStart = startSampleIdx
+		transmitSignalEnd = endSampleIdx
+	}
+
 	samples, _ := test_utils.Transmit(
 		cfg.SampleRate,
 		mod,
@@ -195,6 +221,37 @@ func runRoundtrip(t *testing.T, cfg Config, payload []byte, snrDb float32) {
 	require.NoError(t, err)
 
 	receiveOpts := test_utils.DefaultReceiveOptions()
+
+	// Inspect callback to verify receiver stats
+	var lockedQuality modulation.QualityStats
+	var finalTransmission modulation.TransmissionStats
+	var wasLocked bool
+
+	receiveOpts.Inspect = func(startSampleIdx, endSampleIdx int, startBufIdx, endBufIdx int, rx modulation.Receiver) {
+		quality := rx.Quality()
+		transmission := rx.Transmission()
+		params := rx.Params()
+
+		require.Equal(t, cfg.SymbolRate, params.BaudRate, "BaudRate should match config")
+		require.Equal(t, cfg.SampleRate, params.SampleRate, "SampleRate should match config")
+		require.Equal(t, cfg.CarrierFreq, params.CarrierFrequency, "CarrierFrequency should match config")
+
+		if transmission.IsLocked {
+			wasLocked = true
+			lockedQuality = quality
+			require.False(t, math32.IsNaN(quality.SNR), "SNR should not be NaN when locked")
+			require.False(t, math32.IsInf(quality.SNR, 0), "SNR should not be Inf when locked")
+			if snrDb < math32.Inf(1) {
+				require.Greaterf(t, quality.SNR, float32(0),
+					"SNR should be positive when locked (simulated SNR=%.2f dB)", snrDb)
+			}
+			require.False(t, math32.IsNaN(quality.SignalStrength), "SignalStrength should not be NaN when locked")
+			require.False(t, math32.IsInf(quality.SignalStrength, 0), "SignalStrength should not be Inf when locked")
+		}
+
+		finalTransmission = transmission
+	}
+
 	totalDecoded := test_utils.Receive(
 		cfg.SampleRate,
 		demod,
@@ -203,6 +260,31 @@ func runRoundtrip(t *testing.T, cfg Config, payload []byte, snrDb float32) {
 		&receiveOpts,
 	)
 	require.Greaterf(t, totalDecoded, 0, "snr=%.1f totalDecoded=%d", snrDb, totalDecoded)
+
+	// Verify receiver stats
+	require.Greater(t, finalTransmission.LockCount, 0, "Demodulator should have locked at least once during transmission")
+
+	if wasLocked && snrDb < math32.Inf(1) {
+		require.InDeltaf(t, snrDb, lockedQuality.SNR, 8.0,
+			"Measured SNR should be close to simulated SNR (simulated=%.2f dB, measured=%.2f dB)",
+			snrDb, lockedQuality.SNR)
+	}
+
+	if wasLocked {
+		require.InDeltaf(t, expectedTxSignalStrength, lockedQuality.SignalStrength, 10.0,
+			"Receiver SignalStrength should be in same ballpark as transmitter (tx=%.2f dB, rx=%.2f dB)",
+			expectedTxSignalStrength, lockedQuality.SignalStrength)
+	}
+
+	// Verify transmission indices
+	if transmitSignalStart >= 0 && transmitSignalEnd > transmitSignalStart {
+		require.Greater(t, finalTransmission.TransmissionStart, 0, "TransmissionStart must be set")
+		paddingSamples := int(0.1 * cfg.SampleRate)
+		require.GreaterOrEqualf(t, finalTransmission.TransmissionStart, transmitSignalStart-paddingSamples,
+			"TransmissionStart should be within reasonable range of actual signal start")
+		require.LessOrEqualf(t, finalTransmission.TransmissionStart, transmitSignalEnd,
+			"TransmissionStart should be before signal end")
+	}
 
 	// Verify decoded data
 	outputBits.Reset()

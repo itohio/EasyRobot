@@ -6,13 +6,12 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/itohio/EasyRobot/x/marshaller/audio"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"github.com/itohio/EasyRobot/x/math/dsp"
 	"github.com/itohio/EasyRobot/x/math/tensor"
-	"github.com/itohio/EasyRobot/x/math/vec"
-	vecTypes "github.com/itohio/EasyRobot/x/math/vec/types"
 	"github.com/spf13/cobra"
 )
 
@@ -24,7 +23,7 @@ func newGenSineCmd() *cobra.Command {
 		phase      string
 		channels   int
 		sampleRate int
-		duration   float64
+		duration   time.Duration
 		dataType   string
 	)
 
@@ -43,7 +42,7 @@ func newGenSineCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&phase, "phase", "p", "0", "Phase in degrees per channel (comma-separated, default: 0)")
 	cmd.Flags().IntVarP(&channels, "channels", "c", 1, "Number of channels")
 	cmd.Flags().IntVarP(&sampleRate, "sample-rate", "r", 48000, "Sample rate (Hz)")
-	cmd.Flags().Float64VarP(&duration, "duration", "d", 5.0, "Duration in seconds")
+	cmd.Flags().DurationVarP(&duration, "duration", "d", 5*time.Second, "Duration (e.g., 5s, 100ms)")
 	cmd.Flags().StringVar(&dataType, "data-type", "INT16", "Data type (INT16, INT32, FP32, UINT8, default: INT16)")
 
 	cmd.MarkFlagRequired("output")
@@ -51,7 +50,7 @@ func newGenSineCmd() *cobra.Command {
 	return cmd
 }
 
-func runGenSine(output, amplitude, frequency, phase string, channels, sampleRate int, duration float64, dataType string) error {
+func runGenSine(output, amplitude, frequency, phase string, channels, sampleRate int, duration time.Duration, dataType string) error {
 	// Parse amplitude (dB)
 	ampDb, err := strconv.ParseFloat(amplitude, 64)
 	if err != nil {
@@ -92,13 +91,14 @@ func runGenSine(output, amplitude, frequency, phase string, channels, sampleRate
 	}
 
 	// Generate signals
-	numSamples := int(float64(sampleRate) * duration)
-	sg := dsp.NewSignalGenerator1D()
+	numSamples := int(float64(sampleRate) * duration.Seconds())
 
 	// Generate per-channel signals
-	channelSignals := make([]vecTypes.Vector, channels)
+	channelSignals := make([][]float32, channels)
 	for ch := 0; ch < channels; ch++ {
-		signal := sg.Sinusoid(numSamples, float32(freqs[ch]), ampLinear, phases[ch], float32(sampleRate))
+		signal := make([]float32, numSamples)
+		gen := dsp.NewSineGenerator(float32(sampleRate), float32(freqs[ch]), ampLinear, phases[ch])
+		gen.Generate(signal)
 		channelSignals[ch] = signal
 	}
 
@@ -112,8 +112,7 @@ func runGenSine(output, amplitude, frequency, phase string, channels, sampleRate
 		data := t.Data().([]int16)
 		for i := 0; i < numSamples; i++ {
 			for ch := 0; ch < channels; ch++ {
-				sigData := channelSignals[ch].View().(vec.Vector)
-				val := sigData[i] * 32767.0
+				val := channelSignals[ch][i] * 32767.0
 				if val > 32767.0 {
 					val = 32767.0
 				} else if val < -32768.0 {
@@ -126,8 +125,7 @@ func runGenSine(output, amplitude, frequency, phase string, channels, sampleRate
 		data := t.Data().([]int32)
 		for i := 0; i < numSamples; i++ {
 			for ch := 0; ch < channels; ch++ {
-				sigData := channelSignals[ch].View().(vec.Vector)
-				val := sigData[i] * 2147483647.0
+				val := channelSignals[ch][i] * 2147483647.0
 				if val > 2147483647.0 {
 					val = 2147483647.0
 				} else if val < -2147483648.0 {
@@ -140,16 +138,14 @@ func runGenSine(output, amplitude, frequency, phase string, channels, sampleRate
 		data := t.Data().([]float32)
 		for i := 0; i < numSamples; i++ {
 			for ch := 0; ch < channels; ch++ {
-				sigData := channelSignals[ch].View().(vec.Vector)
-				data[i*channels+ch] = sigData[i]
+				data[i*channels+ch] = channelSignals[ch][i]
 			}
 		}
 	case types.UINT8:
 		data := t.Data().([]uint8)
 		for i := 0; i < numSamples; i++ {
 			for ch := 0; ch < channels; ch++ {
-				sigData := channelSignals[ch].View().(vec.Vector)
-				val := (sigData[i] + 1.0) * 127.5
+				val := (channelSignals[ch][i] + 1.0) * 127.5
 				if val > 255.0 {
 					val = 255.0
 				} else if val < 0.0 {
@@ -183,7 +179,7 @@ func runGenSine(output, amplitude, frequency, phase string, channels, sampleRate
 	fmt.Printf("Generated sine wave: %s\n", output)
 	fmt.Printf("  Channels: %d\n", channels)
 	fmt.Printf("  Sample rate: %d Hz\n", sampleRate)
-	fmt.Printf("  Duration: %.2f s\n", duration)
+	fmt.Printf("  Duration: %v\n", duration)
 	fmt.Printf("  Data type: %s\n", dataType)
 	fmt.Printf("  Amplitude: %.2f dB\n", ampDb)
 	fmt.Printf("  Frequencies: %s Hz\n", strings.Join(strings.Fields(fmt.Sprint(freqs[:channels])), ", "))
@@ -193,4 +189,3 @@ func runGenSine(output, amplitude, frequency, phase string, channels, sampleRate
 
 	return nil
 }
-

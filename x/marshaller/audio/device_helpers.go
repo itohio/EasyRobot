@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/itohio/EasyRobot/x/marshaller/types"
+	tensortypes "github.com/itohio/EasyRobot/x/math/tensor/types"
 )
 
 // copyToTensor copies data into tensor.
@@ -74,6 +75,14 @@ func getDeviceSampleRate(dev deviceInterface) int {
 	return 48000 // Default
 }
 
+// getDeviceDtype returns the data type from device.
+func getDeviceDtype(dev deviceInterface) tensortypes.DataType {
+	if md, ok := dev.(*malgoDevice); ok {
+		return md.dtype
+	}
+	return tensortypes.INT16 // Default
+}
+
 // deviceInterface defines the interface for audio devices.
 type deviceInterface interface {
 	start() error
@@ -81,5 +90,6 @@ type deviceInterface interface {
 	health() map[string]int64
 	readFrame(timeout time.Duration) ([]byte, error)
 	writeFrame(buf []byte) error
+	flush() // Clear buffers and enable flush mode
 }
 

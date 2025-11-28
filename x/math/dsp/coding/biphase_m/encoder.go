@@ -1,4 +1,4 @@
-package diff_manchester
+package biphase_m
 
 import (
 	"io"

@@ -144,16 +144,16 @@ func runDisplay(cmd *cobra.Command, args []string) error {
 		numDests := len(dests)
 		if numDests > 1 && len(frame.Tensors) > 0 {
 			// Wrap all tensors with reference counting
-			smartTensors := make([]*tensor.SmartTensor, len(frame.Tensors))
+			sharedTensors := make([]*tensor.SharedTensor, len(frame.Tensors))
 			for i, t := range frame.Tensors {
-				smartTensors[i] = tensor.WithRefcount(t)
+				sharedTensors[i] = tensor.WithRefcount(t)
 			}
 
 			// Create views for each destination (N-1 views needed)
 			viewFrames := make([]types.Frame, numDests-1)
 			for i := 0; i < numDests-1; i++ {
-				viewTensors := make([]types.Tensor, len(smartTensors))
-				for j, st := range smartTensors {
+				viewTensors := make([]types.Tensor, len(sharedTensors))
+				for j, st := range sharedTensors {
 					viewTensors[j] = st.View()
 				}
 				viewFrames[i] = types.Frame{
@@ -164,21 +164,21 @@ func runDisplay(cmd *cobra.Command, args []string) error {
 				}
 			}
 
-			// Create frame with smart tensors for first destination
-			smartFrame := types.Frame{
+			// Create frame with shared tensors for first destination
+			sharedFrame := types.Frame{
 				Index:     frame.Index,
 				Timestamp: frame.Timestamp,
 				Metadata:  frame.Metadata,
-				Tensors:   make([]types.Tensor, len(smartTensors)),
+				Tensors:   make([]types.Tensor, len(sharedTensors)),
 			}
-			for i, st := range smartTensors {
-				smartFrame.Tensors[i] = st
+			for i, st := range sharedTensors {
+				sharedFrame.Tensors[i] = st
 			}
 
 			// Send to first destination with smart tensors
 			if len(dests) > 0 {
 				slog.Debug("Sending frame to destination", "destination_index", 0, "frame_index", frame.Index)
-				if err := dests[0].AddFrame(smartFrame); err != nil {
+				if err := dests[0].AddFrame(sharedFrame); err != nil {
 					slog.Warn("Error adding frame to destination", "destination_index", 0, "frame_index", frame.Index, "err", err)
 				} else {
 					slog.Debug("Frame sent to destination successfully", "destination_index", 0, "frame_index", frame.Index)

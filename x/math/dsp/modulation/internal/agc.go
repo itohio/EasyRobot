@@ -9,41 +9,46 @@ var _ Processor = (*AGC)(nil)
 
 // AGC implements Automatic Gain Control for complex64 signals.
 // It normalizes the magnitude of complex samples to a target level.
+// Uses PowerTracker internally to track signal power.
 type AGC struct {
-	gain        float32
-	targetLevel float32
-	alpha       float32 // Smoothing factor for gain updates
-	batchSize   int     // Batch size for processing
+	powerTracker PowerTracker[complex64] // Embedded power tracker
+	gain         float32
+	targetLevel  float32
+	targetPower  float32 // Target level squared (for power-based gain calculation)
+	alpha        float32 // Smoothing factor for gain updates
+	batchSize    int     // Batch size for processing
 }
 
 // NewAGC creates a new AGC processor for complex64 signals.
 // targetLevel: desired magnitude level (typical: 1.0)
 // timeConst: time constant for gain adjustment (typical: 0.001)
-func NewAGC(targetLevel, timeConst float32) AGC {
-	return NewAGCWithBatchSize(targetLevel, timeConst, 16)
+// sampleRate: sample rate in Hz
+func NewAGC(targetLevel, timeConst, sampleRate float32) AGC {
+	return NewAGCWithBatchSize(targetLevel, timeConst, sampleRate, 16)
 }
 
 // NewAGCWithBatchSize creates a new AGC processor with custom batch size.
-func NewAGCWithBatchSize(targetLevel, timeConst float32, batchSize int) AGC {
+// targetLevel: desired magnitude level (typical: 1.0)
+// timeConst: time constant for gain adjustment (typical: 0.001)
+// sampleRate: sample rate in Hz
+// batchSize: batch size for processing
+func NewAGCWithBatchSize(targetLevel, timeConst, sampleRate float32, batchSize int) AGC {
 	if batchSize <= 0 {
 		batchSize = 16
 	}
-	return AGC{
-		gain:        1.0,
-		targetLevel: targetLevel,
-		alpha:       timeConst,
-		batchSize:   batchSize,
-	}
-}
-
-// SetSampleRate sets the sample rate for AGC time constant calculation.
-func (a *AGC) SetSampleRate(sampleRate float32) {
-	// Update alpha based on sample rate
-	alpha := a.alpha * sampleRate
+	// Calculate alpha based on time constant and sample rate
+	alpha := timeConst * sampleRate
 	if alpha > 1.0 {
 		alpha = 1.0
 	}
-	a.alpha = alpha
+	return AGC{
+		powerTracker: NewPowerTracker[complex64](alpha),
+		gain:         1.0,
+		targetLevel:  targetLevel,
+		targetPower:  targetLevel * targetLevel, // Power is magnitude squared
+		alpha:        alpha,
+		batchSize:    batchSize,
+	}
 }
 
 // Process implements Processor.
@@ -55,12 +60,16 @@ func (a *AGC) Process(dst buffer.Writer[complex64], src buffer.Reader[complex64]
 			iVal := float32(real(sample))
 			qVal := float32(imag(sample))
 
-			// Measure magnitude
-			mag := math32.Hypot(iVal, qVal)
+			// Calculate power (magnitude squared) and update tracker
+			power := iVal*iVal + qVal*qVal
+			a.powerTracker.UpdatePower(power)
 
-			// Update gain based on magnitude
-			if mag > 1e-6 {
-				desiredGain := a.targetLevel / mag
+			// Calculate gain from tracked power (EMA)
+			// Gain = sqrt(targetPower / trackedPower) = targetLevel / sqrt(trackedPower)
+			trackedPower := a.powerTracker.EMA()
+			if trackedPower > 1e-12 {
+				desiredGain := math32.Sqrt(a.targetPower / trackedPower)
+				// Apply EMA smoothing to gain updates
 				a.gain = a.gain*(1.0-a.alpha) + desiredGain*a.alpha
 
 				// Limit gain range to prevent instability
@@ -79,6 +88,6 @@ func (a *AGC) Process(dst buffer.Writer[complex64], src buffer.Reader[complex64]
 
 // Reset clears the internal state.
 func (a *AGC) Reset() {
+	a.powerTracker.Reset()
 	a.gain = 1.0
 }
-

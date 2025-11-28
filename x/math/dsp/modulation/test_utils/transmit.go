@@ -1,11 +1,21 @@
 package test_utils
 
 import (
+	"fmt"
+
 	"github.com/chewxy/math32"
 	"github.com/itohio/EasyRobot/x/buffer"
 	"github.com/itohio/EasyRobot/x/chain"
 	"github.com/itohio/EasyRobot/x/math/dsp"
+	"github.com/itohio/EasyRobot/x/math/dsp/modulation"
 )
+
+// InspectTransmitter is a callback function called after processing each packet.
+// It receives:
+//   - startBufferIndex, endBufferIndex: byte indices in the input bits buffer
+//   - startSampleIndex, endSampleIndex: sample indices in the output samples buffer
+//   - transmitter: the transmitter interface for accessing stats
+type InspectTransmitter func(startBufferIndex, endBufferIndex int, startSampleIndex, endSampleIndex int, transmitter modulation.Transmitter)
 
 // TransmitOptions configures the Transmit function behavior
 type TransmitOptions struct {
@@ -13,6 +23,8 @@ type TransmitOptions struct {
 	IQInterleaved bool
 	// ChunkParts is the number of chunks to split processing into for streaming simulation
 	ChunkParts int
+	// Inspect is an optional callback called after processing each packet for validation/inspection
+	Inspect InspectTransmitter
 }
 
 // DefaultTransmitOptions returns default options
@@ -118,9 +130,15 @@ func Transmit(
 		}
 
 		// Reset bits reader (matching working test pattern: inputBits.Reset())
-		// Don't reset modulator - keep state consistent with estimation
+		// Reset modulator before processing to ensure clean state (preamble should be emitted)
 		if bitsResetter, ok := bits.(interface{ Reset() }); ok {
 			bitsResetter.Reset()
+		}
+
+		// Reset modulator before processing each packet to ensure preamble is emitted
+		// Estimation changes modulator state (preambleSent), so we must reset before processing
+		if resetter, ok := modulator.(interface{ Reset() }); ok {
+			resetter.Reset()
 		}
 
 		// Use three-argument slice view: samples[signalStart:signalStart:signalEnd]
@@ -138,7 +156,14 @@ func Transmit(
 		// the proper region of the buffer with no copying. This matches working test patterns (e.g. mfsk/mpsk).
 		sliceView := samples[signalStart:signalStart:signalEnd]
 		signalBuf := buffer.New(sliceView)
+
+		// Get bits buffer length after reset but before processing
+		bitsLengthAfterReset := bits.Len()
+
 		written := modulator.Process(signalBuf, bits)
+
+		// Get bits buffer length after processing for inspection
+		bitsLengthAfterProcess := bits.Len()
 
 		if written > 0 {
 			// The buffer wrote directly to samples[signalStart:signalStart+written]
@@ -148,6 +173,20 @@ func Transmit(
 			if signalStart+estimatedSize <= len(samples) {
 				// Store signal region view for noise calculation (zero-copy slice view)
 				signalRegions = append(signalRegions, samples[signalStart:signalStart+estimatedSize])
+			}
+
+			// Call inspection callback if provided
+			if opts.Inspect != nil {
+				if tx, ok := modulator.(modulation.Transmitter); ok {
+					// Buffer indices: bytes in the bits buffer
+					// startBufferIndex is 0 (after reset), endBufferIndex is bytes consumed
+					startBufferIndex := 0
+					endBufferIndex := bitsLengthAfterReset - bitsLengthAfterProcess
+					// Sample indices: where the signal was written in the samples buffer
+					startSampleIndex := signalStart
+					endSampleIndex := signalStart + written
+					opts.Inspect(startBufferIndex, endBufferIndex, startSampleIndex, endSampleIndex, tx)
+				}
 			}
 		}
 
@@ -169,6 +208,13 @@ func Transmit(
 			combinedSignal = append(combinedSignal, region...)
 		}
 		addNoiseToBuffer(samples, combinedSignal, snrDb)
+	}
+
+	// Print transmitter statistics if available
+	if tx, ok := modulator.(modulation.Transmitter); ok {
+		params := tx.Params()
+		fmt.Printf("Transmitter Params: BaudRate=%.2f Hz, SampleRate=%.2f Hz, SignalStrength=%.2f dB, Bandwidth=%.2f Hz, CarrierFrequency=%.2f Hz\n",
+			params.BaudRate, params.SampleRate, params.SignalStrength, params.Bandwidth, params.CarrierFrequency)
 	}
 
 	return samples, signalRegions
