@@ -32,6 +32,7 @@ func main() {
 	rootCmd.AddCommand(newRecvDSSSCmd())
 	rootCmd.AddCommand(newRecvMASKCmd())
 	rootCmd.AddCommand(newRecvTCCmd())
+	rootCmd.AddCommand(newRecvChirpCmd())
 	rootCmd.AddCommand(newMixCmd())
 
 	if err := rootCmd.Execute(); err != nil {
