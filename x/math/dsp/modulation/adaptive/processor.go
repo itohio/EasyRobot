@@ -6,19 +6,20 @@ import (
 
 	"github.com/itohio/EasyRobot/x/buffer"
 	"github.com/itohio/EasyRobot/x/chain"
+	"github.com/itohio/EasyRobot/x/math/dsp"
 )
 
 // Factory creates a Processor instance for a given tier.
-type Factory[Dst, Src chain.Sample] func() chain.Processor[Dst, Src]
+type Factory[Dst, Src dsp.Sample] func() chain.Processor[Dst, Src]
 
 // Tier defines a quality threshold and its corresponding factory.
-type Tier[Dst, Src chain.Sample] struct {
+type Tier[Dst, Src dsp.Sample] struct {
 	MinQuality float32
 	Factory    Factory[Dst, Src]
 }
 
 // Processor routes Process/Reset to the best supported tier.
-type Processor[Dst, Src chain.Sample] struct {
+type Processor[Dst, Src dsp.Sample] struct {
 	tiers    []Tier[Dst, Src]
 	current  int
 	quality  float32
@@ -28,7 +29,7 @@ type Processor[Dst, Src chain.Sample] struct {
 // New builds an adaptive processor from tier configurations.
 // Tier configs must be ordered high→low quality. The highest tier meeting
 // initialQuality is selected, otherwise the lowest tier is used.
-func New[Dst, Src chain.Sample](tiers []Tier[Dst, Src], initialQuality float32) (*Processor[Dst, Src], error) {
+func New[Dst, Src dsp.Sample](tiers []Tier[Dst, Src], initialQuality float32) (*Processor[Dst, Src], error) {
 	if len(tiers) == 0 {
 		return nil, fmt.Errorf("adaptive: at least one tier is required")
 	}

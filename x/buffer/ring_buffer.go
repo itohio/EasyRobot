@@ -35,7 +35,7 @@ func NewRing[T any](backing []T) *Ring[T] {
 }
 
 // Write writes elements from p into the ring buffer.
-// Uses bulk copy operations for better performance.
+// Internally uses WriteView() and CommitWrite() for consistency.
 // Returns the number of elements written, which may be less than len(p) if the buffer is full.
 // Thread-safe: uses mutex for synchronization.
 func (rb *Ring[T]) Write(p []T) (n int, err error) {
@@ -43,15 +43,15 @@ func (rb *Ring[T]) Write(p []T) (n int, err error) {
 		return 0, nil
 	}
 
+	rb.mu.Lock()
+	defer rb.mu.Unlock()
+
+	// Get writable views (need to calculate inline since we hold the lock)
 	capacity := cap(rb.buf)
 	if capacity == 0 {
 		return 0, io.ErrShortWrite
 	}
 
-	rb.mu.Lock()
-	defer rb.mu.Unlock()
-
-	// Check available space
 	available := capacity - rb.len
 	if available == 0 {
 		return 0, io.ErrShortWrite
@@ -65,30 +65,30 @@ func (rb *Ring[T]) Write(p []T) (n int, err error) {
 	head := rb.head
 	spaceUntilWrap := capacity - head
 
-	if toWrite <= spaceUntilWrap {
-		// Single contiguous copy
-		copy(rb.buf[head:head+toWrite], p[:toWrite])
-		head += toWrite
-		if head >= capacity {
-			head = 0
-		}
-		rb.head = head
-		rb.len += toWrite
-		return toWrite, nil
+	var totalWritten int
+	remaining := toWrite
+
+	if remaining <= spaceUntilWrap {
+		// Single contiguous write
+		copy(rb.buf[head:head+remaining], p[:remaining])
+		totalWritten = remaining
+	} else {
+		// Two-part write (wraps around)
+		firstPart := spaceUntilWrap
+		secondPart := remaining - firstPart
+		copy(rb.buf[head:], p[:firstPart])
+		copy(rb.buf[:secondPart], p[firstPart:remaining])
+		totalWritten = remaining
 	}
 
-	// Two-part copy (wraps around)
-	firstPart := spaceUntilWrap
-	secondPart := toWrite - firstPart
-	copy(rb.buf[head:], p[:firstPart])
-	copy(rb.buf[:secondPart], p[firstPart:toWrite])
-	rb.head = secondPart
-	rb.len += toWrite
-	return toWrite, nil
+	// Commit the write
+	rb.head = (rb.head + totalWritten) % capacity
+	rb.len += totalWritten
+	return totalWritten, nil
 }
 
 // Read reads elements from the ring buffer into p.
-// Uses bulk copy operations for better performance.
+// Internally uses ReadView() and CommitRead() for consistency.
 // Returns the number of elements read, which may be less than len(p) if the buffer is empty.
 // Returns io.EOF when the buffer is empty or when fewer items are read than requested.
 // Thread-safe: uses mutex for synchronization.
@@ -97,13 +97,13 @@ func (rb *Ring[T]) Read(p []T) (n int, err error) {
 		return 0, nil
 	}
 
+	rb.mu.Lock()
+	defer rb.mu.Unlock()
+
 	capacity := cap(rb.buf)
 	if capacity == 0 {
 		return 0, io.EOF
 	}
-
-	rb.mu.Lock()
-	defer rb.mu.Unlock()
 
 	// Check if buffer is empty
 	if rb.len == 0 {
@@ -115,35 +115,33 @@ func (rb *Ring[T]) Read(p []T) (n int, err error) {
 		toRead = rb.len
 	}
 
+	// Get readable views and copy from them (inline since we hold the lock)
 	tail := rb.tail
 	availableUntilWrap := capacity - tail
 
+	var totalRead int
+
 	if toRead <= availableUntilWrap {
-		// Single contiguous copy
+		// Single contiguous read
 		copy(p[:toRead], rb.buf[tail:tail+toRead])
-		tail += toRead
-		if tail >= capacity {
-			tail = 0
-		}
-		rb.tail = tail
-		rb.len -= toRead
-		if toRead < len(p) {
-			return toRead, io.EOF
-		}
-		return toRead, nil
+		totalRead = toRead
+	} else {
+		// Two-part read (wraps around)
+		firstPart := availableUntilWrap
+		secondPart := toRead - firstPart
+		copy(p[:firstPart], rb.buf[tail:])
+		copy(p[firstPart:toRead], rb.buf[:secondPart])
+		totalRead = toRead
 	}
 
-	// Two-part copy (wraps around)
-	firstPart := availableUntilWrap
-	secondPart := toRead - firstPart
-	copy(p[:firstPart], rb.buf[tail:])
-	copy(p[firstPart:toRead], rb.buf[:secondPart])
-	rb.tail = secondPart
-	rb.len -= toRead
-	if toRead < len(p) {
-		return toRead, io.EOF
+	// Commit the read
+	rb.tail = (rb.tail + totalRead) % capacity
+	rb.len -= totalRead
+
+	if totalRead < len(p) {
+		return totalRead, io.EOF
 	}
-	return toRead, nil
+	return totalRead, nil
 }
 
 // WriteItem writes a single element to the ring buffer.
@@ -343,8 +341,135 @@ func (rb *Ring[T]) Init(numBits, bufLen, bufCap int) error {
 	return nil
 }
 
-// Ensure RingBuffer[byte] implements io.Reader and io.Writer
+// ReadView returns a list of slices pointing to portions of the buffer that are populated and readable.
+// The slices point to data from the read position (tail) up to the write position (head),
+// accounting for wraparound if necessary. Returns at most 2 slices (if wraparound occurs).
+// The slices are valid only until the next buffer modification.
+// Thread-safe: uses read lock.
+func (rb *Ring[T]) ReadView() [][]T {
+	rb.mu.RLock()
+	defer rb.mu.RUnlock()
+
+	capacity := cap(rb.buf)
+	if capacity == 0 || rb.len == 0 {
+		return nil
+	}
+
+	tail := rb.tail
+	availableUntilWrap := capacity - tail
+
+	if rb.len <= availableUntilWrap {
+		// Single contiguous segment (no wraparound)
+		return [][]T{rb.buf[tail : tail+rb.len]}
+	}
+
+	// Two segments (wraps around)
+	firstPart := rb.buf[tail:capacity]
+	secondPart := rb.buf[:rb.len-availableUntilWrap]
+	return [][]T{firstPart, secondPart}
+}
+
+// WriteView returns a list of slices pointing to portions of the buffer that are not populated and writable.
+// The slices point to space from the write position (head) up to the read position (tail),
+// accounting for wraparound if necessary. Returns at most 2 slices (if wraparound occurs).
+// The slices are valid only until the next buffer modification.
+// Thread-safe: uses read lock.
+func (rb *Ring[T]) WriteView() [][]T {
+	rb.mu.RLock()
+	defer rb.mu.RUnlock()
+
+	capacity := cap(rb.buf)
+	if capacity == 0 {
+		return nil
+	}
+
+	available := capacity - rb.len
+	if available == 0 {
+		return nil
+	}
+
+	head := rb.head
+	spaceUntilWrap := capacity - head
+
+	if available <= spaceUntilWrap {
+		// Single contiguous segment (no wraparound)
+		return [][]T{rb.buf[head : head+available]}
+	}
+
+	// Two segments (wraps around)
+	firstPart := rb.buf[head:capacity]
+	secondPart := rb.buf[:available-spaceUntilWrap]
+	return [][]T{firstPart, secondPart}
+}
+
+// CommitRead advances the read pointer by n elements.
+// Returns an error if trying to advance beyond available data.
+// Thread-safe: uses mutex for synchronization.
+func (rb *Ring[T]) CommitRead(n int) error {
+	if n <= 0 {
+		return nil
+	}
+
+	capacity := cap(rb.buf)
+	if capacity == 0 {
+		return io.EOF
+	}
+
+	rb.mu.Lock()
+	defer rb.mu.Unlock()
+
+	// Check if buffer is empty
+	if rb.len == 0 {
+		return io.EOF
+	}
+
+	// Check if trying to advance beyond available data
+	if n > rb.len {
+		return io.EOF
+	}
+
+	// Advance tail pointer
+	rb.tail = (rb.tail + n) % capacity
+	rb.len -= n
+	return nil
+}
+
+// CommitWrite advances the write pointer by n elements.
+// Returns an error if trying to advance beyond available space.
+// Thread-safe: uses mutex for synchronization.
+func (rb *Ring[T]) CommitWrite(n int) error {
+	if n <= 0 {
+		return nil
+	}
+
+	capacity := cap(rb.buf)
+	if capacity == 0 {
+		return io.ErrShortWrite
+	}
+
+	rb.mu.Lock()
+	defer rb.mu.Unlock()
+
+	available := capacity - rb.len
+	if available == 0 {
+		return io.ErrShortWrite
+	}
+
+	// Check if trying to advance beyond available space
+	if n > available {
+		return io.ErrShortWrite
+	}
+
+	// Advance head pointer
+	rb.head = (rb.head + n) % capacity
+	rb.len += n
+	return nil
+}
+
+// Ensure RingBuffer[byte] implements io.Reader, io.Writer, ViewReader, and ViewWriter
 var (
-	_ io.Reader = (*Ring[byte])(nil)
-	_ io.Writer = (*Ring[byte])(nil)
+	_ io.Reader        = (*Ring[byte])(nil)
+	_ io.Writer        = (*Ring[byte])(nil)
+	_ ViewReader[byte] = (*Ring[byte])(nil)
+	_ ViewWriter[byte] = (*Ring[byte])(nil)
 )

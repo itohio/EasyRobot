@@ -3,3 +3,8 @@
 // and measurement functions optimized for fp32 operations.
 package dsp
 
+import "github.com/itohio/EasyRobot/x/types"
+
+type Sample interface {
+	types.Number | types.Unsigned
+}

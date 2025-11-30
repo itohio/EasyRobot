@@ -27,7 +27,7 @@ import "github.com/itohio/EasyRobot/x/buffer"
 //       return buffer.NewBitsRing(make([]byte, 0, cap))
 //   }
 //   chain := New[byte, *buffer.BitsRing[byte]](factory, processor1, processor2, processor3)
-type Chain[T Sample, BUF Streamer[T]] struct {
+type Chain[T any, BUF Streamer[T]] struct {
 	processors    []Processor[T, T]
 	buffers       []BUF         // Intermediate buffers for chaining (user-specified type)
 	bufferFactory func(int) BUF // Factory function to create new buffers with given capacity
@@ -57,7 +57,7 @@ type Chain[T Sample, BUF Streamer[T]] struct {
 //
 // Returns:
 //   - Chain ready for use
-func New[T Sample, BUF Streamer[T]](
+func New[T any, BUF Streamer[T]](
 	bufferFactory func(int) BUF,
 	processors ...Processor[T, T],
 ) Chain[T, BUF] {

@@ -53,6 +53,36 @@ type Viewer[T any] interface {
 	Items() []T
 }
 
+// ViewReader is an interface for zero-copy read operations using views.
+// Useful for in-place processing scenarios where you want to access the backing array directly.
+type ViewReader[T any] interface {
+	// ReadView returns a list of slices pointing to portions of the buffer that are populated
+	// and readable. The slices point to data from the read position up to the write position,
+	// accounting for wraparound if necessary.
+	// The slices are valid only until the next buffer modification.
+	// Returns nil if no data is available.
+	ReadView() [][]T
+	
+	// CommitRead advances the read pointer by n elements.
+	// Returns an error if trying to advance beyond available data.
+	CommitRead(n int) error
+}
+
+// ViewWriter is an interface for zero-copy write operations using views.
+// Useful for in-place processing scenarios where you want to access the backing array directly.
+type ViewWriter[T any] interface {
+	// WriteView returns a list of slices pointing to portions of the buffer that are not populated
+	// and writable. The slices point to space from the write position up to the read position,
+	// accounting for wraparound if necessary.
+	// The slices are valid only until the next buffer modification.
+	// Returns nil if no space is available.
+	WriteView() [][]T
+	
+	// CommitWrite advances the write pointer by n elements.
+	// Returns an error if trying to advance beyond available space.
+	CommitWrite(n int) error
+}
+
 var _ Writer[byte] = (*Values[byte])(nil)
 var _ Reader[byte] = (*Values[byte])(nil)
 var _ Initializer = (*Values[byte])(nil)

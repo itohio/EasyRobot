@@ -32,7 +32,7 @@ import "github.com/itohio/EasyRobot/x/buffer"
 //       return buffer.NewBitsRing(make([]byte, 0, cap))
 //   }
 //   adapter := NewAdapter[float32, byte, byte, *buffer.BitsRing[byte]](factory, dstProcessor, srcProcessor)
-type Adapter[DST, MID, SRC Sample, BUF Streamer[MID]] struct {
+type Adapter[DST, MID, SRC any, BUF Streamer[MID]] struct {
 	src           Processor[MID, SRC] // First processor: SRC -> MID
 	dst           Processor[DST, MID] // Second processor: MID -> DST
 	buf           BUF                 // Intermediate buffer (user-specified type)
@@ -63,7 +63,7 @@ type Adapter[DST, MID, SRC Sample, BUF Streamer[MID]] struct {
 //
 // Returns:
 //   - Adapter ready for use
-func NewAdapter[DST, MID, SRC Sample, BUF Streamer[MID]](
+func NewAdapter[DST, MID, SRC any, BUF Streamer[MID]](
 	bufferFactory func(int) BUF,
 	dst Processor[DST, MID],
 	src Processor[MID, SRC],
