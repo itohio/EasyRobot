@@ -9,13 +9,11 @@ import (
 	"strconv"
 	"syscall"
 
-	"github.com/itohio/EasyRobot/cmd/calibrate/corners"
 	"github.com/itohio/EasyRobot/cmd/display/destination"
 	"github.com/itohio/EasyRobot/cmd/display/source"
 	"github.com/itohio/EasyRobot/x/marshaller/gocv"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"github.com/spf13/cobra"
-	cv "gocv.io/x/gocv"
 )
 
 func newCamStereoCmd() *cobra.Command {
@@ -299,4 +297,3 @@ func (s *baseSource) Close() error {
 	s.started = false
 	return nil
 }
-

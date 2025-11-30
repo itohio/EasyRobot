@@ -11,6 +11,7 @@ import (
 	"github.com/itohio/EasyRobot/cmd/display/destination"
 	"github.com/itohio/EasyRobot/cmd/display/source"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
+	"github.com/itohio/EasyRobot/x/math/tensor"
 	cv "gocv.io/x/gocv"
 )
 
@@ -215,6 +216,10 @@ func testMonoCalibration(ctx context.Context, src source.Source, dests []destina
 	fmt.Printf("Samples used: %d\n", calibration.NumSamples)
 	fmt.Printf("Reprojection error: %.4f\n", calibration.ReprojectionError)
 
+	// Preallocate mats for reuse
+	emptyMat := cv.NewMat()
+	defer emptyMat.Close()
+
 	// Process frames and undistort
 	for {
 		select {
@@ -245,32 +250,73 @@ func testMonoCalibration(ctx context.Context, src source.Source, dests []destina
 			}
 			continue
 		}
-		defer mat.Close()
 
 		// Undistort
 		undistorted := cv.NewMat()
-		defer undistorted.Close()
-		emptyMat := cv.NewMat()
-		defer emptyMat.Close()
 		if err := cv.Undistort(mat, &undistorted, calibration.CameraMatrix, calibration.DistortionCoeffs, emptyMat); err != nil {
+			mat.Close()
+			if releaser, ok := frame.Tensors[0].(types.Releaser); ok {
+				releaser.Release()
+			}
 			continue
 		}
+
+		mat.Close()
 
 		// Convert back to tensor
 		undistortedTensor, err := matToTensor(undistorted)
 		if err != nil {
+			undistorted.Close()
+			if releaser, ok := frame.Tensors[0].(types.Releaser); ok {
+				releaser.Release()
+			}
 			continue
 		}
 
-		// Create display frame
-		displayFrame := types.Frame{
-			Tensors:  []types.Tensor{undistortedTensor},
-			Metadata: frame.Metadata,
+		// Release original tensor
+		if releaser, ok := frame.Tensors[0].(types.Releaser); ok {
+			releaser.Release()
 		}
 
-		// Send to all destinations
-		for _, dest := range dests {
-			if err := dest.AddFrame(displayFrame); err != nil {
+		// Use SharedTensor for multiple destinations
+		if len(dests) > 1 {
+			sharedTensor := tensor.WithRefcount(undistortedTensor)
+
+			// Create frame with shared tensor for first destination
+			sharedFrame := types.Frame{
+				Tensors:  []types.Tensor{sharedTensor},
+				Metadata: frame.Metadata,
+			}
+
+			// Create view frames for remaining destinations
+			numViews := len(dests) - 1
+			viewFrames := make([]types.Frame, numViews)
+			for i := range numViews {
+				viewFrames[i] = types.Frame{
+					Tensors:  []types.Tensor{sharedTensor.View()},
+					Metadata: frame.Metadata,
+				}
+			}
+
+			// Send to first destination
+			if err := dests[0].AddFrame(sharedFrame); err != nil {
+				_ = err // Ignore destination errors
+			}
+
+			// Send views to remaining destinations
+			for i := 1; i < len(dests); i++ {
+				if err := dests[i].AddFrame(viewFrames[i-1]); err != nil {
+					_ = err // Ignore destination errors
+				}
+			}
+		} else if len(dests) == 1 {
+			// Single destination
+			displayFrame := types.Frame{
+				Tensors:  []types.Tensor{undistortedTensor},
+				Metadata: frame.Metadata,
+			}
+
+			if err := dests[0].AddFrame(displayFrame); err != nil {
 				_ = err // Ignore destination errors
 			}
 		}

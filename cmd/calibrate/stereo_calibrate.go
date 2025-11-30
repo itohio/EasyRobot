@@ -12,6 +12,7 @@ import (
 	"github.com/itohio/EasyRobot/cmd/display/destination"
 	"github.com/itohio/EasyRobot/cmd/display/source"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
+	"github.com/itohio/EasyRobot/x/math/tensor"
 	cv "gocv.io/x/gocv"
 )
 
@@ -337,46 +338,107 @@ func calibrateStereoCamera(ctx context.Context, leftSrc, rightSrc source.Source,
 		// Convert tensors to Mat
 		leftMat, err := tensorToMat(leftFrame.Tensors[0])
 		if err != nil {
+			if releaser, ok := leftFrame.Tensors[0].(types.Releaser); ok {
+				releaser.Release()
+			}
+			if releaser, ok := rightFrame.Tensors[0].(types.Releaser); ok {
+				releaser.Release()
+			}
 			continue
 		}
-		defer leftMat.Close()
 
 		rightMat, err := tensorToMat(rightFrame.Tensors[0])
 		if err != nil {
+			leftMat.Close()
+			if releaser, ok := leftFrame.Tensors[0].(types.Releaser); ok {
+				releaser.Release()
+			}
+			if releaser, ok := rightFrame.Tensors[0].(types.Releaser); ok {
+				releaser.Release()
+			}
 			continue
 		}
-		defer rightMat.Close()
 
 		// Process stereo frame for calibration
 		found, err := processor.ProcessStereoFrame(leftMat, rightMat, leftDetector, rightDetector)
 		if err != nil {
+			leftMat.Close()
+			rightMat.Close()
+			if releaser, ok := leftFrame.Tensors[0].(types.Releaser); ok {
+				releaser.Release()
+			}
+			if releaser, ok := rightFrame.Tensors[0].(types.Releaser); ok {
+				releaser.Release()
+			}
 			continue
 		}
 
 		// Draw calibration visualization
 		leftVis := leftMat.Clone()
-		defer leftVis.Close()
 		rightVis := rightMat.Clone()
-		defer rightVis.Close()
 		processor.DrawCorners(leftVis, rightVis, found)
+
+		leftMat.Close()
+		rightMat.Close()
+
+		// Release original tensors
+		if releaser, ok := leftFrame.Tensors[0].(types.Releaser); ok {
+			releaser.Release()
+		}
+		if releaser, ok := rightFrame.Tensors[0].(types.Releaser); ok {
+			releaser.Release()
+		}
 
 		// Combine frames side-by-side for display
 		combinedMat := combineFramesSideBySide(leftVis, rightVis)
-		defer combinedMat.Close()
+		leftVis.Close()
+		rightVis.Close()
+
 		combinedTensor, err := matToTensor(combinedMat)
 		if err != nil {
+			combinedMat.Close()
 			continue
 		}
 
-		// Create display frame
-		displayFrame := types.Frame{
-			Tensors:  []types.Tensor{combinedTensor},
-			Metadata: leftFrame.Metadata,
-		}
+		// Use SharedTensor for multiple destinations
+		if len(dests) > 1 {
+			sharedTensor := tensor.WithRefcount(combinedTensor)
 
-		// Send to all destinations
-		for _, dest := range dests {
-			if err := dest.AddFrame(displayFrame); err != nil {
+			// Create frame with shared tensor for first destination
+			sharedFrame := types.Frame{
+				Tensors:  []types.Tensor{sharedTensor},
+				Metadata: leftFrame.Metadata,
+			}
+
+			// Create view frames for remaining destinations
+			numViews := len(dests) - 1
+			viewFrames := make([]types.Frame, numViews)
+			for i := range numViews {
+				viewFrames[i] = types.Frame{
+					Tensors:  []types.Tensor{sharedTensor.View()},
+					Metadata: leftFrame.Metadata,
+				}
+			}
+
+			// Send to first destination
+			if err := dests[0].AddFrame(sharedFrame); err != nil {
+				_ = err // Ignore destination errors
+			}
+
+			// Send views to remaining destinations
+			for i := 1; i < len(dests); i++ {
+				if err := dests[i].AddFrame(viewFrames[i-1]); err != nil {
+					_ = err // Ignore destination errors
+				}
+			}
+		} else if len(dests) == 1 {
+			// Single destination
+			displayFrame := types.Frame{
+				Tensors:  []types.Tensor{combinedTensor},
+				Metadata: leftFrame.Metadata,
+			}
+
+			if err := dests[0].AddFrame(displayFrame); err != nil {
 				_ = err // Ignore destination errors
 			}
 		}
@@ -456,41 +518,99 @@ func testStereoCalibration(ctx context.Context, leftSrc, rightSrc source.Source,
 		// Convert tensors to Mat
 		leftMat, err := tensorToMat(leftFrame.Tensors[0])
 		if err != nil {
+			if releaser, ok := leftFrame.Tensors[0].(types.Releaser); ok {
+				releaser.Release()
+			}
+			if releaser, ok := rightFrame.Tensors[0].(types.Releaser); ok {
+				releaser.Release()
+			}
 			continue
 		}
-		defer leftMat.Close()
 
 		rightMat, err := tensorToMat(rightFrame.Tensors[0])
 		if err != nil {
+			leftMat.Close()
+			if releaser, ok := leftFrame.Tensors[0].(types.Releaser); ok {
+				releaser.Release()
+			}
+			if releaser, ok := rightFrame.Tensors[0].(types.Releaser); ok {
+				releaser.Release()
+			}
 			continue
 		}
-		defer rightMat.Close()
 
 		// Rectify frames
 		leftRect, rightRect, err := calibration.Rectify(leftMat, rightMat)
+		leftMat.Close()
+		rightMat.Close()
 		if err != nil {
+			if releaser, ok := leftFrame.Tensors[0].(types.Releaser); ok {
+				releaser.Release()
+			}
+			if releaser, ok := rightFrame.Tensors[0].(types.Releaser); ok {
+				releaser.Release()
+			}
 			continue
 		}
-		defer leftRect.Close()
-		defer rightRect.Close()
+
+		// Release original tensors
+		if releaser, ok := leftFrame.Tensors[0].(types.Releaser); ok {
+			releaser.Release()
+		}
+		if releaser, ok := rightFrame.Tensors[0].(types.Releaser); ok {
+			releaser.Release()
+		}
 
 		// Combine frames side-by-side for display
 		combinedMat := combineFramesSideBySide(leftRect, rightRect)
-		defer combinedMat.Close()
+		leftRect.Close()
+		rightRect.Close()
+
 		combinedTensor, err := matToTensor(combinedMat)
 		if err != nil {
+			combinedMat.Close()
 			continue
 		}
 
-		// Create display frame
-		displayFrame := types.Frame{
-			Tensors:  []types.Tensor{combinedTensor},
-			Metadata: leftFrame.Metadata,
-		}
+		// Use SharedTensor for multiple destinations
+		if len(dests) > 1 {
+			sharedTensor := tensor.WithRefcount(combinedTensor)
 
-		// Send to all destinations
-		for _, dest := range dests {
-			if err := dest.AddFrame(displayFrame); err != nil {
+			// Create frame with shared tensor for first destination
+			sharedFrame := types.Frame{
+				Tensors:  []types.Tensor{sharedTensor},
+				Metadata: leftFrame.Metadata,
+			}
+
+			// Create view frames for remaining destinations
+			numViews := len(dests) - 1
+			viewFrames := make([]types.Frame, numViews)
+			for i := range numViews {
+				viewFrames[i] = types.Frame{
+					Tensors:  []types.Tensor{sharedTensor.View()},
+					Metadata: leftFrame.Metadata,
+				}
+			}
+
+			// Send to first destination
+			if err := dests[0].AddFrame(sharedFrame); err != nil {
+				_ = err // Ignore destination errors
+			}
+
+			// Send views to remaining destinations
+			for i := 1; i < len(dests); i++ {
+				if err := dests[i].AddFrame(viewFrames[i-1]); err != nil {
+					_ = err // Ignore destination errors
+				}
+			}
+		} else if len(dests) == 1 {
+			// Single destination
+			displayFrame := types.Frame{
+				Tensors:  []types.Tensor{combinedTensor},
+				Metadata: leftFrame.Metadata,
+			}
+
+			if err := dests[0].AddFrame(displayFrame); err != nil {
 				_ = err // Ignore destination errors
 			}
 		}

@@ -40,6 +40,7 @@ func matToTensor(mat cv.Mat) (types.Tensor, error) {
 }
 
 // combineFramesSideBySide combines two frames side-by-side
+// Returns a new Mat that the caller must close
 func combineFramesSideBySide(left, right cv.Mat) cv.Mat {
 	leftSize := left.Size()
 	rightSize := right.Size()
@@ -57,7 +58,6 @@ func combineFramesSideBySide(left, right cv.Mat) cv.Mat {
 	}
 
 	combined := cv.NewMatWithSize(combinedHeight, combinedWidth, left.Type())
-	defer combined.Close()
 
 	// Copy left frame
 	leftROI := combined.Region(image.Rect(0, 0, leftWidth, leftHeight))
@@ -67,6 +67,6 @@ func combineFramesSideBySide(left, right cv.Mat) cv.Mat {
 	rightROI := combined.Region(image.Rect(leftWidth, 0, combinedWidth, rightHeight))
 	cv.Resize(right, &rightROI, image.Point{X: rightWidth, Y: rightHeight}, 0, 0, cv.InterpolationLinear)
 
-	return combined.Clone()
+	return combined
 }
 
