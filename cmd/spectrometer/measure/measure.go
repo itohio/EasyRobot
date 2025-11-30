@@ -239,7 +239,7 @@ func measureAveraged(ctx context.Context, acq acquirer.Acquirer, numReadings int
 
 	// Perform all measurements
 	slog.Info("Performing measurements", "count", numReadings)
-	for i := 0; i < numReadings; i++ {
+	for i := range numReadings {
 		if err := acq.Measure(ctx, readings[i]); err != nil {
 			return colorscience.SPD{}, fmt.Errorf("measurement %d/%d failed: %w", i+1, numReadings, err)
 		}
@@ -251,15 +251,15 @@ func measureAveraged(ctx context.Context, acq acquirer.Acquirer, numReadings int
 	averagedValues := vec.New(numWl)
 
 	// Sum all values
-	for i := 0; i < numReadings; i++ {
+	for i := range numReadings {
 		values := readings[i].Row(1).(vec.Vector)
-		for j := 0; j < numWl; j++ {
+		for j := range numWl {
 			averagedValues[j] += values[j]
 		}
 	}
 
 	// Divide by count to get average
-	for j := 0; j < numWl; j++ {
+	for j := range numWl {
 		averagedValues[j] /= float32(numReadings)
 	}
 
@@ -325,7 +325,8 @@ func exportCSV(ctx context.Context, w *os.File, spd colorscience.SPD) error {
 	}
 
 	// Write data rows
-	for i := 0; i < wavelengths.Len(); i++ {
+	wlLen := wavelengths.Len()
+	for i := range wlLen {
 		row := []string{
 			fmt.Sprintf("%.3f", wavelengths[i]),
 			fmt.Sprintf("%.6f", values[i]),
@@ -380,9 +381,10 @@ func spdToMeasurement(spd colorscience.SPD) *spectrometer.SpectrumMeasurement {
 	}
 
 	// Flatten row-major: [wavelengths..., values...]
-	for i := 0; i < wavelengths.Len(); i++ {
-		protoMatrix.Data[i] = wavelengths[i]              // Row 0
-		protoMatrix.Data[wavelengths.Len()+i] = values[i] // Row 1
+	wlLen := wavelengths.Len()
+	for i := range wlLen {
+		protoMatrix.Data[i] = wavelengths[i]  // Row 0
+		protoMatrix.Data[wlLen+i] = values[i] // Row 1
 	}
 
 	// Create measurement metadata
@@ -418,7 +420,8 @@ func printMeasurementSummary(spd colorscience.SPD) {
 	// Find min/max intensity
 	minVal := values[0]
 	maxVal := values[0]
-	for i := 1; i < values.Len(); i++ {
+	valLen := values.Len()
+	for i := 1; i < valLen; i++ {
 		if values[i] < minVal {
 			minVal = values[i]
 		}
@@ -429,7 +432,12 @@ func printMeasurementSummary(spd colorscience.SPD) {
 	fmt.Printf("  Intensity range: %.3f - %.3f\n", minVal, maxVal)
 	fmt.Printf("\nFirst 5 points:\n")
 	fmt.Printf("  Wavelength (nm)  Intensity\n")
-	for i := 0; i < 5 && i < wavelengths.Len(); i++ {
+	wlLen := wavelengths.Len()
+	first5 := 5
+	if wlLen < 5 {
+		first5 = wlLen
+	}
+	for i := range first5 {
 		fmt.Printf("  %12.1f  %10.3f\n", wavelengths[i], values[i])
 	}
 	if wavelengths.Len() > 5 {

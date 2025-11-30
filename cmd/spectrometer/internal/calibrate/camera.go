@@ -137,7 +137,7 @@ func rectangleToSpectrumWindow(rect *image.Rectangle, angle float64, flipped boo
 			Width:  int32(rect.Dx()),
 			Height: int32(rect.Dy()),
 		},
-		RotationDeg: angle, // Store actual rotation angle
+		RotationDeg: angle,   // Store actual rotation angle
 		Flipped:     flipped, // Store flip state
 	}
 }
@@ -236,6 +236,7 @@ func RunCameraCalibration(ctx context.Context, cmd *cobra.Command) error {
 	// Get config flags
 	configPath, _ := cmd.Flags().GetString("config")
 	configOutputPath, _ := cmd.Flags().GetString("config-output")
+	targetName, _ := cmd.Flags().GetString("target")
 
 	// Load config if provided
 	var cfg *spectrometer.SpectrometerConfiguration
@@ -375,7 +376,7 @@ func RunCameraCalibration(ctx context.Context, cmd *cobra.Command) error {
 		title,
 		width,
 		height,
-		gocv.WithCancel(cancel),      // Cancel function called when handler returns false
+		gocv.WithCancel(cancel), // Cancel function called when handler returns false
 		gocv.WithOnMouse(onMouse),
 		gocv.WithOnKey(onKey),
 		gocv.WithOnClose(onClose),
@@ -390,10 +391,10 @@ func RunCameraCalibration(ctx context.Context, cmd *cobra.Command) error {
 	spectrumDisplaySink, err := gocv.NewDisplaySinkFromOptions(
 		calibCtx,
 		"Spectrum",
-		800, // Default width for spectrum window
-		600, // Default height for spectrum window
+		800,                     // Default width for spectrum window
+		600,                     // Default height for spectrum window
 		gocv.WithCancel(cancel), // Same cancel function
-		types.WithRelease(),      // Release tensors after displaying
+		types.WithRelease(),     // Release tensors after displaying
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create spectrum display sink: %w", err)
@@ -480,22 +481,25 @@ func RunCameraCalibration(ctx context.Context, cmd *cobra.Command) error {
 				} else {
 					// Create spectrum visualization
 					spectrumMat := cv.NewMatWithSize(600, 800, cv.MatTypeCV8UC3)
-					defer spectrumMat.Close()
 
 					// Render spectrum with peaks and calibration targets
 					renderer := render.NewRenderer()
-					// Get calibration target (default to Hg for now)
-					target := GetCalibrationTarget("hg")
+					// Get calibration target from flag
+					target := GetCalibrationTarget(targetName)
 					if err := renderer.RenderSpectrumWithTargets(calibCtx, spectrumMat, spd, cfg.Display, target.Wavelengths, true); err != nil {
+						spectrumMat.Close()
 						slog.Debug("Failed to render spectrum", "error", err)
 					} else {
-						// Create frame with spectrum
+						// Create frame with spectrum (tensor will adopt the mat)
 						spectrumFrame := createFrameFromMat(&spectrumMat, frameIndex)
 
 						// Display the spectrum frame
 						if err := spectrumDisplaySink.WriteFrame(spectrumFrame); err != nil {
+							spectrumMat.Close()
 							slog.Debug("Failed to display spectrum frame", "error", err)
 						}
+						// Mat is adopted by tensor, so we don't close it here
+						// Tensor lifecycle is managed by display sink with WithRelease() option
 					}
 				}
 			}
@@ -567,7 +571,8 @@ func detectStripBoundingBox(img *cv.Mat) (*image.Rectangle, float64, error) {
 	var bestCandidate *RotatedBoundingBox
 	maxScore := 0.0
 
-	for i := 0; i < contours.Size(); i++ {
+	contourSize := contours.Size()
+	for i := range contourSize {
 		contour := contours.At(i)
 
 		// Get minimum area rotated rectangle
@@ -810,11 +815,13 @@ func drawBoundingBox(img *cv.Mat, bbox *image.Rectangle) {
 }
 
 // createFrameFromMat creates a types.Frame from gocv.Mat
+// The tensor adopts the mat, so the caller should not close it after calling this function.
+// The tensor lifecycle is managed by the destination with WithRelease() option.
 func createFrameFromMat(mat *cv.Mat, index int) types.Frame {
-	// Convert Mat to tensor (share the mat, don't adopt since we'll close it separately)
-	tensor, err := tensorgocv.FromMat(*mat, tensorgocv.WithSharedMat())
+	// Convert Mat to tensor (tensor adopts the mat, caller should not close it)
+	tensor, err := tensorgocv.FromMat(*mat, tensorgocv.WithAdoptedMat())
 	if err != nil {
-		// If conversion fails, create frame with empty tensors
+		// If conversion fails, caller should close the mat
 		return types.Frame{
 			Index:   index,
 			Tensors: []types.Tensor{},

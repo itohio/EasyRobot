@@ -105,7 +105,7 @@ func (r *renderer) RenderSpectrum(ctx context.Context, img gocv.Mat, spd colorsc
 	// Draw grid
 	gridColor := color.RGBA{100, 100, 100, 255}
 	numGridLines := 5
-	for i := 0; i <= numGridLines; i++ {
+	for i := range numGridLines + 1 {
 		// Horizontal grid lines (wavelength)
 		y := plotY + (plotHeight*i)/numGridLines
 		gocv.Line(&img, image.Pt(plotX, y), image.Pt(plotX+plotWidth, y), gridColor, 1)
@@ -121,7 +121,7 @@ func (r *renderer) RenderSpectrum(ctx context.Context, img gocv.Mat, spd colorsc
 	thickness := 1
 
 	// X-axis labels (wavelength)
-	for i := 0; i <= numGridLines; i++ {
+	for i := range numGridLines + 1 {
 		wl := wlMin + (wlMax-wlMin)*float32(i)/float32(numGridLines)
 		x := plotX + (plotWidth*i)/numGridLines
 		label := fmt.Sprintf("%.0f", wl)
@@ -129,7 +129,7 @@ func (r *renderer) RenderSpectrum(ctx context.Context, img gocv.Mat, spd colorsc
 	}
 
 	// Y-axis labels (intensity)
-	for i := 0; i <= numGridLines; i++ {
+	for i := range numGridLines + 1 {
 		val := valMax - (valMax-valMin)*float32(i)/float32(numGridLines)
 		y := plotY + (plotHeight*i)/numGridLines
 		label := fmt.Sprintf("%.2f", val)
@@ -137,8 +137,9 @@ func (r *renderer) RenderSpectrum(ctx context.Context, img gocv.Mat, spd colorsc
 	}
 
 	// Draw spectrum line with color-coded segments
-	if wavelengths.Len() > 1 {
-		for i := 0; i < wavelengths.Len()-1; i++ {
+	wlLen := wavelengths.Len()
+	if wlLen > 1 {
+		for i := range wlLen - 1 {
 			wl0 := wavelengths[i]
 			wl1 := wavelengths[i+1]
 			val0 := values[i]
@@ -204,7 +205,8 @@ func (r *renderer) RenderSpectrumWithTargets(ctx context.Context, img gocv.Mat, 
 	valMin := values[0]
 	valMax := values[0]
 
-	for i := 0; i < wavelengths.Len(); i++ {
+	wlLen := wavelengths.Len()
+	for i := range wlLen {
 		if wavelengths[i] < wlMin {
 			wlMin = wavelengths[i]
 		}
@@ -226,22 +228,22 @@ func (r *renderer) RenderSpectrumWithTargets(ctx context.Context, img gocv.Mat, 
 
 	// Draw detected peaks if requested
 	if showPeaks {
-		peaks := spd.Peaks(0, 0) // Detect all peaks (no threshold, no prominence filter)
+		peaks := spd.Peaks(0, 0)                  // Detect all peaks (no threshold, no prominence filter)
 		peakColor := color.RGBA{255, 255, 0, 255} // Yellow for peaks
 		fontScale := 0.4
 		thickness := 1
 
 		for _, peak := range peaks {
-				// Draw vertical line at peak wavelength
-				x := plotX + int((peak.Wavelength-wlMin)/(wlMax-wlMin)*float32(plotWidth))
-				if x >= plotX && x <= plotX+plotWidth {
-					// Draw line from bottom to top
-					gocv.Line(&img, image.Pt(x, plotY), image.Pt(x, plotY+plotHeight), peakColor, 1)
+			// Draw vertical line at peak wavelength
+			x := plotX + int((peak.Wavelength-wlMin)/(wlMax-wlMin)*float32(plotWidth))
+			if x >= plotX && x <= plotX+plotWidth {
+				// Draw line from bottom to top
+				gocv.Line(&img, image.Pt(x, plotY), image.Pt(x, plotY+plotHeight), peakColor, 1)
 
-					// Draw peak value label at top
-					label := fmt.Sprintf("%.1f", peak.Wavelength)
-					gocv.PutText(&img, label, image.Pt(x-15, plotY-5), gocv.FontHersheyPlain, fontScale, peakColor, thickness)
-				}
+				// Draw peak value label at top
+				label := fmt.Sprintf("%.1f", peak.Wavelength)
+				gocv.PutText(&img, label, image.Pt(x-15, plotY-5), gocv.FontHersheyPlain, fontScale, peakColor, thickness)
+			}
 		}
 	}
 

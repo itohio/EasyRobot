@@ -73,9 +73,9 @@ func extractSpectrumFromBoundingBox(img *cv.Mat, bbox *image.Rectangle, angle fl
 	intensity := vec.New(width)
 
 	// Average all rows for each column
-	for x := 0; x < width; x++ {
+	for x := range width {
 		var sum float32
-		for y := 0; y < height; y++ {
+		for y := range height {
 			val := grayMat.GetUCharAt(y, x)
 			sum += float32(val)
 		}
@@ -85,7 +85,7 @@ func extractSpectrumFromBoundingBox(img *cv.Mat, bbox *image.Rectangle, angle fl
 	// Create wavelength vector (pixel coordinates, will be calibrated later)
 	// For now, use pixel index as wavelength placeholder
 	wavelengths := vec.New(width)
-	for i := 0; i < width; i++ {
+	for i := range width {
 		wavelengths[i] = float32(i) // Pixel coordinate, will be calibrated to actual wavelength
 	}
 
@@ -94,4 +94,3 @@ func extractSpectrumFromBoundingBox(img *cv.Mat, bbox *image.Rectangle, angle fl
 
 	return spd, nil
 }
-

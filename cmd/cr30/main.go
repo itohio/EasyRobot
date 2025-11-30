@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"flag"
 	"fmt"
 	"image"
 	"image/color"
@@ -25,22 +24,8 @@ import (
 	matTypes "github.com/itohio/EasyRobot/x/math/mat/types"
 	tensorgocv "github.com/itohio/EasyRobot/x/math/tensor/gocv"
 	"github.com/itohio/EasyRobot/x/math/vec"
+	"github.com/spf13/cobra"
 	cv "gocv.io/x/gocv"
-)
-
-var (
-	port      = flag.String("port", "", "Serial port device (e.g., /dev/ttyUSB0 or COM3)")
-	baud      = flag.Int("baud", 19200, "Serial port baud rate")
-	measure   = flag.Int("measure", 0, "Measure N samples by waiting for measurement")
-	samples   = flag.Int("samples", 0, "Measure additional M samples after initial user-initiated measurement")
-	display   = flag.Bool("display", false, "Display spectrum plots")
-	calibrate = flag.Bool("calibrate", false, "Perform calibration before measurements")
-	delay     = flag.Duration("delay", 700*time.Millisecond, "Delay between consecutive measurements for averaging")
-	width     = flag.Int("width", 3840, "Image width in pixels")
-	height    = flag.Int("height", 2160, "Image height in pixels")
-	scale     = flag.Bool("scale", false, "Scale Y-axis to fit data range (default: 0 to max)")
-	bars      = flag.Bool("bars", false, "Draw spectrum as colored vertical bars (requires -display)")
-	verbose   = flag.Int("v", 0, "Verbose output level: 0=warn/error, 1=info, 2=debug (can also use -v -v or -vv)")
 )
 
 const (
@@ -50,56 +35,71 @@ const (
 )
 
 func main() {
-	// Count -v and -vv flags before flag.Parse() consumes them
-	verboseCount := 0
-	hasVV := false
-	for _, arg := range os.Args {
-		if arg == "-v" {
-			verboseCount++
-		} else if arg == "-vv" {
-			hasVV = true
-			verboseCount = 2
-			break
-		}
+	rootCmd := &cobra.Command{
+		Use:   "cr30",
+		Short: "CR30 colorimeter measurement tool",
+		Long:  "Measure and display spectra from CR30 colorimeter. Supports multiple measurement modes, calibration, and real-time display.",
+		RunE:  runCR30,
 	}
 
-	flag.Parse()
+	// Add command flags
+	rootCmd.Flags().String("port", "", "Serial port device (e.g., /dev/ttyUSB0 or COM3) (required)")
+	rootCmd.MarkFlagRequired("port")
+	rootCmd.Flags().Int("baud", 19200, "Serial port baud rate")
+	rootCmd.Flags().Int("measure", 0, "Measure N samples by waiting for measurement")
+	rootCmd.Flags().Int("samples", 0, "Measure additional M samples after initial user-initiated measurement")
+	rootCmd.Flags().Bool("calibrate", false, "Perform calibration before measurements")
+	rootCmd.Flags().Duration("delay", 700*time.Millisecond, "Delay between consecutive measurements for averaging")
+	rootCmd.Flags().Int("width", 3840, "Image width in pixels")
+	rootCmd.Flags().Int("height", 2160, "Image height in pixels")
+	rootCmd.Flags().Bool("scale", false, "Scale Y-axis to fit data range (default: 0 to max)")
+	rootCmd.Flags().Bool("bars", false, "Draw spectrum as colored vertical bars (requires display)")
 
-	// Use verbose flag value if set, otherwise use counted -v flags
-	// If -vv was used, it won't be parsed by flag, so we use the count
-	verboseLevel := *verbose
-	if hasVV {
-		verboseLevel = 2
-	} else if verboseLevel == 0 && verboseCount > 0 {
-		verboseLevel = verboseCount
+	// Add verbose flag (supports -v, -vv)
+	rootCmd.PersistentFlags().CountP("verbose", "v", "Verbose output (use -v for info, -vv for debug)")
+
+	// Add destination flags (display, output, etc.)
+	destination.AddDestinationFlags(rootCmd)
+
+	if err := rootCmd.Execute(); err != nil {
+		os.Exit(1)
 	}
+}
 
+func runCR30(cmd *cobra.Command, args []string) error {
 	// Setup logging based on verbose level
-	switch verboseLevel {
+	verboseCount, _ := cmd.PersistentFlags().GetCount("verbose")
+	switch verboseCount {
 	case 0:
 		slog.SetLogLoggerLevel(slog.LevelWarn) // Default: warning/error only
 	case 1:
 		slog.SetLogLoggerLevel(slog.LevelInfo) // -v: info and above
 	default:
-		slog.SetLogLoggerLevel(slog.LevelDebug) // -vv or -v=2: debug and above
+		slog.SetLogLoggerLevel(slog.LevelDebug) // -vv or more: debug and above
 	}
 
-	if *port == "" {
-		slog.Error("Serial port required", "flag", "-port")
-		flag.Usage()
-		os.Exit(1)
-	}
+	// Read flags
+	port, _ := cmd.Flags().GetString("port")
+	baud, _ := cmd.Flags().GetInt("baud")
+	measure, _ := cmd.Flags().GetInt("measure")
+	samples, _ := cmd.Flags().GetInt("samples")
+	calibrate, _ := cmd.Flags().GetBool("calibrate")
+	delay, _ := cmd.Flags().GetDuration("delay")
+	width, _ := cmd.Flags().GetInt("width")
+	height, _ := cmd.Flags().GetInt("height")
+	scale, _ := cmd.Flags().GetBool("scale")
+	bars, _ := cmd.Flags().GetBool("bars")
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
 	// Connect to serial port
 	config := devices.DefaultSerialConfig()
-	config.BaudRate = *baud
-	ser, err := devices.NewSerialWithConfig(*port, config)
+	config.BaudRate = baud
+	ser, err := devices.NewSerialWithConfig(port, config)
 	if err != nil {
-		slog.Error("Failed to open serial port", "port", *port, "baud", *baud, "err", err)
-		os.Exit(1)
+		slog.Error("Failed to open serial port", "port", port, "baud", baud, "err", err)
+		return err
 	}
 	defer func() {
 		slog.Info("Closing serial port")
@@ -111,10 +111,10 @@ func main() {
 	dev.SetVerbose(false)
 
 	// Connect and initialize
-	slog.Info("Connecting to CR30 device", "port", *port, "baud", *baud)
+	slog.Info("Connecting to CR30 device", "port", port, "baud", baud)
 	if err := dev.Connect(); err != nil {
 		slog.Error("Failed to connect to device", "err", err)
-		os.Exit(1)
+		return err
 	}
 	defer func() {
 		slog.Info("Disconnecting from device")
@@ -125,7 +125,7 @@ func main() {
 	cs, err := colorscience.New()
 	if err != nil {
 		slog.Error("Failed to create ColorScience instance", "err", err)
-		os.Exit(1)
+		return err
 	}
 
 	// Print device info as CSV comments
@@ -144,61 +144,76 @@ func main() {
 	fmt.Println()
 
 	// Handle calibration if requested
-	if *calibrate {
+	if calibrate {
 		if err := performCalibration(ctx, dev); err != nil {
 			slog.Error("Calibration failed", "err", err)
-			os.Exit(1)
+			return err
 		}
 	}
 
-	// Setup display if requested
-	var dest destination.Destination
-	if *display {
-		destination.RegisterAllFlags()
-		dest = destination.NewDisplay()
-		// Pass context with cancel function so display can cancel main context on window close
-		displayCtx := context.WithValue(ctx, "cancel", cancel)
-		if err := dest.Start(displayCtx); err != nil {
-			slog.Error("Failed to start display", "err", err)
-			os.Exit(1)
+	// Setup destinations from cobra command
+	dests := destination.NewFromCobra(cmd)
+	if len(dests) > 0 {
+		// Start destinations
+		for i, dest := range dests {
+			// If this is a display destination, set the cancel function so window close cancels parent context
+			if cancelSetter, ok := dest.(destination.CancelSetter); ok {
+				cancelSetter.SetCancelFunc(cancel)
+			}
+			if err := dest.Start(ctx); err != nil {
+				slog.Error("Error starting destination", "index", i, "err", err)
+				return fmt.Errorf("error starting destination: %w", err)
+			}
+			defer func(idx int, d destination.Destination) {
+				slog.Info("Closing destination", "index", idx)
+				d.Close()
+			}(i, dest)
 		}
-		defer dest.Close()
 	}
 
 	// Print CSV header
 	printCSVHeader(dev)
 
 	// Handle measurement modes
-	if *measure > 0 && *samples > 0 {
+	var measurementCount, samplesPerMeasurement int
+	if measure > 0 && samples > 0 {
 		// Both flags: N measurements, each averages M samples
-		if err := performMeasurements(ctx, dev, cs, *measure, *samples, dest); err != nil {
-			slog.Error("Measurement failed", "err", err)
-			os.Exit(1)
-		}
-	} else if *measure > 0 {
+		measurementCount = measure
+		samplesPerMeasurement = samples
+	} else if measure > 0 {
 		// -measure=N: N measurements, each is 1 sample (no averaging)
-		if err := performMeasurements(ctx, dev, cs, *measure, 1, dest); err != nil {
-			slog.Error("Measurement failed", "err", err)
-			os.Exit(1)
-		}
-	} else if *samples > 0 {
+		measurementCount = measure
+		samplesPerMeasurement = 1
+	} else if samples > 0 {
 		// -samples=M: 1 measurement that is average of M samples
-		if err := performMeasurements(ctx, dev, cs, 1, *samples, dest); err != nil {
-			slog.Error("Additional samples measurement failed", "err", err)
-			os.Exit(1)
-		}
+		measurementCount = 1
+		samplesPerMeasurement = samples
 	} else {
-		slog.Info("No measurement mode specified. Use -measure=N or -samples=M")
+		slog.Info("No measurement mode specified. Use --measure=N or --samples=M")
+		return nil
+	}
+
+	// Get first destination if available (for backward compatibility with single destination)
+	var dest destination.Destination
+	if len(dests) > 0 {
+		dest = dests[0]
+	}
+
+	if err := performMeasurements(ctx, dev, cs, measurementCount, samplesPerMeasurement, dest, delay, width, height, scale, bars); err != nil {
+		slog.Error("Measurement failed", "err", err)
+		return err
 	}
 
 	// If display is enabled, wait for Ctrl+C or window close
-	if *display {
+	if len(dests) > 0 {
 		slog.Info("Measurements complete. Press Ctrl+C or close the window to exit.")
 		<-ctx.Done()
 		if ctx.Err() == context.Canceled {
 			slog.Info("Shutting down...")
 		}
 	}
+
+	return nil
 }
 
 func performCalibration(ctx context.Context, dev *cr30.Device) error {
@@ -233,7 +248,7 @@ func performCalibration(ctx context.Context, dev *cr30.Device) error {
 // performMeasurements orchestrates multiple measurements, prints to stdout, and draws to image.
 // measurementCount: number of measurements to perform
 // samplesPerMeasurement: number of samples to average for each measurement
-func performMeasurements(ctx context.Context, dev *cr30.Device, cs *colorscience.ColorScience, measurementCount, samplesPerMeasurement int, dest destination.Destination) error {
+func performMeasurements(ctx context.Context, dev *cr30.Device, cs *colorscience.ColorScience, measurementCount, samplesPerMeasurement int, dest destination.Destination, delay time.Duration, width, height int, scale, bars bool) error {
 	if measurementCount < 1 {
 		return fmt.Errorf("measurement count must be at least 1")
 	}
@@ -244,18 +259,18 @@ func performMeasurements(ctx context.Context, dev *cr30.Device, cs *colorscience
 	numWl := dev.NumWavelengths()
 
 	// Collect all measurements
-	for i := 0; i < measurementCount; i++ {
+	for i := range measurementCount {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 
 		// Add delay between consecutive measurements (except before first)
 		if i > 0 {
-			slog.Debug("Waiting before next measurement", "delay", *delay)
+			slog.Debug("Waiting before next measurement", "delay", delay)
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
-			case <-time.After(*delay):
+			case <-time.After(delay):
 				// Continue
 			}
 		}
@@ -263,7 +278,7 @@ func performMeasurements(ctx context.Context, dev *cr30.Device, cs *colorscience
 		slog.Info("Performing measurement", "measurement", i+1, "total", measurementCount, "samples_per_measurement", samplesPerMeasurement)
 
 		// Perform measurement (collects samples, calculates average and stddev)
-		avgMatrix, stddevMatrix, err := performMeasurement(ctx, dev, numWl, samplesPerMeasurement)
+		avgMatrix, stddevMatrix, err := performMeasurement(ctx, dev, numWl, samplesPerMeasurement, delay)
 		if err != nil {
 			slog.Error("Measurement failed", "measurement", i+1, "err", err)
 			continue
@@ -316,7 +331,7 @@ func performMeasurements(ctx context.Context, dev *cr30.Device, cs *colorscience
 			avg := make([]float32, len(avgVec))
 			copy(avg, avgVec)
 
-			if err := displaySpectrum(dest, avg, stddev, nil); err != nil {
+			if err := displaySpectrum(dest, avg, stddev, nil, width, height, scale, bars); err != nil {
 				slog.Error("Display failed", "err", err)
 				return fmt.Errorf("display failed: %w", err)
 			}
@@ -329,7 +344,7 @@ func performMeasurements(ctx context.Context, dev *cr30.Device, cs *colorscience
 // performMeasurement collects samples, calculates average and stddev.
 // First sample uses WaitMeasurement (user-initiated), rest use Measure (PC-initiated).
 // Returns matrices with average in row 0 of avgMatrix and stddev in row 0 of stddevMatrix.
-func performMeasurement(ctx context.Context, dev *cr30.Device, numWl, sampleCount int) (avgMatrix matTypes.Matrix, stddevMatrix matTypes.Matrix, err error) {
+func performMeasurement(ctx context.Context, dev *cr30.Device, numWl, sampleCount int, delay time.Duration) (avgMatrix matTypes.Matrix, stddevMatrix matTypes.Matrix, err error) {
 	if sampleCount < 1 {
 		return nil, nil, fmt.Errorf("sample count must be at least 1")
 	}
@@ -362,7 +377,7 @@ func performMeasurement(ctx context.Context, dev *cr30.Device, numWl, sampleCoun
 		select {
 		case <-ctx.Done():
 			return nil, nil, ctx.Err()
-		case <-time.After(*delay):
+		case <-time.After(delay):
 			// Continue
 		}
 
@@ -500,8 +515,8 @@ func printCSVRow(spectrum []float32) {
 	fmt.Println(strings.Join(values, ","))
 }
 
-func displaySpectrum(dest destination.Destination, spectrum []float32, stddev []float32, plusMinus []float32) error {
-	img := createSpectrumImage(spectrum, stddev, *width, *height)
+func displaySpectrum(dest destination.Destination, spectrum []float32, stddev []float32, plusMinus []float32, width, height int, scale, bars bool) error {
+	img := createSpectrumImage(spectrum, stddev, width, height, scale, bars)
 
 	// Convert image.RGBA to gocv Mat
 	mat, err := cv.ImageToMatRGB(img)
@@ -525,19 +540,19 @@ func displaySpectrum(dest destination.Destination, spectrum []float32, stddev []
 	return dest.AddFrame(frame)
 }
 
-func createSpectrumImage(spectrum []float32, stddev []float32, imgWidth, imgHeight int) *image.RGBA {
+func createSpectrumImage(spectrum []float32, stddev []float32, imgWidth, imgHeight int, scale, bars bool) *image.RGBA {
 	img := image.NewRGBA(image.Rect(0, 0, imgWidth, imgHeight))
 
 	// Fill with black background
-	for y := 0; y < imgHeight; y++ {
-		for x := 0; x < imgWidth; x++ {
+	for y := range imgHeight {
+		for x := range imgWidth {
 			img.Set(x, y, color.RGBA{0, 0, 0, 255})
 		}
 	}
 
 	// Find min/max for scaling
 	var minVal, maxVal float32
-	if *scale {
+	if scale {
 		// Scale to fit data range
 		minVal, maxVal = findMinMax(spectrum)
 		for i, s := range stddev {
@@ -565,7 +580,7 @@ func createSpectrumImage(spectrum []float32, stddev []float32, imgWidth, imgHeig
 	drawGrid(img, minVal, maxVal, imgWidth, imgHeight)
 
 	// Draw spectrum bars first (if enabled) so they appear below the confidence band
-	if *bars {
+	if bars {
 		drawSpectrumBars(img, spectrum, minVal, maxVal, imgWidth, imgHeight)
 	}
 
@@ -575,7 +590,7 @@ func createSpectrumImage(spectrum []float32, stddev []float32, imgWidth, imgHeig
 	}
 
 	// Draw spectrum line (if not using bars)
-	if !*bars {
+	if !bars {
 		drawSpectrumLine(img, spectrum, minVal, maxVal, imgWidth, imgHeight)
 	}
 
@@ -618,13 +633,13 @@ func findMax(spectrum []float32) float32 {
 func drawGrid(img *image.RGBA, minVal, maxVal float32, imgWidth, imgHeight int) {
 	// Draw horizontal grid lines
 	gridColor := color.RGBA{64, 64, 64, 255}
-	for i := 0; i <= 10; i++ {
+	for i := range 11 {
 		y := imgHeight - 60 - (i * (imgHeight - 120) / 10)
 		drawLine(img, 60, y, imgWidth-20, y, gridColor, imgWidth, imgHeight)
 	}
 
 	// Draw vertical grid lines (wavelength markers)
-	for i := 0; i <= 10; i++ {
+	for i := range 11 {
 		x := 60 + (i * (imgWidth - 80) / 10)
 		drawLine(img, x, 20, x, imgHeight-60, gridColor, imgWidth, imgHeight)
 	}
@@ -642,7 +657,7 @@ func drawStdDevBands(img *image.RGBA, spectrum []float32, stddev []float32, minV
 	}
 
 	points := make([]image.Point, numBands*2)
-	for i := 0; i < numBands; i++ {
+	for i := range numBands {
 		x := 60 + (i * (imgWidth - 80) / (numBands - 1))
 
 		upper := spectrum[i] + stddev[i]
@@ -671,7 +686,7 @@ func drawSpectrumLine(img *image.RGBA, spectrum []float32, minVal, maxVal float3
 	}
 
 	var prevX, prevY int
-	for i := 0; i < numBands; i++ {
+	for i := range numBands {
 		x := 60 + (i * (imgWidth - 80) / (numBands - 1))
 		y := imgHeight - 60 - int((spectrum[i]-minVal)/rangeVal*float32(imgHeight-120))
 
@@ -701,7 +716,7 @@ func drawSpectrumBars(img *image.RGBA, spectrum []float32, minVal, maxVal float3
 
 	baseY := imgHeight - 60
 
-	for i := 0; i < numBands; i++ {
+	for i := range numBands {
 		wavelength := minWavelength + i*10
 		barColor := wavelengthToRGB(wavelength)
 
@@ -800,7 +815,7 @@ func wavelengthToRGB(wavelength int) color.RGBA {
 func drawAxesLabels(img *image.RGBA, minVal, maxVal float32, imgWidth, imgHeight int) {
 	// Y-axis labels (reflectance values)
 	labelColor := color.RGBA{255, 255, 255, 255}
-	for i := 0; i <= 10; i++ {
+	for i := range 11 {
 		val := minVal + (maxVal-minVal)*float32(i)/10
 		y := imgHeight - 60 - (i * (imgHeight - 120) / 10)
 		label := fmt.Sprintf("%.3f", val)
@@ -808,7 +823,7 @@ func drawAxesLabels(img *image.RGBA, minVal, maxVal float32, imgWidth, imgHeight
 	}
 
 	// X-axis labels (wavelengths)
-	for i := 0; i <= 10; i++ {
+	for i := range 11 {
 		wavelength := minWavelength + i*((maxWavelength-minWavelength)/10)
 		x := 60 + (i * (imgWidth - 80) / 10)
 		label := fmt.Sprintf("%d", wavelength)

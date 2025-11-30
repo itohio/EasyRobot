@@ -871,11 +871,15 @@ Implement missing filters, program structure, config loading/outputting, CR30 su
      - [x] Second window: Calculated spectrum with peaks and wavelengths (title: "Spectrum") ✅
      - [x] Frame structure with two tensors: [0] camera capture with BB, [1] decoded spectrum ✅
      - [x] Continuous frame updates (loop reading from camera) ✅
-   - [ ] **Task**: Exposure controls on camera window
+   - [ ] **Task**: Exposure controls on camera window (BLOCKED: requires trackbar infrastructure)
+     - **Status**: Blocked - gocv trackbar API needs to be implemented first
+     - **Prerequisites**: 
+       - Implement trackbar support in `x/marshaller/gocv` or use gocv's native `cv.CreateTrackbar()` if available
+       - Expose camera controller from source interface or store unmarshaller reference
      - [ ] Exposure trackbar (positioned on the right side of main display)
      - [ ] Exposure label showing current value
      - [ ] Auto exposure checkbox (positioned on the right side of main display)
-     - [ ] Integrate with camera source exposure control API
+     - [ ] Integrate with camera source exposure control API (`types.CameraController`)
      - [ ] Update exposure in real-time when trackbar/checkbox changes
    
    **Task Group 2: Bounding Box Interaction** (Priority: HIGH)
@@ -884,15 +888,15 @@ Implement missing filters, program structure, config loading/outputting, CR30 su
      - [x] Improve detection accuracy for different lighting conditions (adaptive thresholding, morphological operations) ✅
      - [x] Handle rotated strips (up to 45 degrees) ✅
      - [x] Filter detections by aspect ratio and orientation ✅
-   - [x] **Task**: Bounding box interaction and state management (partial) ✅
+   - [x] **Task**: Bounding box interaction and state management ✅
      - [x] Continuous frame capture loop with state management ✅
      - [x] Fixed/unfixed state tracking (thread-safe) ✅
      - [x] Red color when bounding box is not fixed (detected but not confirmed) ✅
      - [x] Green color when bounding box is fixed (user confirmed) ✅
      - [x] Store fixed bounding box coordinates and flip state ✅
      - [x] Visual feedback for fixed vs unfixed state ✅
-     - [ ] Click on camera window to fix bounding box - TODO: needs OpenCV mouse callback
-     - [ ] Right-click to flip bounding box horizontally - TODO: needs OpenCV mouse callback
+     - [x] Click on camera window to fix bounding box ✅ (mouse callbacks implemented)
+     - [x] Right-click to flip bounding box horizontally ✅ (mouse callbacks implemented)
    
    **Task Group 3: Config Integration** (Priority: MEDIUM)
    - [x] **Task**: Config loading and saving for bounding box ✅
@@ -902,7 +906,7 @@ Implement missing filters, program structure, config loading/outputting, CR30 su
      - [x] Support existing config workflow (recalibration, load existing bounding box) ✅
      - [x] Command-line argument for config file path (`--config=path`) ✅
      - [x] Helper functions: convert image.Rectangle ↔ SpectrumWindow ✅
-     - [ ] Command-line argument for calibration target selection (`--target=hg|ar|ne`) - TODO: for wavelength calibration
+     - [x] Command-line argument for calibration target selection (`--target=hg|ar|ne`) ✅
    - [x] **Task**: Fix calibration issues found during code review (Priority: HIGH) ✅
      - [x] **Issue #1 - HIGH**: Fix flip state save/load to config ✅
        - [x] Add `bool flipped = 4;` field to `SpectrumWindow` proto message in `proto/types/spectrometer/config.proto` ✅
@@ -981,13 +985,13 @@ Implement missing filters, program structure, config loading/outputting, CR30 su
      - [ ] Logic: if "B" or "R" pressed, store current measured spectrum into corresponding slot
      - [ ] Handle keyboard events from display window (integrate with destination event handling)
    
-   **Task Group 7: Calibration Target Database** (Priority: MEDIUM)
-   - [ ] **Task**: Built-in calibration target database
-     - [ ] Hg (Mercury) emission lines: 405.4, 436.6, 546.1, 577.0, 579.1, 623.4 nm (default)
-     - [ ] Ar (Argon) emission lines: 415.9, 427.2, 451.1, 459.0, 514.5 nm
-     - [ ] Ne (Neon) emission lines: 540.1, 585.2, 588.2, 594.5, 603.0, 616.4 nm
-     - [ ] Support custom calibration targets (user-provided wavelength list)
-     - [ ] Load target by name or command-line argument
+   **Task Group 7: Calibration Target Database** (Priority: MEDIUM) - **MOSTLY COMPLETED** ✅
+   - [x] **Task**: Built-in calibration target database ✅
+     - [x] Hg (Mercury) emission lines: 405.4, 436.6, 546.1, 577.0, 579.1, 623.4 nm (default) ✅
+     - [x] Ar (Argon) emission lines: 415.9, 427.2, 451.1, 459.0, 514.5 nm ✅
+     - [x] Ne (Neon) emission lines: 540.1, 585.2, 588.2, 594.5, 603.0, 616.4 nm ✅
+     - [x] Load target by name or command-line argument (`--target=hg|ar|ne`) ✅
+     - [ ] Support custom calibration targets (user-provided wavelength list) - TODO (lower priority)
    
    **Implementation Order**:
    1. Enhanced strip detection (±45 degrees) ✅ **COMPLETED**
@@ -995,10 +999,10 @@ Implement missing filters, program structure, config loading/outputting, CR30 su
    3. Bounding box interaction (click to fix, right-click to flip, color coding) ✅ **COMPLETED** (mouse callbacks already work)
    4. Spectrum extraction from bounding box ✅ **COMPLETED**
    5. Reusable spectrum rendering with calibration targets ✅ **COMPLETED**
-   6. Exposure controls
+   6. Exposure controls (BLOCKED: requires trackbar infrastructure)
    7. Config integration ✅ **COMPLETED**
-   8. Keyboard commands
-   9. Calibration target database ✅ **COMPLETED** (basic implementation in targets.go)
+   8. Keyboard commands (TODO)
+   9. Calibration target database ✅ **MOSTLY COMPLETED** (built-in targets + command-line arg implemented, custom targets pending)
 
 5. **Phase 1 - Proto Verification** (Pending):
    - [ ] Verify generated Go code compiles correctly

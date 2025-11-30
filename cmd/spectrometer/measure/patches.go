@@ -108,7 +108,7 @@ func ConvertProtoPatchToRenderPatch(protoPatch *spectrometer.ColorPatch) (render
 		wavelengths := vec.New(cols)
 		values := vec.New(cols)
 
-		for i := 0; i < cols; i++ {
+		for i := range cols {
 			wavelengths[i] = data[i] // Row 0
 			values[i] = data[cols+i] // Row 1
 		}
