@@ -38,11 +38,57 @@ The vision package provides computer vision algorithms and processing capabiliti
 7. Should reader support frame rate control?
 8. How to handle reader errors (file not found, format error)?
 
-### 2. Transform (`pkg/vision/transform`)
+### 2. Detection (`x/vision/detect`)
+
+**Purpose**: Detection of features and patterns in images
+
+#### Corner Detection (`x/vision/detect/corners`)
+
+**Purpose**: Chessboard corner detection for camera calibration
+
+**Operations**:
+- Chessboard corner detection (`FindChessboardCornersSB`)
+- Corner refinement to sub-pixel accuracy (`CornerSubPix`)
+- Corner drawing/visualization
+- Object point generation for calibration
+
+**Backend**: GoCV
+
+**Integration**:
+- Implements `chain.Processor[types.Tensor, types.Tensor]` for pipeline usage
+- Direct `Detect()` method for standalone usage
+- Used by `cmd/calibrate` for camera calibration
+
+**Questions**:
+1. Should corner detection support other calibration targets (circles, ArUco)?
+2. How to handle corner detection performance?
+3. Should corner detection support GPU acceleration?
+
+#### Feature Detection (`x/vision/detect/features`)
+
+**Purpose**: Feature (keypoint) detection
+
+**Operations**:
+- Multiple detector types: ORB, SIFT, FAST, GFTT, KAZE, AKAZE, BRISK
+- Keypoint detection only (no descriptors)
+- Keypoint drawing/visualization
+
+**Backend**: GoCV
+
+**Integration**:
+- Implements `chain.Processor[visiontypes.KeypointsWithImage, types.Tensor]`
+- Outputs `KeypointsWithImage` structure containing image tensor and keypoints
+
+**Questions**:
+1. Should feature detection support GPU acceleration?
+2. How to optimize for embedded systems?
+3. Should feature detection support custom detector configurations?
+
+### 3. Transform (`x/vision/transform`)
 
 **Purpose**: Image transformations and conversions
 
-#### Color Transform (`pkg/vision/transform/color`)
+#### Color Transform (`x/vision/transform/color`)
 
 **Purpose**: Color space conversions
 
@@ -58,7 +104,7 @@ The vision package provides computer vision algorithms and processing capabiliti
 3. Should color transform support custom color spaces?
 4. How to optimize color transform for embedded systems?
 
-#### Format Transform (`pkg/vision/transform/format`)
+#### Format Transform (`x/vision/transform/format`)
 
 **Purpose**: Image format conversions
 
@@ -68,9 +114,7 @@ The vision package provides computer vision algorithms and processing capabiliti
 
 **Backend**: GoCV
 
-**Stereo Processing**:
-- Stereo rectification (planned)
-- Stereo matching (planned)
+**Status**: ⚠️ Uses old pipeline pattern - needs refactoring to `chain.Processor`
 
 **Questions**:
 1. Should format transform support different image formats?
@@ -79,13 +123,92 @@ The vision package provides computer vision algorithms and processing capabiliti
 4. How to optimize format transform for embedded systems?
 5. Should format transform support batch processing?
 
-### 3. Extract (`pkg/vision/extract`)
+#### Rectification (`x/vision/transform/rectify`)
+
+**Purpose**: Stereo image rectification
+
+**Operations**:
+- Stereo rectification using precomputed rectification maps
+- Remapping using `Remap` operation
+
+**Backend**: GoCV
+
+**Integration**:
+- Implements `chain.Processor[types.Tensor, types.Tensor]`
+- Uses `RectificationMaps` structure (Map1, Map2)
+- Maps should be precomputed using `InitUndistortRectifyMap`
+
+**Questions**:
+1. Should rectification support online map computation?
+2. How to handle rectification performance?
+3. Should rectification support different interpolation methods?
+
+#### Undistortion (`x/vision/transform/undistort`)
+
+**Purpose**: Lens distortion correction
+
+**Operations**:
+- Undistortion using camera calibration parameters (camera matrix, distortion coefficients)
+- Optional new camera matrix support
+
+**Backend**: GoCV
+
+**Integration**:
+- Implements `chain.Processor[types.Tensor, types.Tensor]`
+- Used for removing lens distortion from images
+
+**Questions**:
+1. Should undistortion support different distortion models?
+2. How to handle undistortion performance?
+3. Should undistortion support GPU acceleration?
+
+#### Affine Transformation (`x/vision/transform/affine`)
+
+**Purpose**: Affine image transformations
+
+**Operations**:
+- Affine transformation using 2x3 transformation matrix
+- Warp affine operation
+- Optional output size specification
+
+**Backend**: GoCV
+
+**Integration**:
+- Implements `chain.Processor[types.Tensor, types.Tensor]`
+- Uses `WarpAffine` for transformation
+
+**Questions**:
+1. Should affine support other transformation types (perspective, etc.)?
+2. How to handle affine transformation performance?
+
+#### Crop (`x/vision/transform/crop`)
+
+**Purpose**: Image cropping
+
+**Operations**:
+- Crop subimages from rectangles
+- Multiple crops per input image
+- Rectangle validation
+
+**Backend**: GoCV
+
+**Integration**:
+- Implements `chain.Processor[types.Tensor, CropRectangles]`
+- Input: `CropRectangles` structure (image tensor + list of rectangles)
+- Output: Multiple image tensors (one per rectangle)
+
+**Questions**:
+1. Should crop support different interpolation methods?
+2. How to handle crop performance for many rectangles?
+3. Should crop support rotation or scaling?
+
+### 4. Extract (`x/vision/extract`)
 
 **Purpose**: Feature extraction and DNN inference
 
-#### Features (`pkg/vision/extract/features`)
+#### Features (`x/vision/extract/features`)
 
-**Purpose**: Feature detection and matching
+**Purpose**: Feature descriptor extraction
 
 **Algorithms**:
 - **ORB**: Oriented FAST and Rotated BRIEF
@@ -93,29 +216,68 @@ The vision package provides computer vision algorithms and processing capabiliti
 - **KAZE**: KAZE feature detector
 - **AKAZE**: Accelerated KAZE
 - **BRISK**: Binary Robust Invariant Scalable Keypoints
-- **FAST**: Features from Accelerated Segment Test
-- **GFTT**: Good Features to Track
-
-**Matchers**:
-- **FLANN**: Fast Library for Approximate Nearest Neighbors
-- **Brute Force**: Exhaustive matching
 
 **Backend**: GoCV
 
 **Integration**:
-- Pipeline step: `steps.Processor`
-- Registered as: `"features"`
+- Implements `chain.Processor[visiontypes.DescriptorsWithImage, visiontypes.KeypointsWithImage]`
+- Takes `KeypointsWithImage` as input (from feature detection)
+- Outputs `DescriptorsWithImage` (image + keypoints + descriptors)
+
+**Status**: ⚠️ Partially implemented - uses `DetectAndCompute` instead of separate `Compute` method
 
 **Questions**:
-1. Should features support different detector configurations?
-2. How to handle feature matching performance?
+1. Should features support different extractor configurations?
+2. How to handle feature extraction performance?
 3. Should features support GPU acceleration?
 4. How to optimize features for embedded systems?
-5. Should features support feature tracking (optical flow)?
-6. How to handle feature matching errors?
-7. Should features support custom feature descriptors?
+5. Should features support computing descriptors for existing keypoints only?
 
-#### DNN (`pkg/vision/extract/dnn`)
+### 5. Matching (`x/vision/match`)
+
+**Purpose**: Feature and corner matching
+
+#### Feature Matching (`x/vision/match/features`)
+
+**Purpose**: Feature matching between images
+
+**Matchers**:
+- **FLANN**: Fast Library for Approximate Nearest Neighbors
+
+**Backend**: GoCV
+
+**Integration**:
+- Implements `chain.Processor[types.Tensor, types.Tensor]`
+- Matches descriptors between two images
+- Uses KNN matching (k=2) for Lowe's ratio test
+
+**Status**: ⚠️ Basic implementation - needs enhancement (Lowe's ratio test, filtering, etc.)
+
+**Questions**:
+1. Should feature matching support different matcher types (brute force)?
+2. How to handle feature matching performance?
+3. Should feature matching support GPU acceleration?
+4. How to optimize feature matching for embedded systems?
+5. Should feature matching support Lowe's ratio test and filtering?
+
+#### Corner Matching (`x/vision/match/corners`)
+
+**Purpose**: Corner matching between images
+
+**Backend**: GoCV
+
+**Integration**:
+- Implements `chain.Processor[types.Tensor, types.Tensor]`
+- Placeholder implementation
+
+**Status**: ⚠️ Placeholder - not yet implemented
+
+**Questions**:
+1. What corner matching algorithm should be used?
+2. How to handle corner matching for stereo calibration?
+3. Should corner matching support corner tracking?
+
+#### DNN (`x/vision/extract/dnn`)
 
 **Purpose**: Deep neural network inference
 
@@ -152,7 +314,7 @@ The vision package provides computer vision algorithms and processing capabiliti
 9. Should DNN support model caching?
 10. How to handle DNN backend selection?
 
-### 4. Display (`pkg/vision/display`)
+### 6. Display (`x/vision/display`)
 
 **Purpose**: Image visualization
 
@@ -174,7 +336,7 @@ The vision package provides computer vision algorithms and processing capabiliti
 5. Should display support annotations (text, shapes)?
 6. How to handle display errors (window closed)?
 
-### 5. Writer (`pkg/vision/writer`)
+### 7. Writer (`x/vision/writer`)
 
 **Purpose**: Image and video output
 
@@ -246,8 +408,10 @@ The vision package provides computer vision algorithms and processing capabiliti
 - Reader (camera, video, image)
 
 **Processor Steps**:
-- Transform (color, format)
+- Detect (corners, features)
+- Transform (color, format, rectify, undistort, affine, crop)
 - Extract (features, DNN)
+- Match (features, corners)
 
 **Sink Steps**:
 - Display

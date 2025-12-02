@@ -5,14 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
-	"image/color"
 	"os"
 
-	"github.com/itohio/EasyRobot/cmd/calibrate/corners"
 	"github.com/itohio/EasyRobot/cmd/display/destination"
 	"github.com/itohio/EasyRobot/cmd/display/source"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"github.com/itohio/EasyRobot/x/math/tensor"
+	"github.com/itohio/EasyRobot/x/vision/detect/corners"
+	visionrectify "github.com/itohio/EasyRobot/x/vision/transform/rectify"
 	cv "gocv.io/x/gocv"
 )
 
@@ -285,15 +285,25 @@ func (sc *StereoCalibration) Rectify(left, right cv.Mat) (cv.Mat, cv.Mat, error)
 		return cv.Mat{}, cv.Mat{}, fmt.Errorf("rectification maps not initialized")
 	}
 
-	leftRect := cv.NewMat()
-	rightRect := cv.NewMat()
+	// Use the rectify package helper function
+	leftMaps := visionrectify.RectificationMaps{
+		Map1: sc.LeftMap1,
+		Map2: sc.LeftMap2,
+	}
+	leftRect, err := visionrectify.Rectify(left, leftMaps)
+	if err != nil {
+		return cv.Mat{}, cv.Mat{}, fmt.Errorf("left rectification failed: %w", err)
+	}
 
-	// Remap left image
-	borderValue := color.RGBA{0, 0, 0, 0}
-	cv.Remap(left, &leftRect, &sc.LeftMap1, &sc.LeftMap2, cv.InterpolationLinear, cv.BorderConstant, borderValue)
-
-	// Remap right image
-	cv.Remap(right, &rightRect, &sc.RightMap1, &sc.RightMap2, cv.InterpolationLinear, cv.BorderConstant, borderValue)
+	rightMaps := visionrectify.RectificationMaps{
+		Map1: sc.RightMap1,
+		Map2: sc.RightMap2,
+	}
+	rightRect, err := visionrectify.Rectify(right, rightMaps)
+	if err != nil {
+		leftRect.Close()
+		return cv.Mat{}, cv.Mat{}, fmt.Errorf("right rectification failed: %w", err)
+	}
 
 	return leftRect, rightRect, nil
 }
@@ -775,4 +785,3 @@ func slice1DToMat(data []float64) cv.Mat {
 	}
 	return mat
 }
-

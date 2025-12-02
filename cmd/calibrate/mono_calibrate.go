@@ -7,11 +7,12 @@ import (
 	"image"
 	"os"
 
-	"github.com/itohio/EasyRobot/cmd/calibrate/corners"
 	"github.com/itohio/EasyRobot/cmd/display/destination"
 	"github.com/itohio/EasyRobot/cmd/display/source"
 	"github.com/itohio/EasyRobot/x/marshaller/types"
 	"github.com/itohio/EasyRobot/x/math/tensor"
+	"github.com/itohio/EasyRobot/x/vision/detect/corners"
+	visionundistort "github.com/itohio/EasyRobot/x/vision/transform/undistort"
 	cv "gocv.io/x/gocv"
 )
 
@@ -251,9 +252,9 @@ func testMonoCalibration(ctx context.Context, src source.Source, dests []destina
 			continue
 		}
 
-		// Undistort
-		undistorted := cv.NewMat()
-		if err := cv.Undistort(mat, &undistorted, calibration.CameraMatrix, calibration.DistortionCoeffs, emptyMat); err != nil {
+		// Undistort using the undistort package helper function
+		undistorted, err := visionundistort.Undistort(mat, calibration.CameraMatrix, calibration.DistortionCoeffs, emptyMat)
+		if err != nil {
 			mat.Close()
 			if releaser, ok := frame.Tensors[0].(types.Releaser); ok {
 				releaser.Release()
@@ -424,4 +425,3 @@ func loadMonoCalibration(path string) (*MonoCameraCalibration, error) {
 		ReprojectionError: jsonData.ReprojectionError,
 	}, nil
 }
-

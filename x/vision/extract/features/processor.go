@@ -4,59 +4,119 @@ import (
 	"github.com/itohio/EasyRobot/x/buffer"
 	"github.com/itohio/EasyRobot/x/chain"
 	tensorgocv "github.com/itohio/EasyRobot/x/math/tensor/gocv"
-	"github.com/itohio/EasyRobot/x/math/tensor/types"
+	visiontypes "github.com/itohio/EasyRobot/x/vision/types"
 	"gocv.io/x/gocv"
 )
 
-// Processor implements chain.Processor[types.Tensor, types.Tensor] for feature extraction.
-// It extracts features (keypoints and descriptors) from input image tensors.
+// FeatureType represents the type of feature extractor to use.
+// Must match the feature type used in detection.
+type FeatureType int
+
+const (
+	ORB FeatureType = iota
+	SIFT
+	KAZE
+	AKAZE
+	BRISK
+	// FAST and GFTT don't compute descriptors, only detect keypoints
+)
+
+// Processor implements chain.Processor[visiontypes.DescriptorsWithImage, visiontypes.KeypointsWithImage] for feature extraction.
+// It extracts descriptors from keypoints and image tensor.
 //
 // Allocations: This processor preallocates gocv.Mat objects for descriptors to avoid
 // allocations in the Process() callstack. Tensors are created from adopted Mat objects.
 type Processor struct {
-	detector gocv.ORB
-	matcher  gocv.FlannBasedMatcher
+	featureType FeatureType
+
+	// Extractor implementations (only one is initialized based on featureType)
+	orb   gocv.ORB
+	sift  gocv.SIFT
+	kaze  gocv.KAZE
+	akaze gocv.AKAZE
+	brisk gocv.BRISK
+
+	// extractorFunc computes descriptors for given keypoints
+	extractorFunc func(src gocv.Mat, keypoints []gocv.KeyPoint, mask gocv.Mat) ([]gocv.KeyPoint, gocv.Mat)
 
 	// Preallocated scratch space to avoid allocations in Process()
-	scratchDescriptors gocv.Mat
-	scratchMask        gocv.Mat
+	scratchMask gocv.Mat
 }
 
-// New creates a new feature extraction processor.
-func New() (*Processor, error) {
+// New creates a new feature extraction processor with the specified feature type.
+func New(featureType FeatureType) *Processor {
 	p := &Processor{
-		detector: gocv.NewORB(),
-		matcher:  gocv.NewFlannBasedMatcher(),
-		// Preallocate scratch space (will be resized as needed by OpenCV)
+		featureType: featureType,
 		scratchMask: gocv.NewMat(),
 	}
-	return p, nil
+
+	// Initialize the selected extractor
+	switch featureType {
+	case ORB:
+		p.orb = gocv.NewORB()
+		// ORB can compute descriptors for existing keypoints via DetectAndCompute
+		// We'll use a wrapper that filters to use only the provided keypoints
+		p.extractorFunc = func(src gocv.Mat, keypoints []gocv.KeyPoint, mask gocv.Mat) ([]gocv.KeyPoint, gocv.Mat) {
+			// For now, use DetectAndCompute and return all keypoints/descriptors
+			// TODO: Filter to match provided keypoints if needed
+			return p.orb.DetectAndCompute(src, mask)
+		}
+	case SIFT:
+		p.sift = gocv.NewSIFT()
+		p.extractorFunc = func(src gocv.Mat, keypoints []gocv.KeyPoint, mask gocv.Mat) ([]gocv.KeyPoint, gocv.Mat) {
+			return p.sift.DetectAndCompute(src, mask)
+		}
+	case KAZE:
+		p.kaze = gocv.NewKAZE()
+		p.extractorFunc = func(src gocv.Mat, keypoints []gocv.KeyPoint, mask gocv.Mat) ([]gocv.KeyPoint, gocv.Mat) {
+			return p.kaze.DetectAndCompute(src, mask)
+		}
+	case AKAZE:
+		p.akaze = gocv.NewAKAZE()
+		p.extractorFunc = func(src gocv.Mat, keypoints []gocv.KeyPoint, mask gocv.Mat) ([]gocv.KeyPoint, gocv.Mat) {
+			return p.akaze.DetectAndCompute(src, mask)
+		}
+	case BRISK:
+		p.brisk = gocv.NewBRISK()
+		p.extractorFunc = func(src gocv.Mat, keypoints []gocv.KeyPoint, mask gocv.Mat) ([]gocv.KeyPoint, gocv.Mat) {
+			return p.brisk.DetectAndCompute(src, mask)
+		}
+	default:
+		// Default to ORB
+		p.orb = gocv.NewORB()
+		p.extractorFunc = func(src gocv.Mat, keypoints []gocv.KeyPoint, mask gocv.Mat) ([]gocv.KeyPoint, gocv.Mat) {
+			return p.orb.DetectAndCompute(src, mask)
+		}
+		p.featureType = ORB
+	}
+
+	return p
 }
 
-// Process implements chain.Processor[types.Tensor, types.Tensor].
-// Reads input tensor(s) from src, extracts features, and writes output tensor(s) to dst.
+// Process implements chain.Processor[visiontypes.DescriptorsWithImage, visiontypes.KeypointsWithImage].
+// Reads KeypointsWithImage from src, extracts descriptors, and writes DescriptorsWithImage to dst.
 //
-// Input: Image tensor (gocv.Mat-backed)
-// Output: Descriptor tensor (gocv.Mat-backed) with keypoints stored in metadata
+// Input: KeypointsWithImage (image tensor + keypoints)
+// Output: DescriptorsWithImage (image tensor + keypoints + descriptors)
 //
-// If dst is nil, returns the estimated number of output tensors (1 tensor per input tensor).
-func (p *Processor) Process(dst buffer.Writer[types.Tensor], src buffer.Reader[types.Tensor]) int {
+// If dst is nil, returns the estimated number of output items (1 item per input item).
+func (p *Processor) Process(dst buffer.Writer[visiontypes.DescriptorsWithImage], src buffer.Reader[visiontypes.KeypointsWithImage]) int {
 	if dst == nil {
-		// Size estimation: 1 tensor in -> 1 tensor out
+		// Size estimation: 1 KeypointsWithImage in -> 1 DescriptorsWithImage out
 		return src.Len()
 	}
 
-	// Read input tensor(s)
-	inputTensors := make([]types.Tensor, 1)
-	n, err := src.Read(inputTensors)
+	// Read input KeypointsWithImage
+	inputs := make([]visiontypes.KeypointsWithImage, 1)
+	n, err := src.Read(inputs)
 	if err != nil || n == 0 {
 		return 0
 	}
 
-	inputTensor := inputTensors[0]
+	input := inputs[0]
 
 	// Convert tensor to gocv.Mat
-	gocvTensor, ok := inputTensor.(tensorgocv.Tensor)
+	gocvTensor, ok := input.Image.(tensorgocv.Tensor)
 	if !ok {
 		return 0
 	}
@@ -66,51 +126,63 @@ func (p *Processor) Process(dst buffer.Writer[types.Tensor], src buffer.Reader[t
 		return 0
 	}
 
-	// Extract features
+	// Extract descriptors from keypoints and image
+	// Note: Since gocv detectors use DetectAndCompute (not separate Compute),
+	// we re-detect keypoints and compute descriptors. The input.Keypoints are kept
+	// for reference/visualization but may differ from the detected keypoints.
+	// TODO: Implement Compute-only path if gocv supports it for existing keypoints.
 	// Use preallocated scratch mask (empty mat)
-	keypoints, descriptors := p.detector.DetectAndCompute(mat, p.scratchMask)
-	if len(keypoints) == 0 {
-		// No features found, return 0
+	detectedKeypoints, descriptors := p.extractorFunc(mat, input.Keypoints, p.scratchMask)
+	if len(detectedKeypoints) == 0 || descriptors.Empty() {
 		return 0
 	}
 
-	// Create output tensor from descriptors
+	// Create descriptor tensor from Mat
 	// Note: descriptors is a gocv.Mat returned by DetectAndCompute.
 	// We need to create a tensor from it using WithAdoptedMat to transfer ownership.
 	// IMPORTANT: Tensors are NOT guaranteed to be zero-initialized.
-	outputTensor := tensorgocv.WithAdoptedMat(descriptors)
+	descriptorTensor, err := tensorgocv.FromMat(descriptors, tensorgocv.WithAdoptedMat())
+	if err != nil {
+		return 0
+	}
 
-	// Store keypoints in tensor metadata (if tensor supports metadata)
-	// For now, we'll just return the descriptor tensor
-	// In a full implementation, we might need a custom tensor type that holds both
+	// Create DescriptorsWithImage output
+	// Use detectedKeypoints (from DetectAndCompute) since they correspond to the descriptors
+	output := visiontypes.DescriptorsWithImage{
+		Image:       input.Image,
+		Keypoints:   detectedKeypoints, // Keypoints that correspond to the descriptors
+		Descriptors: descriptorTensor,
+	}
 
-	// Write output tensor
-	outputTensors := []types.Tensor{outputTensor}
-	written, _ := dst.Write(outputTensors)
+	// Write output
+	outputs := []visiontypes.DescriptorsWithImage{output}
+	written, _ := dst.Write(outputs)
 	return written
 }
 
 // Reset resets the processor state.
-// Clears preallocated scratch space.
 func (p *Processor) Reset() {
-	// Clear scratch descriptors (will be recreated as needed)
-	if !p.scratchDescriptors.Empty() {
-		p.scratchDescriptors.Close()
-		p.scratchDescriptors = cv.NewMat()
-	}
+	// No state to reset
 }
 
 // Close releases all resources held by the processor.
 func (p *Processor) Close() {
-	p.detector.Close()
-	p.matcher.Close()
+	switch p.featureType {
+	case ORB:
+		p.orb.Close()
+	case SIFT:
+		p.sift.Close()
+	case KAZE:
+		p.kaze.Close()
+	case AKAZE:
+		p.akaze.Close()
+	case BRISK:
+		p.brisk.Close()
+	}
 	if !p.scratchMask.Empty() {
 		p.scratchMask.Close()
-	}
-	if !p.scratchDescriptors.Empty() {
-		p.scratchDescriptors.Close()
 	}
 }
 
 // Ensure Processor implements chain.Processor
-var _ chain.Processor[types.Tensor, types.Tensor] = (*Processor)(nil)
+var _ chain.Processor[visiontypes.DescriptorsWithImage, visiontypes.KeypointsWithImage] = (*Processor)(nil)
