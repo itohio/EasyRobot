@@ -1,6 +1,7 @@
 package gocv
 
 import (
+	"fmt"
 	"image"
 
 	"github.com/itohio/EasyRobot/x/math/tensor/types"
@@ -24,6 +25,21 @@ type Accessor interface {
 
 	// Image renders the tensor as an image.Image by cloning the underlying Mat.
 	Image() (image.Image, error)
+}
+
+// Mat returns the underlying gocv.Mat by value. The caller MUST NOT call Close
+// on the returned Mat; the tensor retains ownership and will close it via Release.
+// Modifying the Mat mutates the tensor in-place.
+// This is a convenience method that dereferences MatRef().
+func (t Tensor) Mat() (cv.Mat, error) {
+	h, err := t.getHandle()
+	if err != nil {
+		return cv.Mat{}, err
+	}
+	if h.mat == nil {
+		return cv.Mat{}, fmt.Errorf("gocv tensor: nil mat")
+	}
+	return *h.mat, nil
 }
 
 // MatRef implements Accessor.MatRef.
