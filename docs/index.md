@@ -24,9 +24,9 @@ From the roadmap's no-hardware demo checkpoints ([[roadmap#8. Next|roadmap §8]]
 
 The sixth checkpoint, M-b's synthetic recorder round trip, follows: it needs [[ER-027-marshaller-fixes|ER-027]] and [[ER-031-spi-slave-feature-framing|ER-031]]. Full order, accepted order changes and the T-IK mapping: [[tickets/index|ticket index]].
 
-<!-- vault:status h=5c5f7478fd33 -->
+<!-- vault:status h=8f6b8ff954cc -->
 
-State: 64 tested · 29 implemented · 141 partial · 13 stub · 13 unverified (260 algorithms)
+State: 64 tested · 29 implemented · 139 partial · 10 stub · 13 unverified (255 algorithms)
 
 <!-- /vault:status -->
 
@@ -55,7 +55,7 @@ State: 64 tested · 29 implemented · 141 partial · 13 stub · 13 unverified (2
 
 Algorithm notes per module by status (generated from the algorithm notes; `tested` needs passing value tests).
 
-<!-- vault:modules h=f8eed898b8cf -->
+<!-- vault:modules h=377e83c66ddb -->
 
 | Module | tested | implemented | partial | stub | unverified | total |
 |---|---|---|---|---|---|---|
@@ -70,7 +70,7 @@ Algorithm notes per module by status (generated from the algorithm notes; `teste
 | [[bit-buffer]] | 2 | 0 | 2 | 0 | 0 | 4 |
 | [[dsp-core]] | 4 | 0 | 7 | 0 | 0 | 11 |
 | [[filters]] | 2 | 2 | 12 | 1 | 0 | 17 |
-| [[line-coding-and-fec]] | 2 | 2 | 8 | 4 | 0 | 16 |
+| [[line-coding-and-fec]] | 2 | 2 | 6 | 1 | 0 | 11 |
 | [[modulation]] | 0 | 4 | 14 | 2 | 0 | 20 |
 | [[peg-protocol-parser]] | 0 | 0 | 2 | 0 | 0 | 2 |
 | **Tensor and NN** | | | | | | |
@@ -103,7 +103,7 @@ Algorithm notes per module by status (generated from the algorithm notes; `teste
 | [[vision]] | 0 | 0 | 8 | 2 | 3 | 13 |
 | **Knowledge engine** | | | | | | |
 | [[knowledge-engine]] | 0 | 0 | 0 | 0 | 0 | 0 |
-| **All** | 64 | 29 | 141 | 13 | 13 | 260 |
+| **All** | 64 | 29 | 139 | 10 | 13 | 255 |
 
 <!-- /vault:modules -->
 
@@ -113,7 +113,7 @@ The knowledge engine is its own Go module and is catalogued in [[knowledge-engin
 
 Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs tagged with the ticket. The defects themselves are in the linked notes and in [[todo]].
 
-<!-- vault:tickets h=cb0f2dae22d4 -->
+<!-- vault:tickets h=af1d86b8d2fb -->
 
 | Ticket | Title | Status | Workstream | Open p1 |
 |---|---|---|---|---|
@@ -136,7 +136,7 @@ Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs 
 | [[ER-020-eager-views-newas-norm-gradients\|ER-020]] | Eager tensor views, NewAs aliasing and norm gradients | backlog | W9 | 38 |
 | [[ER-021-mat-vec-quaternion-qr-inverse\|ER-021]] | mat/vec: quaternion from matrix, QR and inverse tolerance | backlog | W3, W9 | 8 |
 | [[ER-022-audio-modem-acquisition\|ER-022]] | Audio modem acquisition, sync, drift and BER tests | blocked | W7 | 54 |
-| [[ER-023-coding-fixes\|ER-023]] | Coding: GF(256) RS, CRC catalogue, line codes, LFSR, Gray, PEG | backlog | W7 | 21 |
+| [[ER-023-coding-fixes\|ER-023]] | Coding: GF(256) RS, CRC catalogue, line codes, LFSR, Gray, PEG | backlog | W7 | 17 |
 | [[ER-024-lidar-decoder-fixes\|ER-024]] | Lidar decoder fixes | blocked | W8 | 9 |
 | [[ER-025-device-fixes\|ER-025]] | Device fixes: encoder, PCA9685, servo array, NMEA, serial | backlog | W3, W8 | 13 |
 | [[ER-026-build-green\|ER-026]] | Build green: host part, then TinyGo stage | ready | all | 12 |
