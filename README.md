@@ -1,5 +1,7 @@
 # EasyRobot Golang implementation
 
+**Knowledge vault:** [`docs/index.md`](docs/index.md) — architecture, module and algorithm catalog with status, tickets and roadmap. Open `docs/` in Obsidian; `make docs` regenerates its tables, `make docs-check` checks it.
+
 This repo brings together EasyLocomotion, EasyVision, EasyNetwork concepts and ideas into one big cross platform project.
 
 The biggest idea is that you can develop your algorithms and AI pipelines/graphs on whatever platform(even the cloud!) you wish and then be able to reproduce the same behavior on mobile robot platform (e.g. Raspberry Pi, Nano Pi or even ARM microcontrollers).

@@ -1,0 +1,8 @@
+{
+  "useMarkdownLinks": false,
+  "newLinkFormat": "shortest",
+  "alwaysUpdateLinks": true,
+  "attachmentFolderPath": "attachments",
+  "propertiesInDocument": "visible",
+  "showFrontmatter": true
+}
