@@ -1,0 +1,114 @@
+package main
+
+import (
+	"github.com/itohio/EasyRobot/x/math/nn/qnet"
+	"github.com/itohio/EasyRobot/x/math/primitive/qi8"
+)
+
+// spec is one benchmarked network.
+type spec struct {
+	name, note    string
+	build         func() (qnet.Graph, error)
+	wSeed, inSeed uint64
+}
+
+var specs = []spec{
+	{
+		name:  "TinyCNN",
+		note:  "32x32x3: 3x(conv3x3/1 SAME + ReLU6, maxpool2) 16/32/64ch, global avgpool, FC->10",
+		build: tinyCNN, wSeed: 1, inSeed: 101,
+	},
+	{
+		name: "MobileNetV1-0.25",
+		note: "96x96x3 feature extractor (qnet.MobileNetV1, classes 0), output 1x1x256",
+		build: func() (qnet.Graph, error) {
+			return qnet.MobileNetV1(0.25, 96, 96, 0, make([]qnet.Layer, qnet.MobileNetV1Layers(0)))
+		},
+		wSeed: 2, inSeed: 102,
+	},
+	{
+		name:  "DS-CNN-style",
+		note:  "64x64x3: conv3x3/2->32, 4x(dw3x3/1 + pw1x1->64), global avgpool, FC->12 (depthwise-separable; no residual: qi8 has no Add op yet)",
+		build: dsCNN, wSeed: 3, inSeed: 103,
+	},
+}
+
+// graphBuilder appends layers, chaining each layer's input to the previous
+// output. The first error sticks.
+type graphBuilder struct {
+	layers []qnet.Layer
+	s      qi8.Shape
+	q      qnet.Quant
+	err    error
+}
+
+func newBuilder(in qi8.Shape) *graphBuilder {
+	return &graphBuilder{s: in, q: qnet.MobileNetInputQuant}
+}
+
+func (b *graphBuilder) add(l qnet.Layer) {
+	if b.err != nil {
+		return
+	}
+	l.In, l.InQ = b.s, b.q
+	out, err := l.OutShape()
+	if err != nil {
+		b.err = err
+		return
+	}
+	l.Out = out
+	b.layers = append(b.layers, l)
+	b.s, b.q = out, l.OutQ
+}
+
+// conv adds a SAME-padded square Conv2D (kind qnet.Conv2D) or depthwise
+// layer with fused ReLU6, output quantised as qnet.MobileNetActQuant.
+func (b *graphBuilder) conv(kind qnet.Kind, outC, k, stride int) {
+	act := qnet.MobileNetActQuant
+	lo, hi := qi8.ActReLU6(act.Scale, act.ZP)
+	b.add(qnet.Layer{
+		Kind: kind, Out: qi8.Shape{C: outC}, OutQ: act,
+		KH: k, KW: k, StrideH: stride, StrideW: stride, Padding: qi8.PaddingSame,
+		ActMin: lo, ActMax: hi,
+	})
+}
+
+func (b *graphBuilder) maxPool(k int) {
+	b.add(qnet.Layer{Kind: qnet.MaxPool2D, OutQ: b.q, KH: k, KW: k, StrideH: k, StrideW: k, Padding: qi8.PaddingValid})
+}
+
+func (b *graphBuilder) globalAvgPool() {
+	b.add(qnet.Layer{Kind: qnet.AvgPool2D, OutQ: b.q, KH: b.s.H, KW: b.s.W, StrideH: 1, StrideW: 1, Padding: qi8.PaddingValid})
+}
+
+func (b *graphBuilder) fc(out int) {
+	lo, hi := qi8.ActNone()
+	b.add(qnet.Layer{Kind: qnet.FullyConnected, Out: qi8.Shape{C: out}, OutQ: qnet.MobileNetLogitQuant, ActMin: lo, ActMax: hi})
+}
+
+func (b *graphBuilder) graph() (qnet.Graph, error) {
+	return qnet.Graph{Layers: b.layers}, b.err
+}
+
+func tinyCNN() (qnet.Graph, error) {
+	b := newBuilder(qi8.Shape{H: 32, W: 32, C: 3})
+	for _, c := range []int{16, 32, 64} {
+		b.conv(qnet.Conv2D, c, 3, 1)
+		b.maxPool(2)
+	}
+	b.globalAvgPool()
+	b.fc(10)
+	return b.graph()
+}
+
+func dsCNN() (qnet.Graph, error) {
+	b := newBuilder(qi8.Shape{H: 64, W: 64, C: 3})
+	b.conv(qnet.Conv2D, 32, 3, 2)
+	for range 4 {
+		b.conv(qnet.DepthwiseConv2D, 0, 3, 1)
+		b.conv(qnet.Conv2D, 64, 1, 1)
+	}
+	b.globalAvgPool()
+	b.fc(12)
+	return b.graph()
+}
