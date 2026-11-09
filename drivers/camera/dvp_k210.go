@@ -43,7 +43,7 @@ type Clocks struct{ PLL0, ACLK, APB1, XCLK, SCCB uint32 }
 
 // sleep waits at least d. It checks a deadline against time.Now because a
 // bare time.Sleep on TinyGo 0.43/K210 can return early
-// (docs/evidence/ER-K210-M1.md §4).
+// (ER-K210-M1 evidence §4, outside the repo).
 func sleep(d time.Duration) {
 	end := time.Now().Add(d)
 	for left := time.Until(end); left > 0; left = time.Until(end) {
@@ -73,7 +73,7 @@ func dvpInit(sccbHz uint32) uint32 {
 	}
 	// The DVP's eight data inputs are the SPI0 D0–D7 pins; this routes them
 	// to the DVP (SDK sysctl_set_spi0_dvp_data). Without it every pixel
-	// reads 0 (observed, docs/evidence/ER-K210-M4.md).
+	// reads 0 (observed, ER-K210-M4 evidence, outside the repo).
 	kendryte.SYSCTL.MISC.SetBits(kendryte.SYSCTL_MISC_SPI_DVP_DATA_ENABLE)
 	cfg := kendryte.DVP.SCCB_CFG.Get() &^ (kendryte.DVP_SCCB_CFG_SCL_LCNT_Msk | kendryte.DVP_SCCB_CFG_SCL_HCNT_Msk)
 	kendryte.DVP.SCCB_CFG.Set(cfg | cnt<<kendryte.DVP_SCCB_CFG_SCL_LCNT_Pos | cnt<<kendryte.DVP_SCCB_CFG_SCL_HCNT_Pos)

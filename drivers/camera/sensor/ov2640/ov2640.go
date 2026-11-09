@@ -170,7 +170,7 @@ type Options struct {
 	ClockDiv uint8
 	// YUVLowByteFirst sets IMAGE_MODE's LBYTE_FIRST bit for YUV422/Y8, which
 	// swaps the byte order on the bus. The K210 DVP's Y mode needs it
-	// (observed, docs/evidence/ER-K210-M4.md).
+	// (observed, ER-K210-M4 evidence, outside the repo).
 	YUVLowByteFirst bool
 	// LineNS is the sensor's line period in ns for this clock setup; it
 	// converts exposure between µs and AEC line periods. The backend measures
@@ -301,7 +301,7 @@ func (s *Sensor) setWindow(m sensor.Mode) error {
 }
 
 // sleep waits at least d, checking a deadline (a bare time.Sleep can return
-// early on TinyGo 0.43/K210, docs/evidence/ER-K210-M1.md §4).
+// early on TinyGo 0.43/K210, ER-K210-M1 evidence §4, outside the repo).
 func sleep(d time.Duration) {
 	end := time.Now().Add(d)
 	for left := time.Until(end); left > 0; left = time.Until(end) {

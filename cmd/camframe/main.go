@@ -304,7 +304,7 @@ func (t *teeReader) readContext(ctx context.Context, p []byte) (int, error) {
 // serial buffer unread. macOS drops serial input once that buffer fills:
 // with a synchronous reader camframe lost 61–2,581-byte runs at 115200,
 // while a tight reader on the same stream lost none
-// (docs/evidence/ER-K210-K5.md, K5b).
+// (ER-K210-K5 evidence, outside the repo, K5b).
 type asyncReader struct {
 	ctx context.Context
 	ch  chan []byte

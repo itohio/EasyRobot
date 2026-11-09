@@ -29,7 +29,7 @@ const (
 
 // CameraPins are the camera control pins: the Sipeed/MaixPy K210 board
 // mapping IO40–IO47, which UnitV shares (verified by the M3 sensor-id read,
-// docs/evidence/ER-K210-M3.md).
+// ER-K210-M3 evidence, outside the repo).
 var CameraPins = camera.Pins{
 	SDA:   machine.P40,
 	SCL:   machine.P41,
