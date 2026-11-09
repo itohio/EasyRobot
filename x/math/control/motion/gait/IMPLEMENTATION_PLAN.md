@@ -44,7 +44,7 @@ Stand up the gait module structure outlined in `DESIGN.md`, comprising shared co
    - Stores per-leg state machines tracking sub-phase (Lift, SwingForward, Touchdown, SupportBack).
    - Exposes `Update(ctx, req)` -> `FootState` and `Preview(ctx, legID, horizon)` for lookahead.
    - Handles terrain capability downgrades seamlessly.
-   - Default path shapes: support phase linear, swing phases arc; allow overrides through constructor.
+   - Default path shapes: support linear; lift/touchdown vertical minimum-jerk; swing minimum-jerk with apex at `SwingHeight` above lift-off (clearances do not stack); allow overrides through constructor.
 3. **RigidBodyPlanner (`gait/rigidbody`)**
    - Maintains body pose estimate, integrates linear/angular velocities over variable timestep.
    - Solves for endpoint adjustments to keep CoM within support polygon, leveraging support planner outputs.

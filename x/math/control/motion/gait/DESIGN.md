@@ -17,6 +17,8 @@ Support gait planning for legged robots with an arbitrary number of legs by deco
   - Capability flags documenting supported features (terrain awareness modes, preset switching, variable timestep).
 - `gait/support`: Concrete implementation of the support endpoint path planner driven by phase state and endpoint requests. Depends only on `gait/types` contracts.
 - `gait/rigidbody`: Rigid body kinematics planner that maps body linear/angular velocity into leg endpoint adjustments and back-estimates body pose from endpoint measurements.
+- `gait/scheduler`: Phase scheduler: one global phase φ ∈ [0,1), per-leg touchdown offset and duty factor β (stance while (φ − offset) mod 1 < β), presets tripod/ripple/wave (hexapod) and walk/trot (quadruped), allocation-free `Advance(dt)`/`State()`. Leg order: left side front to back, then right side front to back.
+- `gait/walk`: Per-tick body twist → servo degrees pipeline for coxa–femur–tibia legs (scheduler → Raibert footholds → reach clip → swing → `chain.LegSolver` → `ServoMap`). It does **not** use `gait/support` or the `gait/types` planner contracts: it has its own swing profile (minimum-jerk horizontal motion between vertical lift/landing shares, height = lift-off→touchdown line + `SwingHeight`·(1 − cos 2πτ)/2). The two `SwingHeight`s differ: in `walk` it is the apex above the straight lift-off→touchdown line at mid-swing; in `gait/types.SupportProfile` (used by `gait/support`) it is the apex above the higher of lift-off and foothold height. Fixes to one swing profile (e.g. the single-apex swing in `gait/support`) do not reach the other.
 
 ## High-Level Architecture
 1. **Leg Endpoint Planner**
@@ -88,7 +90,7 @@ Every time-dependent structure must track the time base (absolute timestamp and/
   - Provide `Preview(nSteps)` to anticipate foot positions for body planner.
   - Ensure continuity when modifying orientation: use slerp or rotation interpolation around vertical axis.
   - Support partial leg failure by marking leg inactive and redistributing phase timing.
-  - Expose phase-specific path shapes with defaults (`Support` linear, `Lift/Swing/Touchdown` arc) and allow overrides via constructor options.
+  - Expose phase-specific path shapes with defaults (`Support` linear; `Lift` and `Touchdown` vertical minimum-jerk; `Swing` minimum-jerk in x/y with a single z bump peaking at `SwingHeight` above the higher of lift-off and foothold) and allow overrides via constructor options.
 
 ## Body Planner
 - **Inputs**

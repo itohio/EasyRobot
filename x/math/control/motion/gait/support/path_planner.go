@@ -224,6 +224,13 @@ type legState struct {
 	lastProgress  float32
 }
 
+// The swing is one curve split into three sub-phases:
+//
+//	lift:      stance pose → stance + LiftHeight (vertical, minimum-jerk)
+//	swing:     lift top → foothold + LiftHeight, z peaking at max(lift-off, foothold) + SwingHeight
+//	touchdown: foothold + LiftHeight → foothold (+ terrain/clearance), vertical, monotonic descent
+//
+// Heights are relative to the lift-off and foothold heights and never stack.
 func liftTarget(current gaittypes.EndpointPose, profile gaittypes.SupportProfile) gaittypes.EndpointPose {
 	target := clonePose(current)
 	target.Position[2] = current.Position[2] + profile.LiftHeight
@@ -232,7 +239,7 @@ func liftTarget(current gaittypes.EndpointPose, profile gaittypes.SupportProfile
 
 func swingTarget(current, desired gaittypes.EndpointPose, profile gaittypes.SupportProfile) gaittypes.EndpointPose {
 	target := clonePose(desired)
-	target.Position[2] = desired.Position[2] + profile.SwingHeight
+	target.Position[2] = desired.Position[2] + profile.LiftHeight
 	return target
 }
 
@@ -359,37 +366,58 @@ func (linearShape) Interpolate(start, target gaittypes.EndpointPose, t float32) 
 	}
 }
 
-type arcShape struct {
-	amplitude float32
-}
+// smoothShape moves along the straight line with minimum-jerk timing: zero velocity
+// and acceleration at both ends, monotonic in every coordinate. Used for the vertical
+// lift-off and touchdown segments.
+type smoothShape struct{}
 
-func (s arcShape) Interpolate(start, target gaittypes.EndpointPose, t float32) gaittypes.EndpointPose {
-	pos := interpolateVec3(start.Position, target.Position, t)
-	z0 := start.Position[2]
-	z1 := target.Position[2]
-	apex := maxFloat32(z0, z1) + s.amplitude
-	pos[2] = quadraticThroughMidpoint(z0, apex, z1, t)
-
+func (smoothShape) Interpolate(start, target gaittypes.EndpointPose, t float32) gaittypes.EndpointPose {
+	s := minimumJerk(t)
 	return gaittypes.EndpointPose{
-		Position:    pos,
-		Orientation: interpolateQuat(start.Orientation, target.Orientation, t),
+		Position:    interpolateVec3(start.Position, target.Position, s),
+		Orientation: interpolateQuat(start.Orientation, target.Orientation, s),
 	}
 }
 
-func quadraticThroughMidpoint(z0, apex, z1, t float32) float32 {
-	dz := z1 - z0
-	b := 4*(apex-z0) - dz
-	a := 2*dz - 4*(apex-z0)
-	return a*t*t + b*t + z0
+// swingShape moves x/y with minimum-jerk timing and z as a single bump: a
+// minimum-jerk rise from the start height to the apex over the first half and a
+// minimum-jerk fall to the target height over the second half. The apex is
+// max(start z, target z) + clearance and is reached exactly at t = 0.5.
+type swingShape struct {
+	clearance float32
 }
 
+func (s swingShape) Interpolate(start, target gaittypes.EndpointPose, t float32) gaittypes.EndpointPose {
+	h := minimumJerk(t)
+	pos := interpolateVec3(start.Position, target.Position, h)
+	z0, z1 := start.Position[2], target.Position[2]
+	apex := max(z0, z1) + s.clearance
+	if t < 0.5 {
+		pos[2] = z0 + (apex-z0)*minimumJerk(2*t)
+	} else {
+		pos[2] = apex + (z1-apex)*minimumJerk(2*t-1)
+	}
+	return gaittypes.EndpointPose{
+		Position:    pos,
+		Orientation: interpolateQuat(start.Orientation, target.Orientation, h),
+	}
+}
+
+// minimumJerk is the Flash–Hogan time scaling 10t³ − 15t⁴ + 6t⁵ on t ∈ [0,1].
+func minimumJerk(t float32) float32 {
+	t = clamp01(t)
+	return t * t * t * (10 + t*(-15+6*t))
+}
+
+// defaultPhaseShapes: the swing clearance is SwingHeight − LiftHeight on top of the
+// lift/approach height (stance + LiftHeight), so the apex is SwingHeight above the
+// higher of lift-off and foothold. Normalize guarantees LiftHeight ≤ SwingHeight.
 func defaultPhaseShapes(profile gaittypes.SupportProfile) map[gaittypes.PhaseMode]gaittypes.PathShape {
-	amp := defaultArcAmplitude(profile)
 	return map[gaittypes.PhaseMode]gaittypes.PathShape{
 		gaittypes.PhaseSupport:   linearShape{},
-		gaittypes.PhaseLift:      arcShape{amplitude: amp},
-		gaittypes.PhaseSwing:     arcShape{amplitude: amp},
-		gaittypes.PhaseTouchdown: arcShape{amplitude: amp},
+		gaittypes.PhaseLift:      smoothShape{},
+		gaittypes.PhaseSwing:     swingShape{clearance: profile.SwingHeight - profile.LiftHeight},
+		gaittypes.PhaseTouchdown: smoothShape{},
 	}
 }
 
@@ -405,16 +433,4 @@ func applyDefaultShapes(existing map[gaittypes.PhaseMode]gaittypes.PathShape, pr
 		}
 	}
 	return existing
-}
-
-func defaultArcAmplitude(profile gaittypes.SupportProfile) float32 {
-	maxHeight := maxFloat32(profile.LiftHeight, profile.SwingHeight)
-	return maxFloat32(maxHeight, profile.TouchdownClearance)
-}
-
-func maxFloat32(a, b float32) float32 {
-	if a > b {
-		return a
-	}
-	return b
 }

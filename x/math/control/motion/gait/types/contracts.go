@@ -80,9 +80,17 @@ type SupportUpdateRequest struct {
 }
 
 // SupportProfile defines default clearances and behaviors for sub-phases.
+// Heights are in metres, relative to the foot's own lift-off and foothold heights;
+// they do not stack.
 type SupportProfile struct {
-	LiftHeight         float32
-	SwingHeight        float32
+	// LiftHeight is the vertical lift-off (and touchdown approach) segment: the foot
+	// rises this far before moving horizontally and descends this far onto the foothold.
+	LiftHeight float32
+	// SwingHeight is the swing apex above the higher of lift-off and foothold height.
+	SwingHeight float32
+	// TouchdownClearance is added to the touchdown target height. Normalize clamps it
+	// to at most LiftHeight: the swing ends LiftHeight above the foothold, so a larger
+	// clearance would make the foot rise during touchdown.
 	TouchdownClearance float32
 	SupportBlend       float32
 }
@@ -99,6 +107,12 @@ func (profile SupportProfile) Normalize() SupportProfile {
 	}
 	if profile.SwingHeight < 0 {
 		profile.SwingHeight = 0
+	}
+	if profile.LiftHeight > profile.SwingHeight {
+		profile.LiftHeight = profile.SwingHeight
+	}
+	if profile.TouchdownClearance > profile.LiftHeight {
+		profile.TouchdownClearance = profile.LiftHeight
 	}
 	if profile.SupportBlend < 0 {
 		profile.SupportBlend = 0
@@ -152,11 +166,15 @@ type RigidBodyPlanner interface {
 	Features() FeatureSet
 }
 
-// GaitTemplate is a declarative description of gait timing.
+// GaitTemplate is a declarative description of gait timing. gait/scheduler.NewFromTemplate
+// turns CycleTime, PhaseMap and DutyCycles into a running phase scheduler.
 type GaitTemplate struct {
-	ID              string
-	CycleTime       time.Duration
-	PhaseMap        map[string]float32
+	ID        string
+	CycleTime time.Duration
+	// PhaseMap is each role's touchdown phase offset in [0,1): the role is in stance
+	// while (φ − offset) mod 1 < duty.
+	PhaseMap map[string]float32
+	// DutyCycles is each role's duty factor (stance fraction of the cycle) in (0,1).
 	DutyCycles      map[string]float32
 	ContactSequence []string
 	SwingProfile    map[string]SupportProfile

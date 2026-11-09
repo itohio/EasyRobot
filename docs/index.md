@@ -24,9 +24,9 @@ From the roadmap's no-hardware demo checkpoints ([[roadmap#8. Next|roadmap §8]]
 
 The sixth checkpoint, M-b's synthetic recorder round trip, follows: it needs [[ER-027-marshaller-fixes|ER-027]] and [[ER-031-spi-slave-feature-framing|ER-031]]. Full order, accepted order changes and the T-IK mapping: [[tickets/index|ticket index]].
 
-<!-- vault:status h=469c1e952a3a -->
+<!-- vault:status h=d435a85ff2fc -->
 
-State: 61 tested · 29 implemented · 141 partial · 14 stub · 13 unverified (258 algorithms)
+State: 62 tested · 29 implemented · 141 partial · 13 stub · 13 unverified (258 algorithms)
 
 <!-- /vault:status -->
 
@@ -55,14 +55,14 @@ State: 61 tested · 29 implemented · 141 partial · 14 stub · 13 unverified (2
 
 Algorithm notes per module by status (generated from the algorithm notes; `tested` needs passing value tests).
 
-<!-- vault:modules h=05f4b5dd270b -->
+<!-- vault:modules h=4a120162212f -->
 
 | Module | tested | implemented | partial | stub | unverified | total |
 |---|---|---|---|---|---|---|
 | **Control and planning** | | | | | | |
 | [[graph-and-planning]] | 7 | 1 | 9 | 0 | 0 | 17 |
 | [[kinematics]] | 6 | 5 | 2 | 0 | 0 | 13 |
-| [[motion-and-gait]] | 3 | 0 | 2 | 2 | 0 | 7 |
+| [[motion-and-gait]] | 4 | 0 | 2 | 1 | 0 | 7 |
 | [[pid-control]] | 1 | 0 | 0 | 0 | 0 | 1 |
 | **Signal, codecs, audio** | | | | | | |
 | [[audio-io]] | 1 | 1 | 1 | 0 | 1 | 4 |
@@ -103,7 +103,7 @@ Algorithm notes per module by status (generated from the algorithm notes; `teste
 | [[vision]] | 0 | 0 | 8 | 2 | 3 | 13 |
 | **Knowledge engine** | | | | | | |
 | [[knowledge-engine]] | 0 | 0 | 0 | 0 | 0 | 0 |
-| **All** | 61 | 29 | 141 | 14 | 13 | 258 |
+| **All** | 62 | 29 | 141 | 13 | 13 | 258 |
 
 <!-- /vault:modules -->
 
@@ -113,7 +113,7 @@ The knowledge engine is its own Go module and is catalogued in [[knowledge-engin
 
 Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs tagged with the ticket. The defects themselves are in the linked notes and in [[todo]].
 
-<!-- vault:tickets h=d8a289dd9e3f -->
+<!-- vault:tickets h=dde2860cd22f -->
 
 | Ticket | Title | Status | Workstream | Open p1 |
 |---|---|---|---|---|
@@ -132,7 +132,7 @@ Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs 
 | [[ER-014-small-llm-native-graph\|ER-014]] | Run a bounded small local decoder through EasyRobot graph | blocked | W9 | 0 |
 | [[ER-015-measured-backend-comparison\|ER-015]] | Measure approved backend costs without hidden fallback | blocked | W9 | 0 |
 | [[ER-016-serialization-boundaries\|ER-016]] | Prove graph tensor serialization and resume boundaries | blocked | W9 | 0 |
-| [[ER-018-leg-helpers-gait-scheduler\|ER-018]] | Leg/joint helpers, gait scheduler, strides and gait→IK→servo glue | ready | W3 | 1 |
+| [[ER-018-leg-helpers-gait-scheduler\|ER-018]] | Leg/joint helpers, gait scheduler, strides and gait→IK→servo glue | ready | W3 | 0 |
 | [[ER-019-filter-correctness\|ER-019]] | Filter correctness | backlog | W7 | 17 |
 | [[ER-020-eager-views-newas-norm-gradients\|ER-020]] | Eager tensor views, NewAs aliasing and norm gradients | backlog | W9 | 38 |
 | [[ER-021-mat-vec-quaternion-qr-inverse\|ER-021]] | mat/vec: quaternion from matrix, QR and inverse tolerance | backlog | W3, W9 | 8 |

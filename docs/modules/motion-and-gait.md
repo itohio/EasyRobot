@@ -41,18 +41,18 @@ Docs read as claims: `motion/IMPLEMENTATION_PLAN.md` (generic planner, not imple
 
 ## Algorithms
 
-<!-- vault:algorithms h=c21e600a91fb -->
+<!-- vault:algorithms h=7e4604be26de -->
 
-Counts: 3 tested · 0 implemented · 2 partial · 2 stub · 0 unverified (7 algorithms)
+Counts: 4 tested · 0 implemented · 2 partial · 1 stub · 0 unverified (7 algorithms)
 
 | Algorithm | Status | Tests | Summary |
 |---|---|---|---|
+| [[gait-phase-scheduler]] | tested | pass | Per-leg stance/swing phase from a periodic pattern (offset, duty); tripod, ripple, wave, walk, trot presets; allocation-free. |
 | [[polyline-path-sampler]] | tested | pass | Arc-length parameterised piecewise-linear path with optional per-waypoint quaternion (slerp) and… |
 | [[rigidbody-path-follower]] | tested | pass | Unicycle path follower; jerk-limited progress to the path end at MaxSpeed (ER-018); lateral speed cap only reported |
 | [[vaj1d-jerk-limited-profile]] | tested | pass | Signed, near-time-optimal jerk-limited 1-D profile; lands exactly on target within v/a/j limits (ER-018). |
-| [[gait-support-endpoint-planner]] | partial | none | partial (clearance stacking, touchdown rises) |
+| [[gait-support-endpoint-planner]] | partial | pass | Per-leg foot curve per sub-phase; swing apex = SwingHeight, monotonic touchdown (ER-018). Not allocation-free; frame unspecified. |
 | [[path-tracking-pid-controller]] | partial | pass | partial (lateral sign, heading wrap) |
-| [[gait-phase-scheduler]] | stub | none |  |
 | [[gait-rigidbody-planner]] | stub | none |  |
 
 <!-- /vault:algorithms -->
