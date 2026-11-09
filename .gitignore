@@ -33,3 +33,4 @@ docs/.obsidian/workspace*.json
 /cmd/manipulator/manipulator
 /cmd/monitor/monitor
 /cmd/spectrometer/spectrometer
+/build/

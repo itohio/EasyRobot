@@ -82,6 +82,29 @@ flash-manipulator:
 		echo "Aborted."; \
 	fi
 
+
+# UnitV (M5Stack, Kendryte K210). Build from the repo root: the target's
+# linker-script path is relative to the working directory (drivers/unitv/doc.go).
+UNITV_PROG ?= hello
+UNITV_PORT ?=
+KTOOL ?= ktool.py
+
+.PHONY: unitv
+unitv:
+	@mkdir -p build
+	tinygo build -target=drivers/unitv/target/unitv.json -size=short -o build/unitv-$(UNITV_PROG).bin ./drivers/unitv/examples/$(UNITV_PROG)
+
+.PHONY: flash-unitv
+flash-unitv: unitv
+	@test -n "$(UNITV_PORT)" || { echo "Set UNITV_PORT to the UnitV's serial port (macOS: /dev/cu.usbserial-…)."; exit 1; }
+	@echo "Will run: $(KTOOL) -p $(UNITV_PORT) -B kd233 -b 115200 -a 0 build/unitv-$(UNITV_PROG).bin"
+	@read -p "Flash connected UnitV? [y/N] " ans; \
+	if [ "$$ans" = "y" ] || [ "$$ans" = "Y" ]; then \
+		$(KTOOL) -p $(UNITV_PORT) -B kd233 -b 115200 -a 0 build/unitv-$(UNITV_PROG).bin; \
+	else \
+		echo "Aborted."; \
+	fi
+
 .PHONY: help
 help:
 	@echo "Makefile for EasyRobot project"
@@ -100,6 +123,8 @@ help:
 	@echo "  make docs-stale       List notes whose cited source files changed since their revision"
 	@echo "  make clean            Remove build artifacts"
 	@echo "  make flash-manipulator Flash drivers/manipulator to XIAO via tinygo (asks y/N)"
+	@echo "  make unitv [UNITV_PROG=hello]  Build a UnitV (K210) example with tinygo into build/"
+	@echo "  make flash-unitv       Flash it with ktool (needs UNITV_PORT, KTOOL; asks y/N)"
 	@echo "  make help             Display this help message"
 
 .DEFAULT_GOAL := help

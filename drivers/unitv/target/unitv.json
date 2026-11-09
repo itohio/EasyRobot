@@ -1,0 +1,5 @@
+{
+	"inherits": ["maixbit"],
+	"build-tags": ["unitv"],
+	"linkerscript": "drivers/unitv/target/unitv.ld"
+}
