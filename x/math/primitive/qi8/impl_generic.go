@@ -21,11 +21,18 @@ package qi8
 //     scratch == Scratch[:n] (nil when n == 0). It must not allocate.
 //   - *Run(...) gets the validated plan, the original weights and the packed
 //     scratch; dst and src lengths are already checked.
+//   - weightOffset(scratch) is where the packed weights start in a scratch
+//     of non-zero ScratchLen: W placed there is packed in place (see
+//     InPlaceW); any other overlap of W with Scratch[weightOffset:n] is
+//     rejected in Prepare.
 //
 // Plans are passed by pointer and must not be modified by the backend.
 
 // backendName is reported by Backend.
 const backendName = "generic"
+
+// weightOffset is unused by the generic backend (it packs nothing).
+func weightOffset([]int8) int { return 0 }
 
 func conv2DScratchLen(*convPlan) int { return 0 }
 

@@ -1,5 +1,7 @@
 package qi8
 
+import "unsafe"
+
 // Prepared layers validate their parameters once (Prepare) and then run many
 // times (Run) with only the dst/src length checks. They compute exactly what
 // the corresponding free function computes, through the backend seam in
@@ -70,6 +72,35 @@ func packScratch(scratch []int8, n int) ([]int8, error) {
 	return scratch[:n:n], nil
 }
 
+// checkW rejects W that overlaps the backend's packed region of packed
+// (from weightOffset to the end) without starting exactly at
+// weightOffset: packing would overwrite rows not yet read. W at
+// weightOffset is packed in place (InPlaceW); W elsewhere is a separate copy.
+func checkW(w, packed []int8) error {
+	if len(w) == 0 || len(packed) == 0 {
+		return nil
+	}
+	off := weightOffset(packed)
+	ps := uintptr(unsafe.Pointer(&packed[0])) + uintptr(off)
+	pe := uintptr(unsafe.Pointer(&packed[0])) + uintptr(len(packed))
+	ws := uintptr(unsafe.Pointer(&w[0]))
+	we := ws + uintptr(len(w))
+	if we <= ps || pe <= ws || ws == ps {
+		return nil
+	}
+	return ErrLength
+}
+
+// inPlaceW returns the in-place weight slice of scratch for a backend that
+// needs n bytes of Scratch, or nil.
+func inPlaceW(scratch []int8, n, wLen int) []int8 {
+	if n == 0 || len(scratch) < n {
+		return nil
+	}
+	off := weightOffset(scratch)
+	return scratch[off : off+wLen : off+wLen]
+}
+
 func convIn(pl *convPlan) Shape  { return Shape{H: pl.inH, W: pl.inW, C: pl.ch} }
 func convOut(pl *convPlan) Shape { return Shape{H: pl.outH, W: pl.outW, C: pl.outC} }
 
@@ -98,9 +129,24 @@ func (l *Conv2DLayer) ScratchLen() int {
 	return conv2DScratchLen(&pl)
 }
 
+// InPlaceW returns where W must be placed inside Scratch for Prepare to pack
+// it in place, so that only one copy of the weights exists: the first
+// len(W) bytes of the backend's aligned weight region. Copy the weights into
+// it, set W to it and call Prepare; Run then never reads the original
+// layout. nil when the backend needs no Scratch, P is invalid or Scratch is
+// shorter than ScratchLen().
+func (l *Conv2DLayer) InPlaceW() []int8 {
+	pl, err := l.P.plan()
+	if err != nil {
+		return nil
+	}
+	return inPlaceW(l.Scratch, conv2DScratchLen(&pl), pl.wLen)
+}
+
 // Prepare validates the layer and caches the resolved geometry. It returns
 // the error Conv2D would return for these parameters and slices, or
-// ErrLength when Scratch is shorter than ScratchLen().
+// ErrLength when Scratch is shorter than ScratchLen() or W overlaps the
+// packed weight region other than at InPlaceW.
 func (l *Conv2DLayer) Prepare() error {
 	l.pl, l.s = convPlan{}, weightSnap{}
 	pl, err := l.P.plan()
@@ -115,6 +161,9 @@ func (l *Conv2DLayer) Prepare() error {
 	}
 	packed, err := packScratch(l.Scratch, conv2DScratchLen(&pl))
 	if err != nil {
+		return err
+	}
+	if err := checkW(l.W, packed); err != nil {
 		return err
 	}
 	conv2DPack(packed, l.W, l.Bias, l.RQ, &pl)
@@ -167,9 +216,19 @@ func (l *DepthwiseConv2DLayer) ScratchLen() int {
 	return depthwiseConv2DScratchLen(&pl)
 }
 
+// InPlaceW is as Conv2DLayer.InPlaceW.
+func (l *DepthwiseConv2DLayer) InPlaceW() []int8 {
+	pl, err := l.P.plan()
+	if err != nil {
+		return nil
+	}
+	return inPlaceW(l.Scratch, depthwiseConv2DScratchLen(&pl), pl.wLen)
+}
+
 // Prepare validates the layer and caches the resolved geometry. It returns
 // the error DepthwiseConv2D would return for these parameters and slices, or
-// ErrLength when Scratch is shorter than ScratchLen().
+// ErrLength when Scratch is shorter than ScratchLen() or W overlaps the
+// packed weight region other than at InPlaceW.
 func (l *DepthwiseConv2DLayer) Prepare() error {
 	l.pl, l.s = convPlan{}, weightSnap{}
 	pl, err := l.P.plan()
@@ -184,6 +243,9 @@ func (l *DepthwiseConv2DLayer) Prepare() error {
 	}
 	packed, err := packScratch(l.Scratch, depthwiseConv2DScratchLen(&pl))
 	if err != nil {
+		return err
+	}
+	if err := checkW(l.W, packed); err != nil {
 		return err
 	}
 	depthwiseConv2DPack(packed, l.W, l.Bias, l.RQ, &pl)
@@ -236,9 +298,19 @@ func (l *FCLayer) ScratchLen() int {
 	return fullyConnectedScratchLen(&pl)
 }
 
+// InPlaceW is as Conv2DLayer.InPlaceW.
+func (l *FCLayer) InPlaceW() []int8 {
+	pl, err := l.P.plan()
+	if err != nil {
+		return nil
+	}
+	return inPlaceW(l.Scratch, fullyConnectedScratchLen(&pl), pl.wLen)
+}
+
 // Prepare validates the layer. It returns the error FullyConnected would
 // return for these parameters and slices, or ErrLength when Scratch is
-// shorter than ScratchLen().
+// shorter than ScratchLen() or W overlaps the packed weight region other
+// than at InPlaceW.
 func (l *FCLayer) Prepare() error {
 	l.pl, l.s = fcPlan{}, weightSnap{}
 	pl, err := l.P.plan()
@@ -253,6 +325,9 @@ func (l *FCLayer) Prepare() error {
 	}
 	packed, err := packScratch(l.Scratch, fullyConnectedScratchLen(&pl))
 	if err != nil {
+		return err
+	}
+	if err := checkW(l.W, packed); err != nil {
 		return err
 	}
 	fullyConnectedPack(packed, l.W, l.Bias, l.RQ, &pl)

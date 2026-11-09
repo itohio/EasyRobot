@@ -50,9 +50,14 @@ func pieScratchLen(k, rows int) int {
 	return 15 + rows*k32 + 16 + k32 + 16 + 8*rows
 }
 
+// weightOffset is the offset of the first 16-byte-aligned byte of scratch,
+// where both layouts put the packed weights.
+func weightOffset(scratch []int8) int {
+	return int((16 - uintptr(unsafe.Pointer(&scratch[0]))&15) & 15)
+}
+
 func newPieLayout(scratch []int8, k, rows int) pieLayout {
-	off := int((16 - uintptr(unsafe.Pointer(&scratch[0]))&15) & 15)
-	s := scratch[off:]
+	s := scratch[weightOffset(scratch):]
 	k32 := roundUp32(k)
 	wEnd := rows * k32
 	pStart := wEnd + 16
@@ -177,8 +182,7 @@ func depthwiseConv2DScratchLen(pl *convPlan) int {
 }
 
 func newPieDWLayout(scratch []int8, pl *convPlan) pieDWLayout {
-	off := int((16 - uintptr(unsafe.Pointer(&scratch[0]))&15) & 15)
-	s := scratch[off:]
+	s := scratch[weightOffset(scratch):]
 	taps, c := pl.taps, pl.ch
 	c16 := roundUp16(c)
 	w := taps * c16
