@@ -7,6 +7,7 @@
 package mat
 
 import (
+	"github.com/chewxy/math32"
 	"github.com/itohio/EasyRobot/x/math/vec"
 )
 
@@ -28,35 +29,41 @@ func (m *Matrix4x4) Homogenous(rot *Matrix3x3, trans vec.Vector3D) *Matrix4x4 {
 }
 
 // HomogenousFromQuaternion creates homogeneous transform from quaternion rotation and translation.
-// M = [R(q) t] where R(q) is rotation from quaternion
+// M = [R(q) t] where R(q) is rotation from quaternion (same as Matrix3x3.Orientation)
 //
 //	[0    1]
+//
+// It computes in place and does not allocate.
 func (m *Matrix4x4) HomogenousFromQuaternion(rot vec.Quaternion, trans vec.Vector3D) *Matrix4x4 {
-	var rot3x3 Matrix3x3
-	rot3x3.Orientation(&rot)
-	return m.Homogenous(&rot3x3, trans)
+	x, y, z, w := rot[0], rot[1], rot[2], rot[3]
+	xx, yy, zz := x*x, y*y, z*z
+	xy, xz, yz := x*y, x*z, y*z
+	wx, wy, wz := w*x, w*y, w*z
+	r := Matrix3x3{
+		{1 - 2*(yy+zz), 2 * (xy - wz), 2 * (xz + wy)},
+		{2 * (xy + wz), 1 - 2*(xx+zz), 2 * (yz - wx)},
+		{2 * (xz - wy), 2 * (yz + wx), 1 - 2*(xx+yy)},
+	}
+	return m.Homogenous(&r, trans)
 }
 
 // HomogenousFromEuler creates homogeneous transform from Euler angles and translation.
 // M = [R(euler) t] where R(euler) is rotation from Euler angles
 //
 //	[0         1]
+//
+// It computes in place and does not allocate.
 func (m *Matrix4x4) HomogenousFromEuler(rot vec.Vector3D, trans vec.Vector3D) *Matrix4x4 {
-	var rot3x3 Matrix3x3
-	// Create rotation matrix from Euler angles (ZYX convention)
-	var rz Matrix3x3
-	rz.RotationZ(rot[2])
-	var ry Matrix3x3
-	ry.RotationY(rot[1])
-	var rx Matrix3x3
-	rx.RotationX(rot[0])
-	// R = Rz * Ry * Rx
-	var temp1 Matrix3x3
-	temp1.Mul(&rz, &ry)
-	var temp2 Matrix3x3
-	temp2.Mul(&temp1, &rx)
-	rot3x3 = temp2
-	return m.Homogenous(&rot3x3, trans)
+	// R = Rz(yaw) * Ry(pitch) * Rx(roll) (ZYX convention), expanded.
+	cx, sx := math32.Cos(rot[0]), math32.Sin(rot[0])
+	cy, sy := math32.Cos(rot[1]), math32.Sin(rot[1])
+	cz, sz := math32.Cos(rot[2]), math32.Sin(rot[2])
+	r := Matrix3x3{
+		{cz * cy, cz*sy*sx - sz*cx, cz*sy*cx + sz*sx},
+		{sz * cy, sz*sy*sx + cz*cx, sz*sy*cx - cz*sx},
+		{-sy, cy * sx, cy * cx},
+	}
+	return m.Homogenous(&r, trans)
 }
 
 // HomogenousInverse computes inverse of homogeneous transform matrix.
@@ -64,24 +71,20 @@ func (m *Matrix4x4) HomogenousFromEuler(rot vec.Vector3D, trans vec.Vector3D) *M
 //
 //	[0 1]                   [0       1  ]
 //
-// Uses efficient formula instead of full matrix inverse.
+// Uses efficient formula instead of full matrix inverse. dst may be m; it
+// does not allocate.
 func (m *Matrix4x4) HomogenousInverse(dst *Matrix4x4) {
-	// Extract rotation and translation
-	var rot Matrix3x3
-	var trans vec.Vector3D
-	m.GetRotation(&rot)
-	trans = m.GetTranslation(trans)
-
-	// Transpose rotation
 	var rotT Matrix3x3
-	rotT.Transpose(&rot)
-
-	// Compute -R^T * t
+	for i := range 3 {
+		for j := range 3 {
+			rotT[i][j] = m[j][i]
+		}
+	}
+	tx, ty, tz := m[0][3], m[1][3], m[2][3]
 	var negRotTt vec.Vector3D
-	product := rotT.MulVec(trans, nil).(vec.Vector3D)
-	negRotTt[0] = -product[0]
-	negRotTt[1] = -product[1]
-	negRotTt[2] = -product[2]
+	for i := range 3 {
+		negRotTt[i] = -(rotT[i][0]*tx + rotT[i][1]*ty + rotT[i][2]*tz)
+	}
 
 	// Construct inverse
 	dst.SetRotation(&rotT)

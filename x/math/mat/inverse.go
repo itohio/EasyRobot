@@ -125,44 +125,49 @@ func (m Matrix3x3) Inverse(dst matTypes.Matrix) error {
 	return nil
 }
 
-// Inverse calculates the inverse of a Matrix4x4 using LU decomposition.
+// Inverse calculates the inverse of a Matrix4x4 by Gauss-Jordan elimination
+// with partial (row) pivoting, so matrices with a zero leading element such
+// as 90° poses invert correctly.
 func (m Matrix4x4) Inverse(dst matTypes.Matrix) error {
-	det := m.Det()
-	if math32.Abs(det) < SingularityTolerance {
-		return ErrSingular
-	}
-
 	out := dst.(*Matrix4x4)
 
-	// LU decomposition
-	var L, U Matrix4x4
-	m.LU(&L, &U)
-
-	// Identity matrix
-	I := Matrix4x4{}.Eye().(Matrix4x4)
-
-	// Solve L * Y = I for Y (forward substitution)
-	var Y Matrix4x4
+	a := m
+	inv := Matrix4x4{{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}
 	for col := 0; col < 4; col++ {
-		for row := 0; row < 4; row++ {
-			sum := I[row][col]
-			for k := 0; k < row; k++ {
-				sum -= L[row][k] * Y[k][col]
+		pivot := col
+		maxVal := math32.Abs(a[col][col])
+		for r := col + 1; r < 4; r++ {
+			if v := math32.Abs(a[r][col]); v > maxVal {
+				maxVal = v
+				pivot = r
 			}
-			Y[row][col] = sum / L[row][row]
+		}
+		if maxVal < SingularityTolerance {
+			return ErrSingular
+		}
+		if pivot != col {
+			a[col], a[pivot] = a[pivot], a[col]
+			inv[col], inv[pivot] = inv[pivot], inv[col]
+		}
+		invPivot := 1 / a[col][col]
+		for c := range 4 {
+			a[col][c] *= invPivot
+			inv[col][c] *= invPivot
+		}
+		for r := range 4 {
+			if r == col {
+				continue
+			}
+			f := a[r][col]
+			if f == 0 {
+				continue
+			}
+			for c := range 4 {
+				a[r][c] -= f * a[col][c]
+				inv[r][c] -= f * inv[col][c]
+			}
 		}
 	}
-
-	// Solve U * X = Y for X (back substitution)
-	for col := 0; col < 4; col++ {
-		for row := 3; row >= 0; row-- {
-			sum := Y[row][col]
-			for k := row + 1; k < 4; k++ {
-				sum -= U[row][k] * out[k][col]
-			}
-			out[row][col] = sum / U[row][row]
-		}
-	}
-
+	*out = inv
 	return nil
 }

@@ -24,9 +24,9 @@ From the roadmap's no-hardware demo checkpoints ([[roadmap#8. Next|roadmap §8]]
 
 The sixth checkpoint, M-b's synthetic recorder round trip, follows: it needs [[ER-027-marshaller-fixes|ER-027]] and [[ER-031-spi-slave-feature-framing|ER-031]]. Full order, accepted order changes and the T-IK mapping: [[tickets/index|ticket index]].
 
-<!-- vault:status h=97e2f6055254 -->
+<!-- vault:status h=afae07a90272 -->
 
-State: 56 tested · 29 implemented · 146 partial · 14 stub · 13 unverified (258 algorithms)
+State: 57 tested · 29 implemented · 145 partial · 14 stub · 13 unverified (258 algorithms)
 
 <!-- /vault:status -->
 
@@ -55,7 +55,7 @@ State: 56 tested · 29 implemented · 146 partial · 14 stub · 13 unverified (2
 
 Algorithm notes per module by status (generated from the algorithm notes; `tested` needs passing value tests).
 
-<!-- vault:modules h=8d87762c11cd -->
+<!-- vault:modules h=a18823c1c59d -->
 
 | Module | tested | implemented | partial | stub | unverified | total |
 |---|---|---|---|---|---|---|
@@ -76,7 +76,7 @@ Algorithm notes per module by status (generated from the algorithm notes; `teste
 | **Tensor and NN** | | | | | | |
 | [[iter-workers]] | 0 | 1 | 3 | 0 | 0 | 4 |
 | [[learn]] | 2 | 2 | 1 | 0 | 0 | 5 |
-| [[mat-vec]] | 4 | 0 | 6 | 0 | 0 | 10 |
+| [[mat-vec]] | 5 | 0 | 5 | 0 | 0 | 10 |
 | [[nn]] | 1 | 3 | 10 | 0 | 0 | 14 |
 | [[primitive-kernels]] | 2 | 0 | 3 | 1 | 0 | 6 |
 | [[tensor]] | 6 | 1 | 11 | 0 | 1 | 19 |
@@ -103,7 +103,7 @@ Algorithm notes per module by status (generated from the algorithm notes; `teste
 | [[vision]] | 0 | 0 | 8 | 2 | 3 | 13 |
 | **Knowledge engine** | | | | | | |
 | [[knowledge-engine]] | 0 | 0 | 0 | 0 | 0 | 0 |
-| **All** | 56 | 29 | 146 | 14 | 13 | 258 |
+| **All** | 57 | 29 | 145 | 14 | 13 | 258 |
 
 <!-- /vault:modules -->
 
@@ -113,7 +113,7 @@ The knowledge engine is its own Go module and is catalogued in [[knowledge-engin
 
 Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs tagged with the ticket. The defects themselves are in the linked notes and in [[todo]].
 
-<!-- vault:tickets h=b54aa6252059 -->
+<!-- vault:tickets h=e0e132b0b0bb -->
 
 | Ticket | Title | Status | Workstream | Open p1 |
 |---|---|---|---|---|
@@ -133,7 +133,7 @@ Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs 
 | [[ER-015-measured-backend-comparison\|ER-015]] | Measure approved backend costs without hidden fallback | blocked | W9 | 0 |
 | [[ER-016-serialization-boundaries\|ER-016]] | Prove graph tensor serialization and resume boundaries | blocked | W9 | 0 |
 | [[ER-017-dh-planar-ik-robustness\|ER-017]] | DH and planar IK robustness | ready | W3 | 3 |
-| [[ER-018-leg-helpers-gait-scheduler\|ER-018]] | Leg/joint helpers, gait scheduler, strides and gait→IK→servo glue | ready | W3 | 6 |
+| [[ER-018-leg-helpers-gait-scheduler\|ER-018]] | Leg/joint helpers, gait scheduler, strides and gait→IK→servo glue | ready | W3 | 3 |
 | [[ER-019-filter-correctness\|ER-019]] | Filter correctness | backlog | W7 | 17 |
 | [[ER-020-eager-views-newas-norm-gradients\|ER-020]] | Eager tensor views, NewAs aliasing and norm gradients | backlog | W9 | 38 |
 | [[ER-021-mat-vec-quaternion-qr-inverse\|ER-021]] | mat/vec: quaternion from matrix, QR and inverse tolerance | backlog | W3, W9 | 8 |

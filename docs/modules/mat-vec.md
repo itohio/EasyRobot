@@ -32,21 +32,21 @@ Declared docs: `mat/SPEC.md`, `vec/SPEC.md`, `x/math/SPEC.md`.
 
 ## Algorithms
 
-<!-- vault:algorithms h=a5b74a2ffaf0 -->
+<!-- vault:algorithms h=472106149636 -->
 
-Counts: 4 tested · 0 implemented · 6 partial · 0 stub · 0 unverified (10 algorithms)
+Counts: 5 tested · 0 implemented · 5 partial · 0 stub · 0 unverified (10 algorithms)
 
 | Algorithm | Status | Tests | Summary |
 |---|---|---|---|
+| [[homogeneous-transforms]] | tested | pass | 4×4 SE(3) build/decompose/invert; FromQuaternion/FromEuler/HomogenousInverse fixed and value-tested (ER-018). |
 | [[mat-cholesky]] | tested | pass | correct; re-factors and allocates on every solve |
 | [[mat-nnls]] | tested | pass | exact solutions by probe; destroys caller's A |
 | [[mat-numeric-jacobian]] | tested | pass | analytic geometric Jacobian column (not finite differences) |
 | [[mat-svd]] | tested | pass | reconstruction value-tested; rows < cols unsupported |
-| [[homogeneous-transforms]] | partial | pass | `HomogenousInverse`, `FromQuaternion`, `FromEuler` return zero rotation (value-receiver results… |
 | [[mat-fixed-size-and-dense]] | partial | pass | 59 of 145 mat tests are empty tables; `Matrix.Orientation` wrong (`mat.go:261-291`)… |
 | [[mat-pseudo-inverse]] | partial | pass | fails for wide matrices (rows < cols, `la.go:760` Gesvd rejection) → DH IK with > 3 joints falls… |
 | [[mat-qr]] | partial | pass | Q orthonormal but Q·R ≠ A (error 3–12, `qr.go:57,109`); tests check lengths only |
-| [[matrix-inverse-and-lu]] | partial | pass | `Matrix4x4.Inverse` silently wrong for a 90° rotation pose (no pivoting, `mat4x4.go:364`… |
+| [[matrix-inverse-and-lu]] | partial | pass | `Matrix4x4.Inverse` pivoted since ER-018; dense `LU` drops the permutation and dense `Det` divides by zero pivots (ER-021) |
 | [[vector-and-quaternion]] | partial | pass | 33 of 61 vec tests empty; `Vector.Product(Quaternion)` panics; `Theta()` returns w, not an angle |
 
 <!-- /vault:algorithms -->
