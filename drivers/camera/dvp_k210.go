@@ -213,7 +213,9 @@ func dvpCaptureOne(timeout time.Duration) error {
 		}
 	}
 	kendryte.DVP.STS.Set(kendryte.DVP_STS_DVP_EN | kendryte.DVP_STS_DVP_EN_WE)
-	clear(start)
+	// Clear both: a FINISH latched before conversion was enabled must not
+	// end this capture early (review R-ER-K210-camera, hardware note).
+	clear(start | finish)
 	for kendryte.DVP.STS.Get()&finish == 0 {
 		if time.Now().After(end) {
 			return ErrTimeout

@@ -26,11 +26,14 @@ const (
 // between µs and line periods.
 var ErrNoLineTime = errors.New("ov2640: line period unknown (Options.LineNS)")
 
-// LineNS estimates the line period for the CIF setup this driver programs
-// (CLKRC 2×, ÷4, DVP PCLK auto) at XCLK xclkHz. The init tables' banding
-// value BD50 = 0xCA says 202 line periods per 10 ms (half a 50 Hz cycle) at
-// the 24 MHz XCLK they were tuned for; line time scales with 1/XCLK.
-// Inferred from the tables, not measured; the C1 run checks it.
+// LineNS estimates the line period for one clock setup only: the K210
+// backend's raw (non-JPEG) CIF mode, CLKRC 2× ÷4 (Options ClockDouble true,
+// ClockDiv 3) with DVP PCLK auto, at XCLK xclkHz. It ignores Options and
+// is wrong for other setups, e.g. the JPEG path (CLKRC 0) or another
+// host's clocking. The init tables' banding value BD50 = 0xCA says 202
+// line periods per 10 ms at the 24 MHz XCLK they were tuned for; line time
+// scales with 1/XCLK. Inferred, not measured: the C1 run suggests it is ~2×
+// too short (frame period 32.8 ms at a 335-line clamp).
 func LineNS(xclkHz uint32) uint32 {
 	if xclkHz == 0 {
 		return 0

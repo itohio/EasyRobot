@@ -77,15 +77,36 @@ type Camera struct {
 	planes []byte // G and B planes for Y8 (the DVP's AI output writes three)
 }
 
-// uncached returns the K210's uncached alias of b: SRAM at 0x8000_0000 is
-// also mapped uncached at 0x4000_0000. The DVP writes memory behind the
-// D-cache, so the CPU reads frames through this alias.
+// Cached general SRAM (6 MiB at 0x8000_0000). It is also mapped uncached at
+// 0x4000_0000; the DVP writes memory behind the D-cache, so the CPU reads
+// frames through that alias.
+const (
+	sramStart      = 0x8000_0000
+	sramEnd        = 0x8060_0000
+	uncachedOffset = 0x4000_0000
+)
+
+// inSRAM reports whether b lies in cached general SRAM. A previous
+// Frame.Data (already the uncached alias) does not, and must not be handed
+// to the DVP.
+func inSRAM(b []byte) bool {
+	p := uintptr(unsafe.Pointer(unsafe.SliceData(b)))
+	return p >= sramStart && p+uintptr(len(b)) <= sramEnd
+}
+
+// uncached returns b's uncached alias; b must satisfy inSRAM.
 func uncached(b []byte) []byte {
-	p := uintptr(unsafe.Pointer(unsafe.SliceData(b))) - 0x4000_0000
+	p := uintptr(unsafe.Pointer(unsafe.SliceData(b))) - uncachedOffset
 	return unsafe.Slice((*byte)(unsafe.Pointer(p)), len(b))
 }
 
 func physAddr(b []byte) uint32 { return uint32(uintptr(unsafe.Pointer(unsafe.SliceData(b)))) }
+
+// powerDown stops the sensor clock and powers the sensor down.
+func powerDown() {
+	kendryte.DVP.CMOS_CFG.SetBits(kendryte.DVP_CMOS_CFG_POWER_DOWN)
+	kendryte.DVP.CMOS_CFG.ClearBits(kendryte.DVP_CMOS_CFG_CLK_ENABLE)
+}
 
 // Open powers the sensor up, identifies it, configures it for cfg and sets
 // the DVP up for that frame size. Formats: Y8 (sensor YUV422, the DVP keeps
@@ -99,6 +120,7 @@ func Open(cfg Config, pins Pins) (*Camera, error) {
 	}
 	id, err := Identify(cfg, pins)
 	if err != nil {
+		powerDown()
 		return nil, err
 	}
 	var s sensor.Sensor
@@ -109,9 +131,11 @@ func Open(cfg Config, pins Pins) (*Camera, error) {
 			LineNS: ov2640.LineNS(clocks.XCLK),
 		}}
 	default:
+		powerDown()
 		return nil, ErrNoDriver
 	}
 	if err := s.Init(cfg.Mode); err != nil {
+		powerDown()
 		return nil, err
 	}
 	c := &Camera{cfg: cfg, id: id, drv: s}
@@ -150,7 +174,8 @@ func (c *Camera) ReadControls() (sensor.Controls, error) {
 }
 
 // Capture grabs the next whole frame into buf (FrameSize(cfg) bytes,
-// 8-byte aligned). Frame.Data is buf's uncached alias. RGB565 comes out as
+// 8-byte aligned, in cached SRAM: not a previous Frame.Data, which is the
+// uncached alias). Frame.Data is buf's uncached alias. RGB565 comes out as
 // little-endian 16-bit pixels in raster order.
 func (c *Camera) Capture(buf []byte) (Frame, error) {
 	n := FrameSize(c.cfg)
@@ -158,7 +183,7 @@ func (c *Camera) Capture(buf []byte) (Frame, error) {
 		return Frame{}, ErrBufSize
 	}
 	buf = buf[:n]
-	if physAddr(buf)&7 != 0 {
+	if physAddr(buf)&7 != 0 || !inSRAM(buf) {
 		return Frame{}, ErrBufAlign
 	}
 	if c.cfg.Format == sensor.Y8 {
@@ -186,7 +211,6 @@ func (c *Camera) Capture(buf []byte) (Frame, error) {
 
 // Close stops the sensor clock and powers the sensor down.
 func (c *Camera) Close() error {
-	kendryte.DVP.CMOS_CFG.SetBits(kendryte.DVP_CMOS_CFG_POWER_DOWN)
-	kendryte.DVP.CMOS_CFG.ClearBits(kendryte.DVP_CMOS_CFG_CLK_ENABLE)
+	powerDown()
 	return nil
 }

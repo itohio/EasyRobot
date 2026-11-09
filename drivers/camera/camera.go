@@ -19,9 +19,10 @@
 //
 // Shared rules:
 //   - Errors: unsupported format or size ErrFormat; buffer too small
-//     ErrBufSize; buffer misaligned for the host's capture engine
-//     ErrBufAlign; no frame in time ErrTimeout; unknown sensor ErrNoDriver;
-//     driver without controls ErrNoControls.
+//     ErrBufSize; buffer misaligned or in memory the capture engine cannot
+//     write ErrBufAlign; no frame in time ErrTimeout; unknown sensor
+//     ErrNoDriver; driver without controls ErrNoControls.
+//   - A failed Open leaves the sensor powered down.
 //   - Raw formats (Y8, RGB565, YUV422): Capture needs FrameSize(cfg) bytes;
 //     RGB565 comes out little-endian, pixels in raster order.
 //   - JPEG: FrameSize returns 0 because the sensor decides the size. The
@@ -66,7 +67,7 @@ type Backend interface {
 var (
 	ErrTimeout    = errors.New("camera: timeout")
 	ErrBufSize    = errors.New("camera: buffer too small for the frame")
-	ErrBufAlign   = errors.New("camera: buffer not aligned for this host's capture engine")
+	ErrBufAlign   = errors.New("camera: buffer misaligned, or in memory this host's capture engine cannot write")
 	ErrFormat     = errors.New("camera: format or size not supported by this backend")
 	ErrNoDriver   = errors.New("camera: no driver for this sensor")
 	ErrNoControls = errors.New("camera: sensor driver has no exposure/gain/white-balance controls")
