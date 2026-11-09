@@ -51,4 +51,4 @@ Product's guess: part of M-a stage 1 (**M–L** together with ER-018); this tick
 
 ## Implementation evidence
 
-Report: ER-017-018 (filed with ER-018). The lead's probe (30/60/90 mm, ±π limits, seed 0.1) went from 29/500 to 500/500.
+Report: [[ER-017-018]]. The lead's probe (30/60/90 mm, ±π limits, seed 0.1) went from 29/500 to 500/500.

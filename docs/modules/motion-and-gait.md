@@ -4,7 +4,7 @@ group: "Control and planning"
 status: partial
 tags: [easyrobot, motion, gait, trajectory, legged]
 workstream: [W3, W6]
-packages: [x/math/control/motion, x/math/control/motion/rigidbody, x/math/control/motion/gait/types, x/math/control/motion/gait/support, x/math/control/motion/gait/rigidbody]
+packages: [x/math/control/motion, x/math/control/motion/rigidbody, x/math/control/motion/gait/types, x/math/control/motion/gait/support, x/math/control/motion/gait/rigidbody, x/math/control/motion/gait/scheduler, x/math/control/motion/gait/walk]
 test_result: pass
 ---
 # Motion and gait (x/math/control/motion)
@@ -12,16 +12,18 @@ test_result: pass
 **Purpose:**
 - Time-parameterised motion: a jerk-limited 1-D profile for servos and joints.
 - A unicycle path follower and tracking controller.
-- The start of a legged gait stack: contracts, a foot-trajectory planner and a body planner stub.
+- A legged gait stack: contracts, a phase scheduler, a foot-trajectory planner, a twist → footholds → leg IK → servo walker (host-simulated, ER-018) and a body planner stub.
 
 **Packages** (non-test LOC / test LOC; no build tags):
 
 | Package | LOC | Tests | Notes |
 |---|---|---|---|
-| `motion` (`vaj1d.go`) | 196 | — | package name `vaj` |
-| `motion/rigidbody` (9 files) | 1559 | 438 | |
-| `motion/gait/types` (`contracts.go`) | 196 | — | |
-| `motion/gait/support` (`path_planner.go`) | 420 | — | |
+| `motion` (`vaj1d.go`) | 213 | 239 | package name `vaj` |
+| `motion/rigidbody` (9 files) | 1549 | 499 | |
+| `motion/gait/types` (`contracts.go`) | 214 | — | |
+| `motion/gait/support` (`path_planner.go`) | 436 | 189 | |
+| `motion/gait/scheduler` (`scheduler.go`) | 343 | 489 | new in ER-018 |
+| `motion/gait/walk` (`walk.go`, `reach.go`) | 467 | 367 | new in ER-018 |
 | `motion/gait/rigidbody` (`planner.go`) | 91 | — | |
 
 Docs read as claims: `motion/IMPLEMENTATION_PLAN.md` (generic planner, not implemented), `motion/rigidbody/SPEC.md`, `motion/gait/DESIGN.md`, `motion/gait/IMPLEMENTATION_PLAN.md`.
@@ -36,17 +38,20 @@ Docs read as claims: `motion/IMPLEMENTATION_PLAN.md` (generic planner, not imple
   - `GaitTemplate`, `GaitInstance`, `GaitScheduler`, `TransitionPolicy`
 - **Implementations:**
   - `support.NewSupportPathPlanner(opts...)` with `WithTerrainProvider`, `WithSupportProfile`, `WithPhaseShape`.
+  - `scheduler.New(Pattern, period)` with presets `Tripod/Ripple/Wave/Walk/Trot` ([[gait-phase-scheduler]]).
+  - `walk.New(Config) (*Walker, error)`, `Walker.Step(dt, Twist, servoDeg)` ([[gait-foothold-planner]]).
   - `gait/rigidbody.NewPlanner(WithInitialPose)` is a stub.
-- **Composition today:** the caller must generate phase modes and progress, desired foot poses, body motion and IK calls. Only the foot-curve step exists ([[W3-legged-ik]]).
+- **Composition today:** `walk.Walker` runs scheduler → footholds → swing/stance feet in the world → `chain.Body` transforms → analytic leg IK → servo degrees, allocation-free per tick ([[leg-chain-config-and-servo-map]]). `gait/support` is not used by it (it allocates and its frame is unspecified).
 
 ## Algorithms
 
-<!-- vault:algorithms h=7e4604be26de -->
+<!-- vault:algorithms h=a4f36d3e3d3f -->
 
-Counts: 4 tested · 0 implemented · 2 partial · 1 stub · 0 unverified (7 algorithms)
+Counts: 5 tested · 0 implemented · 2 partial · 1 stub · 0 unverified (8 algorithms)
 
 | Algorithm | Status | Tests | Summary |
 |---|---|---|---|
+| [[gait-foothold-planner]] | tested | pass | Body twist → footholds (Raibert, reach-clipped) → world stance/swing feet → leg IK → servo degrees per tick; allocation-free. |
 | [[gait-phase-scheduler]] | tested | pass | Per-leg stance/swing phase from a periodic pattern (offset, duty); tripod, ripple, wave, walk, trot presets; allocation-free. |
 | [[polyline-path-sampler]] | tested | pass | Arc-length parameterised piecewise-linear path with optional per-waypoint quaternion (slerp) and… |
 | [[rigidbody-path-follower]] | tested | pass | Unicycle path follower; jerk-limited progress to the path end at MaxSpeed (ER-018); lateral speed cap only reported |
@@ -81,8 +86,7 @@ Counts: 4 tested · 0 implemented · 2 partial · 1 stub · 0 unverified (7 algo
   - The request structs are explicit, carrying `Delta` and `Timestamp`.
 - **Missing glue:**
   - The frame of `DesiredPose` is unspecified (body or world). The support phase only makes sense in the body frame.
-  - Phase progress must come from a scheduler that does not exist.
-  - Leg identity is a string; nothing binds legs to a body or to IK.
+  - Phase progress now comes from `gait/scheduler`; `walk` binds legs to a `chain.Body` by index (scheduler leg order). The string leg IDs of `gait/types` are still unbound.
 - **`motion/rigidbody.Motion`:**
   - Uses the kinematics `Bidirectional` interface for a planner, so `Forward` means "plan" and `Backward` means "control". It composes in the toy test but reads oddly.
   - The 6-row state matrix duplicates the `State` struct.
@@ -93,10 +97,10 @@ Counts: 4 tested · 0 implemented · 2 partial · 1 stub · 0 unverified (7 algo
 
 Algorithm defects are tracked in the algorithm notes (table above) and rolled up in [[todo]]; this list holds module-level items only.
 
-- [ ] Stride/foothold generator and body→leg transforms (ER-018) — gait (new) #p2
+- [x] Stride/foothold generator and body→leg transforms (ER-018) — gait/walk, kinematics/chain #p2
 - [ ] Support polygon / static stability margin (ER-037) — gait (new) #p2
 - [ ] Specify the body/world frame for FootState — gait/types/contracts.go:56 #p2
-- [ ] Tests for vaj1d, gait/support (the plan lists them; none exist) — motion/gait/IMPLEMENTATION_PLAN.md #p2
+- [x] Tests for vaj1d, gait/support — vaj1d_test.go, gait/support/path_planner_test.go #p2
 - [ ] `SetLimits` on VAJ1D so firmware can honour `ManipulatorConfig.Motion` — vaj1d.go:22; drivers/manipulator/main.go:351 #p2
 
 ## Inferred objectives (proposals)

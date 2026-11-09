@@ -24,7 +24,7 @@ evidence: "go test -race -count=1 ./x/math/control/kinematics/... → ok (2026-1
 
 ## Completeness review
 
-- Complete: no — no per-joint zero offset/sign in `planar.Config` (handled by the leg chain helpers of ER-018), no caller choice of knee branch.
+- Complete: no — no per-joint zero offset/sign in `planar.Config` (handled by [[leg-chain-config-and-servo-map]]), no caller choice of knee branch.
 - Tested: `TestPlanar3DOF_ProbeRWorkspace` (500/500 exact incl. the 78 feet behind the yaw axis), `TestPlanar3DOF_FullRangeExact` (±π limits, 2000/2000, incl. the review's minimal reproduction), `TestPlanar3DOF_TypedErrors`, `TestPlanar3DOF_NonFiniteTarget`, review fixes `TestPlanar3DOF_KneeBranches` (knee-up-only limits 500/500, knee-down tried first), `TestPlanar3DOF_BestEffortQuality` (stretch direction; `ErrJointLimit` residual ≤ a 61³ in-limit grid minimum), `TestPlanar3DOF_BoundaryRoundTrips` (full stretch, full fold, joints exactly at limits), `TestPlanar3DOF_BackwardNoAllocations`, `TestConfig_Validate`, `TestNew_RejectsInvalidConfig`, plus the original forward/backward/round-trip tests. Mutants P03, P10, P12 and zero tolerances are killed.
 - Correct: yes.
 
@@ -40,4 +40,4 @@ evidence: "go test -race -count=1 ./x/math/control/kinematics/... → ok (2026-1
 
 ## Links
 
-- Module: [[kinematics]] · [[planar-2dof-arm-kinematics]] · [[dh-jacobian-pseudoinverse-ik]] · [[ER-R2-ik-review]] · [[W3-legged-ik]]
+- Module: [[kinematics]] · [[planar-2dof-arm-kinematics]] · [[dh-jacobian-pseudoinverse-ik]] · [[leg-chain-config-and-servo-map]] · [[ER-R2-ik-review]] · [[W3-legged-ik]]

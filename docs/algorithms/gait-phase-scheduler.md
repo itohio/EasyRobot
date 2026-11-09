@@ -39,4 +39,4 @@ evidence: "GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=readonly go test -race -co
 
 ## Links
 
-- Module: [[motion-and-gait]] · [[gait-support-endpoint-planner]] · [[W3-legged-ik]] · [[W6-decision-trees]]
+- Module: [[motion-and-gait]] · [[gait-support-endpoint-planner]] · [[gait-foothold-planner]] · [[W3-legged-ik]] · [[W6-decision-trees]]

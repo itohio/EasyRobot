@@ -44,4 +44,4 @@ evidence: "go test -race -count=1 ./x/math/control/kinematics/... → ok (2026-1
 
 ## Links
 
-- Module: [[kinematics]] · [[dh-geometric-jacobian]] · [[dh-forward-kinematics]] · [[planar-3dof-leg-kinematics]] · [[ER-R2-ik-review]] · [[W3-legged-ik]] · [[mat-pseudo-inverse]] · [[mat-numeric-jacobian]]
+- Module: [[kinematics]] · [[dh-geometric-jacobian]] · [[dh-forward-kinematics]] · [[planar-3dof-leg-kinematics]] · [[leg-chain-config-and-servo-map]] · [[ER-R2-ik-review]] · [[W3-legged-ik]] · [[mat-pseudo-inverse]] · [[mat-numeric-jacobian]]

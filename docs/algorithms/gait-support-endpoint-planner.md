@@ -26,7 +26,7 @@ evidence: "go test -race -count=1 ./x/math/control/motion/gait/support → ok (2
 
 ## Completeness review
 
-- Complete: no — no stride/foothold computation (that lives in `gait/walk` (ER-018), which uses its own allocation-free swing curve), no `Preview`, no reach/velocity limits, no mid-swing re-targeting (DESIGN claims these). `interpolateQuat` may allocate, so the planner is not allocation-free.
+- Complete: no — no stride/foothold computation (that lives in [[gait-foothold-planner]], which uses its own allocation-free swing curve), no `Preview`, no reach/velocity limits, no mid-swing re-targeting (DESIGN claims these). `interpolateQuat` may allocate, so the planner is not allocation-free.
 - Tested: `path_planner_test.go`, 7 profiles (including stance at z = −0.08, LiftHeight > SwingHeight, LiftHeight 0, TouchdownClearance > LiftHeight): apex = SwingHeight ± 1 mm, lift starts at stance height without overshoot, monotonic touchdown ending at foothold + clearance, no jump at any phase boundary.
 - Correct: yes for the curve shapes above. Contact during touchdown is still assumed at progress ≥ 0.5 (`determineContact`).
 
@@ -41,4 +41,4 @@ evidence: "go test -race -count=1 ./x/math/control/motion/gait/support → ok (2
 
 ## Links
 
-- Module: [[motion-and-gait]] · [[gait-phase-scheduler]] · [[gait-rigidbody-planner]] · [[interpolation]] · [[W3-legged-ik]]
+- Module: [[motion-and-gait]] · [[gait-phase-scheduler]] · [[gait-foothold-planner]] · [[gait-rigidbody-planner]] · [[interpolation]] · [[W3-legged-ik]]

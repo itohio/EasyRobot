@@ -84,9 +84,13 @@ The table below summarises the column layouts used by each bidirectional model.
 ### Error Semantics
 
 - `kintypes.ErrInvalidDimensions`: matrix shape mismatch.
-- `kintypes.ErrUnsupportedOperation`: configuration cannot satisfy the request (e.g. unsupported joint type, singular Jacobian).
+- `kintypes.ErrUnsupportedOperation`: configuration cannot satisfy the request (e.g. unsupported joint type, a chain that is not coxa–femur–tibia shaped for `chain.Planar3`).
+- `kintypes.ErrInvalidConfig`: constructors and `Validate` reject malformed configurations (non-finite fields, `Min >= Max` including the zero value, bad servo maps). Validation errors wrap it.
+- Inverse kinematics (`dh`, `planar`, `chain`) always writes a best-effort, in-limit solution and returns a typed reason:
+  - `kintypes.ErrUnreachable`: target outside the workspace.
+  - `kintypes.ErrJointLimit`: reachable only past a joint limit.
+  - `kintypes.ErrNoConvergence`: iterative solver spent its budget.
 - Model-specific errors:
-  - `dh.ErrNoConvergence`: inverse solver failed to reach tolerance.
   - `thrusters.ErrInfeasible`: wrench cannot be produced within command limits.
   - `thrusters.ErrCommandLimit`: requested command exceeds actuator bounds.
 
@@ -94,8 +98,12 @@ The table below summarises the column layouts used by each bidirectional model.
 
 ### Joints (`joints/dh`, `joints/planar`)
 
-- `dh.New` constructs a Denavit–Hartenberg chain with arbitrary DOF.  Forward performs FK by chaining `Matrix4x4` transforms, while Backward runs a Jacobian pseudo-inverse loop (position only).
-- `planar.New2DOF`/`New3DOF` provide analytical planar arm solvers that map joint angles to Cartesian positions and back.
+- `dh.New(eps, maxIterations, cfg...)` validates every row and returns a Denavit–Hartenberg chain with arbitrary DOF and preallocated solver buffers.  Forward performs FK by chaining `Matrix4x4` transforms; Backward runs damped least squares seeded from `state` (position only, limit-aware, allocation-free).
+- `planar.New2DOF`/`New3DOF` (with validated `Config`s) provide analytical planar arm / coxa–femur–tibia leg solvers that map joint angles to Cartesian positions and back.
+
+### Chains and legs (`chain`)
+
+`chain` declares joints in radians and metres (`Joint`, `Chain`), maps them to servo degrees (`ServoMap`: servoDeg = ZeroDeg + Sign·Ratio·deg(q)), validates them and builds the model (`Chain.Model`: analytic leg when `Planar3` matches, DH-DLS otherwise).  The legged layer mounts leg chains on a body (`Hexapod`, `Quadruped`, `Body.FootInLeg`) and solves all legs per tick without allocation (`LegSolver.SolveLegs`).  `motion/gait/walk` drives it from a body twist (scheduler → footholds → swing/stance feet → leg IK → servo degrees).
 
 ### Wheels (`wheels/*`)
 
@@ -110,8 +118,15 @@ All wheeled models share helper utilities from `wheels/internal/rigid`.  Forward
 ### 1. Denavit–Hartenberg Forward/Backward
 
 ```go
-cfg := []dh.Config{{R: 1, Index: 0}, {R: 1, Index: 0}}
-arm := dh.New(1e-4, 50, cfg...)
+// Joint limits are required (Min < Max); the zero value is rejected.
+cfg := []dh.Config{
+    {Min: -math32.Pi, Max: math32.Pi, R: 1, Index: 0},
+    {Min: -math32.Pi, Max: math32.Pi, R: 1, Index: 0},
+}
+arm, err := dh.New(1e-4, 50, cfg...)
+if err != nil {
+    log.Fatal(err) // wraps kintypes.ErrInvalidConfig
+}
 
 state := mat.New(len(cfg), 1)
 state[0][0], state[1][0] = math32.Pi/4, math32.Pi/6
@@ -126,8 +141,11 @@ controls := mat.New(len(cfg), 1)
 desired := mat.New(7, 1)
 desired.CopyFrom(destination.View())
 desired[0][0] += 0.1 // shift x by 10 cm
-if err := arm.Backward(nil, desired, controls); err != nil {
-    log.Fatal(err)
+// state (the current joints) seeds the solver; it must be DOF×1.
+if err := arm.Backward(state, desired, controls); err != nil {
+    // errors.Is(err, kintypes.ErrUnreachable / ErrJointLimit / ErrNoConvergence);
+    // controls still holds the best in-limit solution.
+    log.Println(err)
 }
 ```
 

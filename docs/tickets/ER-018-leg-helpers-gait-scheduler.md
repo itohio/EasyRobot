@@ -2,7 +2,7 @@
 id: ER-018
 title: "Leg/joint helpers, gait scheduler, strides and gait→IK→servo glue"
 type: ticket
-status: ready
+status: done
 kind: implementation
 owner: easyrobot
 workstream: W3
@@ -39,13 +39,13 @@ Source/test edits are approved by the owner's autonomy instruction (roster `deci
 
 ## Acceptance evidence required later
 
-- [ ] **T-IK-01** — failing test first: 0→0.5 ends within 1e-3; 0→100 ends within 1e-3; FD |a| ≤ 1.05·maxA; reversal never exceeds the reversal position + stopping distance. Fix: `vaj1d.go:59` `x1<0`; remove velocity snap `:92-96`; signed state; drop `motion.go:427` workaround.
-- [ ] **T-IK-07** — failing test first: hexleg `Chain.DH()` FK == `Planar3()` FK; `ToServo`/`FromServo` round trip; `Validate` catches bad limits and servo range. Fix: §5 API.
-- [ ] **T-IK-08** — failing test first: apex == SwingHeight ± 1 mm; touchdown z monotonic non-increasing; lift starts at the stance height. Fix: rewrite `arcShape`/targets (Bezier from [[interpolation]]).
-- [ ] **T-IK-09** — failing test first: tripod: always exactly 3 stance legs, offsets {0, ½}; wave: ≥5 stance legs; trot: diagonal pairs. Fix: implement `GaitScheduler` with presets.
-- [ ] **T-IK-10** — failing test first: straight walk: stance feet fixed in the world (< 1 mm drift per cycle); turn in place. Fix: foothold generator + `Body.FootInLeg`.
-- [ ] O2 transforms: failing value tests M·M⁻¹ = I for a non-trivial 4×4 and `FromEuler`/`FromQuaternion` vs known matrices (`x/math/mat/homogeneous_test.go:75-101`), then the fixes.
-- [ ] Glue: a host simulation of a hexapod tripod over a full cycle — every foot reachable, every joint inside its limits, `testing.AllocsPerRun` = 0 for one tick (M-a stage 1 checkpoint, [[roadmap#M-a — Hexapod / quadruped walking (W3)|roadmap M-a]]).
+- [x] **T-IK-01** — `TestVAJ1D_ReachesTarget`, `TestVAJ1D_ReversalStopsWithinStoppingDistance`, review round `TestVAJ1D_StepProfile` (12 cases: exact landing, ≤ 1.5× time-optimal, FD |a| ≤ 1.05·maxA, jerk ≤ 1.05·maxJ). Fix: signed state, jerk bisection with a time-optimal brake check, float32 carry; workaround removed and `TestForwardStraightPathReachesCruiseSpeed` added (rigidbody now reaches MaxSpeed). [[vaj1d-jerk-limited-profile]], [[rigidbody-path-follower]].
+- [x] **T-IK-07** — `TestHexlegDHMatchesPlanar3` (< 1e-6 m, 2000 poses), `TestServoRoundTrip`, `TestValidate` (19 cases), `TestFootInLegInvertsForwardTransform`, `TestSolveLegsReproducesJointAngles` (0 allocs). New package `kinematics/chain` ([[leg-chain-config-and-servo-map]]).
+- [x] **T-IK-08** — `TestSwingApexEqualsSwingHeight` (0.1633 → 0.0800 ± 1 mm), `TestTouchdownMonotonicDescent`, `TestLiftStartsAtStanceHeight`, `TestSwingCycleContinuity`. Fix: minimum-jerk lift/touchdown, apex-exact swing, `Normalize` clamps ([[gait-support-endpoint-planner]]).
+- [x] **T-IK-09** — `TestTripod`, `TestWave`, `TestRipple`, `TestTrot`, `TestWalk`, `TestPhaseWraps`, `TestAdvanceDoesNotAllocate` and 5 more on a 4096-point phase grid. New package `gait/scheduler` ([[gait-phase-scheduler]]).
+- [x] **T-IK-10** — `TestStraightWalk`, `TestTurnInPlace`, `TestCrabWalk`: stance drift ≤ 9.5e-8 m per run; `TestClipScalesTwist`. New package `gait/walk` ([[gait-foothold-planner]]).
+- [x] O2 transforms — `TestMatrix4x4_HomogenousKnownMatrices`, `TestMatrix4x4_HomogenousInverseKnown`, `TestMatrix4x4_InverseNeedsPivoting` failed first, pass ([[homogeneous-transforms]], [[matrix-inverse-and-lu]]).
+- [x] Glue — `TestHexapodTripodSim`: 15 s (tripod walk + turn in place), every foot reachable (min margin 9.1 mm), every joint inside its limits, 0 IK errors, `AllocsPerRun` = 0 per tick; `TestQuadrupedWalkSim`.
 
 ## Effort uncertainty and revision trigger
 
@@ -53,4 +53,4 @@ Product's guess: M-a stage 1 **M–L** with ER-017; this ticket ≈ **M–L** af
 
 ## Implementation evidence
 
-None. Planning ticket only.
+Report: [[ER-017-018]]. Open: joint speed is reported, not limited (hexapod sim peaks 8.0 rad/s against a 5.24 rad/s servo) — TODO in [[gait-foothold-planner]].

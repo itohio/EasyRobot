@@ -4,7 +4,7 @@ group: "Control and planning"
 status: partial
 tags: [easyrobot, kinematics, control]
 workstream: [W3, W6]
-packages: [x/math/control/kinematics/types, x/math/control/kinematics/joints/dh, x/math/control/kinematics/joints/planar, x/math/control/kinematics/rigidbody, x/math/control/kinematics/thrusters, x/math/control/kinematics/wheels/differential, x/math/control/kinematics/wheels/mecanum, x/math/control/kinematics/wheels/steer4, x/math/control/kinematics/wheels/steer4dual, x/math/control/kinematics/wheels/steer6, x/math/control/kinematics/wheels/internal/rigid]
+packages: [x/math/control/kinematics/types, x/math/control/kinematics/chain, x/math/control/kinematics/joints/dh, x/math/control/kinematics/joints/planar, x/math/control/kinematics/rigidbody, x/math/control/kinematics/thrusters, x/math/control/kinematics/wheels/differential, x/math/control/kinematics/wheels/mecanum, x/math/control/kinematics/wheels/steer4, x/math/control/kinematics/wheels/steer4dual, x/math/control/kinematics/wheels/steer6, x/math/control/kinematics/wheels/internal/rigid]
 test_result: pass
 ---
 # Kinematics (x/math/control/kinematics)
@@ -33,25 +33,28 @@ Specs and design docs (`SPEC.md`, `joints/dh/SPEC.md`, `joints/planar/SPEC.md`, 
 
 - **Shared interface:** `types.Bidirectional` = `Model` (`Dimensions()`, `Capabilities()`, `ConstraintSet()`) + `Forward(state, destination, controls mattype.Matrix) error` + `Backward(state, destination, controls) error` (`types/types.go:53-75`). Every model is used the same way: you allocate column matrices, a call fills them, and errors are `ErrInvalidDimensions` / `ErrUnsupportedOperation`.
 - **Constructors:**
-  - `dh.New(eps, maxIter, cfg ...dh.Config) *DenavitHartenberg`
-  - `planar.New2DOF([2]Config)`, `planar.New3DOF([3]Config)`
+  - `dh.New(eps, maxIter, cfg ...dh.Config) (*DenavitHartenberg, error)` (validates configs since ER-017)
+  - `planar.New2DOF([2]Config) (*p2d, error)`, `planar.New3DOF([3]Config) (*p3d, error)`
+  - `chain.Chain.Model(...)`, `chain.Body.NewLegSolver(...)` — one joint/leg declaration with servo mapping ([[leg-chain-config-and-servo-map]], ER-018)
   - `differential.New(r, base)`
   - `mecanum.New(r, bx, by)`
   - `steer4.New(Config)`, `steer4dual.New(Config)`, `steer6.New(Config)` (these panic on bad config)
   - `thrusters.NewModel(Body, []Thruster) (*Model, error)`
   - `rigidbody.NewModel(mass, inertia, Config) (*Model, error)`, plus the inertia helpers
-- **Composition:** in `motion/rigidbody` tests, `motion/rigidbody.Motion` drives `kinematics/rigidbody.Model` in a closed loop. Nothing in the repo composes a DH or planar chain with a planner, gait or servo layer. `drivers/manipulator` has placeholder adapters that return "not implemented" (`kinematics.planar.go:44-57`, `kinematics.dh.go:44-57`).
+- **Composition:** in `motion/rigidbody` tests, `motion/rigidbody.Motion` drives `kinematics/rigidbody.Model` in a closed loop. Since ER-018, `kinematics/chain` turns a leg declaration into a planar/DH model plus servo degrees, and `motion/gait/walk` composes the gait scheduler, footholds, leg IK and servo mapping per tick ([[gait-foothold-planner]]). `drivers/manipulator` still has placeholder adapters that return "not implemented" (`kinematics.planar.go:44-57`, `kinematics.dh.go:44-57`).
+- **Typed errors** (`kinematics/types`): `ErrInvalidConfig`, `ErrUnreachable`, `ErrJointLimit`, `ErrNoConvergence`, `ErrNonFinite`, besides `ErrInvalidDimensions` / `ErrUnsupportedOperation`.
 - **Proto counterpart:** `types/control/kinematics.JointsConfig{DhParams, PlanarJoints, Constraints}` (`proto/types/control/kinematics/joints.proto`). It mirrors `dh.Config`/`planar.Config` field for field, with no units, offsets, sign or servo channel.
 
 ## Algorithms
 
-<!-- vault:algorithms h=fd666c52ee17 -->
+<!-- vault:algorithms h=656aea0c6b8c -->
 
-Counts: 6 tested · 5 implemented · 2 partial · 0 stub · 0 unverified (13 algorithms)
+Counts: 7 tested · 5 implemented · 2 partial · 0 stub · 0 unverified (14 algorithms)
 
 | Algorithm | Status | Tests | Summary |
 |---|---|---|---|
 | [[dh-jacobian-pseudoinverse-ik]] | tested | pass | Damped least-squares position IK for any number of joints; limit-aware, restarts, typed errors, best-effort q, allocation-free (ER-017). |
+| [[leg-chain-config-and-servo-map]] | tested | pass | One joint/leg declaration → validated DH or analytic leg model, servo degrees, body→hip transforms, allocation-free multi-leg IK. |
 | [[mecanum-drive-kinematics]] | tested | pass | Four mecanum wheel rates ↔ chassis twist `[vx, vy, ω]` with fixed 3×4 / 4×3 matrices. |
 | [[planar-2dof-arm-kinematics]] | tested | pass | Yaw joint plus one pitch link: FK and closed-form IK. |
 | [[planar-3dof-leg-kinematics]] | tested | pass | Closed-form coxa–femur–tibia FK/IK; exact over the whole workspace incl. foot behind the yaw axis; typed errors (ER-017). |
@@ -117,7 +120,7 @@ Full IK review: [[ER-R2-ik-review]].
 
 Algorithm defects are tracked in the algorithm notes (table above) and rolled up in [[todo]]; this list holds module-level items only.
 
-- [ ] Joint/leg configuration helper package with validation and servo mapping (ER-018) — x/math/control/kinematics (new) #p2
+- [x] Joint/leg configuration helper package with validation and servo mapping (ER-018) — x/math/control/kinematics/chain #p2
 - [ ] steer4 geometry consistency — wheels/steer4/drive.go:173 #p2
 - [ ] Tests for differential, steer4, steer4dual, steer6, internal/rigid — wheels/* #p2
 - [ ] Typed allocation-free fast paths for embedded callers — joints/* #p3
