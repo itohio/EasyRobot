@@ -1,7 +1,8 @@
 // Package camera captures images from an SCCB-configured image sensor. The
 // API is the same on every host; each host has its own backend file chosen
-// by build tag (camera_k210.go: the K210 DVP). A host without a backend has
-// no Identify/Open, so a firmware build for it fails at compile time.
+// by build tag (camera_k210.go: the K210 DVP; camera_esp32s3.go: the
+// ESP32-S3 LCD_CAM). A host without a backend has no Identify/Open, so a
+// firmware build for it fails at compile time.
 //
 // # Backend contract
 //
@@ -27,9 +28,9 @@
 //     RGB565 comes out little-endian, pixels in raster order.
 //   - JPEG: FrameSize returns 0 because the sensor decides the size. The
 //     caller passes a buffer of the backend's maximum JPEG size (documented
-//     per backend); Frame.Data is truncated to the JPEG's length, from FF D8
-//     to FF D9 inclusive. (Proposed rule; to be agreed with the ESP32-S3
-//     backend.)
+//     per backend; ESP32-S3: MaxJPEG); Frame.Data is truncated to the JPEG's
+//     length, from FF D8 to FF D9 inclusive. A JPEG larger than the buffer
+//     gives ErrBufSize.
 //   - Frame.Data aliases the caller's buffer (or a host alias of it) and is
 //     valid until the next Capture.
 //   - Capture and the controls do not allocate.
