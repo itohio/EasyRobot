@@ -1,0 +1,233 @@
+[
+  {
+    "id": "f01",
+    "q": "RV-007",
+    "type": "identifier",
+    "expect_any": [
+      "rover/tickets/RV-007-odometry-slip.md"
+    ]
+  },
+  {
+    "id": "f02",
+    "q": "AT-003",
+    "type": "identifier",
+    "expect_any": [
+      "atlas/tickets/AT-003-per-tenant-quotas.md"
+    ]
+  },
+  {
+    "id": "f03",
+    "q": "O-002",
+    "type": "identifier",
+    "expect_any": [
+      "_roster/objectives/O-002-atlas-public-beta.md"
+    ]
+  },
+  {
+    "id": "f04",
+    "q": "T-004 token rotation",
+    "type": "identifier",
+    "expect_any": [
+      "_roster/tasks/T-004-token-rotation.md"
+    ]
+  },
+  {
+    "id": "f05",
+    "q": "TokenBucket",
+    "type": "identifier",
+    "expect_any": [
+      "atlas/ratelimit/limiter.go"
+    ]
+  },
+  {
+    "id": "f06",
+    "q": "EncodeFrame",
+    "type": "identifier",
+    "expect_any": [
+      "rover/telemetry/telemetry.go"
+    ]
+  },
+  {
+    "id": "f07",
+    "q": "RV-012 watchdog reset loop",
+    "type": "identifier",
+    "expect_any": [
+      "rover/tickets/RV-012-watchdog-reset-loop.md"
+    ]
+  },
+  {
+    "id": "f08",
+    "q": "how were the wheel controller coefficients chosen",
+    "type": "paraphrase",
+    "expect_any": [
+      "rover/docs/motor-control.md",
+      "rover/motor/motor.go"
+    ]
+  },
+  {
+    "id": "f09",
+    "q": "why does the compass direction creep when the robot is standing still",
+    "type": "paraphrase",
+    "expect_any": [
+      "rover/tickets/RV-004-imu-drift.md",
+      "rover/docs/imu-calibration.md"
+    ]
+  },
+  {
+    "id": "f10",
+    "q": "what stops one noisy customer from starving everyone else",
+    "type": "paraphrase",
+    "expect_any": [
+      "atlas/docs/rate-limiting.md",
+      "atlas/tickets/AT-003-per-tenant-quotas.md"
+    ]
+  },
+  {
+    "id": "f11",
+    "q": "may a peer edit files outside its assignment",
+    "type": "paraphrase",
+    "expect_any": [
+      "_roster/README.md"
+    ]
+  },
+  {
+    "id": "f12",
+    "q": "postmortem of the database overload when a hot key timed out",
+    "type": "paraphrase",
+    "expect_any": [
+      "atlas/docs/incidents/2026-10-03-cache-stampede.md"
+    ]
+  },
+  {
+    "id": "f13",
+    "q": "detecting traction loss on wet ground",
+    "type": "paraphrase",
+    "expect_any": [
+      "rover/tickets/RV-007-odometry-slip.md",
+      "rover/odometry/odometry.go",
+      "rover/docs/odometry.md"
+    ]
+  },
+  {
+    "id": "f14",
+    "q": "how does the rover avoid tipping on steep slopes",
+    "type": "cross-link",
+    "expect_any": [
+      "rover/docs/attitude-limiter.md",
+      "rover/safety/limiter.go"
+    ]
+  },
+  {
+    "id": "f15",
+    "q": "design note behind the per-tenant quotas ticket",
+    "type": "cross-link",
+    "expect_any": [
+      "atlas/docs/rate-limiting.md"
+    ]
+  },
+  {
+    "id": "f16",
+    "q": "which objective does the lidar bring-up task serve",
+    "type": "cross-link",
+    "expect_any": [
+      "_roster/objectives/O-001-rover-field-trial.md"
+    ]
+  },
+  {
+    "id": "f17",
+    "q": "calibration procedure referenced from the IMU fusion note",
+    "type": "cross-link",
+    "expect_any": [
+      "rover/docs/imu-calibration.md"
+    ]
+  },
+  {
+    "id": "f18",
+    "q": "write-up explaining the stale cache after deploy ticket",
+    "type": "cross-link",
+    "expect_any": [
+      "atlas/docs/cache-invalidation.md"
+    ]
+  },
+  {
+    "id": "f19",
+    "q": "current battery cutoff voltage per cell",
+    "type": "recency",
+    "expect_any": [
+      "rover/docs/battery-cutoff-2026-10.md"
+    ]
+  },
+  {
+    "id": "f20",
+    "q": "latest rover pinout",
+    "type": "recency",
+    "expect_any": [
+      "rover/docs/pinout-rev-b.md"
+    ]
+  },
+  {
+    "id": "f21",
+    "q": "deploy runbook for atlas",
+    "type": "recency",
+    "expect_any": [
+      "atlas/docs/deploy-runbook-2026.md"
+    ]
+  },
+  {
+    "id": "f22",
+    "q": "latest decision on the telemetry radio",
+    "type": "recency",
+    "expect_any": [
+      "_roster/meetings/2026-11-01-sync.md"
+    ]
+  },
+  {
+    "id": "f23",
+    "q": "function that integrates encoder ticks into a pose",
+    "type": "code",
+    "expect_any": [
+      "rover/odometry/odometry.go"
+    ]
+  },
+  {
+    "id": "f24",
+    "q": "token bucket refill implementation",
+    "type": "code",
+    "expect_any": [
+      "atlas/ratelimit/limiter.go"
+    ]
+  },
+  {
+    "id": "f25",
+    "q": "where is cache entry expiry checked",
+    "type": "code",
+    "expect_any": [
+      "atlas/cache/cache.go"
+    ]
+  },
+  {
+    "id": "f26",
+    "q": "crc16 of telemetry frames",
+    "type": "code",
+    "expect_any": [
+      "rover/telemetry/telemetry.go"
+    ]
+  },
+  {
+    "id": "f27",
+    "q": "complementary filter update for roll and pitch",
+    "type": "code",
+    "expect_any": [
+      "rover/imu/imu.go"
+    ]
+  },
+  {
+    "id": "f28",
+    "q": "middleware that verifies bearer tokens",
+    "type": "code",
+    "expect_any": [
+      "atlas/gateway/gateway.go",
+      "atlas/auth/token.go"
+    ]
+  }
+]
