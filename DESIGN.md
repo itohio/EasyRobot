@@ -75,9 +75,7 @@ EasyRobot is a cross-platform robotics framework designed to enable algorithm de
 - Filters (PID, AHRS - Madgwick/Mahony)
 - Tensor support (dense/sparse)
 
-**logger**: Logging abstraction
-- ZeroLog backend
-- Build-tag based optimization (`logless` for embedded)
+**logger**: removed (the zerolog wrapper `x/logger` was deleted with the deprecated pipeline cluster).
 
 ### Robot Packages (`pkg/robot`)
 

@@ -21,7 +21,7 @@ evidence: "gocv and v4l packages cannot build on this host (OpenCV missing; go4v
 ## Completeness review
 
 - Complete: no.
-  - "Sync" is lock-step reading, not time alignment: sources are read one after another in the same goroutine (`sync.go:79-89`), so stereo frames are skewed by one capture latency, and the combined `Timestamp` is `time.Now()` at merge time (`sync.go:106`) — per-source timestamps stay in metadata only. No nearest-timestamp matching or drop policy (the deprecated `x/pipeline/steps/sync.go` had one).
+  - "Sync" is lock-step reading, not time alignment: sources are read one after another in the same goroutine (`sync.go:79-89`), so stereo frames are skewed by one capture latency, and the combined `Timestamp` is `time.Now()` at merge time (`sync.go:106`) — per-source timestamps stay in metadata only. No nearest-timestamp matching or drop policy (the deprecated `x/pipeline/steps/sync.go`, deleted in ER-cleanup, had one).
   - Producer goroutine sends on an unbuffered channel without `select` on `ctx` (`sync.go:57, 66, 86, 101`): if the consumer calls `Close()` and stops reading, `done()` cancels the context and closes sources, but the goroutine stays blocked on the send forever (leak).
   - Errors are delivered as frames with `Metadata["error"]` and no tensors (`sync.go:147-154`) — consumers must check every frame.
 - Tested: not run (no OpenCV). `streams_test.go` covers multi-glob sequential streams only.

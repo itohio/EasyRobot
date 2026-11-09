@@ -79,7 +79,7 @@ Only amd64 assembly exists: `x/iter/loop_experiments/{asm,asm_op,asm_matmul}_amd
 
 ## Feature tags and heavy tests
 
-`use_mt`/`!use_mt` (9+9 files: threaded vs single-thread loops in `x/iter`, `x/workers`) — `use_mt` builds were never run (baseline §6). `logless` (`x/logger/logger.empty.go`), `ants` (`internal/concurrency`), `gocv_display` (manual display test), `tflite`, `mnist_test`, `mnist_large_test`, `xor_test` (heavy tests, not run).
+`use_mt`/`!use_mt` (9+9 files: threaded vs single-thread loops in `x/iter`, `x/workers`) — `use_mt` builds were never run (baseline §6). `gocv_display` (manual display test), `tflite`, `mnist_test`, `mnist_large_test`, `xor_test` (heavy tests, not run). The `logless` (`x/logger`) and `ants` (`internal/concurrency`) tags went with those packages in [[ER-cleanup]]; the manipulator flash commands no longer pass `-tags logless`.
 
 ## What is untested, per target
 
@@ -100,7 +100,7 @@ Only amd64 assembly exists: `x/iter/loop_experiments/{asm,asm_op,asm_matmul}_amd
 - [ ] Split `x/marshaller/graph/storage.go` so the graph marshaller builds without file/tar storage on TinyGo — `x/marshaller/graph/storage.go:11–23` #p2
 - [ ] Use `!tinygo && linux` for `x/marshaller/{tflite,v4l}` — `x/marshaller/v4l/device.go:1` #p3
 - [ ] Add a CI/Makefile matrix: darwin+linux amd64/arm64, linux/arm, linux/riscv64, windows, wasm, plus `tinygo build` for esp32/rp2040/xiao once TinyGo runs are approved — `Makefile` #p2
-- [ ] Convert the 6 remaining `// +build` lines to `//go:build` — `internal/concurrency/concurrency_go.go:1` #p3
+- [x] Convert the 6 remaining `// +build` lines to `//go:build` — four were in files deleted by [[ER-cleanup]]; the other two (`x/marshaller/audio/device_malgo.go:2`, `x/marshaller/tflite_unmarshaller_test.go:2`) already carry `//go:build` #p3
 
 ## Inferred objectives (proposals)
 

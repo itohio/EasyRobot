@@ -32,7 +32,7 @@ All source claims refer to `abb5c9cca7f756c632548d9c7be2436b46dc2e4d` in [the ow
 | Inference import | `x/marshaller/tflite/`, `x/marshaller/gocv/` | Runtime/model wrappers and converters; native library and format limits matter. |
 | Serialization | `x/marshaller/{graph,yaml,json,proto}/`, `proto/types/`, generated `types/` | Typed graph/tensor representations; round-trip data does not automatically preserve executable closures, VM state or views. |
 | Concurrency/iteration | `x/workers/`, `x/iter/` | Build-selected single/multithreaded numerical paths; worker policies and ownership need validation. |
-| Legacy composition | `x/pipeline/`, `x/chain/` | Channel/chain composition; `x/pipeline/DEPRECATED.md` marks the older framework deprecated. |
+| Composition | `x/chain/` | Synchronous processor chains. The deprecated channel-based `x/pipeline/` was deleted in [[ER-cleanup]]. |
 | Devices/examples | `x/devices/`, `drivers/`, `cmd/` | Host/TinyGo/platform source and examples; not proof of complete embedded support or acceleration. |
 | Design/dependencies | `README.md`, `DESIGN.md`, `go.mod`, `Makefile` | README/design mix past plans with implementation; `DESIGN.md`'s `pkg/core` hierarchy is not the actual current `x/` tree. |
 
@@ -62,7 +62,7 @@ Gorgonia owns backend scheduling. The local `ExpressionGraph` interface does not
 
 ### C. Legacy streaming pipelines
 
-`x/pipeline/pipeline.go` and `step.go` connect step channels and start steps with a context. They are not the tensor graph compiler or the scalar callback evaluator. Their deprecated status and old README examples must not become the new canonical implementation plan accidentally.
+`x/pipeline/pipeline.go` and `step.go` connected step channels and started steps with a context. They were never the tensor graph compiler or the scalar callback evaluator, and were deleted in [[ER-cleanup]] (deprecated, no importers; dndm is the transport).
 
 ## 4. Tensor data and ownership
 

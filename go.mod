@@ -10,7 +10,6 @@ require (
 	github.com/itohio/dndm v0.0.0
 	github.com/mattn/go-tflite v1.0.5
 	github.com/mr-tron/base58 v1.2.0
-	github.com/rs/zerolog v1.23.0
 	github.com/spf13/cobra v1.10.1
 	github.com/stretchr/testify v1.11.1
 	github.com/vladimirvivien/go4vl v0.3.0

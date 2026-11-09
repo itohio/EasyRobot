@@ -10,9 +10,9 @@ NOTE: You still need to keep track of the data types that are being passed aroun
 
 # Architecture
 
-## Plugin system
+## Composition and transport
 
-In order to register a plugin, you must first import it.
+In-process processing stages compose with `x/chain` (generic processors over typed buffers). Data that crosses a process or device boundary goes over dndm with protobuf messages. The older plugin/store/pipeline frameworks and the zerolog wrapper were deprecated and have been removed.
 
 ## Backend implementations
 E.g. OpenCV set of algorithms will operate on `gocv.Mat`, whilst TF implementation might use appropriate tensors and might need conversions.
@@ -39,32 +39,9 @@ This sink will accept either `gocv.Mat`, `image.Image` or TF/TFLite tensors depe
 -   [ ] registrable and optional metrics
 -   [ ] Prometheus
 - [ ] Logs
--   [x] Zero Log as backend
--   [x] be able to optimize away the logs (for embedded: build tag `logless`)
-- [ ] arbitrary data framework (store)
--   [x] interface implementation
--   [ ] Helper methods for get/set for common types
+- [x] Stream composition (`x/chain`)
 -   [ ] unit tests
 -   [ ] benchmarks
-- [ ] plugin framework
--   [x] interface implementation
--   [ ] unit tests
--   [ ] benchmarks
-- [ ] pipeline framework
--   [x] generic implementation
--     [x] image source
--     [x] sink
--     [x] processor
--     [x] fan in
--     [x] fan out
--     [x] frame syncronizer
--     [x] bridge
--   [ ] unit tests
--   [ ] benchmarks
--   [x] Options marshalling
--   [ ] save pipeline to json
--   [ ] load pipeline from json
--   [ ] pipeline elements referenced by NamedStep interface
 - [ ] transports
 -   [ ] tcp
 -   [ ] udp
