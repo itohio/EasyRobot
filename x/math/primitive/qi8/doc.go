@@ -26,5 +26,11 @@
 //
 // Kernels never allocate: callers provide dst slices and shape structs.
 // Errors are package-level sentinels (ErrShape, ErrLength, ErrRequant,
-// ErrActivation) returned unwrapped.
+// ErrActivation, ErrNotPrepared) returned unwrapped.
+//
+// The free functions (Conv2D, FullyConnected, ...) validate on every call and
+// always run the generic code; they are the reference. The prepared layers
+// (Conv2DLayer, FCLayer, ...; see Op) validate once in Prepare and Run
+// through a build-time per-op backend (see Backend) that must be
+// byte-identical to the reference.
 package qi8

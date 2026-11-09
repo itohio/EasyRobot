@@ -37,6 +37,12 @@ func ReLU(dst, src []int8, zp int8) error {
 	if len(dst) != len(src) {
 		return ErrLength
 	}
+	reluGeneric(dst, src, zp)
+	return nil
+}
+
+// reluGeneric is the ReLU inner loop; len(dst) == len(src).
+func reluGeneric(dst, src []int8, zp int8) {
 	dst = dst[:len(src)]
 	for i, v := range src {
 		if v < zp {
@@ -44,7 +50,6 @@ func ReLU(dst, src []int8, zp int8) error {
 		}
 		dst[i] = v
 	}
-	return nil
 }
 
 // ReLU6 computes dst[i] = clamp(src[i], zp, q6), where q6 is the quantised
@@ -57,6 +62,12 @@ func ReLU6(dst, src []int8, zp, q6 int8) error {
 	if q6 < zp {
 		return ErrActivation
 	}
+	relu6Generic(dst, src, zp, q6)
+	return nil
+}
+
+// relu6Generic is the ReLU6 inner loop; len(dst) == len(src), zp <= q6.
+func relu6Generic(dst, src []int8, zp, q6 int8) {
 	dst = dst[:len(src)]
 	for i, v := range src {
 		if v < zp {
@@ -67,5 +78,4 @@ func ReLU6(dst, src []int8, zp, q6 int8) error {
 		}
 		dst[i] = v
 	}
-	return nil
 }

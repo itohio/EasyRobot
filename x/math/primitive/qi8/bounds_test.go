@@ -25,8 +25,8 @@ func TestHugeShapesRejected(t *testing.T) {
 			return Conv2D(nil, nil, nil, nil, rq, Conv2DParams{In: big32, OutC: 1, KH: 1, KW: 1, StrideH: 1, StrideW: 1, ActMin: -128, ActMax: 127})
 		}},
 		{"conv out wrap", func() error {
-			// input fits, but outH·outW·OutC = 2^15·2^15·2^34 does not.
-			return Conv2D(nil, nil, nil, nil, rq, Conv2DParams{In: Shape{H: 1 << 15, W: 1 << 15, C: 1}, OutC: 1 << 34, KH: 1, KW: 1, StrideH: 1, StrideW: 1, ActMin: -128, ActMax: 127})
+			// input fits, but outH·outW·OutC = 2^15·2^15·2^30 does not.
+			return Conv2D(nil, nil, nil, nil, rq, Conv2DParams{In: Shape{H: 1 << 15, W: 1 << 15, C: 1}, OutC: 1 << 30, KH: 1, KW: 1, StrideH: 1, StrideW: 1, ActMin: -128, ActMax: 127})
 		}},
 		{"depthwise wrap", func() error {
 			return DepthwiseConv2D(nil, nil, nil, nil, rq, DepthwiseConv2DParams{In: wrap, KH: 1, KW: 1, StrideH: 1, StrideW: 1, ActMin: -128, ActMax: 127})
@@ -38,10 +38,11 @@ func TestHugeShapesRejected(t *testing.T) {
 			return AvgPool2D(nil, nil, Pool2DParams{In: big32, KH: 1, KW: 1, StrideH: 1, StrideW: 1})
 		}},
 		{"kernel wrap", func() error {
-			return MaxPool2D(nil, nil, Pool2DParams{In: Shape{H: 4, W: 4, C: 1}, KH: 1 << 40, KW: 1, StrideH: 1, StrideW: 1})
+			return MaxPool2D(nil, nil, Pool2DParams{In: Shape{H: 4, W: 4, C: 1}, KH: MaxElements + 1, KW: 1, StrideH: 1, StrideW: 1})
 		}},
 		{"fc weights wrap", func() error {
-			return FullyConnected(nil, nil, nil, nil, rq, FCParams{In: 1 << 32, Out: 1 << 32, ActMin: -128, ActMax: 127})
+			// In is at the reduction bound; In·Out overflows MaxElements.
+			return FullyConnected(nil, nil, nil, nil, rq, FCParams{In: MaxTaps, Out: 1 << 30, ActMin: -128, ActMax: 127})
 		}},
 	}
 	for _, c := range cases {

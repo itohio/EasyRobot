@@ -39,40 +39,82 @@ func (p Conv2DParams) OutShape() (Shape, error) {
 //	acc = bias[o] + sum (x - InZP) * w      (int32; padded taps contribute 0)
 //	y   = clamp(rq[o].Apply(acc) + OutZP, ActMin, ActMax)
 func Conv2D(dst, src, weights []int8, bias []int32, rq []Requant, p Conv2DParams) error {
+	pl, err := p.plan()
+	if err != nil {
+		return err
+	}
+	if len(src) != pl.inLen || len(weights) != pl.wLen || len(dst) != pl.outLen {
+		return ErrLength
+	}
+	if err := pl.setQuant(bias, rq, p.InZP, p.OutZP, p.ActMin, p.ActMax); err != nil {
+		return err
+	}
+	conv2DGeneric(dst, src, weights, bias, rq, &pl)
+	return nil
+}
+
+// convPlan is the validated, resolved form of Conv2DParams or
+// DepthwiseConv2DParams: geometry, checked sizes and the quantisation
+// constants the inner loops need.
+type convPlan struct {
+	geometry
+	outC    int // output channels (== ch for depthwise)
+	wPerOut int // weights per output channel: taps·inC (conv) or taps (depthwise)
+	wLen    int // total weight count
+	outLen  int // outH·outW·outC
+
+	inZP          int32
+	outZP, lo, hi int64 // output zero point and activation clamp
+}
+
+// plan validates the shape part of p (everything except slices, bias,
+// requant and activation range) in the order Conv2D reports errors.
+func (p Conv2DParams) plan() (convPlan, error) {
 	if p.OutC <= 0 || p.OutC > MaxElements {
-		return ErrShape
+		return convPlan{}, ErrShape
 	}
 	g, err := newGeometry(p.In, p.KH, p.KW, p.StrideH, p.StrideW, p.Padding)
 	if err != nil {
-		return err
+		return convPlan{}, err
 	}
-	inC, outC := g.ch, p.OutC
-	wPerOut, ok := mul2(g.taps, inC)
+	wPerOut, ok := mul2(g.taps, g.ch)
 	if !ok || wPerOut > MaxTaps {
-		return ErrShape
+		return convPlan{}, ErrShape
 	}
-	wLen, ok := mul2(outC, wPerOut)
+	wLen, ok := mul2(p.OutC, wPerOut)
 	if !ok {
-		return ErrShape
+		return convPlan{}, ErrShape
 	}
-	outLen, err := g.outLen(outC)
+	outLen, err := g.outLen(p.OutC)
+	if err != nil {
+		return convPlan{}, err
+	}
+	return convPlan{geometry: g, outC: p.OutC, wPerOut: wPerOut, wLen: wLen, outLen: outLen}, nil
+}
+
+// setQuant validates bias, requant and the activation range against pl.outC
+// (in that order) and stores the quantisation constants in pl.
+func (pl *convPlan) setQuant(bias []int32, rq []Requant, inZP, outZP, actMin, actMax int8) error {
+	if err := validBias(bias, pl.outC); err != nil {
+		return err
+	}
+	if err := validRequants(rq, pl.outC); err != nil {
+		return err
+	}
+	lo, hi, err := clampRange(actMin, actMax)
 	if err != nil {
 		return err
 	}
-	if len(src) != g.inLen || len(weights) != wLen || len(dst) != outLen {
-		return ErrLength
-	}
-	if err := validBias(bias, outC); err != nil {
-		return err
-	}
-	if err := validRequants(rq, outC); err != nil {
-		return err
-	}
-	lo, hi, err := clampRange(p.ActMin, p.ActMax)
-	if err != nil {
-		return err
-	}
-	zp, zpOut := int32(p.InZP), int64(p.OutZP)
+	pl.inZP, pl.outZP, pl.lo, pl.hi = int32(inZP), int64(outZP), lo, hi
+	return nil
+}
+
+// conv2DGeneric is the Conv2D inner loop. All arguments are validated
+// against pl.
+func conv2DGeneric(dst, src, weights []int8, bias []int32, rq []Requant, pl *convPlan) {
+	g := &pl.geometry
+	inC, outC, wPerOut := g.ch, pl.outC, pl.wPerOut
+	zp, zpOut, lo, hi := pl.inZP, pl.outZP, pl.lo, pl.hi
 	rowStride := g.inW * inC
 	di := 0
 	for oy := range g.outH {
@@ -97,7 +139,6 @@ func Conv2D(dst, src, weights []int8, bias []int32, rq []Requant, p Conv2DParams
 			}
 		}
 	}
-	return nil
 }
 
 // DepthwiseConv2DParams describes a depthwise 2-D convolution with channel
@@ -130,33 +171,44 @@ func (p DepthwiseConv2DParams) OutShape() (Shape, error) {
 //	acc = bias[c] + sum_{ky,kx} (x[iy+ky][ix+kx][c] - InZP) * w[ky][kx][c]
 //	y   = clamp(rq[c].Apply(acc) + OutZP, ActMin, ActMax)
 func DepthwiseConv2D(dst, src, weights []int8, bias []int32, rq []Requant, p DepthwiseConv2DParams) error {
-	g, err := newGeometry(p.In, p.KH, p.KW, p.StrideH, p.StrideW, p.Padding)
+	pl, err := p.plan()
 	if err != nil {
 		return err
 	}
-	c := g.ch
-	wLen, ok := mul2(g.taps, c)
-	if !ok {
-		return ErrShape
-	}
-	outLen, err := g.outLen(c)
-	if err != nil {
-		return err
-	}
-	if len(src) != g.inLen || len(weights) != wLen || len(dst) != outLen {
+	if len(src) != pl.inLen || len(weights) != pl.wLen || len(dst) != pl.outLen {
 		return ErrLength
 	}
-	if err := validBias(bias, c); err != nil {
+	if err := pl.setQuant(bias, rq, p.InZP, p.OutZP, p.ActMin, p.ActMax); err != nil {
 		return err
 	}
-	if err := validRequants(rq, c); err != nil {
-		return err
-	}
-	lo, hi, err := clampRange(p.ActMin, p.ActMax)
+	depthwiseConv2DGeneric(dst, src, weights, bias, rq, &pl)
+	return nil
+}
+
+// plan validates the shape part of p in the order DepthwiseConv2D reports
+// errors.
+func (p DepthwiseConv2DParams) plan() (convPlan, error) {
+	g, err := newGeometry(p.In, p.KH, p.KW, p.StrideH, p.StrideW, p.Padding)
 	if err != nil {
-		return err
+		return convPlan{}, err
 	}
-	zp, zpOut := int32(p.InZP), int64(p.OutZP)
+	wLen, ok := mul2(g.taps, g.ch)
+	if !ok {
+		return convPlan{}, ErrShape
+	}
+	outLen, err := g.outLen(g.ch)
+	if err != nil {
+		return convPlan{}, err
+	}
+	return convPlan{geometry: g, outC: g.ch, wPerOut: g.taps, wLen: wLen, outLen: outLen}, nil
+}
+
+// depthwiseConv2DGeneric is the DepthwiseConv2D inner loop. All arguments
+// are validated against pl.
+func depthwiseConv2DGeneric(dst, src, weights []int8, bias []int32, rq []Requant, pl *convPlan) {
+	g := &pl.geometry
+	c := g.ch
+	zp, zpOut, lo, hi := pl.inZP, pl.outZP, pl.lo, pl.hi
 	rowStride := g.inW * c
 	wRow := g.kw * c
 	di := 0
@@ -182,5 +234,4 @@ func DepthwiseConv2D(dst, src, weights []int8, bias []int32, rq []Requant, p Dep
 			}
 		}
 	}
-	return nil
 }

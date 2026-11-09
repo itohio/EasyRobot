@@ -103,7 +103,37 @@ integer domain (TFLite behaviour): on an exact `.5` tie where `mean(q)` and
 `ErrShape` (non-positive dims/kernel/stride, unknown padding, VALID with
 `k > in`, any count above `MaxElements`, reduction length above `MaxTaps`),
 `ErrLength` (slice length ≠ shape, bias not `nil`/`OutC`, requant ≠ `OutC`),
-`ErrRequant`, `ErrActivation`.
+`ErrRequant`, `ErrActivation`, `ErrNotPrepared` (prepared layers only).
+
+## Prepared layers and backends
+
+Two tiers:
+
+- **Free functions** (`Conv2D`, …, `ReLU6`, `Dot`) validate on every call
+  and always run the generic pure-Go code. They are the reference.
+- **Prepared layers** (`Conv2DLayer`, `DepthwiseConv2DLayer`, `FCLayer`,
+  `MaxPool2DLayer`, `AvgPool2DLayer`, `ReLULayer`, `ReLU6Layer`; all
+  implement `Op{InShape, OutShape, Run}`): `Prepare()` does all validation
+  once and returns exactly the error the free function would (given correctly
+  sized `dst`/`src`), caching the resolved geometry. `Run(dst, src)` checks
+  only the two lengths (`ErrLength`) and returns `ErrNotPrepared` if the last
+  `Prepare` failed, was never called, or an exported field (params or the
+  `W`/`Bias`/`RQ`/`Scratch` slice headers) changed since. Contents of `W`,
+  `Bias`, `RQ` must not be modified after `Prepare`. `ReLULayer`/`ReLU6Layer`
+  have shape `{1, 1, Len}` with `Len ∈ [1, MaxElements]`; FC shapes are
+  `{1, 1, In}` → `{1, 1, Out}`. Weighted layers take an optional caller
+  `Scratch` of `ScratchLen()` bytes for backend-repacked/aligned weights
+  (`0` and ignored for the generic backend); `Prepare` and `Run` never
+  allocate.
+
+Prepared layers run through a per-op CPU backend chosen at build time
+(`impl_*.go`; `Backend()` names it: `"generic"`, later `"esp32s3-pie"`,
+RVV, …; `-tags qi8generic` forces generic). Every per-op backend must be
+**byte-identical** to the free-function reference in the same rounding mode.
+
+Whole-model offload (K210 KPU and similar) is outside this interface: it runs
+a compiled model in a model runner (e.g. `drivers/kpu` or a `qnet` backend)
+and is compared against the reference within a tolerance, not bit-exactly.
 
 ## Verification
 
@@ -112,5 +142,7 @@ values dyadic, exactness asserted), evaluates the op, quantises with exact
 rationals (half away from zero) and clamps. Kernel output must be
 bit-identical on seeded random cases (odd sizes, strides 1–3, non-square
 kernels, SAME/VALID edges, zp ±128/127, extreme Mult/Shift, saturation).
-`TestNoAllocs` asserts `AllocsPerRun == 0`. TinyGo `-print-allocs=qi8` is
-empty for `xiao-esp32s3` and the UnitV target.
+`TestNoAllocs`/`TestLayerNoAllocs` assert `AllocsPerRun == 0`. TinyGo
+`-print-allocs=qi8` is empty for `xiao-esp32s3` and the UnitV target.
+`layer_test.go` checks every prepared layer byte-for-byte against its free
+function on seeded random cases, and its error/`ErrNotPrepared` behaviour.

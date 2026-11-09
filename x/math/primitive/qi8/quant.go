@@ -18,6 +18,9 @@ var (
 	ErrRequant = errors.New("qi8: invalid requantisation parameters")
 	// ErrActivation reports a clamp range with min > max.
 	ErrActivation = errors.New("qi8: invalid activation range")
+	// ErrNotPrepared reports a prepared layer whose Prepare was not called,
+	// failed, or whose exported fields changed since (call Prepare again).
+	ErrNotPrepared = errors.New("qi8: layer not prepared")
 )
 
 const (

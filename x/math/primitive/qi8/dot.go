@@ -46,33 +46,66 @@ type FCParams struct {
 //
 // weights are [Out][In] row-major; bias is nil or len Out; rq has len Out.
 func FullyConnected(dst, src, weights []int8, bias []int32, rq []Requant, p FCParams) error {
+	pl, err := p.plan()
+	if err != nil {
+		return err
+	}
+	if len(src) != pl.in || len(dst) != pl.out || len(weights) != pl.wLen {
+		return ErrLength
+	}
+	if err := pl.setQuant(bias, rq, p); err != nil {
+		return err
+	}
+	fullyConnectedGeneric(dst, src, weights, bias, rq, &pl)
+	return nil
+}
+
+// fcPlan is the validated, resolved form of FCParams.
+type fcPlan struct {
+	in, out, wLen int
+
+	inZP          int32
+	outZP, lo, hi int64 // output zero point and activation clamp
+}
+
+// plan validates the sizes of p.
+func (p FCParams) plan() (fcPlan, error) {
 	if p.In <= 0 || p.Out <= 0 || p.In > MaxTaps {
-		return ErrShape
+		return fcPlan{}, ErrShape
 	}
 	wLen, ok := mul2(p.In, p.Out)
 	if !ok {
-		return ErrShape
+		return fcPlan{}, ErrShape
 	}
-	if len(src) != p.In || len(dst) != p.Out || len(weights) != wLen {
-		return ErrLength
-	}
-	if err := validBias(bias, p.Out); err != nil {
+	return fcPlan{in: p.In, out: p.Out, wLen: wLen}, nil
+}
+
+// setQuant validates bias, requant and the activation range (in that order)
+// and stores the quantisation constants in pl.
+func (pl *fcPlan) setQuant(bias []int32, rq []Requant, p FCParams) error {
+	if err := validBias(bias, pl.out); err != nil {
 		return err
 	}
-	if err := validRequants(rq, p.Out); err != nil {
+	if err := validRequants(rq, pl.out); err != nil {
 		return err
 	}
 	lo, hi, err := clampRange(p.ActMin, p.ActMax)
 	if err != nil {
 		return err
 	}
-	zp, zpOut := int32(p.InZP), int64(p.OutZP)
-	for o := range dst {
-		acc := dotZP(src, weights[o*p.In:(o+1)*p.In], zp)
+	pl.inZP, pl.outZP, pl.lo, pl.hi = int32(p.InZP), int64(p.OutZP), lo, hi
+	return nil
+}
+
+// fullyConnectedGeneric is the FullyConnected inner loop. All arguments are
+// validated against pl.
+func fullyConnectedGeneric(dst, src, weights []int8, bias []int32, rq []Requant, pl *fcPlan) {
+	in, zp, zpOut, lo, hi := pl.in, pl.inZP, pl.outZP, pl.lo, pl.hi
+	for o := range dst[:pl.out] {
+		acc := dotZP(src, weights[o*in:(o+1)*in], zp)
 		if len(bias) != 0 {
 			acc += bias[o]
 		}
 		dst[o] = requantize(acc, rq[o], zpOut, lo, hi)
 	}
-	return nil
 }

@@ -5,8 +5,8 @@ tags: [easyrobot, nn, int8, quantisation, kernels, embedded]
 workstream: W9
 module: "[[primitive-kernels]]"
 summary: "Generic int8 NHWC kernels (dot, FC, conv, depthwise, pools, ReLU/ReLU6) with exact single-rounding per-channel requantisation; bit-exact reference for SIMD paths; allocation-free."
-source: [x/math/primitive/qi8/quant.go, x/math/primitive/qi8/act.go, x/math/primitive/qi8/shape.go, x/math/primitive/qi8/dot.go, x/math/primitive/qi8/conv.go, x/math/primitive/qi8/pool.go]
-tests: [x/math/primitive/qi8/reference_test.go, x/math/primitive/qi8/kernels_test.go, x/math/primitive/qi8/bench_test.go]
+source: [x/math/primitive/qi8/quant.go, x/math/primitive/qi8/act.go, x/math/primitive/qi8/shape.go, x/math/primitive/qi8/dot.go, x/math/primitive/qi8/conv.go, x/math/primitive/qi8/pool.go, x/math/primitive/qi8/layer.go, x/math/primitive/qi8/impl_generic.go]
+tests: [x/math/primitive/qi8/reference_test.go, x/math/primitive/qi8/kernels_test.go, x/math/primitive/qi8/bounds_test.go, x/math/primitive/qi8/layer_test.go, x/math/primitive/qi8/bench_test.go]
 test_result: pass
 complete: no
 correct: yes
@@ -16,7 +16,9 @@ evidence: "go test -race -count=1 ./x/math/primitive/qi8 → ok (2026-11-09): 0 
 
 **What it does:** the generic int8 inference kernels of the NN layer (ER-NN-KERNELS N1): `Dot`, `FullyConnected`, `Conv2D` (any kernel, stride, same/valid padding), `DepthwiseConv2D` (channel multiplier 1), `MaxPool2D`, `AvgPool2D`, `ReLU`, `ReLU6`, plus per-channel requantisation (`Requant`, `QuantizeMultiplier`) and fused-activation clamp helpers. Pure Go, no allocation, TinyGo-buildable. It is also the bit-exact reference for the ESP32-S3 PIE kernels (N2) and the K210 CPU path.
 
-**Where:** `x/math/primitive/qi8` (`quant.go`, `act.go`, `shape.go`, `dot.go`, `conv.go`, `pool.go`); design and semantics in the package's `SPEC.md`.
+**Where:** `x/math/primitive/qi8` (`quant.go`, `act.go`, `shape.go`, `dot.go`, `conv.go`, `pool.go`, `layer.go`, `impl_generic.go`); design and semantics in the package's `SPEC.md`.
+
+**Two tiers (since review R3):** the free functions (`Conv2D`, …) are the always-generic exported **reference**. Prepared layer types (`Conv2DLayer`, `DepthwiseConv2DLayer`, `FCLayer`, `MaxPool2DLayer`, `AvgPool2DLayer`, `ReLULayer`, `ReLU6Layer`, all implementing `Op{InShape, OutShape, Run}`) validate once in `Prepare` (same errors as the free functions) and run many times; `Run` checks only slice lengths and returns `ErrNotPrepared` if fields changed after `Prepare`. Their inner loops go through a build-tag seam (`impl_generic.go` today; an `esp32s3 && !qi8generic` file adds PIE) with an optional caller-provided `Scratch` (`ScratchLen()`) for aligned/repacked weights; `Backend()` names the build. Contract: per-op CPU backends are byte-identical to the reference; whole-model offload (KPU) is outside this interface and compared within a tolerance. Tests: 7000 seeded cases / 1 027 872 outputs prepared vs free functions, 0 mismatches; 35-row Prepare error table; field-mutation detection; AllocsPerRun 0 for Prepare and Run; `-tags qi8generic` and 32-bit (`GOOS=linux GOARCH=arm go vet`) builds.
 
 **Semantics:**
 - NHWC, batch 1. Activations int8 asymmetric (scale, zero point); weights int8 symmetric, per output channel; bias int32 in accumulator scale. Conv weights OHWI, depthwise `[kh][kw][C]`, FC `[out][in]`.
