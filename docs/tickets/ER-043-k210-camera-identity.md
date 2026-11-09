@@ -2,7 +2,7 @@
 id: ER-043
 title: "UnitV camera identity via DVP SCCB"
 type: ticket
-status: blocked
+status: ready
 kind: implementation
 owner: k210
 workstream: K210-camera
@@ -35,4 +35,4 @@ ER-041 ✓. Camera pins: the Sipeed/MaixPy IO40–47 mapping, confirmed on the b
 
 ## Evidence
 
-—
+Verify accepted (roster verification ER-CAM-BATCH-2); code review pending: [[ER-K210-M3]] (`camid` prints `sensor=OV2640 addr=0x30 pid=0x26 ver=0x42`).
