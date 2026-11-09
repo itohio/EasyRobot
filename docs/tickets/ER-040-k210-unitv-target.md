@@ -31,8 +31,8 @@ TinyGo 0.43 knows the K210 only through the MAix Bit board (`maixbit`), whose LE
 
 ## Dependencies
 
-none. Roster task ER-K210; one milestone per round, each with `docs/evidence/ER-K210-M0.md`.
+none. Roster task ER-K210; one milestone per round, each with `~/src/docs/evidence/ER-K210-M0.md`.
 
 ## Evidence
 
-Verify accepted (roster verification ER-CAM-BATCH-1), review approved with fixes applied (R-ER-K210-M01): [[ER-K210-M0]].
+Verify accepted (roster verification ER-CAM-BATCH-1), review approved with fixes applied (R-ER-K210-M01): ER-K210-M0 (evidence: `~/src/docs/evidence/ER-K210-M0.md`, outside the repo).

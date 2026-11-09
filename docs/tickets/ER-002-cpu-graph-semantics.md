@@ -23,7 +23,7 @@ Source: x/math/graph/expression_graph.go; x/math/tensor/types/graph.go; eager/ a
 
 ## Dependencies and scope
 
-Dependencies: [[ER-001-reference-environment|ER-001]] — done 2026-11-08; the packages below build CGO-free on darwin/arm64 and their existing tests pass ([[baseline-2026-11-08|baseline]]). `ready` = dependencies met and acceptance defined. Source/test edits approved 2026-11-09 by the owner's autonomy instruction (roster `decisions.md`); scheduling is Leader's call.
+Dependencies: [[ER-001-reference-environment|ER-001]] — done 2026-11-08; the packages below build CGO-free on darwin/arm64 and their existing tests pass (baseline (evidence: `~/src/docs/evidence/baseline-2026-11-08.md`, outside the repo)). `ready` = dependencies met and acceptance defined. Source/test edits approved 2026-11-09 by the owner's autonomy instruction (roster `decisions.md`); scheduling is Leader's call.
 
 Not in scope: No new universal executor, distributed scheduling or model decoder.
 

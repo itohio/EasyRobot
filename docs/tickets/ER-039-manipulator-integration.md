@@ -15,11 +15,11 @@ source_revision: abb5c9cca7f756c632548d9c7be2436b46dc2e4d
 ---
 # ER-039 — Manipulator integration: units and helpers in drivers/cmd manipulator
 
-[[tickets/index|Ticket index]] · [[roadmap]] · [[ER-R2]] · [[todo]]
+[[tickets/index|Ticket index]] · [[roadmap]] · ER-R2 (evidence: `~/src/docs/evidence/ER-R2.md`, outside the repo) · [[todo]]
 
 ## Goal and evidence
 
-No demo needs this; it keeps the manipulator path from being silently wrong. From [[ER-R2-ik-review#4. Error list (all reproducible with the probe)|IK review §4]]:
+No demo needs this; it keeps the manipulator path from being silently wrong. From IK review §4 (evidence: `~/src/docs/evidence/ER-R2-ik-review.md#4. Error list (all reproducible with the probe)`, outside the repo):
 
 - Host CLI sends planar limits in degrees and lengths in mm; firmware IK is a placeholder (E11) — `cmd/manipulator/main.go:346-348`; `drivers/manipulator/kinematics.planar.go:44-47`, `kinematics.dh.go:44-57`.
 - Firmware maps IK radians to servo degrees with no zero offset or sign (E12) — `drivers/manipulator/main.go:333`.

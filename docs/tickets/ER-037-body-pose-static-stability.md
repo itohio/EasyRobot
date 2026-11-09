@@ -15,11 +15,11 @@ source_revision: abb5c9cca7f756c632548d9c7be2436b46dc2e4d
 ---
 # ER-037 — Body pose integration and static stability
 
-[[tickets/index|Ticket index]] · [[roadmap]] · [[ER-R2]] · [[todo]]
+[[tickets/index|Ticket index]] · [[roadmap]] · ER-R2 (evidence: `~/src/docs/evidence/ER-R2.md`, outside the repo) · [[todo]]
 
 ## Goal and evidence
 
-M-a stage 3 ([[roadmap#M-a — Hexapod / quadruped walking (W3)|roadmap M-a]]): quadruped walk, then trot, with a stability margin. From [[ER-R2-ik-review#6. Hexapod/quadruped gap analysis|IK review §6]]:
+M-a stage 3 ([[roadmap#M-a — Hexapod / quadruped walking (W3)|roadmap M-a]]): quadruped walk, then trot, with a stability margin. From IK review §6 (evidence: `~/src/docs/evidence/ER-R2-ik-review.md#6. Hexapod/quadruped gap analysis`, outside the repo):
 
 - **Support polygon / stability margin / CoM**: none exist (DESIGN claim only).
 - **gait/rigidbody `Advance` and `EstimateFromEndpoints` return `ErrNotImplemented`** (E20) — `x/math/control/motion/gait/rigidbody/planner.go:60-77` ([[gait-rigidbody-planner]]).

@@ -10,7 +10,7 @@ tests: [x/math/control/kinematics/joints/dh/denavithartenberg_test.go]
 test_result: pass
 complete: yes
 correct: no
-evidence: "go test -count=1 ./x/math/control/kinematics/joints/dh → ok, 7 tests/15 subtests (2026-11-09); probe sections A,H in [[ER-R2-ik-review]]: position exact to 1.5e-8 m, orientation quaternion is the inverse rotation"
+evidence: "go test -count=1 ./x/math/control/kinematics/joints/dh → ok, 7 tests/15 subtests (2026-11-09); probe sections A,H in ER-R2-ik-review (evidence: `~/src/docs/evidence/ER-R2-ik-review.md`, outside the repo): position exact to 1.5e-8 m, orientation quaternion is the inverse rotation"
 source_revision: 1bf6234e676daa87d3e9eb191bb1dc2420f05ff9
 ---
 # DH forward kinematics
@@ -38,4 +38,4 @@ source_revision: 1bf6234e676daa87d3e9eb191bb1dc2420f05ff9
 
 ## Links
 
-- Module: [[kinematics]] · Jacobian: [[dh-geometric-jacobian]] · IK: [[dh-jacobian-pseudoinverse-ik]] · Review: [[ER-R2-ik-review]] · [[W3-legged-ik]] · quaternion conversion defect (mat-vec slice): [[vector-and-quaternion]], [[homogeneous-transforms]] (DH uses only `Matrix4x4.Mul`, `Col3D`, `Matrix.Quaternion`; not `HomogenousFrom*`/`Inverse`)
+- Module: [[kinematics]] · Jacobian: [[dh-geometric-jacobian]] · IK: [[dh-jacobian-pseudoinverse-ik]] · Review: ER-R2-ik-review (evidence: `~/src/docs/evidence/ER-R2-ik-review.md`, outside the repo) · [[W3-legged-ik]] · quaternion conversion defect (mat-vec slice): [[vector-and-quaternion]], [[homogeneous-transforms]] (DH uses only `Matrix4x4.Mul`, `Col3D`, `Matrix.Quaternion`; not `HomogenousFrom*`/`Inverse`)

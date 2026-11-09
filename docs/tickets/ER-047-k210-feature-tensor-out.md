@@ -31,7 +31,7 @@ Sustained fps recorded; CRC-clean for 10 minutes on each link.
 
 ## Dependencies
 
-ER-044, ER-046. Roster task ER-K210; one milestone per round, each with `docs/evidence/ER-K210-M7.md`.
+ER-044, ER-046. Roster task ER-K210; one milestone per round, each with `~/src/docs/evidence/ER-K210-M7.md`.
 
 ## Evidence
 

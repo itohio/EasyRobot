@@ -62,7 +62,7 @@ Counts: 5 tested · 0 implemented · 5 partial · 0 stub · 0 unverified (10 alg
 
 - `go test -count=1 -json ./x/math/mat/... ./x/math/vec/... ./x/math/shape/... ./x/math` (2026-11-09): mat 145 pass, vec 61 pass, shape 18 pass, x/math 4 pass; `mat/types`, `vec/types` no tests. Same as baseline.
 - Many passes are vacuous: empty `//TODO: Add test cases` tables in `mat3x4_test.go`, `mat4x3_test.go` (20 each), `mat_full_test.go` (11), `vec_test.go` (20) — 59/145 mat and 33/61 vec tests check nothing (InfraNotes count).
-- Value probes: `~/src/tmp/easyrobot/tensor/InfraNotes/{matprobe,matprobe2,vecprobe}`; kinematics cross-check in `docs/evidence/ER-R2-ik-review.md` (E1, E2).
+- Value probes: `~/src/tmp/easyrobot/tensor/InfraNotes/{matprobe,matprobe2,vecprobe}`; kinematics cross-check in `~/src/docs/evidence/ER-R2-ik-review.md` (E1, E2).
 
 ## API notes (ease of use, composability)
 

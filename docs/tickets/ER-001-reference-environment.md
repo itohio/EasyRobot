@@ -31,8 +31,8 @@ Execution limits for R1-05: no installs (OpenCV, TFLite, buf, TinyGo), no model,
 
 ## Acceptance evidence
 
-- [x] A manifest records source, sibling dependency, compiler, platform, flags and native dependency versions or explicit missing prerequisites. → [[baseline-2026-11-08#1. Environment manifest|baseline §1]].
-- [x] A package-level CPU check approved by Leader task R1-05 has captured command, result and limitations; unavailable dependencies are reported, not bypassed. → [[baseline-2026-11-08#2. Commands|baseline §2–6]]. OpenCV-dependent packages are reported as missing-prerequisite, not stubbed.
+- [x] A manifest records source, sibling dependency, compiler, platform, flags and native dependency versions or explicit missing prerequisites. → baseline §1 (evidence: `~/src/docs/evidence/baseline-2026-11-08.md#1. Environment manifest`, outside the repo).
+- [x] A package-level CPU check approved by Leader task R1-05 has captured command, result and limitations; unavailable dependencies are reported, not bypassed. → baseline §2–6 (evidence: `~/src/docs/evidence/baseline-2026-11-08.md#2. Commands`, outside the repo). OpenCV-dependent packages are reported as missing-prerequisite, not stubbed.
 - [x] No target hardware or model is selected implicitly. None was selected.
 
 Scope of `done`: host darwin/arm64 only. Vision (GoCV/OpenCV), TFLite, V4L2, TinyGo and linux execution remain unverified; reopen or add a ticket if the owner wants one of them covered.
@@ -43,7 +43,7 @@ Revisit when go.mod's Go version, the dndm revision or a native dependency chang
 
 ## Implementation evidence
 
-2026-11-08, `abb5c9cca7f756c632548d9c7be2436b46dc2e4d`, dndm `c7b5b61f79ea07d3359d8963ac81b967e3e544ec`, go1.27.2 darwin/arm64 (Apple M5, macOS 26.3, Apple clang 17.0.0), `GOTOOLCHAIN=local`. Full record: [[baseline-2026-11-08|baseline-2026-11-08.md]].
+2026-11-08, `abb5c9cca7f756c632548d9c7be2436b46dc2e4d`, dndm `c7b5b61f79ea07d3359d8963ac81b967e3e544ec`, go1.27.2 darwin/arm64 (Apple M5, macOS 26.3, Apple clang 17.0.0), `GOTOOLCHAIN=local`. Full record: baseline-2026-11-08.md (evidence: `~/src/docs/evidence/baseline-2026-11-08.md`, outside the repo).
 
 | Check | Outcome |
 |---|---|

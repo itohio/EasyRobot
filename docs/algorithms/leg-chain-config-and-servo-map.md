@@ -15,7 +15,7 @@ source_revision: 1bf6234e676daa87d3e9eb191bb1dc2420f05ff9
 ---
 # Leg/chain configuration, servo mapping and body→hip transforms
 
-**What it does:** one declaration of a joint chain (DH parameters, limits, speed limits, servo mapping) produces the solver configs, validates them, converts joint angles to servo degrees and back, and for legged bodies places each leg's hip on the body and solves all legs per tick. Implements [[ER-R2-ik-review#5. Joint-configuration helpers (proposed API sketch)|IK review §5]]. Radians and metres everywhere; degrees only inside `ServoMap`.
+**What it does:** one declaration of a joint chain (DH parameters, limits, speed limits, servo mapping) produces the solver configs, validates them, converts joint angles to servo degrees and back, and for legged bodies places each leg's hip on the body and solves all legs per tick. Implements IK review §5 (evidence: `~/src/docs/evidence/ER-R2-ik-review.md#5. Joint-configuration helpers (proposed API sketch)`, outside the repo). Radians and metres everywhere; degrees only inside `ServoMap`.
 
 **Where:** `x/math/control/kinematics/chain/chain.go`, `legged.go`.
 - `Joint{Name, Kind, A, Alpha, D, Offset, Min, Max, MaxVel, MaxAcc, Servo}`; `ServoMap{Channel, ZeroDeg, Sign, Ratio, MinDeg, MaxDeg}`: servoDeg = ZeroDeg + Sign·Ratio·deg(q); MinDeg = MaxDeg = 0 means a 0…180° servo.

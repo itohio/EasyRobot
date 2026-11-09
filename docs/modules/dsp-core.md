@@ -73,7 +73,7 @@ Tally: tested 4, partial 7, implemented 0, stub 0, unverified 0. The FFT tensor 
 
 ## Tests and evidence
 
-- `GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=readonly go test -count=1 -v ./x/math/dsp/` → ok, 71 PASS (run by slice owner 2026-11-09; log `~/src/tmp/easyrobot/audio/dsp_v.txt`). Prior baseline 2026-11-08 same HEAD: ok, 71 pass (`docs/evidence/baseline-2026-11-08.md`).
+- `GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=readonly go test -count=1 -v ./x/math/dsp/` → ok, 71 PASS (run by slice owner 2026-11-09; log `~/src/tmp/easyrobot/audio/dsp_v.txt`). Prior baseline 2026-11-08 same HEAD: ok, 71 pass (`~/src/docs/evidence/baseline-2026-11-08.md`).
 - Probe `~/src/tmp/easyrobot/audio/dspcore/main.go` (`go run .`, 2026-11-09, ok, 8.7 s): FFT vs float64 naive DFT (1D real/complex, 2D façade), conv/corr vs naive, windows vs formula, noise statistics/PSD, sine drift, chirp reverse/correlate/chunking/octave energy, Goertzel vs DFT, SNR constant. Results in each algorithm note.
 - Weak tests: most generator/window tests check ranges or "has variation"; `TestGenerator_StateTracking`, `TestChirpGenerator_StateContinuity` assert only `NotNil`; `TestFFT2D_BackwardDump` asserts nothing. 28 benchmarks in `generators_bench_test.go` not run.
 - `SPEC.md` is stale: documents `NewSignalGenerator1D/2D`, `NewMeasurements`, `CrossCorrelate1D`, `EstimateShift2D` (none exist in this package); shows `fft1D.Forward(signal, spectrum)` (actual order is `(dst, src)`) with an N-length spectrum (needs 2N); claims recurrence-based oscillators (sine/cosine call `math32.Sin` per sample).

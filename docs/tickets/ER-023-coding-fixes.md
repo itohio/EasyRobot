@@ -14,7 +14,7 @@ source_revision: abb5c9cca7f756c632548d9c7be2436b46dc2e4d
 ---
 # ER-023 — Coding: GF(256) RS, CRC catalogue, line codes, LFSR, Gray, PEG
 
-[[tickets/index|Ticket index]] · [[roadmap]] · [[ER-R2]] · [[todo]]
+[[tickets/index|Ticket index]] · [[roadmap]] · ER-R2 (evidence: `~/src/docs/evidence/ER-R2.md`, outside the repo) · [[todo]]
 
 ## Goal and evidence
 
@@ -31,7 +31,7 @@ Correct the coding layer M-e (and M-b's SPI CRC) rely on ([[line-coding-and-fec]
 
 Dependencies: After roster task ER-AUDIO-1 (O4; same files and tests). Feeds [[ER-022-audio-modem-acquisition|ER-022]] and [[ER-031-spi-slave-feature-framing|ER-031]] (CRC-32).
 
-Not in scope: the wireline placeholders (AMI, B8ZS, HDB3, RLL, PPM) were deleted in [[ER-cleanup]] (owner decision #5b: delete).
+Not in scope: the wireline placeholders (AMI, B8ZS, HDB3, RLL, PPM) were deleted in ER-cleanup (evidence: `~/src/docs/evidence/ER-cleanup.md`, outside the repo) (owner decision #5b: delete).
 
 Source/test edits are approved by the owner's autonomy instruction (roster `decisions.md`); scheduling is Leader's call. Every fix starts with a failing test. No hardware, flashing, TinyGo or download is authorised by this ticket.
 

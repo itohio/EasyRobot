@@ -8,7 +8,7 @@ workstream: W3
 
 **Owner's goal (O-005, verbatim excerpt):** "inverse kinematics model(not sure fully if it works, need some helpers to configure joints properly. not sure if i solve jacobian properly). The end goal - a hexapod robot or a quadruper robot inverse kinematics with strides, gaits and timing."
 
-The full review, with the derivation, probe numbers, error list, helper API and tickets, is in [[ER-R2-ik-review]] (2026-11-09, HEAD abb5c9c).
+The full review, with the derivation, probe numbers, error list, helper API and tickets, is in ER-R2-ik-review (evidence: `~/src/docs/evidence/ER-R2-ik-review.md`, outside the repo) (2026-11-09, HEAD abb5c9c).
 
 ## Answers to the owner's questions
 
@@ -30,7 +30,7 @@ Helpers to configure joints exist only as raw `dh.Config` / `planar.Config` stru
 - There is no zero offset, sign or servo map.
 - The host CLI already mixes degrees/mm with radians.
 
-An API sketch is in [[ER-R2-ik-review]] §5.
+An API sketch is in ER-R2-ik-review (evidence: `~/src/docs/evidence/ER-R2-ik-review.md`, outside the repo) §5.
 
 ## What exists
 
@@ -52,7 +52,7 @@ An API sketch is in [[ER-R2-ik-review]] §5.
 
 ## Gaps
 
-Each line is a capability needed for a walking hexapod or quadruped, verified against code (details in [[ER-R2-ik-review]] §6):
+Each line is a capability needed for a walking hexapod or quadruped, verified against code (details in ER-R2-ik-review (evidence: `~/src/docs/evidence/ER-R2-ik-review.md`, outside the repo) §6):
 1. Joint/leg configuration, validation and servo mapping (offsets, sign, ratio, channel, units).
 2. Body → hip transforms and body pose (height, roll, pitch, yaw); neutral stance; reach check.
 3. Stride/foothold generation from the body twist (stance feet fixed in the world).

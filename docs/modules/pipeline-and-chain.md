@@ -10,7 +10,7 @@ evidence: "x/chain: no tests, probe tmp/easyrobot/io/chainprobe (2026-11-09); x/
 ---
 # pipeline-and-chain — `x/chain`
 
-**Purpose:** synchronous, allocation-aware, generic processor composition, used by the DSP line codes/FEC, the audio modem CLI and all vision processors. The older goroutine-and-channel step graph `x/pipeline` (with `x/pipeline/steps` and `internal/concurrency`) was deprecated ("Pipeline, Plugin, Store will be replaced by dndm") and imported by nothing outside itself. It was deleted in [[ER-cleanup]] (owner-approved), along with its broken timestamp sync and its stale or malformed tests.
+**Purpose:** synchronous, allocation-aware, generic processor composition, used by the DSP line codes/FEC, the audio modem CLI and all vision processors. The older goroutine-and-channel step graph `x/pipeline` (with `x/pipeline/steps` and `internal/concurrency`) was deprecated ("Pipeline, Plugin, Store will be replaced by dndm") and imported by nothing outside itself. It was deleted in ER-cleanup (evidence: `~/src/docs/evidence/ER-cleanup.md`, outside the repo) (owner-approved), along with its broken timestamp sync and its stale or malformed tests.
 
 **Packages:**
 

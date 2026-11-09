@@ -16,8 +16,8 @@ test_result: none
 | App | LOC (Go) | Tags / deps | What it does | Build here (darwin) |
 |---|---|---|---|---|
 | `drivers/lidar` | 883 | host `!rp2040 && cgo` + `linux\|\|windows` (GoCV); `rp2040` + `ld06`/`xwpftb` | lidar → `LIDARReading` over dndm; host GoCV polar plot | no: OpenCV missing; rp2040 tag sets have duplicate consts (see [[lidar]]) |
-| `drivers/manipulator` | 552 | `sam && xiao` (+`planar`/`dh`), TinyGo; flash via the confirm-first `make flash-manipulator` (the `//go:generate tinygo flash` line was removed in [[ER-cleanup]]) | XIAO servo-arm node: consumes `ManipulatorConfig`/`ManipulatorTarget`, runs `vaj` jerk-limited profiles, drives `servo.ServoArray`, publishes `ManipulatorState` on `easyrobot.manipulator.{raw,planar,dh}` | excluded (TinyGo); planar/dh kinematics are TODO stubs (`kinematics.planar.go:26-55`, `kinematics.dh.go:26-55`) |
-| `cmd/manipulator` | 473 | dndm serial (tarm/serial → CGO on darwin) | host client for the node above: sends config/targets, prints state | builds (baseline); no tests. The committed 9.3 MB ELF `cmd/manipulator/manipulator` was removed and gitignored in [[ER-cleanup]] |
+| `drivers/manipulator` | 552 | `sam && xiao` (+`planar`/`dh`), TinyGo; flash via the confirm-first `make flash-manipulator` (the `//go:generate tinygo flash` line was removed in ER-cleanup (evidence: `~/src/docs/evidence/ER-cleanup.md`, outside the repo)) | XIAO servo-arm node: consumes `ManipulatorConfig`/`ManipulatorTarget`, runs `vaj` jerk-limited profiles, drives `servo.ServoArray`, publishes `ManipulatorState` on `easyrobot.manipulator.{raw,planar,dh}` | excluded (TinyGo); planar/dh kinematics are TODO stubs (`kinematics.planar.go:26-55`, `kinematics.dh.go:26-55`) |
+| `cmd/manipulator` | 473 | dndm serial (tarm/serial → CGO on darwin) | host client for the node above: sends config/targets, prints state | builds (baseline); no tests. The committed 9.3 MB ELF `cmd/manipulator/manipulator` was removed and gitignored in ER-cleanup (evidence: `~/src/docs/evidence/ER-cleanup.md`, outside the repo) |
 | `cmd/elrs-rx` | 288 | `linux\|\|windows` desktop; `esp32`, `rp2040`, `sam&&xiao` | CRSF receiver app — see [[crsf-elrs]] | fails (F3); linux cross-build OK |
 | `cmd/monitor` | 685 + SPEC | `x/devices` serial, [[peg-protocol-parser]] | pattern-driven serial sniffer: `-header "AA*L…"` framing, hex dump, CRC check (additive 8/16-bit sums only, `crc.go:84-118`), raw `-capture` mode — the tool for capturing lidar/CR30 protocols | fails (F2); linux/windows cross-build OK |
 | `cmd/cr30` | 1035 | GoCV, cobra | CR30 colorimeter measurement UI (spectrum plot, colorscience) — driver in [[sensors]] | no: OpenCV |
@@ -44,7 +44,7 @@ App-level logic only; algorithms live in the driver notes: [[ld06-packet-decoder
 - GoCV/OpenCV: `drivers/lidar` (host), `cmd/cr30`, `cmd/spectrometer`, `cmd/calibrate`, `cmd/display` — not buildable or runnable here; runtime `unverified`.
 - Serial desktop apps are linux/windows only (F2/F3); darwin needs a serial implementation ([[device-io]]).
 - TinyGo nodes: `drivers/manipulator` (`sam && xiao`), `drivers/lidar` (`rp2040`), `cmd/elrs-rx` (`esp32`/`rp2040`/`sam&&xiao`). None compiled (no TinyGo). `drivers/lidar` rp2040 fails type-check (duplicate consts). dndm `network/serial` imports `github.com/tarm/serial` (`../dndm/network/serial/serial.go:9`), which is unlikely to build on TinyGo bare-metal [INFERENCE] — the nodes' dndm-over-UART transport is unverified.
-- `make gen` / `go generate ./...` no longer reaches `tinygo flash`; flashing needs `make flash-manipulator` and a typed `y` ([[ER-cleanup]]).
+- `make gen` / `go generate ./...` no longer reaches `tinygo flash`; flashing needs `make flash-manipulator` and a typed `y` (ER-cleanup (evidence: `~/src/docs/evidence/ER-cleanup.md`, outside the repo)).
 
 ## Tests and evidence
 
@@ -62,8 +62,8 @@ App-level logic only; algorithms live in the driver notes: [[ld06-packet-decoder
 
 Algorithm defects are tracked in the algorithm notes (table above) and rolled up in [[todo]]; this list holds module-level items only.
 
-- [x] Remove committed binary `cmd/manipulator/manipulator` and gitignore it — [[ER-cleanup]] #p3
-- [x] Remove `//go:generate tinygo flash` (or guard it) so `make gen` cannot flash hardware — [[ER-cleanup]] #p1 #ER-026
+- [x] Remove committed binary `cmd/manipulator/manipulator` and gitignore it — ER-cleanup (evidence: `~/src/docs/evidence/ER-cleanup.md`, outside the repo) #p3
+- [x] Remove `//go:generate tinygo flash` (or guard it) so `make gen` cannot flash hardware — ER-cleanup (evidence: `~/src/docs/evidence/ER-cleanup.md`, outside the repo) #p1 #ER-026
 - [ ] Implement planar/DH kinematics hooks in the manipulator node (now stubs) — drivers/manipulator/kinematics.planar.go:26-55; kinematics.dh.go:26-55 #p2
 - [ ] Move `cmd/display/destination.IntentDestination` to `x/` and make GoCV display optional in `drivers/lidar` — drivers/lidar/main.go:17,194-216 #p2
 - [ ] Fix rp2040 duplicate consts in drivers/lidar — drivers/lidar/main_rp2040.go:41-42 #p1 #backlog

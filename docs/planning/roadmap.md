@@ -10,13 +10,13 @@ tags: [easyrobot, planning]
 ---
 # Roadmap — from the catalog to the owner's demos
 
-[Index](../index.md) · [ER-R2 report](../evidence/ER-R2.md) · [TODO roll-up](../todo.md) · [Ticket index](../tickets/index.md) · [Known/unknown map](known-unknown.md)
+[Index](../index.md) · ER-R2 report (evidence: `~/src/docs/evidence/ER-R2.md`, outside the repo) · [TODO roll-up](../todo.md) · [Ticket index](../tickets/index.md) · [Known/unknown map](known-unknown.md)
 
 This replaces the 2026-11-08 (R1) roadmap, which planned only the tensor/LLM track; its staging survives inside M-f (§7). Writing it authorises nothing: no build, flash, download, hardware run or deletion. Source and test edits for roster tickets are approved under the owner's autonomy instruction; everything listed under "Needs" and in §6 is not.
 
 **Owner's end goals** (objective O-005, verbatim excerpts): "The end goal - a hexapod robot or a quadruper robot inverse kinematics with strides, gaits and timing." · "k230 chip that has a camera(m5stack kamera module) does modern embedded model feature extraction(no fully connected network - just the last feature tensor) then streams it to esp32 board via spi and that board does the recording" · "run yolo, run BoW style of place recognition and most importantly - teach a small network to do visual odometry … one can learn depth map too" · "plug some wheels to it, add a camera and it would avoid obstacles via camera!" · "need more robust encoders/decoderes, especially ones over voice!" · "i wish my nn framework would run a simple llm - e.g. loaded from qwen .5B … would be a huge deal for an article! especially if it would run on esp32 and do some face recognition" · "we'd need ingestion and retrieval in easyrobot so that abugaga can more effectively find files".
 
-**Inputs:** the ER-R2 catalog ([report](../evidence/ER-R2.md), [IK review](../evidence/ER-R2-ik-review.md), workstreams [W1](../workstreams/W1-knowledge-vault.md)–[W9](../workstreams/W9-go-nn-framework.md), [todo.md](../todo.md)); the knowledge-engine design ([ideation](../research/ideation/2026-11-09-knowledge-engine.md)); Leader's accepted decisions (roster `decisions.md`, "EasyRobot ER-R2" and "Knowledge engine") and the owner questions Leader holds; roster tasks KE-1 and ER-AUDIO-1.
+**Inputs:** the ER-R2 catalog (report: `~/src/docs/evidence/ER-R2.md`, IK review: `~/src/docs/evidence/ER-R2-ik-review.md`, both outside the repo; workstreams [W1](../workstreams/W1-knowledge-vault.md)–[W9](../workstreams/W9-go-nn-framework.md), [todo.md](../todo.md)); the knowledge-engine design ([ideation](../research/ideation/2026-11-09-knowledge-engine.md)); Leader's accepted decisions (roster `decisions.md`, "EasyRobot ER-R2" and "Knowledge engine") and the owner questions Leader holds; roster tasks KE-1 and ER-AUDIO-1.
 
 ## 1. Milestones at a glance
 
@@ -42,7 +42,7 @@ Agreed (Leader, from ER-R2 and the knowledge-engine decisions): **KE-1 → ER-01
 
 | # | Change | Why | Recommendation |
 |---|---|---|---|
-| O1 | **Widen ER-018** to include the stride/foothold generator with body→leg transforms ([IK review](../evidence/ER-R2-ik-review.md) §6) and the gait → leg IK → servo glue | ER-018 as first scoped named only joint helpers, the phase scheduler and the swing curve. Without strides and glue, M-a's host demo can't be accepted | Landed: ER-018 scope items 4–5 |
+| O1 | **Widen ER-018** to include the stride/foothold generator with body→leg transforms (IK review §6, evidence: `~/src/docs/evidence/ER-R2-ik-review.md`, outside the repo) and the gait → leg IK → servo glue | ER-018 as first scoped named only joint helpers, the phase scheduler and the swing curve. Without strides and glue, M-a's host demo can't be accepted | Landed: ER-018 scope items 4–5 |
 | O2 | **Pull two ER-021 items into the ER-017/018 window**: homogeneous helpers that return zero rotation ([homogeneous transforms](../algorithms/homogeneous-transforms.md)) and the unpivoted 4×4 inverse ([matrix inverse and LU](../algorithms/matrix-inverse-and-lu.md)) | Body→leg transforms depend on them (inferred); the rest of ER-021 (quaternion, QR) can wait | Landed: ER-018 scope item 7 |
 | O3 | **Add the stale `tc` test port to ER-AUDIO-1** ([SMPTE LTC timecode](../algorithms/smpte-ltc-timecode.md); baseline finding F6) | Only `x/math/dsp/modulation/tc` fails to build (`demodulator_test.go:19`, old `mpsk.NewModulator` signature), which turns the `x/math/dsp/modulation/...` gate red; the other modulation packages and ER-AUDIO-1's own packages still build and test | Add as ER-AUDIO-1's first step, so the wildcard gate is green again |
 | O4 | **Put ER-022/023 straight after ER-AUDIO-1**, not later | Same files and tests (chain, framer, CRC, RS). ER-AUDIO-1 is channel-independent; ER-022's acquisition work needs the owner's channel choice | ER-AUDIO-1 now; ER-022/023 as soon as the channel is chosen |
@@ -120,7 +120,7 @@ flowchart LR
 ### M-a — Hexapod / quadruped walking (W3)
 
 - **Outcome:** a hexapod (then a quadruped) walks with strides, gaits and timing, driven by EasyRobot's IK.
-- **State:** FK and the Jacobian are correct; IK converges 100 % from a warm start but 37–81 % cold, fails above 3 joints, and the analytic leg IK is silently wrong behind the yaw axis; gait scheduling, strides, body transforms, stability margin and servo timing don't exist ([W3](../workstreams/W3-legged-ik.md), [IK review](../evidence/ER-R2-ik-review.md)).
+- **State:** FK and the Jacobian are correct; IK converges 100 % from a warm start but 37–81 % cold, fails above 3 joints, and the analytic leg IK is silently wrong behind the yaw axis; gait scheduling, strides, body transforms, stability margin and servo timing don't exist ([W3](../workstreams/W3-legged-ik.md), IK review: `~/src/docs/evidence/ER-R2-ik-review.md`, outside the repo).
 - **Stages:**
   1. **Host simulation (no hardware).** ER-017 (analytic leg IK with typed errors and angle wrap; damped, step-limited, limit-aware solver for longer chains) and ER-018 widened per O1/O2 (joint/leg helpers and servo map, phase scheduler with tripod/wave/ripple and walk/trot presets, swing curve, strides and body→leg transforms, glue to a servo array).
   2. **ESP32 servo loop.** Allocation-free 50 Hz loop for 18 joints: scheduler → footholds → swing curves → analytic IK → servo map → PCA9685, on an FPU-equipped ESP32; per-tick cost measured on the device. Needs ER-025 (PCA9685 register order, `ServoArray.Stop` deadlock) and the ER-026 TinyGo part.

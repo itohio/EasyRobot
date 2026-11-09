@@ -32,7 +32,7 @@ The test kmodel runs on the board; output within quantisation tolerance of nncas
 
 ## Dependencies
 
-ER-041; nncase v0.1.0-rc5 host install (owner approval). Roster task ER-K210; one milestone per round, each with `docs/evidence/ER-K210-M6.md`.
+ER-041; nncase v0.1.0-rc5 host install (owner approval). Roster task ER-K210; one milestone per round, each with `~/src/docs/evidence/ER-K210-M6.md`.
 
 ## Evidence
 

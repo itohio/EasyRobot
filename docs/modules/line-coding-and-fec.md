@@ -12,7 +12,7 @@ evidence: "go test -count=1 ./x/math/dsp/coding/... → crc FAIL (5), four5b FAI
 
 **Purpose:** byte-stream line codes, scramblers, error detection and error correction meant to sit between data and a modulator ([[modulation]]) in the audio modem ([[audio-modem-cli]]) and other links. Every coder is a `chain.Processor[byte,byte]` so it can be chained with modulators via `x/chain` ([[pipeline-and-chain]]). Design docs: `x/math/dsp/coding/SPEC.md` (describes the old `ecc.NewXxxEncoder` API — stale), `PLAN.md` (rename to `Encoder/Decoder`, done; mentions a `diff_manchester` package that does not exist).
 
-**Packages:** 12 packages; no build tags, no cgo, no reflection, no goroutines; only `rs/rs_utils.go` uses floats. The wireline and storage placeholders AMI, B8ZS, HDB3, RLL and PPM (1 231 LOC, no tests; probe: identity, lossy, panic, lossy, identity) were deleted in [[ER-cleanup]] (owner-approved, no importers).
+**Packages:** 12 packages; no build tags, no cgo, no reflection, no goroutines; only `rs/rs_utils.go` uses floats. The wireline and storage placeholders AMI, B8ZS, HDB3, RLL and PPM (1 231 LOC, no tests; probe: identity, lossy, panic, lossy, identity) were deleted in ER-cleanup (evidence: `~/src/docs/evidence/ER-cleanup.md`, outside the repo) (owner-approved, no importers).
 
 | Package | LOC src/test | Algorithm note | Probe result (2026-11-09) |
 |---|---|---|---|
@@ -113,7 +113,7 @@ Algorithm defects are tracked in the algorithm notes (table above) and rolled up
 - [ ] Remove per-chunk `make` in `Process` loops — e.g. x/math/dsp/coding/four5b/fourb5b_encoder.go:98 #p3
 - [ ] Merge biphase_i/biphase_m, rename to FM0 — x/math/dsp/coding/biphase_i/ #p3
 - [ ] Rewrite SPEC.md for the current API and real statuses; drop `diff_manchester` from PLAN.md — x/math/dsp/coding/SPEC.md, PLAN.md #p3
-- [x] Decide fate of AMI/B8ZS/HDB3/RLL/PPM stubs — deleted in [[ER-cleanup]] #p3
+- [x] Decide fate of AMI/B8ZS/HDB3/RLL/PPM stubs — deleted in ER-cleanup (evidence: `~/src/docs/evidence/ER-cleanup.md`, outside the repo) #p3
 
 ## Inferred objectives (proposals)
 

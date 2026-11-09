@@ -31,8 +31,8 @@ hello lines observed at 115200, one per second (host-timed); the flash command a
 
 ## Dependencies
 
-ER-040. Roster task ER-K210; one milestone per round, each with `docs/evidence/ER-K210-M1.md`.
+ER-040. Roster task ER-K210; one milestone per round, each with `~/src/docs/evidence/ER-K210-M1.md`.
 
 ## Evidence
 
-Verify accepted (roster verification ER-CAM-BATCH-1), review approved (R-ER-K210-M01): [[ER-K210-M1]].
+Verify accepted (roster verification ER-CAM-BATCH-1), review approved (R-ER-K210-M01): ER-K210-M1 (evidence: `~/src/docs/evidence/ER-K210-M1.md`, outside the repo).

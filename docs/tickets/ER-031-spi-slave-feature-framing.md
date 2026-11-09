@@ -14,7 +14,7 @@ source_revision: abb5c9cca7f756c632548d9c7be2436b46dc2e4d
 ---
 # ER-031 — SPI slave interface and feature-frame SPI framing
 
-[[tickets/index|Ticket index]] · [[roadmap]] · [[ER-R2]] · [[todo]]
+[[tickets/index|Ticket index]] · [[roadmap]] · ER-R2 (evidence: `~/src/docs/evidence/ER-R2.md`, outside the repo) · [[todo]]
 
 ## Goal and evidence
 

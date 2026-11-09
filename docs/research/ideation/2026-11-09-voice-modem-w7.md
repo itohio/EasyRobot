@@ -10,7 +10,7 @@ updated: 2026-11-09
 
 # W7: data over a "voice" channel: waveform, preamble, FEC, soft bits, channel model
 
-**Brief:** `~/src/docs/tasks/ER-research-2.md`. **Questions:** EasyRobot `docs/evidence/ER-R2.md` §9 (W7) and [[W7-filters-codecs-voice]], whose measured noise figures this note relies on: decisions are near theory, while acquisition and synchronisation lose 25–30 dB.
+**Brief:** `~/src/docs/tasks/ER-research-2.md`. **Questions:** EasyRobot `~/src/docs/evidence/ER-R2.md` §9 (W7) and [[W7-filters-codecs-voice]], whose measured noise figures this note relies on: decisions are near theory, while acquisition and synchronisation lose 25–30 dB.
 
 **The channel is the owner's open question** (pending in `docs/decisions.md`), so this note designs for the likely options.
 

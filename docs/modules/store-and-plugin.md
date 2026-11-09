@@ -10,7 +10,7 @@ evidence: "x/store, x/plugin, x/options, x/logger and internal/concurrency delet
 ---
 # store-and-plugin — what remains: `x/crypto`
 
-**History.** This note covered the support packages of the deprecated `x/pipeline`: `x/store` (a typed-key value bag), `x/plugin` (a name → builder registry), `x/options` (`func(interface{})` options), `x/logger` (a zerolog wrapper) and `internal/concurrency` (a `go f()` shim). They were deleted in [[ER-cleanup]] (owner: "easyrobot deletions - ok."). The deletion followed `x/pipeline/DEPRECATED.md` ("Pipeline, Plugin, Store will be replaced by dndm package and associated patterns"), after a grep found no importer outside the deleted cluster. Their defects (FQDN code collision, ignored patterns, a registry deadlock, stale tests) went with them.
+**History.** This note covered the support packages of the deprecated `x/pipeline`: `x/store` (a typed-key value bag), `x/plugin` (a name → builder registry), `x/options` (`func(interface{})` options), `x/logger` (a zerolog wrapper) and `internal/concurrency` (a `go f()` shim). They were deleted in ER-cleanup (evidence: `~/src/docs/evidence/ER-cleanup.md`, outside the repo) (owner: "easyrobot deletions - ok."). The deletion followed `x/pipeline/DEPRECATED.md` ("Pipeline, Plugin, Store will be replaced by dndm package and associated patterns"), after a grep found no importer outside the deleted cluster. Their defects (FQDN code collision, ignored patterns, a registry deadlock, stale tests) went with them.
 
 **What remains:** `x/crypto` (55 lines, no tests, no importers): ed25519 `New`, `FromSeed`, `FromReader`, base58 `String`.
 

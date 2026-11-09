@@ -9,7 +9,7 @@ test_result: pass
 ---
 # Knowledge engine (`x/knowledge`)
 
-**Purpose:** a local starting-point finder for "where is X" questions across the workspace. It ingests Markdown and Go files, indexes them lexically (BM25) and as a link graph, and returns ranked files with line spans and reasons. Its consumer is Abugaga (`abg.svc.find`, `roster_find`, `abu find`; KE-4). Design: [[2026-11-09-knowledge-engine|knowledge-engine design note]]. First slice: KE-1, report [[KE-1]].
+**Purpose:** a local starting-point finder for "where is X" questions across the workspace. It ingests Markdown and Go files, indexes them lexically (BM25) and as a link graph, and returns ranked files with line spans and reasons. Its consumer is Abugaga (`abg.svc.find`, `roster_find`, `abu find`; KE-4). Design: [[2026-11-09-knowledge-engine|knowledge-engine design note]]. First slice: KE-1, report KE-1 (evidence: `~/src/docs/evidence/KE-1.md`, outside the repo).
 
 **Packages:** its own Go module `github.com/itohio/EasyRobot/x/knowledge` (go 1.26; only dependency `modernc.org/sqlite` v1.61.0, pure Go, from the module cache). Abugaga does not inherit gocv/tflite/dndm. About 8.0 k lines of code (bench fixture excluded) and 4.1 k lines of tests.
 
@@ -66,7 +66,7 @@ CGo-free and host-only (servers, CLIs). Not meant for TinyGo or MCUs: it uses ma
 
 ## Tests and evidence
 
-`go test -race ./...` green across 10 packages (2026-11-09, after [[KE-1-fix]]). The memory store now scores exactly like SQLite FTS5, so the two stores rank identically.
+`go test -race ./...` green across 10 packages (2026-11-09, after KE-1-fix (evidence: `~/src/docs/evidence/KE-1-fix.md`, outside the repo)). The memory store now scores exactly like SQLite FTS5, so the two stores rank identically.
 
 | Corpus | Retriever | R@1 | R@8 | MRR | p95 |
 |---|---|---|---|---|---|
@@ -75,7 +75,7 @@ CGo-free and host-only (servers, CLIs). Not meant for TinyGo or MCUs: it uses ma
 | Frozen workspace copy (30 questions, 7,899 docs) | engine (memory = sqlite) | 0.600 | 0.867 | 0.686 | 29 ms memory / 113 ms sqlite |
 | Frozen workspace copy (30 questions, 7,899 docs) | grep baseline | 0.100 | 0.533 | 0.223 | 156 ms |
 
-Full detail in [[KE-1]] and [[KE-1-fix]].
+Full detail in KE-1 (evidence: `~/src/docs/evidence/KE-1.md`, outside the repo) and KE-1-fix (evidence: `~/src/docs/evidence/KE-1-fix.md`, outside the repo).
 
 ## API notes (ease of use, composability)
 

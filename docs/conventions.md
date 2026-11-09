@@ -32,7 +32,7 @@ Obsidian vault rooted at `EasyRobot/docs/`. Open the folder in Obsidian; the hom
 | `workstreams/` | W1–W10 from objective O-005 | `workstream` |
 | `tickets/` | ER-xxx tickets, one file each, plus [[tickets/index\|the ticket index]] | `ticket` |
 | `planning/` | roadmap, known/unknown map | `planning` |
-| `evidence/` | dated run records and task reports | `evidence` |
+| — | evidence (run records, task reports, images) is **not committed**: it lives in `~/src/docs/evidence/`, outside the repo; `docs/evidence/` is gitignored. Cite it as plain text (`evidence: ~/src/docs/evidence/<file>`), never as a wikilink | — |
 | `research/` | ideation research notes (owned by ideation) | `research` |
 | `templates/` | Obsidian note templates | `meta` |
 

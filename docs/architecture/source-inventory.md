@@ -17,7 +17,7 @@ All source claims refer to `abb5c9cca7f756c632548d9c7be2436b46dc2e4d` in [the ow
 - **Declared:** README, DESIGN, interface or source comment promises a feature.
 - **Source-present:** an implementation path exists; it may still be incomplete, incorrect or unbuildable.
 - **Static limitation:** an explicit stub, panic, build restriction, omitted contract or bounded search finding.
-- **Runtime verified:** none when this inventory was written. Later host build/test results: [[baseline-2026-11-08|baseline-2026-11-08.md]]. A test file is not a test result.
+- **Runtime verified:** none when this inventory was written. Later host build/test results: baseline-2026-11-08.md (evidence: `~/src/docs/evidence/baseline-2026-11-08.md`, outside the repo). A test file is not a test result.
 
 ## 2. Repository map
 
@@ -32,7 +32,7 @@ All source claims refer to `abb5c9cca7f756c632548d9c7be2436b46dc2e4d` in [the ow
 | Inference import | `x/marshaller/tflite/`, `x/marshaller/gocv/` | Runtime/model wrappers and converters; native library and format limits matter. |
 | Serialization | `x/marshaller/{graph,yaml,json,proto}/`, `proto/types/`, generated `types/` | Typed graph/tensor representations; round-trip data does not automatically preserve executable closures, VM state or views. |
 | Concurrency/iteration | `x/workers/`, `x/iter/` | Build-selected single/multithreaded numerical paths; worker policies and ownership need validation. |
-| Composition | `x/chain/` | Synchronous processor chains. The deprecated channel-based `x/pipeline/` was deleted in [[ER-cleanup]]. |
+| Composition | `x/chain/` | Synchronous processor chains. The deprecated channel-based `x/pipeline/` was deleted in ER-cleanup (evidence: `~/src/docs/evidence/ER-cleanup.md`, outside the repo). |
 | Devices/examples | `x/devices/`, `drivers/`, `cmd/` | Host/TinyGo/platform source and examples; not proof of complete embedded support or acceleration. |
 | Design/dependencies | `README.md`, `DESIGN.md`, `go.mod`, `Makefile` | README/design mix past plans with implementation; `DESIGN.md`'s `pkg/core` hierarchy is not the actual current `x/` tree. |
 
@@ -62,7 +62,7 @@ Gorgonia owns backend scheduling. The local `ExpressionGraph` interface does not
 
 ### C. Legacy streaming pipelines
 
-`x/pipeline/pipeline.go` and `step.go` connected step channels and started steps with a context. They were never the tensor graph compiler or the scalar callback evaluator, and were deleted in [[ER-cleanup]] (deprecated, no importers; dndm is the transport).
+`x/pipeline/pipeline.go` and `step.go` connected step channels and started steps with a context. They were never the tensor graph compiler or the scalar callback evaluator, and were deleted in ER-cleanup (evidence: `~/src/docs/evidence/ER-cleanup.md`, outside the repo) (deprecated, no importers; dndm is the transport).
 
 ## 4. Tensor data and ownership
 

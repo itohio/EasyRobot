@@ -15,11 +15,11 @@ source_revision: 1bf6234e676daa87d3e9eb191bb1dc2420f05ff9
 ---
 # ER-017 — DH and planar IK robustness
 
-[[tickets/index|Ticket index]] · [[roadmap]] · [[ER-R2]] · [[todo]]
+[[tickets/index|Ticket index]] · [[roadmap]] · ER-R2 (evidence: `~/src/docs/evidence/ER-R2.md`, outside the repo) · [[todo]]
 
 ## Goal and evidence
 
-Make leg and chain IK either correct or explicitly failing. Accepted ER-R2 recommendation 1: analytic 3-DOF leg IK plus a damped, step-limited, limit-aware solver for longer chains (roster `decisions.md`, "EasyRobot ER-R2"). Defects from [[ER-R2-ik-review#4. Error list (all reproducible with the probe)|IK review §4]] (E1, E3, E4, E5, E8, E9):
+Make leg and chain IK either correct or explicitly failing. Accepted ER-R2 recommendation 1: analytic 3-DOF leg IK plus a damped, step-limited, limit-aware solver for longer chains (roster `decisions.md`, "EasyRobot ER-R2"). Defects from IK review §4 (evidence: `~/src/docs/evidence/ER-R2-ik-review.md#4. Error list (all reproducible with the probe)`, outside the repo) (E1, E3, E4, E5, E8, E9):
 
 - **n>3 chains fail** (E1): J is 3×n and `Gesvd` requires rows ≥ cols — `x/math/control/kinematics/joints/dh/denavithartenberg.go:216-217`, `x/math/primitive/fp32/la.go:760`. `Matrix.DampedLeastSquares` exists unused at `x/math/mat/pseudo_inverse.go:48`.
 - **Undamped, no step limit, absolute σ cutoff 1e-10 in float32** (E3): cold-seed convergence 37–81 % on legs — `denavithartenberg.go:182-229`, `la.go:712`.
@@ -51,4 +51,4 @@ Product's guess: part of M-a stage 1 (**M–L** together with ER-018); this tick
 
 ## Implementation evidence
 
-Report: [[ER-017-018]]. The lead's probe (30/60/90 mm, ±π limits, seed 0.1) went from 29/500 to 500/500.
+Report: ER-017-018 (evidence: `~/src/docs/evidence/ER-017-018.md`, outside the repo). The lead's probe (30/60/90 mm, ±π limits, seed 0.1) went from 29/500 to 500/500.

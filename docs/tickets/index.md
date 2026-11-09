@@ -8,7 +8,7 @@ source_revision: abb5c9cca7f756c632548d9c7be2436b46dc2e4d
 ---
 # EasyRobot tickets
 
-[[index|Home]] · [[roadmap]] · [[known-unknown|Unknown map]] · [[baseline-2026-11-08|Host baseline]] · [[conventions]]
+[[index|Home]] · [[roadmap]] · [[known-unknown|Unknown map]] · Host baseline (evidence: `~/src/docs/evidence/baseline-2026-11-08.md`, outside the repo) · [[conventions]]
 
 Owner instruction (2026-11-08, verbatim): "properly update dndm, easyrobot projects so i can start improving on them".
 
@@ -101,7 +101,7 @@ From [[roadmap#2.1 The agreed order, and where it should change|roadmap §2.1]],
 
 ## T-IK mapping
 
-From [[ER-R2-ik-review#7. Proposed tickets (failing test first)|IK review §7]]; each T-IK id maps to exactly one ticket.
+From IK review §7 (evidence: `~/src/docs/evidence/ER-R2-ik-review.md#7. Proposed tickets (failing test first)`, outside the repo); each T-IK id maps to exactly one ticket.
 
 | T-IK | Title | Ticket |
 |---|---|---|
@@ -127,7 +127,7 @@ Design: [[2026-11-09-knowledge-engine]]; module [[knowledge-engine]].
 
 | Slice | Ticket | State |
 |---|---|---|
-| KE-1: interfaces, stores, md/Go ingestion, hybrid retrieval, benchmark | none (roster task) | review — [[KE-1]] |
+| KE-1: interfaces, stores, md/Go ingestion, hybrid retrieval, benchmark | none (roster task) | review — KE-1 (evidence: `~/src/docs/evidence/KE-1.md`, outside the repo) |
 | KE-2: fsnotify watcher, crash-mid-ingest test, missing-target index | [[ER-034-ke2-watcher-crash-test\|ER-034]] | backlog |
 | KE-3: py/c/ts/proto chunkers | [[ER-035-ke3-chunkers\|ER-035]] | backlog |
 | KE-4: Abugaga `abg.svc.find`, `roster_find`, `abu find` | [[ER-036-ke4-abugaga-find\|ER-036]] (owner babyai) | backlog; first after KE-1 |
@@ -135,4 +135,4 @@ Design: [[2026-11-09-knowledge-engine]]; module [[knowledge-engine]].
 
 ## Build and test debt found by ER-001
 
-Filed: darwin/arm64 build and vet findings F1–F5, F7 are [[ER-026-build-green|ER-026]] stage 1; F6 (`tc` tests) is ER-AUDIO-1. Failing-test packages are covered by ER-019 (filters), ER-023 (coding), ER-024 (lidar), ER-025 (nmea), ER-029 (nn/layers); colorscience, gps, peg-adjacent and plugin failures stay `#backlog` ([[baseline-2026-11-08#4. Findings (project code, darwin/arm64)|baseline §4]]). The `go:generate tinygo flash` directive (held decision #13) makes `make gen` unsafe.
+Filed: darwin/arm64 build and vet findings F1–F5, F7 are [[ER-026-build-green|ER-026]] stage 1; F6 (`tc` tests) is ER-AUDIO-1. Failing-test packages are covered by ER-019 (filters), ER-023 (coding), ER-024 (lidar), ER-025 (nmea), ER-029 (nn/layers); colorscience, gps, peg-adjacent and plugin failures stay `#backlog` (baseline §4 (evidence: `~/src/docs/evidence/baseline-2026-11-08.md#4. Findings (project code, darwin/arm64)`, outside the repo)). The `go:generate tinygo flash` directive (held decision #13) makes `make gen` unsafe.

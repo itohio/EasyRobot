@@ -70,7 +70,7 @@ Counts: 7 tested · 5 implemented · 2 partial · 0 stub · 0 unverified (14 alg
 
 <!-- /vault:algorithms -->
 
-Full IK review: [[ER-R2-ik-review]].
+Full IK review: ER-R2-ik-review (evidence: `~/src/docs/evidence/ER-R2-ik-review.md`, outside the repo).
 
 ## Build targets and dependencies
 
@@ -92,8 +92,8 @@ Full IK review: [[ER-R2-ik-review]].
   - mecanum ok (3 / 6)
   - differential, steer4, steer4dual, steer6, internal/rigid, types: no test files
 - `go vet ./x/math/control/...`: ok.
-- Same as the 2026-11-08 baseline (`docs/evidence/baseline-2026-11-08.md` §5).
-- Probe `tmp/easyrobot/ik` (sections A, B, C, D, H, I, L, R, X, Y, Z), numbers in [[ER-R2-ik-review]].
+- Same as the 2026-11-08 baseline (`~/src/docs/evidence/baseline-2026-11-08.md` §5).
+- Probe `tmp/easyrobot/ik` (sections A, B, C, D, H, I, L, R, X, Y, Z), numbers in ER-R2-ik-review (evidence: `~/src/docs/evidence/ER-R2-ik-review.md`, outside the repo).
 
 ## API notes (ease of use, composability)
 
@@ -107,7 +107,7 @@ Full IK review: [[ER-R2-ik-review]].
   - Units are not stated anywhere.
   - There are no zero offsets, sign or servo mapping.
   - The host CLI already sends degrees/mm into a radians API (`cmd/manipulator/main.go:346-348`).
-  - The proposed `chain` helper package (declare, validate, convert to DH/planar, servo mapping, zero-pose check) is in [[ER-R2-ik-review]] §5.
+  - The proposed `chain` helper package (declare, validate, convert to DH/planar, servo mapping, zero-pose check) is in ER-R2-ik-review (evidence: `~/src/docs/evidence/ER-R2-ik-review.md`, outside the repo) §5.
 - **Silent clamping everywhere** (FK writes clamped values back, IK clamps, planar returns success for unreachable targets) hides configuration errors. Prefer typed errors plus a best-effort result.
 - **`Backward` leaves `controls` untouched on failure.** Callers get no partial answer.
 - **State is hidden in the struct** (`params`, `pos`, `H0i`), so a model is not safe for concurrent use and the same model cannot serve 6 legs in parallel goroutines. One model per leg works.
@@ -125,7 +125,7 @@ Algorithm defects are tracked in the algorithm notes (table above) and rolled up
 - [ ] Tests for differential, steer4, steer4dual, steer6, internal/rigid — wheels/* #p2
 - [ ] Typed allocation-free fast paths for embedded callers — joints/* #p3
 - [ ] Update SPEC paths (`pkg/core/...` → `x/...`) and the thrusters limit claim — kinematics/SPEC.md:106 #p3
-- [x] Remove the committed ELF binary `cmd/manipulator/manipulator` (9.3 MB) — [[ER-cleanup]] #p3
+- [x] Remove the committed ELF binary `cmd/manipulator/manipulator` (9.3 MB) — ER-cleanup (evidence: `~/src/docs/evidence/ER-cleanup.md`, outside the repo) #p3
 
 ## Inferred objectives (proposals)
 

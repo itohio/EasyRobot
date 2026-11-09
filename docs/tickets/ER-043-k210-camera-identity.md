@@ -31,8 +31,8 @@ Prints the sensor PID/VER over UART (e.g. `OV7740 77 42`).
 
 ## Dependencies
 
-ER-041 ✓. Camera pins: the Sipeed/MaixPy IO40–47 mapping, confirmed on the board by the id read (no M5 config fetch was needed). Roster task ER-K210; evidence `docs/evidence/ER-K210-M3.md`.
+ER-041 ✓. Camera pins: the Sipeed/MaixPy IO40–47 mapping, confirmed on the board by the id read (no M5 config fetch was needed). Roster task ER-K210; evidence `~/src/docs/evidence/ER-K210-M3.md`.
 
 ## Evidence
 
-Verify accepted (roster verification ER-CAM-BATCH-2); code review pending: [[ER-K210-M3]] (`camid` prints `sensor=OV2640 addr=0x30 pid=0x26 ver=0x42`).
+Verify accepted (roster verification ER-CAM-BATCH-2); code review pending: ER-K210-M3 (evidence: `~/src/docs/evidence/ER-K210-M3.md`, outside the repo) (`camid` prints `sensor=OV2640 addr=0x30 pid=0x26 ver=0x42`).

@@ -8,7 +8,7 @@ evidence: "cross-compiles 2026-11-09 with GOTOOLCHAIN=local GOPROXY=off GOFLAGS=
 ---
 # Build targets
 
-What builds where, what is untested, and the traps in the build-tag split. Layering: [[overview]]. Package status table: [[packages]]. Desktop results are from the [[baseline-2026-11-08|baseline]] (same HEAD); cross-target rows below were run 2026-11-09 (compile only, no execution). **No TinyGo build, no board, no OpenCV** was used (roster rules); TinyGo rows are tag-selection and type-check evidence only.
+What builds where, what is untested, and the traps in the build-tag split. Layering: [[overview]]. Package status table: [[packages]]. Desktop results are from the baseline (evidence: `~/src/docs/evidence/baseline-2026-11-08.md`, outside the repo) (same HEAD); cross-target rows below were run 2026-11-09 (compile only, no execution). **No TinyGo build, no board, no OpenCV** was used (roster rules); TinyGo rows are tag-selection and type-check evidence only.
 
 ## Native (cgo) dependencies
 
@@ -47,9 +47,9 @@ Build tags in use (first `//go:build` line per file, `grep -rh '^//go:build'`): 
 |---|---|---|
 | `esp32` (Xtensa) | `cmd/elrs-rx/platform_esp32.go` only | **only ESP32 code in the repo**; PWM output is a stub (`setPWMMicroseconds` TODO, `platform_esp32.go:56–59`) and battery voltage is hard-coded 11.1 V (`:52–54`) |
 | `rp2040` | `cmd/elrs-rx/platform_rp2040.go`, `drivers/lidar/main_rp2040.go` (+ `main_ld06.go`, `main_xwpftb.go`) | not built |
-| `sam && xiao` (SAMD21 XIAO) | `cmd/elrs-rx/platform_xiao.go`, `drivers/manipulator/*`, `x/devices/xiao/xiao_pwm.go` | not built; flashing only via the confirm-first `make flash-manipulator` (the `go:generate tinygo flash` line was removed in [[ER-cleanup]]) |
+| `sam && xiao` (SAMD21 XIAO) | `cmd/elrs-rx/platform_xiao.go`, `drivers/manipulator/*`, `x/devices/xiao/xiao_pwm.go` | not built; flashing only via the confirm-first `make flash-manipulator` (the `go:generate tinygo flash` line was removed in ER-cleanup (evidence: `~/src/docs/evidence/ER-cleanup.md`, outside the repo)) |
 | generic `tinygo` | `x/devices/{i2c,pin,serial,spi}_tinygo.go`, `x/devices/encoder/tinygo.go`, `x/devices/servo/array_tinygo.go`, `x/marshaller/storage/flash.go`, `x/devices/tca9548a/router_example_test.go` | not built |
-| `unitv` (K210; `drivers/unitv/target/unitv.json`, inherits `maixbit`) | `drivers/unitv/…` | **built and run**: `hello` on the board ([[ER-K210-M1]]); build from the repo root (`make unitv`) |
+| `unitv` (K210; `drivers/unitv/target/unitv.json`, inherits `maixbit`) | `drivers/unitv/…` | **built and run**: `hello` on the board (ER-K210-M1 (evidence: `~/src/docs/evidence/ER-K210-M1.md`, outside the repo)); build from the repo root (`make unitv`) |
 
 ### TinyGo facts from the installed target files (read, not run)
 
@@ -80,7 +80,7 @@ Only amd64 assembly exists: `x/iter/loop_experiments/{asm,asm_op,asm_matmul}_amd
 
 ## Feature tags and heavy tests
 
-`use_mt`/`!use_mt` (9+9 files: threaded vs single-thread loops in `x/iter`, `x/workers`) — `use_mt` builds were never run (baseline §6). `gocv_display` (manual display test), `tflite`, `mnist_test`, `mnist_large_test`, `xor_test` (heavy tests, not run). The `logless` (`x/logger`) and `ants` (`internal/concurrency`) tags went with those packages in [[ER-cleanup]]; the manipulator flash commands no longer pass `-tags logless`.
+`use_mt`/`!use_mt` (9+9 files: threaded vs single-thread loops in `x/iter`, `x/workers`) — `use_mt` builds were never run (baseline §6). `gocv_display` (manual display test), `tflite`, `mnist_test`, `mnist_large_test`, `xor_test` (heavy tests, not run). The `logless` (`x/logger`) and `ants` (`internal/concurrency`) tags went with those packages in ER-cleanup (evidence: `~/src/docs/evidence/ER-cleanup.md`, outside the repo); the manipulator flash commands no longer pass `-tags logless`.
 
 ## What is untested, per target
 
@@ -101,7 +101,7 @@ Only amd64 assembly exists: `x/iter/loop_experiments/{asm,asm_op,asm_matmul}_amd
 - [ ] Split `x/marshaller/graph/storage.go` so the graph marshaller builds without file/tar storage on TinyGo — `x/marshaller/graph/storage.go:11–23` #p2
 - [ ] Use `!tinygo && linux` for `x/marshaller/{tflite,v4l}` — `x/marshaller/v4l/device.go:1` #p3
 - [ ] Add a CI/Makefile matrix: darwin+linux amd64/arm64, linux/arm, linux/riscv64, windows, wasm, plus `tinygo build` for esp32/rp2040/xiao once TinyGo runs are approved — `Makefile` #p2
-- [x] Convert the 6 remaining `// +build` lines to `//go:build` — four were in files deleted by [[ER-cleanup]]; the other two (`x/marshaller/audio/device_malgo.go:2`, `x/marshaller/tflite_unmarshaller_test.go:2`) already carry `//go:build` #p3
+- [x] Convert the 6 remaining `// +build` lines to `//go:build` — four were in files deleted by ER-cleanup (evidence: `~/src/docs/evidence/ER-cleanup.md`, outside the repo); the other two (`x/marshaller/audio/device_malgo.go:2`, `x/marshaller/tflite_unmarshaller_test.go:2`) already carry `//go:build` #p3
 
 ## Inferred objectives (proposals)
 

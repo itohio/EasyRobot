@@ -41,4 +41,4 @@ source_revision: 1bf6234e676daa87d3e9eb191bb1dc2420f05ff9
 
 ## Links
 
-- Module: [[kinematics]] · [[planar-2dof-arm-kinematics]] · [[dh-jacobian-pseudoinverse-ik]] · [[leg-chain-config-and-servo-map]] · [[ER-R2-ik-review]] · [[W3-legged-ik]]
+- Module: [[kinematics]] · [[planar-2dof-arm-kinematics]] · [[dh-jacobian-pseudoinverse-ik]] · [[leg-chain-config-and-servo-map]] · ER-R2-ik-review (evidence: `~/src/docs/evidence/ER-R2-ik-review.md`, outside the repo) · [[W3-legged-ik]]

@@ -31,7 +31,7 @@ Board outputs bit-identical to the host Go reference (checksums over UART); MAC/
 
 ## Dependencies
 
-ER-041; int8 kernels in `x/math/primitive/qi8` (currently empty: `int8.go` has no functions). Roster task ER-K210; one milestone per round, each with `docs/evidence/ER-K210-M5.md`.
+ER-041; int8 kernels in `x/math/primitive/qi8` (currently empty: `int8.go` has no functions). Roster task ER-K210; one milestone per round, each with `~/src/docs/evidence/ER-K210-M5.md`.
 
 ## Evidence
 

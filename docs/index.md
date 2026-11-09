@@ -16,8 +16,8 @@ From the roadmap's no-hardware demo checkpoints ([[roadmap#8. Next|roadmap §8]]
 
 | # | Step | Tickets | Demo checkpoint |
 |---|---|---|---|
-| 1 | ~~Knowledge engine v1 committed after verify, with the `go.mod` tidy as its own commit~~ — committed | KE-1 ([[KE-1\|report]]) | M-g: KE-1 bench table vs the ripgrep baseline |
-| 2 | ~~Leg IK and gait scheduling with strides, body→leg transforms, gait→IK→servo glue~~ — done, see [[ER-017-018\|report]] | [[ER-017-dh-planar-ik-robustness\|ER-017]], [[ER-018-leg-helpers-gait-scheduler\|ER-018]] | M-a: host tripod simulation, stance feet fixed in the world — passes |
+| 1 | ~~Knowledge engine v1 committed after verify, with the `go.mod` tidy as its own commit~~ — committed | KE-1 (report (evidence: `~/src/docs/evidence/KE-1.md`, outside the repo)) | M-g: KE-1 bench table vs the ripgrep baseline |
+| 2 | ~~Leg IK and gait scheduling with strides, body→leg transforms, gait→IK→servo glue~~ — done, see report (evidence: `~/src/docs/evidence/ER-017-018.md`, outside the repo) | [[ER-017-dh-planar-ik-robustness\|ER-017]], [[ER-018-leg-helpers-gait-scheduler\|ER-018]] | M-a: host tripod simulation, stance feet fixed in the world — passes |
 | 3 | Voice-modem composition fixes (stale `tc` test port first), then BER harness, synchroniser, framer, FEC | ER-AUDIO-1, then [[ER-022-audio-modem-acquisition\|ER-022]], [[ER-023-coding-fixes\|ER-023]] (with [[ER-019-filter-correctness\|ER-019]]'s PLL/AGC) | M-e: BER-vs-Eb/N0 curve on a channel model |
 | 4 | Trusted reference: eager views and aliasing, graph fixes, existing-layer fixes and the reference-fixture harness | [[ER-002-cpu-graph-semantics\|ER-002]], [[ER-020-eager-views-newas-norm-gradients\|ER-020]], [[ER-028-graph-fixes\|ER-028]], then [[ER-029-nn-layers-fixture-harness\|ER-029]] | M-f: eager fixtures pass |
 | 5 | Decision trees on the host: plain-data tree, flat executor, CART trainer, episode logger | [[ER-032-flat-decision-tree-executor\|ER-032]], [[ER-033-cart-trainer-episode-logger\|ER-033]] | M-d: host-trained tree classifies a recorded or synthetic obstacle set |
@@ -34,7 +34,7 @@ State: 64 tested · 29 implemented · 138 partial · 10 stub · 13 unverified (2
 
 - Architecture: [[overview]] (layers, dependency diagram) · [[packages]] (all 200 package dirs) · [[data-flow]] · [[dndm-and-protobuf]] · [[build-targets]] · [[source-inventory|tensor/graph source inventory]]
 - Work: [[todo]] (generated, by ticket) · [[tickets/index|ticket index]] · [[roadmap]] · [[known-unknown|known/unknown map]]
-- Reviews: [[ER-R2-ik-review|IK and Jacobian review]] · [[ER-R2|ER-R2 report]] · [[KE-1|KE-1 knowledge engine]] · [[ER-docs-fix|vault maintenance (ER-docs-fix)]] · [[baseline-2026-11-08|host baseline 2026-11-08]]
+- Reviews: IK and Jacobian review (evidence: `~/src/docs/evidence/ER-R2-ik-review.md`, outside the repo) · ER-R2 report (evidence: `~/src/docs/evidence/ER-R2.md`, outside the repo) · KE-1 knowledge engine (evidence: `~/src/docs/evidence/KE-1.md`, outside the repo) · vault maintenance (ER-docs-fix) (evidence: `~/src/docs/evidence/ER-docs-fix.md`, outside the repo) · host baseline 2026-11-08 (evidence: `~/src/docs/evidence/baseline-2026-11-08.md`, outside the repo)
 
 ## Workstreams
 

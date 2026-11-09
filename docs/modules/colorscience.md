@@ -89,7 +89,7 @@ Counts: 2 tested · 3 implemented · 6 partial · 1 stub · 0 unverified (12 alg
 
 ## Tests and evidence
 
-- **Recorded run (slice lead, 2026-11-09):** `go test -count=1 -json ./x/math/colorscience/...` → FAIL, 28 pass / 3 fail (`tmp/easyrobot/filters/test-2026-11-09.json`), same as the [[baseline-2026-11-08|baseline]]. **Only 31 of 51 tests ran.** `TestComputeXYZMismatchedLengths` panics in `NewSPD` (`spd.go:41`) and aborts the binary, so the 20 later tests in `colorscience_test.go` never execute.
+- **Recorded run (slice lead, 2026-11-09):** `go test -count=1 -json ./x/math/colorscience/...` → FAIL, 28 pass / 3 fail (`tmp/easyrobot/filters/test-2026-11-09.json`), same as the baseline (evidence: `~/src/docs/evidence/baseline-2026-11-08.md`, outside the repo). **Only 31 of 51 tests ran.** `TestComputeXYZMismatchedLengths` panics in `NewSPD` (`spd.go:41`) and aborts the binary, so the 20 later tests in `colorscience_test.go` never execute.
 - `GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=readonly go test -count=1 -v -run 'TestNewWithCustomIlluminant|TestComputeXYZ$|TestComputeXYZMismatchedLengths' ./x/math/colorscience/` → 3 FAIL:
   - `TestNewWithCustomIlluminant`: **test wrong**. It expects the 5-point matrix, but `New` resamples to the 471-point CMF grid by design (`colorscience.go:110-113`).
   - `TestComputeXYZ`: **implementation/data wrong**. Z = NaN from NaN z̄ in `data/CIE_xyz_1964_10deg.csv:201-471`, passed through by `spd.go:722`.

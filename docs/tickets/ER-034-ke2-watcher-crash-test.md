@@ -14,7 +14,7 @@ source_revision: abb5c9cca7f756c632548d9c7be2436b46dc2e4d
 ---
 # ER-034 — KE-2: fsnotify watcher, crash-mid-ingest test, missing-target index
 
-[[tickets/index|Ticket index]] · [[roadmap]] · [[ER-R2]] · [[todo]]
+[[tickets/index|Ticket index]] · [[roadmap]] · ER-R2 (evidence: `~/src/docs/evidence/ER-R2.md`, outside the repo) · [[todo]]
 
 ## Goal and evidence
 
@@ -27,7 +27,7 @@ Roster slice **KE-2** of the knowledge engine ([[knowledge-engine]], design [[20
 
 ## Dependencies and scope
 
-Dependencies: KE-1 (roster task; done/in review, [[KE-1]]). Order after KE-1 per roster decision: KE-4 ([[ER-036-ke4-abugaga-find|ER-036]]) first, then KE-2/KE-3.
+Dependencies: KE-1 (roster task; done/in review, KE-1 (evidence: `~/src/docs/evidence/KE-1.md`, outside the repo)). Order after KE-1 per roster decision: KE-4 ([[ER-036-ke4-abugaga-find|ER-036]]) first, then KE-2/KE-3.
 
 Not in scope: `x/knowledge/**` is its own module; no root `go.mod` changes.
 

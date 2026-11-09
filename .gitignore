@@ -34,4 +34,5 @@ docs/.obsidian/workspace*.json
 /cmd/monitor/monitor
 /cmd/spectrometer/spectrometer
 /build/
-!docs/evidence/img/*.png
+# Evidence reports live outside the repo (~/src/docs/evidence/)
+/docs/evidence/
