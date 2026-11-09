@@ -1,18 +1,3 @@
-// Package frame implements camera frame format v1: the chunked, CRC-protected
-// image stream a camera device writes to its UART and a host decodes
-// (docs/evidence/ER-K210-M0.md §1a, shared by the k210 and esp32cam firmware).
-//
-// A stream is a sequence of chunks with arbitrary text (boot banners, logs)
-// allowed between them:
-//
-//	Chunk = Header (24 B) || Payload (1..4096 B)
-//
-// All integers are little-endian. The first chunk of an image starts its
-// payload with a 16-byte [Meta]. The CRC-32/IEEE covers header bytes 0..19
-// and then the payload.
-//
-// The package is TinyGo-friendly: it imports only encoding/binary,
-// hash/crc32, io, errors and bufio, and the [Encoder] does not allocate.
 package frame
 
 import (

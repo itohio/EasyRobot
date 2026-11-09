@@ -1,5 +1,5 @@
 // Command camframe fetches camera images in frame format v1
-// (drivers/camera/frame, docs/evidence/ER-K210-M3.md §4) from a serial port
+// (specified in the drivers/camera/frame package doc) from a serial port
 // or a recorded stream file and writes them as PNG files.
 //
 //	camframe -port /dev/cu.usbserial-XXXX -baud 115200 -n 1 -out /tmp/cam
