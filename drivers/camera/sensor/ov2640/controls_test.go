@@ -35,6 +35,7 @@ func TestGainEncoding(t *testing.T) {
 		reg uint8
 	}{
 		{1, 0x00}, {1.5, 0x08}, {2, 0x10}, {3, 0x18}, {4, 0x30}, {8, 0x70}, {16, 0xF0}, {31, 0xFF}, {64, 0xFF}, {0.5, 0x00},
+		{3.97, 0x30}, {1.98, 0x10}, {1.47, 0x08}, // round to nearest, carrying into the next ×2 stage
 	} {
 		if got := encodeGain(tt.g); got != tt.reg {
 			t.Errorf("encodeGain(%v) = %#x, want %#x", tt.g, got, tt.reg)
@@ -42,6 +43,47 @@ func TestGainEncoding(t *testing.T) {
 	}
 	if g := decodeGain(0xFF); g != 31 {
 		t.Errorf("decodeGain(0xFF) = %v, want 31", g)
+	}
+}
+
+func TestWhiteBalanceGainClamps(t *testing.T) {
+	nan := float32(0)
+	nan = nan / nan
+	for _, tt := range []struct {
+		g   float32
+		reg uint8
+	}{{1, 0x40}, {2, 0x80}, {0, 0}, {-1, 0}, {nan, 0}, {3.99, 0xFF}, {100, 0xFF}} {
+		if got := wbReg(tt.g); got != tt.reg {
+			t.Errorf("wbReg(%v) = %#x, want %#x", tt.g, got, tt.reg)
+		}
+	}
+}
+
+func TestSetControlsMixedAutoAndLongExposure(t *testing.T) {
+	bus := &regBus{}
+	s := &Sensor{Bus: bus, Opts: Options{LineNS: 50_000}}
+	// Manual exposure above 1024 lines (needs REG45), auto gain, manual WB.
+	set := sensor.Controls{ExposureUS: 100_000, AutoGain: true, WB: [3]float32{1, 1.25, 0.5}}
+	if err := s.SetControls(set); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.ReadControls()
+	if got.AutoExposure || !got.AutoGain || got.AutoWB || got.ExposureUS != 100_000 || got.WB != [3]float32{1, 1.25, 0.5} {
+		t.Fatalf("read back %+v", got)
+	}
+	if r45 := bus.regs[[2]uint8{bankSensor, reg45}]; r45 != 2000>>10 {
+		t.Fatalf("REG45 = %#x, want the top bits of 2000 lines", r45)
+	}
+	if _, ok := bus.regs[[2]uint8{bankSensor, gain}]; ok {
+		t.Fatal("auto gain wrote the GAIN register")
+	}
+}
+
+func TestSetControlsDoesNotAllocate(t *testing.T) {
+	s := &Sensor{Bus: &regBus{regs: map[[2]uint8]uint8{}}, Opts: Options{LineNS: 50_000}}
+	set := sensor.Controls{ExposureUS: 10_000, Gain: 2, WB: [3]float32{1, 1, 1}}
+	if n := testing.AllocsPerRun(20, func() { s.SetControls(set) }); n != 0 {
+		t.Fatalf("SetControls allocates %v times per call", n)
 	}
 }
 

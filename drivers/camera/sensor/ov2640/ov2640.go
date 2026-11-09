@@ -199,6 +199,11 @@ func (s *Sensor) write(regs []reg) error {
 // sensor output; the capture backend keeps only Y. m.TestPattern turns on
 // the sensor's colour bars (COM7 bit 1).
 func (s *Sensor) Init(m sensor.Mode) error {
+	switch m.Format {
+	case sensor.RGB565, sensor.YUV422, sensor.Y8, sensor.JPEG:
+	default:
+		return ErrMode
+	}
 	if m.W == 0 || m.H == 0 || m.W > 400 || m.H > 296 || m.W%4 != 0 || m.H%4 != 0 {
 		return ErrMode
 	}

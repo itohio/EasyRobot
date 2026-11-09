@@ -46,9 +46,10 @@ func (s *Sensor) read(bank, r uint8) (uint8, error) {
 }
 
 // encodeGain returns the GAIN register value for g: bits 7:4 are four ×2
-// stages (set from bit 4 up), bits 3:0 add (1 + n/16).
+// stages (set from bit 4 up), bits 3:0 add (1 + n/16). A fraction that
+// rounds up to 2 moves to the next ×2 stage instead of being clamped down.
 func encodeGain(g float32) uint8 {
-	if g < 1 {
+	if !(g >= 1) {
 		g = 1
 	}
 	var stages uint8
@@ -58,7 +59,11 @@ func encodeGain(g float32) uint8 {
 	}
 	n := int((g-1)*16 + 0.5)
 	if n > 15 {
-		n = 15
+		if stages < 4 {
+			stages, n = stages+1, 0
+		} else {
+			n = 15
+		}
 	}
 	return uint8(1<<stages-1)<<4 | uint8(n)
 }
@@ -73,7 +78,8 @@ func decodeGain(v uint8) float32 {
 	return g
 }
 
-// SetControls applies c. Manual exposure needs Options.LineNS.
+// SetControls applies c. Manual exposure needs Options.LineNS. It does not
+// allocate.
 func (s *Sensor) SetControls(c sensor.Controls) error {
 	com8v, err := s.read(bankSensor, com8)
 	if err != nil {
@@ -86,18 +92,17 @@ func (s *Sensor) SetControls(c sensor.Controls) error {
 	if c.AutoGain {
 		com8v |= com8AGC
 	}
-	regs := []reg{{bankSel, bankSensor}, {com8, com8v}}
+	// A fixed array filled in place (no closure, no append): on TinyGo
+	// anything else makes regs escape to the heap.
+	var regs [13]reg // the most this function writes
+	regs[0], regs[1] = reg{bankSel, bankSensor}, reg{com8, com8v}
+	n := 2
 	if !c.AutoExposure {
 		if s.Opts.LineNS == 0 {
 			return ErrNoLineTime
 		}
 		lines := (uint64(c.ExposureUS)*1000 + uint64(s.Opts.LineNS)/2) / uint64(s.Opts.LineNS)
-		if lines < 1 {
-			lines = 1
-		}
-		if lines > 0xFFFF {
-			lines = 0xFFFF
-		}
+		lines = min(max(lines, 1), 0xFFFF)
 		lo, err := s.read(bankSensor, aecLo)
 		if err != nil {
 			return err
@@ -106,14 +111,15 @@ func (s *Sensor) SetControls(c sensor.Controls) error {
 		if err != nil {
 			return err
 		}
-		regs = append(regs,
-			reg{bankSel, bankSensor},
-			reg{aecLo, lo&^0x03 | uint8(lines&0x03)},
-			reg{aec, uint8(lines >> 2)},
-			reg{reg45, hi&^0x3F | uint8(lines>>10)&0x3F})
+		regs[n] = reg{bankSel, bankSensor}
+		regs[n+1] = reg{aecLo, lo&^0x03 | uint8(lines&0x03)}
+		regs[n+2] = reg{aec, uint8(lines >> 2)}
+		regs[n+3] = reg{reg45, hi&^0x3F | uint8(lines>>10)&0x3F}
+		n += 4
 	}
 	if !c.AutoGain {
-		regs = append(regs, reg{bankSel, bankSensor}, reg{gain, encodeGain(c.Gain)})
+		regs[n], regs[n+1] = reg{bankSel, bankSensor}, reg{gain, encodeGain(c.Gain)}
+		n += 2
 	}
 	ctrl1v, err := s.read(bankDSP, ctrl1)
 	if err != nil {
@@ -123,17 +129,28 @@ func (s *Sensor) SetControls(c sensor.Controls) error {
 	if c.AutoWB {
 		ctrl1v |= ctrl1WB
 	}
-	regs = append(regs, reg{bankSel, bankDSP}, reg{ctrl1, ctrl1v})
+	regs[n], regs[n+1] = reg{bankSel, bankDSP}, reg{ctrl1, ctrl1v}
+	n += 2
 	if !c.AutoWB {
-		for i, r := range [3]uint8{wbR, wbG, wbB} {
-			v := c.WB[i]*wbUnity + 0.5
-			if v > 255 {
-				v = 255
-			}
-			regs = append(regs, reg{r, uint8(v)})
-		}
+		regs[n] = reg{wbR, wbReg(c.WB[0])}
+		regs[n+1] = reg{wbG, wbReg(c.WB[1])}
+		regs[n+2] = reg{wbB, wbReg(c.WB[2])}
+		n += 3
 	}
-	return s.write(regs)
+	return s.write(regs[:n])
+}
+
+// wbReg converts a white-balance gain (1 = unity) to its register value,
+// clamped to 0..255 (negative and NaN gains give 0).
+func wbReg(g float32) uint8 {
+	v := g*wbUnity + 0.5
+	if !(v > 0) {
+		return 0
+	}
+	if v > 255 {
+		return 255
+	}
+	return uint8(v)
 }
 
 // ReadControls reads the current settings, including the values the auto

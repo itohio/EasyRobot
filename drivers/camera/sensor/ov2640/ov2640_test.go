@@ -128,5 +128,8 @@ func TestInitRejectsUnsupportedModes(t *testing.T) {
 		if err := (&Sensor{Bus: bus}).Init(m); !errors.Is(err, ErrMode) {
 			t.Errorf("%v: err = %v, want ErrMode", m, err)
 		}
+		if len(bus.writes) != 0 || bus.bank != 0 {
+			t.Errorf("%v: %d register writes before rejecting the mode", m, len(bus.writes))
+		}
 	}
 }
