@@ -3,7 +3,6 @@
 package camera
 
 import (
-	"errors"
 	"machine"
 	"time"
 	"unsafe"
@@ -64,9 +63,10 @@ func Identify(cfg Config, pins Pins) (sensor.ID, error) {
 	return sensor.Identify(sccbBus{})
 }
 
-// ErrFormat is returned for formats or sizes the K210 DVP path does not
-// capture (JPEG has no fixed frame size; widths must be multiples of 32).
-var ErrFormat = errors.New("camera: format or size not supported by the K210 DVP")
+// The K210 DVP path captures Y8 and RGB565 at widths that are multiples of
+// 32; other formats and sizes give ErrFormat. Buffers must be 8-byte aligned
+// (ErrBufAlign).
+var _ Backend = (*Camera)(nil)
 
 // Camera is an opened K210 DVP camera.
 type Camera struct {
@@ -159,7 +159,7 @@ func (c *Camera) Capture(buf []byte) (Frame, error) {
 	}
 	buf = buf[:n]
 	if physAddr(buf)&7 != 0 {
-		return Frame{}, ErrBufSize
+		return Frame{}, ErrBufAlign
 	}
 	if c.cfg.Format == sensor.Y8 {
 		kendryte.DVP.R_ADDR.Set(physAddr(buf))
