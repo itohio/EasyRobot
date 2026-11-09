@@ -24,9 +24,9 @@ From the roadmap's no-hardware demo checkpoints ([[roadmap#8. Next|roadmap §8]]
 
 The sixth checkpoint, M-b's synthetic recorder round trip, follows: it needs [[ER-027-marshaller-fixes|ER-027]] and [[ER-031-spi-slave-feature-framing|ER-031]]. Full order, accepted order changes and the T-IK mapping: [[tickets/index|ticket index]].
 
-<!-- vault:status h=b219a29d17a8 -->
+<!-- vault:status h=faff8a2d3223 -->
 
-State: 64 tested · 29 implemented · 138 partial · 10 stub · 13 unverified (254 algorithms)
+State: 65 tested · 29 implemented · 138 partial · 10 stub · 13 unverified (255 algorithms)
 
 <!-- /vault:status -->
 
@@ -55,7 +55,7 @@ State: 64 tested · 29 implemented · 138 partial · 10 stub · 13 unverified (2
 
 Algorithm notes per module by status (generated from the algorithm notes; `tested` needs passing value tests).
 
-<!-- vault:modules h=c939d80f75a2 -->
+<!-- vault:modules h=c5ef3f109991 -->
 
 | Module | tested | implemented | partial | stub | unverified | total |
 |---|---|---|---|---|---|---|
@@ -78,7 +78,7 @@ Algorithm notes per module by status (generated from the algorithm notes; `teste
 | [[learn]] | 2 | 2 | 1 | 0 | 0 | 5 |
 | [[mat-vec]] | 5 | 0 | 5 | 0 | 0 | 10 |
 | [[nn]] | 1 | 3 | 10 | 0 | 0 | 14 |
-| [[primitive-kernels]] | 2 | 0 | 3 | 1 | 0 | 6 |
+| [[primitive-kernels]] | 3 | 0 | 3 | 1 | 0 | 7 |
 | [[tensor]] | 6 | 1 | 11 | 0 | 1 | 19 |
 | [[tflite]] | 0 | 0 | 0 | 0 | 1 | 1 |
 | [[type-conversion]] | 0 | 0 | 1 | 1 | 0 | 2 |
@@ -103,7 +103,7 @@ Algorithm notes per module by status (generated from the algorithm notes; `teste
 | [[vision]] | 0 | 0 | 8 | 2 | 3 | 13 |
 | **Knowledge engine** | | | | | | |
 | [[knowledge-engine]] | 0 | 0 | 0 | 0 | 0 | 0 |
-| **All** | 64 | 29 | 138 | 10 | 13 | 254 |
+| **All** | 65 | 29 | 138 | 10 | 13 | 255 |
 
 <!-- /vault:modules -->
 

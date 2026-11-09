@@ -17,7 +17,8 @@ test_result: pass
 |---|---|---|---|
 | `x/math/primitive/fp32` | 18 | 7694 | `level1.go`, `level2.go`, `level3.go` (Gemm_NN/NT/TN/TT, Syrk, Trmm), `batched.go`, `la.go` (1452: LU/Getri, Geqrf/Orgqr, Gesvd, Gepseu, Gnnls), `tensor.go` (2038: Conv1D/2D, transposed, kernel grads, pooling, im2col), `tensor_elementwise/broadcast/reduction.go`, `activations.go`, `normalization.go` (774), `dsp_fft.go`, `dsp_convolution.go`, `dsp_correlation.go`, `array.go`, `vector.go`; `Pool = buffer.Pool[float32]` |
 | `x/math/primitive/c64` | 5 | 767 | complex64 FFT (+LUT), Convolve1D/2D, CrossCorrelate1D/2D |
-| `qi`, `qi8`, `qi16`, `qi32`, `qi64`, `qu8`, `bytes` | 1 each | 7 each | only `var Pool = buffer.Pool[T]{}`; `bytes/bytes.go` declares `package qi8` |
+| `x/math/primitive/qi8` | 7 + 3 tests | 651 | int8 NHWC kernels since ER-NN-KERNELS N1: Dot, FullyConnected, Conv2D, DepthwiseConv2D, Max/AvgPool2D, ReLU/ReLU6, exact per-channel requantisation ([[int8-nn-kernels]]); plus the old `Pool` |
+| `qi`, `qi16`, `qi32`, `qi64`, `qu8`, `bytes` | 1 each | 7 each | only `var Pool = buffer.Pool[T]{}`; `bytes/bytes.go` declares `package qi8` |
 
 No assembly, no build tags. Declared docs: `primitive/SPEC.md` (811), `primitive/PLAN.md`, `fp32/{BLAS,LA,OPS}.md`, `fp32/BENCHMARK_REPORT.md`, `fp32/PERFORMANCE_REPORT.md` (stale: describes an assembly default path and files that do not exist, see [[W2-code-optimisation]]), `c64/OPS.md`.
 
@@ -31,13 +32,14 @@ No assembly, no build tags. Declared docs: `primitive/SPEC.md` (811), `primitive
 
 ## Algorithms
 
-<!-- vault:algorithms h=f178a0f082ef -->
+<!-- vault:algorithms h=8b0f8f5f10dc -->
 
-Counts: 2 tested · 0 implemented · 3 partial · 1 stub · 0 unverified (6 algorithms)
+Counts: 3 tested · 0 implemented · 3 partial · 1 stub · 0 unverified (7 algorithms)
 
 | Algorithm | Status | Tests | Summary |
 |---|---|---|---|
 | [[fp32-gemm]] | tested | pass | correct; i-j-k loop with column-strided B, no blocking/SIMD (2.3–4.8 GFLOP/s on M5 by the kernel… |
+| [[int8-nn-kernels]] | tested | pass | Generic int8 NHWC kernels (dot, FC, conv, depthwise, pools, ReLU/ReLU6) with exact single-rounding per-channel requantisation; bit-exact reference for SIMD paths; allocation-free. |
 | [[primitive-fft]] | tested | pass | radix-2, power-of-2; non-LUT twiddle recurrence drifts (1.6e-2 vs 2e-4 at n = 16384) |
 | [[fp32-blas-level1-2]] | partial | pass | `Trmv` transpose paths wrong and `TestTrmv` encodes the wrong outputs (`level2.go:211-279`) |
 | [[fp32-linear-algebra-decompositions]] | partial | pass | QR does not reconstruct A (error 3.1, `la.go:542-660`); `Gesvd` returns V not Vᵀ, unsorted; pinv… |
@@ -53,7 +55,7 @@ Kernels also documented from the tensor side (they live in `fp32/tensor.go` / `n
 - Pure Go, float32 math via `chewxy/math32` — but several activation/softmax paths call float64 `math.Exp`/`math.Tanh` (`fp32/activations.go:57,83,121,157,196`), soft-float on ESP32.
 - No goroutines; deps `x/iter` (st), `x/types`, `x/buffer`, `x/math/shape`. Builds for linux/riscv64/arm/386; wasm fails via `x/types/st`.
 - Allocation: BLAS routines allocate nothing; conv/pool/LA paths use `fp32.Pool` or `make` for workspaces (per call); `Gesvd`/QR allocate.
-- **No int8/int16 kernels** despite package names; no NHWC layout (TFLite/K230 models are NHWC); no SIMD/asm.
+- **Int8 kernels** exist only in `qi8` (NHWC, generic Go, [[int8-nn-kernels]]); no int16 kernels; no SIMD/asm yet (ESP32-S3 PIE is ER-NN-KERNELS N2).
 
 ## Tests and evidence
 
@@ -71,7 +73,7 @@ Kernels also documented from the tensor side (they live in `fp32/tensor.go` / `n
 Algorithm defects are tracked in the algorithm notes (table above) and rolled up in [[todo]]; this list holds module-level items only.
 
 - [ ] Fix `Trmm` transpose and right-side branches — level3.go:396-463,539-603 #p1 #ER-020
-- [ ] Implement int8 GEMM/GEMV/conv with int32 accumulation (or delete the qi* placeholders) — x/math/primitive/qi8/int8.go #p2
+- [x] Implement int8 GEMV/conv with int32 accumulation — x/math/primitive/qi8 ([[int8-nn-kernels]]) #p2
 - [ ] Mark PERFORMANCE_REPORT.md historical — x/math/primitive/fp32/PERFORMANCE_REPORT.md:13-16 #p3
 
 ## Inferred objectives (proposals)
