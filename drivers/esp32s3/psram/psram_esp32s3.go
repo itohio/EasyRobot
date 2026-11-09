@@ -18,6 +18,9 @@ import (
 func romOpiExecCmd(spi int32, mode int32, cmd uint32, cmdBits int32, addr uint32, addrBits int32, dummyBits int32,
 	mosi *byte, mosiBits int32, miso *byte, misoBits int32, csMask uint32, isWriteErase bool)
 
+//export esp_rom_opiflash_pin_config
+func romOpiflashPinConfig()
+
 //export esp_rom_spi_set_dtr_swap_mode
 func romSetDTRSwap(spi int32, wrSwap, rdSwap bool)
 
@@ -72,7 +75,6 @@ func writeBack(addr, size uint32) int32 {
 const romModeOPIDTR = 7
 
 const (
-	cs1GPIO   = 26     // SPI_CS1_GPIO_NUM on the ESP32-S3
 	csMaskCS1 = 1 << 1 // BIT(1): chip-select 1
 	spi1      = 1
 	clkDiv    = 2 // MSPI core 80 MHz / 2 = 40 MHz PSRAM clock (no tuning needed)
@@ -110,10 +112,19 @@ func Init() (Region, ModeRegs, error) {
 	state := interrupt.Disable()
 	defer interrupt.Restore(state)
 
-	// 1. CS1 pin: IO MUX function 0 (SPICS1), drive strength 3; PSRAM clock drive 3.
-	mux := (*volatile.Register32)(unsafe.Add(unsafe.Pointer(&esp.IO_MUX.GPIO0), cs1GPIO*4))
+	// 1. Pins (ESP-IDF esp_mspi_pin_init + s_init_psram_pins). The ROM routes
+	// the octal pads (SPIIO4–7, DQS on GPIO33–37); without it SPI1 talks to
+	// the PSRAM on 4 of its 8 data lines (first board run: every mode register
+	// read 0x40E8). Then drive 3 on the MSPI clock pads (SPI0 DATE: pad drive
+	// control on, flash and PSRAM clock drive 3) and on the data pads; CS1 =
+	// GPIO26 IO MUX function 0 (SPICS1), drive 3.
+	romOpiflashPinConfig()
+	esp.SPI0.DATE.SetBits(0x10 | 0x3 | 0xC)
+	for _, p := range mspiDataPins {
+		reg32(ioMuxAddr(p)).SetBits(3 << 10)
+	}
+	mux := reg32(ioMuxAddr(cs1GPIO))
 	mux.Set(mux.Get()&^(7<<12|3<<10) | 3<<10)
-	esp.SPI0.SetDATE_SPI_SMEM_SPICLK_FUN_DRV(3)
 
 	// 2. CS timing (SPI0 registers, shared with SPI1).
 	esp.SPI0.SetSPI_SMEM_AC_SPI_SMEM_CS_HOLD(1)

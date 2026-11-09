@@ -8,6 +8,7 @@
 	"linker": "ld.lld",
 	"ldflags": [
 		"--defsym=esp_rom_opiflash_exec_cmd=0x400008b8",
+		"--defsym=esp_rom_opiflash_pin_config=0x40000894",
 		"--defsym=esp_rom_spi_set_dtr_swap_mode=0x4000093c",
 		"--defsym=rom_Cache_Suspend_DCache=0x400018b4",
 		"--defsym=Cache_Resume_DCache=0x400018c0",

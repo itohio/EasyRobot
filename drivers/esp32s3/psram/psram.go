@@ -107,6 +107,21 @@ func layout(size uint32) (mapping, bool) {
 	return mapping{firstEntry: first, entries: n, vaddr: dbusBase + uintptr(first)*PageSize}, true
 }
 
+// IO MUX: one register per GPIO from 0x60009004 (IO_MUX_GPIO0_REG).
+const (
+	ioMuxBase = 0x60009000
+	cs1GPIO   = 26 // SPICS1: PSRAM chip select (IO MUX function 0)
+)
+
+// mspiDataPins are the MSPI pads besides CLK/CS: SPIHD, SPIWP, SPIQ, SPID,
+// SPIIO4–7 and SPIDQS. Octal PSRAM uses all of them; ESP-IDF's
+// esp_mspi_pin_init routes them with the ROM's esp_rom_opiflash_pin_config
+// and raises their drive to 3 (spi_timing_set_pin_drive_strength).
+var mspiDataPins = [...]int{27, 28, 31, 32, 33, 34, 35, 36, 37}
+
+// ioMuxAddr is the IO MUX register of gpio.
+func ioMuxAddr(gpio int) uintptr { return ioMuxBase + 4 + uintptr(gpio)*4 }
+
 // mmuValue is the table value mapping PSRAM physical page p.
 func mmuValue(p int) uint32 { return uint32(p) | mmuAccessPSRAM }
 

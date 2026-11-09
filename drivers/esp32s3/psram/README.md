@@ -1,6 +1,6 @@
 # psram — ESP32-S3R8 octal PSRAM for TinyGo (no ESP-IDF)
 
-Status: build-only. The board-side test (`examples/memtest`) waits for the board.
+Status: board-tested on a XIAO ESP32-S3 Sense (ESP32-S3R8): vendor 0x0D, 8 MB, address lines and a two-seed pattern over all 8 MB without errors, writes ~18.6 MB/s and reads ~27.8 MB/s from the CPU (`examples/memtest`; ER-ESP32CAM-E6-board evidence, outside the repo).
 
 ## Use
 
@@ -20,6 +20,7 @@ TinyGo's `esp32s3.ld` doesn't define the ROM functions this package calls. The t
 | Symbol | Address |
 |---|---|
 | `esp_rom_opiflash_exec_cmd` | 0x400008b8 |
+| `esp_rom_opiflash_pin_config` | 0x40000894 |
 | `esp_rom_spi_set_dtr_swap_mode` | 0x4000093c |
 | `rom_Cache_Suspend_DCache` | 0x400018b4 (TinyGo's `esp32s3.S` calls the same address) |
 | `Cache_Resume_DCache` | 0x400018c0 (same) |

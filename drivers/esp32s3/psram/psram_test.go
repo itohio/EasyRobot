@@ -149,3 +149,21 @@ func TestMR8Decode(t *testing.T) {
 		}
 	}
 }
+
+// ESP-IDF's spi_timing_set_pin_drive_strength (octal MSPI, disassembled from
+// the local Arduino-ESP32 SDK dio_opi libspi_flash.a) raises the drive of
+// these nine IO MUX registers: SPIHD, SPIWP, SPIQ, SPID, SPIIO4–7, SPIDQS.
+func TestMSPIPinRegisters(t *testing.T) {
+	want := [...]uintptr{0x60009070, 0x60009074, 0x60009080, 0x60009084, 0x60009088, 0x6000908C, 0x60009090, 0x60009094, 0x60009098}
+	if len(mspiDataPins) != len(want) {
+		t.Fatalf("%d pins, want %d", len(mspiDataPins), len(want))
+	}
+	for i, p := range mspiDataPins {
+		if a := ioMuxAddr(p); a != want[i] {
+			t.Errorf("GPIO%d: IO MUX register 0x%x, want 0x%x", p, a, want[i])
+		}
+	}
+	if ioMuxAddr(cs1GPIO) != 0x6000906C {
+		t.Errorf("CS1 (GPIO26) IO MUX register 0x%x, want 0x6000906C", ioMuxAddr(cs1GPIO))
+	}
+}
