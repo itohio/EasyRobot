@@ -16,7 +16,7 @@ require (
 	github.com/vladimirvivien/go4vl v0.3.0
 	gocv.io/x/gocv v0.42.0
 	golang.org/x/sys v0.37.0
-	google.golang.org/protobuf v1.36.10
+	google.golang.org/protobuf v1.36.12
 	gopkg.in/yaml.v3 v3.0.1
 	gorgonia.org/gorgonia v0.9.18
 	gorgonia.org/tensor v0.9.24
