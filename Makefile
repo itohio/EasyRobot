@@ -72,6 +72,16 @@ install-tools:
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 	go install github.com/bufbuild/buf/cmd/buf@latest
 
+.PHONY: flash-manipulator
+flash-manipulator:
+	@echo "Will run: tinygo flash -target=xiao ./drivers/manipulator"
+	@read -p "Flash connected XIAO? [y/N] " ans; \
+	if [ "$$ans" = "y" ] || [ "$$ans" = "Y" ]; then \
+		tinygo flash -target=xiao ./drivers/manipulator; \
+	else \
+		echo "Aborted."; \
+	fi
+
 .PHONY: help
 help:
 	@echo "Makefile for EasyRobot project"
@@ -89,6 +99,7 @@ help:
 	@echo "  make docs-check       Check the vault (links, frontmatter, TODO tags, generated blocks)"
 	@echo "  make docs-stale       List notes whose cited source files changed since their revision"
 	@echo "  make clean            Remove build artifacts"
+	@echo "  make flash-manipulator Flash drivers/manipulator to XIAO via tinygo (asks y/N)"
 	@echo "  make help             Display this help message"
 
 .DEFAULT_GOAL := help

@@ -125,7 +125,7 @@ Algorithm defects are tracked in the algorithm notes (table above) and rolled up
 - [ ] Tests for differential, steer4, steer4dual, steer6, internal/rigid — wheels/* #p2
 - [ ] Typed allocation-free fast paths for embedded callers — joints/* #p3
 - [ ] Update SPEC paths (`pkg/core/...` → `x/...`) and the thrusters limit claim — kinematics/SPEC.md:106 #p3
-- [ ] Remove the committed ELF binary `cmd/manipulator/manipulator` (9.3 MB) — cmd/manipulator/manipulator #p3
+- [x] Remove the committed ELF binary `cmd/manipulator/manipulator` (9.3 MB) — [[ER-cleanup]] #p3
 
 ## Inferred objectives (proposals)
 

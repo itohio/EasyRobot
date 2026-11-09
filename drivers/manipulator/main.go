@@ -3,13 +3,11 @@
 // NOTE: This package is designed for building only on TinyGo for the Seeed Studio XIAO series microcontroller.
 // See https://tinygo.org/ for details on building and flashing.
 // Usage:
-//   - Raw mode: tinygo flash -target=xiao -tags logless .
-//   - Planar mode: tinygo flash -target=xiao -tags logless,planar .
-//   - DH mode: tinygo flash -target=xiao -tags logless,dh .
+//   - Raw mode: tinygo flash -target=xiao .
+//   - Planar mode: tinygo flash -target=xiao -tags planar .
+//   - DH mode: tinygo flash -target=xiao -tags dh .
 
 package main
-
-//go:generate tinygo flash -target=xiao -tags logless
 
 import (
 	"context"

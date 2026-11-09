@@ -28,7 +28,7 @@ One ticket, **two stages** (O6). `status: ready` covers stage 1 only; stage 2 is
 - darwin serial (F2) — `x/devices/serial_stub.go:1-3`.
 - vet failures: malformed test names in `x/store`, `x/pipeline/steps` (F5); `x/buffer` `WriteByte`/`ReadByte` clash with `io.ByteWriter`/`ByteReader` (F7, `bit_buffer.go:144,210`). F6 (`tc` test port) is ER-AUDIO-1's first step (O3), not here.
 
-**Stage 2 — TinyGo (blocked: owner approval of TinyGo install/run):** the first `tinygo build` (`cmd/elrs-rx` for an ESP32 board, no flashing), CI/Makefile matrix. Held decision #13 (committed 9.3 MB ELF, `go:generate tinygo flash`) stays with the owner.
+**Stage 2 — TinyGo (blocked: owner approval of TinyGo install/run):** the first `tinygo build` (`cmd/elrs-rx` for an ESP32 board, no flashing), CI/Makefile matrix. Held decision #13 is resolved: [[ER-cleanup]] removed the committed 9.3 MB ELF and replaced the `go:generate tinygo flash` line with a confirm-first `make flash-manipulator` target.
 
 ## Dependencies and scope
 

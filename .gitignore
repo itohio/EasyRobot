@@ -23,3 +23,13 @@ tmp/
 coverage
 # Obsidian per-user layout
 docs/.obsidian/workspace*.json
+
+# Built cmd binaries (go build in cmd/<name> produces cmd/<name>/<name>)
+/cmd/audio/audio
+/cmd/calibrate/calibrate
+/cmd/cr30/cr30
+/cmd/display/display
+/cmd/elrs-rx/elrs-rx
+/cmd/manipulator/manipulator
+/cmd/monitor/monitor
+/cmd/spectrometer/spectrometer

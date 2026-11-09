@@ -34,13 +34,13 @@ The manipulator driver is designed to test manipulator **backwards (inverse) kin
 
 ```bash
 # Raw mode (default)
-tinygo flash -target=xiao -tags logless ./drivers/manipulator
+tinygo flash -target=xiao ./drivers/manipulator
 
 # Planar mode
-tinygo flash -target=xiao -tags logless,planar ./drivers/manipulator
+tinygo flash -target=xiao -tags planar ./drivers/manipulator
 
 # DH mode
-tinygo flash -target=xiao -tags logless,dh ./drivers/manipulator
+tinygo flash -target=xiao -tags dh ./drivers/manipulator
 ```
 
 ## Architecture

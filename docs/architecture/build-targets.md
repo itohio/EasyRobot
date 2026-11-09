@@ -47,7 +47,7 @@ Build tags in use (first `//go:build` line per file, `grep -rh '^//go:build'`): 
 |---|---|---|
 | `esp32` (Xtensa) | `cmd/elrs-rx/platform_esp32.go` only | **only ESP32 code in the repo**; PWM output is a stub (`setPWMMicroseconds` TODO, `platform_esp32.go:56–59`) and battery voltage is hard-coded 11.1 V (`:52–54`) |
 | `rp2040` | `cmd/elrs-rx/platform_rp2040.go`, `drivers/lidar/main_rp2040.go` (+ `main_ld06.go`, `main_xwpftb.go`) | not built |
-| `sam && xiao` (SAMD21 XIAO) | `cmd/elrs-rx/platform_xiao.go`, `drivers/manipulator/*`, `x/devices/xiao/xiao_pwm.go` | not built; `drivers/manipulator/main.go:12` has `//go:generate tinygo flash -target=xiao` — never run `go generate ./...` |
+| `sam && xiao` (SAMD21 XIAO) | `cmd/elrs-rx/platform_xiao.go`, `drivers/manipulator/*`, `x/devices/xiao/xiao_pwm.go` | not built; flashing only via the confirm-first `make flash-manipulator` (the `go:generate tinygo flash` line was removed in [[ER-cleanup]]) |
 | generic `tinygo` | `x/devices/{i2c,pin,serial,spi}_tinygo.go`, `x/devices/encoder/tinygo.go`, `x/devices/servo/array_tinygo.go`, `x/marshaller/storage/flash.go`, `x/devices/tca9548a/router_example_test.go` | not built |
 
 ### TinyGo facts from the installed target files (read, not run)
