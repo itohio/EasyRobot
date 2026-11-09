@@ -1,3 +1,5 @@
+//go:build !esp32s3 || qi8generic
+
 package qi8
 
 // Backend seam for the prepared layers (layer.go). The free functions always
@@ -5,17 +7,9 @@ package qi8
 // below, which a backend file may implement with target-specific kernels.
 //
 // This file is the generic backend: every function forwards to the same
-// inner loop the free function uses. It has no build constraint yet, so every
-// target (esp32s3 included) builds the generic backend. The ESP32-S3 PIE
-// backend adds impl_esp32s3.go with
-//
-//	//go:build esp32s3 && !qi8generic
-//
-// and gives this file the complementary constraint
-//
-//	//go:build !esp32s3 || qi8generic
-//
-// so `-tags qi8generic` forces the generic backend on any target.
+// inner loop the free function uses. It builds on every target except
+// esp32s3, where impl_esp32s3.go (PIE) replaces it; `-tags qi8generic`
+// forces the generic backend on any target, esp32s3 included.
 //
 // A backend file must define every identifier in this file with the same
 // signature. Its output must be byte-identical to the generic backend (see
