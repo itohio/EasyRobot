@@ -3,10 +3,47 @@ package qi8
 import (
 	"fmt"
 	"testing"
+	"unsafe"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// alignedAt returns n bytes starting off bytes past a 16-byte boundary.
+func alignedAt(n, off int) []int8 {
+	b := make([]int8, n+32)
+	a := int((16 - uintptr(unsafe.Pointer(&b[0]))&15) & 15)
+	return b[a+off : a+off+n : a+off+n]
+}
+
+// TestLayerDepthwiseWideChannels covers channel counts the random cases do
+// not reach (several 16-lane groups, multiples of 16) with 16-byte aligned
+// and misaligned inputs; on the PIE backend these select the direct and the
+// staged paths.
+func TestLayerDepthwiseWideChannels(t *testing.T) {
+	g := newGen(46)
+	m := &mismatchLog{t: t}
+	for _, c := range []int{16, 17, 32, 40} {
+		for _, off := range []int{0, 1, 4} {
+			for _, pad := range []Padding{PaddingSame, PaddingValid} {
+				p := DepthwiseConv2DParams{In: Shape{H: 5, W: 6, C: c}, KH: 3, KW: 3, StrideH: 1 + g.r.IntN(2), StrideW: 1,
+					Padding: pad, InZP: g.zp(), OutZP: g.zp()}
+				p.ActMin, p.ActMax = g.act(randScale(g), p.OutZP)
+				w, bias, rq := g.int8s(9*c), g.bias(c), g.requants(c)
+				l := withScratch(&DepthwiseConv2DLayer{P: p, W: w, Bias: bias, RQ: rq}, setDWScratch)
+				require.NoError(t, l.Prepare())
+				os, _ := p.OutShape()
+				src := alignedAt(p.In.Len(), off)
+				copy(src, g.int8s(len(src)))
+				want, got := make([]int8, os.Len()), make([]int8, os.Len())
+				require.NoError(t, DepthwiseConv2D(want, src, w, bias, rq, p))
+				require.NoError(t, l.Run(got, src))
+				m.compare(func() string { return fmt.Sprintf("C=%d off=%d %+v", c, off, p) }, got, want)
+			}
+		}
+	}
+	m.done()
+}
 
 // preparedOp is the method set every prepared layer has.
 type preparedOp interface {
@@ -14,9 +51,30 @@ type preparedOp interface {
 	Prepare() error
 }
 
+// TestBackend checks that the build selected a known backend and that the
+// weighted layers ask for Scratch exactly when the backend repacks weights.
 func TestBackend(t *testing.T) {
-	assert.Equal(t, "generic", Backend())
+	assert.Contains(t, []string{"generic", "esp32s3-pie"}, Backend())
+	fc := &FCLayer{P: FCParams{In: 4, Out: 2, ActMax: 127}}
+	assert.Equal(t, Backend() != "generic", fc.ScratchLen() > 0, "ScratchLen on %s", Backend())
 }
+
+// withScratch gives a weighted layer the Scratch its backend needs (none on
+// the generic backend), so the suite runs on every backend. The scratch
+// starts 3 bytes past a 16-byte boundary and holds garbage, so a backend
+// must align its layout and initialise every byte it reads.
+func withScratch[L interface{ ScratchLen() int }](l L, set func(L, []int8)) L {
+	s := alignedAt(l.ScratchLen(), 3)
+	for i := range s {
+		s[i] = 0x5a
+	}
+	set(l, s)
+	return l
+}
+
+func setConvScratch(l *Conv2DLayer, s []int8)        { l.Scratch = s }
+func setDWScratch(l *DepthwiseConv2DLayer, s []int8) { l.Scratch = s }
+func setFCScratch(l *FCLayer, s []int8)              { l.Scratch = s }
 
 // layerCase pairs a prepared layer with the free function it must match.
 type layerCase struct {
@@ -41,7 +99,7 @@ func randLayerCase(g gen, kind int) layerCase {
 		os, _ := p.OutShape()
 		return layerCase{
 			name:  "Conv2D",
-			layer: &Conv2DLayer{P: p, W: w, Bias: bias, RQ: rq},
+			layer: withScratch(&Conv2DLayer{P: p, W: w, Bias: bias, RQ: rq}, setConvScratch),
 			free:  func(dst, src []int8) error { return Conv2D(dst, src, w, bias, rq, p) },
 			in:    p.In, out: os, describe: fmt.Sprintf("%+v", p),
 		}
@@ -57,7 +115,7 @@ func randLayerCase(g gen, kind int) layerCase {
 		os, _ := p.OutShape()
 		return layerCase{
 			name:  "DepthwiseConv2D",
-			layer: &DepthwiseConv2DLayer{P: p, W: w, Bias: bias, RQ: rq},
+			layer: withScratch(&DepthwiseConv2DLayer{P: p, W: w, Bias: bias, RQ: rq}, setDWScratch),
 			free:  func(dst, src []int8) error { return DepthwiseConv2D(dst, src, w, bias, rq, p) },
 			in:    p.In, out: os, describe: fmt.Sprintf("%+v", p),
 		}
@@ -68,7 +126,7 @@ func randLayerCase(g gen, kind int) layerCase {
 		bias, rq := g.bias(p.Out), g.requants(p.Out)
 		return layerCase{
 			name:  "FC",
-			layer: &FCLayer{P: p, W: w, Bias: bias, RQ: rq},
+			layer: withScratch(&FCLayer{P: p, W: w, Bias: bias, RQ: rq}, setFCScratch),
 			free:  func(dst, src []int8) error { return FullyConnected(dst, src, w, bias, rq, p) },
 			in:    Shape{1, 1, p.In}, out: Shape{1, 1, p.Out}, describe: fmt.Sprintf("%+v", p),
 		}
@@ -180,20 +238,20 @@ func TestLayerNotPreparedAfterMutation(t *testing.T) {
 			{name: "W copy", mutate: cloneI8(&conv.W)},
 			{name: "RQ copy", mutate: cloneRQ(&conv.RQ)},
 			{name: "Bias set", mutate: func() { conv.Bias = make([]int32, conv.P.OutC) }},
-			{name: "Scratch set", mutate: func() { conv.Scratch = make([]int8, 3) }},
+			{name: "Scratch set", mutate: func() { conv.Scratch = make([]int8, conv.ScratchLen()+3) }},
 			{name: "P.In.C", mutate: func() { conv.P.In.C++ }, fix: func() { conv.P.In.C-- }},
 		}},
 		"DepthwiseConv2D": {dw, []mutation{
 			{name: "P.OutZP", mutate: func() { dw.P.OutZP++ }},
 			{name: "W copy", mutate: cloneI8(&dw.W)},
-			{name: "Scratch set", mutate: func() { dw.Scratch = make([]int8, 3) }},
+			{name: "Scratch set", mutate: func() { dw.Scratch = make([]int8, dw.ScratchLen()+3) }},
 			{name: "RQ nil", mutate: func() { dw.RQ = nil }, fix: func() { dw.RQ = g.requants(dw.P.In.C) }},
 		}},
 		"FC": {fc, []mutation{
 			{name: "P.InZP", mutate: func() { fc.P.InZP++ }},
 			{name: "W reslice", mutate: func() { fc.W = fc.W[:len(fc.W)-1] }, fix: func() { fc.W = fc.W[:len(fc.W)+1] }},
 			{name: "Bias set", mutate: func() { fc.Bias = make([]int32, fc.P.Out) }},
-			{name: "Scratch set", mutate: func() { fc.Scratch = make([]int8, 3) }},
+			{name: "Scratch set", mutate: func() { fc.Scratch = make([]int8, fc.ScratchLen()+3) }},
 		}},
 		"MaxPool2D": {mp, []mutation{
 			{name: "P.Padding", mutate: func() { mp.P.Padding = 9 }, fix: func() { mp.P.Padding = PaddingSame }},
@@ -234,13 +292,27 @@ func TestLayerNotPreparedAfterMutation(t *testing.T) {
 	}
 }
 
-func TestLayerScratchGeneric(t *testing.T) {
+func TestLayerScratch(t *testing.T) {
 	l := &Conv2DLayer{P: Conv2DParams{In: Shape{3, 3, 1}, OutC: 1, KH: 3, KW: 3, StrideH: 1, StrideW: 1, ActMax: 127},
 		W: make([]int8, 9), RQ: []Requant{half}, Scratch: make([]int8, 1)}
-	assert.Zero(t, l.ScratchLen())
-	assert.Zero(t, (&DepthwiseConv2DLayer{}).ScratchLen())
-	assert.Zero(t, (&FCLayer{P: FCParams{In: 4, Out: 2}}).ScratchLen())
-	require.NoError(t, l.Prepare(), "short Scratch is ignored when ScratchLen is 0")
+	dw := &DepthwiseConv2DLayer{P: DepthwiseConv2DParams{In: Shape{3, 3, 1}, KH: 3, KW: 3, StrideH: 1, StrideW: 1, ActMax: 127}}
+	fc := &FCLayer{P: FCParams{In: 4, Out: 2}}
+	if Backend() == "generic" {
+		assert.Zero(t, l.ScratchLen())
+		assert.Zero(t, dw.ScratchLen())
+		assert.Zero(t, fc.ScratchLen())
+		require.NoError(t, l.Prepare(), "short Scratch is ignored when ScratchLen is 0")
+		assert.NoError(t, l.Run(make([]int8, 9), make([]int8, 9)))
+		return
+	}
+	assert.Positive(t, l.ScratchLen())
+	assert.Positive(t, dw.ScratchLen())
+	assert.Positive(t, fc.ScratchLen())
+	assert.Equal(t, ErrLength, l.Prepare(), "Scratch shorter than ScratchLen")
+	l.Scratch = make([]int8, l.ScratchLen()-1)
+	assert.Equal(t, ErrLength, l.Prepare(), "Scratch one byte short")
+	l.Scratch = make([]int8, l.ScratchLen())
+	require.NoError(t, l.Prepare())
 	assert.NoError(t, l.Run(make([]int8, 9), make([]int8, 9)))
 }
 
@@ -274,18 +346,18 @@ func TestLayerPrepareErrors(t *testing.T) {
 	conv := func(name string, want error, p Conv2DParams, w []int8, bias []int32, rq []Requant) row {
 		os, err := p.OutShape()
 		src, dst := sized(p.In, err), sized(os, err)
-		return row{name, want, &Conv2DLayer{P: p, W: w, Bias: bias, RQ: rq},
+		return row{name, want, withScratch(&Conv2DLayer{P: p, W: w, Bias: bias, RQ: rq}, setConvScratch),
 			func() error { return Conv2D(dst, src, w, bias, rq, p) }}
 	}
 	dwc := func(name string, want error, p DepthwiseConv2DParams, w []int8, bias []int32, rq []Requant) row {
 		os, err := p.OutShape()
 		src, dst := sized(p.In, err), sized(os, err)
-		return row{name, want, &DepthwiseConv2DLayer{P: p, W: w, Bias: bias, RQ: rq},
+		return row{name, want, withScratch(&DepthwiseConv2DLayer{P: p, W: w, Bias: bias, RQ: rq}, setDWScratch),
 			func() error { return DepthwiseConv2D(dst, src, w, bias, rq, p) }}
 	}
 	fcr := func(name string, want error, p FCParams, w []int8, bias []int32, rq []Requant) row {
 		src, dst := make([]int8, max(p.In, 1)), make([]int8, max(p.Out, 1))
-		return row{name, want, &FCLayer{P: p, W: w, Bias: bias, RQ: rq},
+		return row{name, want, withScratch(&FCLayer{P: p, W: w, Bias: bias, RQ: rq}, setFCScratch),
 			func() error { return FullyConnected(dst, src, w, bias, rq, p) }}
 	}
 	pool := func(name string, want error, p Pool2DParams, avg bool) row {
@@ -363,11 +435,11 @@ func TestLayerNoAllocs(t *testing.T) {
 		l        preparedOp
 		dst, src []int8
 	}{
-		"Conv2D": {&Conv2DLayer{P: Conv2DParams{In: Shape{8, 8, 8}, OutC: 8, KH: 3, KW: 3, StrideH: 2, StrideW: 2, ActMin: -128, ActMax: 127},
-			W: w, Bias: bias, RQ: rq}, dst[:4*4*8], src},
-		"DepthwiseConv2D": {&DepthwiseConv2DLayer{P: DepthwiseConv2DParams{In: Shape{8, 8, 8}, KH: 3, KW: 3, StrideH: 1, StrideW: 1, ActMin: -128, ActMax: 127},
-			W: w[:72], Bias: bias, RQ: rq}, dst, src},
-		"FC":        {&FCLayer{P: FCParams{In: 64, Out: 8, ActMin: -128, ActMax: 127}, W: w[:512], Bias: bias, RQ: rq}, dst[:8], src[:64]},
+		"Conv2D": {withScratch(&Conv2DLayer{P: Conv2DParams{In: Shape{8, 8, 8}, OutC: 8, KH: 3, KW: 3, StrideH: 2, StrideW: 2, ActMin: -128, ActMax: 127},
+			W: w, Bias: bias, RQ: rq}, setConvScratch), dst[:4*4*8], src},
+		"DepthwiseConv2D": {withScratch(&DepthwiseConv2DLayer{P: DepthwiseConv2DParams{In: Shape{8, 8, 8}, KH: 3, KW: 3, StrideH: 1, StrideW: 1, ActMin: -128, ActMax: 127},
+			W: w[:72], Bias: bias, RQ: rq}, setDWScratch), dst, src},
+		"FC":        {withScratch(&FCLayer{P: FCParams{In: 64, Out: 8, ActMin: -128, ActMax: 127}, W: w[:512], Bias: bias, RQ: rq}, setFCScratch), dst[:8], src[:64]},
 		"MaxPool2D": {&MaxPool2DLayer{P: pp}, dst[:128], src},
 		"AvgPool2D": {&AvgPool2DLayer{P: pp}, dst[:128], src},
 		"ReLU":      {&ReLULayer{Len: 512, ZP: 3}, dst, src},

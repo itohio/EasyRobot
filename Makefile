@@ -94,6 +94,15 @@ unitv:
 	@mkdir -p build
 	tinygo build -target=drivers/unitv/target/unitv.json -size=short -o build/unitv-$(UNITV_PROG).bin ./drivers/unitv/examples/$(UNITV_PROG)
 
+# qi8 ESP32-S3 PIE backend checks: the layer suite on the host emulation of
+# the PIE kernels (test-only tag qi8pieemu), then a TinyGo S3 compile gate
+# (nnbench, PIE build; -print-allocs=qi8 must print nothing).
+.PHONY: qi8-pie
+qi8-pie:
+	go test -race -tags qi8pieemu ./x/math/primitive/qi8/ ./x/math/nn/qnet/...
+	@mkdir -p build
+	tinygo build -target=cmd/nnbench/target/xiao-esp32s3-noradio.json -print-allocs=qi8 -o build/nnbench-s3-pie.bin ./cmd/nnbench
+
 .PHONY: flash-unitv
 flash-unitv: unitv
 	@test -n "$(UNITV_PORT)" || { echo "Set UNITV_PORT to the UnitV's serial port (macOS: /dev/cu.usbserial-…)."; exit 1; }
@@ -125,6 +134,7 @@ help:
 	@echo "  make flash-manipulator Flash drivers/manipulator to XIAO via tinygo (asks y/N)"
 	@echo "  make unitv [UNITV_PROG=hello]  Build a UnitV (K210) example with tinygo into build/"
 	@echo "  make flash-unitv       Flash it with ktool (needs UNITV_PORT, KTOOL; asks y/N)"
+	@echo "  make qi8-pie          Test the qi8 PIE backend on its host emulation and compile it for the S3 (tinygo)"
 	@echo "  make help             Display this help message"
 
 .DEFAULT_GOAL := help

@@ -1,4 +1,4 @@
-//go:build !esp32s3 || qi8generic
+//go:build qi8generic || (!esp32s3 && !qi8pieemu)
 
 package qi8
 

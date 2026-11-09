@@ -1,4 +1,4 @@
-//go:build esp32s3 && !qi8generic
+//go:build !qi8generic && (esp32s3 || qi8pieemu)
 
 package qi8
 
@@ -6,7 +6,11 @@ package qi8
 // seam contract). Conv2D and FullyConnected run their dot products with PIE
 // (pie_esp32s3.c, ACCX accumulation); DepthwiseConv2D accumulates 16
 // channels per lane group in QACC; pools and activations use the generic
-// inner loops.
+// inner loops. The C kernels are reached through pieDotRows and pieDWPx:
+// pie_cgo_esp32s3.go calls them on the chip; with the test-only tag
+// qi8pieemu, pie_emu.go replaces them with pure-Go models so the packing and
+// scratch logic of this file runs under `go test` on the host. Either way the
+// backend is fixed at compile time.
 //
 // Exactness. The generic reference computes acc = bias + Σ (x − zpIn)·w in
 // wrapping int32. This backend computes Σ x·w over a gathered patch in which
@@ -27,18 +31,10 @@ package qi8
 //	biasEff R int32       bias − zpIn·Σw
 //	acc     R int32       per-row dot products
 
-// #include <stdint.h>
-// void qi8_pie_enable(void);
-// void qi8_pie_dot_rows(const int8_t *patch, const int8_t *w, int k, int rows, int32_t *out);
-// void qi8_pie_dw_px(const int8_t *const *tap, int taps, int direct, const int8_t *zprow, int8_t *stage, const int8_t *w, int ch, int c16, const int32_t *biasEff, const void *rq, int32_t zp, int32_t lo, int32_t hi, int8_t *dst, uint8_t *tmp);
-import "C"
-
 import "unsafe"
 
 // backendName is reported by Backend.
 const backendName = "esp32s3-pie"
-
-func init() { C.qi8_pie_enable() }
 
 func roundUp32(n int) int { return (n + 31) &^ 31 }
 
@@ -98,13 +94,7 @@ func (l *pieLayout) pack(w []int8, bias []int32, inZP int32) {
 	}
 }
 
-func (l *pieLayout) dotRows() {
-	C.qi8_pie_dot_rows(
-		(*C.int8_t)(unsafe.Pointer(&l.patch[0])),
-		(*C.int8_t)(unsafe.Pointer(&l.wpack[0])),
-		C.int(l.k32), C.int(l.rows),
-		(*C.int32_t)(unsafe.Pointer(&l.acc[0])))
-}
+func (l *pieLayout) dotRows() { pieDotRows(l.patch, l.wpack, l.k32, l.rows, l.acc) }
 
 func conv2DScratchLen(pl *convPlan) int { return pieScratchLen(pl.wPerOut, pl.outC) }
 
@@ -157,14 +147,15 @@ func fill(s []int8, v int8) {
 	}
 }
 
-// Depthwise scratch layout (aligned), with T = taps, C = channels and
-// C16 = C rounded up to 16:
+// Depthwise scratch layout (aligned), with T = taps, C = channels,
+// C16 = C rounded up to 16 and P = the pointer size (4 on the S3, 8 under
+// the host emulation):
 //
 //	wpack   T·C16 bytes   w[t][c], channel tail zero
 //	zprow   C16 bytes     zpIn (padded taps in the direct path)
 //	stage   T·16 bytes    staged 16-channel group (unaligned or partial input)
 //	tmp     64 bytes      QACC spill
-//	tap     T pointers    per-pixel tap addresses
+//	tap     T·P bytes     per-pixel tap addresses
 //	biasEff C int32       bias − zpIn·Σ_t w[t][c]
 type pieDWLayout struct {
 	taps, c, c16 int
@@ -177,9 +168,12 @@ type pieDWLayout struct {
 
 func roundUp16(n int) int { return (n + 15) &^ 15 }
 
+// ptrSize is the size of one tap address.
+const ptrSize = int(unsafe.Sizeof(uintptr(0)))
+
 func depthwiseConv2DScratchLen(pl *convPlan) int {
 	c16 := roundUp16(pl.ch)
-	return 15 + pl.taps*c16 + c16 + 16*pl.taps + 64 + 4*pl.taps + 4*pl.ch
+	return 15 + pl.taps*c16 + c16 + 16*pl.taps + 64 + ptrSize*pl.taps + 4*pl.ch
 }
 
 func newPieDWLayout(scratch []int8, pl *convPlan) pieDWLayout {
@@ -191,7 +185,7 @@ func newPieDWLayout(scratch []int8, pl *convPlan) pieDWLayout {
 	z := w + c16
 	st := z + 16*taps
 	tp := st + 64
-	b := tp + 4*taps
+	b := tp + ptrSize*taps
 	return pieDWLayout{
 		taps: taps, c: c, c16: c16,
 		wpack:   s[:w],
@@ -238,10 +232,8 @@ func depthwiseConv2DRun(dst, src, _, scratch []int8, _ []int32, rq []Requant, pl
 	base := uintptr(unsafe.Pointer(&src[0]))
 	direct := c%16 == 0 && base&15 == 0
 	var pad uintptr // padded taps: zprow (direct) or NULL (staged)
-	var directFlag C.int
 	if direct {
 		pad = uintptr(unsafe.Pointer(&l.zprow[0]))
-		directFlag = 1
 	}
 	di := 0
 	for oy := range g.outH {
@@ -261,15 +253,7 @@ func depthwiseConv2DRun(dst, src, _, scratch []int8, _ []int32, rq []Requant, pl
 					t++
 				}
 			}
-			C.qi8_pie_dw_px(
-				(**C.int8_t)(unsafe.Pointer(&l.tap[0])), C.int(l.taps), directFlag,
-				(*C.int8_t)(unsafe.Pointer(&l.zprow[0])),
-				(*C.int8_t)(unsafe.Pointer(&l.stage[0])),
-				(*C.int8_t)(unsafe.Pointer(&l.wpack[0])), C.int(c), C.int(l.c16),
-				(*C.int32_t)(unsafe.Pointer(&l.biasEff[0])), unsafe.Pointer(&rq[0]),
-				C.int32_t(pl.outZP), C.int32_t(pl.lo), C.int32_t(pl.hi),
-				(*C.int8_t)(unsafe.Pointer(&dst[di])),
-				(*C.uint8_t)(unsafe.Pointer(&l.tmp[0])))
+			pieDWPx(&l, src, direct, rq, pl, dst[di:di+c])
 			di += c
 		}
 	}

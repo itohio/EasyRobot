@@ -1,4 +1,4 @@
-//go:build esp32s3 && !qi8generic
+//go:build esp32s3 && !qi8generic && !qi8pieemu
 
 // ESP32-S3 PIE (SIMD) inner loops for the qi8 prepared layers.
 // See impl_esp32s3.go for the data layout and the exactness argument.
