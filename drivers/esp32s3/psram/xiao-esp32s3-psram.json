@@ -12,7 +12,9 @@
 		"--defsym=rom_Cache_Suspend_DCache=0x400018b4",
 		"--defsym=Cache_Resume_DCache=0x400018c0",
 		"--defsym=Cache_Invalidate_Addr=0x400016b0",
-		"--defsym=rom_Cache_WriteBack_Addr=0x400016c8"
+		"--defsym=rom_Cache_WriteBack_Addr=0x400016c8",
+		"--defsym=Cache_Suspend_DCache_Autoload=0x40001734",
+		"--defsym=Cache_Resume_DCache_Autoload=0x40001740"
 	],
 	"default-stack-size": 8192,
 	"rtlib": "compiler-rt",

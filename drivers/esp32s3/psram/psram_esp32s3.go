@@ -33,9 +33,42 @@ func romInvalidate(addr, size uint32) int32
 //export rom_Cache_WriteBack_Addr
 func romWriteBack(addr, size uint32) int32
 
+//export Cache_Suspend_DCache_Autoload
+func romSuspendDCacheAutoload() uint32
+
+//export Cache_Resume_DCache_Autoload
+func romResumeDCacheAutoload(autoload uint32)
+
+// ESP-IDF does not call rom_Cache_Suspend_DCache and rom_Cache_WriteBack_Addr
+// directly but through patches (components/esp_rom/patches, linked as
+// libesp_rom.a esp_rom_cache.c.obj). Their behaviour, read from the
+// disassembly of that object in the local Arduino-ESP32 SDK (ESP-IDF
+// v4.4.7), is reproduced by suspendDCache and writeBack.
+
+// suspendDCache is ESP-IDF's Cache_Suspend_DCache: the ROM call, then wait
+// until EXTMEM CACHE_STATE.DCACHE_STATE reads 1 (idle). Returns the autoload
+// state for Cache_Resume_DCache.
+func suspendDCache() uint32 {
+	autoload := romSuspendDCache()
+	for esp.EXTMEM.GetCACHE_STATE_DCACHE_STATE() != 1 {
+	}
+	return autoload
+}
+
+// writeBack is ESP-IDF's Cache_WriteBack_Addr for a cache-line aligned range
+// (the only kind this package passes; checked() enforces it): D-cache
+// autoload suspended around the ROM writeback. The patch's unaligned head
+// and tail lines (written back with a cache freeze) never occur here.
+func writeBack(addr, size uint32) int32 {
+	autoload := romSuspendDCacheAutoload()
+	r := romWriteBack(addr, size)
+	romResumeDCacheAutoload(autoload)
+	return r
+}
+
 // romModeOPIDTR is ESP_ROM_SPIFLASH_OPI_DTR_MODE in the ROM's
-// esp_rom_spiflash_read_mode_t (QIO=0 … OPI_STR=6, OPI_DTR=7). #verify on the
-// board: a wrong value makes the vendor-id check below fail (ErrNotFound).
+// esp_rom_spiflash_read_mode_t (QIO=0 … OPI_STR=6, OPI_DTR=7; ESP32-S3
+// rom/spi_flash.h). A wrong value makes the vendor-id check fail (ErrNotFound).
 const romModeOPIDTR = 7
 
 const (
@@ -122,7 +155,7 @@ func Init() (Region, ModeRegs, error) {
 
 	// 7. SPI0 cache-access phases for octal DTR PSRAM. The D-cache is
 	// suspended while they change; no rodata may be read in this window.
-	autoload := romSuspendDCache()
+	autoload := suspendDCache()
 	s := esp.SPI0
 	s.SetCACHE_SCTRL_CACHE_SRAM_USR_WCMD(1)
 	s.SetSRAM_DWR_CMD_CACHE_SRAM_USR_WR_CMD_BITLEN(cmdBits - 1)
@@ -202,7 +235,7 @@ func checked(b []byte) (uint32, uint32, error) {
 func Writeback(b []byte) error {
 	p, n, err := checked(b)
 	if err == nil {
-		romWriteBack(p, n)
+		writeBack(p, n)
 	}
 	return err
 }
@@ -221,7 +254,7 @@ func Invalidate(b []byte) error {
 func WritebackInvalidate(b []byte) error {
 	p, n, err := checked(b)
 	if err == nil {
-		romWriteBack(p, n)
+		writeBack(p, n)
 		romInvalidate(p, n)
 	}
 	return err
