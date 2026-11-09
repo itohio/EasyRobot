@@ -298,3 +298,7 @@ func avgPool2DRun(dst, src []int8, pl *poolPlan) { avgPool2DGeneric(dst, src, pl
 func reluRun(dst, src []int8, zp int8) { reluGeneric(dst, src, zp) }
 
 func relu6Run(dst, src []int8, zp, q6 int8) { relu6Generic(dst, src, zp, q6) }
+
+// addRun stays generic: the same 32-bit loop compiled from C by clang was
+// not faster on the chip, and PIE has no element-wise 32-bit multiply.
+func addRun(dst, a, b []int8, p *AddParams) { addGeneric(dst, a, b, p) }

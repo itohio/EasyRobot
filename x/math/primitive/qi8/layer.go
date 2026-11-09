@@ -474,3 +474,52 @@ func (l *ReLU6Layer) Run(dst, src []int8) error {
 	relu6Run(dst, src, l.prepZP, l.prepQ6)
 	return nil
 }
+
+// AddLayer is a prepared requantised element-wise addition over Len
+// elements (shape {1, 1, Len}); see AddParams. It has two inputs, so it does
+// not implement Op. dst may alias a or b. Len must be in [1, MaxElements]
+// (ErrShape).
+type AddLayer struct {
+	Len int
+	P   AddParams
+
+	prepLen int
+	prepP   AddParams
+	ok      bool
+}
+
+// Prepare validates Len and P.
+func (l *AddLayer) Prepare() error {
+	l.ok = false
+	if err := validLen(l.Len); err != nil {
+		return err
+	}
+	if err := l.P.valid(); err != nil {
+		return err
+	}
+	l.prepLen, l.prepP, l.ok = l.Len, l.P, true
+	return nil
+}
+
+// InShape returns {1, 1, Len} (zero unless prepared); both inputs have it.
+func (l *AddLayer) InShape() Shape {
+	if !l.ok {
+		return Shape{}
+	}
+	return Shape{H: 1, W: 1, C: l.prepLen}
+}
+
+// OutShape returns InShape().
+func (l *AddLayer) OutShape() Shape { return l.InShape() }
+
+// Run computes dst = a + b requantised (see AddParams).
+func (l *AddLayer) Run(dst, a, b []int8) error {
+	if !l.ok || l.Len != l.prepLen || l.P != l.prepP {
+		return ErrNotPrepared
+	}
+	if len(dst) != l.prepLen || len(a) != l.prepLen || len(b) != l.prepLen {
+		return ErrLength
+	}
+	addRun(dst, a, b, &l.prepP)
+	return nil
+}

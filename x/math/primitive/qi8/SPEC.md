@@ -71,6 +71,27 @@ Expressed purely by the clamp range `[ActMin, ActMax]` (`ActMin > ActMax` →
 Standalone (same scale/zp in and out, may alias): `ReLU(dst, src, zp)`:
 `max(x, zp)`; `ReLU6(dst, src, zp, q6)`: `clamp(x, zp, q6)` (`q6 < zp` → `ErrActivation`).
 
+## Element-wise Add
+
+`Add(dst, a, b, AddParams{ZPA, ZPB, ZPOut, RQ, Min, Max})`, equal lengths (0
+allowed, else `ErrLength`), `dst` may alias `a` or `b`:
+
+```
+acc = (a−ZPA)·MultA + (b−ZPB)·MultB           (exact int64, |acc| < 2^40)
+y   = clamp(roundHalfAwayFromZero(acc / 2^s) + ZPOut, Min, Max),  s = 31−Shift
+```
+
+`AddRequant{MultA, MultB, Shift}` is two real multipliers with a shared
+shift, `realA = MultA·2^(Shift−31) = scaleA/scaleOut` (likewise B). Valid:
+both Mults in `[1, 2^31)`, the larger in `[2^30, 2^31)`, `Shift ∈ [−31, 30]`;
+else `ErrRequant`; `Min > Max` → `ErrActivation`. One rounding of the exact
+sum, as for `Requant`. `QuantizeAddMultipliers(realA, realB)` quantises the
+larger like `QuantizeMultiplier` and the smaller at the same shift
+(`round(real·2^(31−Shift))`, half away from zero); a smaller multiplier
+that rounds to 0 is `ErrRequant`. TFLite's Add (`left_shift` 20, three
+doubling-high-muls) is a different rounding; it belongs to the
+TFLite-compatible mode.
+
 ## Padding
 
 - `PaddingSame` (TF "SAME"): `out = ceil(in/stride)`,
@@ -89,8 +110,8 @@ Height and width are independent (`KH/KW`, `StrideH/StrideW`). No dilation.
 | `DepthwiseConv2D(dst, src, w, bias, rq, DepthwiseConv2DParams)` | any `KH×KW`, any stride |
 | `MaxPool2D(dst, src, Pool2DParams)` | max over valid (non-padded) cells |
 | `AvgPool2D(dst, src, Pool2DParams)` | `roundHalfAwayFromZero(Σq / count)` over valid cells, exact integer |
-| `ReLU`, `ReLU6` | above |
-| `QuantizeMultiplier`, `Act*`, `Quantize6` | helpers |
+| `ReLU`, `ReLU6`, `Add` | above |
+| `QuantizeMultiplier`, `QuantizeAddMultipliers`, `Act*`, `Quantize6` | helpers |
 | `(*Params).OutShape()` | output shape for `dst` sizing |
 
 Pools keep scale and zero point. Average pooling rounds in the stored
@@ -113,13 +134,14 @@ Two tiers:
   and always run the generic pure-Go code. They are the reference.
 - **Prepared layers** (`Conv2DLayer`, `DepthwiseConv2DLayer`, `FCLayer`,
   `MaxPool2DLayer`, `AvgPool2DLayer`, `ReLULayer`, `ReLU6Layer`; all
-  implement `Op{InShape, OutShape, Run}`): `Prepare()` does all validation
+  implement `Op{InShape, OutShape, Run}`; `AddLayer` has the same contract
+  with two inputs, `Run(dst, a, b)`, so it is not an `Op`): `Prepare()` does all validation
   once and returns exactly the error the free function would (given correctly
   sized `dst`/`src`), caching the resolved geometry. `Run(dst, src)` checks
   only the two lengths (`ErrLength`) and returns `ErrNotPrepared` if the last
   `Prepare` failed, was never called, or an exported field (params or the
   `W`/`Bias`/`RQ`/`Scratch` slice headers) changed since. Contents of `W`,
-  `Bias`, `RQ` must not be modified after `Prepare`. `ReLULayer`/`ReLU6Layer`
+  `Bias`, `RQ` must not be modified after `Prepare`. `ReLULayer`/`ReLU6Layer`/`AddLayer`
   have shape `{1, 1, Len}` with `Len ∈ [1, MaxElements]`; FC shapes are
   `{1, 1, In}` → `{1, 1, Out}`. Weighted layers take an optional caller
   `Scratch` of `ScratchLen()` bytes for backend-repacked/aligned weights

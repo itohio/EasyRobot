@@ -5,14 +5,14 @@ reports speed, cycles, RAM and an output checksum. One source, four builds:
 
 | Build | Backend (`qi8.Backend()`) |
 |---|---|
-| TinyGo, ESP32-S3, default | `esp32s3-pie` (PIE SIMD conv2D/FC; depthwise, pools generic) |
+| TinyGo, ESP32-S3, default | `esp32s3-pie` (PIE SIMD conv2D/FC/depthwise; pools, Add generic) |
 | TinyGo, ESP32-S3, `-tags qi8generic` | `generic` (pure Go) |
 | TinyGo, K210 (UnitV) | `generic` (arena capped at 4 MiB) |
 | host, `go run ./cmd/nnbench` | `generic` |
 
 Weights (`qnet.SyntheticParams`) and inputs (SplitMix64) are deterministic and
 their seeds are printed, so **`out_fnv` (FNV-1a of the final output) and
-`all_fnv` (every layer output of the first run) must be identical in all
+`all_fnv` (every layer and Add output of the first run) must be identical in all
 builds**. That is the whole-network bit-exactness check across backends.
 
 ## Models
@@ -22,23 +22,28 @@ builds**. That is the whole-network bit-exactness check across backends.
 | TinyCNN 32×32×3 | 3 × (conv 3×3/1 SAME + ReLU6, maxpool 2) with 16/32/64 ch, global avg pool, FC→10 | 2.80 M |
 | MobileNetV1-0.25 96×96×3 | `qnet.MobileNetV1(0.25, 96, 96, 0)`: feature extractor, output 1×1×256 | 7.49 M |
 | DS-CNN-style 64×64×3 | conv 3×3/2→32, 4 × (depthwise 3×3/1 + pointwise 1×1→64), global avg pool, FC→12 | 17.63 M |
+| ResNet-8 32×32×3 | MLPerf Tiny image-classification topology: conv 3×3→16, 3 residual stacks 16/32/64 (2 × conv 3×3, stride 2 and a 1×1 projection shortcut in stacks 2–3, requantised `qi8.Add` + ReLU6), global avg pool, FC→10 | 12.50 M |
 
 Convs fuse ReLU6 (`qnet.MobileNetActQuant`); FCs output logits
-(`qnet.MobileNetLogitQuant`). A residual net is not included: it needs an
-elementwise Add op, which qi8 does not have yet.
+(`qnet.MobileNetLogitQuant`). In ResNet-8 the second conv of each branch and
+the projection have no activation and their own quantisation, so every Add
+rescales both inputs. qnet graphs are sequential, so nnbench wires the
+residual dataflow itself (one node list per model).
 
 ## How it measures
 
-- All weights, bias/requant, backend `Scratch` and activations (input + two
-  ping-pong buffers) come from one arena allocated once at start-up (on the
-  chip: free heap − 32 KiB) and reused by every model. When a layer's backend
-  needs `Scratch` (PIE conv2D/FC), its weights are placed at the aligned start
-  of that scratch, so `Prepare` packs them in place and big weights exist once.
+- All weights, bias/requant, backend `Scratch` and activations come from one
+  arena allocated once at start-up (on the chip: free heap − 32 KiB) and
+  reused by every model. Activations are the input plus slots reused once
+  every reader of a tensor has run (a sequential net gets two ping-pong
+  buffers). When a layer's backend needs `Scratch` (PIE conv2D/FC/depthwise),
+  its weights are placed at the aligned start of that scratch, so `Prepare`
+  packs them in place and big weights exist once.
 - Per model: 1 warm-up run, then at least 10 runs and at least 2 s. Reports
   ms/inference (mean, min), CCOUNT cycles/inference, cycles/MAC (nominal MACs
-  incl. padded taps), a per-layer-kind breakdown (conv, depthwise,
-  pointwise = 1×1 conv, fc, pool), arena use, heap numbers and heap
-  allocations during the timed loop (must be 0).
+  incl. padded taps), a per-kind breakdown (conv, depthwise,
+  pointwise = 1×1 conv, fc, pool, add; Add also per element), arena use,
+  heap numbers and heap allocations during the timed loop (must be 0).
 - CPU MHz = CCOUNT delta / µs over a 1 s busy wait. Off the chip there is no
   CCOUNT: cycles read 0 and the breakdown is in ns.
 - On the chip the report repeats every 5 s, so a monitor can attach any time.

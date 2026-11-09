@@ -32,14 +32,14 @@ No assembly, no build tags. Declared docs: `primitive/SPEC.md` (811), `primitive
 
 ## Algorithms
 
-<!-- vault:algorithms h=8b0f8f5f10dc -->
+<!-- vault:algorithms h=9fa9b24c0252 -->
 
 Counts: 3 tested · 0 implemented · 3 partial · 1 stub · 0 unverified (7 algorithms)
 
 | Algorithm | Status | Tests | Summary |
 |---|---|---|---|
 | [[fp32-gemm]] | tested | pass | correct; i-j-k loop with column-strided B, no blocking/SIMD (2.3–4.8 GFLOP/s on M5 by the kernel… |
-| [[int8-nn-kernels]] | tested | pass | Generic int8 NHWC kernels (dot, FC, conv, depthwise, pools, ReLU/ReLU6) with exact single-rounding per-channel requantisation; bit-exact reference for SIMD paths; allocation-free. |
+| [[int8-nn-kernels]] | tested | pass | Generic int8 NHWC kernels (dot, FC, conv, depthwise, pools, ReLU/ReLU6, Add) with exact single-rounding per-channel requantisation; bit-exact reference for SIMD paths; allocation-free. |
 | [[primitive-fft]] | tested | pass | radix-2, power-of-2; non-LUT twiddle recurrence drifts (1.6e-2 vs 2e-4 at n = 16384) |
 | [[fp32-blas-level1-2]] | partial | pass | `Trmv` transpose paths wrong and `TestTrmv` encodes the wrong outputs (`level2.go:211-279`) |
 | [[fp32-linear-algebra-decompositions]] | partial | pass | QR does not reconstruct A (error 3.1, `la.go:542-660`); `Gesvd` returns V not Vᵀ, unsorted; pinv… |

@@ -58,3 +58,5 @@ func avgPool2DRun(dst, src []int8, pl *poolPlan) { avgPool2DGeneric(dst, src, pl
 func reluRun(dst, src []int8, zp int8) { reluGeneric(dst, src, zp) }
 
 func relu6Run(dst, src []int8, zp, q6 int8) { relu6Generic(dst, src, zp, q6) }
+
+func addRun(dst, a, b []int8, p *AddParams) { addGeneric(dst, a, b, p) }

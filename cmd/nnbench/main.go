@@ -34,17 +34,28 @@ const (
 	kPointwise // 1×1 Conv2D
 	kFC
 	kPool
+	kAdd
 	kOther
 	nKinds
 )
 
-var kindNames = [nKinds]string{"conv", "depthwise", "pointwise", "fc", "pool", "other"}
+var kindNames = [nKinds]string{"conv", "depthwise", "pointwise", "fc", "pool", "add", "other"}
 
-// step is one prepared layer with its bound activation buffers.
+// step is one prepared layer or Add with its bound activation buffers.
 type step struct {
-	op       qi8.Op
+	op       qi8.Op        // layer steps
+	add      *qi8.AddLayer // Add steps (src + src2)
+	layer    int           // g.Layers index, −1 for an Add
 	kind     int
 	dst, src []int8
+	src2     []int8
+}
+
+func (s *step) run() error {
+	if s.add != nil {
+		return s.add.Run(s.dst, s.src, s.src2)
+	}
+	return s.op.Run(s.dst, s.src)
 }
 
 // model is a network ready to run: everything is allocated in newModel.
@@ -52,11 +63,12 @@ type model struct {
 	steps []step
 	input []int8
 	out   []int8
+	adds  int
 
 	weightBytes  int // weights stored outside Scratch
 	scratchBytes int // backend Scratch (holds the packed weights in place)
 	paramBytes   int // bias + requant
-	actBytes     int // input + ping-pong activation buffers
+	actBytes     int // input + activation buffers
 }
 
 // arena is a bump allocator over one buffer allocated once at start-up and
@@ -146,18 +158,82 @@ func layerKind(l *qnet.Layer) int {
 	return kOther
 }
 
-// newModel allocates params, scratch and activations for g from a (reset
+// sequentialNodes returns the nodes of a sequential graph.
+func sequentialNodes(g *qnet.Graph) []node {
+	nodes := make([]node, len(g.Layers))
+	for i := range nodes {
+		nodes[i] = node{layer: i, in: i - 1}
+	}
+	return nodes
+}
+
+// inputs returns the nodes n reads (−1 = network input).
+func (n *node) inputs() []int {
+	if n.layer < 0 {
+		return []int{n.in, n.in2}
+	}
+	return []int{n.in}
+}
+
+// planSlots assigns every node output an activation slot: a slot is reused
+// once all readers of its previous tensor have run (outputs never alias their
+// inputs). It returns each node's slot and each slot's size. A sequential
+// network gets the classic ping-pong pair.
+func planSlots(nodes []node, outLen func(int) int) (slot []int, size []int) {
+	last := make([]int, len(nodes)) // last reader of each node's output
+	for i := range nodes {
+		last[i] = i
+		for _, j := range nodes[i].inputs() {
+			if j >= 0 {
+				last[j] = i
+			}
+		}
+	}
+	last[len(nodes)-1] = len(nodes) // the network output stays live
+	slot = make([]int, len(nodes))
+	var free []int
+	for i := range nodes {
+		if k := len(free); k > 0 {
+			slot[i], free = free[k-1], free[:k-1]
+		} else {
+			slot[i] = len(size)
+			size = append(size, 0)
+		}
+		size[slot[i]] = max(size[slot[i]], outLen(i))
+		for _, j := range nodes[i].inputs() {
+			if j >= 0 && last[j] == i {
+				last[j] = -1 // free once even if read twice
+				free = append(free, slot[j])
+			}
+		}
+	}
+	return slot, size
+}
+
+// newModel allocates params, scratch and activations for n from a (reset
 // first), fills the params with qnet.SyntheticParams(wSeed) and the input
-// from inSeed, and prepares every layer.
-func newModel(g *qnet.Graph, a *arena, wSeed, inSeed uint64) (*model, error) {
+// from inSeed, and prepares every layer and Add.
+func newModel(n *network, a *arena, wSeed, inSeed uint64) (*model, error) {
 	a.reset()
-	m := &model{steps: make([]step, len(g.Layers))}
-	conv := make([]*qi8.Conv2DLayer, len(g.Layers))
-	dw := make([]*qi8.DepthwiseConv2DLayer, len(g.Layers))
-	fc := make([]*qi8.FCLayer, len(g.Layers))
-	for i := range g.Layers {
-		l := &g.Layers[i]
+	g := &n.g
+	nodes := n.nodes
+	if nodes == nil {
+		nodes = sequentialNodes(g)
+	}
+	m := &model{steps: make([]step, len(nodes))}
+	conv := make([]*qi8.Conv2DLayer, len(nodes))
+	dw := make([]*qi8.DepthwiseConv2DLayer, len(nodes))
+	fc := make([]*qi8.FCLayer, len(nodes))
+	for i, nd := range nodes {
 		s := &m.steps[i]
+		s.layer = nd.layer
+		if nd.layer < 0 {
+			s.kind = kAdd
+			s.add = &qi8.AddLayer{Len: nd.shape.Len(), P: nd.add}
+			m.adds++
+			continue
+		}
+		l := &g.Layers[nd.layer]
 		s.kind = layerKind(l)
 		var err error
 		switch l.Kind {
@@ -181,65 +257,81 @@ func newModel(g *qnet.Graph, a *arena, wSeed, inSeed uint64) (*model, error) {
 			err = fmt.Errorf("kind %v not supported by nnbench", l.Kind)
 		}
 		if err != nil {
-			return nil, fmt.Errorf("layer %d: %w", i, err)
+			return nil, fmt.Errorf("layer %d: %w", nd.layer, err)
 		}
 	}
 	if err := qnet.SyntheticParams(g, wSeed); err != nil {
 		return nil, err
 	}
-	if layer, err := g.Check(); err != nil {
-		return nil, fmt.Errorf("layer %d: %w", layer, err)
+	if n.nodes == nil {
+		if layer, err := g.Check(); err != nil {
+			return nil, fmt.Errorf("layer %d: %w", layer, err)
+		}
+	} else {
+		// qnet graphs are sequential: check each layer on its own (the
+		// builder wired In/InQ from the producing node).
+		for i := range g.Layers {
+			one := qnet.Graph{Layers: g.Layers[i : i+1]}
+			if _, err := one.Check(); err != nil {
+				return nil, fmt.Errorf("layer %d: %w", i, err)
+			}
+		}
 	}
 
-	// Activations: the input, and two ping-pong buffers (layer i writes
-	// buf[i%2]) sized for the largest output each one holds.
-	var size [2]int
-	for i := range g.Layers {
-		size[i%2] = max(size[i%2], g.Layers[i].Out.Len())
+	// Activations: the input, then the slots of planSlots.
+	outLen := func(i int) int {
+		if nodes[i].layer < 0 {
+			return nodes[i].shape.Len()
+		}
+		return g.Layers[nodes[i].layer].Out.Len()
 	}
-	var buf [2][]int8
+	slot, size := planSlots(nodes, outLen)
 	var err error
 	if m.input, err = a.int8s(g.Layers[0].In.Len(), &m.actBytes); err != nil {
 		return nil, err
 	}
+	buf := make([][]int8, len(size))
 	for k := range buf {
 		if buf[k], err = a.int8s(size[k], &m.actBytes); err != nil {
 			return nil, err
 		}
 	}
 	fillInput(m.input, inSeed)
-
-	for i := range g.Layers {
-		l := &g.Layers[i]
-		s := &m.steps[i]
-		s.dst = buf[i%2][:l.Out.Len()]
-		if i == 0 {
-			s.src = m.input
-		} else {
-			s.src = buf[(i-1)%2][:l.In.Len()]
+	tensor := func(j int) []int8 {
+		if j < 0 {
+			return m.input
 		}
+		return buf[slot[j]][:outLen(j)]
+	}
+
+	for i, nd := range nodes {
+		s := &m.steps[i]
+		s.dst, s.src = tensor(i), tensor(nd.in)
+		if nd.layer < 0 {
+			s.src2 = tensor(nd.in2)
+			if err := s.add.Prepare(); err != nil {
+				return nil, fmt.Errorf("add %d: %w", i, err)
+			}
+			continue
+		}
+		l := &g.Layers[nd.layer]
 		switch {
 		case conv[i] != nil:
 			conv[i].W, conv[i].Bias, conv[i].RQ = l.Weights, l.Bias, l.Requant
-			if err := conv[i].Prepare(); err != nil {
-				return nil, fmt.Errorf("layer %d: %w", i, err)
-			}
+			err = conv[i].Prepare()
 		case dw[i] != nil:
 			dw[i].W, dw[i].Bias, dw[i].RQ = l.Weights, l.Bias, l.Requant
-			if err := dw[i].Prepare(); err != nil {
-				return nil, fmt.Errorf("layer %d: %w", i, err)
-			}
+			err = dw[i].Prepare()
 		case fc[i] != nil:
 			fc[i].W, fc[i].Bias, fc[i].RQ = l.Weights, l.Bias, l.Requant
-			if err := fc[i].Prepare(); err != nil {
-				return nil, fmt.Errorf("layer %d: %w", i, err)
-			}
+			err = fc[i].Prepare()
 		default:
 			if p, ok := s.op.(interface{ Prepare() error }); ok {
-				if err := p.Prepare(); err != nil {
-					return nil, fmt.Errorf("layer %d: %w", i, err)
-				}
+				err = p.Prepare()
 			}
+		}
+		if err != nil {
+			return nil, fmt.Errorf("layer %d: %w", nd.layer, err)
 		}
 	}
 	m.out = m.steps[len(m.steps)-1].dst
@@ -258,12 +350,12 @@ func fillInput(x []int8, seed uint64) {
 	}
 }
 
-// run executes the network once, adding each layer's ticks to kt.
+// run executes the network once, adding each step's ticks to kt.
 func (m *model) run(kt *[nKinds]uint64) error {
 	for i := range m.steps {
 		s := &m.steps[i]
 		t0 := stamp()
-		if err := s.op.Run(s.dst, s.src); err != nil {
+		if err := s.run(); err != nil {
 			return err
 		}
 		kt[s.kind] += ticksSince(t0)
@@ -288,6 +380,8 @@ type result struct {
 	err     error
 	inShape qi8.Shape
 	layers  int
+	adds    int
+	addLen  int // elements summed by the Adds per inference
 	macs    int64
 	weights int // model weight bytes (qnet budget)
 
@@ -314,32 +408,38 @@ func measure(sp *spec, a *arena) (r result) {
 	var ms0, ms1, ms2 runtime.MemStats
 	runtime.GC()
 	runtime.ReadMemStats(&ms0)
-	g, err := sp.build()
+	nw, err := sp.build()
 	if err != nil {
 		r.err = err
 		return r
 	}
-	m, err := newModel(&g, a, sp.wSeed, sp.inSeed)
+	m, err := newModel(&nw, a, sp.wSeed, sp.inSeed)
 	if err != nil {
 		r.err = err
 		return r
 	}
-	r.inShape, r.layers, r.macs, r.weights = g.Layers[0].In, len(g.Layers), g.MACs(), g.WeightBytes()
-	for i := range g.Layers {
-		r.kindMACs[m.steps[i].kind] += g.Budget(i).MACs
+	g := &nw.g
+	r.inShape, r.layers, r.adds, r.macs, r.weights = g.Layers[0].In, len(g.Layers), m.adds, g.MACs(), g.WeightBytes()
+	for i := range m.steps {
+		s := &m.steps[i]
+		if s.layer >= 0 {
+			r.kindMACs[s.kind] += g.Budget(s.layer).MACs
+		} else {
+			r.addLen += len(s.dst)
+		}
 	}
 	r.weightBytes, r.scratchBytes, r.paramBytes, r.actBytes = m.weightBytes, m.scratchBytes, m.paramBytes, m.actBytes
 	runtime.ReadMemStats(&ms1)
 	r.heapSetup = ms1.TotalAlloc - ms0.TotalAlloc
 	r.heapAlloc, r.heapSys = ms1.HeapAlloc, ms1.HeapSys
 
-	// Warm-up, hashing every layer output.
+	// Warm-up, hashing every step output.
 	var kt [nKinds]uint64
 	h := uint32(fnvOffset)
 	for i := range m.steps {
 		s := &m.steps[i]
-		if err := s.op.Run(s.dst, s.src); err != nil {
-			r.err = fmt.Errorf("layer %d: %w", i, err)
+		if err := s.run(); err != nil {
+			r.err = fmt.Errorf("step %d: %w", i, err)
 			return r
 		}
 		h = fnv1a(h, s.dst)
@@ -427,7 +527,7 @@ func report(rs []result, mhz float64, cyc uint32, us int64, boot *runtime.MemSta
 			continue
 		}
 		fmt.Printf("\n%s: %s\n", r.spec.name, r.spec.note)
-		fmt.Printf("  seeds: weights qnet.SyntheticParams(%d), input SplitMix64(%d); %d layers\n", r.spec.wSeed, r.spec.inSeed, r.layers)
+		fmt.Printf("  seeds: weights qnet.SyntheticParams(%d), input SplitMix64(%d); %d layers, %d adds\n", r.spec.wSeed, r.spec.inSeed, r.layers, r.adds)
 		fmt.Printf("  arena use: weights %d B + scratch %d B (packed weights in place) + bias/requant %d B + activations %d B = %d B\n",
 			r.weightBytes, r.scratchBytes, r.paramBytes, r.actBytes, r.weightBytes+r.scratchBytes+r.paramBytes+r.actBytes)
 		fmt.Printf("  heap: setup allocated %d B outside the arena, HeapAlloc %d B after setup, mallocs in timed loop %d\n",
@@ -450,8 +550,10 @@ func report(rs []result, mhz float64, cyc uint32, us int64, boot *runtime.MemSta
 			}
 			fmt.Printf("  %-10s %12d %5.1f%% %10d %9.3f\n", kindNames[k], t, share, r.kindMACs[k], per)
 		}
+		if r.adds > 0 {
+			fmt.Printf("  add: %d elements/inf, %.3f %s/element\n", r.addLen, float64(r.kindTicks[kAdd])/float64(r.addLen), tickUnit)
+		}
 	}
-	fmt.Printf("(residual nets are not benchmarked: qi8 has no elementwise Add op yet)\n")
 }
 
 func main() {
