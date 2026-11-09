@@ -15,8 +15,8 @@
 
 ## Behaviour
 - `Forward`:
-  - Projects current position onto cached path, advances VAJ1D profile toward lookahead target.
-  - Limits velocity with jerk/acceleration constraints and curvature-based lateral limits.
+  - Projects current position onto cached path and advances a VAJ1D profile toward the path end (acceleration limit = min(MaxAcceleration, MaxDeceleration)); the lookahead point (progress + LookaheadDistance) is used only for curvature.
+  - Limits the reported velocity with jerk/acceleration constraints and curvature-based lateral limits (the lateral cap does not yet feed back into the profile's position).
   - Aligns yaw with local tangent while respecting turn-rate and turn-acceleration bounds.
 - `Backward`:
   - PID controllers (speed, heading, lateral) adjust commands toward desired state.

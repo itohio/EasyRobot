@@ -41,17 +41,17 @@ Docs read as claims: `motion/IMPLEMENTATION_PLAN.md` (generic planner, not imple
 
 ## Algorithms
 
-<!-- vault:algorithms h=6170642c29f8 -->
+<!-- vault:algorithms h=c21e600a91fb -->
 
-Counts: 1 tested · 0 implemented · 4 partial · 2 stub · 0 unverified (7 algorithms)
+Counts: 3 tested · 0 implemented · 2 partial · 2 stub · 0 unverified (7 algorithms)
 
 | Algorithm | Status | Tests | Summary |
 |---|---|---|---|
 | [[polyline-path-sampler]] | tested | pass | Arc-length parameterised piecewise-linear path with optional per-waypoint quaternion (slerp) and… |
+| [[rigidbody-path-follower]] | tested | pass | Unicycle path follower; jerk-limited progress to the path end at MaxSpeed (ER-018); lateral speed cap only reported |
+| [[vaj1d-jerk-limited-profile]] | tested | pass | Signed, near-time-optimal jerk-limited 1-D profile; lands exactly on target within v/a/j limits (ER-018). |
 | [[gait-support-endpoint-planner]] | partial | none | partial (clearance stacking, touchdown rises) |
 | [[path-tracking-pid-controller]] | partial | pass | partial (lateral sign, heading wrap) |
-| [[rigidbody-path-follower]] | partial | pass | partial (VAJ path bypassed for short lookahead) |
-| [[vaj1d-jerk-limited-profile]] | partial | none | partial (sign bug, limits violated) |
 | [[gait-phase-scheduler]] | stub | none |  |
 | [[gait-rigidbody-planner]] | stub | none |  |
 

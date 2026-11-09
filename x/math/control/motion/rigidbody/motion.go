@@ -72,9 +72,12 @@ func NewMotion(constraints Constraints, params Parameters) (*Motion, error) {
 		},
 		constraintSet: buildConstraintSet(constraints),
 		controlRows:   controlBaseSize,
+		// VAJ1D has one acceleration limit for speeding up and for the
+		// path-end brake; the smaller one keeps that brake within
+		// MaxDeceleration and on the braking curve limitSpeed reports.
 		speedProfile: vaj.New1D(
 			constraints.MaxSpeed,
-			constraints.MaxAcceleration,
+			math32.Min(constraints.MaxAcceleration, constraints.MaxDeceleration),
 			constraints.MaxJerk,
 		),
 		speedPID:   pid.New1D(params.SpeedPID.P, params.SpeedPID.I, params.SpeedPID.D, -pidLimit, pidLimit),
@@ -243,11 +246,14 @@ func (m *Motion) planForward(state State, controls Controls) (State, Controls, e
 	m.handlePathChange(planner.Signature())
 
 	m.progress = m.projectProgress(state.Position)
-	target := clampFloat(m.progress+m.params.LookaheadDistance, 0, total)
 
-	profile := m.advanceProfile(target, total)
+	// The speed profile runs to the end of the path, so its velocity is the
+	// along-path speed command; the lookahead point only anticipates
+	// curvature for the lateral-acceleration speed limit.
+	profile := m.advanceProfile(total)
 	sample := planner.Sample(profile.progress)
-	curvature := planner.Curvature(profile.progress)
+	lookahead := clampFloat(profile.progress+m.params.LookaheadDistance, 0, total)
+	curvature := planner.Curvature(lookahead)
 	remaining := total - profile.progress
 	speed := m.limitSpeed(profile.velocity, curvature, remaining)
 
@@ -410,33 +416,20 @@ func (m *Motion) projectProgress(position vec.Vector3D) float32 {
 	return m.planner.Project(position)
 }
 
-func (m *Motion) advanceProfile(target, total float32) profileSnapshot {
+// advanceProfile steps the jerk-limited speed profile from the projected
+// progress toward the end of the path.
+func (m *Motion) advanceProfile(total float32) profileSnapshot {
 	if total <= 0 {
 		return profileSnapshot{}
 	}
-	if target > total {
-		target = total
-	}
-	delta := target - m.progress
-	if delta <= 0 {
+	if total-m.progress <= 0 {
 		return profileSnapshot{
 			progress: m.progress,
 			velocity: math32.Abs(m.speedProfile.Velocity),
 		}
 	}
-	if delta < 1 {
-		velocity := clampFloat(delta/m.params.SamplePeriod, 0, m.constraints.MaxSpeed)
-		m.progress = target
-		m.speedProfile.Input = target
-		m.speedProfile.Output = target
-		m.speedProfile.Velocity = velocity
-		return profileSnapshot{
-			progress: target,
-			velocity: velocity,
-		}
-	}
 	m.speedProfile.Input = m.progress
-	m.speedProfile.Target = target
+	m.speedProfile.Target = total
 	m.speedProfile.Update(m.params.SamplePeriod)
 
 	progress := clampFloat(m.speedProfile.Output, 0, total)
