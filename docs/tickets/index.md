@@ -57,6 +57,14 @@ One ticket-ID scheme: `ER-NNN`, one file each in `tickets/`. The ER-R2 proposals
 | [[ER-037-body-pose-static-stability\|ER-037]] | Body pose integration and static stability | implementation | backlog | easyrobot | W3 | M-a | ER-018 |
 | [[ER-038-wheeled-motion-fixes\|ER-038]] | Wheeled motion fixes: path-tracking signs and steer4 geometry | implementation | backlog | easyrobot | [W3, W6] | M-d | none |
 | [[ER-039-manipulator-integration\|ER-039]] | Manipulator integration: units and helpers in drivers/cmd manipulator | implementation | backlog | easyrobot | W3 | none | ER-017, ER-018 |
+| [[ER-040-k210-unitv-target\|ER-040]] | UnitV board target for TinyGo (build only) | implementation | done | k210 | K210-camera | K210-M0 | none |
+| [[ER-041-k210-flash-uart-hello\|ER-041]] | UnitV flashing path and UART hello | hardware | done | k210 | K210-camera | K210-M1 | ER-040 |
+| [[ER-042-k210-led-buttons\|ER-042]] | UnitV WS2812 LED and buttons | implementation | backlog | k210 | K210-camera | K210-M2 | ER-041 |
+| [[ER-043-k210-camera-identity\|ER-043]] | UnitV camera identity via DVP SCCB | implementation | blocked | k210 | K210-camera | K210-M3 | ER-041 |
+| [[ER-044-k210-frame-over-uart\|ER-044]] | UnitV one camera frame over UART | implementation | blocked | k210 | K210-camera | K210-M4 | ER-043 |
+| [[ER-045-k210-native-int8-benchmark\|ER-045]] | Native int8 conv/dot/GEMV benchmark on one K210 hart | measurement | blocked | k210 | K210-nn | K210-M5 | ER-041; int8 kernels |
+| [[ER-046-k210-kpu-kmodel-runner\|ER-046]] | KPU kmodel v3 run through a pure-Go runner | implementation | blocked | k210 | K210-nn | K210-M6 | ER-041; nncase approval |
+| [[ER-047-k210-feature-tensor-out\|ER-047]] | UnitV camera → KPU → feature tensor stream | implementation | blocked | k210 | [K210-camera, K210-nn, W4] | K210-M7 | ER-044, ER-046 |
 
 ER-015 additionally requires the completed ticket for each optional path it measures. ER-005/007/009 keep Xtensa, K230 and K510 independent and **UNVERIFIED**. ER-011's external CPU reference is not ER-014's native graph execution. ER-026 is one ticket with two stages: stage 1 host (ready), stage 2 TinyGo (blocked on owner approval).
 
