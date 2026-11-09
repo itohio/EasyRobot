@@ -11,6 +11,7 @@ complete: yes
 correct: yes
 summary: "Per-leg stance/swing phase from a periodic pattern (offset, duty); tripod, ripple, wave, walk, trot presets; allocation-free."
 evidence: "GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=readonly go test -race -count=1 ./x/math/control/motion/gait/... → ok (2026-11-09); 11 scheduler tests failed first on a no-op skeleton (tmp/easyrobot/er017/gait/scheduler-before.txt) [[ER-018-leg-helpers-gait-scheduler|ER-018]]"
+source_revision: 1bf6234e676daa87d3e9eb191bb1dc2420f05ff9
 ---
 # Gait phase scheduler (patterns, duty factor, phase offsets)
 

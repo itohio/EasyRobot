@@ -11,7 +11,7 @@ maps: [T-IK-02, T-IK-03, T-IK-05, T-IK-06]
 tags: [easyrobot, ticket, w3, kinematics]
 created: 2026-11-09
 updated: 2026-11-09
-source_revision: abb5c9cca7f756c632548d9c7be2436b46dc2e4d
+source_revision: 1bf6234e676daa87d3e9eb191bb1dc2420f05ff9
 ---
 # ER-017 — DH and planar IK robustness
 

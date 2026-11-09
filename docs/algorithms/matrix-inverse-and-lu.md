@@ -11,6 +11,7 @@ test_result: pass
 complete: yes
 correct: no
 evidence: "go test -race -count=1 ./x/math/mat/... → ok (2026-11-09): TestMatrix4x4_InverseNeedsPivoting failed before the ER-018 fix (row0 −2.727 vs −2) and passes; TestMatrix_LU, TestMatrix_Det still vacuous; probe InfraNotes/matprobe"
+source_revision: 1bf6234e676daa87d3e9eb191bb1dc2420f05ff9
 ---
 # Matrix inverse, determinant and LU
 

@@ -11,6 +11,7 @@ test_result: pass
 complete: no
 correct: unknown
 evidence: "go test -race -count=1 ./x/math/control/motion/rigidbody → ok (2026-11-09). TestForwardStraightPathReachesCruiseSpeed failed after the VAJ workaround removal (peak 0.887/1.88/1.63/4.19 vs MaxSpeed 2/10; 23.44 s vs optimum 12.2 s) and passes (peak = MaxSpeed, 11.98 s and 3.36 s) [[ER-018-leg-helpers-gait-scheduler|ER-018]]"
+source_revision: 1bf6234e676daa87d3e9eb191bb1dc2420f05ff9
 ---
 # Rigid-body path follower (Motion.Forward)
 

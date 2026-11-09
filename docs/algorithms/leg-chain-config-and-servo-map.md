@@ -11,6 +11,7 @@ test_result: pass
 complete: no
 correct: yes
 evidence: "go test -race -count=1 ./x/math/control/kinematics/chain → ok (2026-11-09); tests failed first against stub signatures (tmp/easyrobot/er018/chain-failing.txt) [[ER-018-leg-helpers-gait-scheduler|ER-018]]"
+source_revision: 1bf6234e676daa87d3e9eb191bb1dc2420f05ff9
 ---
 # Leg/chain configuration, servo mapping and body→hip transforms
 

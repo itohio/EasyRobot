@@ -11,6 +11,7 @@ test_result: pass
 complete: yes
 correct: no
 evidence: "go test -count=1 ./x/math/control/kinematics/joints/dh → ok, 7 tests/15 subtests (2026-11-09); probe sections A,H in [[ER-R2-ik-review]]: position exact to 1.5e-8 m, orientation quaternion is the inverse rotation"
+source_revision: 1bf6234e676daa87d3e9eb191bb1dc2420f05ff9
 ---
 # DH forward kinematics
 

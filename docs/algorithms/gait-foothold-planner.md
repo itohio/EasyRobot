@@ -11,6 +11,7 @@ test_result: pass
 complete: no
 correct: yes
 evidence: "go test -race -count=1 ./x/math/control/motion/gait/walk → ok (2026-11-09): TestHexapodTripodSim max stance drift 9.5e-8 m, min reach margin 9.1 mm, 0 IK errors, 0 allocs/tick; tests failed first against stubs (walk-failing.txt); review round 2: margin −1.1…−79 mm → ≥ 7.9 mm, long dt −213.6 → 10.4 mm, swing jump 31.7 → 11.6 mm (review2-*.txt); review round 3: random commands 5.9–7.0 → 8.0 mm, stalls 70/37/42 → ≤ 5 ticks, dt 0.6 no slew −12.0 → 8.0 mm, plan sampling error 2.87 → 0.000 mm (review3-*.txt, tmp/easyrobot/er018/) [[ER-018-leg-helpers-gait-scheduler|ER-018]]"
+source_revision: 1bf6234e676daa87d3e9eb191bb1dc2420f05ff9
 ---
 # Gait foothold planner and walk glue (twist → servo degrees)
 

@@ -11,7 +11,7 @@ maps: [T-IK-01, T-IK-07, T-IK-08, T-IK-09, T-IK-10]
 tags: [easyrobot, ticket, w3, gait, kinematics]
 created: 2026-11-09
 updated: 2026-11-09
-source_revision: abb5c9cca7f756c632548d9c7be2436b46dc2e4d
+source_revision: 1bf6234e676daa87d3e9eb191bb1dc2420f05ff9
 ---
 # ER-018 — Leg/joint helpers, gait scheduler, strides and gait→IK→servo glue
 

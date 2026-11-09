@@ -11,6 +11,7 @@ test_result: pass
 complete: no
 correct: yes
 evidence: "go test -race -count=1 ./x/math/control/kinematics/... → ok (2026-11-09). Before (tmp/easyrobot/er017/ik/before-*.txt): probe R 422/500, ±π limits 1486/2000, wrong poses with err=nil. After: 500/500 and 2000/2000 exact; review: 30 000 random in-limit targets over 300 limit sets, 0 failures [[ER-017-dh-planar-ik-robustness|ER-017]]"
+source_revision: 1bf6234e676daa87d3e9eb191bb1dc2420f05ff9
 ---
 # Planar 3-DOF leg kinematics (coxa–femur–tibia)
 

@@ -11,6 +11,7 @@ test_result: pass
 complete: no
 correct: yes
 evidence: "go test -race -count=1 ./x/math/control/kinematics/... → ok (2026-11-09). Before (tmp/easyrobot/er017/ik/before-*.txt): n>3 ErrUnsupportedOperation; probe R nominal seed 401/500; 156 allocs/call; review round: 455/2000 false ErrJointLimit, gantry in mm 0/300, NaN target wrote the previous answer. After: 300/300 redundant chains, probe R 500/500 (zero seed 500/500), 2000/2000 full-limit set, 0 allocs [[ER-017-dh-planar-ik-robustness|ER-017]]"
+source_revision: 1bf6234e676daa87d3e9eb191bb1dc2420f05ff9
 ---
 # DH damped least-squares IK
 

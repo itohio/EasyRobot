@@ -11,6 +11,7 @@ test_result: pass
 complete: yes
 correct: yes
 evidence: "go test planar → ok (2026-11-09): FK 3 cases, IK targets (2,0,0)/(0,2,0), round trip, joint limits"
+source_revision: 1bf6234e676daa87d3e9eb191bb1dc2420f05ff9
 ---
 # Planar 2-DOF yaw + pitch kinematics
 

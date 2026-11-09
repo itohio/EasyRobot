@@ -11,6 +11,7 @@ test_result: pass
 complete: yes
 correct: yes
 evidence: "go test -race -count=1 ./x/math/mat/... → ok (2026-11-09): TestMatrix4x4_HomogenousKnownMatrices and TestMatrix4x4_HomogenousInverseKnown failed before the ER-018 fix (zero rotation, probe InfraNotes/matprobe) and pass; review probe: Euler order Rz·Ry·Rx and xyzw quaternion agree with Matrix3x3.Rotation*/Orientation [[ER-018-leg-helpers-gait-scheduler|ER-018]]"
+source_revision: 1bf6234e676daa87d3e9eb191bb1dc2420f05ff9
 ---
 # Homogeneous transforms (4×4 SE(3))
 
