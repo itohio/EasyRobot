@@ -12,7 +12,7 @@ import (
 
 func TestNew3DOF(t *testing.T) {
 	cfg := [3]Config{{Length: 1.0, Min: -math32.Pi, Max: math32.Pi}, {Length: 1.0, Min: -math32.Pi, Max: math32.Pi}, {Length: 1.0, Min: -math32.Pi, Max: math32.Pi}}
-	k := New3DOF(cfg)
+	k := newP3(t, cfg)
 	dims := k.Dimensions()
 	assert.Equal(t, 3, dims.StateRows)
 	assert.Equal(t, 1, dims.StateCols)
@@ -45,7 +45,7 @@ func TestPlanar3DOF_Forward(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			k := New3DOF(tt.cfg)
+			k := newP3(t, tt.cfg)
 			state := mat.New(3, 1)
 			dest := mat.New(planarEffectorSize, 1)
 			for i := 0; i < 3; i++ {
@@ -85,7 +85,7 @@ func TestPlanar3DOF_Backward(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			k := New3DOF(tt.cfg)
+			k := newP3(t, tt.cfg)
 			state := mat.New(3, 1)
 			dest := mat.New(planarEffectorSize, 1)
 			controls := mat.New(3, 1)
@@ -115,7 +115,7 @@ func TestPlanar3DOF_RoundTrip(t *testing.T) {
 
 	for i, params := range scenarios {
 		t.Run(fmt.Sprintf("round_trip_%d", i), func(t *testing.T) {
-			k := New3DOF(cfg)
+			k := newP3(t, cfg)
 			state := mat.New(3, 1)
 			dest := mat.New(planarEffectorSize, 1)
 			controls := mat.New(3, 1)

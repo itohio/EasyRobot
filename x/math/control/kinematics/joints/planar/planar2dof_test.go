@@ -15,7 +15,7 @@ func TestNew2DOF(t *testing.T) {
 		{Min: -math32.Pi, Max: math32.Pi, Length: 1.0},
 		{Min: -math32.Pi, Max: math32.Pi, Length: 1.0},
 	}
-	k := New2DOF(cfg)
+	k := newP2(t, cfg)
 
 	require.NotNil(t, k)
 	dims := k.Dimensions()
@@ -57,7 +57,7 @@ func TestPlanar2DOF_Forward(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			k := New2DOF(tt.cfg)
+			k := newP2(t, tt.cfg)
 			state := mat.New(2, 1)
 			dest := mat.New(planarEffectorSize, 1)
 			state[0][0] = tt.params[0]
@@ -96,7 +96,7 @@ func TestPlanar2DOF_Backward(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			k := New2DOF(tt.cfg)
+			k := newP2(t, tt.cfg)
 			state := mat.New(2, 1)
 			dest := mat.New(planarEffectorSize, 1)
 			controls := mat.New(2, 1)
@@ -126,7 +126,7 @@ func TestPlanar2DOF_RoundTrip(t *testing.T) {
 
 	for i, params := range scenarios {
 		t.Run(fmt.Sprintf("round_trip_%d", i), func(t *testing.T) {
-			k := New2DOF(cfg)
+			k := newP2(t, cfg)
 			state := mat.New(2, 1)
 			dest := mat.New(planarEffectorSize, 1)
 			controls := mat.New(2, 1)
@@ -155,7 +155,7 @@ func TestPlanar2DOF_JointLimits(t *testing.T) {
 		{Min: -math32.Pi / 2, Max: math32.Pi / 2, Length: 1.0},
 	}
 
-	k := New2DOF(cfg)
+	k := newP2(t, cfg)
 	state := mat.New(2, 1)
 	dest := mat.New(planarEffectorSize, 1)
 
@@ -179,4 +179,11 @@ func TestPlanar2DOF_JointLimits(t *testing.T) {
 			assert.InDelta(t, tt.expected, k.params[tt.idx], 1e-5)
 		})
 	}
+}
+
+func newP2(t testing.TB, cfg [2]Config) *p2d {
+	t.Helper()
+	k, err := New2DOF(cfg)
+	require.NoError(t, err)
+	return k
 }

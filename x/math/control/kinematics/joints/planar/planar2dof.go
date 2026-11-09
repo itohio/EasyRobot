@@ -1,6 +1,8 @@
 package planar
 
 import (
+	"fmt"
+
 	"github.com/chewxy/math32"
 	kintypes "github.com/itohio/EasyRobot/x/math/control/kinematics/types"
 	"github.com/itohio/EasyRobot/x/math/mat"
@@ -19,7 +21,14 @@ type p2d struct {
 	capabilities kintypes.Capabilities
 }
 
-func New2DOF(cfg [2]Config) *p2d {
+// New2DOF builds a yaw + pitch arm. Every Config must Validate; errors wrap
+// kintypes.ErrInvalidConfig.
+func New2DOF(cfg [2]Config) (*p2d, error) {
+	for i := range cfg {
+		if err := cfg[i].Validate(); err != nil {
+			return nil, fmt.Errorf("planar: joint %d: %w", i, err)
+		}
+	}
 	return &p2d{
 		c: cfg,
 		dimensions: kintypes.Dimensions{
@@ -34,7 +43,7 @@ func New2DOF(cfg [2]Config) *p2d {
 			SupportsVertical: true,
 			ConstraintRank:   2,
 		},
-	}
+	}, nil
 }
 
 func (p *p2d) Dimensions() kintypes.Dimensions {
@@ -60,7 +69,7 @@ func (p *p2d) Forward(state mattype.Matrix, destination mattype.Matrix, controls
 		return err
 	}
 
-	stateView := state.View().(mat.Matrix)
+	stateView := column(state)
 	for i := range p.params {
 		p.params[i] = stateView[i][0]
 	}
@@ -83,7 +92,7 @@ func (p *p2d) Forward(state mattype.Matrix, destination mattype.Matrix, controls
 	p.pos[4] = a1
 	p.pos[5] = a0
 
-	destView := destination.View().(mat.Matrix)
+	destView := column(destination)
 	for i := 0; i < planarEffectorSize; i++ {
 		destView[i][0] = p.pos[i]
 	}
@@ -92,6 +101,7 @@ func (p *p2d) Forward(state mattype.Matrix, destination mattype.Matrix, controls
 
 // Backward consumes a desired effector column `[x, y, z, …]` where only
 // positions are used and writes joint angles into the 2×1 `controls` column.
+// A NaN/Inf target returns kintypes.ErrNonFinite with `controls` untouched.
 func (p *p2d) Backward(state mattype.Matrix, destination mattype.Matrix, controls mattype.Matrix) error {
 	if err := ensureColumn(destination, planarEffectorSize); err != nil {
 		return err
@@ -103,16 +113,21 @@ func (p *p2d) Backward(state mattype.Matrix, destination mattype.Matrix, control
 		if err := ensureColumn(state, len(p.params)); err != nil {
 			return err
 		}
-		stateView := state.View().(mat.Matrix)
+		stateView := column(state)
 		for i := range p.params {
 			p.params[i] = stateView[i][0]
 		}
 	}
 
-	destView := destination.View().(mat.Matrix)
+	destView := column(destination)
 	x := destView[0][0]
 	y := destView[1][0]
 	z := destView[2][0]
+	for _, v := range [3]float32{x, y, z} {
+		if math32.IsNaN(v) || math32.IsInf(v, 0) {
+			return kintypes.ErrNonFinite
+		}
+	}
 	l0 := p.c[0].Length
 
 	xPrime := math32.Sqrt(x*x+y*y) - l0
@@ -120,12 +135,21 @@ func (p *p2d) Backward(state mattype.Matrix, destination mattype.Matrix, control
 	p.params[0] = p.c[0].Limit(math32.Atan2(y, x))
 	p.params[1] = p.c[1].Limit(math32.Atan2(z, xPrime))
 
-	controlsView := controls.View().(mat.Matrix)
+	controlsView := column(controls)
 	for i := range p.params {
 		controlsView[i][0] = p.params[i]
 	}
 
 	return nil
+}
+
+// column returns a row view of m without copying when m is already a
+// mat.Matrix (Matrix.View allocates).
+func column(m mattype.Matrix) mat.Matrix {
+	if v, ok := m.(mat.Matrix); ok {
+		return v
+	}
+	return m.View().(mat.Matrix)
 }
 
 func ensureColumn(m mattype.Matrix, rows int) error {

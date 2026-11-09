@@ -17,12 +17,12 @@ func TestNew(t *testing.T) {
 		{Min: -math32.Pi, Max: math32.Pi, Theta: 0, Alpha: 0, R: 1.0, D: 0, Index: 0},
 		{Min: -math32.Pi, Max: math32.Pi, Theta: 0, Alpha: 0, R: 1.0, D: 0, Index: 0},
 	}
-	k := New(1e-5, 10, cfg...)
+	k := newChain(t, 1e-5, 10, cfg...)
 
 	require.NotNil(t, k)
 	assert.Equal(t, len(cfg), k.Dimensions().StateRows)
 	assert.Equal(t, len(cfg)+1, len(k.H0i))
-	assert.Equal(t, []int{0, 0}, k.jointTypes)
+	assert.Equal(t, 3*len(cfg), len(k.jac))
 	assert.Equal(t, len(cfg), len(k.params))
 }
 
@@ -79,7 +79,7 @@ func TestDenavitHartenberg_Forward(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			k := New(1e-5, 10, tt.cfg...)
+			k := newChain(t, 1e-5, 10, tt.cfg...)
 			state := mat.New(len(tt.params), 1)
 			for i, v := range tt.params {
 				state[i][0] = v
@@ -102,7 +102,7 @@ func TestDenavitHartenberg_ForwardPopulatesTransforms(t *testing.T) {
 		{Min: -math32.Pi, Max: math32.Pi, Theta: 0, Alpha: 0, R: 1.0, D: 0, Index: 0},
 	}
 
-	k := New(1e-5, 10, cfg...)
+	k := newChain(t, 1e-5, 10, cfg...)
 	state := mat.New(2, 1)
 	destination := mat.New(effectorSize, 1)
 
@@ -144,13 +144,13 @@ func TestDenavitHartenberg_ForwardPopulatesTransforms(t *testing.T) {
 func TestDenavitHartenberg_Backward(t *testing.T) {
 	identityQuat := [4]float32{0, 0, 0, 1}
 	tests := []struct {
-		name       string
-		cfg        []Config
-		target     [3]float32
-		eps        float32
-		maxIter    int
-		shouldFail bool
-		tolerance  float32
+		name      string
+		cfg       []Config
+		target    [3]float32
+		eps       float32
+		maxIter   int
+		wantErr   error
+		tolerance float32
 	}{
 		{
 			name: "target at (2,0,0), 2DOF",
@@ -180,10 +180,10 @@ func TestDenavitHartenberg_Backward(t *testing.T) {
 				{Min: -math32.Pi, Max: math32.Pi, Theta: 0, Alpha: math32.Pi / 2, R: 1.0, D: 0, Index: 0},
 				{Min: -math32.Pi, Max: math32.Pi, Theta: 0, Alpha: 0, R: 1.0, D: 0, Index: 0},
 			},
-			target:     [3]float32{1.5, 0, 0.5},
-			eps:        1e-3,
-			maxIter:    100,
-			shouldFail: true,
+			target:  [3]float32{1.5, 0, 0.5},
+			eps:     1e-3,
+			maxIter: 100,
+			wantErr: kintypes.ErrUnreachable,
 		},
 		{
 			name: "unreachable target",
@@ -191,16 +191,16 @@ func TestDenavitHartenberg_Backward(t *testing.T) {
 				{Min: -math32.Pi, Max: math32.Pi, Theta: 0, Alpha: 0, R: 1.0, D: 0, Index: 0},
 				{Min: -math32.Pi, Max: math32.Pi, Theta: 0, Alpha: 0, R: 1.0, D: 0, Index: 0},
 			},
-			target:     [3]float32{10, 0, 0},
-			eps:        1e-4,
-			maxIter:    10,
-			shouldFail: true,
+			target:  [3]float32{10, 0, 0},
+			eps:     1e-4,
+			maxIter: 10,
+			wantErr: kintypes.ErrUnreachable,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			k := New(tt.eps, tt.maxIter, tt.cfg...)
+			k := newChain(t, tt.eps, tt.maxIter, tt.cfg...)
 			state := mat.New(len(tt.cfg), 1)
 			dest := mat.New(effectorSize, 1)
 			controls := mat.New(len(tt.cfg), 1)
@@ -213,9 +213,9 @@ func TestDenavitHartenberg_Backward(t *testing.T) {
 			}
 
 			err := k.Backward(state, dest, controls)
-			if tt.shouldFail {
+			if tt.wantErr != nil {
 				require.Error(t, err)
-				assert.True(t, errors.Is(err, ErrNoConvergence) || errors.Is(err, kintypes.ErrUnsupportedOperation))
+				assert.True(t, errors.Is(err, tt.wantErr), "got %v, want %v", err, tt.wantErr)
 				return
 			}
 
@@ -245,7 +245,7 @@ func TestDenavitHartenberg_RoundTrip(t *testing.T) {
 
 	for i, params := range testParams {
 		t.Run(fmt.Sprintf("params_%d", i), func(t *testing.T) {
-			k := New(1e-5, 50, cfg...)
+			k := newChain(t, 1e-5, 50, cfg...)
 			state := mat.New(len(cfg), 1)
 			dest := mat.New(effectorSize, 1)
 			controls := mat.New(len(cfg), 1)
@@ -279,7 +279,7 @@ func TestDenavitHartenberg_JointLimits(t *testing.T) {
 		{Min: -math32.Pi / 2, Max: math32.Pi / 2, Theta: 0, Alpha: 0, R: 1.0, D: 0, Index: 0},
 	}
 
-	k := New(1e-5, 10, cfg...)
+	k := newChain(t, 1e-5, 10, cfg...)
 
 	tests := []struct {
 		name     string
@@ -310,7 +310,7 @@ func TestDenavitHartenberg_PrismaticJoint(t *testing.T) {
 		{Min: 0, Max: 2.0, Theta: 0, Alpha: 0, R: 0, D: 0, Index: 3},
 	}
 
-	k := New(1e-5, 10, cfg...)
+	k := newChain(t, 1e-5, 10, cfg...)
 	state := mat.New(len(cfg), 1)
 	state[0][0] = 0
 	state[1][0] = 1.0

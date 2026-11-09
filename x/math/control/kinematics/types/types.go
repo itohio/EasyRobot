@@ -82,4 +82,28 @@ var (
 	// ErrUnsupportedOperation indicates the model cannot satisfy the requested
 	// operation with the provided capabilities.
 	ErrUnsupportedOperation = errors.New("kinematics/types: unsupported operation")
+
+	// ErrInvalidConfig is returned by constructors and Validate methods when a
+	// model or joint configuration is malformed (non-finite values, Min >= Max,
+	// unsupported joint kinds, …). Validation errors wrap it.
+	ErrInvalidConfig = errors.New("kinematics/types: invalid configuration")
+
+	// ErrNonFinite is returned when an input (target, seed state) contains NaN
+	// or ±Inf. Solvers reject such input before solving and leave outputs
+	// untouched.
+	ErrNonFinite = errors.New("kinematics/types: non-finite input")
+
+	// ErrUnreachable indicates an inverse-kinematics target lies outside the
+	// workspace of the mechanism. Solvers still write a best-effort solution.
+	ErrUnreachable = errors.New("kinematics/types: target unreachable")
+
+	// ErrJointLimit indicates an inverse-kinematics target is geometrically
+	// reachable but only with a joint beyond its limits. Solvers still write a
+	// best-effort (limit-respecting) solution.
+	ErrJointLimit = errors.New("kinematics/types: joint limit")
+
+	// ErrNoConvergence indicates an iterative inverse-kinematics solver ran out
+	// of its iteration budget (or stalled) without a typed reason. Solvers still
+	// write a best-effort solution.
+	ErrNoConvergence = errors.New("kinematics/types: inverse kinematics did not converge")
 )

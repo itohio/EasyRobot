@@ -1,43 +1,47 @@
 ---
 type: algorithm
-status: partial
+status: tested
 tags: [easyrobot, kinematics, dh, ik]
 workstream: W3
 module: "[[kinematics]]"
-summary: "partial (fails for >3 joints; fragile from a cold seed)"
-source: [x/math/control/kinematics/joints/dh/denavithartenberg.go, x/math/mat/pseudo_inverse.go, x/math/primitive/fp32/la.go]
-tests: [x/math/control/kinematics/joints/dh/denavithartenberg_test.go]
+summary: "Damped least-squares position IK for any number of joints; limit-aware, restarts, typed errors, best-effort q, allocation-free (ER-017)."
+source: [x/math/control/kinematics/joints/dh/denavithartenberg.go, x/math/control/kinematics/joints/dh/config.go, x/math/control/kinematics/types/types.go]
+tests: [x/math/control/kinematics/joints/dh/denavithartenberg_test.go, x/math/control/kinematics/joints/dh/ik_robust_test.go, x/math/control/kinematics/joints/dh/config_test.go]
 test_result: pass
 complete: no
-correct: no
-evidence: "go test dh → ok (2026-11-09); probe C/D/R/Z in [[ER-R2-ik-review]]: n>3 always ErrUnsupportedOperation; hexapod leg cold-seed convergence 37–81%, warm-seed 100% in ≤7 iterations"
+correct: yes
+evidence: "go test -race -count=1 ./x/math/control/kinematics/... → ok (2026-11-09). Before (tmp/easyrobot/er017/ik/before-*.txt): n>3 ErrUnsupportedOperation; probe R nominal seed 401/500; 156 allocs/call; review round: 455/2000 false ErrJointLimit, gantry in mm 0/300, NaN target wrote the previous answer. After: 300/300 redundant chains, probe R 500/500 (zero seed 500/500), 2000/2000 full-limit set, 0 allocs [[ER-017-dh-planar-ik-robustness|ER-017]]"
 ---
-# DH Jacobian pseudo-inverse IK
+# DH damped least-squares IK
 
-**What it does:** Position-only iterative IK: Newton steps `Δq = J⁺·(p_target − p)` until `|e| < eps`.
+**What it does:** position-only iterative IK for a DH chain of any length: damped least-squares steps until `|e| < eps`, with joint limits respected, restarts out of local minima, and a typed reason on failure. Controls always receive the best in-limit pose found (except for invalid input).
 
-**Where:** `dh/denavithartenberg.go:99-119` (`Backward`), `:145-178` (`inverseInternal`), `:182-229` (`ikSolverJacobianPos`); `J.PseudoInverse` → `mat/pseudo_inverse.go:18` → `fp32.Gepseu` (`primitive/fp32/la.go:671`) → `Gesvd` (`la.go:755`).
+**Method (since ER-017):**
+- Step: `Δq = S·J'ᵀ (J' J'ᵀ + λ² I)⁻¹ e` with a 3×3 Cholesky solve, so n > 3 works. Prismatic columns are scaled by the chain length (`J' = J·S`) so damping is unit-independent.
+- Adaptive λ, the Cartesian error clamped per step, a per-joint step cap, and angle wrapping into [Min, Max]. Joints sitting on a limit and pushed outward drop out of the step.
+- Restarts (up to 4, sharing the iteration budget): an attempt that creeps along a limit (< 10 % distance gain per 8 iterations while a joint is blocked) restarts by flipping the elbow (negate the next parallel joint and re-aim the blocked one), re-aiming the blocked joint at the target, or pointing it away; a singular stall nudges the joints.
+- Failure classification: a blocked failure gets up to 30 extra iterations with limits ignored. If they converge inside the limits, that solution is returned; if they converge (or get ≥ 4× closer) only past a limit → `ErrJointLimit`; if they end at a stationary point with a nonzero residual (|Jᵀe| ≤ 1e-2·‖J‖·|e|, e.g. the inner workspace hole) → `ErrUnreachable`; otherwise `ErrNoConvergence`. Beyond total link length or a stall with no blocked joint → `ErrUnreachable`. Every tuning constant is documented in `dh/SPEC.md`.
+- All buffers are allocated in `New`; `Backward` does not allocate (when the caller passes `mattype.Matrix` values). The best-effort pose starts from this call's seed, so a float32-overflowing residual returns the seed, never a previous call's answer. One solver instance per goroutine/leg (preallocated workspace, not concurrency-safe).
 
-**Inputs → outputs:** `state` n×1 seed, `destination` 7×1 target (only rows 0–2 used), `controls` n×1 result (written **only on success**). `eps` is a distance tolerance (compared as `|e|² < eps²`, `:164`); `maxIterations` steps. Errors: `ErrNoConvergence`, `kintypes.ErrUnsupportedOperation`.
+**Where:** `dh/denavithartenberg.go` (`New`, `Backward`, `dlsStep`, restarts), `dh/config.go` (`Config.Validate`, `CalculateTransform`), `kinematics/types` (`ErrInvalidConfig`, `ErrUnreachable`, `ErrJointLimit`, `ErrNoConvergence`, `ErrNonFinite`).
+
+**Inputs → outputs:** `dh.New(eps, maxIterations, cfg...) (*DenavitHartenberg, error)` (rejects invalid configs, e.g. zero-width limits); `state` n×1 seed, `destination` 7×1 target (rows 0–2 used), `controls` n×1 result. `maxIterations` counts every attempted step including rejected ones and restarts; worst case `maxIterations + 30` iterations per call. Non-finite target or seed → `ErrNonFinite`, controls untouched. Joint kinds Index 0–3 (θ, α, r, d) all work in the Jacobian.
 
 ## Completeness review
 
-- Complete: no. Orientation target ignored (`loadEffector` reads it, nothing uses it). **Chains with more than 3 joints never solve**: J is 3×n and `Gesvd` requires rows ≥ cols (`la.go:760`), so `PseudoInverse` fails → `ErrUnsupportedOperation` (`:216-217`). Probe G1 (6-DOF) and G2 (4-link planar) fail; section C: 6-DOF 0/1500.
-- Tested: `TestDenavitHartenberg_Backward` (2-link, targets (2,0,0) and (0,2,0) from zero seed, an unreachable and an inconsistent target expecting an error), `TestDenavitHartenberg_RoundTrip` (4 poses, seeded at the true pose). Pass (2026-11-09). Tests never use a 3-DOF leg, a >3-DOF chain, joint limits or a cold seed far from the answer.
-- Correct: no (scope gaps + robustness). Probe C (500 reachable targets each; target = FK(q_true)):
-  - hexapod leg 39/45/100 mm: zero seed 355/500, nominal seed (0, 0.3, −1.6) 184/500, warm seed (q_true ± 0.2 rad) **500/500, p90 3 iterations**.
-  - realistic single-knee foot workspace (probe R): zero 404/500, nominal 401/500, warm 499/500; a reference damped least-squares solver (λ = 5 mm, step ≤ 0.25 rad) gets 441/449/500 on the same targets.
-  - Causes: undamped full step with no step limit; the SVD cutoff is an absolute 1e-10 (`la.go:712`), meaningless in float32, so near-singular poses give huge steps; joints are clamped inside FK (`:126`) but J ignores the clamp, so iterates pin against a limit; stretched zero seed is singular (probe D1: stays at q=0). Failures return no best-effort `q`.
-  - Allocates `J`, `Jinv`, `deltaParams` every iteration (`:184-185`, `:221`) plus pool buffers in `Gepseu`.
+- Complete: no — orientation targets are still ignored (position only).
+- Tested: `TestBackward_RedundantChains` (4-link planar, 6-DOF: 300/300 each), `TestBackward_AlphaAndLengthJoints` (200/200), `TestBackward_HexlegRealisticWorkspace` (probe R nominal and warm 500/500), `TestBackward_FullLimitsNoFalseJointLimit` (2000/2000, 0 `ErrJointLimit`), `TestBackward_TypedFailures` (F1/E2 → `ErrJointLimit`, E1 → `ErrUnreachable`, best-effort q in limits and closer than the seed), `TestBackward_SingularSeed`, `TestBackward_PrismaticUnitInvariance` (gantry/SCARA m vs mm equal), `TestBackward_NonFiniteInput`, `TestBackward_NoAllocations`, review fixes `TestBackward_OverflowResidualNoStaleAnswer`, `TestBackward_InnerHoleUnreachable` ((0,0,0), (0.039,0,0)), `TestBackward_BlockedClassification` (blocked local minimum → `ErrNoConvergence`; in-limit lifted branch → nil), `TestBackward_BestEffortIsMinimumResidual` (≤ a 49³ grid minimum), `TestConfig_Validate`, `TestNew_RejectsInvalidConfig`, finite-difference Jacobian check for all four joint kinds. Mutants D15/D16 and "best = last attempt" are killed. The lead's probe (30/60/90 mm, ±π limits, seed 0.1) went from 29/500 to 500/500.
+- Correct: yes on these sets. Limitations: the `ErrJointLimit` check only searches near the best pose (2–3/2000 random-seed targets and 1/9000 nominal-seed targets still get a false `ErrJointLimit`; 8/500 on a 4-joint prismatic chain); classification of rare borderline targets can differ between normal and `-race` builds (floating-point codegen); inner-hole best effort is a local, not global, minimum.
 
 ## TODOs
 
-- [ ] Make IK work for n>3: use `mat.DampedLeastSquares` (pseudo_inverse.go:48) or SVD of Jᵀ — denavithartenberg.go:216 #p1 #ER-017
-- [ ] Return best-effort `q` and a typed reason (unreachable / joint limit) instead of leaving `controls` untouched — denavithartenberg.go:110 #p2
-- [ ] Tests: 3-DOF leg cold/warm seeds, >3-DOF chain, joint-limit target (failing-test-first, see [[ER-R2-ik-review]] ER-017) — denavithartenberg_test.go #p2
-- [ ] Preallocate J/J⁺/Δq in the struct; no per-iteration allocation — denavithartenberg.go:184 #p3
-- [ ] Optional orientation IK (6×n J, quaternion error) — denavithartenberg.go:243 #p3
+- [x] Make IK work for n>3 (damped least squares) — denavithartenberg.go `dlsStep` #p1 #ER-017
+- [x] Return best-effort `q` and a typed reason (unreachable / joint limit) instead of leaving `controls` untouched — denavithartenberg.go `Backward` #p2
+- [x] Tests: 3-DOF leg cold/warm seeds, >3-DOF chain, joint-limit target — ik_robust_test.go #p2
+- [x] Preallocate J/J⁺/Δq in the struct; no per-iteration allocation — denavithartenberg.go `New` #p3
+- [ ] Optional orientation IK (6×n J, quaternion error) — denavithartenberg.go #p3
+- [ ] Global check before reporting `ErrJointLimit` (rare false reports from random seeds) — denavithartenberg.go #p3
 
 ## Links
 
-- Module: [[kinematics]] · [[dh-geometric-jacobian]] · [[dh-forward-kinematics]] · [[planar-3dof-leg-kinematics]] · [[ER-R2-ik-review]] · [[W3-legged-ik]] · wide-matrix pinv failure / DLS alternative: [[mat-pseudo-inverse]] · FD Jacobian helper: [[mat-numeric-jacobian]]
+- Module: [[kinematics]] · [[dh-geometric-jacobian]] · [[dh-forward-kinematics]] · [[planar-3dof-leg-kinematics]] · [[ER-R2-ik-review]] · [[W3-legged-ik]] · [[mat-pseudo-inverse]] · [[mat-numeric-jacobian]]

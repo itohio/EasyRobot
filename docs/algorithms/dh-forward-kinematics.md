@@ -31,7 +31,7 @@ evidence: "go test -count=1 ./x/math/control/kinematics/joints/dh → ok, 7 test
 
 - [ ] Fix rotation→quaternion (conjugate) in `Matrix.Quaternion`; add test Rz(90°)→[0,0,√½,√½] — x/math/mat/mat.go:626 (owner [[mat-vec]]) #p1 #ER-021
 - [ ] Add quaternion assertions to `TestDenavitHartenberg_Forward` — denavithartenberg_test.go:29 #p2
-- [ ] Reject or warn on `Min==Max==0` configs (zero-value limits clamp all joints) — dh/config.go:37 #p2
+- [x] Reject or warn on `Min==Max==0` configs (zero-value limits clamp all joints) — `dh.New` returns `ErrInvalidConfig` via `Config.Validate` since [[ER-017-dh-planar-ik-robustness|ER-017]] #p2
 - [ ] Avoid per-call heap copy from `H0i[n].View()`; read rotation from the fixed `Matrix4x4` — denavithartenberg.go:139 #p3
 - [ ] Pick one quaternion layout repo-wide ([x y z w] vs [w x y z]) — manipulator.proto vs denavithartenberg.go:75 #p2
 

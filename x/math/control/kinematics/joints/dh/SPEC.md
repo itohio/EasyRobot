@@ -31,13 +31,15 @@ type Config struct {
 
 **Parameter Index**:
 - `0`: Theta is variable (revolute joint)
-- `1`: Alpha is variable (prismatic joint with twist)
+- `1`: Alpha is variable (revolute about the link's x axis)
 - `2`: R is variable (prismatic joint along X)
 - `3`: D is variable (prismatic joint along Z)
 
 **Joint Types**:
-- **Revolute Joint**: Index = 0, Theta is variable
+- **Revolute Joint**: Index = 0 (θ) or 1 (α); angles wrap modulo 2π into the limits during IK
 - **Prismatic Joint**: Index = 2 or 3, R or D is variable
+
+**Validation**: `Config.Validate()` rejects non-finite fields, `Min >= Max` (so the zero value, which would pin the joint at 0, is rejected) and `Index ∉ {0,1,2,3}`; errors wrap `kintypes.ErrInvalidConfig`. Units: radians and metres.
 
 **Questions**:
 1. Should we support more joint types (cylindrical, spherical)?
@@ -78,10 +80,16 @@ func (p *DenavitHartenberg) Backward(state mattype.Matrix, destination mattype.M
 4. Extract position (x, y, z) from the final transform and write to `destination`.
 5. Extract orientation (quaternion) from the final transform and write to rows 3–6 of `destination`.
 
-**Inverse Kinematics (IK)**:
-- Iterative Jacobian pseudo-inverse solver updating joint parameters in-place.
-- Consumes a desired end-effector pose (position + quaternion) stored in `destination` and writes solved joint parameters to the `controls` column vector.
-- Returns `ErrNoConvergence` when the solver fails to reach the required tolerance within `maxIterations`.
+**Constructor**: `New(eps float32, maxIterations int, cfg ...Config) (*DenavitHartenberg, error)` validates every joint, `eps > 0`, `maxIterations >= 0`, at least one joint, and preallocates all solver buffers.
+
+**Inverse Kinematics (IK)** (position only; orientation rows of `destination` are ignored):
+- Damped least squares `Δq = S·J'ᵀ(J'J'ᵀ + λ²I)⁻¹e` on the column-scaled Jacobian `J' = J·S` (S = 1 for θ/α joints, `scale` for r/d joints, so every column is a length and λ is unit-consistent), 3×3 Cholesky, any DOF incl. n > 3. Adaptive λ (Levenberg–Marquardt accept/reject; floor `3e-3·scale` acts as the relative σ cutoff), Cartesian error clamped to `0.2·scale` per step, per-joint step cap (0.35 rad / `0.1·scale`), revolute angles wrapped into the limits, limit-aware active set (joints on a limit pushed outward are removed from the step). `scale` = Σ|(R, D)| per joint, so tuning is unit-independent (gantry and SCARA give identical results in m and mm).
+- An attempt ends early when it crawls along a limit (< 10 % distance gain per 8 iterations with a joint blocked) or stalls. Up to 4 restarts share the `maxIterations` budget. For the most proximal blocked angular joint: flip the elbow (negate the next parallel-axis joint, re-aim the blocked one at the target), else re-aim it at the target, else aim it away from the target (a yaw whose foot must fold behind its axis); a stall with no blocked joint restarts nudged by ±0.2 rad.
+- Jacobian columns: θ `zᵢ × (pₙ − oᵢ)`, α `xᵢ₊₁ × (pₙ − oᵢ₊₁)`, r `xᵢ₊₁`, d `zᵢ`.
+- Input errors (dimensions; `kintypes.ErrNonFinite` for a NaN/Inf target or seed) return before solving and leave `controls` untouched. Otherwise `controls` is always written with the best in-limit solution of this call (initialised from the seed, so a residual that overflows float32 returns the seed). Errors: `kintypes.ErrUnreachable` (target beyond Σ|(R, D)|, or stalled at a residual minimum with no joint blocked); for a blocked failure up to 30 extra iterations run with the limits lifted: converging in-limit returns that solution, converging (or getting ≥ 4× closer) only past a limit → `kintypes.ErrJointLimit`, ending at a stationary point with a nonzero residual (`|Jᵀe| ≤ 1e-2·‖J‖·|e|`, e.g. inside the inner workspace hole) → `kintypes.ErrUnreachable`, otherwise `kintypes.ErrNoConvergence`. This is a local test: another in-limit branch may exist (seen in ≤ 3/2000 random-seed cases).
+- Not safe for concurrent use (preallocated workspaces): one instance per goroutine / leg.
+- No allocation per call, including failure and restart paths (`testing.AllocsPerRun` = 0 when callers pass pre-boxed matrices).
+- Measured (hexapod leg 39/45/100 mm, eps 1e-4 m, 100 iterations): review probe R workspace nominal seed 500/500 (iterations p50/p90/max 5/8/27), zero seed 500/500, warm 500/500; full-limit targets (half knee-up) from the nominal seed 2000/2000; 4-link planar and 6-DOF PUMA-like 300/300.
 
 **Recommended IK Approach**:
 - **For 2-3 DOF**: Analytical solutions (geometric)
@@ -159,9 +167,9 @@ func (p *DenavitHartenberg) Backward(state mattype.Matrix, destination mattype.M
 - `H0i` slice not initialized in `New()` - potential panic
 - Quaternion extraction assumes `Quaternion()` method exists on `Matrix4x4`
 
-### Inverse Kinematics (To Be Implemented)
+### Inverse Kinematics
 
-**Status**: ❌ Not Implemented
+**Status**: ✅ Implemented (position-only DLS, see above)
 
 **Requirements**:
 1. Support arbitrary number of joints (2, 3, 4, 5, 6, 7+)
@@ -246,12 +254,10 @@ function InverseKinematics(target_pos, target_quat):
 
 ## Known Issues
 
-1. **IK Not Implemented**: Inverse kinematics returns false
-2. **H0i Not Initialized**: Slice not allocated in constructor
-3. **No Joint Limit Enforcement in IK**: (will be needed)
-4. **No Singularity Handling**: (will be needed)
-5. **No Multiple Solutions**: (will be needed)
-6. **Limited Testing**: Missing comprehensive tests
+1. **Orientation targets ignored**: IK is position only.
+2. **Quaternion output**: `Forward` rows 3–6 come from `Matrix.Quaternion`, which returns the inverse rotation (tracked separately).
+3. **Local method**: from a cold seed some targets end at a limit (`ErrJointLimit` with best effort); seed from the previous solution when tracking.
+4. **No Multiple Solutions**: one solution per call, chosen by the seed.
 
 ## Potential Improvements
 

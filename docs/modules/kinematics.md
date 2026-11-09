@@ -45,14 +45,16 @@ Specs and design docs (`SPEC.md`, `joints/dh/SPEC.md`, `joints/planar/SPEC.md`, 
 
 ## Algorithms
 
-<!-- vault:algorithms h=920b0c522c27 -->
+<!-- vault:algorithms h=fd666c52ee17 -->
 
-Counts: 4 tested · 5 implemented · 4 partial · 0 stub · 0 unverified (13 algorithms)
+Counts: 6 tested · 5 implemented · 2 partial · 0 stub · 0 unverified (13 algorithms)
 
 | Algorithm | Status | Tests | Summary |
 |---|---|---|---|
+| [[dh-jacobian-pseudoinverse-ik]] | tested | pass | Damped least-squares position IK for any number of joints; limit-aware, restarts, typed errors, best-effort q, allocation-free (ER-017). |
 | [[mecanum-drive-kinematics]] | tested | pass | Four mecanum wheel rates ↔ chassis twist `[vx, vy, ω]` with fixed 3×4 / 4×3 matrices. |
 | [[planar-2dof-arm-kinematics]] | tested | pass | Yaw joint plus one pitch link: FK and closed-form IK. |
+| [[planar-3dof-leg-kinematics]] | tested | pass | Closed-form coxa–femur–tibia FK/IK; exact over the whole workspace incl. foot behind the yaw axis; typed errors (ER-017). |
 | [[rigid-body-velocity-wrench-model]] | tested | pass | Quasi-static proportional map from body velocity (or velocity error) to a clamped force/torque: `F… |
 | [[thruster-wrench-allocation]] | tested | pass | Forward: sums thrust vectors, `r × F` moments and reaction torques into a body wrench and… |
 | [[dh-geometric-jacobian]] | implemented | none | none direct |
@@ -62,8 +64,6 @@ Counts: 4 tested · 5 implemented · 4 partial · 0 stub · 0 unverified (13 alg
 | [[wheel-twist-least-squares]] | implemented | none | Fits `(v, ω)` to N steered wheels by solving the 2×2 normal equations of `wheel_i·r = cos δ_i·v +… |
 | [[ackermann-steer4-kinematics]] | partial | none | Front-steered 4-wheel chassis: wheel rates + two steering angles ↔ `[v, ω, δ_fl, δ_fr]`. |
 | [[dh-forward-kinematics]] | partial | pass | partial (orientation quaternion inverted) |
-| [[dh-jacobian-pseudoinverse-ik]] | partial | pass | partial (fails for >3 joints; fragile from a cold seed) |
-| [[planar-3dof-leg-kinematics]] | partial | pass | partial (silent wrong answers behind the yaw axis, out of reach, at limits) |
 
 <!-- /vault:algorithms -->
 

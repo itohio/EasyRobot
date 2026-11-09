@@ -22,7 +22,9 @@ type Config struct {
 **Characteristics**:
 - Joint rotation around Z-axis (perpendicular to plane)
 - Link length in XZ plane
-- Angle limits for joint constraints
+- Angle limits for joint constraints (radians; lengths in metres)
+
+**Validation**: `Config.Validate()` rejects non-finite fields, `Min >= Max` (the zero value would pin the joint at 0) and negative lengths; errors wrap `kintypes.ErrInvalidConfig`. `New2DOF([2]Config) (*p2d, error)` and `New3DOF([3]Config) (*p3d, error)` validate; `New3DOF` also requires femur and tibia lengths > 0.
 
 **Questions**:
 1. Should we support prismatic joints in planar kinematics?
@@ -104,18 +106,14 @@ func (p *p3d) Backward(state mattype.Matrix, destination mattype.Matrix, control
 4. Rotate around Z-axis by `a0`
 5. Store position and orientation angles in the provided `destination` matrix
 
-**Inverse Kinematics**:
-1. Calculate distance from base to target:
-   - `x_prime = sqrt(x^2 + y^2) - l0`
-2. Calculate geometric parameters using law of cosines:
-   - `gamma = atan2(z, x_prime)`
-   - `beta = acos((l1^2 + l2^2 - r^2) / (2*l1*l2))`  // Where r^2 = x_prime^2 + z^2
-   - `alpha = acos((r^2 + l1^2 - l2^2) / (2*l1*r))`
-3. Calculate joint angles:
-   - `a0 = atan2(y, x)`  // Base rotation
-   - `a1 = gamma + alpha`  // First link angle
-   - `a2 = beta - π`  // Second link angle (relative to first)
-4. Apply joint limits and write results to the `controls` matrix
+**Inverse Kinematics** (analytic, exact, no allocation):
+1. Signed reach: for coxa `a0 = atan2(y, x)` the reach is `s = +sqrt(x^2 + y^2)`; for `a0 + π` (foot behind the yaw axis) `s = -sqrt(x^2 + y^2)`. `x_prime = s - l0`, `r^2 = x_prime^2 + z^2`.
+2. If `r` is outside `[|l1 - l2|, l1 + l2]` (relative slack 1e-5) the direction is unreachable.
+3. Knee: `a2 = ∓acos((r^2 - l1^2 - l2^2) / (2*l1*l2))` (knee down, `a2 ≤ 0`, first); femur `a1 = atan2(z, x_prime) - atan2(l2*sin(a2), l1 + l2*cos(a2))`.
+4. Every angle is wrapped modulo 2π into its limits; candidates are tried in the order (coxa forward, knee down), (forward, knee up), (reversed, knee down), (reversed, knee up); the first in-limit one is returned with `nil`.
+5. Otherwise `controls` still receives a best-effort in-limit solution and the error is `kintypes.ErrUnreachable` (no direction reachable: leg stretched/folded towards the target) or `kintypes.ErrJointLimit` (the nearest of: for the coxa clamped towards the foot and reversed, each tibia candidate {Min, Max, 0, π} with the femur re-aimed at the target, and each femur limit with the tibia re-aimed; all clamped).
+- `p2d` and `p3d` reject a NaN/Inf target with `kintypes.ErrNonFinite`, `controls` untouched. Instances hold scratch state: one per goroutine / leg.
+- Verified: review probe R workspace 500/500 exact (78 feet behind the yaw axis), ±π limits 2000/2000 exact (`FK(IK(t))` within 1e-4 m).
 
 **Questions**:
 1. Should we support multiple IK solutions (elbow up/down)?
@@ -271,9 +269,7 @@ func NewPlanar(cfg []Config) kinematics.Kinematics {
 
 1. **Arbitrary DOF Not Implemented**: Only 2DOF and 3DOF supported
 2. **No Multiple Solutions**: IK returns single solution
-3. **No Workspace Validation**: No check if target is reachable
-4. **Limited Testing**: Missing comprehensive tests
-5. **No Solution Validation**: IK solutions not validated against joint limits in some cases
+3. **2DOF IK**: targets off the reachable surface and limit violations are still clamped silently (3DOF reports typed errors).
 
 ## Potential Improvements
 

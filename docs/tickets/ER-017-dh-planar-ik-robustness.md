@@ -2,7 +2,7 @@
 id: ER-017
 title: "DH and planar IK robustness"
 type: ticket
-status: ready
+status: done
 kind: implementation
 owner: easyrobot
 workstream: W3
@@ -39,11 +39,11 @@ Source/test edits are approved by the owner's autonomy instruction (roster `deci
 
 ## Acceptance evidence required later
 
-- [ ] **T-IK-02** — failing test first: 4-link planar and 6-DOF reachable targets converge (probe G1/G2). Fix: `DampedLeastSquares` (`mat/pseudo_inverse.go:48`) or SVD of Jᵀ.
-- [ ] **T-IK-03** — failing test first: hexleg realistic workspace, nominal seed ≥ 95 % within 100 iterations; F1 returns `ErrJointLimit` plus best-effort q. Fix: DLS with adaptive λ, step cap, limit-aware (clamp-and-zero-column), relative σ cutoff; preallocated buffers.
-- [ ] **T-IK-05** — failing test first: unreachable → `ErrUnreachable`; foot behind the yaw axis solved or `ErrJointLimit`; probe R set 500/500 exact. Fix: signed reach, angle wrap, typed errors (`planar3dof.go:122-144`).
-- [ ] **T-IK-06** — failing test first: `dh.New` with a zero-value `Config` returns an error (or `Validate()` does). Fix: `New` returns `(…, error)` or a separate `Validate`.
-- [ ] Each test above recorded failing before its fix; `GOTOOLCHAIN=local GOPROXY=off go test -count=1 ./x/math/control/kinematics/...` passes afterwards; algorithm notes updated per [[conventions#After a fix|After a fix]].
+- [x] **T-IK-02** — `TestBackward_RedundantChains` (4-link planar, 6-DOF): `ErrUnsupportedOperation` before, 300/300 each after; `TestBackward_AlphaAndLengthJoints` 0/200 → 200/200. Fix: damped least squares with a 3×3 Cholesky solve (`mat` untouched).
+- [x] **T-IK-03** — `TestBackward_HexlegRealisticWorkspace` nominal seed 401/500 → 500/500 (p90 8 iterations); `TestBackward_TypedFailures` F1/E2 → `ErrJointLimit`, E1 → `ErrUnreachable`, best-effort q in limits; `TestBackward_NoAllocations` 156 → 0; review round: `TestBackward_FullLimitsNoFalseJointLimit` 1543/2000 → 2000/2000, `TestBackward_PrismaticUnitInvariance` (gantry mm 0/300 → 300/300), `TestBackward_NonFiniteInput` (new `ErrNonFinite`).
+- [x] **T-IK-05** — `TestPlanar3DOF_ProbeRWorkspace` 422/500 → 500/500 exact; `TestPlanar3DOF_FullRangeExact` 1486/2000 → 2000/2000; `TestPlanar3DOF_TypedErrors`, `TestPlanar3DOF_NonFiniteTarget`. Fix: four candidates (coxa forward/reversed × knee down/up), angle wrap, typed errors.
+- [x] **T-IK-06** — `TestConfig_Validate`, `TestNew_RejectsInvalidConfig` (dh and planar): compile failure before; `dh.New`, `planar.New2DOF/New3DOF` now return `(…, error)`.
+- [x] Each test recorded failing before its fix (`tmp/easyrobot/er017/ik/before-*.txt`); `go test -race -count=1 ./x/math/control/kinematics/...` passes; algorithm notes updated ([[dh-jacobian-pseudoinverse-ik]], [[planar-3dof-leg-kinematics]], [[planar-2dof-arm-kinematics]], [[dh-forward-kinematics]]).
 
 ## Effort uncertainty and revision trigger
 
@@ -51,4 +51,4 @@ Product's guess: part of M-a stage 1 (**M–L** together with ER-018); this tick
 
 ## Implementation evidence
 
-None. Planning ticket only.
+Report: ER-017-018 (filed with ER-018). The lead's probe (30/60/90 mm, ±π limits, seed 0.1) went from 29/500 to 500/500.
