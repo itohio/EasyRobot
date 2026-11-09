@@ -21,3 +21,5 @@
 temporary_for_reference_only/
 tmp/
 coverage
+# Obsidian per-user layout
+docs/.obsidian/workspace*.json
