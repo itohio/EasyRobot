@@ -4,10 +4,14 @@ go 1.25
 
 require (
 	github.com/chewxy/math32 v1.11.1
+	github.com/gen2brain/malgo v0.11.24
+	github.com/go-audio/audio v1.0.0
+	github.com/go-audio/wav v1.1.0
 	github.com/itohio/dndm v0.0.0
 	github.com/mattn/go-tflite v1.0.5
 	github.com/mr-tron/base58 v1.2.0
 	github.com/rs/zerolog v1.23.0
+	github.com/spf13/cobra v1.10.1
 	github.com/stretchr/testify v1.11.1
 	github.com/vladimirvivien/go4vl v0.3.0
 	gocv.io/x/gocv v0.42.0
@@ -25,10 +29,7 @@ require (
 	github.com/awalterschulze/gographviz v2.0.3+incompatible // indirect
 	github.com/chewxy/hm v1.0.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/gen2brain/malgo v0.11.24 // indirect
-	github.com/go-audio/audio v1.0.0 // indirect
 	github.com/go-audio/riff v1.0.0 // indirect
-	github.com/go-audio/wav v1.1.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/flatbuffers v2.0.6+incompatible // indirect
@@ -40,7 +41,6 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/smallnest/ringbuffer v0.0.0-20250317021400-0da97b586904 // indirect
-	github.com/spf13/cobra v1.10.1 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/tarm/serial v0.0.0-20180830185346-98f6abe2eb07 // indirect
