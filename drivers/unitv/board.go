@@ -2,7 +2,11 @@
 
 package unitv
 
-import "machine"
+import (
+	"machine"
+
+	"github.com/itohio/EasyRobot/drivers/camera"
+)
 
 // UnitV pins (M5Stack UnitV pin map).
 const (
@@ -22,3 +26,17 @@ const (
 	UARTRX = machine.P04
 	UARTTX = machine.P05
 )
+
+// CameraPins are the camera control pins: the Sipeed/MaixPy K210 board
+// mapping IO40–IO47, which UnitV shares (verified by the M3 sensor-id read,
+// docs/evidence/ER-K210-M3.md).
+var CameraPins = camera.Pins{
+	SDA:   machine.P40,
+	SCL:   machine.P41,
+	RST:   machine.P42,
+	VSYNC: machine.P43,
+	PWDN:  machine.P44,
+	HREF:  machine.P45,
+	XCLK:  machine.P46,
+	PCLK:  machine.P47,
+}
