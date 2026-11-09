@@ -18,9 +18,23 @@ are package sentinels returned unwrapped.
 ## Accumulation
 
 `acc = bias[o] + Σ (x − zpIn)·w` in int32. Padded taps contribute 0 (padding
-value is `zpIn`). The accumulator wraps on int32 overflow (Go semantics); the
-caller keeps `|bias| + K·255·128 < 2^31` (K = taps·inC), i.e. K ≲ 65 000 for
-small biases.
+value is `zpIn`). The reduction length K (taps·inC for conv, taps for
+depthwise and pools, In for FC) is limited to `MaxTaps = ⌊(2^31−1)/(255·128)⌋ = 65 793`
+(`ErrShape` above it), so `Σ (x − zpIn)·w` cannot wrap; keeping
+`|bias| + K·255·128 < 2^31` is the caller's responsibility (the bias term is
+not checked).
+
+Accelerated paths may evaluate `Σ x·w − zpIn·Σw` (with the padded-tap
+correction) instead of subtracting the zero point per tap: within the
+`MaxTaps` bound the integer sums are exact, so the bytes are identical.
+
+## Size limits
+
+Every element count — dimensions, kernel sizes, strides, `H·W·C`,
+`outH·outW·C`, weight counts — is computed with overflow-checked
+multiplication and limited to `MaxElements = 2^30`, so sizes fit a 32-bit
+`int` (ESP32-S3) and a huge shape can never wrap to a small value that passes
+the length checks. Violations return `ErrShape` before any slice is touched.
 
 ## Requantisation
 
@@ -50,7 +64,7 @@ Expressed purely by the clamp range `[ActMin, ActMax]` (`ActMin > ActMax` →
 `ErrActivation`; note the zero value `[0,0]` is valid and clamps to 0):
 
 - `ActNone() → [-128, 127]`
-- `ActReLU(scale, zp) → [zp, 127]`
+- `ActReLU(scale, zp) → [zp, 127]` (`scale` is unused; kept for a signature uniform with `ActReLU6`)
 - `ActReLU6(scale, zp) → [zp, Quantize6(scale, zp)]`,
   `Quantize6 = clamp(zp + roundHalfAwayFromZero(6/scale), −128, 127)` (float64 from the float32 scale).
 
@@ -87,8 +101,9 @@ integer domain (TFLite behaviour): on an exact `.5` tie where `mean(q)` and
 ## Errors
 
 `ErrShape` (non-positive dims/kernel/stride, unknown padding, VALID with
-`k > in`), `ErrLength` (slice length ≠ shape, bias not `nil`/`OutC`,
-requant ≠ `OutC`), `ErrRequant`, `ErrActivation`.
+`k > in`, any count above `MaxElements`, reduction length above `MaxTaps`),
+`ErrLength` (slice length ≠ shape, bias not `nil`/`OutC`, requant ≠ `OutC`),
+`ErrRequant`, `ErrActivation`.
 
 ## Verification
 

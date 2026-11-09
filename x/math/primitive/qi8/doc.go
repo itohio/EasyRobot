@@ -10,8 +10,10 @@
 //     accumulator scale (inScale*weightScale[o]).
 //   - Conv weights are OHWI [OutC][KH][KW][InC]; depthwise weights are
 //     [KH][KW][C] (channel multiplier 1); fully connected weights are [Out][In].
-//   - acc = bias[o] + sum (x - zpIn) * w in int32 (wrapping); padded taps
-//     contribute 0 (pad with zpIn).
+//   - acc = bias[o] + sum (x - zpIn) * w in int32; padded taps contribute 0
+//     (pad with zpIn). The reduction length is limited to MaxTaps so the sum
+//     cannot wrap, and every size is overflow-checked against MaxElements;
+//     violations return ErrShape.
 //   - Output y = clamp(roundHalfAwayFromZero(acc*Mult / 2^(31-Shift)) + zpOut,
 //     actMin, actMax) computed exactly in int64 with a single rounding (see
 //     Requant). TFLite's two-step SaturatingRoundingDoublingHighMul +

@@ -15,6 +15,9 @@ func (p Pool2DParams) OutShape() (Shape, error) {
 	if err != nil {
 		return Shape{}, err
 	}
+	if _, err := g.outLen(g.ch); err != nil {
+		return Shape{}, err
+	}
 	return Shape{H: g.outH, W: g.outW, C: p.In.C}, nil
 }
 
@@ -23,7 +26,11 @@ func (p Pool2DParams) prepare(dst, src []int8) (geometry, error) {
 	if err != nil {
 		return g, err
 	}
-	if len(src) != p.In.Len() || len(dst) != g.outH*g.outW*g.ch {
+	outLen, err := g.outLen(g.ch)
+	if err != nil {
+		return g, err
+	}
+	if len(src) != g.inLen || len(dst) != outLen {
 		return g, ErrLength
 	}
 	return g, nil

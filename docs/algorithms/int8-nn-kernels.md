@@ -20,14 +20,14 @@ evidence: "go test -race -count=1 ./x/math/primitive/qi8 → ok (2026-11-09): 0 
 
 **Semantics:**
 - NHWC, batch 1. Activations int8 asymmetric (scale, zero point); weights int8 symmetric, per output channel; bias int32 in accumulator scale. Conv weights OHWI, depthwise `[kh][kw][C]`, FC `[out][in]`.
-- `acc = bias + Σ (x − zpIn)·w` in int32 (wraps on overflow; the caller bounds K). Padded taps contribute 0.
+- `acc = bias + Σ (x − zpIn)·w` in int32; the reduction length is limited to `MaxTaps` = 65 793 so the sum cannot wrap (the bias term is the caller's responsibility). Every size is overflow-checked against `MaxElements` = 2^30 (fits a 32-bit int); violations return `ErrShape` before any slice is touched (`TestHugeShapesRejected`, `TestReductionLengthBound`, red first: a wrapped shape used to pass the length checks and `MaxPool2D` panicked). Padded taps contribute 0.
 - Requantisation `Requant{Mult (Q31, [2^30, 2^31)), Shift ∈ [−31, 30]}`, real multiplier M' = Mult·2^(Shift−31): `y = clamp(round_half_away(acc·Mult / 2^(31−Shift)) + zpOut, actMin, actMax)`, computed exactly in int64 with **one** rounding. TFLite's two-step SRDHM + RoundingDivideByPOT can differ by 1 LSB on rare ties; a TFLite-compatible mode is a TODO.
 - Same padding as TensorFlow (out = ⌈in/stride⌉, pad before = total/2). Pools count only valid cells; `AvgPool2D` rounds the mean of the stored int8 values half away from zero (TFLite behaviour).
 - `ActMin`/`ActMax` zero values clamp everything to 0 — set them with `ActNone`/`ActReLU`/`ActReLU6`.
 
 ## Completeness review
 
-- Complete: no — no TFLite-compatible requant mode, no dilation, no depthwise multiplier > 1, no batched GEMM (1×1 conv covers per-pixel GEMM), no saturating accumulators.
+- Complete: no — no TFLite-compatible requant mode, no dilation, no depthwise multiplier > 1, no batched GEMM (1×1 conv covers per-pixel GEMM).
 - Tested: seeded random tests against an independent exact reference (dequantise to big.Float, compute, quantise with M', round half away, clamp): Requant.Apply 1 863 720 outputs over every shift; FullyConnected 2000 cases; Conv2D 3000; DepthwiseConv2D 3000 (half 3×3, stride 1/2); MaxPool2D and AvgPool2D 3000 each; ReLU/ReLU6 1000 — **0 mismatches**. Hand-computed cases for each op, padding geometry with non-zero input zp, ±128/127 zero points, and every error path. A deliberately broken rounding was caught by the reference tests. `testing.AllocsPerRun` 0 for every kernel. TinyGo 0.43 `-print-allocs=qi8` is empty for `-target=xiao-esp32s3` and `-target=drivers/unitv/target/unitv.json`.
 - Host speed (Apple M5): conv 3×3 ≈ 1.0–2.1 G MAC/s, 1×1 conv 1.4 G, depthwise 3×3 ≈ 0.6 G, FC 1024×128 2.2 G, Dot 2.5 G MAC/s.
 - Correct: yes against the reference.

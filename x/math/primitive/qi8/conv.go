@@ -17,11 +17,14 @@ type Conv2DParams struct {
 
 // OutShape returns the output shape for p.
 func (p Conv2DParams) OutShape() (Shape, error) {
-	if p.OutC <= 0 {
+	if p.OutC <= 0 || p.OutC > MaxElements {
 		return Shape{}, ErrShape
 	}
 	g, err := newGeometry(p.In, p.KH, p.KW, p.StrideH, p.StrideW, p.Padding)
 	if err != nil {
+		return Shape{}, err
+	}
+	if _, err := g.outLen(p.OutC); err != nil {
 		return Shape{}, err
 	}
 	return Shape{H: g.outH, W: g.outW, C: p.OutC}, nil
@@ -36,7 +39,7 @@ func (p Conv2DParams) OutShape() (Shape, error) {
 //	acc = bias[o] + sum (x - InZP) * w      (int32; padded taps contribute 0)
 //	y   = clamp(rq[o].Apply(acc) + OutZP, ActMin, ActMax)
 func Conv2D(dst, src, weights []int8, bias []int32, rq []Requant, p Conv2DParams) error {
-	if p.OutC <= 0 {
+	if p.OutC <= 0 || p.OutC > MaxElements {
 		return ErrShape
 	}
 	g, err := newGeometry(p.In, p.KH, p.KW, p.StrideH, p.StrideW, p.Padding)
@@ -44,8 +47,19 @@ func Conv2D(dst, src, weights []int8, bias []int32, rq []Requant, p Conv2DParams
 		return err
 	}
 	inC, outC := g.ch, p.OutC
-	wPerOut := g.kh * g.kw * inC
-	if len(src) != p.In.Len() || len(weights) != outC*wPerOut || len(dst) != g.outH*g.outW*outC {
+	wPerOut, ok := mul2(g.taps, inC)
+	if !ok || wPerOut > MaxTaps {
+		return ErrShape
+	}
+	wLen, ok := mul2(outC, wPerOut)
+	if !ok {
+		return ErrShape
+	}
+	outLen, err := g.outLen(outC)
+	if err != nil {
+		return err
+	}
+	if len(src) != g.inLen || len(weights) != wLen || len(dst) != outLen {
 		return ErrLength
 	}
 	if err := validBias(bias, outC); err != nil {
@@ -121,7 +135,15 @@ func DepthwiseConv2D(dst, src, weights []int8, bias []int32, rq []Requant, p Dep
 		return err
 	}
 	c := g.ch
-	if len(src) != p.In.Len() || len(weights) != g.kh*g.kw*c || len(dst) != g.outH*g.outW*c {
+	wLen, ok := mul2(g.taps, c)
+	if !ok {
+		return ErrShape
+	}
+	outLen, err := g.outLen(c)
+	if err != nil {
+		return err
+	}
+	if len(src) != g.inLen || len(weights) != wLen || len(dst) != outLen {
 		return ErrLength
 	}
 	if err := validBias(bias, c); err != nil {

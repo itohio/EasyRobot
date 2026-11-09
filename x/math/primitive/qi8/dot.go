@@ -46,10 +46,14 @@ type FCParams struct {
 //
 // weights are [Out][In] row-major; bias is nil or len Out; rq has len Out.
 func FullyConnected(dst, src, weights []int8, bias []int32, rq []Requant, p FCParams) error {
-	if p.In <= 0 || p.Out <= 0 {
+	if p.In <= 0 || p.Out <= 0 || p.In > MaxTaps {
 		return ErrShape
 	}
-	if len(src) != p.In || len(dst) != p.Out || len(weights) != p.In*p.Out {
+	wLen, ok := mul2(p.In, p.Out)
+	if !ok {
+		return ErrShape
+	}
+	if len(src) != p.In || len(dst) != p.Out || len(weights) != wLen {
 		return ErrLength
 	}
 	if err := validBias(bias, p.Out); err != nil {
