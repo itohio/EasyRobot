@@ -2,6 +2,20 @@
 
 // ESP32-S3 PIE (SIMD) inner loops for the qi8 prepared layers.
 // See impl_esp32s3.go for the data layout and the exactness argument.
+//
+// Undeclared registers (assumption; recheck on every TinyGo/clang upgrade).
+// The asm below uses the zero-overhead loop registers LBEG/LEND/LCOUNT
+// (loopnez), the PIE vector registers q0–q3 and the accumulators ACCX and
+// QACC without naming them as clobbers: TinyGo 0.43's clang rejects those
+// register names in clobber lists. This is correct only while no
+// compiler-generated code in these functions uses hardware loops or PIE
+// (review R-NN-R3-N2 checked qi8_pie_dot_rows at 6d62a57 for -Oz, -O1, -O2,
+// -O3 and -Os: the enclosing C loop is a plain branch loop and the compiler
+// emits no ee.*; qi8_pie_dw_px, added later, has not been disassembled yet),
+// and while no interrupt handler uses them: TinyGo's interrupt entry saves
+// neither the loop registers nor PIE state, so an ISR that used either would
+// corrupt a running kernel. Moving the loops into a separate .S file (as
+// ESP-DSP does) would remove the first assumption, not the second.
 
 #include <stdint.h>
 

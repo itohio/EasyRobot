@@ -143,15 +143,37 @@ Two tiers:
   `W`/`Bias`/`RQ`/`Scratch` slice headers) changed since. Contents of `W`,
   `Bias`, `RQ` must not be modified after `Prepare`. `ReLULayer`/`ReLU6Layer`/`AddLayer`
   have shape `{1, 1, Len}` with `Len ∈ [1, MaxElements]`; FC shapes are
-  `{1, 1, In}` → `{1, 1, Out}`. Weighted layers take an optional caller
-  `Scratch` of `ScratchLen()` bytes for backend-repacked/aligned weights
-  (`0` and ignored for the generic backend); `Prepare` and `Run` never
-  allocate.
+  `{1, 1, In}` → `{1, 1, Out}`. `Prepare` and `Run` never allocate.
 
-Prepared layers run through a per-op CPU backend chosen at build time
-(`impl_*.go`; `Backend()` names it: `"generic"`, later `"esp32s3-pie"`,
-RVV, …; `-tags qi8generic` forces generic). Every per-op backend must be
+**Scratch.** Weighted layers take a caller `Scratch` of at least
+`ScratchLen()` bytes for backend-repacked/aligned weights; the slice need
+not be aligned. The generic backend needs none (`ScratchLen() == 0`,
+`Scratch` ignored, nil works); the ESP32-S3 PIE backend needs it (a shorter
+`Scratch` is `ErrLength` from `Prepare`). Besides the packed weights,
+`Scratch` holds per-`Run` state (gathered patch, accumulators, tap table),
+so one prepared layer must not run concurrently with itself.
+
+**In-place weights.** To keep one copy of large weights, copy them into
+`InPlaceW()` (the first `len(W)` bytes of the backend's aligned weight
+region of `Scratch`; nil when the backend needs no `Scratch`, `P` is invalid
+or `Scratch` is short), set `W` to it and call `Prepare`: the backend packs
+them in place. While prepared, `W`'s bytes are in the backend layout; the
+next `Prepare` restores the original layout first and packs again, so
+`Prepare` may be repeated (also after a field change or a failed
+`Prepare`). `W` overlapping the packed region anywhere but at `InPlaceW()`
+is `ErrLength`; `W` outside it is a separate copy and is never modified.
+
+Prepared layers run through a per-op CPU backend chosen at build time only
+(`impl_*.go`, build tags; no runtime detection): `Backend()` names it —
+`"generic"` (all targets), `"esp32s3-pie"` (TinyGo `esp32s3`: conv/FC dot
+products in ACCX, depthwise in QACC; pools, activations and Add generic);
+`-tags qi8generic` forces generic. Every per-op backend must be
 **byte-identical** to the free-function reference in the same rounding mode.
+The test-only tag `qi8pieemu` builds the PIE backend's Go side on the host
+with pure-Go models of its C kernels (`pie_emu.go`, which also asserts the
+kernels' alignment and read-ahead preconditions), so `go test -tags
+qi8pieemu` runs the layer suite against it; `make qi8-pie` does that and
+compiles the PIE build with TinyGo.
 
 Whole-model offload (K210 KPU and similar) is outside this interface: it runs
 a compiled model in a model runner (e.g. `drivers/kpu` or a `qnet` backend)
@@ -167,4 +189,7 @@ kernels, SAME/VALID edges, zp ±128/127, extreme Mult/Shift, saturation).
 `TestNoAllocs`/`TestLayerNoAllocs` assert `AllocsPerRun == 0`. TinyGo
 `-print-allocs=qi8` is empty for `xiao-esp32s3` and the UnitV target.
 `layer_test.go` checks every prepared layer byte-for-byte against its free
-function on seeded random cases, and its error/`ErrNotPrepared` behaviour.
+function on seeded random cases, and its error/`ErrNotPrepared` behaviour,
+on whichever backend the build selects (generic, or the PIE emulation);
+`inplace_test.go` covers in-place packing, misplaced `W` and repeated
+`Prepare`.
