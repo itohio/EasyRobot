@@ -15,6 +15,12 @@ import "unsafe"
 // are validated (RQ) or repacked (by a backend that uses Scratch) only there,
 // and in-place edits are not detected. InShape and OutShape return the zero
 // Shape unless the last Prepare succeeded.
+//
+// In-place weights (W = InPlaceW()): Prepare repacks W inside Scratch, so
+// W's bytes are in the backend's layout while the layer is prepared. The
+// next Prepare first restores them to W's original layout and then packs
+// again, so Prepare may be repeated any number of times (also after a
+// field change or a failed Prepare). Do not read or edit W in between.
 
 // Op is a prepared layer.
 type Op interface {
@@ -53,6 +59,7 @@ type weightSnap struct {
 	packed     []int8 // scratch[:ScratchLen], nil when unused
 	bias       []int32
 	rq         []Requant
+	inPlace    bool // w was packed in place inside packed
 	ok         bool
 }
 
@@ -74,21 +81,25 @@ func packScratch(scratch []int8, n int) ([]int8, error) {
 
 // checkW rejects W that overlaps the backend's packed region of packed
 // (from weightOffset to the end) without starting exactly at
-// weightOffset: packing would overwrite rows not yet read. W at
-// weightOffset is packed in place (InPlaceW); W elsewhere is a separate copy.
-func checkW(w, packed []int8) error {
+// weightOffset: packing would overwrite rows not yet read. It reports
+// whether W starts there, i.e. is packed in place (InPlaceW); W elsewhere is
+// a separate copy.
+func checkW(w, packed []int8) (inPlace bool, err error) {
 	if len(w) == 0 || len(packed) == 0 {
-		return nil
+		return false, nil
 	}
 	off := weightOffset(packed)
 	ps := uintptr(unsafe.Pointer(&packed[0])) + uintptr(off)
 	pe := uintptr(unsafe.Pointer(&packed[0])) + uintptr(len(packed))
 	ws := uintptr(unsafe.Pointer(&w[0]))
 	we := ws + uintptr(len(w))
-	if we <= ps || pe <= ws || ws == ps {
-		return nil
+	switch {
+	case ws == ps:
+		return true, nil
+	case we <= ps || pe <= ws:
+		return false, nil
 	}
-	return ErrLength
+	return false, ErrLength
 }
 
 // inPlaceW returns the in-place weight slice of scratch for a backend that
@@ -148,6 +159,9 @@ func (l *Conv2DLayer) InPlaceW() []int8 {
 // ErrLength when Scratch is shorter than ScratchLen() or W overlaps the
 // packed weight region other than at InPlaceW.
 func (l *Conv2DLayer) Prepare() error {
+	if l.s.inPlace {
+		conv2DUnpack(l.s.packed, l.s.w, &l.pl) // restore W before anything else
+	}
 	l.pl, l.s = convPlan{}, weightSnap{}
 	pl, err := l.P.plan()
 	if err != nil {
@@ -163,12 +177,13 @@ func (l *Conv2DLayer) Prepare() error {
 	if err != nil {
 		return err
 	}
-	if err := checkW(l.W, packed); err != nil {
+	inPlace, err := checkW(l.W, packed)
+	if err != nil {
 		return err
 	}
 	conv2DPack(packed, l.W, l.Bias, l.RQ, &pl)
 	l.prep, l.pl = l.P, pl
-	l.s = weightSnap{w: l.W, scratch: l.Scratch, packed: packed, bias: l.Bias, rq: l.RQ, ok: true}
+	l.s = weightSnap{w: l.W, scratch: l.Scratch, packed: packed, bias: l.Bias, rq: l.RQ, inPlace: inPlace, ok: true}
 	return nil
 }
 
@@ -230,6 +245,9 @@ func (l *DepthwiseConv2DLayer) InPlaceW() []int8 {
 // ErrLength when Scratch is shorter than ScratchLen() or W overlaps the
 // packed weight region other than at InPlaceW.
 func (l *DepthwiseConv2DLayer) Prepare() error {
+	if l.s.inPlace {
+		depthwiseConv2DUnpack(l.s.packed, l.s.w, &l.pl)
+	}
 	l.pl, l.s = convPlan{}, weightSnap{}
 	pl, err := l.P.plan()
 	if err != nil {
@@ -245,12 +263,13 @@ func (l *DepthwiseConv2DLayer) Prepare() error {
 	if err != nil {
 		return err
 	}
-	if err := checkW(l.W, packed); err != nil {
+	inPlace, err := checkW(l.W, packed)
+	if err != nil {
 		return err
 	}
 	depthwiseConv2DPack(packed, l.W, l.Bias, l.RQ, &pl)
 	l.prep, l.pl = l.P, pl
-	l.s = weightSnap{w: l.W, scratch: l.Scratch, packed: packed, bias: l.Bias, rq: l.RQ, ok: true}
+	l.s = weightSnap{w: l.W, scratch: l.Scratch, packed: packed, bias: l.Bias, rq: l.RQ, inPlace: inPlace, ok: true}
 	return nil
 }
 
@@ -312,6 +331,9 @@ func (l *FCLayer) InPlaceW() []int8 {
 // shorter than ScratchLen() or W overlaps the packed weight region other
 // than at InPlaceW.
 func (l *FCLayer) Prepare() error {
+	if l.s.inPlace {
+		fullyConnectedUnpack(l.s.packed, l.s.w, &l.pl)
+	}
 	l.pl, l.s = fcPlan{}, weightSnap{}
 	pl, err := l.P.plan()
 	if err != nil {
@@ -327,12 +349,13 @@ func (l *FCLayer) Prepare() error {
 	if err != nil {
 		return err
 	}
-	if err := checkW(l.W, packed); err != nil {
+	inPlace, err := checkW(l.W, packed)
+	if err != nil {
 		return err
 	}
 	fullyConnectedPack(packed, l.W, l.Bias, l.RQ, &pl)
 	l.prep, l.pl = l.P, pl
-	l.s = weightSnap{w: l.W, scratch: l.Scratch, packed: packed, bias: l.Bias, rq: l.RQ, ok: true}
+	l.s = weightSnap{w: l.W, scratch: l.Scratch, packed: packed, bias: l.Bias, rq: l.RQ, inPlace: inPlace, ok: true}
 	return nil
 }
 

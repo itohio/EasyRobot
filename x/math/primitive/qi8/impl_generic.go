@@ -19,6 +19,9 @@ package qi8
 //     caller's slice need not be aligned), or 0.
 //   - *Pack(scratch, ...) runs once in Prepare after validation, with
 //     scratch == Scratch[:n] (nil when n == 0). It must not allocate.
+//   - *Unpack(scratch, w, pl) undoes an in-place *Pack (w aliased the
+//     packed weights): it restores w's original bytes from scratch, using
+//     the plan of that Pack. Prepare calls it before repacking.
 //   - *Run(...) gets the validated plan, the original weights and the packed
 //     scratch; dst and src lengths are already checked.
 //   - weightOffset(scratch) is where the packed weights start in a scratch
@@ -38,6 +41,8 @@ func conv2DScratchLen(*convPlan) int { return 0 }
 
 func conv2DPack(_, _ []int8, _ []int32, _ []Requant, _ *convPlan) {}
 
+func conv2DUnpack(_, _ []int8, _ *convPlan) {}
+
 func conv2DRun(dst, src, w, _ []int8, bias []int32, rq []Requant, pl *convPlan) {
 	conv2DGeneric(dst, src, w, bias, rq, pl)
 }
@@ -46,6 +51,8 @@ func depthwiseConv2DScratchLen(*convPlan) int { return 0 }
 
 func depthwiseConv2DPack(_, _ []int8, _ []int32, _ []Requant, _ *convPlan) {}
 
+func depthwiseConv2DUnpack(_, _ []int8, _ *convPlan) {}
+
 func depthwiseConv2DRun(dst, src, w, _ []int8, bias []int32, rq []Requant, pl *convPlan) {
 	depthwiseConv2DGeneric(dst, src, w, bias, rq, pl)
 }
@@ -53,6 +60,8 @@ func depthwiseConv2DRun(dst, src, w, _ []int8, bias []int32, rq []Requant, pl *c
 func fullyConnectedScratchLen(*fcPlan) int { return 0 }
 
 func fullyConnectedPack(_, _ []int8, _ []int32, _ []Requant, _ *fcPlan) {}
+
+func fullyConnectedUnpack(_, _ []int8, _ *fcPlan) {}
 
 func fullyConnectedRun(dst, src, w, _ []int8, bias []int32, rq []Requant, pl *fcPlan) {
 	fullyConnectedGeneric(dst, src, w, bias, rq, pl)

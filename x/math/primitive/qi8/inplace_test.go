@@ -98,3 +98,58 @@ func TestInPlaceW(t *testing.T) {
 	}
 	m.done()
 }
+
+// TestInPlaceRePrepare: after an in-place pack, Prepare again — with the same
+// parameters, after changing a requantisation parameter, and after a
+// failed Prepare — still computes what the free function computes with the
+// original weights (review R-NN-R3-N2 F1: a second pack used to re-read
+// rows already moved to the padded stride).
+func TestInPlaceRePrepare(t *testing.T) {
+	g := newGen(49)
+	m := &mismatchLog{t: t}
+	for _, c := range inPlaceCases(g) {
+		n := c.scratch()
+		if n == 0 {
+			continue // nothing is packed on this backend
+		}
+		s := alignedAt(n, 3)
+		c.set(nil, s)
+		w := c.inPlaceW()
+		orig := g.int8s(c.wLen)
+		copy(w, orig)
+		c.set(w, s)
+		check := func(step string) {
+			src := g.int8s(c.in.Len())
+			want, got := make([]int8, c.out.Len()), make([]int8, c.out.Len())
+			require.NoError(t, c.free(want, src, orig), "%s %s", c.name, step)
+			require.NoError(t, c.layer.Run(got, src), "%s %s", c.name, step)
+			m.compare(func() string { return c.name + " " + step }, got, want)
+		}
+		require.NoError(t, c.layer.Prepare(), c.name)
+		check("first Prepare")
+		require.NoError(t, c.layer.Prepare(), c.name)
+		check("second Prepare")
+		bumpOutZP(c.layer)
+		require.Equal(t, ErrNotPrepared, c.layer.Run(make([]int8, c.out.Len()), make([]int8, c.in.Len())), c.name)
+		require.NoError(t, c.layer.Prepare(), c.name)
+		check("Prepare after an OutZP change")
+		c.set(w[:len(w)-1], s)
+		require.Equal(t, ErrLength, c.layer.Prepare(), "%s: short W", c.name)
+		c.set(w, s)
+		require.NoError(t, c.layer.Prepare(), c.name)
+		check("Prepare after a failed Prepare")
+	}
+	m.done()
+}
+
+// bumpOutZP changes a weighted layer's output zero point by one.
+func bumpOutZP(l preparedOp) {
+	switch l := l.(type) {
+	case *Conv2DLayer:
+		l.P.OutZP++
+	case *DepthwiseConv2DLayer:
+		l.P.OutZP++
+	case *FCLayer:
+		l.P.OutZP++
+	}
+}

@@ -76,8 +76,9 @@ func newPieLayout(scratch []int8, k, rows int) pieLayout {
 //
 // Rows are packed from last to first with memmove semantics, so w may alias
 // the start of the aligned wpack region (w == wpack[:rows*k]): packing in
-// place lets a caller keep only one copy of large weights in SRAM. The
-// original w contents are then gone; Run never reads w.
+// place lets a caller keep only one copy of large weights in SRAM. w then
+// holds the packed layout (Run never reads w) until the next Prepare
+// restores it with unpack before packing again.
 func (l *pieLayout) pack(w []int8, bias []int32, inZP int32) {
 	for r := l.rows - 1; r >= 0; r-- {
 		dst := l.wpack[r*l.k32 : (r+1)*l.k32]
@@ -101,11 +102,24 @@ func (l *pieLayout) pack(w []int8, bias []int32, inZP int32) {
 
 func (l *pieLayout) dotRows() { pieDotRows(l.patch, l.wpack, l.k32, l.rows, l.acc) }
 
+// unpack restores the rows of an in-place pack to stride k in w (first to
+// last, so a row never overwrites one not yet moved: r·k ≤ r·k32).
+func (l *pieLayout) unpack(w []int8) {
+	for r := range l.rows {
+		copy(w[r*l.k:(r+1)*l.k], l.wpack[r*l.k32:r*l.k32+l.k])
+	}
+}
+
 func conv2DScratchLen(pl *convPlan) int { return pieScratchLen(pl.wPerOut, pl.outC) }
 
 func conv2DPack(scratch, w []int8, bias []int32, _ []Requant, pl *convPlan) {
 	l := newPieLayout(scratch, pl.wPerOut, pl.outC)
 	l.pack(w, bias, pl.inZP)
+}
+
+func conv2DUnpack(scratch, w []int8, pl *convPlan) {
+	l := newPieLayout(scratch, pl.wPerOut, pl.outC)
+	l.unpack(w)
 }
 
 func conv2DRun(dst, src, _, scratch []int8, _ []int32, rq []Requant, pl *convPlan) {
@@ -226,6 +240,15 @@ func depthwiseConv2DPack(scratch, w []int8, bias []int32, _ []Requant, pl *convP
 	}
 }
 
+// depthwiseConv2DUnpack restores w[t][c] (stride C) from an in-place pack,
+// first tap to last.
+func depthwiseConv2DUnpack(scratch, w []int8, pl *convPlan) {
+	l := newPieDWLayout(scratch, pl)
+	for t := range l.taps {
+		copy(w[t*l.c:(t+1)*l.c], l.wpack[t*l.c16:t*l.c16+l.c])
+	}
+}
+
 // depthwiseConv2DRun loads 16-channel groups straight from src when C is a
 // multiple of 16 and src is 16-byte aligned (pixel rows are then aligned),
 // and stages them otherwise.
@@ -268,6 +291,11 @@ func fullyConnectedScratchLen(pl *fcPlan) int { return pieScratchLen(pl.in, pl.o
 func fullyConnectedPack(scratch, w []int8, bias []int32, _ []Requant, pl *fcPlan) {
 	l := newPieLayout(scratch, pl.in, pl.out)
 	l.pack(w, bias, pl.inZP)
+}
+
+func fullyConnectedUnpack(scratch, w []int8, pl *fcPlan) {
+	l := newPieLayout(scratch, pl.in, pl.out)
+	l.unpack(w)
 }
 
 func fullyConnectedRun(dst, src, _, scratch []int8, _ []int32, rq []Requant, pl *fcPlan) {
