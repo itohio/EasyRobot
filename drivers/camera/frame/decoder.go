@@ -167,10 +167,10 @@ func (d *Decoder) scan(drop bool) (Header, []byte, error) {
 // only valid until the next read from d.r.
 func (d *Decoder) chunk(h *Header, payload []byte) (Image, bool) {
 	if !d.seqSeen || h.Seq != d.lastSeq {
+		// Every path that leaves an image unfinished marks it dropped, so
+		// only an image still under assembly needs counting here.
 		if d.active {
 			d.drop() // new frame_seq before last
-		} else if d.seqSeen && !d.seqDone {
-			d.stats.Dropped++ // only orphan chunks of lastSeq were seen
 		}
 		if d.seqSeen {
 			gap := h.Seq - d.lastSeq

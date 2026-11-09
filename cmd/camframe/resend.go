@@ -157,7 +157,7 @@ func runResend(ctx context.Context, c config, dec *frame.Decoder, stopDec contex
 			if seq, _, ok := asm.Current(); ok {
 				if rounds >= resendRounds {
 					st.gaveUp++
-					asm.Reset()
+					asm.GiveUp()
 					rounds = 0
 					if err := send(frame.Ack, seq, 0); err != nil {
 						return st, err

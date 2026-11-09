@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"runtime"
 	"testing"
 )
 
@@ -108,6 +109,94 @@ func TestAssemblerRebuildsOutOfOrderWithResends(t *testing.T) {
 	a.Add(Chunk{Header: Header{Seq: 2, ChunkCnt: 2, ChunkIdx: 1}, Payload: []byte{1}})
 	if a.Abandon != 1 {
 		t.Fatalf("Abandon = %d after a new seq, want 1", a.Abandon)
+	}
+}
+
+// imageChunks encodes one small Y8 image with seq/ts and returns its chunks.
+func imageChunks(t *testing.T, seq, ts uint32, w, h uint16) []Chunk {
+	t.Helper()
+	var buf bytes.Buffer
+	e := NewEncoder(&buf)
+	e.seq = seq
+	if err := e.WriteImage(Meta{Width: w, Height: h, Format: Y8}, ts, testImageData(int(w)*int(h))); err != nil {
+		t.Fatal(err)
+	}
+	return chunksOf(t, buf.Bytes())
+}
+
+func TestAssemblerGiveUpIgnoresLateResends(t *testing.T) {
+	all := imageChunks(t, 4, 100, 160, 120) // 5 chunks
+	var a Assembler
+	a.Add(all[0])
+	a.GiveUp()
+	for _, c := range all {
+		if _, done := a.Add(c); done {
+			t.Fatal("a given-up image came back to life")
+		}
+	}
+	if _, _, ok := a.Current(); ok || a.Abandon != 0 {
+		t.Fatalf("active=%v Abandon=%d after late resends of a given-up image", ok, a.Abandon)
+	}
+}
+
+func TestAssemblerRebootReusingSeqIsNotIgnored(t *testing.T) {
+	var a Assembler
+	for _, c := range imageChunks(t, 0, 5_000_000, 32, 4) {
+		a.Add(c)
+	}
+	// The device reboots: seq restarts at 0 with a new timestamp.
+	var got bool
+	for _, c := range imageChunks(t, 0, 1000, 32, 4) {
+		_, got = a.Add(c)
+	}
+	if !got {
+		t.Fatal("the rebooted device's seq-0 image was dropped as a late resend")
+	}
+}
+
+func TestAssemblerChunkCountChangeRestarts(t *testing.T) {
+	small := imageChunks(t, 3, 9, 32, 4)    // 1 chunk
+	large := imageChunks(t, 3, 9, 160, 120) // 5 chunks, same seq and ts
+	var a Assembler
+	a.Add(large[1])
+	if img, done := a.Add(small[0]); !done || len(img.Data) != 32*4 {
+		t.Fatalf("done=%v len=%d: a different chunk count must restart the image", done, len(img.Data))
+	}
+	if a.Abandon != 1 {
+		t.Fatalf("Abandon = %d, want 1 (the 5-chunk image)", a.Abandon)
+	}
+}
+
+func TestAssemblerRejectsLengthMismatchWithoutAllocatingIt(t *testing.T) {
+	// One CRC-valid chunk whose meta claims far more data than it carries.
+	var meta [MetaSize]byte
+	m := Meta{Width: 65520, Height: 4096, Format: Y8, DataLen: 65520 * 4096} // valid meta, ≤ MaxDataLen
+	m.Put(&meta)
+	c := Chunk{Header: Header{Seq: 1, ChunkCnt: 1}, Payload: append(meta[:], 1, 2, 3)}
+	var a Assembler
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	if _, done := a.Add(c); done {
+		t.Fatal("accepted a length mismatch")
+	}
+	runtime.ReadMemStats(&after)
+	if a.Abandon != 1 {
+		t.Fatalf("Abandon = %d, want 1", a.Abandon)
+	}
+	if got := after.TotalAlloc - before.TotalAlloc; got > 1<<20 { // never the claimed 268 MB
+		t.Fatalf("rejecting the image allocated %d bytes", got)
+	}
+}
+
+func TestAssemblerIgnoresInvalidChunks(t *testing.T) {
+	var a Assembler
+	for _, h := range []Header{{ChunkCnt: 0}, {ChunkCnt: 2, ChunkIdx: 2}, {ChunkCnt: 1, ChunkIdx: 9}} {
+		if _, done := a.Add(Chunk{Header: h, Payload: []byte{1}}); done {
+			t.Fatalf("%+v completed an image", h)
+		}
+	}
+	if _, _, ok := a.Current(); ok {
+		t.Fatal("an invalid chunk started an assembly")
 	}
 }
 
