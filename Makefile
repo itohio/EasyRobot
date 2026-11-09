@@ -46,6 +46,18 @@ cover:
 watch:
 	air --build.cmd "go build -o $(BUILD_PATH)/app" --build.bin "$(BUILD_PATH)/app" --build.exclude_dir "proto,scripts,build"
 
+.PHONY: docs
+docs:
+	go run ./docs/tools/vault -docs docs -repo . gen
+
+.PHONY: docs-check
+docs-check:
+	go run ./docs/tools/vault -docs docs -repo . check
+
+.PHONY: docs-stale
+docs-stale:
+	go run ./docs/tools/vault -docs docs -repo . stale
+
 .PHONY: clean
 clean:
 	# Remove the build artifacts
@@ -73,6 +85,9 @@ help:
 	@echo "  make cover            Run test coverage analysis"
 	@echo "  make vulncheck        Check for known vulnerabilities"
 	@echo "  make watch            Watch for changes and rebuild (requires air)"
+	@echo "  make docs             Regenerate vault tables, counts and docs/todo.md"
+	@echo "  make docs-check       Check the vault (links, frontmatter, TODO tags, generated blocks)"
+	@echo "  make docs-stale       List notes whose cited source files changed since their revision"
 	@echo "  make clean            Remove build artifacts"
 	@echo "  make help             Display this help message"
 
