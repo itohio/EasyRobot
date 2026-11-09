@@ -136,18 +136,23 @@ func run(ctx context.Context, c config, stdout, stderr io.Writer) error {
 			return err
 		}
 		defer f.Close()
-		src = io.TeeReader(src, f)
+		src = &teeReader{r: src, w: f}
 	}
 
+	// The decoder reads through its own context, so a resend session can
+	// stop and join its reader goroutine before the stats are read.
+	dctx, stopDec := context.WithCancel(ctx)
+	defer stopDec()
 	text := &lineWriter{w: stderr, prefix: "dev| "}
-	dec := frame.NewDecoder(&ctxReader{ctx: ctx, r: src})
+	dec := frame.NewDecoder(&ctxReader{ctx: dctx, r: src})
 	dec.Text = text
 
 	if c.resend {
-		st, err := runResend(ctx, c, dec, trig, stdout)
+		st, err := runResend(ctx, c, dec, stopDec, trig, stdout)
 		text.Flush()
+		ds := dec.Stats()
 		fmt.Fprintf(stdout, "images=%d saved=%d fps=%.2f crc_errors=%d naks=%d gave_up=%d abandoned=%d lost=%d text_bytes=%d\n",
-			st.images, st.saved, st.fps(), dec.Stats().CRCErrors, st.naks, st.gaveUp, st.abandoned, st.lost, dec.Stats().TextBytes)
+			st.images, st.saved, st.fps(), ds.CRCErrors, st.naks, st.gaveUp, st.abandoned, st.lost, ds.TextBytes)
 		return finish(c, st.saved, err)
 	}
 	var (
@@ -237,23 +242,61 @@ func save(dir string, img frame.Image, stdout io.Writer) error {
 	return nil
 }
 
+// contextReader is implemented by readers that can stop a blocked Read when
+// a context ends.
+type contextReader interface {
+	readContext(ctx context.Context, p []byte) (int, error)
+}
+
 // ctxReader stops reading once ctx is done. A Read returning 0, nil (the
 // serial port's poll timeout) is retried until data, an error or ctx ends.
+// If r is a contextReader, a Read blocked inside it returns when ctx ends.
 type ctxReader struct {
 	ctx context.Context
 	r   io.Reader
 }
 
 func (c *ctxReader) Read(p []byte) (int, error) {
+	cr, _ := c.r.(contextReader)
 	for {
 		if err := c.ctx.Err(); err != nil {
 			return 0, err
 		}
-		n, err := c.r.Read(p)
+		var n int
+		var err error
+		if cr != nil {
+			n, err = cr.readContext(c.ctx, p)
+		} else {
+			n, err = c.r.Read(p)
+		}
 		if n > 0 || err != nil || len(p) == 0 {
 			return n, err
 		}
 	}
+}
+
+// teeReader is io.TeeReader that keeps contextReader support.
+type teeReader struct {
+	r io.Reader
+	w io.Writer
+}
+
+func (t *teeReader) Read(p []byte) (int, error) { return t.readContext(nil, p) }
+
+func (t *teeReader) readContext(ctx context.Context, p []byte) (int, error) {
+	var n int
+	var err error
+	if cr, ok := t.r.(contextReader); ok && ctx != nil {
+		n, err = cr.readContext(ctx, p)
+	} else {
+		n, err = t.r.Read(p)
+	}
+	if n > 0 {
+		if _, werr := t.w.Write(p[:n]); werr != nil {
+			return n, werr
+		}
+	}
+	return n, err
 }
 
 // asyncReader drains r in its own goroutine, so slow work on the decoding
@@ -294,7 +337,10 @@ func newAsyncReader(ctx context.Context, r io.Reader) *asyncReader {
 	return a
 }
 
-func (a *asyncReader) Read(p []byte) (int, error) {
+func (a *asyncReader) Read(p []byte) (int, error) { return a.readContext(a.ctx, p) }
+
+// readContext is Read that also returns when ctx ends.
+func (a *asyncReader) readContext(ctx context.Context, p []byte) (int, error) {
 	for len(a.cur) == 0 {
 		select {
 		case b, ok := <-a.ch:
@@ -307,6 +353,8 @@ func (a *asyncReader) Read(p []byte) (int, error) {
 			a.cur = b
 		case <-a.ctx.Done():
 			return 0, a.ctx.Err()
+		case <-ctx.Done():
+			return 0, ctx.Err()
 		}
 	}
 	n := copy(p, a.cur)

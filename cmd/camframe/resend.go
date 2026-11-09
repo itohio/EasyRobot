@@ -10,13 +10,25 @@ import (
 )
 
 const (
-	// resendIdle is how long a partly received image may stay silent before
-	// the missing chunks are Nak'ed again.
-	resendIdle = 200 * time.Millisecond
 	// resendRounds bounds the Nak rounds per image; then the image is given
 	// up and Ack'ed so the sender moves on.
 	resendRounds = 10
+	// minResendIdle is the floor of the idle time (fast links).
+	minResendIdle = 200 * time.Millisecond
 )
+
+// resendIdle is how long a partly received image may stay silent before
+// its missing chunks are Nak'ed again: three airtimes of a full chunk at
+// baud (8N1 = 10 bits per byte) plus 100 ms, at least minResendIdle. A
+// fixed 200 ms fired in the middle of a chunk below ~200 kbaud and gave
+// clean images up (review R-ER-K210-camera M2).
+func resendIdle(baud int) time.Duration {
+	if baud <= 0 {
+		return minResendIdle
+	}
+	air := time.Duration(int64(frame.HeaderSize+frame.MaxPayload) * 10 * int64(time.Second) / int64(baud))
+	return max(3*air+100*time.Millisecond, minResendIdle)
+}
 
 // resendStats are the counters of a resend session.
 type resendStats struct {
@@ -34,26 +46,38 @@ func (s resendStats) fps() float64 {
 
 // runResend receives with chunk resend (frame.Control): every CRC-valid
 // chunk goes into an Assembler; when an image's last chunk arrives, or the
-// image stays silent for resendIdle, each missing chunk is Nak'ed; a complete
-// image is Ack'ed and saved. fps comes from the device timestamps.
-func runResend(ctx context.Context, c config, dec *frame.Decoder, port io.Writer, stdout io.Writer) (resendStats, error) {
+// image stays silent for resendIdle(c.baud), each missing chunk is Nak'ed; a
+// complete image is Ack'ed and saved. fps comes from the device timestamps.
+//
+// dec must read through a context that stopDec cancels: runResend cancels
+// it and waits for its reader goroutine before returning, so the caller can
+// use dec.Stats and dec.Text without a race (review M1).
+func runResend(ctx context.Context, c config, dec *frame.Decoder, stopDec context.CancelFunc, port io.Writer, stdout io.Writer) (resendStats, error) {
 	type item struct {
 		c   frame.Chunk
 		err error
 	}
 	ch := make(chan item, 64)
+	done := make(chan struct{})
+	quit := make(chan struct{})
 	go func() {
+		defer close(done)
 		for {
 			ck, err := dec.NextChunk()
 			select {
 			case ch <- item{ck, err}:
-			case <-ctx.Done():
+			case <-quit:
 				return
 			}
 			if err != nil {
 				return
 			}
 		}
+	}()
+	defer func() {
+		stopDec()
+		close(quit)
+		<-done
 	}()
 
 	var (
@@ -85,7 +109,8 @@ func runResend(ctx context.Context, c config, dec *frame.Decoder, port io.Writer
 		rounds++
 		return nil
 	}
-	idle := time.NewTimer(resendIdle)
+	idleFor := resendIdle(c.baud)
+	idle := time.NewTimer(idleFor)
 	defer idle.Stop()
 
 	for c.n == 0 || st.saved < c.n {
@@ -98,7 +123,7 @@ func runResend(ctx context.Context, c config, dec *frame.Decoder, port io.Writer
 				st.abandoned = asm.Abandon
 				return st, it.err
 			}
-			idle.Reset(resendIdle)
+			idle.Reset(idleFor)
 			if seqSeen && it.c.Seq != lastSeq {
 				if gap := it.c.Seq - lastSeq; gap > 1 && gap < 1<<31 {
 					st.lost += uint64(gap - 1)
@@ -141,7 +166,7 @@ func runResend(ctx context.Context, c config, dec *frame.Decoder, port io.Writer
 					return st, err
 				}
 			}
-			idle.Reset(resendIdle)
+			idle.Reset(idleFor)
 		}
 	}
 	st.abandoned = asm.Abandon
