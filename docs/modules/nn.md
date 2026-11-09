@@ -4,12 +4,14 @@ group: "Tensor and NN"
 status: partial
 tags: [easyrobot, nn, tensor]
 workstream: [W9, W5]
-packages: [x/math/nn, x/math/nn/layers, x/math/nn/models, x/math/nn/types]
+packages: [x/math/nn, x/math/nn/layers, x/math/nn/models, x/math/nn/types, x/math/nn/qnet]
 test_result: fail
 ---
 # nn
 
 **Purpose:** a small Keras/PyTorch-style neural-network layer library on top of the [[tensor]] interface: layers with Init/Forward/Backward, losses, a Sequential model and a builder; training (optimisers, `TrainStep`) lives in [[learn]].
+
+**Embedded int8 inference** lives apart from the float layer library: `x/math/nn/qnet` (sequential int8 graph, runner, backend interface, MobileNetV1-0.25 builder) on the [[int8-nn-kernels]] in `x/math/primitive/qi8`; it imports only the standard library and qi8 so it builds for MCUs ([[int8-graph-runner]]).
 
 **Packages (non-test LOC):**
 
@@ -33,13 +35,14 @@ No build tags. Declared docs: `nn/SPEC.md`, `nn/REQ_OPS.md`, `layers/SPEC.md` (l
 
 Status and evidence per note (value probes by the layer slice in `~/src/tmp/easyrobot/tensor/layernotes/{densegrad,embed1d,gradcheck,micro,xavier,utilcheck}`):
 
-<!-- vault:algorithms h=6ce52e37c4fc -->
+<!-- vault:algorithms h=362738911c2f -->
 
-Counts: 1 tested · 3 implemented · 10 partial · 0 stub · 0 unverified (14 algorithms)
+Counts: 2 tested · 3 implemented · 10 partial · 0 stub · 0 unverified (15 algorithms)
 
 | Algorithm | Status | Tests | Summary |
 |---|---|---|---|
 | [[activation-layers]] | tested | pass | gradients match finite differences |
+| [[int8-graph-runner]] | tested | pass | Sequential int8 graph + allocation-free runner with pluggable backends (KPU/SIMD/generic segments) and a MobileNetV1-0.25 builder; builds for ESP32-S3 and K210. |
 | [[dense-layer]] | implemented | fail | backward exact by central-difference probe; `TestDense_NumericalGradientCheck` uses float32… |
 | [[nn-loss-functions]] | implemented | none | gradients correct by probe; MSE averages, CrossEntropy sums (inconsistent scaling) |
 | [[nn-parameter-initialisation]] | implemented | pass | Xavier statistics correct; biases initialised randomly instead of zero |
