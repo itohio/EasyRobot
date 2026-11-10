@@ -28,15 +28,15 @@ updated: 2026-11-10
 
 ## Verdict
 
-1. **Yes, EasyRobot needs a simulator.** Today it has only kinematic host tests: the feet stay put; no forces, no contacts, no sensors (observed, `walk_sim_test.go`). Its own gait note already found hexapod joint speeds of about 8 rad/s against a 5.24 rad/s servo limit, which a dynamic sim would expose as falls, not as a table row.
+1. **Yes, EasyRobot needs a simulator.** Today it has only kinematic host tests: the feet stay put; no forces, no contacts, no sensors (observed, `walk_sim_test.go`). The kinematic tripod test `TestHexapodTripodSim` already reports hexapod joint speeds of about 8 rad/s against a 5.24 rad/s servo limit (recorded in the vault note `docs/algorithms/gait-foothold-planner.md:45`). A dynamic sim would expose that as falls, not as a table row.
 2. **Nothing in Go covers legged contact dynamics well today.**
-   - **The closest pure-Go engine** is **Cogent Lab's `physics`** (BSD-3, very active, XPBD solver ported from newton-physics, CPU or GPU, joints with position/velocity targets, first-person camera views through its `xyz` renderer).
+   - **The closest pure-Go engine** is **Cogent Lab's `physics`** (BSD-3, in `cogentcore/lab`: last pushed 2026-11-03, 18 stars, used in axon; XPBD solver ported from newton-physics, CPU or GPU, joints with position/velocity targets, first-person camera views through its `xyz` renderer).
    - **Its gaps:** primitive shapes only (no meshes or heightfields), "Sensors: TODO", known collision and stability bugs in its README, Y-up coordinates, no URDF/MJCF.
    - **The rest:**
      - g3n's physics is marked "experimental and incomplete";
      - cubez is archived (2016);
      - the Go ODE binding was last touched in 2016;
-     - jolt-go and jolt-purego are days-old projects with a handful of stars;
+     - jolt-go and jolt-purego are short-lived bindings (a few days of commits each), with a handful of stars, unmaintained since 2025-11 and 2026-02;
      - cp is 2D;
      - **there is no Go binding for MuJoCo** in its own list of first- and third-party bindings (Swift, Java, Julia, Rust: yes; Go: no).
 3. **Recommendation:** **MuJoCo as the reference simulator, driven from Go over protobuf** (architecture b).
@@ -67,13 +67,13 @@ updated: 2026-11-10
 
 | Option | Kind | Activity / licence | cgo? | Fit against the needs |
 |---|---|---|---|---|
-| **Cogent Lab `physics`** (`cogentcore.org/lab/physics`) | pure-Go 3D engine (GoSL: the same code on CPU or GPU) | repo pushed 2026-11-10, BSD-3 (observed via API) | no for physics; its GPU path and `xyz` viewer use WebGPU (`#verify` how) | **XPBD** solver (newton-physics design); joints Revolute, Prismatic, Ball, Fixed, Free, Distance, D6, PlaneXZ with **target position/velocity + stiffness/damping** (a PD servo); contacts between primitives (Plane, Sphere, Capsule, Cylinder, Cone, Box); **parallel worlds**; first-person views from a body via `xyz`. **Gaps** (reported, its docs and README): no meshes or heightfields yet, "Sensors: TODO", sphere–sphere collision "definitely not right", 4+-link pendula unstable at some targets, restitution issues, Y-up, no URDF/MJCF; one shape per body |
+| **Cogent Lab `physics`** (`cogentcore.org/lab/physics`) | pure-Go 3D engine (GoSL: the same code on CPU or GPU) | `cogentcore/lab` (where `physics` lives) last pushed 2026-11-03, 18 stars, used in axon; BSD-3 (observed via API; the 2026-11-10 date belongs to `cogentcore/core`) | no for physics; its GPU path and `xyz` viewer use WebGPU (`#verify` how) | **XPBD** solver (newton-physics design); joints Revolute, Prismatic, Ball, Fixed, Free, Distance, D6, PlaneXZ with **target position/velocity + stiffness/damping** (a PD servo); contacts between primitives (Plane, Sphere, Capsule, Cylinder, Cone, Box); **parallel worlds**; first-person views from a body via `xyz`. **Gaps** (reported, its docs and README): no meshes or heightfields yet, "Sensors: TODO", sphere–sphere collision "definitely not right", 4+-link pendula unstable at some targets, restitution issues, Y-up, no URDF/MJCF; one shape per body |
 | g3n `experimental/physics` | pure-Go engine inside a game engine | g3n pushed 2026-08, BSD-2; the package doc says "experimental and incomplete" (observed) | g3n's renderer uses OpenGL (cgo) | not usable for robotics |
 | tbogdala/cubez | pure-Go 3D rigid bodies | **archived**, last push 2016 (observed) | no | dead |
 | xavier268/solid | pure-Go rigid-body integration | 1 star, 2025 (observed) | no | no joints or contacts described |
 | jakecoffman/cp | pure-Go Chipmunk2D port | active, MIT | no | **2D** only |
 | ianremmler/ode | Go binding to ODE | last push 2016 (observed), MIT | yes | stale; ODE is old but capable |
-| bbitechnologies/jolt-go; NilssonCreative/jolt-purego | bindings to **Jolt** | 7 and 2 stars, 2025-11 and 2026-02 (observed) | jolt-go: cgo; jolt-purego: no (purego) | Jolt (MIT, very active) is a strong game engine: rigid bodies, constraints with motors, ragdolls. Not robotics-oriented: no sensors, no robot description format, no renderer |
+| bbitechnologies/jolt-go; NilssonCreative/jolt-purego | bindings to **Jolt** | 7 and 2 stars; short-lived (a few days of commits each), unmaintained since 2025-11 and 2026-02 (observed) | jolt-go: cgo; jolt-purego: no (purego) | Jolt (MIT, very active) is a strong game engine: rigid bodies, constraints with motors, ragdolls. Not robotics-oriented: no sensors, no robot description format, no renderer |
 | Bullet / PyBullet | C++ engine | bullet3 pushed 2026-10 (observed) | — | **no maintained Go binding found** |
 | **MuJoCo** | C engine with a C API, MJCF models (imports URDF), built-in visualisation and offscreen rendering, multithreaded rollout | very active: **4.0.0 released 2026-11-06**, Apache-2.0 (observed) | a Go binding would be ours to write (cgo, or purego/dlopen) | **robotics-grade contacts** (soft-constraint convex optimisation), position actuators with gains and force ranges, IMU/touch/force sensors, cameras; first-party Python, JS/WASM, C#; third-party Swift, Java, Julia, Rust; **no Go** (observed in its README) |
 | Gazebo (gz-sim) | external simulator | gz-transport pushed 2026-11 (observed), Apache-2.0 | — | rich sensors; its messages are protobuf over **gz-transport** (ZeroMQ + discovery), so a Go client would have to speak that protocol (`#verify` no Go library); a heavy install |
