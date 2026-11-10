@@ -102,10 +102,11 @@ func (l Layout) offset(addr uint32, c, y, x int) int {
 	return int(addr)*64 + c/l.Group*l.ChanLines*64 + c%l.Group*(64/l.Group) + y*l.RowLines*64 + x
 }
 
-// check reports whether a w×h×c tensor at addr fits the layout and KPU
-// memory.
+// check reports whether a w×h×c tensor at addr fits the KPU's limits, the
+// layout and KPU memory. The extent is computed in uint64, so it cannot
+// wrap on any host (review R-K210-K8b K1).
 func (l Layout) check(addr uint32, w, h, c int) error {
-	if w <= 0 || h <= 0 || c <= 0 {
+	if w <= 0 || w > maxWidth || h <= 0 || h > maxHeight || c <= 0 || c > maxChannels {
 		return ErrFormat
 	}
 	switch l.Group {
@@ -120,7 +121,10 @@ func (l Layout) check(addr uint32, w, h, c int) error {
 	default:
 		return ErrFormat
 	}
-	if l.offset(addr, c-1, h-1, w-1) >= RAMSize {
+	g := uint64(l.Group)
+	last := uint64(addr)*64 + uint64(c-1)/g*uint64(l.ChanLines)*64 + uint64(c-1)%g*(64/g) +
+		uint64(h-1)*uint64(l.RowLines)*64 + uint64(w-1)
+	if last >= RAMSize {
 		return ErrFormat
 	}
 	return nil

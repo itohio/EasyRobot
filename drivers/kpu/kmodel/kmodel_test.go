@@ -70,7 +70,7 @@ func tinyModel(t testing.TB) []byte {
 		{Dequantize, le32(0, 0, n, n, math.Float32bits(0.5), math.Float32bits(-1))},
 	}
 	a := convArgs(100, 200, w, h, c, oc, UploadLayout(w, h), UploadLayout(w, h))
-	tail := make([]byte, actOff+128-head)
+	tail := make([]byte, actOff+actTableSize-head)
 	for i, v := range a {
 		binary.LittleEndian.PutUint64(tail[argsOff-head+uint32(8*i):], v)
 	}

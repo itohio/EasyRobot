@@ -21,6 +21,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
+	"math/bits"
 )
 
 // LayerType is a kmodel v3 layer type (kpu_model_layer_type_t).
@@ -63,8 +65,11 @@ func (t LayerType) String() string {
 const FlagMainMemOut = 1
 
 const (
-	headerSize = 7 * 4
-	argsSize   = 12 * 8
+	headerSize   = 7 * 4
+	argsSize     = 12 * 8
+	actTableSize = 18 * 8 // 16 segments + 2 words of result_bias
+	// KPU register limits (image_size, image_channel_num).
+	maxWidth, maxHeight, maxChannels = 1024, 512, 1024
 	// RAMSize is the KPU's AI SRAM: 2 MiB, addressed in 64-byte lines.
 	RAMSize = 2 << 20
 )
@@ -172,13 +177,13 @@ func (m *Model) checkLayer(l Layer) error {
 		if err != nil {
 			return err
 		}
-		if uint64(c.LayerOffset)+argsSize > uint64(len(m.Data)) ||
-			uint64(c.WeightsOffset) >= uint64(len(m.Data)) ||
-			uint64(c.BNOffset) >= uint64(len(m.Data)) ||
-			uint64(c.ActOffset) >= uint64(len(m.Data)) {
+		if uint64(c.LayerOffset)+argsSize > uint64(len(m.Data)) {
 			return ErrFormat
 		}
 		a := m.Args(c)
+		if err := m.checkTables(c, &a); err != nil {
+			return err
+		}
 		w, h, ch := a.InShape()
 		if err := a.InLayout().check(a.SrcAddr(), w, h, ch); err != nil {
 			return err
@@ -195,6 +200,9 @@ func (m *Model) checkLayer(l Layer) error {
 		if err != nil {
 			return err
 		}
+		if !finite(q.Scale) || q.Scale == 0 || !finite(q.Bias) {
+			return ErrFormat
+		}
 		if err := in(q.In, uint64(q.Count)*inSize(l.Type)); err != nil {
 			return err
 		}
@@ -207,7 +215,11 @@ func (m *Model) checkLayer(l Layer) error {
 		if g.KernelSize == 0 {
 			return ErrFormat
 		}
-		if err := in(g.In, 4*uint64(g.Channels)*uint64(g.KernelSize)); err != nil {
+		n, ok := mul(4*uint64(g.Channels), uint64(g.KernelSize))
+		if !ok {
+			return ErrFormat
+		}
+		if err := in(g.In, n); err != nil {
 			return err
 		}
 		return in(g.Out, 4*uint64(g.Channels))
@@ -216,10 +228,15 @@ func (m *Model) checkLayer(l Layer) error {
 		if err != nil {
 			return err
 		}
+		if p.Channels > maxChannels {
+			return ErrFormat
+		}
 		if err := in(p.In, uint64(p.Channels)); err != nil {
 			return err
 		}
-		return padLayout.check(p.Out, 1, 1, int(p.Channels))
+		// The bytes go into a 4×4 map per channel, which the next conv reads
+		// whole: check that map, not just the bytes written.
+		return padLayout.check(p.Out, 4, 4, int(p.Channels))
 	case K210RemovePadding:
 		p, err := l.Padding()
 		if err != nil {
@@ -236,14 +253,55 @@ func (m *Model) checkLayer(l Layer) error {
 		if err != nil {
 			return err
 		}
-		if err := in(u.In, uint64(u.Width)*uint64(u.Height)*uint64(u.Channels)); err != nil {
+		// The layout check first: it bounds the shape by the KPU limits, so
+		// the product below cannot wrap (review R-K210-K8b K1). Values above
+		// the int range on 32-bit hosts convert to negative and fail it too.
+		if err := UploadLayout(int(u.Width), int(u.Height)).check(u.Out, int(u.Width), int(u.Height), int(u.Channels)); err != nil {
 			return err
 		}
-		return UploadLayout(int(u.Width), int(u.Height)).check(u.Out, int(u.Width), int(u.Height), int(u.Channels))
+		return in(u.In, uint64(u.Width)*uint64(u.Height)*uint64(u.Channels))
 	default:
 		return ErrUnsupported
 	}
 	return nil
+}
+
+// checkTables checks that conv c's weight, batch-norm and activation
+// tables lie inside the file over their whole size, since the KPU fetches
+// them by DMA (review R-K210-K8b K2). The weight extent is the size the
+// layer shape implies (8- or 16-bit weights by the header's mode). It is
+// not para_size × (load_time + 1): nncase's last load is partial (MobileNet
+// layer 26: 3 loads of 30,720 B for 65,536 B of weights, the file ending
+// 24,280 B before 3 × 30,720 would), and the board runs give correct results.
+func (m *Model) checkTables(c Conv, a *Args) error {
+	_, _, ic := a.InShape()
+	_, _, oc := a.OutShape()
+	k := uint64(1)
+	if a[4]&7 == 1 {
+		k = 3
+	}
+	nw := uint64(ic) * k * k
+	if a[0]>>3&1 == 0 { // not depthwise
+		nw *= uint64(oc)
+	}
+	if !m.EightBitMode() {
+		nw *= 2
+	}
+	size := uint64(len(m.Data))
+	if uint64(c.WeightsOffset)+nw > size ||
+		uint64(c.BNOffset)+8*uint64(oc) > size ||
+		uint64(c.ActOffset)+actTableSize > size {
+		return ErrFormat
+	}
+	return nil
+}
+
+func finite(f float32) bool { return !math.IsNaN(float64(f)) && !math.IsInf(float64(f), 0) }
+
+// mul returns a·b and whether it did not overflow.
+func mul(a, b uint64) (uint64, bool) {
+	hi, lo := bits.Mul64(a, b)
+	return lo, hi == 0
 }
 
 func inSize(t LayerType) uint64 {
