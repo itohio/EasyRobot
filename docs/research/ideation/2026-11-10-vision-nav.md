@@ -100,17 +100,18 @@ Brief: `~/src/docs/tasks/O-007-vision-nav-research.md`, objective O-007 (`docs/o
 | **V1 0.25** | 20×15×128 | 55 | 108 k | 461 KB | 50.6 % | **1.6 s / 0.41 s** | 2.3 s / 0.60 s | all present | maps fully (conv, DW, pointwise, ReLU6) |
 | V1 0.5 | 20×15×256 | 198 | 411 k | 922 KB | 63.7 % | 4.6 s / 1.2 s | 7.9 s / 2.1 s | all | maps fully |
 | V1 1.0 | 20×15×512 | 750 | 1.6 M | 1.84 MB | 70.6 % | 14.8 s | 28.8 s | all | 1.84 MB peak, at the AI SRAM limit |
-| **V2 0.35** | 20×15×32 | 49 | 73 k | 1.15 MB | 60.3 % | **1.9 s / 0.48 s** | 2.3 s / 0.59 s | all (ADD present) | residual Adds on the CPU (a KPU↔CPU round trip per block); **at QVGA the first expanded depthwise needs row-band tiling** (§1a.3) |
+| **V2 0.35** | 20×15×32 | **64.7** | **82 k** | 1.15 MB | 60.3 % | **2.45 s / 0.60 s** | 3.03 s / 0.74 s | all (ADD present) | residual Adds on the CPU (a KPU↔CPU round trip per block); **at QVGA the first expanded depthwise needs row-band tiling** (§1a.3) |
 | **V2 0.5** | 20×15×48 | 104 | 147 k | 1.15 MB | 65.4 % | 3.4 s / 0.87 s | 4.6 s / 1.2 s | all | as above |
 | V2 1.0 | 20×15×96 | 321 | 534 k | 2.30 MB | 71.8 % | 8.4 s | 13.3 s | all | over 2 MiB at QVGA |
 | MobileNetV3, EfficientNet-Lite | — | — | — | — | — | — | — | HARD_SWISH missing (V3); 5×5 DW (Lite) | no (h-swish/SE; 5×5) |
 
 **Reading the table:**
-- **Per MAC, V1 is faster on our kernels.** V2 spends more of its MACs in depthwise (15–20 % vs 6–12 %), our slowest kernel, and adds 0.17–0.31 M element Adds per frame.
-- **Per unit of accuracy, V2 wins at width 0.5.** V2 0.5 is faster than V1 0.5 (3.4 s vs 4.6 s) and more accurate (65.4 vs 63.7 %). V2 0.35 costs about 20 % more time than V1 0.25 for about 10 points more ImageNet accuracy.
+- **Per MAC, V1 is faster on our kernels.** V2 spends more of its MACs in depthwise (15–19 % vs 3–12 %), our slowest kernel, and adds 0.12–0.31 M element Adds per frame.
+- **Per unit of accuracy, V2 wins at width 0.5.** V2 0.5 is faster than V1 0.5 (3.4 s vs 4.6 s) and more accurate (65.4 vs 63.7 %). **V2 0.35 costs ≈ 54 % more time than V1 0.25 on the S3** (2.45 vs 1.59 s at QVGA) for about 10 points more ImageNet accuracy.
+- **Correction (verify, `docs/verification/O-007-vision-nav.md` addendum):** my first V2 0.35 row (49 MMAC, 73 k) used plain 8-rounding instead of Keras's `_make_divisible` rule, whose "never more than 10 % below" clause makes the stem 16 channels. Verify's recomputation, calibrated against TF-Slim's published 59 / 97 / 300 M for the full V2 at 224², gives 64.7 MMAC and 82 k params; the row above uses it. For our int8 path, TF-Slim's **quantized** V1 checkpoints score 48.0 / 60.7 / 70.1 % (0.25 / 0.5 / 1.0), a better accuracy proxy than the float column.
 - **Memory:** no QVGA frontend fits the S3's 512 KB SRAM with an arena: V1 0.25 peaks at 461 KB and V2 at 1.15 MB, its first expanded layer of 160×120×48. QVGA on the S3 needs PSRAM, which isn't working yet. At **QQVGA**, V1 0.25 (115 KB) and V2 0.35 (288 KB) fit in SRAM.
 - **Speed on the CPUs:** no MobileNet frontend reaches the 5 fps of §7 on either CPU. The best is about **2.4 fps** (V1 0.25 at QQVGA on the S3). The K210's second hart (untested) could roughly halve its time.
-- **An S3-only option now exists** (no K210, no link): the XIAO's own OV3660 → V1 0.25 or V2 0.35 at QQVGA → heads, at about 2 fps. It is slow but needs no link and no KPU compiler. That makes it a good way to run the owner's experiments first.
+- **An S3-only option now exists** (no K210, no link): the XIAO's own OV3660 → V1 0.25 (≈ 2.4 fps) or V2 0.35 (≈ 1.7 fps) at QQVGA → heads. It is slow but needs no link and no KPU compiler. That makes it a good way to run the owner's experiments first.
 - **Plain 3×3 conv nets** (the owner's own graphs): our S3 PIE 3×3 conv runs at **1.77 cycles/MAC**, the fastest kernel we have. Per C→C layer, the separable form beats full conv by about 1.4× at C = 32, 2× at C = 64 and 2.8× at C = 128 (inferred from the per-kind cycles). Narrow plain-conv stems are competitive, so they are worth an nnbench row.
 - **QVGA vs QQVGA:** QVGA's extra resolution matters most for VO (sub-cell motion). QQVGA is about 4× cheaper.
 - **Recommendation:** shortlist **V1 0.25 and V2 0.35** (and V2 0.5 when accuracy is short) at QQVGA first, then QVGA. Decide by head accuracy per millisecond on our recordings (§1a.4), not ImageNet.
@@ -121,23 +122,23 @@ Brief: `~/src/docs/tasks/O-007-vision-nav-research.md`, objective O-007 (`docs/o
 
 ### 1a.2 Two head styles on our kernels
 
-**Measured cycles per MAC on the S3 with PIE:**
+**Cycles per MAC on the S3 with PIE** (measured for the conv kinds; **FC is an estimate**):
 
 | Layer kind | Cycles/MAC |
 |---|---|
-| depthwise | 26.6 |
-| pointwise (1×1) | 3.80 |
-| FC (PIE dot) | ≈ 0.69 |
-| conv 3×3 | 1.77 |
+| depthwise | 26.6 (measured) |
+| pointwise (1×1) | 3.80 (measured) |
+| FC (PIE dot) | **≈ 0.6 estimate, not measured.** Our closest numbers are dot-row microbenchmarks: 0.60 (older loop, `ER-NN-R3.md:44`) and 0.19 (shipped fused loop, data in SRAM, `ER-NN-N2.md:63`). nnbench has no FC layer of head size |
+| conv 3×3 | 1.77 (measured) |
 
-**Depthwise is cheap in MACs and parameters but the most expensive kernel per MAC.** Dense and pointwise work is cheap per MAC but heavy in parameters.
+**Depthwise is cheap in MACs and parameters but the most expensive kernel per MAC.** Dense and pointwise work is cheap per MAC but heavy in parameters. **For large dense layers, the weight bytes, not the MACs, likely set the time** (inferred): the 4800→64 FC below has 307 KB of weights that stream from flash or PSRAM, not SRAM.
 
-**Example: a VO head** on a pair of 20×15×C features (inferred from those rates; the shapes are illustrative):
+**Example: a VO head** on a pair of 20×15×C features (inferred from those rates; the shapes are illustrative; the FC parts are estimates):
 
 | Head | C = 16 | C = 32 | C = 128 | Weights |
 |---|---|---|---|---|
 | **dw-style:** concat → pw 2C→64 → dw3×3 s2 → pw 64→64 → dw3×3 s2 → pw 64→6 → GAP | 1.0 M MAC, 21 ms | 1.6 M, 31 ms | 5.3 M, 90 ms | ~15 k |
-| **dense:** concat → pw 2C→16 → flatten (4,800) → FC 4800→64 → FC 64→6 | 0.46 M, **3.3 ms** | 0.61 M, 5.7 ms | 1.5 M, 20 ms | **~307 k** (flash) |
+| **dense:** concat → pw 2C→16 → flatten (4,800) → FC 4800→64 → FC 64→6 | 0.46 M, **3.3 ms + weight streaming** | 0.61 M, 5.7 ms + streaming | 1.5 M, 20 ms + streaming | **~307 k** (flash/PSRAM); the FC's MACs are < 1 ms, so its time depends on the flash/PSRAM read rate (unmeasured; an nnbench row, §1a.4) |
 | GAP + dense: concat → pw 2C→128 → GAP → FC 128→6 | 1.2 M, 20 ms | 2.5 M, 39 ms | 9.8 M, 156 ms | ~33 k at C = 128 |
 
 - **Expectation, to be checked by measurement:**
