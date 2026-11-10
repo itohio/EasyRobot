@@ -14,6 +14,13 @@
 // The model's input (CHW uint8, the first conv's input shape) is always
 // uploaded by the CPU.
 //
+// Memory ordering: the CPU reaches KPU memory with ordinary loads and
+// stores, and the KPU reads the model's tables from main memory by DMA. On
+// the K210, every conv is bracketed by a full barrier (compiler and RISC-V
+// fence): all CPU writes (input, AddPadding, tables) complete before the
+// layer argument is sent, and no read-back starts before calc_done. Code
+// that writes KPU memory or model tables outside Run must not overlap a Run.
+//
 // The parser, memory layout and CPU layers are in package kmodel and run
 // on any host; only the KPU itself (kpu_k210.go) is K210-specific.
 package kpu
@@ -65,6 +72,7 @@ type Runner struct {
 	e     engine
 	times []LayerTime
 	lut   [256]uint32 // Dequantize's table
+	args  kmodel.Args // the conv being run (see conv)
 }
 
 func newRunner(m *kmodel.Model, main []byte, base uintptr, e engine) (*Runner, error) {
@@ -149,7 +157,11 @@ func (r *Runner) Times() []LayerTime { return r.times }
 
 func (r *Runner) conv(l kmodel.Layer, first bool, input, ram []byte, t *LayerTime) error {
 	c, _ := l.Conv()
-	a := r.m.Args(c)
+	// The argument lives in the Runner, not on the stack: passed by pointer
+	// through the engine interface, a local escapes and the host compiler
+	// allocates it once per conv (review R-K210-K8b K5).
+	a := &r.args
+	*a = r.m.Args(c)
 	if first {
 		w, h, ch := a.InShape()
 		if len(input) != w*h*ch {
@@ -167,7 +179,7 @@ func (r *Runner) conv(l kmodel.Layer, first bool, input, ram []byte, t *LayerTim
 	a.SetIntEnable()
 	a.SetSendDataOut(false)
 	t0 := r.e.now()
-	if err := r.e.conv(&a); err != nil {
+	if err := r.e.conv(a); err != nil {
 		return err
 	}
 	t1 := r.e.now()

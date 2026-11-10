@@ -5,6 +5,7 @@ package kpu
 import (
 	"device/kendryte"
 	"device/riscv"
+	"sync/atomic"
 	"unsafe"
 
 	"github.com/itohio/EasyRobot/drivers/kpu/kmodel"
@@ -26,10 +27,14 @@ func (k210) ram() []byte { return aiRAM }
 func (k210) now() uint64 { return uint64(riscv.CYCLE.Get()) }
 
 // conv sends the 12 layer-argument words (kpu_send_layer) and waits for
-// calc_done.
+// calc_done, with a barrier on both sides: everything the CPU wrote to KPU
+// memory (the input upload, AddPadding) and to the model's tables is
+// complete before the first FIFO write, and no read of KPU memory (the
+// output read-back) starts before calc_done (review R-K210-K8b K3).
 func (k210) conv(a *kmodel.Args) error {
 	k := kendryte.KPU
 	k.INTERRUPT_CLEAR.Set(7)
+	barrier()
 	for _, w := range a {
 		k.LAYER_ARGUMENT_FIFO.Set(w)
 	}
@@ -39,8 +44,26 @@ func (k210) conv(a *kmodel.Args) error {
 			return ErrTimeout
 		}
 	}
+	barrier()
 	k.INTERRUPT_CLEAR.Set(7)
 	return nil
+}
+
+// fenceWord is the target of barrier's atomic operations.
+var fenceWord uint32
+
+// barrier is a full memory barrier for both the compiler and the core.
+// KPU memory is reached through ordinary loads and stores (aiRAM), which
+// the compiler may move across the volatile KPU register accesses, and
+// TinyGo's riscv.Asm is not a compiler memory barrier. So barrier brackets
+// a RISC-V `fence` (iorw, iorw: drains earlier loads and stores, including
+// to the uncached alias, before later ones) with two sequentially
+// consistent atomic read-modify-writes, which LLVM does not move ordinary
+// memory accesses across and which keep the fence between them.
+func barrier() {
+	atomic.AddUint32(&fenceWord, 1)
+	riscv.Asm("fence")
+	atomic.AddUint32(&fenceWord, 1)
 }
 
 // open powers the KPU and sets it up like kpu_run_kmodel: interrupts

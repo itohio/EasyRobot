@@ -213,3 +213,37 @@ func TestNewEmulated(t *testing.T) {
 		t.Fatal("test model gives a constant output; the check would be weak")
 	}
 }
+
+// quiet is a fake KPU that allocates nothing: it writes a constant output
+// tensor and ignores the arguments' contents.
+type quiet struct {
+	mem []byte
+	out []byte
+}
+
+func (q *quiet) ram() []byte { return q.mem }
+func (q *quiet) now() uint64 { return 0 }
+func (q *quiet) conv(a *kmodel.Args) error {
+	ow, oh, oc := a.OutShape()
+	return a.OutLayout().UploadTo(q.mem, a.DstAddr(), ow, oh, oc, q.out)
+}
+
+// TestRunAllocatesNothing pins Run's zero-allocation promise on the host
+// compiler too (review R-K210-K8b K5: the layer argument escaped through
+// the engine interface once per conv).
+func TestRunAllocatesNothing(t *testing.T) {
+	m := model(t)
+	e := &quiet{mem: make([]byte, kmodel.RAMSize), out: make([]byte, n)}
+	r, err := newRunner(m, make([]byte, m.MainMemUsage), base, e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := make([]byte, w*h*inC)
+	if a := testing.AllocsPerRun(20, func() {
+		if err := r.Run(in); err != nil {
+			t.Fatal(err)
+		}
+	}); a != 0 {
+		t.Errorf("Run allocates %v times per call", a)
+	}
+}
