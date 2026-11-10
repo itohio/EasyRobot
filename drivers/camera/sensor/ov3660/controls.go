@@ -105,10 +105,15 @@ func (s *Sensor) SetControls(c sensor.Controls) error {
 		}
 	}
 	if !c.AutoWB {
-		for i, g := range c.WB {
-			if err := s.write16(regWBGain+uint16(2*i), wbReg(g)); err != nil {
+		// Step a register variable rather than add 2·i to the constant:
+		// TinyGo 0.43's Xtensa backend fails at -opt=z on
+		// regWBGain+uint16(2*i) ("Cannot select: i32 = Constant<13312>").
+		r := uint16(regWBGain)
+		for _, g := range c.WB {
+			if err := s.write16(r, wbReg(g)); err != nil {
 				return err
 			}
+			r += 2
 		}
 	}
 	isp, err := s.read(regISPCtrl01)
@@ -156,16 +161,17 @@ func (s *Sensor) ReadControls() (sensor.Controls, error) {
 		return c, err
 	}
 	c.AutoWB = awb&0x01 == 0
-	base := uint16(regWBGain)
+	r := uint16(regWBGain)
 	if c.AutoWB {
-		base = regAWBLive
+		r = regAWBLive
 	}
-	for i := range c.WB {
-		v, err := s.read16(base + uint16(2*i))
+	for i := range c.WB { // register stepped, not computed from i (see SetControls)
+		v, err := s.read16(r)
 		if err != nil {
 			return c, err
 		}
 		c.WB[i] = float32(v&0xFFF) / wbUnity
+		r += 2
 	}
 	return c, nil
 }
