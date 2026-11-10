@@ -63,7 +63,7 @@ One ticket-ID scheme: `ER-NNN`, one file each in `tickets/`. The ER-R2 proposals
 | [[ER-043-k210-camera-identity\|ER-043]] | UnitV camera identity via DVP SCCB | implementation | ready | k210 | K210-camera | K210-M3 | ER-041 |
 | [[ER-044-k210-frame-over-uart\|ER-044]] | UnitV one camera frame over UART | implementation | ready | k210 | K210-camera | K210-M4 | ER-043 |
 | [[ER-045-k210-native-int8-benchmark\|ER-045]] | Native int8 conv/dot/GEMV benchmark on one K210 hart | measurement | blocked | k210 | K210-nn | K210-M5 | ER-041; int8 kernels |
-| [[ER-046-k210-kpu-kmodel-runner\|ER-046]] | KPU kmodel v3 run through a pure-Go runner | implementation | blocked | k210 | K210-nn | K210-M6 | ER-041; nncase approval |
+| [[ER-046-k210-kpu-kmodel-runner\|ER-046]] | KPU kmodel v3 run through a pure-Go runner | implementation | ready | k210 | K210-nn | K210-M6 | ER-041; nncase approval |
 | [[ER-047-k210-feature-tensor-out\|ER-047]] | UnitV camera → KPU → feature tensor stream | implementation | blocked | k210 | [K210-camera, K210-nn, W4] | K210-M7 | ER-044, ER-046 |
 
 ER-015 additionally requires the completed ticket for each optional path it measures. ER-005/007/009 keep Xtensa, K230 and K510 independent and **UNVERIFIED**. ER-011's external CPU reference is not ER-014's native graph execution. ER-026 is one ticket with two stages: stage 1 host (ready), stage 2 TinyGo (blocked on owner approval).

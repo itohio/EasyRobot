@@ -113,7 +113,7 @@ The knowledge engine is its own Go module and is catalogued in [[knowledge-engin
 
 Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs tagged with the ticket. The defects themselves are in the linked notes and in [[todo]].
 
-<!-- vault:tickets h=0e48eda73e07 -->
+<!-- vault:tickets h=438094d87e9c -->
 
 | Ticket | Title | Status | Workstream | Open p1 |
 |---|---|---|---|---|
@@ -157,7 +157,7 @@ Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs 
 | [[ER-043-k210-camera-identity\|ER-043]] | UnitV camera identity via DVP SCCB | ready | K210-camera | 0 |
 | [[ER-044-k210-frame-over-uart\|ER-044]] | UnitV one camera frame over UART | ready | K210-camera | 0 |
 | [[ER-045-k210-native-int8-benchmark\|ER-045]] | Native int8 conv/dot/GEMV benchmark on one K210 hart | blocked | K210-nn | 0 |
-| [[ER-046-k210-kpu-kmodel-runner\|ER-046]] | KPU kmodel v3 run through a pure-Go runner | blocked | K210-nn | 0 |
+| [[ER-046-k210-kpu-kmodel-runner\|ER-046]] | KPU kmodel v3 run through a pure-Go runner | ready | K210-nn | 0 |
 | [[ER-047-k210-feature-tensor-out\|ER-047]] | UnitV camera → KPU → feature tensor stream | blocked | K210-camera, K210-nn, W4 | 0 |
 
 <!-- /vault:tickets -->
