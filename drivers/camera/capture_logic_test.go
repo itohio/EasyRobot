@@ -94,6 +94,11 @@ func TestDescriptorChain(t *testing.T) {
 	if got := descLength(1<<31 | 1<<30 | 1234<<12 | 4032); got != 1234 {
 		t.Errorf("received length %d, want 1234", got)
 	}
+	// A full node reports 4032, above 2048: the 12-bit length field must be
+	// read whole (verify V-BATCH-2 fix 2: a 0x7FF mask survived).
+	if got := descLength(1<<31 | nodeBytes<<12 | nodeBytes); got != nodeBytes {
+		t.Errorf("full node length %d, want %d", got, nodeBytes)
+	}
 }
 
 func TestEOFIndex(t *testing.T) {
