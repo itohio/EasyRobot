@@ -4,14 +4,14 @@ group: "Tensor and NN"
 status: partial
 tags: [easyrobot, nn, tensor]
 workstream: [W9, W5]
-packages: [x/math/nn, x/math/nn/layers, x/math/nn/models, x/math/nn/types, x/math/nn/qnet]
+packages: [x/math/nn, x/math/nn/layers, x/math/nn/models, x/math/nn/types, x/math/nn/qnet, x/math/nn/qnet/tfl]
 test_result: fail
 ---
 # nn
 
 **Purpose:** a small Keras/PyTorch-style neural-network layer library on top of the [[tensor]] interface: layers with Init/Forward/Backward, losses, a Sequential model and a builder; training (optimisers, `TrainStep`) lives in [[learn]].
 
-**Embedded int8 inference** lives apart from the float layer library: `x/math/nn/qnet` (sequential int8 graph, runner, backend interface, MobileNetV1-0.25 builder) on the [[int8-nn-kernels]] in `x/math/primitive/qi8`; it imports only the standard library and qi8 so it builds for MCUs ([[int8-graph-runner]]).
+**Embedded int8 inference** lives apart from the float layer library: `x/math/nn/qnet` (int8 graph with residual Add, Mul, Concat, Const, Pad, resize, Mean, Logistic, Softmax and multiple outputs, activation-memory planner, runner on qi8 prepared layers, backend interface, MobileNetV1-0.25 builder) and `x/math/nn/qnet/tfl` (pure-Go TFLite int8 importer; classification and detection models such as BlazeFace) on the [[int8-nn-kernels]] in `x/math/primitive/qi8`; they import only the standard library and qi8 so they build for MCUs ([[int8-graph-runner]]).
 
 **Packages (non-test LOC):**
 
