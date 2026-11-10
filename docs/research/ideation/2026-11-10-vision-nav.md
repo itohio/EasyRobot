@@ -100,7 +100,7 @@ Brief: `~/src/docs/tasks/O-007-vision-nav-research.md`, objective O-007 (`docs/o
 | **V1 0.25** | 20×15×128 | 55 | 108 k | 461 KB | 50.6 % | **1.6 s / 0.41 s** | 2.3 s / 0.60 s | all present | maps fully (conv, DW, pointwise, ReLU6) |
 | V1 0.5 | 20×15×256 | 198 | 411 k | 922 KB | 63.7 % | 4.6 s / 1.2 s | 7.9 s / 2.1 s | all | maps fully |
 | V1 1.0 | 20×15×512 | 750 | 1.6 M | 1.84 MB | 70.6 % | 14.8 s | 28.8 s | all | 1.84 MB peak, at the AI SRAM limit |
-| **V2 0.35** | 20×15×32 | 49 | 73 k | 1.15 MB | 60.3 % | **1.9 s / 0.48 s** | 2.3 s / 0.59 s | all (ADD present) | residual Adds on the CPU, a KPU↔CPU round trip per block |
+| **V2 0.35** | 20×15×32 | 49 | 73 k | 1.15 MB | 60.3 % | **1.9 s / 0.48 s** | 2.3 s / 0.59 s | all (ADD present) | residual Adds on the CPU (a KPU↔CPU round trip per block); **at QVGA the first expanded depthwise needs row-band tiling** (§1a.3) |
 | **V2 0.5** | 20×15×48 | 104 | 147 k | 1.15 MB | 65.4 % | 3.4 s / 0.87 s | 4.6 s / 1.2 s | all | as above |
 | V2 1.0 | 20×15×96 | 321 | 534 k | 2.30 MB | 71.8 % | 8.4 s | 13.3 s | all | over 2 MiB at QVGA |
 | MobileNetV3, EfficientNet-Lite | — | — | — | — | — | — | — | HARD_SWISH missing (V3); 5×5 DW (Lite) | no (h-swish/SE; 5×5) |
@@ -152,28 +152,54 @@ Brief: `~/src/docs/tasks/O-007-vision-nav-research.md`, objective O-007 (`docs/o
 - **Today:** `drivers/kpu` replays layer arguments taken from nncase-built kmodel files. `kmodel.Args` copies the 12 u64 words and patches the weight, BN and activation addresses. It is **not** a compiler.
 - **Without nncase,** we need a **Go KPU compiler**: TFLite or the owner's marshalled graph → per-layer 12-word arguments, weights, BN and activation tables, and the KPU memory layout (`Layout`: group, row lines, channel lines). The per-layer argument format is the one the runner already decodes.
 
-**What the KPU does natively, per layer:**
-- conv **1×1 or 3×3**, depthwise as a flag;
-- per-channel BN (multiply, add, shift), so bias and requantisation fold in;
-- activation as a **16-segment piecewise-linear table** (ReLU, ReLU6, leaky, approximate sigmoid or h-swish);
-- pooling: max/avg 2×2 and 4×4, plus the stride-2 downsample used for stride-2 convs. That is why stride-2 layers need explicit padding, the PAD + VALID rebuild our K8 run needed;
-- uint8 asymmetric input/output.
+**Verified layer model** (verify's reframed Q4, `docs/verification/O-007-vision-nav.md`, from the SDK's `kpu_layer_argument_t` and the rc5 converter sources; this replaces my earlier summary).
 
-**Limits:**
-- register fields allow width ≤ 1024, height ≤ 512, channels ≤ 1024 (bit widths in `kmodel/layout.go`, observed);
-- input + output must fit in the 2 MiB AI SRAM;
-- nncase's "≤ 320×240" is its own guidance. Whether larger frames work is `#verify` in the compiler.
+**What one KPU layer can be:**
 
-**Not on the KPU** (CPU between layers): residual **Add**, concat (except by memory layout), **FC/dense**, global pooling, softmax, resize, quantize/dequantize.
-- MobileNetV1 maps entirely onto the KPU, with GAP/FC on the CPU.
-- MobileNetV2 needs a CPU Add after most blocks.
-- Dense heads always run on a CPU (S3 or K210).
+| Feature | What a Go compiler can set |
+|---|---|
+| Kernel | **1×1 or 3×3** only |
+| Conv kind | regular or **depthwise** (a flag), for both kernel sizes |
+| Stride | **always stride 1** with SAME padding (`pad_value`). Stride 2/4 exists **only through the pool stage** |
+| Bias, requantisation | the per-output-channel BN table (`norm_mul` 24 bit, `norm_add` 32 bit, `norm_shift` 4 bit) |
+| Zero points | uint8 asymmetric inputs and weights; **weights have one scale per layer, not per channel** |
+| Activation | a 16-segment piecewise-linear table after BN, clamped to 0–255. **ReLU, ReLU6, identity and LeakyReLU are exact;** sigmoid and h-swish only approximate (not bit-exact with TFLite) |
+| Pool (after the activation) | none; max or avg 2×2/2; max or avg 4×4/4; **"left-top" 2×2/2 = subsampling (stride 2)** |
+| Sizes | width ≤ 1024, height ≤ 512, channels ≤ 1024 (also the bit widths in our `kmodel/layout.go`) |
+| Memory | 2 MiB AI SRAM in 64-byte lines; a layer's input **and** output must both be resident; a row wider than 32 takes ⌈W/64⌉ lines |
+| Not available | elementwise Add/Mul, concat as an op, 5×5 or dilated kernels, native stride 2, transposed conv / upsampling, global pool, FC (nncase runs FC as a 1×1 conv on a padded 4×4 map, or on the CPU) |
+
+**MobileNet blocks against it** (verify):
+
+| Block | KPU mapping | Fits? |
+|---|---|---|
+| V1 stem: 3×3 conv /2 + ReLU6 | 3×3 regular conv (stride 1) + ReLU6 table + left-top pool | **yes** |
+| V1 block /1: dw 3×3 → pw 1×1 | two layers | **yes** |
+| V1 block /2 | depthwise 3×3 at stride 1 (full resolution), then the 1×1 with the left-top pool (1×1 commutes with subsampling) | **yes**: 4× the depthwise compute, cheap on the KPU |
+| V1 α 0.5 at QVGA | largest input + output ≈ 1.1 MB | **yes** |
+| V2 expand, depthwise, linear project | regular 1×1; depthwise as V1; 1×1 with an identity table | **yes** |
+| **V2 residual Add** | no KPU op. CPU round trip: read both tensors out of KPU RAM, requantised Add, upload back. **~15–20 ms per Add** for a 60×80×16 tensor (verify's inference, scaled from K8b's ~700 µs per 3 KB). An untested alternative folds the Add into the projection conv via a channel-contiguous layout, limited by the one weight scale per layer | **CPU per block** |
+| **V2 at QVGA**, the first expanded depthwise (120×160×48) | input + output ≈ 2.21 MB > 2 MiB | **only with row-band tiling** (horizontal bands, 1-row halo, edge rows discarded); without tiling V2 fits up to about **256×256 / 224×288** |
+| V3 h-swish / squeeze-excite; EfficientNet-Lite 5×5 | approximate activation / CPU-only SE / no exact 5×5 | no |
+
+**Consequences for the shortlist (§1a.1):**
+- **V1 is the KPU-native choice:** every block maps, with no CPU round trips and no tiling at QVGA.
+- V2 costs about 0.25 M element Adds per frame at QVGA as CPU round trips, plus row tiling of its first expansion. Prefer V2 only on the CPU path, or on the KPU at ≤ 256×256 (e.g. 224×288 or QQVGA).
+
+**Training rules for bit-exact KPU runs** (from verify; also in §6):
+1. **Stride-2 layers as explicit PAD(1,1) + VALID, not TF/Keras SAME.**
+   - The KPU's left-top pool keeps pixel (2i, 2j) of the stride-1 SAME output: windows centred on even pixels. TF SAME at stride 2 on even sizes centres on odd pixels.
+   - A SAME-trained model runs shifted by one pixel on the KPU: a small accuracy change, and not bit-exact with the owner's TFLite.
+   - Our K8 rebuild already used PAD + VALID.
+2. **Keep every stride-2 input even** (odd sizes such as 15 → 8 don't map; nncase refused them). QVGA is even down to stride 16, which matches our cut.
+3. **Per-tensor (per-layer) weight quantisation** for the layers that go on the KPU (inferred from the one-scale-per-layer field). TFLite's default per-channel int8 weights would have to be re-quantised, losing accuracy.
+4. **Activations from the exact set** (ReLU, ReLU6, identity, LeakyReLU) for KPU layers.
 
 **Numerics:**
-- TFLite int8 (symmetric weights, TFLite rounding) ≠ KPU uint8 with its own BN and activation rounding, so the compiler converts.
-- KPU results won't be bit-exact with `qnet`. Validate layer by layer within ±2 LSB, the K8b precedent (32,749 of 32,768 within 1 LSB).
+- TFLite int8 (symmetric per-channel weights, TFLite rounding) ≠ KPU uint8 with per-layer weight scale and its own BN and activation rounding, so the compiler converts. The training rules above keep that conversion small.
+- KPU results won't be bit-exact with `qnet` unless the model follows the rules. Validate layer by layer within ±2 LSB, the K8b precedent (32,749 of 32,768 within 1 LSB).
 
-**Effort** (inferred): register semantics from the Kendryte SDK sources and our K8 runner; a few weeks. It is the critical path for a K210 frontend at useful fps, because the K210 CPU is 0.6 s per frame even at QQVGA.
+**Effort** (inferred): register semantics from the SDK's `kpu.h` (documented layer by layer in k210's `EasyRobot/docs/architecture/k210-kpu.md`, uncommitted) and our K8 runner; a few weeks. V2 adds CPU Add + Download/Upload and row-band tiling. It is the critical path for a K210 frontend at useful fps, because the K210 CPU is 0.6 s per frame even at QQVGA.
 
 ### 1a.4 How to measure (nnbench rows)
 
@@ -339,6 +365,7 @@ K210 ↔ ESP32 directly is **untested**. Without the FTDI chip, and with the S3'
 3. **Train heads** (and the bottleneck) on the features. Quantisation-aware or noise-augmented, so the int8 KPU features don't surprise the heads.
 4. **QVGA first, then VGA** (owner): VGA as an offline teacher or augmentation, since the robot's KPU path is QVGA.
 5. **fp32 TFLite** check on the PC (owner's step), then **int8 TFLite** (`RoundTFLite`, which our loader matches bit-exactly for Conv2D/DW/Add, observed), then our qi8 loader on the S3.
+6. **If the frontend will run on the KPU** (§1a.3), train it with stride-2 layers as PAD(1,1) + VALID, even sizes at every stride-2 input, per-tensor weight quantisation and KPU-exact activations, so the KPU, `qnet` and the owner's TFLite agree.
 
 **Ops each head needs vs our loader** (supported in `x/math/nn/qnet/tfl`, observed: CONV_2D, DEPTHWISE_CONV_2D, FULLY_CONNECTED, AVERAGE/MAX_POOL_2D, RESHAPE, SOFTMAX, ADD, LOGISTIC, MUL, MEAN, QUANTIZE, DEQUANTIZE, CONCATENATION, PAD/PADV2, RESIZE_NEAREST_NEIGHBOR; fused RELU/RELU6):
 
