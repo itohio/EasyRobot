@@ -3,6 +3,7 @@ package kmodel
 import (
 	"encoding/binary"
 	"math"
+	"unsafe"
 )
 
 // Args is a KPU layer argument (kpu_layer_argument_t): the 12 u64 words
@@ -134,7 +135,7 @@ func (l Layout) UploadTo(ram []byte, addr uint32, w, h, c int, src []byte) error
 	for ch := range c {
 		for y := range h {
 			o := l.offset(addr, ch, y, 0)
-			copy(ram[o:o+w], src[(ch*h+y)*w:])
+			copyRow(ram[o:o+w], src[(ch*h+y)*w:])
 		}
 	}
 	return nil
@@ -149,10 +150,38 @@ func (l Layout) DownloadFrom(ram []byte, addr uint32, w, h, c int, dst []byte) e
 	for ch := range c {
 		for y := range h {
 			o := l.offset(addr, ch, y, 0)
-			copy(dst[(ch*h+y)*w:], ram[o:o+w])
+			copyRow(dst[(ch*h+y)*w:(ch*h+y+1)*w], ram[o:o+w])
 		}
 	}
 	return nil
+}
+
+// copyRow copies min(len(dst), len(src)) bytes, 8 at a time while both
+// sides are 8-byte aligned. The K210's KPU memory is reached through an
+// uncached alias, where every access is a bus transaction: one 64-bit
+// access instead of eight byte accesses is the C runtime's aligned upload
+// path (kpu_upload_core) and makes upload and read-back about 8× cheaper
+// (ER-K210-K8 evidence, K8c-1).
+func copyRow(dst, src []byte) {
+	n := min(len(dst), len(src))
+	i := 0
+	if n >= 8 && uintptr(unsafe.Pointer(unsafe.SliceData(dst)))%8 == 0 && uintptr(unsafe.Pointer(unsafe.SliceData(src)))%8 == 0 {
+		d := unsafe.Slice((*uint64)(unsafe.Pointer(unsafe.SliceData(dst))), n/8)
+		s := unsafe.Slice((*uint64)(unsafe.Pointer(unsafe.SliceData(src))), n/8)
+		copy64(d, s)
+		i = n &^ 7
+	}
+	for ; i < n; i++ {
+		dst[i] = src[i]
+	}
+}
+
+// copy64 is a plain loop, not the copy builtin, so that every access is
+// one 64-bit load or store (a memmove may fall back to byte accesses).
+func copy64(d, s []uint64) {
+	for j := range d {
+		d[j] = s[j]
+	}
 }
 
 func f32(u uint32) float32 { return math.Float32frombits(u) }

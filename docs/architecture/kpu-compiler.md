@@ -1,0 +1,130 @@
+---
+type: architecture
+status: draft
+tags: [easyrobot, architecture, k210, kpu, nn, compiler]
+workstream: [K210-nn]
+source: [drivers/kpu/, drivers/kpu/kmodel/, x/math/nn/qnet/, x/math/nn/qnet/tfl/, x/math/primitive/qi8/]
+evidence: "~/src/docs/evidence/ER-K210-K8.md (outside the repo): KPU format, Go arithmetic model bit-exact with nncase's simulator, silicon within ~1 LSB per layer"
+---
+# KPU compiler: TFLite / qnet graphs → K210 KPU layers (design)
+
+Owner decision (2026-11-10): models come as int8 TFLite files or as our own `qnet` graphs, not as nncase kmodels. nncase stays a host-side test oracle only. This note designs a Go compiler that lowers a `qnet.Graph` to KPU layer arguments, run by `drivers/kpu`. The hardware facts it relies on are in [[k210-kpu]].
+
+## Goal and non-goals
+
+- **Goal:** any `qnet.Graph` (from `tfl.Load` or built in Go) runs on the K210, with the KPU executing every layer it can and qnet's CPU kernels the rest, in one plan.
+  - Output within 1 LSB per layer of qnet's CPU reference for KPU-run layers.
+  - No allocation per frame.
+- **Non-goals:**
+  - writing kmodel files;
+  - training;
+  - float models (int8 only, as `tfl` loads them);
+  - the K230 (different NPU).
+
+## Input
+
+- `qnet.Graph` (`x/math/nn/qnet`) is the only input. Its layers are plain data: geometry, `InQ`/`OutQ` (real = Scale·(q − ZP), int8 activations), int8 weights (symmetric, per-output-channel `Requant`), int32 bias, fused `ActMin`/`ActMax`.
+- TFLite int8 files arrive through `qnet/tfl.Load`, unchanged: the compiler never sees TFLite.
+- qnet already has an accelerator seam: `qnet.Backend` (`Claim` a chain of layers, `Run` it from `src` to `dst`, NHWC int8). The KPU compiler is a `Backend` built ahead of time from the graph:
+
+  ```go
+  b, err := kpu.Compile(&g, opts)        // lowering, AI-SRAM plan, weight blobs; one-time allocation
+  r, err := qnet.NewRunner(&g, arena, b) // qnet plans KPU segments and CPU layers together
+  ```
+
+## Lowering one layer
+
+### Which layers the KPU runs
+
+| qnet layer | KPU | Notes |
+|---|---|---|
+| Conv2D 1×1 or 3×3, stride 1, SAME | yes | |
+| DepthwiseConv2D 3×3 (multiplier 1), stride 1, SAME | yes | |
+| stride 2 | yes, only as conv + left-top 2×2 sampler | the window must be centred on even pixels: the graph has to be `Pad(1,1)` + VALID, the training rule (see below) |
+| MaxPool2D / AvgPool2D 2×2 or 4×4, stride = kernel, directly after a conv | fused into that conv | `pool_type` |
+| everything else (Add, Concat, FC, Mean/GAP, Softmax, Logistic, Mul, resizes) | no | CPU (qnet kernels) |
+
+### Integer mapping
+
+The activation and weight mapping is exact:
+- **KPU tensors are uint8:** x′ = q + 128. Weights: w′ = q_w + 128.
+- **The KPU accumulates** Σ w′x′ + (arg_x·Σx′ >> shr_x) + (arg_w·Σw′ >> shr_w) + arg_add·n (n = taps × IC, or taps for depthwise).
+- **TFLite needs** Σ q_w·(q_x − zp_x) = Σ (w′ − 128)(x′ − 128 − zp_x). So:
+
+  | Field | Value |
+  |---|---|
+  | arg_x | −128 (shr_x 0) |
+  | arg_w | −(128 + zp_x) (shr_w 0) |
+  | arg_add | 128·(128 + zp_x) per tap |
+  | pad_value | zp_x + 128 |
+
+  - arg_add is scaled by the tap count where nncase does (k·k folded in for 3×3; × IC by the hardware for conv).
+  - pad_value is the real zero, which is what SAME padding needs.
+  - All are integers: **the accumulator equals TFLite's**, if the KPU's accumulator doesn't overflow (its width is unknown, an open question).
+
+Requantisation is approximate:
+- **Batch norm then activation:** BN computes (acc·mul >> s) + add per channel (mul 24-bit signed, s ≤ 15). The activation then (y − start)·y_mul carry-shifted by up to 20 bits.
+- **Per-channel scale:** TFLite's per-channel multiplier M_c = s_w,c·s_x/s_out goes into BN mul_c. The int32 bias goes into BN add_c (bias·mul_c, shifted). The remaining 2^k scale goes into the activation's y_mul/shift (nncase's "postMul" upshift, which keeps precision when M_c is small).
+  - So per-channel weight scales are supported. nncase rc5 used a single weight scale per tensor, but that is a choice, not a hardware limit.
+- **Rounding:** BN shifts with a floor; the activation's `carry_shift` rounds a positive value half up, and gives a negative value whose dropped bit is set floor − 1 (rule in [[k210-kpu]]). TFLite rounds once (rounding doubling high multiply plus a rounding shift). So results can differ by 1 LSB from qnet's CPU output. The bar is ≤ 1 LSB per layer, not bit-exactness.
+- **Output zero point and clamps:**
+  - zp_out + 128 goes into the active segment's result_bias byte.
+  - ActMin/ActMax (ReLU, ReLU6, other fused clamps) become flat segments (mul 0, bias = the clamp in uint8).
+  - LeakyReLU uses two sloped segments.
+  - All within the 16-segment table.
+
+### Weight and table blobs
+
+- **Weights:** uint8 in the emulator's order: OIHW for conv, `oc·9 + ky·3 + kx` for depthwise; 128-aligned. qnet stores OHWI, so the compiler transposes once.
+- **Loads:** split into loads of ≤ 30 KiB (`load_time`, `o_ch_num_coef`), as nncase does.
+- **Tables:** BN at 128-byte alignment (8 B per channel); activation table at 256-byte alignment (18 × u64).
+- All blobs live in one compiler-owned, 128-aligned buffer below 4 GiB (the KPU fetches them by 32-bit address).
+
+## Planning a chain
+
+- **Segments:** a KPU segment is a maximal chain of KPU-able single-input layers.
+  - Its input is uploaded once: int8 NHWC → uint8 CHW, then `UploadTo` in the first layer's layout.
+  - Its output is read back once (`DownloadFrom`, then uint8 CHW → int8 NHWC).
+  - Intermediate tensors stay in AI SRAM.
+- **Conversion at boundaries:** the CHW↔NHWC transpose and the ±128 shift happen only there, on the CPU. [INFERENCE: cost similar to K8c-1's upload and read-back, a few hundred µs at QVGA; measured in K9d.]
+- **AI-SRAM plan:** 2 MiB = 32,768 lines. A tensor takes `row_length·H·⌈C/group⌉` lines. Live tensors in a chain are only the current input and output, so a two-region ping-pong (nncase's top/bottom allocation) suffices. The plan is computed at compile time and checked: every layer's input + output ≤ 2 MiB.
+- **Row-band tiling** applies when input + output > 2 MiB. Example: MobileNetV2's first expanded depthwise at QVGA (verify O-007 Q4).
+  - The layer is split into horizontal bands with a 1-row halo for 3×3, each band a separate layer argument with its own image size and addresses, run in turn.
+  - Band outputs are read back to main memory and re-uploaded as the next layer's input, or written into a tensor whose layout the next layer reads.
+  - This is the most complex part and gets its own milestone.
+- **CPU fallback:** layers the KPU can't run (Add, Concat, FC, GAP/Mean, Softmax, Logistic, Mul, resizes) run on qnet's CPU kernels between KPU segments. FC can alternatively run as a 1×1 KPU conv on a 4×4 zero-padded map (nncase's head), chosen by an option once measured.
+
+## Validation
+
+1. **Per layer on the host:** each lowered layer through `kmodel.ConvParams.Emulate` (bit-exact with nncase's simulator, K8c) against qnet's `RunLayer` on the same int8 input, ≤ 1 LSB, over random shapes, quantisations, zero points, clamps and pools.
+2. **Whole graph on the host:** `kpu.NewEmulated`-style engine plus qnet's runner, layer by layer through `OnLayer`, against qnet's CPU runner.
+3. **On the board:** the UnitV against the host emulation, layer by layer (K8c showed the silicon within about 1 LSB per layer of the emulator).
+4. **nncase as an oracle only:** for a float model, the compiler's per-layer outputs and nncase's (both on the same input) should agree in distribution. They can't match bit-for-bit, because the quantisation differs.
+
+## Training and export rules for the owner's models
+
+- **Stride 2** as `Pad(1,1)` + VALID, not TF SAME. SAME on even sizes centres windows on odd pixels; the KPU's left-top sampler takes even ones.
+  - For the first layer only, the compiler could shift the uploaded input by one pixel instead (open question 3).
+- **Kernels** 1×1 and 3×3 only; depthwise multiplier 1.
+- **Sizes:** W ≤ 1024, H ≤ 512, C ≤ 1024. nncase rejects depthwise outputs smaller than 4×4: whether that is a hardware limit is open question 4.
+- **Activations:** anything piecewise-linear in 16 segments: ReLU, ReLU6, clamps, LeakyReLU, hard-sigmoid/hard-swish approximations.
+- **Residual Add and Concat** run on the CPU and cost a read-back plus re-upload each. Prefer V1-style plain chains for KPU efficiency, or keep adds few.
+
+## Milestones (each with its check)
+
+| Step | Scope | Check |
+|---|---|---|
+| K9a | Lower one Conv2D/Depthwise (1×1, 3×3, stride 1, SAME) from `qnet.Layer` to Args + blobs | host: `Emulate(lowered)` vs `qnet.RunLayer` ≤ 1 LSB on ≥ 1,000 random layers; mutation-checked tests |
+| K9b | Activation tables (ReLU/ReLU6/clamp/LeakyReLU), fused pools, stride 2 via Pad(1,1)+VALID + left-top | as K9a, plus the stride-2 pattern recognised and rejected for TF SAME |
+| K9c | `kpu.Compile` → `qnet.Backend`: segments, AI-SRAM plan, int8 NHWC ↔ uint8 CHW at boundaries, emulated engine | host: `qnet.MobileNetV1(0.25,128,128,0)` + `SyntheticParams`, KPU backend vs CPU runner per layer ≤ 1 LSB; `Run` allocates nothing |
+| K9d | The same graph on the UnitV | board vs host emulation per layer ≤ 1 LSB; ms/frame vs K7/K8c (CPU 533 ms at 128×128) |
+| K9e | A real int8 TFLite MobileNetV1-0.25 (exported with Pad(1,1)+VALID) through `tfl.Load` → KPU | class agreement with the TFLite reference interpreter on camera frames |
+| K9f | Row-band tiling; CPU Add/Concat between segments; FC-on-KPU option; MobileNetV2 at QVGA | per layer ≤ 1 LSB vs CPU; fits 2 MiB |
+
+## Open questions (resolved by measurement in the milestones)
+
+1. The KPU accumulator width: does a 3×3×1024 conv of extreme values overflow? (K9a: probe on the board.)
+2. What `first_stride`, `bypass_conv`, `full_add`, `ram_flag` and `kernel_offset` do. nncase leaves them 0. `first_stride` may be a true stride-2 path. (K9b: probe on the board.)
+3. TF-SAME stride 2 on the first layer via a one-pixel input shift at upload (K9b).
+4. The ≥ 4×4 depthwise output limit: is it hardware or nncase? (K9b: probe on the board.)
+5. Whether BN's floor shift and the activation's 36-bit compare explain the ±1 LSB silicon difference. If so, the emulator can model the hardware exactly. (K9a, from the K8c per-layer data.)

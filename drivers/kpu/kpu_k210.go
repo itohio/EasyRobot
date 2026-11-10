@@ -23,6 +23,8 @@ type k210 struct{}
 
 func (k210) ram() []byte { return aiRAM }
 
+func (k210) now() uint64 { return uint64(riscv.CYCLE.Get()) }
+
 // conv sends the 12 layer-argument words (kpu_send_layer) and waits for
 // calc_done.
 func (k210) conv(a *kmodel.Args) error {

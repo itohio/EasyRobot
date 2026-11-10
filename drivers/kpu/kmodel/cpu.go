@@ -3,6 +3,7 @@ package kmodel
 import (
 	"encoding/binary"
 	"math"
+	"unsafe"
 )
 
 // The CPU layers of the kmodel v3 runtime (kpu.c), on main memory main
@@ -22,13 +23,33 @@ func putF32(b []byte, i uint32, v float32) {
 }
 
 // Dequantize writes float32(q)·Scale + Bias for Count uint8 values
-// (kpu_kmodel_dequantize).
-func (q Quant) Dequantize(main []byte) {
-	src, dst := main[q.In:q.In+q.Count], main[q.Out:]
+// (kpu_kmodel_dequantize). The 256 possible results are computed once into
+// lut (caller-owned, so that nothing is allocated per call), which on the
+// K210 is cheaper than a float multiply-add per value.
+func (q Quant) Dequantize(main []byte, lut *[256]uint32) {
+	src, dst := main[q.In:q.In+q.Count], main[q.Out:q.Out+4*q.Count]
+	for v := range lut {
+		lut[v] = math.Float32bits(float32(float32(v)*q.Scale) + q.Bias)
+	}
+	if littleEndian && uintptr(unsafe.Pointer(unsafe.SliceData(dst)))%4 == 0 {
+		d := unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(dst))), len(src))
+		for i, v := range src {
+			d[i] = lut[v]
+		}
+		return
+	}
 	for i, v := range src {
-		putF32(dst, uint32(i), float32(float32(v)*q.Scale)+q.Bias)
+		binary.LittleEndian.PutUint32(dst[4*i:], lut[v])
 	}
 }
+
+// littleEndian reports whether native uint32 stores give the file's
+// little-endian float layout (all of EasyRobot's targets; checked, not
+// assumed, so that big-endian hosts still get correct bytes).
+var littleEndian = func() bool {
+	x := uint16(1)
+	return *(*byte)(unsafe.Pointer(&x)) == 1
+}()
 
 // Quantize writes clamp(round((f − Bias) / Scale), 0, 255) for Count float32
 // values, rounding half away from zero like C roundf (kpu_quantize).

@@ -231,7 +231,7 @@ func TestLayoutBounds(t *testing.T) {
 func TestDequantize(t *testing.T) {
 	main := make([]byte, 3+12)
 	copy(main, []byte{0, 10, 255})
-	Quant{In: 0, Out: 3, Count: 3, Scale: 0.5, Bias: -1}.Dequantize(main)
+	Quant{In: 0, Out: 3, Count: 3, Scale: 0.5, Bias: -1}.Dequantize(main, new([256]uint32))
 	for i, want := range []float32{-1, 4, 126.5} {
 		if got := getF32(main[3:], uint32(i)); got != want {
 			t.Errorf("q[%d]: %v, want %v", i, got, want)

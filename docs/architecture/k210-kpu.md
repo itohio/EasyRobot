@@ -70,7 +70,9 @@ Bit positions from `kpu.h`; "nncase" is what rc5 writes; tiny3 values are given 
 
 The conv itself is always stride 1, with SAME padding filled with `pad_value`. Output size = input size, then divided by the pool stride.
 
-## Arithmetic (nncase's emulator; the hardware matches it to ±1 LSB per layer, see evidence)
+## Arithmetic (nncase's emulator)
+
+`kmodel.ConvParams.Emulate` is a Go port of this arithmetic, and `kpu.NewEmulated` runs a whole kmodel on any host with it. Both are bit-identical to nncase rc5's simulator on tiny1/2/3 and on the 27-layer MobileNetV1-0.25 feature extractor. On the UnitV, each layer's output, computed from that layer's own KPU input, agrees with the port to within 1 LSB: 503,605 of 503,808 outputs equal, 203 at 1 LSB, none above (ER-K210-K8 evidence, K8c-2). The 1-LSB cases compound across layers, so a 27-layer output can differ from the simulator by up to about 25 LSB.
 
 **Quantisation.** For a range [min, max]: scale s = 255/(max − min), bias b = round(min·s), and real = (q + b)/s. Weights use the same with 8 bits (per tensor in rc5).
 
@@ -94,7 +96,7 @@ y = (acc·norm_mul >> norm_shift) + norm_add
 seg = last i with x_start[i] ≤ y
 out = clamp(carry_shift((y − x_start)·y_mul, shift) + bias[seg], 0, 255)
 ```
-- `carry_shift` rounds half away from zero: `kpu.c` `kpu_carry_shift`.
+- `carry_shift` (`kpu.c` `kpu_carry_shift`): if the last bit shifted out is 1, a positive value rounds up and a negative value gets floor − 1 (−5 >> 1 → −4). Otherwise it is a floor shift.
 - nncase ReLU/ReLU6/linear: segments 0–9 start at large negative values with mul 0 (output 0); segment 10 starts at 0 with mul = 1/postMul (16-bit mantissa, shift ≤ 20); segments 11–15 start near 2^35 (unused).
   - ReLU6's upper clip comes only from the output range: 6.0 quantises to 255.
   - LeakyReLU uses all 16 segments.

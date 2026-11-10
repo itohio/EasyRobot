@@ -37,7 +37,26 @@ func model(t *testing.T) *kmodel.Model {
 	f = append(f, le32(uint32(kmodel.K210Conv), 24, uint32(kmodel.Dequantize), 24)...)
 	f = append(f, le32(kmodel.FlagMainMemOut, 0, argsOff, wOff, bnOff, actOff)...)
 	f = append(f, le32(0, 0, n, n, math.Float32bits(0.5), math.Float32bits(-1))...)
-	f = append(f, make([]byte, actOff+128-len(f))...)
+	f = append(f, make([]byte, actOff+256-len(f))...)
+	// Parameters for the emulated engine: 1×1 weights, BN ×1, identity
+	// activation (segment 10 at 0 with mul 1, segments 11–15 out of reach).
+	for i := range inC * outC {
+		f[wOff+i] = byte(i + 1)
+	}
+	for c := range outC {
+		binary.LittleEndian.PutUint64(f[bnOff+8*c:], 1|uint64(c)<<24) // mul 1, add c, shift 0
+	}
+	for i := range 16 {
+		start := uint64(0x800000000) // −2^35
+		var mul uint64
+		switch {
+		case i == 10:
+			start, mul = 0, 1
+		case i > 10:
+			start = 0x7_ffff_fff0 + uint64(i)
+		}
+		binary.LittleEndian.PutUint64(f[actOff+8*i:], start<<24|mul<<8)
+	}
 	var a kmodel.Args
 	a[1] = srcAddr | dstAddr<<32
 	a[2] = (inC - 1) | (outC-1)<<32
@@ -68,6 +87,8 @@ type fake struct {
 }
 
 func (f *fake) ram() []byte { return f.mem }
+
+func (f *fake) now() uint64 { return 0 }
 
 func (f *fake) conv(a *kmodel.Args) error {
 	f.args = append(f.args, *a)
@@ -155,5 +176,40 @@ func TestRunErrors(t *testing.T) {
 func TestNewOffK210(t *testing.T) {
 	if _, err := New(model(t), nil); !errors.Is(err, ErrNoKPU) {
 		t.Errorf("New on the host: %v", err)
+	}
+}
+
+func TestNewEmulated(t *testing.T) {
+	m := model(t)
+	r, err := NewEmulated(m, make([]byte, m.MainMemUsage))
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := make([]byte, w*h*inC)
+	for i := range in {
+		in[i] = byte(i % 7)
+	}
+	if err := r.Run(in); err != nil {
+		t.Fatal(err)
+	}
+	// The same conv computed directly from the file's parameters.
+	c, _ := m.Layers[0].Conv()
+	p, err := m.ConvParams(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := make([]byte, n)
+	if err := p.Emulate(in, want); err != nil {
+		t.Fatal(err)
+	}
+	o := r.Output(0)
+	for i := range n {
+		f := math.Float32frombits(binary.LittleEndian.Uint32(o[4*i:]))
+		if f != float32(want[i])*0.5-1 {
+			t.Fatalf("output %d: %v, want %v", i, f, float32(want[i])*0.5-1)
+		}
+	}
+	if want[0] == want[1] && want[1] == want[2] {
+		t.Fatal("test model gives a constant output; the check would be weak")
 	}
 }

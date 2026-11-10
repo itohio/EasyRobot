@@ -37,19 +37,34 @@ var (
 	ErrInput = errors.New("kpu: input size does not match the model")
 )
 
-// engine is the KPU: its 2 MiB memory and a conv layer run to completion.
+// engine is the KPU: its 2 MiB memory, a conv layer run to completion and
+// a tick counter for Times.
 type engine interface {
 	ram() []byte
 	conv(a *kmodel.Args) error
+	now() uint64
 }
+
+// LayerTime is one layer's cost in the last Run, in CPU cycles on the
+// K210 (0 elsewhere). For a conv, Upload is the model input's upload (first
+// layer only), KPU the wait for calc_done and Download the read-back of a
+// main-memory output; Total includes them.
+type LayerTime struct{ Total, Upload, KPU, Download uint64 }
 
 // Runner runs one model. It is not safe for concurrent use, and only one
 // Runner may use the KPU at a time.
 type Runner struct {
-	m    *kmodel.Model
-	main []byte
-	base uint32 // address of m.Data[0] as the KPU sees it
-	e    engine
+	// OnLayer, if set, is called after each layer of Run with its index.
+	// A conv's output can then be read with LayerOutput, before a later
+	// layer overwrites it in KPU memory. For checking layers one by one.
+	OnLayer func(i int)
+
+	m     *kmodel.Model
+	main  []byte
+	base  uint32 // address of m.Data[0] as the KPU sees it
+	e     engine
+	times []LayerTime
+	lut   [256]uint32 // Dequantize's table
 }
 
 func newRunner(m *kmodel.Model, main []byte, base uintptr, e engine) (*Runner, error) {
@@ -62,7 +77,7 @@ func newRunner(m *kmodel.Model, main []byte, base uintptr, e engine) (*Runner, e
 	if len(main) < int(m.MainMemUsage) {
 		return nil, fmt.Errorf("kpu: main memory %d B, model needs %d B", len(main), m.MainMemUsage)
 	}
-	return &Runner{m: m, main: main, base: uint32(base), e: e}, nil
+	return &Runner{m: m, main: main, base: uint32(base), e: e, times: make([]LayerTime, len(m.Layers))}, nil
 }
 
 // InputSize is the input's size in bytes (first conv's w·h·c).
@@ -78,12 +93,15 @@ func (r *Runner) Run(input []byte) error {
 	ram := r.e.ram()
 	for i, l := range r.m.Layers {
 		var err error
+		t := &r.times[i]
+		*t = LayerTime{}
+		t0 := r.e.now()
 		switch l.Type {
 		case kmodel.K210Conv:
-			err = r.conv(l, i == 0, input, ram)
+			err = r.conv(l, i == 0, input, ram, t)
 		case kmodel.Dequantize:
 			q, _ := l.Quant()
-			q.Dequantize(r.main)
+			q.Dequantize(r.main, &r.lut)
 		case kmodel.Quantize:
 			q, _ := l.Quant()
 			q.Quantize(r.main)
@@ -102,14 +120,34 @@ func (r *Runner) Run(input []byte) error {
 		default:
 			err = kmodel.ErrUnsupported // unreachable after Check
 		}
+		t.Total = r.e.now() - t0
 		if err != nil {
 			return fmt.Errorf("kpu: layer %d (%v): %w", i, l.Type, err)
+		}
+		if r.OnLayer != nil {
+			r.OnLayer(i)
 		}
 	}
 	return nil
 }
 
-func (r *Runner) conv(l kmodel.Layer, first bool, input, ram []byte) error {
+// LayerOutput reads conv layer i's output from KPU memory into dst as
+// dense CHW (w·h·c bytes of the layer's output shape).
+func (r *Runner) LayerOutput(i int, dst []byte) error {
+	if i < 0 || i >= len(r.m.Layers) || r.m.Layers[i].Type != kmodel.K210Conv {
+		return fmt.Errorf("kpu: layer %d is not a K210 conv", i)
+	}
+	c, _ := r.m.Layers[i].Conv()
+	a := r.m.Args(c)
+	w, h, ch := a.OutShape()
+	return a.OutLayout().DownloadFrom(r.e.ram(), a.DstAddr(), w, h, ch, dst)
+}
+
+// Times returns the per-layer costs of the last Run (indexed like the
+// model's layers; valid until the next Run).
+func (r *Runner) Times() []LayerTime { return r.times }
+
+func (r *Runner) conv(l kmodel.Layer, first bool, input, ram []byte, t *LayerTime) error {
 	c, _ := l.Conv()
 	a := r.m.Args(c)
 	if first {
@@ -117,23 +155,30 @@ func (r *Runner) conv(l kmodel.Layer, first bool, input, ram []byte) error {
 		if len(input) != w*h*ch {
 			return ErrInput
 		}
+		t0 := r.e.now()
 		if err := a.InLayout().UploadTo(ram, a.SrcAddr(), w, h, ch, input); err != nil {
 			return err
 		}
+		t.Upload = r.e.now() - t0
 	}
 	a.SetWeights(r.base + c.WeightsOffset)
 	a.SetBN(r.base + c.BNOffset)
 	a.SetAct(r.base + c.ActOffset)
 	a.SetIntEnable()
 	a.SetSendDataOut(false)
+	t0 := r.e.now()
 	if err := r.e.conv(&a); err != nil {
 		return err
 	}
+	t1 := r.e.now()
+	t.KPU = t1 - t0
 	if c.Flags&kmodel.FlagMainMemOut == 0 {
 		return nil
 	}
 	w, h, ch := a.OutShape()
-	return a.OutLayout().DownloadFrom(ram, a.DstAddr(), w, h, ch, r.main[c.MainMemOut:])
+	err := a.OutLayout().DownloadFrom(ram, a.DstAddr(), w, h, ch, r.main[c.MainMemOut:])
+	t.Download = r.e.now() - t1
+	return err
 }
 
 // Output returns output i (a slice of main memory, valid until the next Run).
