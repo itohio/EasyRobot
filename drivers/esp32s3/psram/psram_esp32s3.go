@@ -9,10 +9,9 @@ import (
 	"unsafe"
 )
 
-// ROM functions (ESP32-S3 ROM, addresses from ESP-IDF v5.3.1
-// components/esp_rom/esp32s3/ld/esp32s3.rom.ld). TinyGo's esp32s3.ld does not
-// define them; the target JSON adds them with ld --defsym (see README.md).
-// A body-less function with //export is an external symbol in TinyGo.
+// ROM functions (ESP32-S3 ROM). A body-less function with //export is an
+// external symbol in TinyGo; rom_esp32s3.go defines each one at its ROM
+// address.
 
 //export esp_rom_opiflash_exec_cmd
 func romOpiExecCmd(spi int32, mode int32, cmd uint32, cmdBits int32, addr uint32, addrBits int32, dummyBits int32,

@@ -13,9 +13,9 @@ psram.WritebackInvalidate(buf)     // before a DMA engine writes buf
 psram.Invalidate(buf)              // after it, before the CPU reads buf
 ```
 
-## ROM functions: build with a target that defines them
+## ROM functions
 
-TinyGo's `esp32s3.ld` doesn't define the ROM functions this package calls. The target `xiao-esp32s3-psram.json` (in this directory) adds them with `ld --defsym`. Addresses are from ESP-IDF v5.3.1 `components/esp_rom/esp32s3/ld/esp32s3.rom.ld`:
+TinyGo's `esp32s3.ld` doesn't define the ROM functions this package calls. `rom_esp32s3.go` defines them as absolute symbols in a cgo preamble (`.set`), so the package builds with the stock `-target=xiao-esp32s3`. Addresses are from ESP-IDF v5.3.1 `components/esp_rom/esp32s3/ld/esp32s3.rom.ld`:
 
 | Symbol | Address |
 |---|---|
@@ -31,10 +31,8 @@ TinyGo's `esp32s3.ld` doesn't define the ROM functions this package calls. The t
 
 ESP-IDF wraps two of these with patches (`Cache_Suspend_DCache`, `Cache_WriteBack_Addr` in `libesp_rom.a`). Their behaviour, read from the disassembly of `esp_rom_cache.c.obj` in the local Arduino-ESP32 SDK (ESP-IDF v4.4.7, no download), is reproduced in `psram_esp32s3.go`: suspend waits until `EXTMEM CACHE_STATE.DCACHE_STATE` = 1 (idle); writeback of a cache-line aligned range runs with D-cache autoload suspended. The patch's freeze-based writeback of unaligned head/tail lines is not needed, because this package only writes back aligned ranges.
 
-The target JSON is the `esp32s3` target with the `xiao_esp32s3` tag, without the `espradio` tag and its malloc wraps (no Wi-Fi), plus the defsyms. With the stock `-target=xiao-esp32s3` the link fails: `undefined symbol: rom_Cache_WriteBack_Addr`.
-
 ```
-tinygo build -target=drivers/esp32s3/psram/xiao-esp32s3-psram.json -print-allocs=psram -o memtest.bin ./drivers/esp32s3/psram/examples/memtest   # from the repo root; the linker script path resolves inside TINYGOROOT
+tinygo build -target=xiao-esp32s3 -print-allocs=psram -o memtest.bin ./drivers/esp32s3/psram/examples/memtest
 ```
 
 ## Memory map
