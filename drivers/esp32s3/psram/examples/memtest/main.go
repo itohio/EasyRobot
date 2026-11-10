@@ -1,13 +1,10 @@
 //go:build esp32s3
 
-// psramtest: E6 board check for package psram (build-only until the board is
-// handed back). Prints the PSRAM mode registers, then runs over the whole
-// mapped region:
+// memtest: board check for package psram (ER-ESP32CAM-E6). Prints the PSRAM
+// mode registers, then runs over the whole mapped region:
 //  1. address-line test: walking-one offsets get distinct markers, read back
 //  2. pattern test: word i = i·0x9E3779B9 ^ seed, written then verified, two seeds
 //  3. DMA-style cache maintenance: WritebackInvalidate / Invalidate on an arena slice
-//
-// Throwaway probe.
 package main
 
 import (
@@ -49,6 +46,11 @@ func main() {
 	for bit := 0; 1<<bit < len(words); bit++ {
 		words[1<<bit] = 0x5A000000 | uint32(bit)
 	}
+	// Write back and drop the cached lines so the reads below come from the
+	// PSRAM, not from the D-cache (otherwise the cache serves most of them).
+	if err := psram.WritebackInvalidate(r.Bytes()); err != nil {
+		println("psram: writeback/invalidate:", err.Error())
+	}
 	bad := 0
 	if words[0] != 0xA5A5A5A5 {
 		bad++
@@ -69,6 +71,9 @@ func main() {
 			words[i] = uint32(i)*0x9E3779B9 ^ seed
 		}
 		tw := time.Since(t0)
+		if err := psram.WritebackInvalidate(r.Bytes()); err != nil {
+			println("psram: writeback/invalidate:", err.Error())
+		}
 		errs, first := 0, -1
 		for i := range words {
 			if words[i] != uint32(i)*0x9E3779B9^seed {

@@ -1,6 +1,9 @@
 package psram
 
-import "testing"
+import (
+	"testing"
+	"unsafe"
+)
 
 func TestModeRegsDecode(t *testing.T) {
 	// MR0 0x28 = fixed latency, read latency code 2, drive 0; MR1 vendor 0x0D;
@@ -88,15 +91,15 @@ func TestPhaseConstants(t *testing.T) {
 }
 
 func TestArena(t *testing.T) {
-	r := Region{base: 0x3C800000, size: 8 << 20}
+	r, _ := hostRegion(t, 8<<20)
 	a := NewArena(r)
-	p, n, err := a.reserve(100)
-	if err != nil || p != 0x3C800000 || n != 128 {
-		t.Fatalf("first: %x %d %v", p, n, err)
+	off, n, err := a.reserve(100)
+	if err != nil || off != 0 || n != 128 {
+		t.Fatalf("first: %d %d %v", off, n, err)
 	}
-	p2, _, _ := a.reserve(1)
-	if p2 != 0x3C800080 || !alignedRange(p2, 32) {
-		t.Fatalf("second not aligned: %x", p2)
+	off2, _, _ := a.reserve(1)
+	if off2 != 128 {
+		t.Fatalf("second: offset %d, want 128 (cache-line aligned)", off2)
 	}
 	if _, _, err := a.reserve(8 << 20); err != ErrFull {
 		t.Errorf("overflow: %v", err)
@@ -108,8 +111,8 @@ func TestArena(t *testing.T) {
 		t.Errorf("used %d", a.Used())
 	}
 	a.Reset()
-	if p3, _, _ := a.reserve(32); p3 != r.base {
-		t.Errorf("reset: %x", p3)
+	if off3, _, _ := a.reserve(32); off3 != 0 {
+		t.Errorf("reset: %d", off3)
 	}
 	if a0 := NewArena(Region{}); func() error { _, _, e := a0.reserve(32); return e }() != ErrNoInit {
 		t.Errorf("uninitialised region: %v", err)
@@ -117,14 +120,15 @@ func TestArena(t *testing.T) {
 }
 
 func TestRegionContains(t *testing.T) {
-	r := Region{base: 0x1000, size: 0x100}
+	r, _ := hostRegion(t, 0x100)
+	base := r.Base()
 	for _, c := range []struct {
-		addr uintptr
+		off  uintptr
 		n    int
 		want bool
-	}{{0x1000, 0x100, true}, {0x10FF, 1, true}, {0x10FF, 2, false}, {0xFFF, 1, false}, {0x1000, -1, false}} {
-		if got := r.contains(c.addr, c.n); got != c.want {
-			t.Errorf("contains(%x, %d) = %v", c.addr, c.n, got)
+	}{{0, 0x100, true}, {0xFF, 1, true}, {0xFF, 2, false}, {^uintptr(0), 1, false}, {0, -1, false}} {
+		if got := r.contains(base+c.off, c.n); got != c.want {
+			t.Errorf("contains(base%+d, %d) = %v", int(c.off), c.n, got)
 		}
 	}
 }
@@ -142,7 +146,7 @@ func TestMR8Decode(t *testing.T) {
 		mr8    uint8
 		burst  int
 		hybrid bool
-	}{{0x00, 16, false}, {0x01, 32, false}, {0x02, 64, false}, {0x03, 1024, false}, {0x05, 32, true}, {0xFB, 1024, false}} {
+	}{{0x00, 16, false}, {0x01, 32, false}, {0x02, 64, false}, {0x03, 1024, false}, {0x05, 32, true}, {0x07, 1024, false}, {0xFB, 1024, false}} {
 		m := ModeRegs{MR8: tt.mr8}
 		if m.BurstLength() != tt.burst || m.HybridWrap() != tt.hybrid {
 			t.Errorf("MR8 %02x: burst %d hybrid %v, want %d %v", tt.mr8, m.BurstLength(), m.HybridWrap(), tt.burst, tt.hybrid)
@@ -165,5 +169,86 @@ func TestMSPIPinRegisters(t *testing.T) {
 	}
 	if ioMuxAddr(cs1GPIO) != 0x6000906C {
 		t.Errorf("CS1 (GPIO26) IO MUX register 0x%x, want 0x6000906C", ioMuxAddr(cs1GPIO))
+	}
+}
+
+func TestKnownVendors(t *testing.T) {
+	// ESP-IDF 5.5.5 accepts APMemory (0x0D) and UniIC (0x1A).
+	for v := 0; v < 32; v++ {
+		want := v == 0x0D || v == 0x1A
+		if got := knownVendor(uint8(v)); got != want {
+			t.Errorf("vendor 0x%02x: known %v, want %v", v, got, want)
+		}
+	}
+}
+
+// hostRegion maps a Region over a Go buffer, cache-line aligned, so the
+// slice and cache-range logic runs on the host.
+func hostRegion(t *testing.T, size int) (Region, []byte) {
+	t.Helper()
+	raw := make([]byte, size+CacheLine)
+	off := int(-uintptr(unsafe.Pointer(&raw[0])) & (CacheLine - 1))
+	buf := raw[off : off+size : off+size]
+	return Region{base: unsafe.Pointer(&buf[0]), size: uint32(size)}, buf
+}
+
+func TestBytesAndAlloc(t *testing.T) {
+	r, buf := hostRegion(t, 4096)
+	b := r.Bytes()
+	if len(b) != 4096 || &b[0] != &buf[0] {
+		t.Fatalf("Bytes: len %d", len(b))
+	}
+	if (Region{}).Bytes() != nil {
+		t.Error("empty region Bytes not nil")
+	}
+	a := NewArena(r)
+	x, err := a.Alloc(100)
+	if err != nil || len(x) != 100 || cap(x) != 128 || &x[0] != &buf[0] {
+		t.Fatalf("Alloc(100): len %d cap %d err %v", len(x), cap(x), err)
+	}
+	y, err := a.Alloc(64)
+	if err != nil || len(y) != 64 || cap(y) != 64 || &y[0] != &buf[128] {
+		t.Fatalf("Alloc(64): len %d cap %d err %v", len(y), cap(y), err)
+	}
+	if _, err := a.Alloc(4096); err != ErrFull {
+		t.Errorf("Alloc past the end: %v, want ErrFull", err)
+	}
+}
+
+// The cache operations cover len(b) rounded up to the cache line, never the
+// rest of the capacity (review P2: r.Bytes()[:4096] must not invalidate the
+// whole region).
+func TestSyncRange(t *testing.T) {
+	r, buf := hostRegion(t, 8192)
+	base := uint32(r.Base())
+	a := NewArena(r)
+	arenaSlice, _ := a.Alloc(100) // cap 128
+	tests := []struct {
+		name string
+		b    []byte
+		addr uint32
+		n    uint32
+		err  error
+	}{
+		{"Bytes()[:4096] covers 4096, not the region", r.Bytes()[:4096], base, 4096, nil},
+		{"arena slice: len 100 rounds to its 128-byte capacity", arenaSlice, base, 128, nil},
+		{"aligned whole lines", buf[64:192], base + 64, 128, nil},
+		{"len rounds into the next line inside cap", buf[32:40], base + 32, 32, nil},
+		{"rounded length beyond cap: last line not owned", buf[32:40:40], 0, 0, ErrAlign},
+		{"unaligned start", buf[8:72], 0, 0, ErrAlign},
+		{"empty slice: nothing to do", buf[64:64], base + 64, 0, nil},
+	}
+	for _, tt := range tests {
+		addr, n, err := r.syncRange(tt.b)
+		if err != tt.err || (err == nil && (addr != tt.addr || n != tt.n)) {
+			t.Errorf("%s: 0x%x+%d %v, want 0x%x+%d %v", tt.name, addr, n, err, tt.addr, tt.n, tt.err)
+		}
+	}
+	outside := make([]byte, 64)
+	if _, _, err := r.syncRange(outside); err != ErrBounds {
+		t.Errorf("slice outside the region: %v, want ErrBounds", err)
+	}
+	if _, _, err := (Region{}).syncRange(buf[:32]); err != ErrNoInit {
+		t.Errorf("no region: %v, want ErrNoInit", err)
 	}
 }

@@ -1,23 +1,26 @@
-// Package psram drives the 8 MB octal PSRAM inside the ESP32-S3R8 (APMemory,
-// 3.3 V, on MSPI chip-select CS1) under TinyGo, without ESP-IDF.
+// Package psram drives the 8 MB octal PSRAM inside the ESP32-S3R8 (APMemory
+// or UniIC, 3.3 V, on MSPI chip-select CS1) under TinyGo, without ESP-IDF.
 //
 // Init (esp32s3 only) configures the PSRAM's mode registers over SPI1,
 // programs the SPI0 cache-access phases for octal DTR, and maps the memory
 // into the data bus through the MMU. The memory is a fixed region outside the
 // Go heap: the GC never scans or moves it. Allocate from it with an Arena;
 // keep DMA buffers cache-line aligned and call WritebackInvalidate /
-// Invalidate around GDMA transfers (GDMA reaches PSRAM through the D-cache).
+// Invalidate around GDMA transfers: the GDMA writes PSRAM behind the D-cache
+// (shown on the board, ER-ESP32CAM-E7 evidence, outside the repo).
 //
 // The init sequence follows ESP-IDF v5.3.1 esp_psram_impl_octal.c
 // (Apache-2.0) at a conservative 40 MHz PSRAM clock (no timing tuning needed).
 // This file holds the hardware-independent parts, tested on the host.
 package psram
 
+import "unsafe"
+
 // Error is a package error without allocation.
 type Error uint8
 
 const (
-	ErrNotFound    Error = iota + 1 // vendor id is not APMemory (0x0D)
+	ErrNotFound    Error = iota + 1 // vendor id is neither APMemory (0x0D) nor UniIC (0x1A)
 	ErrUnsupported                  // unknown density code
 	ErrBounds                       // offset/size outside the region
 	ErrAlign                        // address or size not cache-line aligned
@@ -37,15 +40,17 @@ const (
 	// MMU: 512 entries of 64 KB, indexed by linear address
 	// ((vaddr & 0x1FFFFFF) >> 16, ESP-IDF mmu_ll_get_entry_id), so the DRAM0
 	// cache window 0x3C000000–0x3DFFFFFF spans all 512. TinyGo's startup maps
-	// flash at entries 0.. (IROM) and 256.. (DROM); PSRAM takes the top entries.
+	// the flash image (code and rodata) through the low entries from 0; PSRAM
+	// takes the top entries and at most the upper half, well clear of them.
 	mmuTable       = 0x600C5000
 	dbusBase       = 0x3C000000
-	dbusFirstEntry = 256 // lowest entry PSRAM may use (DROM starts here)
+	dbusFirstEntry = 256 // lowest entry PSRAM may use (upper half of the table)
 	mmuEntries     = 512
 	mmuAccessPSRAM = 1 << 15 // SOC_MMU_ACCESS_SPIRAM
 	mmuInvalid     = 1 << 14
 
 	vendorAPMemory = 0x0D
+	vendorUniIC    = 0x1A
 )
 
 // ModeRegs holds the PSRAM mode registers read back over SPI1.
@@ -152,50 +157,95 @@ const (
 	wrDummyBits  = 2 * (5 - 1)  // 8
 )
 
-// alignedRange checks that [addr, addr+n) is cache-line aligned.
-func alignedRange(addr uintptr, n int) bool {
-	return addr%CacheLine == 0 && n%CacheLine == 0
-}
+// knownVendor reports a PSRAM vendor this driver accepts: APMemory and UniIC,
+// the two ESP-IDF 5.5.5 accepts for octal PSRAM (4.4.7: APMemory only).
+func knownVendor(v uint8) bool { return v == vendorAPMemory || v == vendorUniIC }
 
-// Region is the mapped PSRAM.
+// Region is the mapped PSRAM. base is an unsafe.Pointer (not a uintptr) so
+// that slices are made by pointer arithmetic; the memory is outside the Go
+// heap and the GC never follows it.
 type Region struct {
-	base uintptr
+	base unsafe.Pointer
 	size uint32
 }
 
-func (r Region) Base() uintptr { return r.base }
-func (r Region) Size() uint32  { return r.size }
+func (r Region) Base() uintptr { return uintptr(r.base) }
+
+// Bytes returns the whole region as a byte slice. It is not GC-managed
+// memory: the GC neither scans nor frees it, so store no Go pointers in it.
+func (r Region) Bytes() []byte {
+	if r.size == 0 {
+		return nil
+	}
+	return unsafe.Slice((*byte)(r.base), r.size)
+}
+
+// syncRange returns the address and size the cache operations act on for b:
+// len(b) rounded up to whole cache lines, never the rest of cap(b) (a slice
+// of Bytes() keeps the region's capacity). b must start on a cache line, and
+// its capacity must own the rounded-up last line, or another value sharing
+// that line could lose its cached writes (ErrAlign). An empty b is a no-op.
+func (r Region) syncRange(b []byte) (uint32, uint32, error) {
+	if r.size == 0 {
+		return 0, 0, ErrNoInit
+	}
+	p := uintptr(unsafe.Pointer(unsafe.SliceData(b)))
+	n := (len(b) + CacheLine - 1) &^ (CacheLine - 1)
+	if n == 0 {
+		return uint32(p), 0, nil
+	}
+	if !r.contains(p, n) {
+		return 0, 0, ErrBounds
+	}
+	if p%CacheLine != 0 || n > cap(b) {
+		return 0, 0, ErrAlign
+	}
+	return uint32(p), uint32(n), nil
+}
+func (r Region) Size() uint32 { return r.size }
 
 // contains reports whether [addr, addr+n) lies inside the region.
 func (r Region) contains(addr uintptr, n int) bool {
-	return n >= 0 && addr >= r.base && uint64(addr-r.base)+uint64(n) <= uint64(r.size)
+	base := uintptr(r.base)
+	return n >= 0 && addr >= base && uint64(addr-base)+uint64(n) <= uint64(r.size)
 }
 
 // Arena hands out cache-line aligned, cache-line sized pieces of a Region.
 // There is no free: pieces live as long as the program (frame buffers).
 type Arena struct {
 	r    Region
-	next uintptr
+	next uint32 // offset of the next free byte
 }
 
-func NewArena(r Region) Arena { return Arena{r: r, next: r.base} }
+func NewArena(r Region) Arena { return Arena{r: r} }
 
-// reserve returns the address of n bytes rounded up to cache lines.
-func (a *Arena) reserve(n int) (uintptr, int, error) {
+// reserve returns the region offset of n bytes rounded up to cache lines.
+func (a *Arena) reserve(n int) (uint32, int, error) {
 	if a.r.size == 0 {
 		return 0, 0, ErrNoInit
 	}
 	rounded := (n + CacheLine - 1) &^ (CacheLine - 1)
-	if n <= 0 || !a.r.contains(a.next, rounded) {
+	if n <= 0 || uint64(a.next)+uint64(rounded) > uint64(a.r.size) {
 		return 0, 0, ErrFull
 	}
-	p := a.next
-	a.next += uintptr(rounded)
-	return p, rounded, nil
+	off := a.next
+	a.next += uint32(rounded)
+	return off, rounded, nil
+}
+
+// Alloc returns n bytes from the arena: cache-line aligned start, length n,
+// capacity rounded up to whole cache lines, so the cache operations on it
+// never touch another allocation's lines.
+func (a *Arena) Alloc(n int) ([]byte, error) {
+	off, rounded, err := a.reserve(n)
+	if err != nil {
+		return nil, err
+	}
+	return unsafe.Slice((*byte)(unsafe.Add(a.r.base, off)), rounded)[:n:rounded], nil
 }
 
 // Used returns the bytes handed out so far.
-func (a *Arena) Used() uint32 { return uint32(a.next - a.r.base) }
+func (a *Arena) Used() uint32 { return a.next }
 
 // Reset makes the whole region available again (callers must drop old slices).
-func (a *Arena) Reset() { a.next = a.r.base }
+func (a *Arena) Reset() { a.next = 0 }

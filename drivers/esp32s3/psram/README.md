@@ -39,7 +39,7 @@ tinygo build -target=drivers/esp32s3/psram/xiao-esp32s3-psram.json -print-allocs
 
 ## Memory map
 
-The S3 MMU has 512 entries of 64 KB, indexed by linear address: entry = (vaddr & 0x1FFFFFF) >> 16 (ESP-IDF `mmu_ll_get_entry_id`). The DRAM0 cache window 0x3C000000–0x3DFFFFFF therefore spans all 512 entries. TinyGo's startup maps flash at entries 0.. (IROM) and 256.. (DROM, rodata). The PSRAM takes the top 128 entries (384–511), which serve **0x3D800000–0x3DFFFFFF** (the address ESP-IDF uses too). That leaves flash rodata 8 MB, far more than any image here.
+The S3 MMU has 512 entries of 64 KB, indexed by linear address: entry = (vaddr & 0x1FFFFFF) >> 16 (ESP-IDF `mmu_ll_get_entry_id`). The DRAM0 cache window 0x3C000000–0x3DFFFFFF therefore spans all 512 entries. TinyGo's startup maps the flash image (code and rodata) through the low entries from 0. The PSRAM takes the top 128 entries (384–511), which serve **0x3D800000–0x3DFFFFFF** (the address ESP-IDF uses too), and never more than the upper half of the table, so it stays clear of the flash entries.
 
 ## Mode registers
 
@@ -48,5 +48,7 @@ The S3 MMU has 512 entries of 64 KB, indexed by linear address: entry = (vaddr &
 ## To verify on the board
 
 - `romModeOPIDTR = 7` (`ESP_ROM_SPIFLASH_OPI_DTR_MODE`) matches the ROM enum in the ESP32-S3 `rom/spi_flash.h` (ESP-IDF v4.4.7, checked offline by verify). A wrong value would show up as `ErrNotFound`, since the vendor id read fails.
-- Init runs from flash (IROM) with the D-cache suspended only around the SPI0 phase changes and the MMU writes; no rodata is read in that window. ESP-IDF runs its init from IRAM. If init hangs, move it to IRAM.
+- Init runs from flash (IROM) with the D-cache suspended only around the SPI0 phase changes and the MMU writes; no rodata is read in that window. ESP-IDF runs its init from IRAM. The MSPI pin init (ROM `esp_rom_opiflash_pin_config`, pad drive) also runs from flash while it reroutes pads the quad flash shares; ESP-IDF runs it from IRAM too. If a start-up hang ever appears, check these two places first.
+- Accepted vendors: APMemory (0x0D) and UniIC (0x1A), as in ESP-IDF 5.5.5.
+- Cache operations act on `len(b)` rounded up to whole 32-byte lines (never the rest of the capacity), with interrupts masked; they refuse a slice whose capacity doesn't own its last line.
 - Register access runs at 40 MHz on SPI1. The SPI1 clock register is restored afterwards; flash access goes through SPI0 and is untouched.

@@ -109,8 +109,10 @@ func Init() (Region, ModeRegs, error) {
 	if region.size != 0 {
 		return region, regs, nil
 	}
+	// Interrupts stay off for all of Init and are restored on each return
+	// (no defer: it would add setjmp landing pads, some inside the D-cache
+	// suspended window, where a panic message could not be read from DROM).
 	state := interrupt.Disable()
-	defer interrupt.Restore(state)
 
 	// 1. Pins (ESP-IDF esp_mspi_pin_init + s_init_psram_pins). The ROM routes
 	// the octal pads (SPIIO4–7, DQS on GPIO33–37); without it SPI1 talks to
@@ -155,12 +157,14 @@ func Init() (Region, ModeRegs, error) {
 	regs = ModeRegs{MR0: uint8(mr01), MR1: uint8(mr01 >> 8), MR2: uint8(mr23), MR3: uint8(mr23 >> 8),
 		MR4: uint8(mr4), MR8: uint8(mr8)}
 	esp.SPI1.CLOCK.Set(spi1Clock)
-	if regs.VendorID() != vendorAPMemory {
+	if !knownVendor(regs.VendorID()) {
+		interrupt.Restore(state)
 		return Region{}, regs, ErrNotFound
 	}
 	size := regs.Size()
 	m, ok := layout(size)
 	if !ok {
+		interrupt.Restore(state)
 		return Region{}, regs, ErrUnsupported
 	}
 
@@ -198,75 +202,50 @@ func Init() (Region, ModeRegs, error) {
 	romResumeDCache(autoload)
 	romInvalidate(uint32(m.vaddr), uint32(m.entries)*PageSize)
 
-	region = Region{base: m.vaddr, size: size}
+	region = Region{base: unsafe.Pointer(m.vaddr), size: size} // fixed bus address, outside the Go heap
+	interrupt.Restore(state)
 	return region, regs, nil
 }
 
-// Bytes returns the whole region as a byte slice (not GC-managed memory).
-func (r Region) Bytes() []byte {
-	if r.size == 0 {
-		return nil
-	}
-	return unsafe.Slice((*byte)(unsafe.Pointer(r.base)), r.size)
-}
+// The cache operations act on len(b) rounded up to whole cache lines
+// (Region.syncRange), with interrupts masked: the ROM sync uses one shared
+// EXTMEM register set, so an interrupt handler doing a cache operation in
+// between would retarget it (ESP-IDF's esp_cache_msync is a critical
+// section too).
 
-// Alloc returns n bytes from the arena: cache-line aligned start, length n,
-// capacity rounded up to whole cache lines (safe for DMA cache maintenance).
-func (a *Arena) Alloc(n int) ([]byte, error) {
-	p, rounded, err := a.reserve(n)
-	if err != nil {
-		return nil, err
-	}
-	return unsafe.Slice((*byte)(unsafe.Pointer(p)), rounded)[:n:rounded], nil
-}
-
-func span(b []byte) (uintptr, int) {
-	if cap(b) == 0 {
-		return 0, 0
-	}
-	return uintptr(unsafe.Pointer(unsafe.SliceData(b))), cap(b)
-}
-
-func checked(b []byte) (uint32, uint32, error) {
-	p, n := span(b)
-	if region.size == 0 {
-		return 0, 0, ErrNoInit
-	}
-	if !region.contains(p, n) {
-		return 0, 0, ErrBounds
-	}
-	if !alignedRange(p, n) {
-		return 0, 0, ErrAlign
-	}
-	return uint32(p), uint32(n), nil
-}
-
-// Writeback writes dirty cache lines of b (its full capacity) to PSRAM.
-// Call before a DMA engine reads b.
+// Writeback writes dirty cache lines of b to PSRAM. Call before a DMA
+// engine reads b.
 func Writeback(b []byte) error {
-	p, n, err := checked(b)
-	if err == nil {
+	p, n, err := region.syncRange(b)
+	if err == nil && n > 0 {
+		state := interrupt.Disable()
 		writeBack(p, n)
+		interrupt.Restore(state)
 	}
 	return err
 }
 
-// Invalidate drops cached lines of b so the CPU re-reads PSRAM.
-// Call after a DMA engine wrote b, before reading it.
+// Invalidate drops cached lines of b, without writing them back, so the CPU
+// re-reads PSRAM. Call after a DMA engine wrote b, before reading it.
 func Invalidate(b []byte) error {
-	p, n, err := checked(b)
-	if err == nil {
+	p, n, err := region.syncRange(b)
+	if err == nil && n > 0 {
+		state := interrupt.Disable()
 		romInvalidate(p, n)
+		interrupt.Restore(state)
 	}
 	return err
 }
 
-// WritebackInvalidate does both; call before handing b to a DMA engine that writes it.
+// WritebackInvalidate does both; call before handing b to a DMA engine that
+// writes it, so no dirty line is evicted over the DMA's data later.
 func WritebackInvalidate(b []byte) error {
-	p, n, err := checked(b)
-	if err == nil {
+	p, n, err := region.syncRange(b)
+	if err == nil && n > 0 {
+		state := interrupt.Disable()
 		writeBack(p, n)
 		romInvalidate(p, n)
+		interrupt.Restore(state)
 	}
 	return err
 }
