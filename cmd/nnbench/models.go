@@ -8,7 +8,7 @@ import (
 // spec is one benchmarked network.
 type spec struct {
 	name, note    string
-	build         func() (network, error)
+	build         func() (qnet.Graph, error)
 	wSeed, inSeed uint64
 }
 
@@ -21,9 +21,8 @@ var specs = []spec{
 	{
 		name: "MobileNetV1-0.25",
 		note: "96x96x3 feature extractor (qnet.MobileNetV1, classes 0), output 1x1x256",
-		build: func() (network, error) {
-			g, err := qnet.MobileNetV1(0.25, 96, 96, 0, make([]qnet.Layer, qnet.MobileNetV1Layers(0)))
-			return network{g: g}, err
+		build: func() (qnet.Graph, error) {
+			return qnet.MobileNetV1(0.25, 96, 96, 0, make([]qnet.Layer, qnet.MobileNetV1Layers(0)))
 		},
 		wSeed: 2, inSeed: 102,
 	},
@@ -39,24 +38,6 @@ var specs = []spec{
 	},
 }
 
-// network is qnet layers in execution order plus the dataflow between them.
-// nodes nil means sequential: layer i reads layer i−1's output.
-type network struct {
-	g     qnet.Graph
-	nodes []node
-}
-
-// node is one step of a network: layer >= 0 runs g.Layers[layer] on node in;
-// layer < 0 is the requantised Add of nodes in and in2. Node index −1 is the
-// network input.
-type node struct {
-	layer   int
-	in, in2 int
-	add     qi8.AddParams
-	shape   qi8.Shape
-	q       qnet.Quant
-}
-
 // Quantisation of residual-branch outputs (no activation) and projection
 // shortcuts; deliberately different from qnet.MobileNetActQuant so that every
 // Add rescales both inputs.
@@ -65,34 +46,41 @@ var (
 	shortcutQuant = qnet.Quant{Scale: 0.04, ZP: -5}
 )
 
-// graphBuilder appends layers, each reading the current node (by default
-// the previous one). The first error sticks.
+// graphBuilder appends layers, each reading the current layer (by default
+// the previous one; −1 is the graph input). The first error sticks.
 type graphBuilder struct {
-	layers   []qnet.Layer
-	nodes    []node
-	cur      int // node the next layer reads (−1 = input)
-	in       qi8.Shape
-	residual bool
-	err      error
+	layers []qnet.Layer
+	cur    int
+	in     qi8.Shape
+	err    error
 }
 
 func newBuilder(in qi8.Shape) *graphBuilder {
 	return &graphBuilder{cur: -1, in: in}
 }
 
-// out returns the shape and quantisation of node n.
-func (b *graphBuilder) out(n int) (qi8.Shape, qnet.Quant) {
-	if n < 0 {
+// out returns the shape and quantisation produced by layer i (−1 = input).
+func (b *graphBuilder) out(i int) (qi8.Shape, qnet.Quant) {
+	if i < 0 {
 		return b.in, qnet.MobileNetInputQuant
 	}
-	return b.nodes[n].shape, b.nodes[n].q
+	return b.layers[i].Out, b.layers[i].OutQ
 }
 
+// add appends l reading b.cur (From is set only when that is not the
+// previous layer).
 func (b *graphBuilder) add(l qnet.Layer) {
 	if b.err != nil {
 		return
 	}
 	l.In, l.InQ = b.out(b.cur)
+	if b.cur != len(b.layers)-1 {
+		l.From = []int{b.cur}
+	}
+	b.push(l)
+}
+
+func (b *graphBuilder) push(l qnet.Layer) {
 	out, err := l.OutShape()
 	if err != nil {
 		b.err = err
@@ -100,8 +88,7 @@ func (b *graphBuilder) add(l qnet.Layer) {
 	}
 	l.Out = out
 	b.layers = append(b.layers, l)
-	b.nodes = append(b.nodes, node{layer: len(b.layers) - 1, in: b.cur, shape: out, q: l.OutQ})
-	b.cur = len(b.nodes) - 1
+	b.cur = len(b.layers) - 1
 }
 
 // conv adds a SAME-padded square Conv2D (kind qnet.Conv2D) or depthwise
@@ -127,18 +114,14 @@ func (b *graphBuilder) convQ(kind qnet.Kind, outC, k, stride int, q qnet.Quant, 
 	})
 }
 
-// addReLU6 adds the requantised sum of nodes x and y (equal shapes) with a
+// addReLU6 adds the requantised sum of layers x and y (equal shapes) with a
 // fused ReLU6, output quantised as qnet.MobileNetActQuant.
 func (b *graphBuilder) addReLU6(x, y int) {
 	if b.err != nil {
 		return
 	}
 	sx, qx := b.out(x)
-	sy, qy := b.out(y)
-	if sx != sy {
-		b.err = qi8.ErrShape
-		return
-	}
+	_, qy := b.out(y)
 	q := qnet.MobileNetActQuant
 	rq, err := qi8.QuantizeAddMultipliers(float64(qx.Scale)/float64(q.Scale), float64(qy.Scale)/float64(q.Scale))
 	if err != nil {
@@ -146,12 +129,10 @@ func (b *graphBuilder) addReLU6(x, y int) {
 		return
 	}
 	lo, hi := qi8.ActReLU6(q.Scale, q.ZP)
-	b.nodes = append(b.nodes, node{
-		layer: -1, in: x, in2: y, shape: sx, q: q,
-		add: qi8.AddParams{ZPA: qx.ZP, ZPB: qy.ZP, ZPOut: q.ZP, RQ: rq, Min: lo, Max: hi},
+	b.push(qnet.Layer{
+		Kind: qnet.Add, From: []int{x, y}, In: sx, InQ: qx, In2Q: qy, OutQ: q,
+		ActMin: lo, ActMax: hi, AddRQ: rq,
 	})
-	b.cur = len(b.nodes) - 1
-	b.residual = true
 }
 
 func (b *graphBuilder) maxPool(k int) {
@@ -169,15 +150,11 @@ func (b *graphBuilder) fc(out int) {
 	b.add(qnet.Layer{Kind: qnet.FullyConnected, Out: qi8.Shape{C: out}, OutQ: qnet.MobileNetLogitQuant, ActMin: lo, ActMax: hi})
 }
 
-func (b *graphBuilder) network() (network, error) {
-	n := network{g: qnet.Graph{Layers: b.layers}}
-	if b.residual {
-		n.nodes = b.nodes
-	}
-	return n, b.err
+func (b *graphBuilder) graph() (qnet.Graph, error) {
+	return qnet.Graph{Layers: b.layers}, b.err
 }
 
-func tinyCNN() (network, error) {
+func tinyCNN() (qnet.Graph, error) {
 	b := newBuilder(qi8.Shape{H: 32, W: 32, C: 3})
 	for _, c := range []int{16, 32, 64} {
 		b.conv(qnet.Conv2D, c, 3, 1)
@@ -185,10 +162,10 @@ func tinyCNN() (network, error) {
 	}
 	b.globalAvgPool()
 	b.fc(10)
-	return b.network()
+	return b.graph()
 }
 
-func dsCNN() (network, error) {
+func dsCNN() (qnet.Graph, error) {
 	b := newBuilder(qi8.Shape{H: 64, W: 64, C: 3})
 	b.conv(qnet.Conv2D, 32, 3, 2)
 	for range 4 {
@@ -197,13 +174,13 @@ func dsCNN() (network, error) {
 	}
 	b.globalAvgPool()
 	b.fc(12)
-	return b.network()
+	return b.graph()
 }
 
 // resNet8 is the MLPerf Tiny ResNet-8 topology (batch norm folded into the
 // convolutions; ReLU6 instead of ReLU, as the activation quantisation is
 // qnet.MobileNetActQuant).
-func resNet8() (network, error) {
+func resNet8() (qnet.Graph, error) {
 	b := newBuilder(qi8.Shape{H: 32, W: 32, C: 3})
 	b.conv(qnet.Conv2D, 16, 3, 1)
 	for i, c := range []int{16, 32, 64} {
@@ -224,5 +201,5 @@ func resNet8() (network, error) {
 	}
 	b.globalAvgPool()
 	b.fc(10)
-	return b.network()
+	return b.graph()
 }

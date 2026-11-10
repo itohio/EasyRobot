@@ -39,7 +39,9 @@ the length checks. Violations return `ErrShape` before any slice is touched.
 ## Requantisation
 
 `Requant{Mult, Shift}`: real multiplier `M' = Mult·2^(Shift−31)`,
-`Mult ∈ [2^30, 2^31)`, `Shift ∈ [−31, 30]` (total right shift `s = 31−Shift ∈ [1, 62]`).
+`Mult ∈ [2^30, 2^31)`, `Shift ∈ [−31, 30]` (total right shift `s = 31−Shift ∈ [1, 62]`),
+or the zero value `{0, 0}`, `M' = 0` (TFLite's encoding of a multiplier
+below 2^−32, e.g. a dead channel; the channel outputs its zero point).
 Anything else is `ErrRequant` (validated on every call).
 
 ```
@@ -128,6 +130,121 @@ scaleOut float32)` (`A = scaleA/(2·max)`, `B` likewise,
 y = clamp(Out.ApplyTFLite(A.ApplyTFLite((a−ZPA)·2^20) + B.ApplyTFLite((b−ZPB)·2^20)) + ZPOut, Min, Max)
 ```
 
+## Softmax
+
+`Softmax(dst, src, depth, SoftmaxParams{Mult, LeftShift, DiffMin})` over each
+row of `depth` elements (lengths equal and a multiple of `depth`, else
+`ErrLength`/`ErrShape`; `dst` may alias `src`): TFLite's int8 reference softmax
+(`reference_ops::Softmax`, the TFLite Micro kernel) in gemmlowp fixed point —
+`d = x − max(row)`; rows entries with `d < DiffMin` give −128; otherwise
+`e = exp_on_negative_values(SRDHM(d·2^LeftShift, Mult))` (Q5.26 → Q0.31),
+summed after `RoundingDivideByPOT(e, 12)` (Q12.19), reciprocal by
+`GetReciprocal` (three Newton–Raphson steps), output
+`RoundingDivideByPOT(SRDHM(scale, e), bitsOverUnit + 23) − 128` clamped.
+Output quantisation is fixed at scale 1/256, zero point −128.
+`QuantizeSoftmax(beta, inScale)` = TFLite's `PreprocessSoftmaxScaling` +
+`CalculateInputRadius` (`kScaledDiffIntegerBits` 5). Valid params: Mult in
+range, `LeftShift ∈ [0, 30]`, `DiffMin ≤ 0` with `DiffMin·2^LeftShift ≥ −2^31`
+(no overflow); else `ErrRequant`. TFLite's default non-reference CPU kernel
+uses a lookup table and can differ by 1.
+
+## TFLite operators (LOGISTIC, MUL, MEAN, QUANTIZE, CONCATENATION, PAD, RESIZE_NEAREST_NEIGHBOR)
+
+Generic-only free functions (no prepared layer, no backend seam); none
+allocates or panics. Every formula below was derived from the LiteRT 2.3.0
+interpreter with `OpResolverType.BUILTIN_REF` and is checked against its
+outputs (`tfliteops_test.go`, `testdata/tflite_ops.json.gz`, provenance in
+`testdata/tflite_gen/OPS.md`). For the requantising ops `Round` selects
+`RoundExact` (one exact rounding of the same `Requant`, half away from zero)
+or `RoundTFLite`; **TFLite uses `RoundTFLite` for MUL, MEAN and QUANTIZE.**
+
+- **LOGISTIC** — `QuantizeLogistic(inScale, inZP) → LogisticParams{Table [256]int8}`,
+  `Logistic(dst, src, p)` (`Table[uint8(x)]`; equal lengths, may alias).
+  TFLite's int8 LOGISTIC (reference and generic kernels) is a float32 lookup
+  table, not gemmlowp fixed point:
+  `d = float32(inScale·(x−inZP))`, `t = 1/(1+expf(−d))` in float32,
+  `q = clamp(roundf(256·t) − 128)`. Output quantisation is fixed at
+  scale 1/256, zero point −128 (TFLite rejects others). `expf` is
+  `float32(math.Exp(float64))`; a float64 evaluation differs on rare
+  entries (14 of 79 872 fixture outputs). Bad scale → `ErrRequant`.
+- **MUL** — `Mul(dst, a, b, MulParams{ZPA, ZPB, ZPOut, RQ, Min, Max, Round})`:
+  `dst[i] = clamp(ZPOut + R((a[i]−ZPA)·(b[i mod len(b)]−ZPB)), Min, Max)`,
+  `R` = `ApplyTFLite` (TFLite) or `Apply`. `b` broadcasts cyclically: same
+  length as `a`, its trailing channel vector, or a scalar; `len(b) = 0` or
+  not dividing `len(a)` → `ErrLength`. `dst` may alias `a`.
+  `QuantizeMul(sA, sB, sOut)` = `QuantizeMultiplier(float64(float32(float32(sA·sB)/sOut)))`
+  — TFLite evaluates the real multiplier **in float32** (a float64 product
+  gives different outputs on 2 858 fixture outputs). `Min/Max` from the
+  fused activation (TFLite `CalculateActivationRangeQuantized`: `zp +
+  roundf(f/scale)`, float32 division, for 0, 6, ±1).
+- **MEAN** over H and W — `MeanHW(dst, src, in, MeanParams{InZP, OutZP, RQ, Round})`,
+  `dst` is `in.C` long. `S_c = Σ_hw (x − InZP)`, `n = H·W`;
+  `H·W > (2^31−1)/255` → `ErrShape` (TFLite's int32 sum). `QuantizeMean(sIn, sOut)`
+  = `QuantizeMultiplier(float64(sIn)/float64(sOut))`. `RoundTFLite` is
+  TFLite's reference `QuantizedMeanOrSum` (used for keep_dims true and false,
+  axes `[1,2]` and `[2,1]`): `1/n` is folded into the multiplier in integers,
+  `k = min(⌊log2 n⌋, 32, 31+Shift)`, `m = ⌊Mult·2^k / n⌋` (truncating),
+  `e = Shift − k`, `y = MultiplyByQuantizedMultiplier(S_c, m, e)` (double
+  rounding; `m` may be below 2^30). `RoundExact`: `round(S_c·M'/n)` once,
+  exactly. The older requantise-then-divide `integer_ops::Mean` does not match
+  the interpreter.
+- **QUANTIZE** int8 → int8 — `Requantize(dst, src, RequantizeParams{InZP, OutZP, RQ, Round})`
+  (may alias): `clamp(OutZP + R(x − InZP))`, `QuantizeRequantize(sIn, sOut)` =
+  `QuantizeMultiplier(float64(sIn)/float64(sOut))` (equal scales → `{2^30, 1}`,
+  exact in both modes).
+- **CONCATENATION** — `Concat(dst, srcs, outer)`: each `srcs[k]` is `outer`
+  rows; `dst` is row 0 of every source, then row 1, … For NHWC batch 1,
+  `outer` = H·W (axis C), H (axis W), 1 (axis H). Pure copy: TFLite's int8
+  kernel requires every input's scale and zero point to equal the output's
+  and no fused activation (it fails to prepare otherwise).
+  `outer ≤ 0` → `ErrShape`; lengths not multiples of `outer` or not summing to
+  `len(dst)` → `ErrLength`. `dst` must not overlap a source.
+- **PAD / PADV2** — `Pad(dst, src, PadParams{In, Top, Bottom, Left, Right, Front, Back, Value})`,
+  `OutShape()`; negative padding or oversize → `ErrShape`. Values are
+  copied raw (no requantisation even when input and output quantisation
+  differ). PAD's `Value` is the output zero point; PADV2's is its constant
+  (TFLite requires the constant's zero point and scale to equal the output's).
+  No batch padding (TFLite allows it; the shape has batch 1).
+- **RESIZE_NEAREST_NEIGHBOR** — `ResizeNearest(dst, src, ResizeParams{In, OutH, OutW, AlignCorners, HalfPixel})`,
+  raw copy. Per axis, in float32:
+  `scale = AlignCorners && out > 1 ? (in−1)/(out−1) : in/out`,
+  `p = (o + (HalfPixel ? 0.5 : 0))·scale`,
+  `i = min(AlignCorners ? roundf(p) : floor(p), in−1)` (and `≥ 0` with
+  HalfPixel). All four flag combinations are accepted (as in TFLite);
+  float64 index math differs from the interpreter.
+
+### LEAKY_RELU and RESIZE_BILINEAR
+
+Same derivation and verification as above (fixtures
+`testdata/tflite_ops2.json.gz`, `gen_ops.py --ops2`).
+
+- **LEAKY_RELU** — `QuantizeLeakyReLU(inScale, outScale, alpha) → (identity, alpha Requant)`,
+  `LeakyReLU(dst, src, LeakyReLUParams{InZP, OutZP, Identity, Alpha, Round})`
+  (equal lengths, may alias). `v = x − InZP`;
+  `y = clamp(OutZP + R(v, v ≥ 0 ? Identity : Alpha))`, `R` = `ApplyTFLite`
+  (**TFLite: `RoundTFLite`**) or `Apply`. Multipliers as TFLite's
+  `LeakyReluPrepare`, **in float32**: `identity = f32(inScale/outScale)`,
+  `alpha = f32(f32(inScale·alpha)/outScale)` (float64, or the association
+  `inScale·(alpha/outScale)`, differ from the interpreter). In and out
+  quantisation are independent. `alpha = 0`, or a multiplier below 2^−32, is
+  the zero `Requant` (negative inputs → `OutZP`), as in TFLite; `alpha > 1`
+  is supported. A negative alpha (TFLite accepts it with a negative
+  multiplier), a non-finite alpha (TFLite aborts on +Inf) or a multiplier
+  ≥ 2^30 → `ErrRequant`.
+- **RESIZE_BILINEAR** — `ResizeBilinear(dst, src, ResizeParams)`: TFLite's
+  `ResizeBilinearInteger` on raw int8 values (no zero points; TFLite does not
+  require or apply equal in/out quantisation). Per axis
+  `scale10 = (1024·in + out/2)/out`, or `(1024·(in−1) + (out−1)/2)/(out−1)`
+  with AlignCorners and `out > 1`; `s = o·scale10 (+ scale10/2 − 512 with
+  HalfPixel)`, cells `max(s/1024, 0)` and `min((s+1023)/1024, in−1)`
+  (truncating division), `d = s − 1024·lower`;
+  `o = Σ q·w` over the four cells with weights `(1024−dy)(1024−dx)`, …,
+  `dy·dx`; `y = (o ± 2^19)/2^20` (sign of `o`, truncating; the single-rounding
+  `(o + 2^19) >> 20` differs). AlignCorners together with HalfPixel →
+  `ErrShape` (TFLite fails to prepare). Also `ErrShape`: any dimension
+  above 2^20, or an upscale so large that the last lower cell passes the
+  input (e.g. 2 → 3000; TFLite would read out of bounds).
+
 ## Padding
 
 - `PaddingSame` (TF "SAME"): `out = ceil(in/stride)`,
@@ -146,8 +263,8 @@ Height and width are independent (`KH/KW`, `StrideH/StrideW`). No dilation.
 | `DepthwiseConv2D(dst, src, w, bias, rq, DepthwiseConv2DParams)` | any `KH×KW`, any stride |
 | `MaxPool2D(dst, src, Pool2DParams)` | max over valid (non-padded) cells |
 | `AvgPool2D(dst, src, Pool2DParams)` | `roundHalfAwayFromZero(Σq / count)` over valid cells, exact integer |
-| `ReLU`, `ReLU6`, `Add` | above |
-| `QuantizeMultiplier`, `QuantizeAddMultipliers`, `QuantizeAddTFLite`, `Act*`, `Quantize6`, `Quantize6TFLite` | helpers |
+| `ReLU`, `ReLU6`, `Add`, `Softmax` | above |
+| `QuantizeMultiplier`, `QuantizeAddMultipliers`, `QuantizeAddTFLite`, `QuantizeSoftmax`, `Act*`, `Quantize6`, `Quantize6TFLite` | helpers |
 | `(*Params).OutShape()` | output shape for `dst` sizing |
 
 Pools keep scale and zero point. Average pooling rounds in the stored

@@ -1,6 +1,7 @@
 # nnbench — int8 CNN benchmark for qi8 backends
 
-Runs small int8 CNNs built from `x/math/primitive/qi8` prepared layers and
+Runs small int8 CNNs built as `x/math/nn/qnet` graphs, planned and run by
+the qnet `Runner` (which prepares `x/math/primitive/qi8` layers), and
 reports speed, cycles, RAM and an output checksum. One source, four builds:
 
 | Build | Backend (`qi8.Backend()`) |
@@ -27,18 +28,19 @@ builds**. That is the whole-network bit-exactness check across backends.
 Convs fuse ReLU6 (`qnet.MobileNetActQuant`); FCs output logits
 (`qnet.MobileNetLogitQuant`). In ResNet-8 the second conv of each branch and
 the projection have no activation and their own quantisation, so every Add
-rescales both inputs. qnet graphs are sequential, so nnbench wires the
-residual dataflow itself (one node list per model).
+rescales both inputs; the skip connections are qnet `Add` layers with two
+producers (`Layer.From`).
 
 ## How it measures
 
 - All weights, bias/requant, backend `Scratch` and activations come from one
   arena allocated once at start-up (on the chip: free heap − 32 KiB) and
-  reused by every model. Activations are the input plus slots reused once
-  every reader of a tensor has run (a sequential net gets two ping-pong
-  buffers). When a layer's backend needs `Scratch` (PIE conv2D/FC/depthwise),
-  its weights are placed at the aligned start of that scratch, so `Prepare`
-  packs them in place and big weights exist once.
+  reused by every model. `qnet.PlanMemory` lays out the runner's part:
+  backend scratch, then activations reused once every reader of a tensor
+  has run (a sequential net reaches the ping-pong bound). When a layer's
+  backend needs `Scratch` (PIE conv2D/FC/depthwise), its weights are placed
+  at the start of that scratch (`MemPlan.ScratchSlice`), so `Prepare` packs
+  them in place and big weights exist once.
 - Per model: 1 warm-up run, then at least 10 runs and at least 2 s. Reports
   ms/inference (mean, min), CCOUNT cycles/inference, cycles/MAC (nominal MACs
   incl. padded taps), a per-kind breakdown (conv, depthwise,

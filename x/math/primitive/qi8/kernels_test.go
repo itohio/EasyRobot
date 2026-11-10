@@ -236,7 +236,7 @@ func TestErrors(t *testing.T) {
 	dp := DepthwiseConv2DParams{In: Shape{3, 3, 1}, KH: 3, KW: 3, StrideH: 1, StrideW: 1, ActMax: 127}
 	require.NoError(t, DepthwiseConv2D(dst, src, w, nil, rq, dp))
 	assert.Equal(t, ErrLength, DepthwiseConv2D(dst, src, w[:8], nil, rq, dp))
-	assert.Equal(t, ErrRequant, DepthwiseConv2D(dst, src, w, nil, []Requant{{}}, dp))
+	assert.Equal(t, ErrRequant, DepthwiseConv2D(dst, src, w, nil, []Requant{{Mult: 5}}, dp))
 	dp.KW = 0
 	assert.Equal(t, ErrShape, DepthwiseConv2D(dst, src, w, nil, rq, dp))
 

@@ -48,6 +48,16 @@ type tfliteFixtures struct {
 		ZP    int8    `json:"zp"`
 		ReLU6 [2]int8 `json:"relu6"`
 	} `json:"act"`
+	Softmax []struct {
+		Depth     int     `json:"depth"`
+		Scale     float64 `json:"scale"`
+		Beta      float64 `json:"beta"`
+		Mult      int32   `json:"mult"`
+		LeftShift int32   `json:"leftShift"`
+		DiffMin   int32   `json:"diffMin"`
+		Src       []int8  `json:"src"`
+		Out       []int8  `json:"out"`
+	} `json:"softmax"`
 }
 
 type tfliteConvCase struct {
@@ -338,9 +348,70 @@ func TestRoundingValidation(t *testing.T) {
 	assert.Equal(t, ErrRequant, err)
 }
 
+func TestTFLiteSoftmaxFixtures(t *testing.T) {
+	fx := loadTFLiteFixtures(t)
+	require.NotEmpty(t, fx.Softmax)
+	outputs := 0
+	for i, c := range fx.Softmax {
+		p, err := QuantizeSoftmax(float32(c.Beta), float32(c.Scale))
+		require.NoError(t, err, "softmax %d", i)
+		require.Equal(t, SoftmaxParams{Mult: c.Mult, LeftShift: c.LeftShift, DiffMin: c.DiffMin}, p, "softmax %d", i)
+		got := make([]int8, len(c.Out))
+		require.NoError(t, Softmax(got, c.Src, c.Depth, p), "softmax %d", i)
+		require.Equal(t, c.Out, got, "softmax %d depth %d %+v", i, c.Depth, p)
+		outputs += len(got)
+	}
+	t.Logf("%d cases, %d outputs", len(fx.Softmax), outputs)
+}
+
+func TestSoftmaxErrors(t *testing.T) {
+	p, err := QuantizeSoftmax(1, 0.1)
+	require.NoError(t, err)
+	x := make([]int8, 6)
+	assert.NoError(t, Softmax(x, x, 3, p))
+	assert.NoError(t, Softmax(x, x, 6, p), "dst may alias src")
+	assert.Equal(t, ErrLength, Softmax(x[:5], x, 3, p))
+	assert.Equal(t, ErrShape, Softmax(x, x, 4, p), "length not a multiple of depth")
+	assert.Equal(t, ErrShape, Softmax(x, x, 0, p))
+	for _, bad := range []SoftmaxParams{
+		{Mult: 1, LeftShift: p.LeftShift, DiffMin: p.DiffMin},
+		{Mult: p.Mult, LeftShift: -1, DiffMin: p.DiffMin},
+		{Mult: p.Mult, LeftShift: 31, DiffMin: p.DiffMin},
+		{Mult: p.Mult, LeftShift: p.LeftShift, DiffMin: 1},
+		{Mult: p.Mult, LeftShift: p.LeftShift, DiffMin: math.MinInt32>>p.LeftShift - 1}, // (x−max)·2^LeftShift would overflow
+	} {
+		assert.Equal(t, ErrRequant, Softmax(x, x, 3, bad), "%+v", bad)
+	}
+	for _, s := range [][2]float32{{0, 1}, {1, 0}, {-1, 1}, {float32(math.Inf(1)), 1}, {1, float32(math.NaN())}} {
+		_, err := QuantizeSoftmax(s[0], s[1])
+		assert.Equal(t, ErrRequant, err, "%v", s)
+	}
+	assert.Zero(t, testing.AllocsPerRun(100, func() { _ = Softmax(x, x, 3, p) }))
+}
+
 func (g gen) rounding() Rounding {
 	if g.r.IntN(2) == 0 {
 		return RoundTFLite
 	}
 	return RoundExact
+}
+
+// TFLite stores a multiplier below 2^-32 (e.g. a dead channel's tiny weight
+// scale) as Mult 0, Shift 0: the channel outputs its zero point.
+func TestZeroRequant(t *testing.T) {
+	zero := Requant{}
+	assert.True(t, zero.Valid())
+	assert.False(t, Requant{Mult: 0, Shift: -3}.Valid())
+	assert.False(t, Requant{Mult: 1 << 29, Shift: 0}.Valid())
+	for _, acc := range []int32{0, 1, -1, math.MaxInt32, math.MinInt32} {
+		assert.Equal(t, int64(0), zero.Apply(acc))
+		assert.Equal(t, int32(0), zero.ApplyTFLite(acc))
+	}
+	src, w := []int8{5, -7, 100, 3}, []int8{9, -9, 4, 1, 2, 3, 4, 5}
+	rq := []Requant{{}, {Mult: 1 << 30, Shift: -2}}
+	for _, round := range []Rounding{RoundExact, RoundTFLite} {
+		dst := make([]int8, 2)
+		require.NoError(t, FullyConnected(dst, src, w, []int32{1000, 0}, rq, FCParams{In: 4, Out: 2, OutZP: -9, ActMin: -128, ActMax: 127, Round: round}))
+		assert.Equal(t, int8(-9), dst[0], "zero multiplier gives the zero point")
+	}
 }

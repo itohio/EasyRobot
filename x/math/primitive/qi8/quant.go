@@ -38,15 +38,18 @@ const (
 // in [2^30, 2^31) and Shift in [MinShift, MaxShift] (total right shift
 // 31-Shift in [1, 62]). Applying it to an int32 accumulator is exact:
 // round_half_away_from_zero(acc*Mult / 2^(31-Shift)), computed in int64 with a
-// single rounding.
+// single rounding. The zero value {0, 0} is also valid and represents M' = 0
+// (TFLite's encoding of a multiplier below 2^-32, e.g. a dead channel): the
+// channel outputs its zero point.
 type Requant struct {
 	Mult  int32
 	Shift int32
 }
 
-// Valid reports whether r is inside the supported range.
+// Valid reports whether r is inside the supported range or the zero
+// multiplier.
 func (r Requant) Valid() bool {
-	return r.Mult >= multMin && r.Shift >= MinShift && r.Shift <= MaxShift
+	return r == Requant{} || r.Mult >= multMin && r.Shift >= MinShift && r.Shift <= MaxShift
 }
 
 // Apply returns round_half_away_from_zero(acc * M') as int64 (no zero point,

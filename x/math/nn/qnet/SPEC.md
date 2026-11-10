@@ -1,37 +1,65 @@
-# qnet — sequential int8 network runner on qi8
+# qnet — int8 network runner on qi8
 
 Tiny graph + runner for int8 CNNs on microcontrollers (ESP32-S3, K210) and
 the host. Imports only the standard library and `x/math/primitive/qi8` (never
-`x/math/nn` or `x/math/tensor`). Nothing allocates except `NewRunner` (one
-`Runner`); errors are sentinels returned unwrapped. Numerics are exactly qi8's
-(see `qi8/SPEC.md`).
+`x/math/nn` or `x/math/tensor`). Planning and `NewRunner`/`Init` allocate
+once; `Run` never allocates. Errors are sentinels returned unwrapped.
+Numerics are exactly qi8's (see `qi8/SPEC.md`), including its rounding modes.
 
 ## Data
 
 | Type | Meaning |
 |---|---|
 | `Quant{Scale float32; ZP int8}` | activation quantisation, `real = Scale·(q − ZP)` |
-| `Kind` | `Conv2D`, `DepthwiseConv2D`, `FullyConnected`, `MaxPool2D`, `AvgPool2D`, `ReLU`, `ReLU6` |
-| `Layer` | plain data: `Kind`, `In/Out qi8.Shape`, `InQ/OutQ Quant`, geometry `KH, KW, StrideH, StrideW, Padding`, fused clamp `ActMin/ActMax`, `Weights []int8`, `Bias []int32` (nil = 0), `Requant []qi8.Requant` |
-| `Graph{Layers []Layer}` | sequential: `Layers[i].Out` feeds `Layers[i+1].In` |
+| `Kind` | `Conv2D`, `DepthwiseConv2D`, `FullyConnected`, `MaxPool2D`, `AvgPool2D`, `ReLU`, `ReLU6`, `Add`, `Reshape`, `Softmax`, `Logistic`, `Mul`, `Mean`, `Requantize`, `Concat`, `Pad`, `ResizeNearest`, `Const`, `LeakyReLU`, `ResizeBilinear` |
+| `Layer` | plain data: `Kind`, `From []int`, `In/Out qi8.Shape`, `InQ/OutQ/In2Q Quant`, geometry `KH, KW, StrideH, StrideW, Padding`, fused clamp `ActMin/ActMax`, `Round qi8.Rounding`, `Weights []int8` (Const: its data), `Bias []int32` (nil = 0), `Requant []qi8.Requant`, `AddRQ`/`AddTFLite`, `SoftmaxParams`, `LogisticParams`, `RQ qi8.Requant` (Mul/Mean/Requantize, LeakyReLU identity), `RQAlpha` (LeakyReLU alpha), `Axis` (Concat: 0 H, 1 W, 2 C), `Pads [6]int` + `PadValue`, `AlignCorners`/`HalfPixel` (both resizes) |
+| `Graph{Layers []Layer; Outputs []int}` | layers in execution order; layer i reads the layers in `From`; `Outputs` are the graph outputs (nil: the last layer) |
+
+`From` lists producers: indices below the layer, or −1 for the graph input;
+nil means the previous layer (the input for layer 0). Single-input kinds take
+at most one entry, `Add` and `Mul` exactly two, `Concat` one or more,
+`Const` none (and it must not be layer 0). The graph input's
+shape/quantisation are `Layers[0].In/InQ`; the graph outputs are the
+`Outputs` layers' `Out` (`NumOutputs()`), by default the last layer.
 
 The qi8 parameter structs are derived, never stored: `Conv2DParams()`,
 `DepthwiseParams()`, `FCParams()` (`In = In.Len()`, `Out = Out.C`),
-`PoolParams()`. `Out.C` is the channel count of Conv2D/FC; everything else in
-`Out` is implied (`OutShape()`). Global average pooling is `AvgPool2D` with
-`KH×KW = In.H×In.W`, VALID. Standalone `ReLU6` uses
-`qi8.Quantize6(InQ.Scale, InQ.ZP)`. Weight layouts are qi8's (OHWI,
-`[KH][KW][C]`, `[Out][In]`).
+`PoolParams()`, `AddParams()`, `MulParams()` (zero points from `InQ`,
+`In2Q`, `OutQ`), `MeanParams()`, `RequantizeParams()`, `PadParams()`,
+`ResizeParams()`, `LeakyReLUParams()`.
+`Round` reaches every requantising kernel (`qi8.RoundTFLite` for imported
+TFLite models). `Out.C` is the channel count of Conv2D/FC; the `Out` of
+`Reshape` (same length), `Concat` and `Const` and `Out.H/W` of the resizes
+are given; everything else in `Out` is implied (`OutShape()`).
+Global average pooling is `AvgPool2D` with `KH×KW = In.H×In.W`, VALID.
+Standalone `ReLU6` uses `qi8.Quantize6(InQ.Scale, InQ.ZP)`. `Add` is
+`qi8.Add` with `AddRQ` (`RoundExact`) or `AddTFLite` (`RoundTFLite`);
+`Softmax` is `qi8.Softmax` over C with `OutQ = SoftmaxOutQuant {1/256, −128}`.
+`Logistic` is `qi8.Logistic` (`OutQ = LogisticOutQuant {1/256, −128}`);
+`Mul` is `qi8.Mul` (second input `In`-shaped, `1×1×In.C` or `1×1×1`,
+broadcast cyclically); `Mean` is `qi8.MeanHW` (`Out = 1×1×C`); `Requantize`
+is `qi8.Requantize`; `Concat` is `qi8.Concat` with `outer` = the product of
+the dimensions before `Axis`; `Pad` is `qi8.Pad`; `ResizeNearest` and
+`ResizeBilinear` are `qi8.ResizeNearest`/`qi8.ResizeBilinear`; `LeakyReLU` is
+`qi8.LeakyReLU`; `Const` outputs its `Weights`.
+Weight layouts are qi8's (OHWI, `[KH][KW][C]`, `[Out][In]`).
 
 ## Validation (`Graph.Check() (layer int, err error)`, `Validate()`)
 
-Per layer: known kind (`ErrKind`); `Out == OutShape()` and valid geometry
-(`ErrShape`); positive finite scales (`ErrQuant`); `In`/`InQ` equal the
-previous `Out`/`OutQ` (`ErrShape`/`ErrQuant`); pools and ReLUs keep
-quantisation (`ErrQuant`); `ActMin ≤ ActMax` (`ErrActivation`);
-`len(Weights)`, `len(Requant)` equal `ParamCounts`, `Bias` nil or equal, all
-requants `Valid`, no params on parameter-free kinds (`ErrParams`). Empty graph:
-`ErrEmpty`.
+Per layer: known kind (`ErrKind`); `From` in range, earlier than the layer,
+the right count (`ErrShape`); `Out == OutShape()` and valid geometry
+(`ErrShape`); positive finite scales (`ErrQuant`); `In`/`InQ` (and the second
+input's shape/`In2Q` for Add and Mul) equal the producers' `Out`/`OutQ`
+(`ErrShape`/`ErrQuant`); `Concat` inputs agree with `In` off `Axis`, sum to
+`Out` on it and are quantised as `OutQ`; `Const` has `In = Out`, `InQ =
+OutQ`; pools, ReLUs and Reshape keep quantisation (Pad and the resizes work on raw values under any `OutQ`, as TFLite; LeakyReLU, Mean and Requantize requantise) and
+Softmax/Logistic output `SoftmaxOutQuant`/`LogisticOutQuant` (`ErrQuant`);
+`ActMin ≤ ActMax` (`ErrActivation`); `len(Weights)`, `len(Requant)` equal
+`ParamCounts` (Const: `Out.Len()`), `Bias` nil or equal, all requants (and
+`RQ`/`RQAlpha`, which may also be zero) `Valid`, valid `Round`, Add multipliers and
+softmax/logistic scaling (qi8 validation), no weights on other
+parameter-free kinds (`ErrParams`); `Outputs` non-empty and in range
+(`ErrShape`, index −1). Empty graph: `ErrEmpty`.
 
 ## Parameters
 
@@ -45,38 +73,60 @@ exactly those lengths into the layers in order (3-index slices, no copy);
 
 `Graph.Budget(i) LayerBudget{In, Out, Weights, Params, MACs}`: activation
 bytes, weight bytes, bias (4 B) + requant (8 B) bytes, nominal MACs including
-padded taps (= weights × output pixels; pools and ReLUs 0). Totals:
-`WeightBytes`, `ParamBytes`, `MACs`, `ArenaSize`.
+padded taps (= weights × output pixels; other kinds 0). Totals:
+`WeightBytes` (Const data counts as weights), `ParamBytes`, `MACs`.
 
-## Backends and planning
+## Plan (`PlanMemory(g, backends...) (*MemPlan, error)`)
+
+Validates shapes (parameters need not be bound), then:
+
+- **Segments.** At each layer the backends are asked in order
+  (`Claim(layers) int`); the first non-zero claim becomes a segment. A claim
+  must be a chain of single-input layers, each after the first reading its
+  predecessor, with no intermediate output read outside the chain or
+  returned by the graph (`ErrClaim`, also for counts < 0 or past the end).
+  Unclaimed layers run alone on the built-in CPU kernels.
+- **Persistent region** (arena start): the qi8 backend scratch of each CPU
+  conv/depthwise/FC layer (`ScratchLen`, non-zero only for the ESP32-S3 PIE
+  build), 16-byte aligned. `ScratchSlice(arena, i)` returns it; placing the
+  layer's weights at its start before `NewRunner` lets qi8 pack them in place.
+- **Activations.** Every segment output is a tensor alive from its segment
+  to the last segment that reads it (graph outputs to the end); Reshape
+  outputs alias their input (a Reshape of the graph input aliases the
+  caller's buffer, `Out[i].Off = −1`); Const outputs (and Reshapes of them)
+  are the Const's `Weights` (`Off = −2`). Tensors are placed greedily, largest
+  first (ties: earlier first), at the lowest 16-aligned offset that overlaps
+  no placed tensor with an overlapping lifetime. A tensor never shares bytes
+  with a live input of its segment.
+- `MemPlan{Segments, Scratch, Out []Region, Persistent, Activations}`;
+  `Size() = 15 + Persistent + Activations` (slack to align any buffer).
+
+For sequential graphs the plan equals the ping-pong bound
+`max(In+Out)` (rounded to 16): MobileNetV1-0.25 needs 55 296 B of
+activations at 96², 98 304 B at 128², 301 056 B at 224².
+
+## Runner
+
+`NewRunner(g, arena, backends...)` / `Init` validates `g` (parameters bound),
+plans it, checks `len(arena) ≥ Size()` (`ErrArena`) and prepares every CPU
+layer as a qi8 prepared layer over its scratch (allocating the plan and the
+layer structs once). `Run(input)` executes all segments (`ErrNotReady`
+before a successful `Init`, `ErrInput` on a length mismatch) and returns
+graph output 0, aliasing the arena until the next `Run`; `Output(input, k)`
+returns output k. `RunSegment(input, k)` and `SegmentOutput(input, k)` run
+and expose one segment (profiling).
 
 ```go
 type Backend interface {
     Name() string
-    Claim(layers []Layer) int               // layers run from layers[0] as one segment; 0 = none
+    Claim(layers []Layer) int                  // chain run from layers[0] as one segment; 0 = none
     Run(layers []Layer, dst, src []int8) error // NHWC in (first In) → out (last Out); no allocation
 }
 ```
 
-`Generic` claims any known kind, one layer per segment, and runs it with
-`RunLayer` (qi8). `Runner.Init(g, arena, backends...)` validates `g`, then
-greedily plans: at each layer the backends are asked in order, the first
-non-zero claim becomes the next segment (`ErrClaim` if it runs past the end
-or is negative, `ErrUnclaimed` if nobody claims, `ErrCapacity` beyond
-`MaxSegments` = 64). The plan lives in a fixed array; `Plan()` exposes it.
-
-## Arena
-
-Ping-pong in one buffer: segment k writes its output at the arena end (k
-even) or start (k odd); segment 0 reads the caller's input directly, later
-segments read the previous output. Requirement = max over segments of
-`first.In + last.Out` bytes (segment 0: `last.Out`); `ErrArena` if smaller.
-`Graph.ArenaSize()` is that value for the all-Generic plan;
-`Runner.ArenaSize()` for the actual plan (fused segments can need more, since
-their intermediates live in the backend). Backends keep their own scratch.
-
-`Runner.Run(input)`: `ErrNotReady` before a successful `Init`, `ErrInput`
-on a length mismatch; output aliases the arena until the next `Run`.
+`RunLayer(l, dst, srcs...)` runs one layer with the qi8 free functions
+(the reference the Runner is tested against; `srcs` are the producers'
+outputs in `From` order, none for Const).
 
 ## MobileNetV1
 
@@ -97,13 +147,68 @@ bias uniform in ±σ/4. Result: every conv output ≈ half at the ReLU floor,
 
 α = 0.25: 207 600 weight bytes (+256 000 for FC-1000), 2 736 (+1 000) bias
 and requant entries; MACs 7.49 M at 96², 13.31 M at 128², 41.0 M at 224² with
-FC-1000 (the paper's 41 M); arena 55 296 B at 96², 98 304 B at 128².
+FC-1000 (the paper's 41 M).
+
+## TFLite import (`qnet/tfl`)
+
+`tfl.Load(model []byte) (Graph, error)` converts the first subgraph of an
+int8 TFLite flatbuffer (pure Go, no reflection, bounds-checked: malformed
+input is `ErrFormat`, never a panic). Conv2D, depthwise and Add get
+`qi8.RoundTFLite`, FullyConnected `qi8.RoundExact` (TFLite's FC kernel
+rounds once, half away from zero); multipliers are `QuantizeMultiplier(float64(sIn)·
+float64(sW)/float64(sOut))` per channel (below 2^-32: the zero multiplier, as
+TFLite); fused ReLU/ReLU6/ReLU_N1_TO_1 ranges use TFLite's float32 rounding;
+Add uses `QuantizeAddTFLite`, Softmax `QuantizeSoftmax`. MUL, MEAN and
+QUANTIZE (int8 → int8) get `qi8.RoundTFLite` with `QuantizeMul` (float32
+`sA·sB/sOut`, as TFLite), `QuantizeMean` and `QuantizeRequantize`; LOGISTIC
+gets `QuantizeLogistic` (TFLite's float32 table); LEAKY_RELU gets
+`qi8.RoundTFLite` with `QuantizeLeakyReLU`. These choices are fixed
+by the LiteRT interpreter (qi8 `testdata/tflite_gen/OPS.md`). Weights alias the
+model bytes (it may live in flash); bias aliases them when 4-byte aligned
+(little-endian), else it is copied.
+
+Operators: CONV_2D, DEPTHWISE_CONV_2D (multiplier 1, or one input channel
+with any multiplier → Conv2D with transposed weights), FULLY_CONNECTED (a
+Reshape follows when the declared output shape differs), AVERAGE_POOL_2D and
+MAX_POOL_2D (no fused activation, same quantisation), RESHAPE (alias),
+SOFTMAX, ADD (equal shapes), MUL (equal shapes, or the smaller operand per
+channel or scalar), LOGISTIC (output `{1/256, −128}`), MEAN (axes H and W of
+a rank-4 tensor, keep_dims either way), CONCATENATION (any non-batch axis,
+no fused activation, inputs quantised as the output — LiteRT rejects
+anything else), PAD and PADV2 (constant int32/int64 paddings, no batch
+padding; PAD fills with the output zero point, PADV2 with its constant,
+which must share the output's quantisation), RESIZE_NEAREST_NEIGHBOR and
+RESIZE_BILINEAR (rank 4, both flags), LEAKY_RELU, QUANTIZE (int8 → int8 → `Requantize`). A constant int8
+operand of ADD, MUL or CONCATENATION becomes a `Const` layer (not for the
+first operator). I/O cuts: a float or uint8 graph input whose QUANTIZE is
+the first operator, and DEQUANTIZEs of graph outputs, are removed — the
+graph takes the int8 input (`Layers[0].InQ`) and returns int8 outputs; the
+caller converts. Requirements: int8 activations with one scale/zero point,
+symmetric int8 weights per channel or per tensor, int32 bias, batch 1, no
+dilation, one input, one or more outputs (`Graph.Outputs` in model order;
+nil when the only output is the last layer) with the last operator's among
+them, one subgraph. Anything else returns an `*OpError{Index, Op, Reason}`
+naming the operator (wraps `ErrUnsupported`).
 
 ## Verification
 
-Runner output is bit-identical to calling the qi8 kernels layer by layer
-(96² and 128², with and without FC), also with a test backend fusing every
-depthwise+pointwise pair. `AllocsPerRun == 0` for `MobileNetV1`,
-`BindParams`, `SyntheticParams`, `Runner.Init`, `Runner.Run`. TinyGo
-`-print-allocs='qnet|qi8'` is empty for `xiao-esp32s3` and the UnitV target
-(probe with statically sized globals; not part of the repo).
+Runner output is bit-identical to `RunLayer` layer by layer (sequential
+`smallLayers`, MobileNetV1 at 96²/128² with and without FC, a residual
+`resLayers` graph with Add from a layer and from the graph input, Reshape and
+Softmax, in both rounding modes) and with a test backend fusing every
+depthwise+pointwise pair. `checkPlan` verifies independently that no two
+tensors with overlapping lifetimes share bytes and that Reshape aliases its
+input; a planner that ignores lifetimes fails it. `AllocsPerRun == 0` for
+`MobileNetV1`, `BindParams`, `SyntheticParams` and `Run`. `opsLayers`
+covers every added kind (Pad, ResizeNearest, Logistic, Const, Mul per
+channel/element-wise/scalar, Requantize, Concat on C and on W from one
+producer twice, Mean, Reshape) in both rounding modes against `RunLayer`,
+Const regions (`Off −2`) and zero allocations, plus 22 validation cases.
+`tfl` tests build models in memory (`builder_test.go`) and check
+conversion, aliasing, multipliers, the depthwise-multiplier transposition
+(against a direct computation), Add/Softmax/Reshape, the zero multiplier,
+every rejection path and truncated files; `testdata/opsnet.tflite`
+(`gen_opsnet.py`: float I/O, three outputs, every added operator, constants)
+equals the LiteRT interpreter on every operator output for 64 inputs
+(`opsnet.json.gz`); `yoloLayers` checks LeakyReLU and ResizeBilinear against
+`RunLayer` in both rounding modes.

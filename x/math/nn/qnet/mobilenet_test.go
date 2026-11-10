@@ -29,7 +29,7 @@ func newMobileNet(t testing.TB, h, w, classes int) *mobileNet {
 	if err := qnet.SyntheticParams(&g, 42); err != nil {
 		t.Fatal(err)
 	}
-	return &mobileNet{g: g, arena: make([]int8, g.ArenaSize()), in: randInput(h*w*3, uint64(h))}
+	return &mobileNet{g: g, arena: make([]int8, planSize(t, &g)), in: randInput(h*w*3, uint64(h))}
 }
 
 func TestMobileNetV1Shapes(t *testing.T) {
@@ -106,7 +106,7 @@ func TestMobileNetV1MatchesKernels(t *testing.T) {
 				m := newMobileNet(t, size, size, classes)
 				want := runByHand(t, &m.g, m.in)
 				var r qnet.Runner
-				if err := r.Init(&m.g, m.arena, qnet.Generic{}); err != nil {
+				if err := r.Init(&m.g, m.arena); err != nil {
 					t.Fatal(err)
 				}
 				got, err := r.Run(m.in)
@@ -117,12 +117,12 @@ func TestMobileNetV1MatchesKernels(t *testing.T) {
 					t.Fatal("runner output differs from layer-by-layer qi8")
 				}
 				// Fusing every dw+pw pair gives the same bytes.
-				pair := &pairBackend{scratch: make([]int8, m.g.ArenaSize())}
+				pair := &pairBackend{scratch: make([]int8, 64<<10)}
 				var rf qnet.Runner
-				if err := rf.Init(&m.g, make([]int8, 2*m.g.ArenaSize()), pair, qnet.Generic{}); err != nil {
+				if err := rf.Init(&m.g, make([]int8, planSize(t, &m.g, pair)), pair); err != nil {
 					t.Fatal(err)
 				}
-				if n := len(rf.Plan()); n != len(m.g.Layers)-13 {
+				if n := len(rf.Plan().Segments); n != len(m.g.Layers)-13 {
 					t.Fatalf("fused plan has %d segments", n)
 				}
 				got, err = rf.Run(m.in)
@@ -192,14 +192,14 @@ func TestNoAllocs(t *testing.T) {
 	if n := testing.AllocsPerRun(2, func() { err = qnet.SyntheticParams(&g, 1) }); n != 0 || err != nil {
 		t.Fatalf("SyntheticParams: %v allocs, %v", n, err)
 	}
-	arena := make([]int8, g.ArenaSize())
+	arena := make([]int8, planSize(t, &g))
 	var r qnet.Runner
-	if n := testing.AllocsPerRun(10, func() { err = r.Init(&g, arena, qnet.Generic{}) }); n != 0 || err != nil {
-		t.Fatalf("Init: %v allocs, %v", n, err)
+	if err := r.Init(&g, arena); err != nil {
+		t.Fatal(err)
 	}
-	pair := &pairBackend{scratch: make([]int8, g.ArenaSize())}
+	pair := &pairBackend{scratch: make([]int8, 64<<10)}
 	var rf qnet.Runner
-	if err := rf.Init(&g, make([]int8, 2*g.ArenaSize()), pair, qnet.Generic{}); err != nil {
+	if err := rf.Init(&g, make([]int8, planSize(t, &g, pair)), pair); err != nil {
 		t.Fatal(err)
 	}
 	in := randInput(96*96*3, 1)
@@ -238,8 +238,12 @@ func TestBudgetTable(t *testing.T) {
 				fmt.Sprintf("%dx%dx%d", l.In.H, l.In.W, l.In.C), fmt.Sprintf("%dx%dx%d", l.Out.H, l.Out.W, l.Out.C),
 				b.In, b.Out, b.Weights, b.Params, b.MACs)
 		}
-		t.Logf("total: weights %d B, bias+requant %d B, MACs %d, arena %d B", g.WeightBytes(), g.ParamBytes(), g.MACs(), g.ArenaSize())
-		if g.WeightBytes() != c.weights || g.ParamBytes() != c.params || g.MACs() != c.macs || g.ArenaSize() != c.arena {
+		p, err := qnet.PlanMemory(&g)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("total: weights %d B, bias+requant %d B, MACs %d, activations %d B", g.WeightBytes(), g.ParamBytes(), g.MACs(), p.Activations)
+		if g.WeightBytes() != c.weights || g.ParamBytes() != c.params || g.MACs() != c.macs || p.Activations != c.arena {
 			t.Errorf("%d/%d totals: want weights %d, params %d, MACs %d, arena %d", c.size, c.classes, c.weights, c.params, c.macs, c.arena)
 		}
 	}
@@ -248,7 +252,7 @@ func TestBudgetTable(t *testing.T) {
 func benchMobileNet(b *testing.B, size, classes int) {
 	m := newMobileNet(b, size, size, classes)
 	var r qnet.Runner
-	if err := r.Init(&m.g, m.arena, qnet.Generic{}); err != nil {
+	if err := r.Init(&m.g, m.arena); err != nil {
 		b.Fatal(err)
 	}
 	b.ReportAllocs()

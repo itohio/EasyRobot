@@ -38,5 +38,7 @@ docs/.obsidian/workspace*.json
 /nnbench-*.bin
 # Python bytecode from the testdata generators
 __pycache__/
+# Python bytecode from the testdata generators
+__pycache__/
 # Evidence reports live outside the repo (~/src/docs/evidence/)
 /docs/evidence/
