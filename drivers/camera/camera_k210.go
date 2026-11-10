@@ -136,7 +136,7 @@ func Open(cfg Config, pins Pins) (*Camera, error) {
 	}
 	if err := s.Init(cfg.Mode); err != nil {
 		powerDown()
-		return nil, err
+		return nil, modeErr(err, ov2640.ErrMode)
 	}
 	c := &Camera{cfg: cfg, id: id, drv: s}
 	if cfg.Format == sensor.Y8 {

@@ -231,7 +231,8 @@ func captureOnce(pins Pins, vsyncActive bool, ch *gdmaIn, d *[maxNodes]dmaDesc, 
 }
 
 // sccbBus is the SCCB master on a machine.I2C. Its buffers live in the
-// struct so register access does not allocate.
+// struct; machine.I2C on the ESP32-S3 still allocates per transfer (TinyGo
+// 0.43), so SCCB access (controls, Identify) allocates. Capture doesn't.
 type sccbBus struct {
 	i2c *machine.I2C
 	w   [3]byte

@@ -51,12 +51,14 @@ func TestJPEGSpanSkipsFFD9InsideSegments(t *testing.T) {
 func TestJPEGSpanRejectsBrokenFrames(t *testing.T) {
 	j := encodeJPEG(t)
 	for name, b := range map[string][]byte{
-		"empty":           nil,
-		"no SOI":          append([]byte{0x00}, j...),
-		"truncated":       j[:len(j)/2],
-		"no EOI":          j[:len(j)-2],
-		"bad segment len": {0xFF, 0xD8, 0xFF, 0xDB, 0x00, 0x01, 0xFF, 0xD9},
-		"segment overrun": {0xFF, 0xD8, 0xFF, 0xDB, 0x40, 0x00, 0xFF, 0xD9},
+		"empty":                           nil,
+		"no SOI":                          append([]byte{0x00}, j...),
+		"truncated":                       j[:len(j)/2],
+		"no EOI":                          j[:len(j)-2],
+		"bad segment len":                 {0xFF, 0xD8, 0xFF, 0xDB, 0x00, 0x01, 0xFF, 0xD9},
+		"segment overrun":                 {0xFF, 0xD8, 0xFF, 0xDB, 0x40, 0x00, 0xFF, 0xD9},
+		"header only, no SOS (review C6)": {0xFF, 0xD8, 0xFF, 0xD9},
+		"EOI before SOS":                  {0xFF, 0xD8, 0xFF, 0xDB, 0x00, 0x04, 0x01, 0x02, 0xFF, 0xD9},
 	} {
 		if got, ok := jpegSpan(b); ok {
 			t.Errorf("%s: accepted %d bytes", name, len(got))

@@ -19,7 +19,8 @@
 //	var _ Backend = (*Camera)(nil)
 //
 // Shared rules:
-//   - Errors: unsupported format or size ErrFormat; buffer too small
+//   - Errors: unsupported format or size ErrFormat (also when the sensor
+//     driver rejects the mode); buffer too small
 //     ErrBufSize; buffer misaligned or in memory the capture engine cannot
 //     write ErrBufAlign; no frame in time ErrTimeout; unknown sensor
 //     ErrNoDriver; driver without controls ErrNoControls.
@@ -33,7 +34,9 @@
 //     gives ErrBufSize.
 //   - Frame.Data aliases the caller's buffer (or a host alias of it) and is
 //     valid until the next Capture.
-//   - Capture and the controls do not allocate.
+//   - Capture does not allocate. The controls and Identify go over SCCB and
+//     may allocate where the host's I2C driver does (ESP32-S3: TinyGo 0.43's
+//     machine.I2C allocates per transfer).
 package camera
 
 import (

@@ -177,6 +177,19 @@ func TestInitChecksProductID(t *testing.T) {
 	}
 }
 
+func TestSupportedMatchesInit(t *testing.T) {
+	for _, m := range []sensor.Mode{
+		mode(320, 240, sensor.YUV422), mode(2048, 1536, sensor.JPEG), crop(320, 240, sensor.Y8),
+		mode(322, 242, sensor.YUV422), mode(320, 100, sensor.JPEG), crop(2052, 1536, sensor.JPEG),
+		mode(320, 240, sensor.Format(99)),
+	} {
+		err := (&Sensor{Bus: newBus()}).Init(m)
+		if Supported(m) != (err == nil) {
+			t.Errorf("%+v: Supported %v, Init %v", m, Supported(m), err)
+		}
+	}
+}
+
 func TestInitTestPattern(t *testing.T) {
 	b := newBus()
 	m := mode(320, 240, sensor.RGB565)
@@ -229,6 +242,28 @@ func TestSetQuality(t *testing.T) {
 	}
 	if err := s.SetQuality(64); !errors.Is(err, ErrMode) || b.regs[regCompress07] != 40 {
 		t.Errorf("SetQuality(64): err %v, register %d; want ErrMode, unchanged", err, b.regs[regCompress07])
+	}
+}
+
+// One quality range for Init and SetQuality (review C5): 1 … 63, 0 = the
+// default 12, above 63 refused before any register write.
+func TestQualityRangeIsShared(t *testing.T) {
+	b := newBus()
+	s := &Sensor{Bus: b}
+	if err := s.SetQuality(0); err != nil || b.regs[regCompress07] != DefaultQuality {
+		t.Errorf("SetQuality(0): err %v, register %d, want the default %d", err, b.regs[regCompress07], DefaultQuality)
+	}
+	for _, f := range []sensor.Format{sensor.JPEG, sensor.YUV422} {
+		b := newBus()
+		s := &Sensor{Bus: b, Opts: Options{Quality: 64}}
+		if err := s.Init(mode(320, 240, f)); !errors.Is(err, ErrMode) || len(b.writes) != 0 {
+			t.Errorf("format %d, quality 64: err %v after %d writes, want ErrMode before any write", f, err, len(b.writes))
+		}
+	}
+	b = newBus()
+	s = &Sensor{Bus: b, Opts: Options{Quality: 63}}
+	if err := s.Init(mode(320, 240, sensor.JPEG)); err != nil || b.regs[regCompress07] != 63 {
+		t.Errorf("quality 63: err %v, register %d", err, b.regs[regCompress07])
 	}
 }
 

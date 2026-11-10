@@ -4,7 +4,7 @@ package camera
 // tag, so they are tested on the host.
 
 // jpegSpan returns b from its SOI (FF D8 at offset 0) through its EOI
-// (FF D9). It walks the marker segments up to the first SOS by their
+// (FF D9). A JPEG without a scan (SOS) before the EOI is rejected. It walks the marker segments up to the first SOS by their
 // lengths, so table bytes cannot be mistaken for an EOI, then scans the
 // entropy-coded data, where a literal FF is always followed by 00 or a
 // restart marker. Sensors pad the frame after the EOI (OV3660, M3 evidence).
@@ -21,8 +21,8 @@ func jpegSpan(b []byte) ([]byte, bool) {
 			return nil, false
 		}
 		m := b[i+1]
-		if m == 0xD9 {
-			return b[:i+2], true
+		if m == 0xD9 { // EOI before any scan: a header without image data
+			return nil, false
 		}
 		if m == 0x01 || m >= 0xD0 && m <= 0xD7 { // standalone markers
 			i += 2

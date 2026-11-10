@@ -65,7 +65,8 @@ type Options struct {
 	// XCLKHz is the sensor clock the backend supplies (0 = 20 MHz). It sets
 	// the line period used for exposure in µs.
 	XCLKHz uint32
-	// Quality is the JPEG quantisation scale, 0 (best) … 63; 0 means 12.
+	// Quality is the JPEG quantisation scale, 1 (best) … 63; 0 means
+	// DefaultQuality (12). Above 63 Init refuses the mode (ErrMode).
 	// Smaller values give larger JPEGs (M3 evidence: 2048×1536 needs ≥ 40 to
 	// fit 290 KB of internal RAM).
 	Quality uint8
@@ -145,6 +146,10 @@ func (s *Sensor) Init(m sensor.Mode) error {
 	if err != nil {
 		return err
 	}
+	q, err := quality(s.Opts.Quality)
+	if err != nil {
+		return err
+	}
 	pid, err := s.read(regPID)
 	if err != nil {
 		return err
@@ -174,11 +179,7 @@ func (s *Sensor) Init(m sensor.Mode) error {
 		return err
 	}
 	if m.Format == sensor.JPEG {
-		q := s.Opts.Quality
-		if q == 0 {
-			q = 12
-		}
-		if err := s.write(regCompress07, q&0x3F); err != nil {
+		if err := s.write(regCompress07, q); err != nil {
 			return err
 		}
 	}
@@ -191,14 +192,39 @@ func (s *Sensor) Init(m sensor.Mode) error {
 	return nil
 }
 
-// SetQuality changes the JPEG quantisation scale (0 best … 63) of a running
-// sensor; it applies from the next frames (esp32-camera set_quality).
+// DefaultQuality is the JPEG quantisation scale used for quality 0.
+const DefaultQuality = 12
+
+// quality validates a JPEG quantisation scale: 1 (best) … 63, 0 = the
+// default 12, anything above 63 ErrMode. Init and SetQuality share it.
+func quality(q uint8) (uint8, error) {
+	switch {
+	case q == 0:
+		return DefaultQuality, nil
+	case q > 63:
+		return 0, ErrMode
+	}
+	return q, nil
+}
+
+// SetQuality changes the JPEG quantisation scale of a running sensor (range
+// as Options.Quality); it applies from the next frames (esp32-camera
+// set_quality).
 func (s *Sensor) SetQuality(q uint8) error {
-	if q > 63 {
-		return ErrMode
+	v, err := quality(q)
+	if err != nil {
+		return err
 	}
 	s.Opts.Quality = q
-	return s.write(regCompress07, q)
+	return s.write(regCompress07, v)
+}
+
+// Supported reports whether Init accepts m (size, aspect ratio, crop and
+// format), without touching the sensor. Backends use it to return their
+// shared "format not supported" error without comparing error values.
+func Supported(m sensor.Mode) bool {
+	_, err := plan(m, 20_000_000)
+	return err == nil
 }
 
 func formatTable(f sensor.Format) []reg {

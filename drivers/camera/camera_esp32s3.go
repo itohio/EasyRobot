@@ -3,6 +3,7 @@
 package camera
 
 import (
+	"errors"
 	"machine"
 	"time"
 	"unsafe"
@@ -25,6 +26,10 @@ type Pins struct {
 	// DMA is the GDMA RX channel, 0…4.
 	DMA uint8
 }
+
+// ErrPins is returned by Open for a pin set it cannot use (a GDMA channel
+// above 4). ESP32-S3 only.
+var ErrPins = errors.New("camera: pin set invalid (GDMA channel must be 0–4)")
 
 const (
 	defaultXCLK = 20_000_000
@@ -52,9 +57,6 @@ func xclkHz(cfg Config) uint32 {
 // powerUp starts XCLK and SCCB; the sensor has no power or reset pin on the
 // supported boards, so it is already running.
 func powerUp(cfg Config, pins Pins, bus *sccbBus) error {
-	if pins.DMA > 4 {
-		return ErrFormat
-	}
 	if _, err := startXCLK(pins, xclkHz(cfg)); err != nil {
 		return err
 	}
@@ -77,7 +79,8 @@ func powerDown(pins Pins, bus *sccbBus, id sensor.ID) {
 }
 
 // identBus is Identify's SCCB master; a package variable so repeated
-// Identify calls (camid polls once a second) do not allocate.
+// Identify calls (camid polls once a second) don't allocate a bus each time.
+// TinyGo 0.43's machine.I2C itself allocates per transfer on the ESP32-S3.
 var identBus sccbBus
 
 // Identify starts XCLK and SCCB and reads the sensor id, without
@@ -121,6 +124,9 @@ func Open(cfg Config, pins Pins) (*Camera, error) {
 	if cfg.Format != sensor.JPEG && FrameSize(cfg) > maxNodes*nodeBytes {
 		return nil, ErrFormat
 	}
+	if pins.DMA > 4 {
+		return nil, ErrPins
+	}
 	c := &Camera{cfg: cfg, pins: pins, ch: gdmaChannel(pins.DMA)}
 	fail := func(err error) (*Camera, error) {
 		powerDown(c.pins, &c.bus, c.id)
@@ -136,6 +142,9 @@ func Open(cfg Config, pins Pins) (*Camera, error) {
 	c.id = id
 	switch id.Model {
 	case sensor.OV3660:
+		if !ov3660.Supported(cfg.Mode) { // the shared ErrFormat, not the driver's ErrMode
+			return fail(ErrFormat)
+		}
 		c.drv = &ov3660.Sensor{Bus: &c.bus, Opts: ov3660.Options{XCLKHz: xclkHz(cfg)}}
 	default:
 		return fail(ErrNoDriver)
@@ -187,7 +196,9 @@ func inDMARAM(b []byte) bool {
 //   - Raw formats: buf needs FrameSize(cfg) bytes; RGB565 is swapped to
 //     little-endian in place (the OV3660 sends it big-endian).
 //   - JPEG: up to MaxJPEG bytes of buf are used; Frame.Data runs from FF D8
-//     to FF D9. A JPEG larger than the buffer gives ErrBufSize.
+//     to FF D9 (a complete JPEG counts even when the sensor's padding after
+//     the EOI overran the buffer). A JPEG larger than the buffer gives
+//     ErrBufSize.
 //
 // buf must be 4-byte aligned and in DMA-capable internal SRAM (ErrBufAlign).
 // A frame that does not complete (no VSYNC or EOF within 2 s, wrong length,
@@ -209,24 +220,12 @@ func (c *Camera) Capture(buf []byte) (Frame, error) {
 	}
 	used := buildChain(&c.descs, buf, n)
 	got, ended := captureOnce(c.pins, c.vsyncActive, c.ch, &c.descs, used, time.Now().Add(2*time.Second))
-	var data []byte
-	switch {
-	case jpeg && !ended && got == n:
-		return Frame{}, ErrBufSize
-	case !ended:
-		return Frame{}, ErrTimeout
-	case jpeg:
-		var ok bool
-		if data, ok = jpegSpan(buf[:got]); !ok {
-			return Frame{}, ErrTimeout
-		}
-	case got != n:
-		return Frame{}, ErrTimeout
-	default:
-		data = buf
-		if c.cfg.Format == sensor.RGB565 {
-			swap16(data)
-		}
+	data, err := frameResult(jpeg, buf, got, n, ended)
+	if err != nil {
+		return Frame{}, err
+	}
+	if c.cfg.Format == sensor.RGB565 {
+		swap16(data)
 	}
 	c.seq++
 	return Frame{Width: c.cfg.W, Height: c.cfg.H, Format: c.cfg.Format, Seq: c.seq, Data: data}, nil
