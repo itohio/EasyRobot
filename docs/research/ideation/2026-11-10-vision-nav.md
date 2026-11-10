@@ -355,17 +355,77 @@ K210 ↔ ESP32 directly is **untested**. Without the FTDI chip, and with the S3'
 
 **Platform:** the wheeled avoider (owner question in O-007; the EasyRobot roadmap's first wheeled robot). Both camera boards are mounted on it.
 
+**Revised 2026-11-10 with ux's UX-17** (`docs/ux/UX-17-vision-nav.md`; Leader accepted all): the stop path, the robot↔PC telemetry, calibration, the recording jobs, the baseline ladder, feature versions, run tracking and map persistence are now steps. W0 follows §1a (no nncase). The cross-cutting rules and the radio choice are in §7a.
+
 | Step | Done when | Kill / rethink if |
 |---|---|---|
-| W0 KPU frontend (K8c) | MobileNetV1 α 0.5 QVGA cut at stride 16 + bottleneck runs on the KPU from camera frames; outputs within 2 LSB of the simulator | < 5 fps, or features off by more than a few LSB → try α 0.25 / MobileNetV2 α 0.35, or 160×120 input |
-| W1 Link | K210 → ESP32 UART with W4 framing; the bottleneck tensor arrives CRC-clean for 10 min | < 10 fps for 4.8 KB frames → 10×8×32 bottleneck or a higher baud after measuring |
-| W2 Data | 1 h of recordings in 2–3 rooms: K210 features + XIAO frames (QVGA + high-res) + wheel ticks if any + bumper events | sync drift > 1 frame |
-| W3 Free-space head | per-column free distance (labels from the owner's depth model on XIAO frames, or bumper/ToF), int8 on the S3 | column accuracy < 85 % on a held-out room |
-| W4 Avoid | reactive controller (steer to the freest column, slow on low clearance) on the S3 | > 1 collision per 10 min in the test room at 0.2 m/s |
-| W5 Map | a place code per keyframe (start: mean-pooled bottleneck + PCA from the host, 64 B); nodes and edges from wheel/VO on the S3; graph dumped to the PC | revisit recall@1 < 70 % in one room → a trained code head (§2.3) |
-| W6 (after the win) | VO head from the owner's notebook; relocalisation (§3); PC goal search (§4) | — |
+| W0 Frontend (§1a) | **S3-only:** V1 0.25 or V2 0.35 at QQVGA on the XIAO through `qnet`, from its own camera. **Or K210:** the same frontend through the Go KPU compiler (§1a.3), within ±2 LSB of `qnet` | S3 < 2 fps; K210 < 5 fps → smaller α or input (§1a.1) |
+| W1 Link (K210 path only) | K210 → ESP32 UART with W4 framing **and the feature version id in every chunk header** (§7a); the bottleneck tensor arrives CRC-clean for 10 min | < 10 fps for 4.8 KB frames → 10×8×32 bottleneck or a higher baud after measuring |
+| **W1b Telemetry and view** (G3/G4) | **USB serial on the bench** (XIAO USB-CDC). One telemetry record per frame: stage times (capture / frontend / link / heads), link CRC errors and resends, the 20 free-space columns, the chosen column and speed, node id, trust state (§3), stop reason. Map events and dumps on the same channel, with W4 framing and `camframe`'s resend. A **`camframe` overlay view** draws the columns and decision on the XIAO's QVGA frame. An **e-stop key** on the PC. **LED codes:** UnitV green = frontend running, red blink = link error; XIAO green = driving, amber = stopped by safety, red blink = lost (§7a) | the owner can't tell a bad head from a slow link from a bad controller on a recorded bench run |
+| **W2a Calibration** (G6) | `cmd/calibrate` **mono** for each camera (OV2640 and OV3660 intrinsics) and **stereo** for the rig's extrinsics, saved under a **calibration id**. Pose labels from the XIAO frames are transformed into the K210 camera's frame before training | reprojection error above `cmd/calibrate`'s usual threshold, or the rig not rigid (re-check after each mount change) |
+| W2 Data (G2, G5) | 1 h in 2–3 rooms: K210 features + XIAO frames (QVGA + high-res) + wheel ticks if any + bumper events. **Driven by hand:** RC through `cmd/elrs-rx` (its failsafe is the stop), or PC keys over W1b on the bench, at the speeds the autonomous runs will use. **One session = one folder + manifest** (§7a) outside every repo. **Sync:** an LED flash at start and end, seen by both cameras, measures drift | measured drift > 1 frame; storage rate too low (see §7a "Storage") |
+| **W2b Baseline ladder** (G7) | the owner's notebook numbers at each rung (§7a): (a) his notebook on his data; (b) on our recordings, in the format his notebook reads; (c) on our frontend's features (fp32, then KPU-exact or `qnet` int8); (d) through the bottleneck. Same metrics each time (VO RPE/ATE; depth abs-rel; free-space column accuracy) | a drop at a rung is investigated at that rung before moving on |
+| W3 Free-space head | per-column free distance (labels from the owner's depth model on XIAO frames, or bumper/ToF), int8 on the S3, **scored on the fixed held-out set** with a run record (§7a) | column accuracy < 85 % on the held-out room |
+| **W3s Stop path** (G1, **prerequisite of W4**) | (1) **stale-data stop:** motors off when the newest free-space output is older than **300 ms**, or after N link CRC errors in a row (K210 path); (2) **e-stop:** a button on the robot, the PC key (W1b) and the RC failsafe (`elrs-rx`); (3) **bumper** contact → stop and back off; (4) a configured **speed cap** (default 0.2 m/s); (5) **floor-only runs** until a cliff sensor exists. **Done when:** pulling the K210's UART lead (or killing the head on the S3-only path) stops the wheels within 300 ms, on a bench test with the wheels up | any stop path that doesn't trip in the bench test |
+| W4 Avoid | reactive controller (steer to the freest column, slow on low clearance) on the S3, **only with W3s passed**, floor only, under the speed cap | > 1 collision per 10 min in the test room at 0.2 m/s |
+| W5 Map (G10, G12) | a place code per keyframe (start: mean-pooled bottleneck + PCA from the host, 64 B); nodes and edges from wheel/VO on the S3. **Persisted:** save/load to XIAO flash or microSD with the feature version id, `reset` per room, `dump` to the PC. **Lost** (§3) for > 10 s → stop, report `lost since 14:02, last node 12`, optional look-around; trust state on the LED and in telemetry | revisit recall@1 < 70 % in one room → a trained code head (§2.3) |
+| W6 (after the win; G11) | VO head from the owner's notebook; relocalisation (§3); PC goal search (§4). **The robot's map copy is authoritative;** the PC viewer edits it through commands (name a place, merge nodes, delete an edge, reset). **Goal states:** confirm candidate, en route (node k of n), arrived, cancelled, unreachable (edges failing), not in the map ("seen nowhere; best 0.41 at node 12"), with a cancel from the PC and an explicit "explore or give up" choice for a not-found goal | — |
 
-This slice uses none of the unbuilt pieces (no depth decoder, no PSRAM). It proves the frontend, the split, the link and one head end to end.
+This slice still uses none of the unbuilt pieces (no depth decoder, no PSRAM). It proves the frontend, the split (or the S3-only path), the link and one head end to end, now with a way to stop, watch, record and compare.
+
+## 7a. Cross-cutting rules for the plan (UX-17)
+
+**Feature version id** (G8):
+- **What it is:** a short hash of frontend + bottleneck weights (and input size). It appears in:
+  - the link's chunk header;
+  - the head files;
+  - every dataset manifest;
+  - every map node.
+- **Mismatches are refused:**
+  - at boot the ESP32 reports `K210 sends features v7; heads expect v6: flash matching heads` and doesn't drive;
+  - a map of another version opens read-only with "re-map needed";
+  - training refuses to mix feature sets of different versions.
+
+**Matched releases** (G15): one make target per board takes a **release**: the feature version plus the head versions (and the K210 firmware/kmodel or KPU program). The last good pair is recorded so it can be re-flashed in one command.
+
+**Recording sessions** (G5):
+- **Location:** `~/src/_data/vision-nav/<date>-<room>/`, outside every repo, under the owner's rule. Home recordings contain people's faces, so they are never committed and never sent to a remote model.
+- **Manifest** `session.yaml`: room, date, lighting, platform, rig, firmware ids, feature version, calibration id, sync method, measured drift, operator, duration, file list with sizes.
+- **Storage rate:** the XIAO's SD card over SPI measured **65–75 KB/s** (observed, esp32cam M3), about 250 MB per hour. 1 h of high-res JPEG at 3–5 fps is several GB (UX-17's estimate), so **SD alone can't hold the high-res stream**. Options:
+  - high-res at ~0.3 fps on SD (enough for sparse ORB pose anchors), QVGA at full rate;
+  - a faster SD path (4-bit SDMMC or a higher SPI clock, `#verify`);
+  - **tethered recording to the PC over USB-CDC** (observed bursts ~0.9 MB/s, 114 KB/s end to end in E3) on a cart or slow drive.
+  
+  Pick per session; the manifest records which.
+
+**Run tracking** (G9):
+- one **fixed held-out set per room**, chosen before training and never trained on;
+- a **run record** per training run: frontend/bottleneck/head versions, data sessions, metrics, who ran it (the owner in Colab, or a peer on the Mac), and the artifact location under `~/src/_data/vision-nav/runs/`;
+- a results table per head, so going *up* the frontend ladder (V1 → V2, QQVGA → QVGA) has a number, e.g. RPE on the same held-out set within the time budget.
+
+**Who decides the frontend** (G14): after ladder rung **W2b(c)**, the owner picks the frontend from the table (his notebook's frontend vs the §1a shortlist). VGA stays a training-time option, because of the KPU input limit and the CPU times in §1a.
+
+**Robot hardware prerequisites for W2–W4** (G13), owner decisions alongside the platform choice:
+- bumper or ToF (stop path, labels);
+- a cliff sensor, or floor-only runs;
+- wheel encoders, if VO scale should come from wheels;
+- an e-stop button;
+- a battery that lasts at least one recording session.
+
+**Radio for untethered runs** (G3), an **owner decision**. The board work so far is under "no Wi-Fi" (owner, 2026-11-09).
+
+| Option | Throughput | Latency | Status in our stack | Fits |
+|---|---|---|---|---|
+| **USB-CDC (bench, tethered)** | ~0.9 MB/s burst, 114 KB/s end to end (observed, E3) | ms | works today | telemetry, overlay, map dumps, e-stop key, recording; only on the bench or a cart |
+| Wi-Fi (UDP/TCP) | Mbit/s class (inferred) | ms to tens of ms | no ESP32-S3 Wi-Fi driver in our TinyGo stack (`#verify` upstream); against the current "no Wi-Fi" rule | live frames, overlay, map, goals |
+| ESP-NOW (to a second ESP32 on the PC's USB) | ~1 Mbit/s class, ~250 B packets (reported by Espressif docs, from memory `#verify`) | a few ms | same radio-stack gap as Wi-Fi | telemetry, map events, small frames |
+| **ELRS telemetry** via `cmd/elrs-rx` (CRSF) | tens to hundreds of B/s (inferred; depends on packet rate and telemetry ratio) | tens of ms | `elrs-rx` exists (pico, esp32-coreboard, SAMD XIAO targets; an S3 target is `#verify`); RC control + failsafe already there | **control, e-stop, status line**; not frames or maps |
+| BLE | tens of KB/s (inferred) | ~tens of ms | not in our stack (`#verify`) | telemetry |
+
+**Recommendation:**
+- **now:** USB on the bench, plus ELRS for driving, failsafe and a status line on untethered runs;
+- **later:** decide on a second radio (Wi-Fi or ESP-NOW) when live frames or the map are needed off the bench. That needs the owner to lift "no Wi-Fi" for this robot, and a TinyGo radio driver.
+
 
 ## 8. TinyGo path (order)
 
@@ -404,3 +464,10 @@ This slice uses none of the unbuilt pieces (no depth decoder, no PSRAM). It prov
 | 6 | Recording rig: UnitV + XIAO co-mounted (features + high-res frames, time-synced) | Yes; needs the owner's platform choice |
 | 7 | Training: frozen frontend, precompute features (fp32 + KPU-exact validation), heads + bottleneck trained jointly; QVGA first; fp32 TFLite → int8 TFLite → qi8 loader | Yes |
 | 8 | Loader additions only when a head needs them: L2 norm in Go now; RESIZE_BILINEAR/TRANSPOSE_CONV for decoders later | Yes |
+| 9 | Radio for untethered runs (§7a): USB on the bench now, plus ELRS for drive, e-stop and status; Wi-Fi or ESP-NOW later only if the owner lifts "no Wi-Fi" for this robot | **Owner's call**; I'd start with USB + ELRS |
+| 10 | Stop path W3s is a hard prerequisite of W4 (300 ms stale-data stop, e-stop button + PC key + RC failsafe, bumper, speed cap, floor only); done when pulling the K210 UART lead stops the wheels within 300 ms | Yes |
+| 11 | Telemetry and overlay (W1b) before any autonomous run; LED codes as defined | Yes |
+| 12 | Recording: sessions under `~/src/_data/vision-nav/` with a manifest, LED-flash sync with a drift check, calibration id from `cmd/calibrate` (W2a); SD rate limits high-res to sparse anchors unless tethered | Yes |
+| 13 | Baseline ladder W2b (the owner's notebook → our recordings → our features → bottleneck) and run tracking with fixed held-out sets; the owner picks the frontend after rung (c) | Yes |
+| 14 | Feature version id in link headers, head files, manifests and map nodes; mismatches refused; matched-release flashing with a recorded last-good pair | Yes |
+| 15 | Robot hardware prerequisites for W2–W4 (bumper/ToF, cliff sensor or floor-only, encoders, e-stop button, battery for one session) | Owner's call, with the platform choice |
