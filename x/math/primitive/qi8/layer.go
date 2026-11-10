@@ -20,7 +20,9 @@ import "unsafe"
 // W's bytes are in the backend's layout while the layer is prepared. The
 // next Prepare first restores them to W's original layout and then packs
 // again, so Prepare may be repeated any number of times (also after a
-// field change or a failed Prepare). Do not read or edit W in between.
+// field change or a failed Prepare). Do not read or edit W in between: to
+// load new weights, call Reset (W is back in its original layout and the
+// layer unprepared), write W, then Prepare.
 
 // Op is a prepared layer.
 type Op interface {
@@ -154,15 +156,23 @@ func (l *Conv2DLayer) InPlaceW() []int8 {
 	return inPlaceW(l.Scratch, conv2DScratchLen(&pl), pl.wLen)
 }
 
+// Reset restores W to its original layout if the last Prepare packed it in
+// place, and leaves the layer unprepared (Run returns ErrNotPrepared until
+// the next Prepare). It is how new weights are loaded into InPlaceW: Reset,
+// write W, Prepare. Reset on an unprepared layer does nothing.
+func (l *Conv2DLayer) Reset() {
+	if l.s.inPlace {
+		conv2DUnpack(l.s.packed, l.s.w, &l.pl)
+	}
+	l.pl, l.s = convPlan{}, weightSnap{}
+}
+
 // Prepare validates the layer and caches the resolved geometry. It returns
 // the error Conv2D would return for these parameters and slices, or
 // ErrLength when Scratch is shorter than ScratchLen() or W overlaps the
 // packed weight region other than at InPlaceW.
 func (l *Conv2DLayer) Prepare() error {
-	if l.s.inPlace {
-		conv2DUnpack(l.s.packed, l.s.w, &l.pl) // restore W before anything else
-	}
-	l.pl, l.s = convPlan{}, weightSnap{}
+	l.Reset() // restore W before anything else
 	pl, err := l.P.plan()
 	if err != nil {
 		return err
@@ -240,15 +250,20 @@ func (l *DepthwiseConv2DLayer) InPlaceW() []int8 {
 	return inPlaceW(l.Scratch, depthwiseConv2DScratchLen(&pl), pl.wLen)
 }
 
+// Reset is as Conv2DLayer.Reset.
+func (l *DepthwiseConv2DLayer) Reset() {
+	if l.s.inPlace {
+		depthwiseConv2DUnpack(l.s.packed, l.s.w, &l.pl)
+	}
+	l.pl, l.s = convPlan{}, weightSnap{}
+}
+
 // Prepare validates the layer and caches the resolved geometry. It returns
 // the error DepthwiseConv2D would return for these parameters and slices, or
 // ErrLength when Scratch is shorter than ScratchLen() or W overlaps the
 // packed weight region other than at InPlaceW.
 func (l *DepthwiseConv2DLayer) Prepare() error {
-	if l.s.inPlace {
-		depthwiseConv2DUnpack(l.s.packed, l.s.w, &l.pl)
-	}
-	l.pl, l.s = convPlan{}, weightSnap{}
+	l.Reset()
 	pl, err := l.P.plan()
 	if err != nil {
 		return err
@@ -326,15 +341,20 @@ func (l *FCLayer) InPlaceW() []int8 {
 	return inPlaceW(l.Scratch, fullyConnectedScratchLen(&pl), pl.wLen)
 }
 
+// Reset is as Conv2DLayer.Reset.
+func (l *FCLayer) Reset() {
+	if l.s.inPlace {
+		fullyConnectedUnpack(l.s.packed, l.s.w, &l.pl)
+	}
+	l.pl, l.s = fcPlan{}, weightSnap{}
+}
+
 // Prepare validates the layer. It returns the error FullyConnected would
 // return for these parameters and slices, or ErrLength when Scratch is
 // shorter than ScratchLen() or W overlaps the packed weight region other
 // than at InPlaceW.
 func (l *FCLayer) Prepare() error {
-	if l.s.inPlace {
-		fullyConnectedUnpack(l.s.packed, l.s.w, &l.pl)
-	}
-	l.pl, l.s = fcPlan{}, weightSnap{}
+	l.Reset()
 	pl, err := l.P.plan()
 	if err != nil {
 		return err

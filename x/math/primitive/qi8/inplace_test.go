@@ -142,6 +142,44 @@ func TestInPlaceRePrepare(t *testing.T) {
 	m.done()
 }
 
+// TestInPlaceReload: new weights are loaded into an in-place layer with
+// Reset, then a copy into InPlaceW and Prepare; the layer then computes what
+// the free function computes with the new weights (verify V-NN-R3N2-FIXES:
+// copying into InPlaceW of a prepared layer and calling Prepare used to
+// unpack the fresh bytes and corrupt them). Reset also leaves W in its
+// original layout and the layer unprepared.
+func TestInPlaceReload(t *testing.T) {
+	g := newGen(50)
+	m := &mismatchLog{t: t}
+	for _, c := range inPlaceCases(g) {
+		n := c.scratch()
+		s := alignedAt(n, 3)
+		c.set(nil, s)
+		w := c.inPlaceW()
+		if n == 0 {
+			w = make([]int8, c.wLen) // generic: a separate copy, still reloadable
+		}
+		first, second := g.int8s(c.wLen), g.int8s(c.wLen)
+		copy(w, first)
+		c.set(w, s)
+		require.NoError(t, c.layer.Prepare(), c.name)
+		r := c.layer.(interface{ Reset() })
+		r.Reset()
+		assert.Equal(t, first, w, "%s: Reset restores the original layout", c.name)
+		src := g.int8s(c.in.Len())
+		dst := make([]int8, c.out.Len())
+		assert.Equal(t, ErrNotPrepared, c.layer.Run(dst, src), "%s: unprepared after Reset", c.name)
+		r.Reset() // idempotent
+		copy(w, second)
+		require.NoError(t, c.layer.Prepare(), c.name)
+		want := make([]int8, c.out.Len())
+		require.NoError(t, c.free(want, src, second), c.name)
+		require.NoError(t, c.layer.Run(dst, src), c.name)
+		m.compare(func() string { return c.name + " after reload" }, dst, want)
+	}
+	m.done()
+}
+
 // bumpOutZP changes a weighted layer's output zero point by one.
 func bumpOutZP(l preparedOp) {
 	switch l := l.(type) {

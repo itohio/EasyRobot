@@ -160,8 +160,11 @@ or `Scratch` is short), set `W` to it and call `Prepare`: the backend packs
 them in place. While prepared, `W`'s bytes are in the backend layout; the
 next `Prepare` restores the original layout first and packs again, so
 `Prepare` may be repeated (also after a field change or a failed
-`Prepare`). `W` overlapping the packed region anywhere but at `InPlaceW()`
-is `ErrLength`; `W` outside it is a separate copy and is never modified.
+`Prepare`). To load new weights, call `Reset` (restores `W`'s original
+layout and leaves the layer unprepared), write `W`, then `Prepare`; writing
+`W` while prepared is not detected and corrupts it. `W` overlapping the
+packed region anywhere but at `InPlaceW()` is `ErrLength`; `W` outside it
+is a separate copy and is never modified.
 
 Prepared layers run through a per-op CPU backend chosen at build time only
 (`impl_*.go`, build tags; no runtime detection): `Backend()` names it —
@@ -191,5 +194,5 @@ kernels, SAME/VALID edges, zp ±128/127, extreme Mult/Shift, saturation).
 `layer_test.go` checks every prepared layer byte-for-byte against its free
 function on seeded random cases, and its error/`ErrNotPrepared` behaviour,
 on whichever backend the build selects (generic, or the PIE emulation);
-`inplace_test.go` covers in-place packing, misplaced `W` and repeated
-`Prepare`.
+`inplace_test.go` covers in-place packing, misplaced `W`, repeated
+`Prepare` and weight reload through `Reset`.
