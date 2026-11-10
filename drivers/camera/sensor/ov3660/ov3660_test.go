@@ -268,3 +268,97 @@ func TestQualityRangeIsShared(t *testing.T) {
 }
 
 func near(a, b float32) bool { return math.Abs(float64(a-b)) < 1e-3 }
+
+// PLL choice by output size for raw formats (esp32-camera's FRAMESIZE
+// thresholds as pixel counts): < QVGA fast, QVGA … HVGA (480×320) mid,
+// larger slow. The boundaries are inclusive at QVGA and HVGA.
+func TestRawPLLBoundaries(t *testing.T) {
+	for _, tt := range []struct {
+		m    sensor.Mode
+		mult uint8
+		div  uint8
+	}{
+		{mode(304, 228, sensor.YUV422), 8, 8},  // just under QVGA (4:3): fast
+		{mode(320, 240, sensor.YUV422), 8, 4},  // QVGA: mid
+		{mode(480, 320, sensor.YUV422), 8, 4},  // HVGA (3:2): still mid
+		{mode(480, 360, sensor.YUV422), 4, 2},  // 4:3 above HVGA's pixel count: slow
+		{mode(2048, 1536, sensor.JPEG), 24, 8}, // JPEG is never on the raw rule
+	} {
+		b := newBus()
+		if err := (&Sensor{Bus: b}).Init(tt.m); err != nil {
+			t.Fatalf("%+v: %v", tt.m, err)
+		}
+		if b.regs[regPLLCtrl1] != tt.mult || b.regs[regPCLKRatio] != tt.div {
+			t.Errorf("%dx%d: PLL ×%d ÷%d, want ×%d ÷%d", tt.m.W, tt.m.H, b.regs[regPLLCtrl1], b.regs[regPCLKRatio], tt.mult, tt.div)
+		}
+	}
+}
+
+// Each aspect ratio has its own maximum; crops are any multiple-of-4 window
+// up to 2048×1536.
+func TestPerAspectLimitsAndCrops(t *testing.T) {
+	for _, tt := range []struct {
+		m  sensor.Mode
+		ok bool
+	}{
+		{mode(1920, 1280, sensor.JPEG), true},  // 3:2 maximum
+		{mode(2040, 1360, sensor.JPEG), false}, // 3:2 above its maximum
+		{mode(1920, 1080, sensor.JPEG), true},  // 16:9 maximum
+		{mode(2048, 1152, sensor.JPEG), false}, // 16:9 wider than its entry
+		{mode(864, 1536, sensor.JPEG), true},   // 9:16 maximum
+		{mode(868, 1544, sensor.JPEG), false},  // not an entry's ratio
+		{crop(4, 4, sensor.Y8), true},          // smallest crop
+		{crop(2048, 1536, sensor.JPEG), true},  // whole array
+		{crop(318, 240, sensor.Y8), false},     // width not a multiple of 4
+		{crop(320, 1540, sensor.Y8), false},    // taller than the array
+	} {
+		if got := Supported(tt.m); got != tt.ok {
+			t.Errorf("%+v: supported %v, want %v", tt.m, got, tt.ok)
+		}
+	}
+	b := newBus()
+	if err := (&Sensor{Bus: b}).Init(crop(4, 4, sensor.Y8)); err != nil {
+		t.Fatal(err)
+	}
+	if x0, x1 := b.get16(regXAddrSt), b.get16(regXAddrEnd); x1-x0+1 != 4+2*ispOffX || x0 != (arrayW-(4+2*ispOffX))/2&^1 {
+		t.Errorf("4×4 crop window x %d…%d", x0, x1)
+	}
+}
+
+// Mixed auto/manual controls: only the manual parts are written, and the
+// mode bits say which loop is off.
+func TestMixedAutoManualControls(t *testing.T) {
+	s, b := initQVGA(t)
+	b.writes = nil
+	c := sensor.Controls{AutoExposure: false, ExposureUS: 11_500, AutoGain: true, Gain: 9, AutoWB: true, WB: [3]float32{2, 2, 2}}
+	if err := s.SetControls(c); err != nil {
+		t.Fatal(err)
+	}
+	if b.regs[regAECManual] != aecManual {
+		t.Errorf("0x3503 %#x, want AEC manual only", b.regs[regAECManual])
+	}
+	wrote := map[uint16]bool{}
+	for _, w := range b.writes {
+		wrote[w.addr] = true
+	}
+	if !wrote[regExposure+1] || wrote[regGain] || wrote[regGain+1] || wrote[regWBGain] || wrote[regWBGain+4] {
+		t.Errorf("writes %v: want exposure only, no gain or WB gains", b.writes)
+	}
+	if b.regs[regAWBManual] != 0 {
+		t.Errorf("AWB manual %d, want auto", b.regs[regAWBManual])
+	}
+	// The other mix: manual gain and WB, auto exposure.
+	b.writes = nil
+	c = sensor.Controls{AutoExposure: true, AutoGain: false, Gain: 2, AutoWB: false, WB: [3]float32{1, 1, 1}}
+	if err := s.SetControls(c); err != nil {
+		t.Fatal(err)
+	}
+	if b.regs[regAECManual] != agcManual || b.regs[regAWBManual] != 1 || b.get16(regGain) != 32 {
+		t.Errorf("modes 0x3503 %#x 0x3406 %d gain %d", b.regs[regAECManual], b.regs[regAWBManual], b.get16(regGain))
+	}
+	for _, w := range b.writes {
+		if w.addr == regExposure || w.addr == regExposure+1 || w.addr == regExposure+2 {
+			t.Errorf("exposure written with auto exposure: %v", w)
+		}
+	}
+}

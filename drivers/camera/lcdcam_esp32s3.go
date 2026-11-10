@@ -30,9 +30,8 @@ const (
 )
 
 const (
-	nodeBytes = 4032 // GDMA descriptor buffer: ≤ 4095, multiple of 4
-	maxNodes  = 128  // 516 KB: more than the S3's DMA-capable internal SRAM
-	camClkHz  = 160_000_000
+	maxNodes = 128 // 516 KB: more than the S3's DMA-capable internal SRAM
+	camClkHz = 160_000_000
 
 	// DMA-capable internal SRAM on the data bus (SOC_DMA_LOW … SOC_DMA_HIGH).
 	dmaLow  = 0x3FC88000
@@ -157,18 +156,14 @@ func vsyncLevel(p machine.Pin, d time.Duration) (active bool, pulses int) {
 // buildChain points the descriptors at buf[:n] in nodeBytes pieces and
 // returns how many it used.
 func buildChain(d *[maxNodes]dmaDesc, buf []byte, n int) int {
-	used := (n + nodeBytes - 1) / nodeBytes
+	used := chainNodes(n)
 	base := uintptr(unsafe.Pointer(unsafe.SliceData(buf)))
 	for i := 0; i < used; i++ {
-		size := nodeBytes
-		if i == used-1 {
-			size = n - i*nodeBytes
-		}
 		next := uint32(0)
 		if i+1 < used {
 			next = uint32(uintptr(unsafe.Pointer(&d[i+1])))
 		}
-		volatile.StoreUint32(&d[i].dw0, 1<<31|uint32(size)) // owner = DMA; length 0
+		volatile.StoreUint32(&d[i].dw0, descWord(nodeSize(n, i)))
 		volatile.StoreUint32(&d[i].buf, uint32(base+uintptr(i*nodeBytes)))
 		volatile.StoreUint32(&d[i].next, next)
 	}
@@ -178,12 +173,13 @@ func buildChain(d *[maxNodes]dmaDesc, buf []byte, n int) int {
 // received sums the descriptor lengths up to the EOF descriptor (or all of
 // them when there is none).
 func received(d *[maxNodes]dmaDesc, used int, eofDesc uint32) int {
+	last := eofIndex(eofDesc, uint32(uintptr(unsafe.Pointer(&d[0]))), used)
+	if last < 0 {
+		last = used - 1
+	}
 	total := 0
-	for i := 0; i < used; i++ {
-		total += int(volatile.LoadUint32(&d[i].dw0)>>12) & 0xFFF
-		if eofDesc == uint32(uintptr(unsafe.Pointer(&d[i]))) {
-			break
-		}
+	for i := 0; i <= last; i++ {
+		total += descLength(volatile.LoadUint32(&d[i].dw0))
 	}
 	return total
 }

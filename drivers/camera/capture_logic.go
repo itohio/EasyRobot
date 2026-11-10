@@ -39,3 +39,42 @@ func modeErr(err, driverErr error) error {
 	}
 	return err
 }
+
+// GDMA descriptor chain arithmetic (ESP32-S3 backend; pure, host-tested).
+// A descriptor's first word is size[11:0] | length[23:12] | suc_eof[30] |
+// owner[31]; descriptors are 12 bytes (dw0, buffer, next).
+const (
+	nodeBytes = 4032 // descriptor buffer: ≤ 4095, multiple of 4 and of the 32 B cache line
+	descSize  = 12
+)
+
+// chainNodes is the number of descriptors covering n bytes.
+func chainNodes(n int) int { return (n + nodeBytes - 1) / nodeBytes }
+
+// nodeSize is the buffer size of descriptor i of a chain covering n bytes.
+func nodeSize(n, i int) int {
+	if i == chainNodes(n)-1 {
+		return n - i*nodeBytes
+	}
+	return nodeBytes
+}
+
+// descWord is a fresh descriptor's first word: owned by the DMA, size bytes
+// of buffer, nothing received yet.
+func descWord(size int) uint32 { return 1<<31 | uint32(size) }
+
+// descLength is the byte count the DMA wrote into a descriptor.
+func descLength(dw0 uint32) int { return int(dw0>>12) & 0xFFF }
+
+// eofIndex is the index of the descriptor at eofAddr (IN_SUC_EOF_DES_ADDR) in
+// a table of used descriptors at base, or -1 if eofAddr is none of them.
+func eofIndex(eofAddr, base uint32, used int) int {
+	if eofAddr < base || (eofAddr-base)%descSize != 0 {
+		return -1
+	}
+	i := int((eofAddr - base) / descSize)
+	if i >= used {
+		return -1
+	}
+	return i
+}

@@ -72,3 +72,44 @@ func TestDriverModeErrorsMapToErrFormat(t *testing.T) {
 		}
 	}
 }
+
+func TestDescriptorChain(t *testing.T) {
+	for _, tt := range []struct {
+		n, nodes, last int
+	}{{nodeBytes * 3, 3, nodeBytes}, {nodeBytes*2 + 100, 3, 100}, {1, 1, 1}, {153600, 39, 153600 - 38*nodeBytes}} {
+		if got := chainNodes(tt.n); got != tt.nodes {
+			t.Errorf("n %d: %d nodes, want %d", tt.n, got, tt.nodes)
+		}
+		total := 0
+		for i := range tt.nodes {
+			total += nodeSize(tt.n, i)
+		}
+		if last := nodeSize(tt.n, tt.nodes-1); last != tt.last || total != tt.n {
+			t.Errorf("n %d: last node %d, total %d; want %d, %d", tt.n, last, total, tt.last, tt.n)
+		}
+	}
+	if w := descWord(4032); w != 1<<31|4032 || descLength(w) != 0 {
+		t.Errorf("descriptor word %#x (length %d), want owner=DMA, size 4032, length 0", w, descLength(w))
+	}
+	if got := descLength(1<<31 | 1<<30 | 1234<<12 | 4032); got != 1234 {
+		t.Errorf("received length %d, want 1234", got)
+	}
+}
+
+func TestEOFIndex(t *testing.T) {
+	const base = 0x3FC90000
+	for _, tt := range []struct {
+		eof  uint32
+		used int
+		want int
+	}{
+		{base, 3, 0}, {base + 24, 3, 2}, {base + 36, 3, -1}, // beyond the chain
+		{base + 13, 3, -1}, // not a descriptor boundary
+		{0, 3, -1},         // no EOF
+		{base - 12, 3, -1},
+	} {
+		if got := eofIndex(tt.eof, base, tt.used); got != tt.want {
+			t.Errorf("eof %#x used %d: %d, want %d", tt.eof, tt.used, got, tt.want)
+		}
+	}
+}
