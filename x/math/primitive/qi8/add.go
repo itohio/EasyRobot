@@ -48,17 +48,32 @@ func QuantizeAddMultipliers(realA, realB float64) (AddRequant, error) {
 //
 //	dst[i] = clamp(ZPOut + round((a[i]−ZPA)·realA + (b[i]−ZPB)·realB), Min, Max)
 //
-// with realA, realB from RQ. The sum is evaluated exactly in int64
-// ((a−ZPA)·MultA + (b−ZPB)·MultB, |·| < 2^40) and rounded once, half away
-// from zero, like Requant.Apply. Min/Max is the fused activation clamp.
+// With Round == RoundExact (the zero value), realA and realB come from RQ;
+// the sum is evaluated exactly in int64 ((a−ZPA)·MultA + (b−ZPB)·MultB,
+// |·| < 2^40) and rounded once, half away from zero, like Requant.Apply.
+// With Round == RoundTFLite the multipliers come from TFLite (RQ unused) and
+// the arithmetic is TFLite's int8 Add: each input (x−ZP)·2^20 is scaled
+// with ApplyTFLite by TFLite.A or .B, the sum by TFLite.Out, then ZPOut is
+// added. Min/Max is the fused activation clamp.
 type AddParams struct {
 	ZPA, ZPB, ZPOut int8
 	RQ              AddRequant
 	Min, Max        int8
+	Round           Rounding
+	TFLite          AddRequantTFLite
 }
 
 func (p *AddParams) valid() error {
-	if !p.RQ.Valid() {
+	switch p.Round {
+	case RoundExact:
+		if !p.RQ.Valid() {
+			return ErrRequant
+		}
+	case RoundTFLite:
+		if !p.TFLite.valid() {
+			return ErrRequant
+		}
+	default:
 		return ErrRequant
 	}
 	if p.Min > p.Max {
@@ -76,11 +91,20 @@ func Add(dst, a, b []int8, p AddParams) error {
 	if err := p.valid(); err != nil {
 		return err
 	}
-	addGeneric(dst, a, b, &p)
+	addMode(dst, a, b, &p)
 	return nil
 }
 
-// addGeneric is the Add inner loop; equal lengths, p valid.
+// addMode dispatches on the rounding mode; equal lengths, p valid.
+func addMode(dst, a, b []int8, p *AddParams) {
+	if p.Round == RoundTFLite {
+		addTFLiteGeneric(dst, a, b, p)
+		return
+	}
+	addGeneric(dst, a, b, p)
+}
+
+// addGeneric is the RoundExact Add inner loop; equal lengths, p valid.
 //
 // It evaluates the int64 definition exactly in 32-bit arithmetic (on the
 // ESP32-S3 the direct int64 loop costs 2.4× as many cycles). With

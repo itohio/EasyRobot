@@ -13,6 +13,8 @@ type Conv2DParams struct {
 	// ActMin/ActMax is the fused activation clamp (see ActNone/ActReLU/ActReLU6).
 	// Note the zero value [0, 0] clamps everything to 0.
 	ActMin, ActMax int8
+	// Round is the requantisation rounding (zero value RoundExact).
+	Round Rounding
 }
 
 // OutShape returns the output shape for p.
@@ -37,7 +39,7 @@ func (p Conv2DParams) OutShape() (Shape, error) {
 // OutShape). For every output element
 //
 //	acc = bias[o] + sum (x - InZP) * w      (int32; padded taps contribute 0)
-//	y   = clamp(rq[o].Apply(acc) + OutZP, ActMin, ActMax)
+//	y   = clamp(rq[o].Apply(acc) + OutZP, ActMin, ActMax)   (ApplyTFLite with RoundTFLite)
 func Conv2D(dst, src, weights []int8, bias []int32, rq []Requant, p Conv2DParams) error {
 	pl, err := p.plan()
 	if err != nil {
@@ -46,7 +48,7 @@ func Conv2D(dst, src, weights []int8, bias []int32, rq []Requant, p Conv2DParams
 	if len(src) != pl.inLen || len(weights) != pl.wLen || len(dst) != pl.outLen {
 		return ErrLength
 	}
-	if err := pl.setQuant(bias, rq, p.InZP, p.OutZP, p.ActMin, p.ActMax); err != nil {
+	if err := pl.setQuant(bias, rq, p.InZP, p.OutZP, p.ActMin, p.ActMax, p.Round); err != nil {
 		return err
 	}
 	conv2DGeneric(dst, src, weights, bias, rq, &pl)
@@ -65,6 +67,7 @@ type convPlan struct {
 
 	inZP          int32
 	outZP, lo, hi int64 // output zero point and activation clamp
+	round         Rounding
 }
 
 // plan validates the shape part of p (everything except slices, bias,
@@ -92,20 +95,24 @@ func (p Conv2DParams) plan() (convPlan, error) {
 	return convPlan{geometry: g, outC: p.OutC, wPerOut: wPerOut, wLen: wLen, outLen: outLen}, nil
 }
 
-// setQuant validates bias, requant and the activation range against pl.outC
-// (in that order) and stores the quantisation constants in pl.
-func (pl *convPlan) setQuant(bias []int32, rq []Requant, inZP, outZP, actMin, actMax int8) error {
+// setQuant validates bias, requant (multipliers, then the rounding mode) and
+// the activation range against pl.outC (in that order) and stores the
+// quantisation constants in pl.
+func (pl *convPlan) setQuant(bias []int32, rq []Requant, inZP, outZP, actMin, actMax int8, round Rounding) error {
 	if err := validBias(bias, pl.outC); err != nil {
 		return err
 	}
 	if err := validRequants(rq, pl.outC); err != nil {
 		return err
 	}
+	if !round.valid() {
+		return ErrRequant
+	}
 	lo, hi, err := clampRange(actMin, actMax)
 	if err != nil {
 		return err
 	}
-	pl.inZP, pl.outZP, pl.lo, pl.hi = int32(inZP), int64(outZP), lo, hi
+	pl.inZP, pl.outZP, pl.lo, pl.hi, pl.round = int32(inZP), int64(outZP), lo, hi, round
 	return nil
 }
 
@@ -114,7 +121,7 @@ func (pl *convPlan) setQuant(bias []int32, rq []Requant, inZP, outZP, actMin, ac
 func conv2DGeneric(dst, src, weights []int8, bias []int32, rq []Requant, pl *convPlan) {
 	g := &pl.geometry
 	inC, outC, wPerOut := g.ch, pl.outC, pl.wPerOut
-	zp, zpOut, lo, hi := pl.inZP, pl.outZP, pl.lo, pl.hi
+	zp, zpOut, lo, hi, tfl := pl.inZP, pl.outZP, pl.lo, pl.hi, pl.round == RoundTFLite
 	rowStride := g.inW * inC
 	di := 0
 	for oy := range g.outH {
@@ -134,7 +141,11 @@ func conv2DGeneric(dst, src, weights []int8, bias []int32, rq []Requant, pl *con
 					wo := wBase + ky*g.kw*inC
 					acc += dotZP(src[xo:xo+n], weights[wo:wo+n], zp)
 				}
-				dst[di] = requantize(acc, rq[oc], zpOut, lo, hi)
+				if tfl {
+					dst[di] = requantizeTFLite(acc, rq[oc], zpOut, lo, hi)
+				} else {
+					dst[di] = requantize(acc, rq[oc], zpOut, lo, hi)
+				}
 				di++
 			}
 		}
@@ -152,6 +163,8 @@ type DepthwiseConv2DParams struct {
 	// ActMin/ActMax is the fused activation clamp. The zero value [0, 0]
 	// clamps everything to 0.
 	ActMin, ActMax int8
+	// Round is the requantisation rounding (zero value RoundExact).
+	Round Rounding
 }
 
 // OutShape returns the output shape for p.
@@ -169,7 +182,7 @@ func (p DepthwiseConv2DParams) OutShape() (Shape, error) {
 // rq has len C; dst is [outH][outW][C]. Per channel c:
 //
 //	acc = bias[c] + sum_{ky,kx} (x[iy+ky][ix+kx][c] - InZP) * w[ky][kx][c]
-//	y   = clamp(rq[c].Apply(acc) + OutZP, ActMin, ActMax)
+//	y   = clamp(rq[c].Apply(acc) + OutZP, ActMin, ActMax)   (ApplyTFLite with RoundTFLite)
 func DepthwiseConv2D(dst, src, weights []int8, bias []int32, rq []Requant, p DepthwiseConv2DParams) error {
 	pl, err := p.plan()
 	if err != nil {
@@ -178,7 +191,7 @@ func DepthwiseConv2D(dst, src, weights []int8, bias []int32, rq []Requant, p Dep
 	if len(src) != pl.inLen || len(weights) != pl.wLen || len(dst) != pl.outLen {
 		return ErrLength
 	}
-	if err := pl.setQuant(bias, rq, p.InZP, p.OutZP, p.ActMin, p.ActMax); err != nil {
+	if err := pl.setQuant(bias, rq, p.InZP, p.OutZP, p.ActMin, p.ActMax, p.Round); err != nil {
 		return err
 	}
 	depthwiseConv2DGeneric(dst, src, weights, bias, rq, &pl)
@@ -208,7 +221,7 @@ func (p DepthwiseConv2DParams) plan() (convPlan, error) {
 func depthwiseConv2DGeneric(dst, src, weights []int8, bias []int32, rq []Requant, pl *convPlan) {
 	g := &pl.geometry
 	c := g.ch
-	zp, zpOut, lo, hi := pl.inZP, pl.outZP, pl.lo, pl.hi
+	zp, zpOut, lo, hi, tfl := pl.inZP, pl.outZP, pl.lo, pl.hi, pl.round == RoundTFLite
 	rowStride := g.inW * c
 	wRow := g.kw * c
 	di := 0
@@ -229,7 +242,11 @@ func depthwiseConv2DGeneric(dst, src, weights []int8, bias []int32, rq []Requant
 						acc += (int32(src[xo+kx*c]) - zp) * int32(weights[wo+kx*c])
 					}
 				}
-				dst[di] = requantize(acc, rq[ch], zpOut, lo, hi)
+				if tfl {
+					dst[di] = requantizeTFLite(acc, rq[ch], zpOut, lo, hi)
+				} else {
+					dst[di] = requantize(acc, rq[ch], zpOut, lo, hi)
+				}
 				di++
 			}
 		}

@@ -54,9 +54,36 @@ computed exactly in int64 with a single rounding (`|acc·Mult| < 2^62`).
 to `2^31` then `Mult = 2^30, exp++`; `Shift = exp`. Representable reals:
 `[2^−32, 2^30)`; non-positive, NaN, Inf or out-of-range → `ErrRequant`.
 
-TFLite computes `RoundingDivideByPOT(SaturatingRoundingDoublingHighMul(acc, Mult), −Shift)`
-(two roundings); it can differ from this single rounding by 1 LSB on rare
-ties. A TFLite-compatible mode is a possible later option.
+### Rounding modes (`Round` field of `Conv2DParams`, `DepthwiseConv2DParams`, `FCParams`, `AddParams`)
+
+- `RoundExact` (zero value): the single exact rounding above.
+- `RoundTFLite`: TensorFlow Lite's int8 reference kernels (default build,
+  double rounding), for models imported from TFLite. `Requant.ApplyTFLite(acc)`
+  = `MultiplyByQuantizedMultiplier`: `x = acc·2^max(Shift,0)` in int32
+  (wrapping where C overflows), `h = SaturatingRoundingDoublingHighMul(x, Mult)`
+  (`(x·Mult + nudge)/2^31` truncated, nudge `2^30` or `1−2^30`: ties toward
+  +∞), then `RoundingDivideByPOT(h, max(−Shift,0))` (ties away from zero).
+  `(Mult, Shift)` are the same numbers TFLite stores, and `QuantizeMultiplier`
+  equals TFLite's `QuantizeMultiplier` on the representable range, so
+  `QuantizeMultiplier(float64(sIn)·float64(sW)/float64(sOut))` (float32
+  scales widened, TFLite's order) gives TFLite's per-channel multipliers.
+  The modes differ by 1 LSB only near .5 ties — not "rarely" in general: on
+  the conv/depthwise fixtures 2 of 2 906 outputs (0.07 %; 0.16 % on an
+  earlier fixture set) with multipliers derived from real float scales, 348
+  of 5 954 (5.8 %) with few-bit multipliers (m·2^−k), and up to ≈ 25 % at a
+  multiplier of exactly 0.5 (every negative exact tie).
+- **TFLite's FULLY_CONNECTED rounds once, half away from zero** (per-tensor
+  and per-channel weights) — i.e. `RoundExact` — while CONV_2D and
+  DEPTHWISE_CONV_2D use the double rounding above. Established against the
+  LiteRT 2.3.0 interpreter with the reference resolver (`testdata/README.md`):
+  150 of 150 FC cases match single rounding, 129 match double rounding.
+  Importers therefore set `RoundExact` on fully connected layers.
+
+An unknown `Round` value is `ErrRequant` (checked after the multipliers).
+Pools are mode-independent: `AvgPool2D` already rounds as TFLite does.
+`Quantize6TFLite`/`ActReLU6TFLite` compute TFLite's ReLU6 bound
+(`zp + roundf(6/scale)`, division in float32), which can differ from
+`Quantize6` (float64) on a near-.5 quotient.
 
 ## Fused activation
 
@@ -73,8 +100,9 @@ Standalone (same scale/zp in and out, may alias): `ReLU(dst, src, zp)`:
 
 ## Element-wise Add
 
-`Add(dst, a, b, AddParams{ZPA, ZPB, ZPOut, RQ, Min, Max})`, equal lengths (0
-allowed, else `ErrLength`), `dst` may alias `a` or `b`:
+`Add(dst, a, b, AddParams{ZPA, ZPB, ZPOut, RQ, Min, Max, Round, TFLite})`,
+equal lengths (0 allowed, else `ErrLength`), `dst` may alias `a` or `b`.
+`RoundExact`:
 
 ```
 acc = (a−ZPA)·MultA + (b−ZPB)·MultB           (exact int64, |acc| < 2^40)
@@ -88,9 +116,17 @@ else `ErrRequant`; `Min > Max` → `ErrActivation`. One rounding of the exact
 sum, as for `Requant`. `QuantizeAddMultipliers(realA, realB)` quantises the
 larger like `QuantizeMultiplier` and the smaller at the same shift
 (`round(real·2^(31−Shift))`, half away from zero); a smaller multiplier
-that rounds to 0 is `ErrRequant`. TFLite's Add (`left_shift` 20, three
-doubling-high-muls) is a different rounding; it belongs to the
-TFLite-compatible mode.
+that rounds to 0 is `ErrRequant`.
+
+`RoundTFLite` (TFLite `kernels/add.cc` + `AddElementwise`; `RQ` unused):
+`AddRequantTFLite{A, B, Out}` from `QuantizeAddTFLite(scaleA, scaleB,
+scaleOut float32)` (`A = scaleA/(2·max)`, `B` likewise,
+`Out = 2·max/(2^20·scaleOut)`, float64 from the float32 scales); all three
+`Valid` with `Shift ≤ 0`, else `ErrRequant`.
+
+```
+y = clamp(Out.ApplyTFLite(A.ApplyTFLite((a−ZPA)·2^20) + B.ApplyTFLite((b−ZPB)·2^20)) + ZPOut, Min, Max)
+```
 
 ## Padding
 
@@ -111,7 +147,7 @@ Height and width are independent (`KH/KW`, `StrideH/StrideW`). No dilation.
 | `MaxPool2D(dst, src, Pool2DParams)` | max over valid (non-padded) cells |
 | `AvgPool2D(dst, src, Pool2DParams)` | `roundHalfAwayFromZero(Σq / count)` over valid cells, exact integer |
 | `ReLU`, `ReLU6`, `Add` | above |
-| `QuantizeMultiplier`, `QuantizeAddMultipliers`, `Act*`, `Quantize6` | helpers |
+| `QuantizeMultiplier`, `QuantizeAddMultipliers`, `QuantizeAddTFLite`, `Act*`, `Quantize6`, `Quantize6TFLite` | helpers |
 | `(*Params).OutShape()` | output shape for `dst` sizing |
 
 Pools keep scale and zero point. Average pooling rounds in the stored
@@ -166,12 +202,16 @@ layout and leaves the layer unprepared), write `W`, then `Prepare`; writing
 packed region anywhere but at `InPlaceW()` is `ErrLength`; `W` outside it
 is a separate copy and is never modified.
 
-Prepared layers run through a per-op CPU backend chosen at build time only
-(`impl_*.go`, build tags; no runtime detection): `Backend()` names it —
-`"generic"` (all targets), `"esp32s3-pie"` (TinyGo `esp32s3`: conv/FC dot
-products in ACCX, depthwise in QACC; pools, activations and Add generic);
-`-tags qi8generic` forces generic. Every per-op backend must be
+Prepared layers run through a per-op CPU backend chosen **at compile time
+only** — build tags, `GOARCH` and the TinyGo target select one `impl_*.go` per
+binary; there is no runtime CPU detection, no `x/sys/cpu` dispatch and no
+function-pointer switching. `Backend()` names the build: `"generic"`,
+`"esp32s3-pie"` (`esp32s3 && !qi8generic`: conv/FC dot products in ACCX,
+depthwise in QACC; pools, activations and Add generic); `-tags qi8generic`
+forces generic on any target. Planned: baseline `arm64` = NEON, `-tags
+dotprod` adds SDOT; RVV likewise by tag. Every per-op backend must be
 **byte-identical** to the free-function reference in the same rounding mode.
+(The rounding mode is a per-layer parameter, not a backend choice.)
 The test-only tag `qi8pieemu` builds the PIE backend's Go side on the host
 with pure-Go models of its C kernels (`pie_emu.go`, which also asserts the
 kernels' alignment and read-ahead preconditions), so `go test -tags

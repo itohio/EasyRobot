@@ -75,4 +75,4 @@ func reluRun(dst, src []int8, zp int8) { reluGeneric(dst, src, zp) }
 
 func relu6Run(dst, src []int8, zp, q6 int8) { relu6Generic(dst, src, zp, q6) }
 
-func addRun(dst, a, b []int8, p *AddParams) { addGeneric(dst, a, b, p) }
+func addRun(dst, a, b []int8, p *AddParams) { addMode(dst, a, b, p) }

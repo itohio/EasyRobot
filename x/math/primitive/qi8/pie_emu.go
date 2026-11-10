@@ -68,6 +68,6 @@ func pieDWPx(l *pieDWLayout, src []int8, direct bool, rq []Requant, pl *convPlan
 			}
 			acc += int32(x) * int32(l.wpack[t*l.c16+ch])
 		}
-		dst[ch] = requantize(acc, rq[ch], pl.outZP, pl.lo, pl.hi)
+		dst[ch] = requantizeMode(acc, rq[ch], pl.outZP, pl.lo, pl.hi, pl.round)
 	}
 }

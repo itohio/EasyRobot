@@ -93,6 +93,7 @@ func randLayerCase(g gen, kind int) layerCase {
 	switch kind {
 	case 0:
 		p := randConvParams(g, false)
+		p.Round = g.rounding()
 		p.ActMin, p.ActMax = g.act(randScale(g), p.OutZP)
 		w := g.int8s(p.OutC * p.KH * p.KW * p.In.C)
 		bias, rq := g.bias(p.OutC), g.requants(p.OutC)
@@ -107,7 +108,7 @@ func randLayerCase(g gen, kind int) layerCase {
 		cp := randConvParams(g, true)
 		p := DepthwiseConv2DParams{
 			In: cp.In, KH: cp.KH, KW: cp.KW, StrideH: cp.StrideH, StrideW: cp.StrideW,
-			Padding: cp.Padding, InZP: cp.InZP, OutZP: cp.OutZP,
+			Padding: cp.Padding, InZP: cp.InZP, OutZP: cp.OutZP, Round: g.rounding(),
 		}
 		p.ActMin, p.ActMax = g.act(randScale(g), p.OutZP)
 		w := g.int8s(p.KH * p.KW * p.In.C)
@@ -120,7 +121,7 @@ func randLayerCase(g gen, kind int) layerCase {
 			in:    p.In, out: os, describe: fmt.Sprintf("%+v", p),
 		}
 	case 2:
-		p := FCParams{In: 1 + g.r.IntN(200), Out: 1 + g.r.IntN(12), InZP: g.zp(), OutZP: g.zp()}
+		p := FCParams{In: 1 + g.r.IntN(200), Out: 1 + g.r.IntN(12), InZP: g.zp(), OutZP: g.zp(), Round: g.rounding()}
 		p.ActMin, p.ActMax = g.act(randScale(g), p.OutZP)
 		w := g.int8s(p.In * p.Out)
 		bias, rq := g.bias(p.Out), g.requants(p.Out)

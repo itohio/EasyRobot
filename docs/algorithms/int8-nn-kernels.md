@@ -4,9 +4,9 @@ status: tested
 tags: [easyrobot, nn, int8, quantisation, kernels, embedded]
 workstream: W9
 module: "[[primitive-kernels]]"
-summary: "Generic int8 NHWC kernels (dot, FC, conv, depthwise, pools, ReLU/ReLU6, Add) with exact single-rounding per-channel requantisation; bit-exact reference for SIMD paths; allocation-free."
-source: [x/math/primitive/qi8/quant.go, x/math/primitive/qi8/act.go, x/math/primitive/qi8/shape.go, x/math/primitive/qi8/dot.go, x/math/primitive/qi8/conv.go, x/math/primitive/qi8/pool.go, x/math/primitive/qi8/add.go, x/math/primitive/qi8/layer.go, x/math/primitive/qi8/impl_generic.go, x/math/primitive/qi8/impl_esp32s3.go, x/math/primitive/qi8/pie_esp32s3.c]
-tests: [x/math/primitive/qi8/reference_test.go, x/math/primitive/qi8/kernels_test.go, x/math/primitive/qi8/bounds_test.go, x/math/primitive/qi8/layer_test.go, x/math/primitive/qi8/add_test.go, x/math/primitive/qi8/bench_test.go]
+summary: "Generic int8 NHWC kernels (dot, FC, conv, depthwise, pools, ReLU/ReLU6, Add) with exact single-rounding or TFLite requantisation; bit-exact reference for SIMD paths; allocation-free."
+source: [x/math/primitive/qi8/quant.go, x/math/primitive/qi8/tflite.go, x/math/primitive/qi8/act.go, x/math/primitive/qi8/shape.go, x/math/primitive/qi8/dot.go, x/math/primitive/qi8/conv.go, x/math/primitive/qi8/pool.go, x/math/primitive/qi8/add.go, x/math/primitive/qi8/layer.go, x/math/primitive/qi8/impl_generic.go, x/math/primitive/qi8/impl_esp32s3.go, x/math/primitive/qi8/pie_esp32s3.c]
+tests: [x/math/primitive/qi8/reference_test.go, x/math/primitive/qi8/kernels_test.go, x/math/primitive/qi8/bounds_test.go, x/math/primitive/qi8/layer_test.go, x/math/primitive/qi8/add_test.go, x/math/primitive/qi8/tflite_test.go, x/math/primitive/qi8/bench_test.go]
 test_result: pass
 complete: no
 correct: yes
@@ -26,17 +26,19 @@ evidence: "go test -race -count=1 ./x/math/primitive/qi8 → ok (2026-11-09): 0 
 
 **Element-wise Add (ER-NN-PIPELINE step 2):** `Add(dst, a, b, AddParams)` / `AddLayer` (two inputs, so not an `Op`): `y = clamp(round_half_away(((a−zpA)·MultA + (b−zpB)·MultB) / 2^(31−Shift)) + zpOut, Min, Max)`, `AddRequant{MultA, MultB, Shift}` = both real multipliers (`scaleX/scaleOut`) with a shared shift, from `QuantizeAddMultipliers`; one rounding of the exact sum, like `Requant`. The int64 definition is evaluated exactly in 32-bit arithmetic (Mult split at bit 16; derivation in `add.go`), which on the S3 cut Add from 115 (direct int64 loop) to 47 cycles/element; total shifts ≤ 16 (multipliers ≥ 2^14) use the int64 loop. Both builds run this generic loop: the same loop compiled by clang from C measured 49 cycles/element, and PIE has no element-wise 32-bit multiply. Tested against the exact big-rational reference (3000 cases incl. every shift, ties, near-zero-point inputs; a broken tie rule is caught) and on the chip (20 000 cases, 6.0 M outputs: FNV identical to the host run; layer = free function).
 
+**TFLite rounding mode (ER-NN-PIPELINE step 4):** `Round` field on `Conv2DParams`, `DepthwiseConv2DParams`, `FCParams` and `AddParams`: `RoundExact` (zero value, unchanged) or `RoundTFLite`, which reproduces TensorFlow Lite's int8 reference Conv2D/depthwise/Add (double rounding) for imported models. `Requant.ApplyTFLite` = `MultiplyByQuantizedMultiplier` (int32 left shift, `SaturatingRoundingDoublingHighMul` with ties toward +∞, `RoundingDivideByPOT` with ties away); TFLite Add = `AddRequantTFLite{A, B, Out}` from `QuantizeAddTFLite(scaleA, scaleB, scaleOut)` with inputs shifted left 20; `Quantize6TFLite`/`ActReLU6TFLite` divide in float32 as TFLite does. **TFLite's FULLY_CONNECTED rounds once, half away from zero — `RoundExact`** (found against the interpreter: 150/150 cases; double rounding matched 129). Both backends honour the mode (PIE conv/FC requantise in Go, PIE depthwise in C `qi8_requantize_mode`). Tested against fixtures (`testdata/tflite_ref.json.gz`, generator and sources in `testdata/README.md`) that equal the **LiteRT 2.3.0 interpreter (reference resolver) bit for bit**: 150 each of Conv2D/depthwise/FC, 200 Add, 80 AvgPool, 200 ReLU6 ranges, plus 30 145 requantisations checked against the port — 0 mismatches, free functions and prepared layers; two broken tie rules (SRDHM nudge, RDBP threshold) are caught. The modes differ by 1 LSB near .5 ties: 0.07 % of conv/depthwise outputs with multipliers derived from float scales, 5.8 % with few-bit multipliers, up to ≈ 25 % at a multiplier of exactly 0.5. `AvgPool2D` already matched TFLite (no mode needed).
+
 **Semantics:**
 - NHWC, batch 1. Activations int8 asymmetric (scale, zero point); weights int8 symmetric, per output channel; bias int32 in accumulator scale. Conv weights OHWI, depthwise `[kh][kw][C]`, FC `[out][in]`.
 - `acc = bias + Σ (x − zpIn)·w` in int32; the reduction length is limited to `MaxTaps` = 65 793 so the sum cannot wrap (the bias term is the caller's responsibility). Every size is overflow-checked against `MaxElements` = 2^30 (fits a 32-bit int); violations return `ErrShape` before any slice is touched (`TestHugeShapesRejected`, `TestReductionLengthBound`, red first: a wrapped shape used to pass the length checks and `MaxPool2D` panicked). Padded taps contribute 0.
-- Requantisation `Requant{Mult (Q31, [2^30, 2^31)), Shift ∈ [−31, 30]}`, real multiplier M' = Mult·2^(Shift−31): `y = clamp(round_half_away(acc·Mult / 2^(31−Shift)) + zpOut, actMin, actMax)`, computed exactly in int64 with **one** rounding. TFLite's two-step SRDHM + RoundingDivideByPOT can differ by 1 LSB on rare ties; a TFLite-compatible mode is a TODO.
+- Requantisation `Requant{Mult (Q31, [2^30, 2^31)), Shift ∈ [−31, 30]}`, real multiplier M' = Mult·2^(Shift−31): `y = clamp(round_half_away(acc·Mult / 2^(31−Shift)) + zpOut, actMin, actMax)`, computed exactly in int64 with **one** rounding (`RoundExact`); `RoundTFLite` uses TFLite's two-step SRDHM + RoundingDivideByPOT (above).
 - Same padding as TensorFlow (out = ⌈in/stride⌉, pad before = total/2). Pools count only valid cells; `AvgPool2D` rounds the mean of the stored int8 values half away from zero (TFLite behaviour).
 - `ActMin`/`ActMax` zero values clamp everything to 0 — set them with `ActNone`/`ActReLU`/`ActReLU6`.
 
 ## Completeness review
 
-- Complete: no — no TFLite-compatible requant mode, no dilation, no depthwise multiplier > 1, no batched GEMM (1×1 conv covers per-pixel GEMM).
-- Tested: seeded random tests against an independent exact reference (dequantise to big.Float, compute, quantise with M', round half away, clamp): Requant.Apply 1 863 720 outputs over every shift; FullyConnected 2000 cases; Conv2D 3000; DepthwiseConv2D 3000 (half 3×3, stride 1/2); MaxPool2D and AvgPool2D 3000 each; ReLU/ReLU6 1000; Add 3000 — **0 mismatches**. Hand-computed cases for each op, padding geometry with non-zero input zp, ±128/127 zero points, and every error path. A deliberately broken rounding was caught by the reference tests. `testing.AllocsPerRun` 0 for every kernel. TinyGo 0.43 `-print-allocs=qi8` is empty for `-target=xiao-esp32s3` and `-target=drivers/unitv/target/unitv.json`.
+- Complete: no — no dilation, no depthwise multiplier > 1, no batched GEMM (1×1 conv covers per-pixel GEMM).
+- Tested: seeded random tests against an independent exact reference (dequantise to big.Float, compute, quantise with M', round half away, clamp): Requant.Apply 1 863 720 outputs over every shift; FullyConnected 2000 cases; Conv2D 3000; DepthwiseConv2D 3000 (half 3×3, stride 1/2); MaxPool2D and AvgPool2D 3000 each; ReLU/ReLU6 1000; Add 3000 — **0 mismatches**; the TFLite mode against interpreter fixtures (above). Hand-computed cases for each op, padding geometry with non-zero input zp, ±128/127 zero points, and every error path. A deliberately broken rounding was caught by the reference tests. `testing.AllocsPerRun` 0 for every kernel. TinyGo 0.43 `-print-allocs=qi8` is empty for `-target=xiao-esp32s3` and `-target=drivers/unitv/target/unitv.json`.
 - Host speed (Apple M5): conv 3×3 ≈ 1.0–2.1 G MAC/s, 1×1 conv 1.4 G, depthwise 3×3 ≈ 0.6 G, FC 1024×128 2.2 G, Dot 2.5 G MAC/s.
 - Correct: yes against the reference.
 
@@ -44,7 +46,7 @@ evidence: "go test -race -count=1 ./x/math/primitive/qi8 → ok (2026-11-09): 0 
 
 - [x] ESP32-S3 PIE inner loops (dot, conv, FC) behind the `esp32s3` tag, bit-identical on the chip (ER-NN-KERNELS N2) — x/math/primitive/qi8/impl_esp32s3.go #p2
 - [x] PIE depthwise conv (per-lane QACC accumulation across channels) — x/math/primitive/qi8/impl_esp32s3.go #p2
-- [ ] TFLite-compatible two-step requantisation mode for imported TFLite models — x/math/primitive/qi8/quant.go #p2
+- [x] TFLite-compatible two-step requantisation mode for imported TFLite models — x/math/primitive/qi8/tflite.go #p2
 - [ ] Depthwise channel multiplier > 1 and dilation — x/math/primitive/qi8/conv.go #p3
 
 ## Links

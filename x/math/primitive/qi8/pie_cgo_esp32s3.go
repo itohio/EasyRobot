@@ -8,7 +8,7 @@ package qi8
 // #include <stdint.h>
 // void qi8_pie_enable(void);
 // void qi8_pie_dot_rows(const int8_t *patch, const int8_t *w, int k, int rows, int32_t *out);
-// void qi8_pie_dw_px(const int8_t *const *tap, int taps, int direct, const int8_t *zprow, int8_t *stage, const int8_t *w, int ch, int c16, const int32_t *biasEff, const void *rq, int32_t zp, int32_t lo, int32_t hi, int8_t *dst, uint8_t *tmp);
+// void qi8_pie_dw_px(const int8_t *const *tap, int taps, int direct, const int8_t *zprow, int8_t *stage, const int8_t *w, int ch, int c16, const int32_t *biasEff, const void *rq, int32_t zp, int32_t lo, int32_t hi, int round, int8_t *dst, uint8_t *tmp);
 import "C"
 
 import "unsafe"
@@ -40,7 +40,7 @@ func pieDWPx(l *pieDWLayout, _ []int8, direct bool, rq []Requant, pl *convPlan, 
 		(*C.int8_t)(unsafe.Pointer(&l.stage[0])),
 		(*C.int8_t)(unsafe.Pointer(&l.wpack[0])), C.int(l.c), C.int(l.c16),
 		(*C.int32_t)(unsafe.Pointer(&l.biasEff[0])), unsafe.Pointer(&rq[0]),
-		C.int32_t(pl.outZP), C.int32_t(pl.lo), C.int32_t(pl.hi),
+		C.int32_t(pl.outZP), C.int32_t(pl.lo), C.int32_t(pl.hi), C.int(pl.round),
 		(*C.int8_t)(unsafe.Pointer(&dst[0])),
 		(*C.uint8_t)(unsafe.Pointer(&l.tmp[0])))
 }

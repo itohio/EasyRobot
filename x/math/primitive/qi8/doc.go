@@ -16,9 +16,13 @@
 //     violations return ErrShape.
 //   - Output y = clamp(roundHalfAwayFromZero(acc*Mult / 2^(31-Shift)) + zpOut,
 //     actMin, actMax) computed exactly in int64 with a single rounding (see
-//     Requant). TFLite's two-step SaturatingRoundingDoublingHighMul +
-//     RoundingDivideByPOT can differ from this by 1 LSB on rare ties; a
-//     TFLite-compatible mode is a possible later option.
+//     Requant), the default RoundExact mode. RoundTFLite reproduces TFLite's
+//     two-step SaturatingRoundingDoublingHighMul + RoundingDivideByPOT (its
+//     Conv2D/depthwise kernels; its FullyConnected rounds once, like
+//     RoundExact), which differs by 1 LSB near .5 ties: about 0.1 % of
+//     outputs with multipliers derived from real float scales, about 6 % with
+//     few-bit multipliers and up to about 25 % at a multiplier of exactly
+//     0.5, where exact ties are common (see SPEC.md).
 //   - Fused activations are expressed by the clamp range (ActNone, ActReLU,
 //     ActReLU6).
 //   - Padding is TensorFlow SAME or VALID. Pools share scale and zero point
@@ -31,6 +35,6 @@
 // The free functions (Conv2D, FullyConnected, ...) validate on every call and
 // always run the generic code; they are the reference. The prepared layers
 // (Conv2DLayer, FCLayer, ...; see Op) validate once in Prepare and Run
-// through a build-time per-op backend (see Backend) that must be
-// byte-identical to the reference.
+// through a per-op backend chosen at compile time only (build tags; see
+// Backend) that must be byte-identical to the reference.
 package qi8

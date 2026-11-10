@@ -80,6 +80,39 @@ static inline int8_t qi8_requantize(int32_t acc, const qi8_requant_t *r, int32_t
     return (int8_t)v;
 }
 
+// qi8_apply_tflite is Requant.ApplyTFLite (tflite.go): TFLite's
+// MultiplyByQuantizedMultiplier with its two roundings.
+static inline int32_t qi8_apply_tflite(int32_t acc, const qi8_requant_t *r) {
+    int32_t x = acc;
+    int right = 0;
+    if (r->shift > 0) {
+        x = (int32_t)((uint32_t)acc << r->shift);
+    } else {
+        right = -r->shift;
+    }
+    int64_t ab = (int64_t)x * (int64_t)r->mult;
+    int64_t nudge = ab >= 0 ? ((int64_t)1 << 30) : 1 - ((int64_t)1 << 30);
+    int32_t h = (int32_t)((ab + nudge) / ((int64_t)1 << 31));
+    int32_t mask = (int32_t)(((int64_t)1 << right) - 1);
+    int32_t threshold = (mask >> 1) + (h < 0 ? 1 : 0);
+    return (h >> right) + ((h & mask) > threshold ? 1 : 0);
+}
+
+// qi8_requantize_mode is requantizeMode: round 1 = RoundTFLite.
+static inline int8_t qi8_requantize_mode(int32_t acc, const qi8_requant_t *r, int32_t zp, int32_t lo, int32_t hi, int round) {
+    if (!round) {
+        return qi8_requantize(acc, r, zp, lo, hi);
+    }
+    int32_t v = qi8_apply_tflite(acc, r) + zp;
+    if (v < lo) {
+        v = lo;
+    }
+    if (v > hi) {
+        v = hi;
+    }
+    return (int8_t)v;
+}
+
 // qi8_pie_dw_px computes one output pixel of a depthwise convolution:
 //
 //	dst[c] = requantize(biasEff[c] + sum_t in[t][c] * w[t*c16 + c], rq[c], ...)
@@ -94,7 +127,8 @@ static inline int8_t qi8_requantize(int32_t acc, const qi8_requant_t *r, int32_t
 // zprow (c16 bytes of the input zero point, aligned) for padded taps.
 // Otherwise each group is staged: up to 16 bytes per tap are copied (padded
 // taps copy zprow) into stage (16·taps aligned bytes) and loaded from there.
-// zp, lo and hi are the output zero point and clamp.
+// zp, lo and hi are the output zero point and clamp; round selects the
+// rounding mode (0 RoundExact, 1 RoundTFLite).
 //
 // Products accumulate per lane in QACC (16 lanes of 20 bits), which saturates
 // at ±(2^19−1): taps are summed in chunks of at most 31 (31·128·128 = 507 904
@@ -104,7 +138,7 @@ static inline int8_t qi8_requantize(int32_t acc, const qi8_requant_t *r, int32_t
 // stored with ee.st.qacc_{l,h}.l.128 (bytes 0–15) and .h.32 (bytes 16–19).
 void qi8_pie_dw_px(const int8_t *const *tap, int taps, int direct, const int8_t *zprow, int8_t *stage,
                    const int8_t *w, int ch, int c16,
-                   const int32_t *biasEff, const qi8_requant_t *rq, int32_t zp, int32_t lo, int32_t hi,
+                   const int32_t *biasEff, const qi8_requant_t *rq, int32_t zp, int32_t lo, int32_t hi, int round,
                    int8_t *dst, uint8_t *tmp) {
     uint32_t a[16]; // wrapping int32 arithmetic, as in the Go reference
     for (int g = 0; g < c16; g += 16) {
@@ -182,7 +216,7 @@ void qi8_pie_dw_px(const int8_t *const *tap, int taps, int direct, const int8_t 
         }
         for (int i = 0; i < width; i++) {
             int32_t acc = (int32_t)(a[i] + (uint32_t)biasEff[g + i]);
-            dst[g + i] = qi8_requantize(acc, &rq[g + i], zp, lo, hi);
+            dst[g + i] = qi8_requantize_mode(acc, &rq[g + i], zp, lo, hi, round);
         }
     }
 }

@@ -17,7 +17,8 @@ package qi8
 // padded cells hold zpIn, and adds biasEff = bias − zpIn·Σw (precomputed at
 // Prepare over the full kernel window). Every term is an exact integer and
 // int32 addition wraps modulo 2^32, so the result is the same int32 bit for
-// bit; requantisation then uses the shared requantize. SPEC.md allows this
+// bit; requantisation then uses requantizeMode (C: qi8_requantize_mode) in the
+// layer's rounding mode. SPEC.md allows this
 // zero-point folding for accelerated paths.
 //
 // Scratch layout (from the first 16-byte-aligned byte of Scratch), with
@@ -153,7 +154,7 @@ func conv2DRun(dst, src, _, scratch []int8, _ []int32, rq []Requant, pl *convPla
 			}
 			l.dotRows()
 			for oc := range pl.outC {
-				dst[di] = requantize(l.acc[oc]+l.biasEff[oc], rq[oc], zpOut, lo, hi)
+				dst[di] = requantizeMode(l.acc[oc]+l.biasEff[oc], rq[oc], zpOut, lo, hi, pl.round)
 				di++
 			}
 		}
@@ -303,7 +304,7 @@ func fullyConnectedRun(dst, src, _, scratch []int8, _ []int32, rq []Requant, pl 
 	copy(l.patch, src[:pl.in])
 	l.dotRows()
 	for o := range pl.out {
-		dst[o] = requantize(l.acc[o]+l.biasEff[o], rq[o], pl.outZP, pl.lo, pl.hi)
+		dst[o] = requantizeMode(l.acc[o]+l.biasEff[o], rq[o], pl.outZP, pl.lo, pl.hi, pl.round)
 	}
 }
 
@@ -317,4 +318,4 @@ func relu6Run(dst, src []int8, zp, q6 int8) { relu6Generic(dst, src, zp, q6) }
 
 // addRun stays generic: the same 32-bit loop compiled from C by clang was
 // not faster on the chip, and PIE has no element-wise 32-bit multiply.
-func addRun(dst, a, b []int8, p *AddParams) { addGeneric(dst, a, b, p) }
+func addRun(dst, a, b []int8, p *AddParams) { addMode(dst, a, b, p) }

@@ -180,7 +180,7 @@ func (l *Conv2DLayer) Prepare() error {
 	if len(l.W) != pl.wLen {
 		return ErrLength
 	}
-	if err := pl.setQuant(l.Bias, l.RQ, l.P.InZP, l.P.OutZP, l.P.ActMin, l.P.ActMax); err != nil {
+	if err := pl.setQuant(l.Bias, l.RQ, l.P.InZP, l.P.OutZP, l.P.ActMin, l.P.ActMax, l.P.Round); err != nil {
 		return err
 	}
 	packed, err := packScratch(l.Scratch, conv2DScratchLen(&pl))
@@ -271,7 +271,7 @@ func (l *DepthwiseConv2DLayer) Prepare() error {
 	if len(l.W) != pl.wLen {
 		return ErrLength
 	}
-	if err := pl.setQuant(l.Bias, l.RQ, l.P.InZP, l.P.OutZP, l.P.ActMin, l.P.ActMax); err != nil {
+	if err := pl.setQuant(l.Bias, l.RQ, l.P.InZP, l.P.OutZP, l.P.ActMin, l.P.ActMax, l.P.Round); err != nil {
 		return err
 	}
 	packed, err := packScratch(l.Scratch, depthwiseConv2DScratchLen(&pl))

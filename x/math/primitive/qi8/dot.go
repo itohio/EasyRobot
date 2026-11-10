@@ -37,12 +37,14 @@ type FCParams struct {
 	// ActMin/ActMax is the fused activation clamp (see ActNone/ActReLU/ActReLU6).
 	// Note the zero value [0, 0] clamps everything to 0.
 	ActMin, ActMax int8
+	// Round is the requantisation rounding (zero value RoundExact).
+	Round Rounding
 }
 
 // FullyConnected computes, for every output o,
 //
 //	acc    = bias[o] + sum_i (src[i]-InZP) * weights[o*In+i]   (int32)
-//	dst[o] = clamp(rq[o].Apply(acc) + OutZP, ActMin, ActMax)
+//	dst[o] = clamp(rq[o].Apply(acc) + OutZP, ActMin, ActMax)   (ApplyTFLite with RoundTFLite)
 //
 // weights are [Out][In] row-major; bias is nil or len Out; rq has len Out.
 func FullyConnected(dst, src, weights []int8, bias []int32, rq []Requant, p FCParams) error {
@@ -66,6 +68,7 @@ type fcPlan struct {
 
 	inZP          int32
 	outZP, lo, hi int64 // output zero point and activation clamp
+	round         Rounding
 }
 
 // plan validates the sizes of p.
@@ -80,8 +83,9 @@ func (p FCParams) plan() (fcPlan, error) {
 	return fcPlan{in: p.In, out: p.Out, wLen: wLen}, nil
 }
 
-// setQuant validates bias, requant and the activation range (in that order)
-// and stores the quantisation constants in pl.
+// setQuant validates bias, requant (multipliers, then the rounding mode) and
+// the activation range (in that order) and stores the quantisation
+// constants in pl.
 func (pl *fcPlan) setQuant(bias []int32, rq []Requant, p FCParams) error {
 	if err := validBias(bias, pl.out); err != nil {
 		return err
@@ -89,11 +93,14 @@ func (pl *fcPlan) setQuant(bias []int32, rq []Requant, p FCParams) error {
 	if err := validRequants(rq, pl.out); err != nil {
 		return err
 	}
+	if !p.Round.valid() {
+		return ErrRequant
+	}
 	lo, hi, err := clampRange(p.ActMin, p.ActMax)
 	if err != nil {
 		return err
 	}
-	pl.inZP, pl.outZP, pl.lo, pl.hi = int32(p.InZP), int64(p.OutZP), lo, hi
+	pl.inZP, pl.outZP, pl.lo, pl.hi, pl.round = int32(p.InZP), int64(p.OutZP), lo, hi, p.Round
 	return nil
 }
 
@@ -106,6 +113,6 @@ func fullyConnectedGeneric(dst, src, weights []int8, bias []int32, rq []Requant,
 		if len(bias) != 0 {
 			acc += bias[o]
 		}
-		dst[o] = requantize(acc, rq[o], zpOut, lo, hi)
+		dst[o] = requantizeMode(acc, rq[o], zpOut, lo, hi, pl.round)
 	}
 }
