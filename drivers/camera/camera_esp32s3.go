@@ -35,8 +35,9 @@ const (
 	defaultXCLK = 20_000_000
 	sccbHz      = 100_000
 	// MaxJPEG is the largest buffer Capture uses for JPEG: maxNodes
-	// descriptors of nodeBytes. In internal SRAM the practical limit is the
-	// free RAM (M3/M45 evidence: 290–322 KB alongside FatFs).
+	// descriptors of nodeBytes (1,548,288 B). In internal SRAM the practical
+	// limit is the free RAM (M3/M45 evidence: 290–322 KB alongside FatFs);
+	// PSRAM (SetCacheSync) takes the whole of it.
 	MaxJPEG = maxNodes * nodeBytes
 )
 
@@ -95,9 +96,19 @@ func Identify(cfg Config, pins Pins) (sensor.ID, error) {
 // The ESP32-S3 backend captures Y8, YUV422, RGB565 and JPEG through LCD_CAM
 // and one GDMA channel, in sizes the sensor driver accepts (OV3660: see
 // ov3660.Sensor.Init). Buffers must be 4-byte aligned and in DMA-capable
-// internal SRAM (ErrBufAlign); PSRAM buffers come with E7. Capture waits for
-// a VSYNC, so it takes about two frame periods.
+// internal SRAM, or, after SetCacheSync, 32-byte aligned in PSRAM
+// (ErrBufAlign otherwise). Capture waits for a VSYNC, so it takes about two
+// frame periods.
 var _ Backend = (*Camera)(nil)
+
+// CacheSync is the D-cache maintenance Capture needs for buffers in PSRAM:
+// the GDMA writes PSRAM behind the cache. drivers/esp32s3/psram.Cache
+// implements it. Both methods take cache-line (32 B) aligned slices and
+// fail for memory they do not manage.
+type CacheSync interface {
+	WritebackInvalidate([]byte) error
+	Invalidate([]byte) error
+}
 
 // Camera is an opened ESP32-S3 camera.
 type Camera struct {
@@ -107,10 +118,16 @@ type Camera struct {
 	drv         sensor.Sensor
 	bus         sccbBus
 	ch          *gdmaIn
+	ext         CacheSync
 	vsyncActive bool
 	seq         uint32
 	descs       [maxNodes]dmaDesc // in the Camera allocation: internal SRAM, word aligned
 }
+
+// SetCacheSync lets Capture write into PSRAM buffers (ESP32-S3 only): before
+// the DMA it writes back and invalidates the buffer's cache lines, after it
+// invalidates the received part, so the CPU reads what the GDMA wrote.
+func (c *Camera) SetCacheSync(s CacheSync) { c.ext = s }
 
 // Open starts the sensor clock, identifies the sensor, configures it for
 // cfg and sets LCD_CAM and the GDMA channel up. It allocates the Camera
@@ -193,16 +210,19 @@ func inDMARAM(b []byte) bool {
 }
 
 // Capture grabs the next whole frame into buf.
-//   - Raw formats: buf needs FrameSize(cfg) bytes; RGB565 is swapped to
-//     little-endian in place (the OV3660 sends it big-endian).
+//   - Raw formats: buf needs FrameSize(cfg) bytes (PSRAM: rounded up to 32
+//     within cap(buf)); RGB565 is swapped to little-endian in place (the
+//     OV3660 sends it big-endian).
 //   - JPEG: up to MaxJPEG bytes of buf are used; Frame.Data runs from FF D8
 //     to FF D9 (a complete JPEG counts even when the sensor's padding after
 //     the EOI overran the buffer). A JPEG larger than the buffer gives
 //     ErrBufSize.
 //
-// buf must be 4-byte aligned and in DMA-capable internal SRAM (ErrBufAlign).
-// A frame that does not complete (no VSYNC or EOF within 2 s, wrong length,
-// JPEG without SOI/EOI) gives ErrTimeout. Frame.Data aliases buf.
+// buf must be 4-byte aligned in DMA-capable internal SRAM, or 32-byte
+// aligned in memory the SetCacheSync implementation manages (PSRAM);
+// otherwise ErrBufAlign. A frame that does not complete (no VSYNC or EOF
+// within 2 s, wrong length, JPEG without SOI/EOI) gives ErrTimeout.
+// Frame.Data aliases buf.
 func (c *Camera) Capture(buf []byte) (Frame, error) {
 	jpeg := c.cfg.Format == sensor.JPEG
 	n := FrameSize(c.cfg)
@@ -214,13 +234,38 @@ func (c *Camera) Capture(buf []byte) (Frame, error) {
 	} else if len(buf) < n {
 		return Frame{}, ErrBufSize
 	}
-	buf = buf[:n]
-	if uintptr(unsafe.Pointer(unsafe.SliceData(buf)))&3 != 0 || !inDMARAM(buf) {
+	p := uintptr(unsafe.Pointer(unsafe.SliceData(buf)))
+	ext := false
+	switch {
+	case p&3 != 0:
 		return Frame{}, ErrBufAlign
+	case inDMARAM(buf[:n]):
+	case c.ext == nil || p&(cacheLine-1) != 0:
+		return Frame{}, ErrBufAlign
+	default:
+		// PSRAM: the chain covers whole cache lines, so invalidating the
+		// received part never drops a line the CPU wrote outside it.
+		if jpeg {
+			n &^= cacheLine - 1
+		} else {
+			n = (n + cacheLine - 1) &^ (cacheLine - 1)
+		}
+		if cap(buf) < n || c.ext.WritebackInvalidate(buf[:n:n]) != nil {
+			return Frame{}, ErrBufAlign
+		}
+		ext = true
 	}
+	frameLen := FrameSize(c.cfg)
+	buf = buf[:n]
 	used := buildChain(&c.descs, buf, n)
-	got, ended := captureOnce(c.pins, c.vsyncActive, c.ch, &c.descs, used, time.Now().Add(2*time.Second))
-	data, err := frameResult(jpeg, buf, got, n, ended)
+	got, ended := captureOnce(c.pins, c.vsyncActive, c.ch, &c.descs, used, ext, time.Now().Add(2*time.Second))
+	if ext {
+		m := (got + cacheLine - 1) &^ (cacheLine - 1)
+		if c.ext.Invalidate(buf[:m:m]) != nil {
+			return Frame{}, ErrBufAlign
+		}
+	}
+	data, err := frameResult(jpeg, buf, got, frameLen, ended)
 	if err != nil {
 		return Frame{}, err
 	}

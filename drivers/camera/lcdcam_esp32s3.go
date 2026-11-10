@@ -30,8 +30,9 @@ const (
 )
 
 const (
-	maxNodes = 128 // 516 KB: more than the S3's DMA-capable internal SRAM
-	camClkHz = 160_000_000
+	maxNodes  = 384 // 1.5 MB: a PSRAM JPEG buffer (internal SRAM holds at most ~400 KB)
+	cacheLine = 32  // D-cache line; PSRAM buffers and chain lengths are multiples of it
+	camClkHz  = 160_000_000
 
 	// DMA-capable internal SRAM on the data bus (SOC_DMA_LOW … SOC_DMA_HIGH).
 	dmaLow  = 0x3FC88000
@@ -187,7 +188,10 @@ func received(d *[maxNodes]dmaDesc, used int, eofDesc uint32) int {
 // captureOnce arms LCD_CAM and the GDMA channel right after a VSYNC pulse and
 // waits for the frame's EOF. It returns the received length and whether the
 // frame ended (in_suc_eof) before the descriptors ran out or the deadline.
-func captureOnce(pins Pins, vsyncActive bool, ch *gdmaIn, d *[maxNodes]dmaDesc, used int, deadline time.Time) (int, bool) {
+//
+// ext selects PSRAM mode as esp32-camera's psram_mode does: no descriptor or
+// data bursts, external-memory block size 16 B (IN_EXT_MEM_BK_SIZE 0).
+func captureOnce(pins Pins, vsyncActive bool, ch *gdmaIn, d *[maxNodes]dmaDesc, used int, ext bool, deadline time.Time) (int, bool) {
 	if !waitPin(pins.VSYNC, vsyncActive, deadline) || !waitPin(pins.VSYNC, !vsyncActive, deadline) {
 		return 0, false
 	}
@@ -200,6 +204,13 @@ func captureOnce(pins Pins, vsyncActive bool, ch *gdmaIn, d *[maxNodes]dmaDesc, 
 	cam.SetCAM_CTRL1_CAM_AFIFO_RESET(0)
 	ch.conf0.SetBits(esp.DMA_IN_CONF0_CH_IN_RST)
 	ch.conf0.ClearBits(esp.DMA_IN_CONF0_CH_IN_RST)
+	const bursts = esp.DMA_IN_CONF0_CH_INDSCR_BURST_EN | esp.DMA_IN_CONF0_CH_IN_DATA_BURST_EN
+	if ext {
+		ch.conf0.ClearBits(bursts)
+		ch.conf1.ClearBits(esp.DMA_IN_CONF1_CH_IN_EXT_MEM_BK_SIZE_Msk)
+	} else {
+		ch.conf0.SetBits(bursts)
+	}
 	ch.intClr.Set(0xFFFFFFFF)
 	cam.SetCAM_CTRL1_CAM_REC_DATA_BYTELEN(nodeBytes - 1)
 	ch.link.Set(uint32(uintptr(unsafe.Pointer(&d[0])))&esp.DMA_IN_LINK_CH_INLINK_ADDR_Msk | esp.DMA_IN_LINK_CH_INLINK_START)

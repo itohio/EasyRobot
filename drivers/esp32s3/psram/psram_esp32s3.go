@@ -248,3 +248,10 @@ func WritebackInvalidate(b []byte) error {
 	}
 	return err
 }
+
+// Cache adapts Writeback/Invalidate to camera.CacheSync (and any other DMA
+// user that takes the two methods), so drivers need not import this package.
+type Cache struct{}
+
+func (Cache) WritebackInvalidate(b []byte) error { return WritebackInvalidate(b) }
+func (Cache) Invalidate(b []byte) error          { return Invalidate(b) }
