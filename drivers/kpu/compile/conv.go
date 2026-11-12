@@ -106,9 +106,9 @@ func LowerConv(l *qnet.Layer, src, dst uint32) (Conv, error) { return Lower(l, F
 // followed by an OddSample reader; a fused 2×2 or 4×4 max or average pool
 // after a stride-1 conv (not an average pool with TiesUp, TFLite uint8's
 // round-half-up mean: the KPU's mean floors, so that pool stays on the CPU);
-// a fused ReLU or ReLU6. Weights may carry a zero point (Layer.WZP). The KPU layer's input and
-// output are at most 256 rows (a 258-row input never finishes on silicon,
-// ER-K210-K9 evidence).
+// a fused ReLU or ReLU6. Weights may carry a zero point (Layer.WZP). The
+// KPU layer's input and output are at most 256 rows (a 258-row input never
+// finishes on silicon, ER-K210-K9 evidence).
 //
 // The integers are exact up to requantisation (design note, "Integer
 // mapping"): KPU tensors are uint8 x′ = q + 128 and weights w′ = q_w + 128;

@@ -171,13 +171,18 @@ func TestExposureOnlyWhereLineTimeHolds(t *testing.T) {
 			t.Errorf("%v: ReadControls ExposureUS %d (%v), want 1000", c.m, got.ExposureUS, err)
 		}
 	}
-	// A mode switch back to raw CIF makes the conversion valid again, and
-	// ReadControls reports 0 µs in a mode without a line time.
+	// An exposure set in raw CIF reads back as 0 µs once the sensor runs a
+	// mode without a line time (the AEC registers keep their value), and a
+	// switch back to raw CIF makes the conversion valid again.
 	s := &Sensor{Bus: &regBus{}, Opts: Options{LineNS: 50_000}}
-	for _, m := range []sensor.Mode{{Resolution: sensor.QVGA, Format: sensor.RGB565}, {Resolution: sensor.Resolution{W: 1600, H: 1200}, Format: sensor.JPEG}} {
-		if err := s.Init(m); err != nil {
-			t.Fatal(err)
-		}
+	if err := s.Init(sensor.Mode{Resolution: sensor.QVGA, Format: sensor.RGB565}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetControls(sensor.Controls{ExposureUS: 1000}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Init(sensor.Mode{Resolution: sensor.Resolution{W: 1600, H: 1200}, Format: sensor.JPEG}); err != nil {
+		t.Fatal(err)
 	}
 	if got, _ := s.ReadControls(); got.ExposureUS != 0 {
 		t.Errorf("UXGA JPEG: ReadControls ExposureUS %d, want 0", got.ExposureUS)
@@ -187,5 +192,36 @@ func TestExposureOnlyWhereLineTimeHolds(t *testing.T) {
 	}
 	if err := s.SetControls(sensor.Controls{ExposureUS: 1000}); err != nil {
 		t.Errorf("back to raw CIF: %v", err)
+	}
+}
+
+// failOnceBus is a regBus whose write number n (from 1) fails once.
+type failOnceBus struct {
+	regBus
+	n int
+}
+
+func (b *failOnceBus) WriteReg8(dev, reg, val uint8) error {
+	if b.n--; b.n == 0 {
+		return errors.New("bus fault")
+	}
+	return b.regBus.WriteReg8(dev, reg, val)
+}
+
+// TestExposureRefusedAfterFailedInit: an Init that fails part-way (after
+// the soft reset) towards a mode without a line time leaves µs exposure
+// refused, although the sensor was in raw CIF before.
+func TestExposureRefusedAfterFailedInit(t *testing.T) {
+	bus := &failOnceBus{}
+	s := &Sensor{Bus: bus, Opts: Options{LineNS: 50_000}}
+	if err := s.Init(sensor.Mode{Resolution: sensor.QVGA, Format: sensor.RGB565}); err != nil {
+		t.Fatal(err)
+	}
+	bus.n = 10 // past the reset, inside the mode tables
+	if err := s.Init(sensor.Mode{Resolution: sensor.Resolution{W: 1600, H: 1200}, Format: sensor.JPEG}); err == nil {
+		t.Fatal("Init with a bus fault: no error")
+	}
+	if err := s.SetControls(sensor.Controls{ExposureUS: 1000}); !errors.Is(err, ErrNoLineTime) {
+		t.Errorf("after a failed Init: err %v, want ErrNoLineTime", err)
 	}
 }

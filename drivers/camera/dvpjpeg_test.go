@@ -40,6 +40,7 @@ func TestDVPJPEG(t *testing.T) {
 		"no FF D9":           append([]byte{0xFF, 0xD8, 1, 2}, make([]byte, 60)...),
 		"no FF D8":           append([]byte{0, 0, 0xFF, 0xD9}, make([]byte, 60)...),
 		"FF but not D8":      append([]byte{0xFF, 0xD7, 0xFF, 0xD9}, make([]byte, 60)...),
+		"D8 without FF":      append([]byte{0x00, 0xD8, 0xFF, 0xD9}, make([]byte, 60)...),
 		"lone D9s, no FF D9": append([]byte{0xFF, 0xD8, 0xD9, 1, 0xD9, 0xD9, 0, 0xD9}, make([]byte, 56)...),
 	} {
 		if _, err := dvpJPEG(dvpLayout(stream)); !errors.Is(err, ErrIncomplete) {
