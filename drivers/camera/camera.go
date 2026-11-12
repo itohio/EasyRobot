@@ -21,7 +21,8 @@
 //   - Errors: unsupported format or size ErrFormat; buffer too small
 //     ErrBufSize; buffer misaligned or in memory the capture engine cannot
 //     write ErrBufAlign; no frame in time ErrTimeout; unknown sensor
-//     ErrNoDriver; driver without controls ErrNoControls.
+//     ErrNoDriver; driver without controls ErrNoControls; a JPEG frame
+//     without its FF D8 or FF D9 marker ErrIncomplete.
 //   - A failed Open leaves the sensor powered down.
 //   - Raw formats (Y8, RGB565, YUV422): Capture needs FrameSize(cfg) bytes;
 //     RGB565 comes out little-endian, pixels in raster order.

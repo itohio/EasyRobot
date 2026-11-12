@@ -1,7 +1,8 @@
 // Package ov2640 configures an OmniVision OV2640 over SCCB. It is
 // host-independent; capture backends call Init after sensor.Identify.
 //
-// Register tables are from espressif/esp32-camera v2.1.9
+// Register tables are from espressif/esp32-camera v2.1.9 (the SVGA and UXGA
+// mode tables from its master branch, read 2026-11-10)
 // (sensors/private_include/ov2640_settings.h, Apache-2.0, Copyright
 // 2015-2016 Espressif Systems) and register names from OpenMV's
 // ov2640_regs.h (MIT). The window/clock sequence follows esp32-camera's
@@ -33,6 +34,7 @@ const (
 	zmhh      = 0x5C
 	bpAddr    = 0x7C
 	bpData    = 0x7D
+	qs        = 0x44
 	ctrl2     = 0x86
 	ctrl3     = 0x87
 	sizeL     = 0x8C
@@ -74,8 +76,13 @@ const (
 	histoHigh = 0x62
 
 	com7SRST     = 0x80
+	com7ResUXGA  = 0x00
+	com7ResSVGA  = 0x40
 	com7ResCIF   = 0x20
 	com7ColorBar = 0x02
+
+	ctrl2DCW  = 0x20 // CTRL2 DCW_EN
+	ctrlILPDP = 0x80 // CTRLI LP_DP
 )
 
 // Image modes (DSP IMAGE_MODE).
@@ -148,6 +155,62 @@ var settingsToCIF = [...]reg{
 	{ctrl2, 0x3D}, {ctrlI, 0x80},
 }
 
+// settingsToSVGA is esp32-camera's ov2640_settings_to_svga.
+var settingsToSVGA = [...]reg{
+	{bankSel, bankSensor}, {com7, com7ResSVGA}, {com1, 0x0A}, {reg32, 0x09},
+	{hStart, 0x11}, {hStop, 0x43}, {vStart, 0x00}, {vStop, 0x4b},
+	{0x37, 0xc0}, {bd50, 0xca}, {bd60, 0xa8}, {0x5a, 0x23}, {0x6d, 0x00},
+	{0x3d, 0x38}, {0x39, 0x92}, {0x35, 0xda}, {0x22, 0x1a}, {0x37, 0xc3},
+	{0x23, 0x00}, {arcom2, 0xc0}, {0x06, 0x88}, {0x07, 0xc0}, {com4, 0x87},
+	{0x0e, 0x41}, {0x42, 0x03}, {0x4c, 0x00},
+	{bankSel, bankDSP}, {reset, resetDVP},
+	{hSize8, 0x64}, {vSize8, 0x4B}, {sizeL, 0x00},
+	{hSize, 0xC8}, {vSize, 0x96}, {xOffL, 0x00}, {yOffL, 0x00}, {vhyx, 0x00},
+	{test, 0x00},
+	{ctrl2, ctrl2DCW | 0x1D}, {ctrlI, ctrlILPDP},
+}
+
+// settingsToUXGA is esp32-camera's ov2640_settings_to_uxga.
+var settingsToUXGA = [...]reg{
+	{bankSel, bankSensor}, {com7, com7ResUXGA}, {com1, 0x0F}, {reg32, 0x36},
+	{hStart, 0x11}, {hStop, 0x75}, {vStart, 0x01}, {vStop, 0x97},
+	{0x3d, 0x34}, {bd50, 0xbb}, {bd60, 0x9c}, {0x5a, 0x57}, {0x6d, 0x80},
+	{0x39, 0x82}, {0x23, 0x00}, {0x07, 0xc0}, {0x4c, 0x00}, {0x35, 0x88},
+	{0x22, 0x0a}, {0x37, 0x40}, {arcom2, 0xa0}, {0x06, 0x02}, {com4, 0xb7},
+	{0x0e, 0x01}, {0x42, 0x83},
+	{bankSel, bankDSP}, {reset, resetDVP},
+	{hSize8, 0xc8}, {vSize8, 0x96}, {sizeL, 0x00},
+	{hSize, 0x90}, {vSize, 0x2c}, {xOffL, 0x00}, {yOffL, 0x00}, {vhyx, 0x88},
+	{test, 0x00},
+	{ctrl2, ctrl2DCW | 0x1d}, {ctrlI, 0x00},
+}
+
+// Sensor modes: the sensor's readout (full field of view in each) before
+// the DSP scales or crops to the output size.
+type sensorMode struct {
+	w, h  uint16 // field size in pixels at this mode
+	com7  uint8
+	table []reg
+}
+
+var (
+	modeCIF  = sensorMode{400, 296, com7ResCIF, settingsToCIF[:]}
+	modeSVGA = sensorMode{800, 600, com7ResSVGA, settingsToSVGA[:]}
+	modeUXGA = sensorMode{1600, 1200, com7ResUXGA, settingsToUXGA[:]}
+)
+
+// modeFor picks the smallest sensor mode that holds w×h, as esp32-camera's
+// set_framesize (CIF up to 400×296, SVGA up to 800×600, else UXGA).
+func modeFor(w, h uint16) sensorMode {
+	switch {
+	case w <= modeCIF.w && h <= modeCIF.h:
+		return modeCIF
+	case w <= modeSVGA.w && h <= modeSVGA.h:
+		return modeSVGA
+	}
+	return modeUXGA
+}
+
 var (
 	settingsYUV422 = [...]reg{{bankSel, bankDSP}, {reset, resetDVP}, {imageMode, imageModeYUV422}, {0xD7, 0x01}, {0xE1, 0x67}, {reset, 0x00}}
 	settingsRGB565 = [...]reg{{bankSel, bankDSP}, {reset, resetDVP}, {imageMode, imageModeRGB565}, {0xD7, 0x03}, {0xE1, 0x77}, {reset, 0x00}}
@@ -159,7 +222,7 @@ var (
 )
 
 // ErrMode is returned for a size or format this driver does not set up.
-var ErrMode = errors.New("ov2640: unsupported mode (CIF-class sizes up to 400×296; Y8, RGB565, YUV422, JPEG)")
+var ErrMode = errors.New("ov2640: unsupported mode (sizes up to 1600×1200, multiples of 4; Y8, RGB565, YUV422, JPEG)")
 
 // Options are host-specific choices.
 type Options struct {
@@ -172,6 +235,12 @@ type Options struct {
 	// swaps the byte order on the bus. The K210 DVP's Y mode needs it
 	// (observed, ER-K210-M4 evidence, outside the repo).
 	YUVLowByteFirst bool
+	// JPEGSensorHREF keeps HREF as the sensor's line timing in JPEG mode
+	// (IMAGE_MODE bit 1 clear) instead of esp32-camera's HREF = VSYNC.
+	// The K210 DVP needs it: each line then carries one 256-byte chunk and
+	// every frame arrives whole; with HREF = VSYNC about half the frames
+	// lose their tail (ER-K210-REC evidence, R3).
+	JPEGSensorHREF bool
 	// LineNS is the sensor's line period in ns for this clock setup; it
 	// converts exposure between µs and AEC line periods. The backend measures
 	// or computes it (0 = unknown: manual exposure is refused).
@@ -197,16 +266,18 @@ func (s *Sensor) write(regs []reg) error {
 
 // Init soft-resets the sensor and configures it for m. Y8 uses the YUV422
 // sensor output; the capture backend keeps only Y. m.TestPattern turns on
-// the sensor's colour bars (COM7 bit 1).
+// the sensor's colour bars (COM7 bit 1). The sensor mode is the smallest of
+// CIF (400×296), SVGA (800×600) and UXGA (1600×1200) that holds m.
 func (s *Sensor) Init(m sensor.Mode) error {
 	switch m.Format {
 	case sensor.RGB565, sensor.YUV422, sensor.Y8, sensor.JPEG:
 	default:
 		return ErrMode
 	}
-	if m.W == 0 || m.H == 0 || m.W > 400 || m.H > 296 || m.W%4 != 0 || m.H%4 != 0 {
+	if m.W == 0 || m.H == 0 || m.W > modeUXGA.w || m.H > modeUXGA.h || m.W%4 != 0 || m.H%4 != 0 {
 		return ErrMode
 	}
+	sm := modeFor(m.W, m.H)
 	if err := s.write([]reg{{bankSel, bankSensor}, {com7, com7SRST}}); err != nil {
 		return err
 	}
@@ -214,16 +285,22 @@ func (s *Sensor) Init(m sensor.Mode) error {
 	if err := s.write(settingsCIF[:]); err != nil {
 		return err
 	}
-	if err := s.setWindow(m); err != nil {
+	if err := s.setWindow(m, sm); err != nil {
 		return err
 	}
 	if err := s.setFormat(m.Format); err != nil {
 		return err
 	}
 	if m.TestPattern {
-		return s.write([]reg{{bankSel, bankSensor}, {com7, com7ResCIF | com7ColorBar}})
+		return s.write([]reg{{bankSel, bankSensor}, {com7, sm.com7 | com7ColorBar}})
 	}
 	return nil
+}
+
+// SetQuality sets the JPEG quantisation scale (DSP register QS, as
+// esp32-camera's set_quality): lower is better quality and larger frames.
+func (s *Sensor) SetQuality(q uint8) error {
+	return s.write([]reg{{bankSel, bankDSP}, {qs, q}})
 }
 
 func (s *Sensor) setFormat(f sensor.Format) error {
@@ -241,6 +318,11 @@ func (s *Sensor) setFormat(f sensor.Format) error {
 	if err := s.write(regs); err != nil {
 		return err
 	}
+	if s.Opts.JPEGSensorHREF && f == sensor.JPEG {
+		if err := s.write([]reg{{bankSel, bankDSP}, {reset, resetJPEG | resetDVP}, {imageMode, imageModeJPEG}, {reset, 0x00}}); err != nil {
+			return err
+		}
+	}
 	if s.Opts.YUVLowByteFirst && (f == sensor.YUV422 || f == sensor.Y8) {
 		if err := s.write([]reg{{bankSel, bankDSP}, {reset, resetDVP}, {imageMode, imageModeYUV422 | imageModeLByteFirst}, {reset, 0x00}}); err != nil {
 			return err
@@ -250,17 +332,18 @@ func (s *Sensor) setFormat(f sensor.Format) error {
 	return nil
 }
 
-// setWindow programs CIF sensor mode (400×296, the whole field of view per
-// esp32-camera's ratio table at 1/4 scale, max_y capped at 296) and the DSP
-// window and output size. Full field (m.Crop false): the window is the whole
-// CIF frame and the DSP scaler shrinks it to m.W×m.H. Crop: the window is the
-// centred m.W×m.H region at 1:1 sensor pixels.
-func (s *Sensor) setWindow(m sensor.Mode) error {
-	maxX, maxY := uint16(400/4), uint16(296/4) // window size in 4-pixel units
-	var offX, offY uint16                      // window offset in pixels
+// setWindow programs sensor mode sm (its whole field of view, as
+// esp32-camera's 4:3 ratio-table entry scaled to the mode; CIF's max_y is
+// capped at 296) and the DSP window and output size. Full field (m.Crop
+// false): the window is the whole field and the DSP scaler shrinks it to
+// m.W×m.H. Crop: the window is the centred m.W×m.H region at 1:1 sensor
+// pixels of the mode.
+func (s *Sensor) setWindow(m sensor.Mode, sm sensorMode) error {
+	maxX, maxY := sm.w/4, sm.h/4 // window size in 4-pixel units
+	var offX, offY uint16        // window offset in pixels
 	if m.Crop {
 		maxX, maxY = m.W/4, m.H/4
-		offX, offY = (400-m.W)/2, (296-m.H)/2
+		offX, offY = (sm.w-m.W)/2, (sm.h-m.H)/2
 	}
 	w, h := m.W/4, m.H/4
 	win := []reg{
@@ -275,19 +358,30 @@ func (s *Sensor) setWindow(m sensor.Mode) error {
 		{zmoh, uint8(h)},
 		{zmhh, uint8((h>>6)&0x04 | (w>>8)&0x03)},
 	}
-	// Clock: CLKRC (sensor bank) and R_DVP_SP (DSP bank) as esp32-camera.
-	clk := s.Opts.ClockDiv & 0x3F
-	pclk := uint8(0x80 | 8) // auto PCLK, divider 8
+	// Clock: CLKRC (sensor bank) and R_DVP_SP (DSP bank) as esp32-camera:
+	// raw output divides by ClockDiv in CIF and by 7 above it, with auto
+	// PCLK ÷8 (÷12 in UXGA); JPEG runs undivided with manual PCLK ÷8 (÷12
+	// in UXGA).
+	div := uint8(7)
+	if sm.com7 == com7ResCIF {
+		div = s.Opts.ClockDiv
+	}
+	clk := div & 0x3F
+	pclkDiv := uint8(8)
+	if sm.com7 == com7ResUXGA {
+		pclkDiv = 12
+	}
+	pclk := 0x80 | pclkDiv // auto PCLK
 	if s.Opts.ClockDouble {
 		clk |= 0x80
 	}
 	if m.Format == sensor.JPEG {
-		clk, pclk = 0, 8
+		clk, pclk = 0, pclkDiv
 	}
 	if err := s.write([]reg{{bankSel, bankDSP}, {rBypass, 0x01}}); err != nil {
 		return err
 	}
-	if err := s.write(settingsToCIF[:]); err != nil {
+	if err := s.write(sm.table); err != nil {
 		return err
 	}
 	if err := s.write(win); err != nil {

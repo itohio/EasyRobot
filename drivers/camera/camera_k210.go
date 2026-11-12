@@ -64,9 +64,20 @@ func Identify(cfg Config, pins Pins) (sensor.ID, error) {
 }
 
 // The K210 DVP path captures Y8 and RGB565 at widths that are multiples of
-// 32; other formats and sizes give ErrFormat. Buffers must be 8-byte aligned
-// (ErrBufAlign).
+// 32, and OV2640 JPEG at any sensor size up to 1600×1200; other formats and
+// sizes give ErrFormat. Buffers must be 8-byte aligned (ErrBufAlign).
 var _ Backend = (*Camera)(nil)
+
+// JPEG capture: the sensor sends one 256-byte chunk per line (HREF timed by
+// the sensor, ov2640 Options.JPEGSensorHREF) and the DVP stores up to 1023
+// lines, so a JPEG frame can be at most JPEGBufSize bytes; Capture needs a
+// buffer of that size. Lower the quality (ov2640 Sensor.SetQuality) if
+// frames come back ErrIncomplete.
+const (
+	jpegChunk   = 256
+	jpegLines   = 1023 // DVP LINE_NUM is 10 bits
+	JPEGBufSize = jpegChunk * jpegLines
+)
 
 // Camera is an opened K210 DVP camera.
 type Camera struct {
@@ -112,10 +123,11 @@ func powerDown() {
 // the DVP up for that frame size. Formats: Y8 (sensor YUV422, the DVP keeps
 // Y) and RGB565.
 func Open(cfg Config, pins Pins) (*Camera, error) {
-	if cfg.Format != sensor.Y8 && cfg.Format != sensor.RGB565 {
+	jpeg := cfg.Format == sensor.JPEG
+	if cfg.Format != sensor.Y8 && cfg.Format != sensor.RGB565 && !jpeg {
 		return nil, ErrFormat
 	}
-	if cfg.W == 0 || cfg.W%32 != 0 || cfg.H == 0 {
+	if cfg.W == 0 || cfg.H == 0 || (!jpeg && cfg.W%32 != 0) {
 		return nil, ErrFormat
 	}
 	id, err := Identify(cfg, pins)
@@ -128,7 +140,7 @@ func Open(cfg Config, pins Pins) (*Camera, error) {
 	case sensor.OV2640:
 		s = &ov2640.Sensor{Bus: sccbBus{}, Opts: ov2640.Options{
 			ClockDouble: true, ClockDiv: 3, YUVLowByteFirst: true,
-			LineNS: ov2640.LineNS(clocks.XCLK),
+			JPEGSensorHREF: true, LineNS: ov2640.LineNS(clocks.XCLK),
 		}}
 	default:
 		powerDown()
@@ -139,10 +151,13 @@ func Open(cfg Config, pins Pins) (*Camera, error) {
 		return nil, err
 	}
 	c := &Camera{cfg: cfg, id: id, drv: s}
-	if cfg.Format == sensor.Y8 {
+	switch {
+	case cfg.Format == sensor.Y8:
 		c.planes = make([]byte, 2*int(cfg.W)*int(cfg.H))
 		dvpConfigure(kendryte.DVP_DVP_CFG_FORMAT_Y, cfg.W, cfg.H, true, false)
-	} else {
+	case jpeg: // the display output stores bytes as they come: lines of jpegChunk
+		dvpConfigure(kendryte.DVP_DVP_CFG_FORMAT_RGB, jpegChunk/2, jpegLines, false, true)
+	default:
 		dvpConfigure(kendryte.DVP_DVP_CFG_FORMAT_RGB, cfg.W, cfg.H, false, true)
 	}
 	return c, nil
@@ -173,12 +188,16 @@ func (c *Camera) ReadControls() (sensor.Controls, error) {
 	return d.ReadControls()
 }
 
-// Capture grabs the next whole frame into buf (FrameSize(cfg) bytes,
-// 8-byte aligned, in cached SRAM: not a previous Frame.Data, which is the
-// uncached alias). Frame.Data is buf's uncached alias. RGB565 comes out as
-// little-endian 16-bit pixels in raster order.
+// Capture grabs the next whole frame into buf (FrameSize(cfg) bytes, or
+// JPEGBufSize for JPEG; 8-byte aligned, in cached SRAM: not a previous
+// Frame.Data, which is the uncached alias). Frame.Data is buf's uncached
+// alias. RGB565 comes out as little-endian 16-bit pixels in raster order;
+// JPEG from FF D8 to FF D9, or ErrIncomplete.
 func (c *Camera) Capture(buf []byte) (Frame, error) {
 	n := FrameSize(c.cfg)
+	if c.cfg.Format == sensor.JPEG {
+		n = JPEGBufSize
+	}
 	if len(buf) < n {
 		return Frame{}, ErrBufSize
 	}
@@ -197,6 +216,13 @@ func (c *Camera) Capture(buf []byte) (Frame, error) {
 		return Frame{}, err
 	}
 	data := uncached(buf)
+	if c.cfg.Format == sensor.JPEG {
+		m, err := dvpJPEG(data)
+		if err != nil {
+			return Frame{}, err
+		}
+		data = data[:m]
+	}
 	if c.cfg.Format == sensor.RGB565 {
 		// The DVP display output stores each pixel pair with the two 16-bit
 		// pixels swapped within the 32-bit word (observed, ER-K210-M4).

@@ -120,7 +120,8 @@ func TestInitWindowFullFieldVersusCrop(t *testing.T) {
 
 func TestInitRejectsUnsupportedModes(t *testing.T) {
 	for _, m := range []sensor.Mode{
-		{Resolution: sensor.VGA, Format: sensor.RGB565},                        // larger than CIF
+		{Resolution: sensor.Resolution{W: 1604, H: 1200}, Format: sensor.JPEG}, // wider than UXGA
+		{Resolution: sensor.Resolution{W: 1600, H: 1204}, Format: sensor.JPEG}, // taller than UXGA
 		{Resolution: sensor.Resolution{W: 322, H: 240}, Format: sensor.RGB565}, // not a multiple of 4
 		{Resolution: sensor.QVGA, Format: 0},
 	} {
@@ -131,5 +132,93 @@ func TestInitRejectsUnsupportedModes(t *testing.T) {
 		if len(bus.writes) != 0 || bus.bank != 0 {
 			t.Errorf("%v: %d register writes before rejecting the mode", m, len(bus.writes))
 		}
+	}
+}
+
+// TestInitSensorModes: the smallest of CIF, SVGA and UXGA that holds the
+// output is chosen, with its whole field as the DSP window and the
+// esp32-camera clocks (raw: CLKRC ÷7 above CIF, auto PCLK ÷8, ÷12 in UXGA;
+// JPEG: CLKRC 0, manual PCLK ÷8, ÷12 in UXGA).
+func TestInitSensorModes(t *testing.T) {
+	tests := []struct {
+		mode               sensor.Mode
+		com7               uint8
+		hsize, vsize, vhyx uint8
+		zmow, zmoh, zmhh   uint8
+		clkrc, dvpsp       uint8
+	}{
+		{sensor.Mode{Resolution: sensor.Resolution{W: 400, H: 296}, Format: sensor.RGB565}, com7ResCIF, 100, 74, 0, 100, 74, 0, 0x83, 0x88},
+		{sensor.Mode{Resolution: sensor.VGA, Format: sensor.RGB565}, com7ResSVGA, 200, 150, 0, 160, 120, 0, 0x87, 0x88},
+		{sensor.Mode{Resolution: sensor.Resolution{W: 800, H: 600}, Format: sensor.JPEG}, com7ResSVGA, 200, 150, 0, 200, 150, 0, 0, 8},
+		{sensor.Mode{Resolution: sensor.Resolution{W: 804, H: 600}, Format: sensor.JPEG}, com7ResUXGA, 0x90, 0x2c, 0x88, 201, 150, 0, 0, 12},
+		{sensor.Mode{Resolution: sensor.Resolution{W: 1600, H: 1200}, Format: sensor.JPEG}, com7ResUXGA, 0x90, 0x2c, 0x88, 0x90, 0x2c, 0x05, 0, 12},
+		{sensor.Mode{Resolution: sensor.Resolution{W: 1600, H: 1200}, Format: sensor.RGB565}, com7ResUXGA, 0x90, 0x2c, 0x88, 0x90, 0x2c, 0x05, 0x87, 0x8c},
+	}
+	for _, tt := range tests {
+		bus := &recBus{}
+		s := &Sensor{Bus: bus, Opts: Options{ClockDouble: true, ClockDiv: 3}}
+		if err := s.Init(tt.mode); err != nil {
+			t.Fatalf("%v: %v", tt.mode, err)
+		}
+		dsp := func(r uint8) uint8 { return bus.last[[2]uint8{bankDSP, r}] }
+		sen := func(r uint8) uint8 { return bus.last[[2]uint8{bankSensor, r}] }
+		if sen(com7) != tt.com7 {
+			t.Errorf("%v: COM7 %#x, want %#x", tt.mode, sen(com7), tt.com7)
+		}
+		if dsp(hSize) != tt.hsize || dsp(vSize) != tt.vsize || dsp(vhyx) != tt.vhyx || dsp(test) != 0 {
+			t.Errorf("%v: window %#x×%#x vhyx %#x test %#x, want %#x×%#x vhyx %#x", tt.mode, dsp(hSize), dsp(vSize), dsp(vhyx), dsp(test), tt.hsize, tt.vsize, tt.vhyx)
+		}
+		if dsp(zmow) != tt.zmow || dsp(zmoh) != tt.zmoh || dsp(zmhh) != tt.zmhh {
+			t.Errorf("%v: output %#x×%#x zmhh %#x, want %#x×%#x zmhh %#x", tt.mode, dsp(zmow), dsp(zmoh), dsp(zmhh), tt.zmow, tt.zmoh, tt.zmhh)
+		}
+		if sen(clkrc) != tt.clkrc || dsp(rDVPSP) != tt.dvpsp {
+			t.Errorf("%v: CLKRC %#x R_DVP_SP %#x, want %#x %#x", tt.mode, sen(clkrc), dsp(rDVPSP), tt.clkrc, tt.dvpsp)
+		}
+	}
+}
+
+// TestJPEGSensorHREF: the option clears IMAGE_MODE's HREF = VSYNC bit;
+// without it the esp32-camera setting stays.
+func TestJPEGSensorHREF(t *testing.T) {
+	for _, opt := range []bool{false, true} {
+		bus := &recBus{}
+		s := &Sensor{Bus: bus, Opts: Options{JPEGSensorHREF: opt}}
+		if err := s.Init(sensor.Mode{Resolution: sensor.QVGA, Format: sensor.JPEG}); err != nil {
+			t.Fatal(err)
+		}
+		want := uint8(imageModeJPEG | imageModeHV)
+		if opt {
+			want = imageModeJPEG
+		}
+		if got := bus.last[[2]uint8{bankDSP, imageMode}]; got != want {
+			t.Errorf("JPEGSensorHREF %v: IMAGE_MODE %#x, want %#x", opt, got, want)
+		}
+		if got := bus.last[[2]uint8{bankDSP, reset}]; got != 0 {
+			t.Errorf("JPEGSensorHREF %v: DSP left in reset (%#x)", opt, got)
+		}
+	}
+}
+
+func TestSetQuality(t *testing.T) {
+	bus := &recBus{bank: bankSensor}
+	if err := (&Sensor{Bus: bus}).SetQuality(12); err != nil {
+		t.Fatal(err)
+	}
+	if got := bus.writes; len(got) != 1 || got[0] != [3]uint8{bankDSP, qs, 12} {
+		t.Errorf("writes %v, want QS = 12 in the DSP bank", got)
+	}
+}
+
+// TestCropInLargerModes: a cropped window is centred in the chosen mode's
+// field (SVGA 800×600 for 640×480), not in CIF's.
+func TestCropInLargerModes(t *testing.T) {
+	bus := &recBus{}
+	m := sensor.Mode{Resolution: sensor.VGA, Format: sensor.JPEG, Crop: true}
+	if err := (&Sensor{Bus: bus}).Init(m); err != nil {
+		t.Fatal(err)
+	}
+	dsp := func(r uint8) uint8 { return bus.last[[2]uint8{bankDSP, r}] }
+	if dsp(hSize) != 160 || dsp(vSize) != 120 || dsp(xOffL) != 80 || dsp(yOffL) != 60 || dsp(vhyx) != 0 {
+		t.Errorf("window %d×%d at (%d,%d) vhyx %#x, want 160×120 units at (80,60)", dsp(hSize), dsp(vSize), dsp(xOffL), dsp(yOffL), dsp(vhyx))
 	}
 }
