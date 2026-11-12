@@ -25,6 +25,8 @@ The flock handed over by tinygui, **pinned to tinytufty2040 `cfbd1b0`** (`app/bo
 
 Package `x/math/swarm/boids`: `Flock` (N fixed at `New`), `Params`, `Box` as a concrete type (no interface in the per-boid loop, Leader's decision), `Step`, positions and headings for drawing. O(N²) scan for N ≤ 128; a spatial grid only if measured necessary. Not in scope: trails and colours (demo).
 
+Port the fixed form, not `cfbd1b0` verbatim (review R-ER-SIMALGO-EF on `2c3114b`): before porting, read review R-TG-1 (`~/src/docs/review/R-TG-1.md`) for findings in the ported code (per-frame soft float, per-event allocations, T10) and carry the fixes into the port. The demo-only parts it flags, such as the Dash sparkline, stay out of the package.
+
 Every piece: check written first (red), tests, host benchmark, `tinygo build -target=tufty2040` with no allocation in the package, verify, then commit. No hardware or flashing is authorised by this ticket; tinygui runs it on the badge.
 
 ## Acceptance evidence required later
