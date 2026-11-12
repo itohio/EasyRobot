@@ -139,7 +139,7 @@ func refConv(t *testing.T, src, w []int8, bias []int32, sc refScales, p Conv2DPa
 		} else {
 			o = i / (p.KH * p.KW * in.C)
 		}
-		wr[i] = e.mul(e.fromInt(int64(v)), sc.sW[o])
+		wr[i] = e.mul(e.fromInt(int64(v)-int64(p.WZP)), sc.sW[o])
 	}
 	out := make([]int8, 0, oh*ow*outC)
 	for oy := range oh {
@@ -188,7 +188,7 @@ func refFC(t *testing.T, src, w []int8, bias []int32, sc refScales, p FCParams) 
 			y = e.mul(e.mul(e.fromInt(int64(bias[o])), sc.sIn), sc.sW[o])
 		}
 		for i := range p.In {
-			wv := e.mul(e.fromInt(int64(w[o*p.In+i])), sc.sW[o])
+			wv := e.mul(e.fromInt(int64(w[o*p.In+i])-int64(p.WZP)), sc.sW[o])
 			e.chk(y.Add(y, e.mul(xr[i], wv)))
 		}
 		out[o] = quantizeReal(y, sc.sOut, p.OutZP, p.ActMin, p.ActMax)
@@ -201,7 +201,8 @@ func refFC(t *testing.T, src, w []int8, bias []int32, sc refScales, p FCParams) 
 
 // refPool: max of the valid cells' reals, or their exact mean, mapped back to
 // the shared quantised domain (scale 1 relative, zero point irrelevant because
-// in and out share it: q = mean(q_i), rounded half away from zero).
+// in and out share it: q = mean(q_i), rounded half away from zero, or half
+// up with p.TiesUp).
 func refPool(src []int8, p Pool2DParams, avg bool) []int8 {
 	in := p.In
 	oh, pt := refWindow(in.H, p.KH, p.StrideH, p.Padding)
@@ -227,6 +228,11 @@ func refPool(src []int8, p Pool2DParams, avg bool) []int8 {
 				}
 				if avg {
 					sum.Quo(sum, new(big.Rat).SetInt64(int64(n)))
+					if p.TiesUp {
+						sum.Add(sum, big.NewRat(1, 2))
+						out = append(out, clampBig(new(big.Int).Div(sum.Num(), sum.Denom()), -128, 127)) // floor
+						continue
+					}
 					out = append(out, clampBig(roundHalfAway(sum), -128, 127))
 				} else {
 					out = append(out, int8(m))
@@ -510,6 +516,72 @@ func TestDepthwiseConv2DReference(t *testing.T) {
 	m.done()
 }
 
+// TestWeightZeroPointReference: asymmetric weights (a per-tensor weight zero
+// point, as in TFLite's uint8 models; ER-QU8) for Conv2D, DepthwiseConv2D
+// and FullyConnected against the exact reference.
+func TestWeightZeroPointReference(t *testing.T) {
+	g := newGen(5)
+	m := &mismatchLog{t: t}
+	for c := range 3000 {
+		wzp := g.zp()
+		if wzp == 0 {
+			wzp = 1 + int8(g.r.IntN(127))
+		}
+		e := &exactF{}
+		switch c % 3 {
+		case 0:
+			p := randConvParams(g, false)
+			p.WZP = wzp
+			src, w := g.int8s(p.In.Len()), g.int8s(p.OutC*p.KH*p.KW*p.In.C)
+			bias, rq := g.bias(p.OutC), g.requants(p.OutC)
+			sc := newRefScales(g.r, e, rq)
+			p.ActMin, p.ActMax = g.act(sc.outScale(), p.OutZP)
+			os, err := p.OutShape()
+			if err != nil {
+				t.Fatalf("case %d %+v: %v", c, p, err)
+			}
+			dst := make([]int8, os.Len())
+			if err := Conv2D(dst, src, w, bias, rq, p); err != nil {
+				t.Fatalf("case %d: %v", c, err)
+			}
+			m.compare(func() string { return fmt.Sprintf("conv case %d %+v", c, p) }, dst, refConv(t, src, w, bias, sc, p, false))
+		case 1:
+			cp := randConvParams(g, true)
+			cp.WZP = wzp
+			p := DepthwiseConv2DParams{
+				In: cp.In, KH: cp.KH, KW: cp.KW, StrideH: cp.StrideH, StrideW: cp.StrideW,
+				Padding: cp.Padding, InZP: cp.InZP, OutZP: cp.OutZP, WZP: wzp,
+			}
+			src, w := g.int8s(p.In.Len()), g.int8s(p.KH*p.KW*p.In.C)
+			bias, rq := g.bias(p.In.C), g.requants(p.In.C)
+			sc := newRefScales(g.r, e, rq)
+			p.ActMin, p.ActMax = g.act(sc.outScale(), p.OutZP)
+			cp.ActMin, cp.ActMax = p.ActMin, p.ActMax
+			os, err := p.OutShape()
+			if err != nil {
+				t.Fatalf("case %d %+v: %v", c, p, err)
+			}
+			dst := make([]int8, os.Len())
+			if err := DepthwiseConv2D(dst, src, w, bias, rq, p); err != nil {
+				t.Fatalf("case %d: %v", c, err)
+			}
+			m.compare(func() string { return fmt.Sprintf("dw case %d %+v", c, p) }, dst, refConv(t, src, w, bias, sc, cp, true))
+		default:
+			p := FCParams{In: 1 + g.r.IntN(70), Out: 1 + g.r.IntN(12), InZP: g.zp(), OutZP: g.zp(), WZP: wzp}
+			src, w := g.int8s(p.In), g.int8s(p.In*p.Out)
+			bias, rq := g.bias(p.Out), g.requants(p.Out)
+			sc := newRefScales(g.r, e, rq)
+			p.ActMin, p.ActMax = g.act(sc.outScale(), p.OutZP)
+			dst := make([]int8, p.Out)
+			if err := FullyConnected(dst, src, w, bias, rq, p); err != nil {
+				t.Fatalf("case %d: %v", c, err)
+			}
+			m.compare(func() string { return fmt.Sprintf("fc case %d %+v", c, p) }, dst, refFC(t, src, w, bias, sc, p))
+		}
+	}
+	m.done()
+}
+
 func TestPool2DReference(t *testing.T) {
 	for _, avg := range []bool{false, true} {
 		name := "Max"
@@ -540,6 +612,41 @@ func TestPool2DReference(t *testing.T) {
 			m.done()
 		})
 	}
+}
+
+// TestAvgPoolTiesUpReference: with TiesUp, AvgPool2D rounds the exact mean
+// half up (TFLite's uint8 AVERAGE_POOL_2D on the value − 128 form, ER-QU8);
+// it differs from the default only on negative .5 ties.
+func TestAvgPoolTiesUpReference(t *testing.T) {
+	g := newGen(6)
+	m := &mismatchLog{t: t}
+	differ := 0
+	for c := range 3000 {
+		cp := randConvParams(g, true)
+		p := Pool2DParams{In: cp.In, KH: cp.KH, KW: cp.KW, StrideH: cp.StrideH, StrideW: cp.StrideW, Padding: cp.Padding, TiesUp: true}
+		src := g.int8s(p.In.Len())
+		os, err := p.OutShape()
+		if err != nil {
+			t.Fatalf("case %d %+v: %v", c, p, err)
+		}
+		dst := make([]int8, os.Len())
+		if err := AvgPool2D(dst, src, p); err != nil {
+			t.Fatalf("case %d: %v", c, err)
+		}
+		m.compare(func() string { return fmt.Sprintf("case %d %+v", c, p) }, dst, refPool(src, p, true))
+		p.TiesUp = false
+		away := refPool(src, p, true)
+		for i := range dst {
+			if dst[i] != away[i] {
+				differ++
+			}
+		}
+	}
+	m.done()
+	if differ == 0 {
+		t.Fatal("TiesUp never differed from half-away rounding: the cases have no negative ties")
+	}
+	t.Logf("%d outputs differ from half-away rounding", differ)
 }
 
 func TestReLUReference(t *testing.T) {

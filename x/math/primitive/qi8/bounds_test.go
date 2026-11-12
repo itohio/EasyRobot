@@ -98,3 +98,46 @@ func TestReductionLengthBound(t *testing.T) {
 		t.Fatalf("worst-case acc wrapped: dst = %d, want -128 (saturated negative)", dst[0])
 	}
 }
+
+// TestReductionLengthBoundWZP: with a weight zero point |w − WZP| ≤ 255, so
+// the bound that keeps Σ (x−zp)(w−WZP) inside int32 is MaxTapsWZP; longer
+// reductions are ErrShape for every weighted op, and the worst case at the
+// bound does not wrap.
+func TestReductionLengthBoundWZP(t *testing.T) {
+	if MaxTapsWZP != 33025 {
+		t.Fatalf("MaxTapsWZP = %d, want 33025 (floor((2^31−1)/(255·255)))", MaxTapsWZP)
+	}
+	rq := []Requant{{Mult: 1 << 30, Shift: 0}}
+	n := MaxTapsWZP + 1
+	src, w, dst := make([]int8, n), make([]int8, n), make([]int8, 1)
+	act := func(p *FCParams) { p.ActMin, p.ActMax = -128, 127 }
+	fc := FCParams{In: n, Out: 1, WZP: 127}
+	act(&fc)
+	if err := FullyConnected(dst, src, w, nil, rq, fc); !errors.Is(err, ErrShape) {
+		t.Fatalf("FC In=MaxTapsWZP+1, WZP≠0: err = %v, want ErrShape", err)
+	}
+	fc.WZP = 0
+	if err := FullyConnected(dst, src, w, nil, rq, fc); err != nil {
+		t.Fatalf("FC In=MaxTapsWZP+1, WZP=0: %v", err)
+	}
+	if err := Conv2D(dst, src, w, nil, rq, Conv2DParams{In: Shape{H: 1, W: 1, C: n}, OutC: 1, KH: 1, KW: 1, StrideH: 1, StrideW: 1, WZP: -1, ActMin: -128, ActMax: 127}); !errors.Is(err, ErrShape) {
+		t.Fatalf("Conv K=MaxTapsWZP+1, WZP≠0: err = %v, want ErrShape", err)
+	}
+	dp := DepthwiseConv2DParams{In: Shape{H: 1, W: n, C: 1}, KH: 1, KW: n, StrideH: 1, StrideW: 1, WZP: 5, ActMin: -128, ActMax: 127}
+	if err := DepthwiseConv2D(dst, src, w, nil, rq, dp); !errors.Is(err, ErrShape) {
+		t.Fatalf("Depthwise taps=MaxTapsWZP+1, WZP≠0: err = %v, want ErrShape", err)
+	}
+	// Worst case at the bound: x−zp = 255 and w−WZP = −255 at every tap.
+	for i := range MaxTapsWZP {
+		src[i], w[i] = 127, -128
+	}
+	unit := []Requant{{Mult: 1 << 30, Shift: 1}} // M' = 1
+	fc = FCParams{In: MaxTapsWZP, Out: 1, InZP: -128, WZP: 127}
+	act(&fc)
+	if err := FullyConnected(dst, src[:MaxTapsWZP], w[:MaxTapsWZP], nil, unit, fc); err != nil {
+		t.Fatal(err)
+	}
+	if dst[0] != -128 {
+		t.Fatalf("worst-case acc wrapped: dst = %d, want -128 (saturated negative)", dst[0])
+	}
+}

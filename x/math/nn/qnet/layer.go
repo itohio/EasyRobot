@@ -136,9 +136,10 @@ var LogisticOutQuant = Quant{Scale: 1.0 / 256, ZP: -128}
 //
 // Field use per Kind:
 //
-//	Conv2D, DepthwiseConv2D: geometry, ActMin/ActMax, Weights, Bias, Requant, Round
-//	FullyConnected:          ActMin/ActMax, Weights, Bias, Requant, Round
-//	MaxPool2D, AvgPool2D:    geometry
+//	Conv2D, DepthwiseConv2D: geometry, ActMin/ActMax, Weights, WZP, Bias, Requant, Round
+//	FullyConnected:          ActMin/ActMax, Weights, WZP, Bias, Requant, Round
+//	MaxPool2D:               geometry
+//	AvgPool2D:               geometry, TiesUp
 //	ReLU, ReLU6:             none (zero point and scale from InQ)
 //	Add:                     From (two producers), In2Q, ActMin/ActMax, Round, AddRQ or AddTFLite
 //	Mul:                     From (two producers), In2Q, ActMin/ActMax, Round, RQ
@@ -174,6 +175,9 @@ type Layer struct {
 	KH, KW           int
 	StrideH, StrideW int
 	Padding          qi8.Padding
+	// TiesUp: AvgPool2D rounds .5 ties toward +∞ (TFLite's uint8 kernel;
+	// see qi8.Pool2DParams).
+	TiesUp bool
 
 	// Fused activation clamp (Conv2D, DepthwiseConv2D, FullyConnected, Add,
 	// Mul). The zero value [0, 0] clamps everything to 0.
@@ -185,8 +189,11 @@ type Layer struct {
 	Round qi8.Rounding
 
 	// Weights: Conv2D OHWI [Out.C][KH][KW][In.C]; DepthwiseConv2D [KH][KW][C];
-	// FullyConnected [Out.C][In.Len()] (symmetric int8); Const its data.
+	// FullyConnected [Out.C][In.Len()]; Const its data.
 	Weights []int8
+	// WZP is the weights' zero point: 0 for symmetric weights; TFLite's uint8
+	// models (loaded as int8, see qnet/tfl) have asymmetric ones.
+	WZP int8
 	// Bias is nil or one int32 per output channel (accumulator scale).
 	Bias []int32
 	// Requant has one entry per output channel.
@@ -224,7 +231,7 @@ func (l *Layer) Conv2DParams() qi8.Conv2DParams {
 	return qi8.Conv2DParams{
 		In: l.In, OutC: l.Out.C,
 		KH: l.KH, KW: l.KW, StrideH: l.StrideH, StrideW: l.StrideW, Padding: l.Padding,
-		InZP: l.InQ.ZP, OutZP: l.OutQ.ZP, ActMin: l.ActMin, ActMax: l.ActMax, Round: l.Round,
+		InZP: l.InQ.ZP, OutZP: l.OutQ.ZP, WZP: l.WZP, ActMin: l.ActMin, ActMax: l.ActMax, Round: l.Round,
 	}
 }
 
@@ -233,7 +240,7 @@ func (l *Layer) DepthwiseParams() qi8.DepthwiseConv2DParams {
 	return qi8.DepthwiseConv2DParams{
 		In: l.In,
 		KH: l.KH, KW: l.KW, StrideH: l.StrideH, StrideW: l.StrideW, Padding: l.Padding,
-		InZP: l.InQ.ZP, OutZP: l.OutQ.ZP, ActMin: l.ActMin, ActMax: l.ActMax, Round: l.Round,
+		InZP: l.InQ.ZP, OutZP: l.OutQ.ZP, WZP: l.WZP, ActMin: l.ActMin, ActMax: l.ActMax, Round: l.Round,
 	}
 }
 
@@ -241,7 +248,7 @@ func (l *Layer) DepthwiseParams() qi8.DepthwiseConv2DParams {
 func (l *Layer) FCParams() qi8.FCParams {
 	return qi8.FCParams{
 		In: l.In.Len(), Out: l.Out.C,
-		InZP: l.InQ.ZP, OutZP: l.OutQ.ZP, ActMin: l.ActMin, ActMax: l.ActMax, Round: l.Round,
+		InZP: l.InQ.ZP, OutZP: l.OutQ.ZP, WZP: l.WZP, ActMin: l.ActMin, ActMax: l.ActMax, Round: l.Round,
 	}
 }
 
@@ -249,7 +256,7 @@ func (l *Layer) FCParams() qi8.FCParams {
 func (l *Layer) PoolParams() qi8.Pool2DParams {
 	return qi8.Pool2DParams{
 		In: l.In,
-		KH: l.KH, KW: l.KW, StrideH: l.StrideH, StrideW: l.StrideW, Padding: l.Padding,
+		KH: l.KH, KW: l.KW, StrideH: l.StrideH, StrideW: l.StrideW, Padding: l.Padding, TiesUp: l.TiesUp,
 	}
 }
 

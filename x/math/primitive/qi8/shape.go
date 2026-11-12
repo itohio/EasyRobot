@@ -11,7 +11,18 @@ const (
 	// since |x−zp| ≤ 255 and |w| ≤ 128. The bias term is the caller's
 	// responsibility.
 	MaxTaps = (1<<31 - 1) / (255 * 128)
+	// MaxTapsWZP is MaxTaps for asymmetric weights (a non-zero weight zero
+	// point WZP): |w−WZP| ≤ 255, so 255·255·K < 2^31.
+	MaxTapsWZP = (1<<31 - 1) / (255 * 255)
 )
+
+// maxTaps is the reduction-length bound for weight zero point wzp.
+func maxTaps(wzp int8) int {
+	if wzp != 0 {
+		return MaxTapsWZP
+	}
+	return MaxTaps
+}
 
 // Shape is an NHWC activation shape with batch 1.
 type Shape struct {

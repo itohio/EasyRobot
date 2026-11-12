@@ -35,14 +35,14 @@ No build tags. Declared docs: `nn/SPEC.md`, `nn/REQ_OPS.md`, `layers/SPEC.md` (l
 
 Status and evidence per note (value probes by the layer slice in `~/src/tmp/easyrobot/tensor/layernotes/{densegrad,embed1d,gradcheck,micro,xavier,utilcheck}`):
 
-<!-- vault:algorithms h=22b0241e64c1 -->
+<!-- vault:algorithms h=e8911f50ae2b -->
 
 Counts: 2 tested · 3 implemented · 10 partial · 0 stub · 0 unverified (15 algorithms)
 
 | Algorithm | Status | Tests | Summary |
 |---|---|---|---|
 | [[activation-layers]] | tested | pass | gradients match finite differences |
-| [[int8-graph-runner]] | tested | pass | Int8 graph (layers with producers and multiple outputs: residual Add, Mul, Concat, Const, Pad, resize, Mean, Logistic, Softmax) + greedy activation-memory planner + runner on qi8 prepared layers (PIE on the S3), TFLite int8 importer (pure Go; BlazeFace loads bit-exact), MobileNetV1-0.25 builder; builds for ESP32-S3 and K210. |
+| [[int8-graph-runner]] | tested | pass | Int8 graph (layers with producers and multiple outputs: residual Add, Mul, Concat, Const, Pad, resize, Mean, Logistic, Softmax) + greedy activation-memory planner + runner on qi8 prepared layers (PIE on the S3), TFLite int8 and uint8 importer (pure Go; BlazeFace and TF's uint8 MobileNetV1-0.25 quant models load bit-exact), MobileNetV1-0.25 builder; builds for ESP32-S3 and K210. |
 | [[dense-layer]] | implemented | fail | backward exact by central-difference probe; `TestDense_NumericalGradientCheck` uses float32… |
 | [[nn-loss-functions]] | implemented | none | gradients correct by probe; MSE averages, CrossEntropy sums (inconsistent scaling) |
 | [[nn-parameter-initialisation]] | implemented | pass | Xavier statistics correct; biases initialised randomly instead of zero |

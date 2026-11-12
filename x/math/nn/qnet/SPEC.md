@@ -12,7 +12,7 @@ Numerics are exactly qi8's (see `qi8/SPEC.md`), including its rounding modes.
 |---|---|
 | `Quant{Scale float32; ZP int8}` | activation quantisation, `real = Scale·(q − ZP)` |
 | `Kind` | `Conv2D`, `DepthwiseConv2D`, `FullyConnected`, `MaxPool2D`, `AvgPool2D`, `ReLU`, `ReLU6`, `Add`, `Reshape`, `Softmax`, `Logistic`, `Mul`, `Mean`, `Requantize`, `Concat`, `Pad`, `ResizeNearest`, `Const`, `LeakyReLU`, `ResizeBilinear` |
-| `Layer` | plain data: `Kind`, `From []int`, `In/Out qi8.Shape`, `InQ/OutQ/In2Q Quant`, geometry `KH, KW, StrideH, StrideW, Padding`, fused clamp `ActMin/ActMax`, `Round qi8.Rounding`, `Weights []int8` (Const: its data), `Bias []int32` (nil = 0), `Requant []qi8.Requant`, `AddRQ`/`AddTFLite`, `SoftmaxParams`, `LogisticParams`, `RQ qi8.Requant` (Mul/Mean/Requantize, LeakyReLU identity), `RQAlpha` (LeakyReLU alpha), `Axis` (Concat: 0 H, 1 W, 2 C), `Pads [6]int` + `PadValue`, `AlignCorners`/`HalfPixel` (both resizes) |
+| `Layer` | plain data: `Kind`, `From []int`, `In/Out qi8.Shape`, `InQ/OutQ/In2Q Quant`, geometry `KH, KW, StrideH, StrideW, Padding`, `TiesUp` (AvgPool2D: round ties up, TFLite's uint8 pool), fused clamp `ActMin/ActMax`, `Round qi8.Rounding`, `Weights []int8` (Const: its data), `WZP int8` (weights' zero point, 0 = symmetric), `Bias []int32` (nil = 0), `Requant []qi8.Requant`, `AddRQ`/`AddTFLite`, `SoftmaxParams`, `LogisticParams`, `RQ qi8.Requant` (Mul/Mean/Requantize, LeakyReLU identity), `RQAlpha` (LeakyReLU alpha), `Axis` (Concat: 0 H, 1 W, 2 C), `Pads [6]int` + `PadValue`, `AlignCorners`/`HalfPixel` (both resizes) |
 | `Graph{Layers []Layer; Outputs []int}` | layers in execution order; layer i reads the layers in `From`; `Outputs` are the graph outputs (nil: the last layer) |
 
 `From` lists producers: indices below the layer, or −1 for the graph input;
@@ -42,7 +42,10 @@ is `qi8.Requantize`; `Concat` is `qi8.Concat` with `outer` = the product of
 the dimensions before `Axis`; `Pad` is `qi8.Pad`; `ResizeNearest` and
 `ResizeBilinear` are `qi8.ResizeNearest`/`qi8.ResizeBilinear`; `LeakyReLU` is
 `qi8.LeakyReLU`; `Const` outputs its `Weights`.
-Weight layouts are qi8's (OHWI, `[KH][KW][C]`, `[Out][In]`).
+Weight layouts are qi8's (OHWI, `[KH][KW][C]`, `[Out][In]`); `WZP` reaches
+the weighted kernels' `qi8` params and `TiesUp` `PoolParams()`. An
+accelerator backend that claims a weighted layer must honour `WZP` (or
+decline layers with `WZP ≠ 0`).
 
 ## Validation (`Graph.Check() (layer int, err error)`, `Validate()`)
 
@@ -57,8 +60,8 @@ Softmax/Logistic output `SoftmaxOutQuant`/`LogisticOutQuant` (`ErrQuant`);
 `ActMin ≤ ActMax` (`ErrActivation`); `len(Weights)`, `len(Requant)` equal
 `ParamCounts` (Const: `Out.Len()`), `Bias` nil or equal, all requants (and
 `RQ`/`RQAlpha`, which may also be zero) `Valid`, valid `Round`, Add multipliers and
-softmax/logistic scaling (qi8 validation), no weights on other
-parameter-free kinds (`ErrParams`); `Outputs` non-empty and in range
+softmax/logistic scaling (qi8 validation), no weights or `WZP` on other
+parameter-free kinds, `TiesUp` only on `AvgPool2D` (`ErrParams`); `Outputs` non-empty and in range
 (`ErrShape`, index −1). Empty graph: `ErrEmpty`.
 
 ## Parameters
@@ -183,12 +186,24 @@ operand of ADD, MUL or CONCATENATION becomes a `Const` layer (not for the
 first operator). I/O cuts: a float or uint8 graph input whose QUANTIZE is
 the first operator, and DEQUANTIZEs of graph outputs, are removed — the
 graph takes the int8 input (`Layers[0].InQ`) and returns int8 outputs; the
-caller converts. Requirements: int8 activations with one scale/zero point,
+caller converts. Requirements: int8 or uint8 activations with one scale/zero point,
 symmetric int8 weights per channel or per tensor, int32 bias, batch 1, no
 dilation, one input, one or more outputs (`Graph.Outputs` in model order;
 nil when the only output is the last layer) with the last operator's among
 them, one subgraph. Anything else returns an `*OpError{Index, Op, Reason}`
 naming the operator (wraps `ErrUnsupported`).
+
+uint8 models (TF's "quant" exports) load as int8: every uint8 value and zero
+point minus 128 (exact). Per-tensor uint8 weights may be asymmetric: their
+zero point minus 128 becomes `WZP` (the weights are converted into a copy);
+multipliers are `float64(float32(sIn·sW))/float64(sOut)` as TFLite's uint8
+path; a uint8 AVERAGE_POOL_2D sets `TiesUp`; CONV_2D/DEPTHWISE_CONV_2D round
+as `RoundTFLite`, FULLY_CONNECTED as `RoundExact` (as for int8, both checked
+against the interpreter). The caller feeds `x − 128` and reads `y + 128`.
+uint8 is accepted on CONV_2D, DEPTHWISE_CONV_2D, FULLY_CONNECTED,
+AVERAGE_POOL_2D, MAX_POOL_2D, RESHAPE and SOFTMAX; mixing int8 and uint8 in
+one operator, uint8 on any other operator, per-channel uint8 weights and
+QUANTIZE to a non-int8 type are refused, the reason naming the tensor.
 
 ## Verification
 
@@ -211,4 +226,7 @@ every rejection path and truncated files; `testdata/opsnet.tflite`
 (`gen_opsnet.py`: float I/O, three outputs, every added operator, constants)
 equals the LiteRT interpreter on every operator output for 64 inputs
 (`opsnet.json.gz`); `yoloLayers` checks LeakyReLU and ResizeBilinear against
-`RunLayer` in both rounding modes.
+`RunLayer` in both rounding modes. `testdata/u8net.tflite` (`gen_u8net.py`:
+a uint8 model with asymmetric weights and every uint8 operator, tie-heavy
+scales and inputs) equals the interpreter on every operator output for 64
+inputs (`u8net.json.gz`) with `AllocsPerRun == 0`.

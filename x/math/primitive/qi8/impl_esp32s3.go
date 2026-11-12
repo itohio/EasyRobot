@@ -111,9 +111,21 @@ func (l *pieLayout) unpack(w []int8) {
 	}
 }
 
-func conv2DScratchLen(pl *convPlan) int { return pieScratchLen(pl.wPerOut, pl.outC) }
+// Layers with asymmetric weights (WZP ≠ 0, TFLite's uint8 models) run the
+// generic loops: they need no Scratch, so nothing is packed, unpacked or
+// placed in place.
+
+func conv2DScratchLen(pl *convPlan) int {
+	if pl.wZP != 0 {
+		return 0
+	}
+	return pieScratchLen(pl.wPerOut, pl.outC)
+}
 
 func conv2DPack(scratch, w []int8, bias []int32, _ []Requant, pl *convPlan) {
+	if pl.wZP != 0 {
+		return
+	}
 	l := newPieLayout(scratch, pl.wPerOut, pl.outC)
 	l.pack(w, bias, pl.inZP)
 }
@@ -123,7 +135,11 @@ func conv2DUnpack(scratch, w []int8, pl *convPlan) {
 	l.unpack(w)
 }
 
-func conv2DRun(dst, src, _, scratch []int8, _ []int32, rq []Requant, pl *convPlan) {
+func conv2DRun(dst, src, w, scratch []int8, bias []int32, rq []Requant, pl *convPlan) {
+	if pl.wZP != 0 {
+		conv2DGeneric(dst, src, w, bias, rq, pl)
+		return
+	}
 	l := newPieLayout(scratch, pl.wPerOut, pl.outC)
 	g := &pl.geometry
 	inC := g.ch
@@ -189,6 +205,9 @@ func roundUp16(n int) int { return (n + 15) &^ 15 }
 const ptrSize = int(unsafe.Sizeof(uintptr(0)))
 
 func depthwiseConv2DScratchLen(pl *convPlan) int {
+	if pl.wZP != 0 {
+		return 0
+	}
 	c16 := roundUp16(pl.ch)
 	return 15 + pl.taps*c16 + c16 + 16*pl.taps + 64 + ptrSize*pl.taps + 4*pl.ch
 }
@@ -217,6 +236,9 @@ func newPieDWLayout(scratch []int8, pl *convPlan) pieDWLayout {
 // so w may alias the start of the aligned scratch), fills the zero-point row
 // and precomputes biasEff.
 func depthwiseConv2DPack(scratch, w []int8, bias []int32, _ []Requant, pl *convPlan) {
+	if pl.wZP != 0 {
+		return
+	}
 	l := newPieDWLayout(scratch, pl)
 	for t := l.taps - 1; t >= 0; t-- {
 		row := l.wpack[t*l.c16 : (t+1)*l.c16]
@@ -250,7 +272,11 @@ func depthwiseConv2DUnpack(scratch, w []int8, pl *convPlan) {
 // depthwiseConv2DRun loads 16-channel groups straight from src when C is a
 // multiple of 16 and src is 16-byte aligned (pixel rows are then aligned),
 // and stages them otherwise.
-func depthwiseConv2DRun(dst, src, _, scratch []int8, _ []int32, rq []Requant, pl *convPlan) {
+func depthwiseConv2DRun(dst, src, w, scratch []int8, bias []int32, rq []Requant, pl *convPlan) {
+	if pl.wZP != 0 {
+		depthwiseConv2DGeneric(dst, src, w, bias, rq, pl)
+		return
+	}
 	l := newPieDWLayout(scratch, pl)
 	g := &pl.geometry
 	c := l.c
@@ -284,9 +310,17 @@ func depthwiseConv2DRun(dst, src, _, scratch []int8, _ []int32, rq []Requant, pl
 	}
 }
 
-func fullyConnectedScratchLen(pl *fcPlan) int { return pieScratchLen(pl.in, pl.out) }
+func fullyConnectedScratchLen(pl *fcPlan) int {
+	if pl.wZP != 0 {
+		return 0
+	}
+	return pieScratchLen(pl.in, pl.out)
+}
 
 func fullyConnectedPack(scratch, w []int8, bias []int32, _ []Requant, pl *fcPlan) {
+	if pl.wZP != 0 {
+		return
+	}
 	l := newPieLayout(scratch, pl.in, pl.out)
 	l.pack(w, bias, pl.inZP)
 }
@@ -296,7 +330,11 @@ func fullyConnectedUnpack(scratch, w []int8, pl *fcPlan) {
 	l.unpack(w)
 }
 
-func fullyConnectedRun(dst, src, _, scratch []int8, _ []int32, rq []Requant, pl *fcPlan) {
+func fullyConnectedRun(dst, src, w, scratch []int8, bias []int32, rq []Requant, pl *fcPlan) {
+	if pl.wZP != 0 {
+		fullyConnectedGeneric(dst, src, w, bias, rq, pl)
+		return
+	}
 	l := newPieLayout(scratch, pl.in, pl.out)
 	copy(l.patch, src[:pl.in])
 	pieDotRowsRQ(&l, rq, pl.outZP, pl.lo, pl.hi, pl.round, dst[:pl.out])

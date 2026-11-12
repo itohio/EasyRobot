@@ -7,6 +7,10 @@ type Pool2DParams struct {
 	KH, KW           int
 	StrideH, StrideW int
 	Padding          Padding
+	// TiesUp makes AvgPool2D round .5 ties toward +∞ instead of away from
+	// zero: TFLite's uint8 AVERAGE_POOL_2D ((Σu + n/2)/n on uint8 values u)
+	// computed on the value − 128 int8 form. MaxPool2D ignores it.
+	TiesUp bool
 }
 
 // OutShape returns the output shape for p.
@@ -24,7 +28,8 @@ func (p Pool2DParams) OutShape() (Shape, error) {
 // poolPlan is the validated, resolved form of Pool2DParams.
 type poolPlan struct {
 	geometry
-	outLen int // outH·outW·ch
+	outLen int  // outH·outW·ch
+	tiesUp bool // AvgPool2D rounding (Pool2DParams.TiesUp)
 }
 
 // plan validates p (everything except the slices).
@@ -37,7 +42,7 @@ func (p Pool2DParams) plan() (poolPlan, error) {
 	if err != nil {
 		return poolPlan{}, err
 	}
-	return poolPlan{geometry: g, outLen: outLen}, nil
+	return poolPlan{geometry: g, outLen: outLen, tiesUp: p.TiesUp}, nil
 }
 
 func (p Pool2DParams) planFor(dst, src []int8) (poolPlan, error) {
@@ -93,7 +98,9 @@ func maxPool2DGeneric(dst, src []int8, pl *poolPlan) {
 
 // AvgPool2D computes per-channel averages over each window, counting only
 // valid (non-padded) cells: y = roundHalfAwayFromZero(sum(q)/count), exact
-// integer arithmetic on the raw int8 values (TFLite semantics).
+// integer arithmetic on the raw int8 values (TFLite's int8 semantics); with
+// p.TiesUp, y = floor((sum(q) + count/2)/count) (TFLite's uint8 kernel on the
+// value − 128 form).
 func AvgPool2D(dst, src []int8, p Pool2DParams) error {
 	pl, err := p.planFor(dst, src)
 	if err != nil {
@@ -117,6 +124,14 @@ func avgPool2DGeneric(dst, src []int8, pl *poolPlan) {
 			base := iy*rowStride + ix*c
 			count := int32((ky1 - ky0) * (kx1 - kx0)) // >= 1 for SAME and VALID
 			half := count / 2
+			// Negative sums round as −((−sum + negHalf)/count): negHalf = half
+			// rounds ties away from zero; with tiesUp, negHalf = count−1−half
+			// gives floor((sum + half)/count) (the two differ only for even
+			// counts), so the mode costs nothing per element.
+			negHalf := half
+			if pl.tiesUp {
+				negHalf = count - 1 - half
+			}
 			for ch := range c {
 				var sum int32
 				for ky := ky0; ky < ky1; ky++ {
@@ -125,11 +140,11 @@ func avgPool2DGeneric(dst, src []int8, pl *poolPlan) {
 						sum += int32(src[xo+kx*c])
 					}
 				}
-				// Rounds half away from zero; the result lies in [-128, 127].
+				// The result lies in [-128, 127].
 				if sum >= 0 {
 					sum = (sum + half) / count
 				} else {
-					sum = -((-sum + half) / count)
+					sum = -((-sum + negHalf) / count)
 				}
 				dst[di] = int8(sum)
 				di++

@@ -9,7 +9,7 @@ are package sentinels returned unwrapped.
 | Item | Layout / type | Quantisation |
 |---|---|---|
 | Activations | NHWC, batch 1, `[]int8` | asymmetric: scale, zero point `zp ∈ [-128,127]` (`int8`) |
-| Conv weights | OHWI `[OutC][KH][KW][InC]` | symmetric (zp 0), per output channel scale; `-128` allowed |
+| Conv weights | OHWI `[OutC][KH][KW][InC]` | per output channel scale; symmetric (`WZP` 0, the usual int8 case; `-128` allowed) or a per-tensor weight zero point `WZP` (asymmetric, TFLite's uint8 models loaded as int8) |
 | Depthwise weights | `[KH][KW][C]`, channel multiplier 1 | same |
 | FC weights | `[Out][In]` | same |
 | Bias | `[]int32` per output channel, or `nil` (zero) | accumulator scale `sIn·sW[o]` |
@@ -17,12 +17,17 @@ are package sentinels returned unwrapped.
 
 ## Accumulation
 
-`acc = bias[o] + Σ (x − zpIn)·w` in int32. Padded taps contribute 0 (padding
+`acc = bias[o] + Σ (x − zpIn)·(w − WZP)` in int32. Padded taps contribute 0 (padding
 value is `zpIn`). The reduction length K (taps·inC for conv, taps for
-depthwise and pools, In for FC) is limited to `MaxTaps = ⌊(2^31−1)/(255·128)⌋ = 65 793`
-(`ErrShape` above it), so `Σ (x − zpIn)·w` cannot wrap; keeping
-`|bias| + K·255·128 < 2^31` is the caller's responsibility (the bias term is
-not checked).
+depthwise and pools, In for FC) is limited to `MaxTaps = ⌊(2^31−1)/(255·128)⌋ = 65 793`,
+or `MaxTapsWZP = ⌊(2^31−1)/(255·255)⌋ = 33 025` when `WZP ≠ 0` (`|w − WZP| ≤ 255`)
+(`ErrShape` above it), so the sum cannot wrap; keeping
+`|bias| + K·255·128` (`·255` with `WZP`) `< 2^31` is the caller's responsibility (the bias term is
+not checked). The generic kernels evaluate `WZP` as
+`Σ (x−zpIn)·w − WZP·Σ (x−zpIn)` (conv, FC: the window sum once per output
+pixel or call) or `(x−zpIn)·(w−WZP)` per tap (depthwise), only when
+`WZP ≠ 0`; the PIE backend runs layers with `WZP ≠ 0` through the generic
+loops.
 
 Accelerated paths may evaluate `Σ x·w − zpIn·Σw` (with the padded-tap
 correction) instead of subtracting the zero point per tap: within the
@@ -82,7 +87,11 @@ to `2^31` then `Mult = 2^30, exp++`; `Shift = exp`. Representable reals:
   Importers therefore set `RoundExact` on fully connected layers.
 
 An unknown `Round` value is `ErrRequant` (checked after the multipliers).
-Pools are mode-independent: `AvgPool2D` already rounds as TFLite does.
+Pools are mode-independent: `AvgPool2D` already rounds as TFLite's int8
+kernel does. `Pool2DParams.TiesUp` selects TFLite's uint8 average pool,
+`(Σu + n/2)/n` on uint8 values `u`, which on the `u − 128` int8 form is
+`floor((Σq + ⌊n/2⌋)/n)`: it differs from half-away rounding only on negative
+`.5` ties (even windows).
 `Quantize6TFLite`/`ActReLU6TFLite` compute TFLite's ReLU6 bound
 (`zp + roundf(6/scale)`, division in float32), which can differ from
 `Quantize6` (float64) on a near-.5 quotient.
@@ -262,7 +271,7 @@ Height and width are independent (`KH/KW`, `StrideH/StrideW`). No dilation.
 | `Conv2D(dst, src, w, bias, rq, Conv2DParams)` | any `KH×KW`, any stride |
 | `DepthwiseConv2D(dst, src, w, bias, rq, DepthwiseConv2DParams)` | any `KH×KW`, any stride |
 | `MaxPool2D(dst, src, Pool2DParams)` | max over valid (non-padded) cells |
-| `AvgPool2D(dst, src, Pool2DParams)` | `roundHalfAwayFromZero(Σq / count)` over valid cells, exact integer |
+| `AvgPool2D(dst, src, Pool2DParams)` | `roundHalfAwayFromZero(Σq / count)` over valid cells, exact integer (half up with `TiesUp`) |
 | `ReLU`, `ReLU6`, `Add`, `Softmax` | above |
 | `QuantizeMultiplier`, `QuantizeAddMultipliers`, `QuantizeAddTFLite`, `QuantizeSoftmax`, `Act*`, `Quantize6`, `Quantize6TFLite` | helpers |
 | `(*Params).OutShape()` | output shape for `dst` sizing |
@@ -275,7 +284,7 @@ integer domain (TFLite behaviour): on an exact `.5` tie where `mean(q)` and
 ## Errors
 
 `ErrShape` (non-positive dims/kernel/stride, unknown padding, VALID with
-`k > in`, any count above `MaxElements`, reduction length above `MaxTaps`),
+`k > in`, any count above `MaxElements`, reduction length above `MaxTaps` or `MaxTapsWZP`),
 `ErrLength` (slice length ≠ shape, bias not `nil`/`OutC`, requant ≠ `OutC`),
 `ErrRequant`, `ErrActivation`, `ErrNotPrepared` (prepared layers only).
 
@@ -324,7 +333,8 @@ only** — build tags, `GOARCH` and the TinyGo target select one `impl_*.go` per
 binary; there is no runtime CPU detection, no `x/sys/cpu` dispatch and no
 function-pointer switching. `Backend()` names the build: `"generic"`,
 `"esp32s3-pie"` (`esp32s3 && !qi8generic`: conv/FC dot products in ACCX,
-depthwise in QACC; pools, activations and Add generic); `-tags qi8generic`
+depthwise in QACC; pools, activations, Add and layers with a weight zero
+point generic); `-tags qi8generic`
 forces generic on any target. Planned: baseline `arm64` = NEON, `-tags
 dotprod` adds SDOT; RVV likewise by tag. Every per-op backend must be
 **byte-identical** to the free-function reference in the same rounding mode.
@@ -345,7 +355,9 @@ and is compared against the reference within a tolerance, not bit-exactly.
 values dyadic, exactness asserted), evaluates the op, quantises with exact
 rationals (half away from zero) and clamps. Kernel output must be
 bit-identical on seeded random cases (odd sizes, strides 1–3, non-square
-kernels, SAME/VALID edges, zp ±128/127, extreme Mult/Shift, saturation).
+kernels, SAME/VALID edges, zp ±128/127, extreme Mult/Shift, saturation),
+including asymmetric weights (`TestWeightZeroPointReference`) and the
+ties-up average pool (`TestAvgPoolTiesUpReference`).
 `TestNoAllocs`/`TestLayerNoAllocs` assert `AllocsPerRun == 0`. TinyGo
 `-print-allocs=qi8` is empty for `xiao-esp32s3` and the UnitV target.
 `layer_test.go` checks every prepared layer byte-for-byte against its free

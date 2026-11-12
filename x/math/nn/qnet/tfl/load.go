@@ -9,19 +9,30 @@ import (
 	"github.com/itohio/EasyRobot/x/math/primitive/qi8"
 )
 
-// Load converts the first subgraph of an int8 TFLite model into a qnet graph
-// that reproduces TFLite's reference kernels: Conv2D, depthwise and Add use
-// qi8.RoundTFLite; FullyConnected uses qi8.RoundExact, because TFLite's
-// FULLY_CONNECTED kernel rounds once, half away from zero (established
-// against the LiteRT interpreter, see qi8/testdata/README.md); multipliers
-// are computed from the float32 scales the way TFLite does, and fused
-// activation ranges use TFLite's float32 rounding.
+// Load converts the first subgraph of an int8 or uint8 TFLite model into a
+// qnet graph that reproduces TFLite's reference kernels: Conv2D, depthwise
+// and Add use qi8.RoundTFLite; FullyConnected uses qi8.RoundExact, because
+// TFLite's FULLY_CONNECTED kernel rounds once, half away from zero
+// (established against the LiteRT interpreter, see qi8/testdata/README.md);
+// multipliers are computed from the float32 scales the way TFLite does, and
+// fused activation ranges use TFLite's float32 rounding.
 //
-// Weights alias b (no copy), so b must stay alive and unchanged while the
-// graph is used; it can live in flash. Bias aliases b when 4-byte aligned on
-// a little-endian machine (copied otherwise); requantisation multipliers and
-// the transposed weights of a channel-multiplier depthwise layer are
-// allocated.
+// uint8 models (TF's "quant" exports: uint8 per-tensor activations and
+// asymmetric per-tensor uint8 weights) load as int8 by subtracting 128 from
+// every value and zero point, which is exact: the weights' zero point
+// becomes Layer.WZP, the uint8 average pool's rounding Layer.TiesUp, and
+// multipliers use TFLite's uint8 form (sIn·sW in float32). The caller feeds
+// the graph input as x − 128 and reads uint8 outputs as y + 128. uint8 is
+// accepted on CONV_2D, DEPTHWISE_CONV_2D, FULLY_CONNECTED, AVERAGE_POOL_2D,
+// MAX_POOL_2D, RESHAPE and SOFTMAX (each checked against the interpreter);
+// an operator mixing int8 and uint8 tensors, uint8 on any other operator
+// and per-channel uint8 weights are refused with the tensor named.
+//
+// int8 weights alias b (no copy), so b must stay alive and unchanged while
+// the graph is used; it can live in flash. uint8 weights are converted into
+// a copy. Bias aliases b when 4-byte aligned on a little-endian machine
+// (copied otherwise); requantisation multipliers and the transposed weights
+// of a channel-multiplier depthwise layer are allocated.
 //
 // Supported operators: CONV_2D, DEPTHWISE_CONV_2D (multiplier 1, or an
 // input with one channel and any multiplier, which becomes a Conv2D),
@@ -36,9 +47,9 @@ import (
 // or uint8 graph input quantised by the first operator (QUANTIZE), and
 // DEQUANTIZEs producing graph outputs, are cut: the graph then takes the
 // int8 input quantised as Layers[0].InQ and returns int8 outputs quantised
-// as their layers' OutQ; the caller converts. Tensors must be int8 (bias
-// int32) with per-tensor activation quantisation, symmetric weights
-// (per-channel or per-tensor) and batch 1; one input and one or more
+// as their layers' OutQ; the caller converts. Tensors must be int8 or uint8
+// as above (bias int32) with per-tensor activation quantisation, symmetric
+// int8 weights (per-channel or per-tensor) and batch 1; one input and one or more
 // outputs (Graph.Outputs in the model's order, nil when the only output is
 // the last layer), the last operator's among them. Anything else returns an
 // *OpError naming the operator (it wraps ErrUnsupported), or ErrFormat for a
@@ -183,20 +194,77 @@ func (c *converter) shape(t *tensor) (qi8.Shape, error) {
 	return qi8.Shape{}, c.fail("batch must be 1 (rank ≤ 4)")
 }
 
-// quant reads a per-tensor int8 activation quantisation.
+// quant reads a per-tensor activation quantisation. uint8 tensors are
+// loaded as int8 (value − 128, exact), so their zero point moves by −128.
 func (c *converter) quant(t *tensor) (qnet.Quant, error) {
-	if t.typ != typeInt8 {
-		return qnet.Quant{}, c.fail("activations must be int8 (uint8/float models are not supported)")
+	var off int64
+	switch t.typ {
+	case typeInt8:
+	case typeUInt8:
+		off = -128
+	default:
+		return qnet.Quant{}, c.failT(t, "activations must be int8 or uint8 (float models are not supported)")
 	}
 	if t.scale.n != 1 || t.zp.n != 1 {
-		return qnet.Quant{}, c.fail("activations must have one scale and zero point")
+		return qnet.Quant{}, c.failT(t, "activations must have one scale and zero point")
 	}
 	s := c.m.scaleAt(t, 0)
-	zp := c.m.zpAt(t, 0)
+	zp := c.m.zpAt(t, 0) + off
 	if !(s > 0) || math.IsInf(float64(s), 0) || zp < -128 || zp > 127 {
-		return qnet.Quant{}, c.fail("invalid activation scale or zero point")
+		return qnet.Quant{}, c.failT(t, "invalid activation scale or zero point")
 	}
 	return qnet.Quant{Scale: s, ZP: int8(zp)}, nil
+}
+
+// failT is fail naming tensor t.
+func (c *converter) failT(t *tensor, reason string) error {
+	return c.fail("tensor \"" + string(t.name) + "\": " + reason)
+}
+
+// uint8Ops are the operators whose uint8 TFLite kernels are verified equal
+// to qnet on the value − 128 int8 form (ER-QU8: official uint8 MobileNetV1
+// models and one-operator models against the LiteRT interpreter).
+var uint8Ops = map[int32]bool{
+	opConv2D: true, opDepthwiseConv2D: true, opFullyConnected: true,
+	opAveragePool2D: true, opMaxPool2D: true, opReshape: true, opSoftmax: true,
+}
+
+// dtype checks that o's int8/uint8 tensors (activations, weights, constant
+// operands) share one element type, and that uint8 appears only on
+// operators in uint8Ops. QUANTIZE and DEQUANTIZE change the type; they are
+// checked where they are converted.
+func (c *converter) dtype(o *operator) error {
+	if o.code == opQuantize || o.code == opDequantize {
+		return nil
+	}
+	var first tensor
+	have := false
+	for _, outputs := range []bool{false, true} {
+		n := o.inputs.n
+		if outputs {
+			n = o.outputs.n
+		}
+		for k := range n {
+			t, idx, err := c.tensorAt(o, k, outputs)
+			if err != nil {
+				return err
+			}
+			if idx < 0 || (t.typ != typeInt8 && t.typ != typeUInt8) {
+				continue
+			}
+			if !have {
+				first, have = t, true
+				continue
+			}
+			if t.typ != first.typ {
+				return c.failT(&t, "mixed int8 and uint8 tensors in one operator")
+			}
+		}
+	}
+	if have && first.typ == typeUInt8 && !uint8Ops[o.code] {
+		return c.failT(&first, "uint8 is supported only for CONV_2D, DEPTHWISE_CONV_2D, FULLY_CONNECTED, AVERAGE_POOL_2D, MAX_POOL_2D, RESHAPE and SOFTMAX")
+	}
+	return nil
 }
 
 // input resolves activation input k of o.
@@ -264,6 +332,9 @@ func (c *converter) emit(l qnet.Layer, outIdx int, from ...int) error {
 func (c *converter) convert(o *operator) error {
 	if len(o.custom) > 0 {
 		return c.fail("custom operators are not supported")
+	}
+	if err := c.dtype(o); err != nil {
+		return err
 	}
 	switch o.code {
 	case opConv2D:
@@ -382,37 +453,40 @@ func int32s(b []byte) []int32 {
 	return out
 }
 
-// weights reads a symmetric int8 weight tensor with n channels along
-// quantised dimension dim and returns its data and per-channel scales.
-func (c *converter) weights(o *operator, k int, wantShape []int32, n int, dim int32) ([]int8, []float32, error) {
+// weights reads a weight tensor with n channels along quantised dimension
+// dim and returns its data, per-channel scales and zero point. int8 weights
+// must be symmetric (per-channel or per-tensor); uint8 weights must be
+// per-tensor (asymmetric allowed) and are returned as int8 (value − 128, a
+// copy) with their zero point moved by −128.
+func (c *converter) weights(o *operator, k int, wantShape []int32, n int, dim int32) ([]int8, []float32, int8, error) {
 	t, d, err := c.constant(o, k)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, 0, err
 	}
 	if d == nil {
-		return nil, nil, c.fail("missing weights")
+		return nil, nil, 0, c.fail("missing weights")
 	}
-	if t.typ != typeInt8 {
-		return nil, nil, c.fail("weights must be int8")
+	if t.typ != typeInt8 && t.typ != typeUInt8 {
+		return nil, nil, 0, c.failT(&t, "weights must be int8 or uint8")
 	}
 	if len(t.shape) != len(wantShape) {
-		return nil, nil, c.fail("unexpected weight shape")
+		return nil, nil, 0, c.failT(&t, "unexpected weight shape")
 	}
 	size := 1
 	for i, s := range t.shape {
 		if s != wantShape[i] {
-			return nil, nil, c.fail("unexpected weight shape")
+			return nil, nil, 0, c.failT(&t, "unexpected weight shape")
 		}
 		size *= int(s)
 	}
 	if len(d) != size {
-		return nil, nil, ErrFormat
+		return nil, nil, 0, ErrFormat
 	}
 	if t.scale.n != 1 && (t.scale.n != n || t.qdim != dim) {
-		return nil, nil, c.fail("weight quantisation must be per-tensor or per output channel")
+		return nil, nil, 0, c.failT(&t, "weight quantisation must be per-tensor or per output channel")
 	}
 	if t.zp.n != 0 && t.zp.n != t.scale.n {
-		return nil, nil, ErrFormat
+		return nil, nil, 0, ErrFormat
 	}
 	scales := make([]float32, n)
 	for ch := range n {
@@ -421,11 +495,30 @@ func (c *converter) weights(o *operator, k int, wantShape []int32, n int, dim in
 			k = ch
 		}
 		scales[ch] = c.m.scaleAt(&t, k)
-		if t.zp.n > 0 && c.m.zpAt(&t, k) != 0 {
-			return nil, nil, c.fail("weights must be symmetric (zero point 0)")
-		}
 	}
-	return int8s(d), scales, nil
+	if t.typ == typeInt8 {
+		for k := range t.zp.n {
+			if c.m.zpAt(&t, k) != 0 {
+				return nil, nil, 0, c.failT(&t, "int8 weights must be symmetric (zero point 0)")
+			}
+		}
+		return int8s(d), scales, 0, nil
+	}
+	if t.scale.n != 1 {
+		return nil, nil, 0, c.failT(&t, "per-channel uint8 (asymmetric) weights are not supported")
+	}
+	var zp int64
+	if t.zp.n == 1 {
+		zp = c.m.zpAt(&t, 0)
+	}
+	if zp < 0 || zp > 255 {
+		return nil, nil, 0, c.failT(&t, "invalid weight zero point")
+	}
+	w := make([]int8, len(d))
+	for i, v := range d {
+		w[i] = int8(v ^ 0x80) // v − 128
+	}
+	return w, scales, int8(zp - 128), nil
 }
 
 // bias reads optional int32 bias input k with n entries.
@@ -449,10 +542,15 @@ func (c *converter) bias(o *operator, k, n int) ([]int32, error) {
 // requants computes TFLite's per-channel multipliers sIn·sW/sOut. Like
 // TFLite's QuantizeMultiplier, a multiplier below 2^-32 (or a zero weight
 // scale) becomes the zero multiplier: the channel outputs its zero point.
-func (c *converter) requants(sIn float32, sW []float32, sOut float32) ([]qi8.Requant, error) {
+// For uint8 models TFLite forms sIn·sW in float32 before widening
+// (GetQuantizedConvolutionMultipler); int8 models widen first.
+func (c *converter) requants(sIn float32, sW []float32, sOut float32, uint8Model bool) ([]qi8.Requant, error) {
 	rq := make([]qi8.Requant, len(sW))
 	for i, w := range sW {
 		real := float64(sIn) * float64(w) / float64(sOut)
+		if uint8Model {
+			real = float64(sIn*w) / float64(sOut)
+		}
 		if real >= 0 && real < 0x1p-32 {
 			continue // zero multiplier
 		}
@@ -520,15 +618,15 @@ func (c *converter) conv(o *operator, depthwise bool) error {
 	switch {
 	case !depthwise:
 		l.Kind = qnet.Conv2D
-		l.Weights, scales, err = c.weights(o, 1, []int32{int32(os.C), int32(kh), int32(kw), int32(x.shape.C)}, os.C, 0)
+		l.Weights, scales, l.WZP, err = c.weights(o, 1, []int32{int32(os.C), int32(kh), int32(kw), int32(x.shape.C)}, os.C, 0)
 	case os.C == x.shape.C:
 		l.Kind = qnet.DepthwiseConv2D
-		l.Weights, scales, err = c.weights(o, 1, []int32{1, int32(kh), int32(kw), int32(os.C)}, os.C, 3)
+		l.Weights, scales, l.WZP, err = c.weights(o, 1, []int32{1, int32(kh), int32(kw), int32(os.C)}, os.C, 3)
 	case x.shape.C == 1 && int(mult) == os.C:
 		// Depthwise over one channel with multiplier M is a Conv2D with M
 		// outputs: weights [1][kh][kw][M] → OHWI [M][kh][kw][1].
 		var w []int8
-		w, scales, err = c.weights(o, 1, []int32{1, int32(kh), int32(kw), int32(os.C)}, os.C, 3)
+		w, scales, l.WZP, err = c.weights(o, 1, []int32{1, int32(kh), int32(kw), int32(os.C)}, os.C, 3)
 		if err == nil {
 			l.Kind = qnet.Conv2D
 			l.Weights = make([]int8, len(w))
@@ -547,7 +645,7 @@ func (c *converter) conv(o *operator, depthwise bool) error {
 	if l.Bias, err = c.bias(o, 2, os.C); err != nil {
 		return err
 	}
-	if l.Requant, err = c.requants(x.q.Scale, scales, oq.Scale); err != nil {
+	if l.Requant, err = c.requants(x.q.Scale, scales, oq.Scale, wt.typ == typeUInt8); err != nil {
 		return err
 	}
 	return c.emit(l, outIdx, x.from)
@@ -576,16 +674,20 @@ func (c *converter) fc(o *operator) error {
 	}
 	l := qnet.Layer{
 		Kind: qnet.FullyConnected, In: x.shape, InQ: x.q, Out: qi8.Shape{H: 1, W: 1, C: n}, OutQ: oq,
-		ActMin: lo, ActMax: hi, Round: qi8.RoundExact, // TFLite's FC rounds once, half away from zero
+		ActMin: lo, ActMax: hi, Round: qi8.RoundExact, // TFLite's FC (int8 and uint8) rounds once, half away from zero
 	}
 	var scales []float32
-	if l.Weights, scales, err = c.weights(o, 1, []int32{int32(n), int32(x.shape.Len())}, n, 0); err != nil {
+	if l.Weights, scales, l.WZP, err = c.weights(o, 1, []int32{int32(n), int32(x.shape.Len())}, n, 0); err != nil {
 		return err
 	}
 	if l.Bias, err = c.bias(o, 2, n); err != nil {
 		return err
 	}
-	if l.Requant, err = c.requants(x.q.Scale, scales, oq.Scale); err != nil {
+	wt, _, err := c.tensorAt(o, 1, false)
+	if err != nil {
+		return err
+	}
+	if l.Requant, err = c.requants(x.q.Scale, scales, oq.Scale, wt.typ == typeUInt8); err != nil {
 		return err
 	}
 	if err := c.emit(l, outIdx, x.from); err != nil {
@@ -625,11 +727,17 @@ func (c *converter) pool(o *operator) error {
 	if o.code == opMaxPool2D {
 		kind = qnet.MaxPool2D
 	}
+	xt, _, err := c.tensorAt(o, 0, false)
+	if err != nil {
+		return err
+	}
 	l := qnet.Layer{
 		Kind: kind, In: x.shape, InQ: x.q, Out: os, OutQ: oq,
 		KH: int(f.fieldI32(o.opts, poolFilterH, 1)), KW: int(f.fieldI32(o.opts, poolFilterW, 1)),
 		StrideH: int(f.fieldI32(o.opts, poolStrideH, 1)), StrideW: int(f.fieldI32(o.opts, poolStrideW, 1)),
 		Padding: p,
+		// TFLite's uint8 average pool rounds ties up ((Σu + n/2)/n), its int8 one away from zero.
+		TiesUp: kind == qnet.AvgPool2D && xt.typ == typeUInt8,
 	}
 	return c.emit(l, outIdx, x.from)
 }
@@ -910,6 +1018,9 @@ func (c *converter) quantize(o *operator) error {
 	t, idx, err := c.tensorAt(o, 0, false)
 	if err != nil {
 		return err
+	}
+	if ot, _, err := c.tensorAt(o, 0, true); err == nil && ot.typ != typeInt8 {
+		return c.failT(&ot, "QUANTIZE to a non-int8 type is not supported")
 	}
 	if t.typ == typeFloat32 || t.typ == typeUInt8 {
 		if p, ok := c.prod[idx]; !ok || p != -1 || len(c.layers) != 0 {

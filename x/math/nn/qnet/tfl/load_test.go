@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"math/rand/v2"
+	"strings"
 	"testing"
 	"unsafe"
 
@@ -309,30 +310,41 @@ func TestLoadErrors(t *testing.T) {
 		b.io([]int32{in}, []int32{out})
 		return b.bytes()
 	}
+	// asU8 makes tensor i uint8 with zero point zp (all its channels).
+	asU8 := func(b *mb, i int32, zp ...int64) {
+		b.tensorTable(int(i)).u8(tensorType, typeUInt8).sub(tensorQuantization).vecI64(quantZeroPoint, zp)
+	}
 	unsupported := []struct {
 		name, op string
 		model    []byte
+		tensor   string // named in the reason, when set
 	}{
-		{"unknown op", "SUB", conv(func(*mb, int32, int32, int32) (int32, uint8, *tableSpec) { return opSub, 0, nil })},
-		{"unnamed op", "BUILTIN_145", conv(func(*mb, int32, int32, int32) (int32, uint8, *tableSpec) { return 145, 0, nil })},
+		{"unknown op", "SUB", conv(func(*mb, int32, int32, int32) (int32, uint8, *tableSpec) { return opSub, 0, nil }), ""},
+		{"unnamed op", "BUILTIN_145", conv(func(*mb, int32, int32, int32) (int32, uint8, *tableSpec) { return 145, 0, nil }), ""},
 		{"dilation", "CONV_2D", conv(func(*mb, int32, int32, int32) (int32, uint8, *tableSpec) {
 			return opConv2D, optConv2D, optsConv2D(padSame, 1, 1, actNone, 2, 1)
-		})},
-		{"uint8 input", "CONV_2D", conv(func(b *mb, in, _, _ int32) (int32, uint8, *tableSpec) {
-			b.tensorTable(int(in)).u8(tensorType, typeUInt8)
+		}), ""},
+		{"uint8 input, int8 weights", "CONV_2D", conv(func(b *mb, in, _, _ int32) (int32, uint8, *tableSpec) {
+			asU8(b, in, 130)
 			return opConv2D, optConv2D, optsConv2D(padSame, 1, 1, actNone, 1, 1)
-		})},
-		{"asymmetric weights", "CONV_2D", conv(func(b *mb, _, w, _ int32) (int32, uint8, *tableSpec) {
+		}), "w"},
+		{"per-channel uint8 weights", "CONV_2D", conv(func(b *mb, in, w, out int32) (int32, uint8, *tableSpec) {
+			asU8(b, in, 130)
+			asU8(b, w, 120, 140)
+			asU8(b, out, 124)
+			return opConv2D, optConv2D, optsConv2D(padSame, 1, 1, actNone, 1, 1)
+		}), "w"},
+		{"asymmetric int8 weights", "CONV_2D", conv(func(b *mb, _, w, _ int32) (int32, uint8, *tableSpec) {
 			b.tensorTable(int(w)).sub(tensorQuantization).vecI64(quantZeroPoint, []int64{0, 3})
 			return opConv2D, optConv2D, optsConv2D(padSame, 1, 1, actNone, 1, 1)
-		})},
+		}), "w"},
 		{"tanh activation", "CONV_2D", conv(func(*mb, int32, int32, int32) (int32, uint8, *tableSpec) {
 			return opConv2D, optConv2D, optsConv2D(padSame, 1, 1, 4, 1, 1)
-		})},
+		}), ""},
 		{"sparse weights", "CONV_2D", conv(func(b *mb, _, w, _ int32) (int32, uint8, *tableSpec) {
 			b.sparse(int(w))
 			return opConv2D, optConv2D, optsConv2D(padSame, 1, 1, actNone, 1, 1)
-		})},
+		}), ""},
 	}
 	for _, c := range unsupported {
 		_, err := Load(c.model)
@@ -340,19 +352,37 @@ func TestLoadErrors(t *testing.T) {
 		if !errors.As(err, &oe) || !errors.Is(err, ErrUnsupported) || oe.Op != c.op || oe.Index != 0 {
 			t.Fatalf("%s: %v", c.name, err)
 		}
+		if c.tensor != "" && !strings.Contains(oe.Reason, `tensor "`+c.tensor+`"`) {
+			t.Fatalf("%s: reason %q does not name tensor %q", c.name, oe.Reason, c.tensor)
+		}
 		t.Logf("%s: %v", c.name, err)
+	}
+
+	// uint8 on an operator not verified for it (ADD) is refused, naming the tensor
+	b := newMB()
+	x := b.act([]int32{1, 2, 2, 2}, 0.1, 0)
+	y := b.act([]int32{1, 2, 2, 2}, 0.1, 0)
+	z := b.act([]int32{1, 2, 2, 2}, 0.1, 0)
+	for _, i := range []int32{x, y, z} {
+		asU8(b, i, 128)
+	}
+	b.op(opMaxPool2D, []int32{x}, []int32{y}, optPool2D, optsPool2D(padSame, 1, 1, 1, 1, actNone))
+	b.op(opAdd, []int32{x, y}, []int32{z}, optAdd, optsAdd(actNone))
+	b.io([]int32{x}, []int32{z})
+	var oe *OpError
+	if _, err := Load(b.bytes()); !errors.As(err, &oe) || oe.Op != "ADD" || oe.Index != 1 || !strings.Contains(oe.Reason, `tensor "a"`) {
+		t.Fatalf("uint8 add: %v", err)
 	}
 
 	// broadcasting Add, pool with fused activation, softmax output quant,
 	// and an output that is not the last operator
-	b := newMB()
-	x := b.act([]int32{1, 2, 2, 2}, 0.1, 0)
-	y := b.act([]int32{1, 1, 1, 2}, 0.1, 0)
-	z := b.act([]int32{1, 2, 2, 2}, 0.1, 0)
+	b = newMB()
+	x = b.act([]int32{1, 2, 2, 2}, 0.1, 0)
+	y = b.act([]int32{1, 1, 1, 2}, 0.1, 0)
+	z = b.act([]int32{1, 2, 2, 2}, 0.1, 0)
 	b.op(opAveragePool2D, []int32{x}, []int32{y}, optPool2D, optsPool2D(padValid, 1, 1, 2, 2, actNone))
 	b.op(opAdd, []int32{x, y}, []int32{z}, optAdd, optsAdd(actNone))
 	b.io([]int32{x}, []int32{z})
-	var oe *OpError
 	if _, err := Load(b.bytes()); !errors.As(err, &oe) || oe.Op != "ADD" || oe.Index != 1 {
 		t.Fatalf("broadcast add: %v", err)
 	}

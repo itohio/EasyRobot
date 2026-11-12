@@ -29,6 +29,16 @@ func dotZP(x, w []int8, zp int32) int32 {
 	return acc
 }
 
+// sumZP returns sum(x[i]-zp) over len(x) elements (the window sum a weight
+// zero point multiplies).
+func sumZP(x []int8, zp int32) int32 {
+	var s int32
+	for _, v := range x {
+		s += int32(v)
+	}
+	return s - zp*int32(len(x))
+}
+
 // dotZP2 returns Σ (x[i]−zp)·w0[i] and Σ (x[i]−zp)·w1[i]: two weight rows
 // against one input run, each input byte loaded and offset once.
 func dotZP2(x, w0, w1 []int8, zp int32) (int32, int32) {
@@ -67,6 +77,8 @@ type FCParams struct {
 	In, Out int // input and output vector lengths
 	// InZP and OutZP are the activation zero points.
 	InZP, OutZP int8
+	// WZP is the per-tensor weight zero point (0: symmetric; see Conv2DParams).
+	WZP int8
 	// ActMin/ActMax is the fused activation clamp (see ActNone/ActReLU/ActReLU6).
 	// Note the zero value [0, 0] clamps everything to 0.
 	ActMin, ActMax int8
@@ -76,7 +88,7 @@ type FCParams struct {
 
 // FullyConnected computes, for every output o,
 //
-//	acc    = bias[o] + sum_i (src[i]-InZP) * weights[o*In+i]   (int32)
+//	acc    = bias[o] + sum_i (src[i]-InZP) * (weights[o*In+i]-WZP)   (int32)
 //	dst[o] = clamp(rq[o].Apply(acc) + OutZP, ActMin, ActMax)   (ApplyTFLite with RoundTFLite)
 //
 // weights are [Out][In] row-major; bias is nil or len Out; rq has len Out.
@@ -100,20 +112,21 @@ type fcPlan struct {
 	in, out, wLen int
 
 	inZP          int32
+	wZP           int32 // weight zero point (0: symmetric)
 	outZP, lo, hi int64 // output zero point and activation clamp
 	round         Rounding
 }
 
 // plan validates the sizes of p.
 func (p FCParams) plan() (fcPlan, error) {
-	if p.In <= 0 || p.Out <= 0 || p.In > MaxTaps {
+	if p.In <= 0 || p.Out <= 0 || p.In > maxTaps(p.WZP) {
 		return fcPlan{}, ErrShape
 	}
 	wLen, ok := mul2(p.In, p.Out)
 	if !ok {
 		return fcPlan{}, ErrShape
 	}
-	return fcPlan{in: p.In, out: p.Out, wLen: wLen}, nil
+	return fcPlan{in: p.In, out: p.Out, wLen: wLen, wZP: int32(p.WZP)}, nil
 }
 
 // setQuant validates bias, requant (multipliers, then the rounding mode) and
@@ -138,11 +151,16 @@ func (pl *fcPlan) setQuant(bias []int32, rq []Requant, p FCParams) error {
 }
 
 // fullyConnectedGeneric is the FullyConnected inner loop. All arguments are
-// validated against pl.
+// validated against pl. A weight zero point subtracts WZP·Σ (x−zp), computed
+// once per call.
 func fullyConnectedGeneric(dst, src, weights []int8, bias []int32, rq []Requant, pl *fcPlan) {
 	in, zp, zpOut, lo, hi := pl.in, pl.inZP, pl.outZP, pl.lo, pl.hi
+	var corr int32
+	if pl.wZP != 0 {
+		corr = pl.wZP * sumZP(src[:in], zp)
+	}
 	for o := range dst[:pl.out] {
-		acc := dotZP(src, weights[o*in:(o+1)*in], zp)
+		acc := dotZP(src, weights[o*in:(o+1)*in], zp) - corr
 		if len(bias) != 0 {
 			acc += bias[o]
 		}

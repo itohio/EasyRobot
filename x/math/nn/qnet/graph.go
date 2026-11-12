@@ -270,7 +270,10 @@ func (g *Graph) checkLayer(i int, params bool) error {
 	if (l.Kind.hasParams() || l.Kind == Add || l.Kind == Mul) && l.ActMin > l.ActMax {
 		return ErrActivation
 	}
-	if !l.Kind.hasParams() && ((l.Kind != Const && len(l.Weights) != 0) || len(l.Bias) != 0 || len(l.Requant) != 0) {
+	if !l.Kind.hasParams() && ((l.Kind != Const && len(l.Weights) != 0) || len(l.Bias) != 0 || len(l.Requant) != 0 || l.WZP != 0) {
+		return ErrParams
+	}
+	if l.TiesUp && l.Kind != AvgPool2D {
 		return ErrParams
 	}
 	if !params {
