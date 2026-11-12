@@ -109,6 +109,24 @@ func TestDetectorMinInterval(t *testing.T) {
 	}
 }
 
+// With MinInterval 0 only the hysteresis (arm above Threshold, fire on the
+// fall through the baseline) keeps a noisy peak to one step: a bounce that
+// barely clears Threshold, with noise, still counts 40±1 in 20 s at 2/s
+// (review S5: firing on the fall through Threshold instead counts 44–57).
+func TestDetectorHysteresis(t *testing.T) {
+	for _, c := range []struct{ amp, noise float64 }{{1.4, 0.6}, {1.4, 1}, {1.8, 1}} {
+		cfg := DefaultDetectorConfig(100)
+		cfg.MinInterval = 0
+		d, err := NewDetector(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := walk(t, &d, 100, 20, 2, c.amp, c.noise, 1); got < 39 || got > 41 {
+			t.Errorf("bounce %v m/s², noise %v: %d steps, want 40±1", c.amp, c.noise, got)
+		}
+	}
+}
+
 func TestNewDetectorRefusesBadConfig(t *testing.T) {
 	for _, c := range []DetectorConfig{
 		{},

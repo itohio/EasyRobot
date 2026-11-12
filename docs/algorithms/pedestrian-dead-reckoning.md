@@ -47,6 +47,7 @@ evidence: "go test -race ./x/math/nav/pdr pass (12 tests incl. a badge-mounted w
     - `TestDetectorBaselineTimeConstant`: a +0.5 m/s² level step reaches 63 % in `Baseline` s ±5 %, with no steps.
     - `TestDetectorPrimingAndBadSamples`: zero samples before waking then 30 s of noisy rest give 0 steps; a NaN mid-walk leaves the count right.
     - `TestDetectorMinInterval`.
+    - `TestDetectorHysteresis`: with `MinInterval` 0, a bounce barely above `Threshold` with noise still counts 40±1 in 20 s at 2/s; firing on the fall through `Threshold` instead of the baseline counts 44–57 (review S5).
     - `TestNewDetectorRefusesBadConfig`: includes ±Inf/NaN and a gap beyond int32.
   - **Heading:**
     - `TestHeading`: the badge's −Z at four turns, in portrait and with the IMU x axis vertical; the vertical axis is refused.

@@ -33,7 +33,7 @@ evidence: "go test -race ./x/devices/mpu6050 pass (8 tests, fake register bus, l
 - Complete: yes for the demo's needs (brief ER-SIMALGO §Owner MPU6050). Not covered: FIFO, self-test, gyro bias calibration, the auxiliary I2C master, motion interrupts.
 - Tested: `mpu6050_test.go` on a fake register bus that records transactions; register addresses in the tests are literals from the register map, not the package's constants, and accel and gyro use different range codes:
   - `TestProbe`: 0x68, 0x70, and a bus error giving id 0.
-  - `TestConfigure`: 0x6B=0x01, 0x19, 0x1A, 0x1B=±500 °/s, 0x1C=±8 g, 0x37=0x30, 0x38; the address; 100 Hz and 1 kHz; invalid fields refused before any write.
+  - `TestConfigure`: 0x6B=0x01, 0x19, 0x1A, 0x1B=±500 °/s, 0x1C=±8 g, 0x37=0x30, 0x38; the address; 100 Hz and 1 kHz; the 5 Hz filter (code 6, the last valid one) with divider 255 gives 1 kHz/256 (review S5); invalid fields refused before any write.
   - `TestBusErrorsPropagate`: `ReadRaw`, `Read` and `DataReady` return the error. A failure at each of `Configure`'s 7 writes stops there; `Config()` holds exactly the fields whose writes landed, and 4096 counts read as 1 g only once ±8 g has landed. No ready flag leaks into a failed read.
   - `TestReadRaw`: one write of 0x3B, one 14-byte read, signed big-endian decode incl. −32768 and 32767.
   - `TestScale`: every range; temperature +340 → 37.53 °C, −340 → 35.53 °C.

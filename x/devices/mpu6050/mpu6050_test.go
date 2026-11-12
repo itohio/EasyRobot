@@ -133,6 +133,17 @@ func TestConfigure(t *testing.T) {
 	if b.regs[0x38] != 0 {
 		t.Errorf("INT_ENABLE %#x, want 0 without the data-ready interrupt", b.regs[0x38])
 	}
+	// the slowest settings: the 5 Hz filter (code 6, the last valid one)
+	// and the largest divider
+	if err := d.Configure(Config{SampleRateDiv: 255, DLPF: DLPF5Hz}); err != nil {
+		t.Fatal(err)
+	}
+	if b.regs[0x19] != 255 || b.regs[0x1A] != 6 {
+		t.Errorf("SMPLRT_DIV %d, CONFIG %d, want 255 and 6", b.regs[0x19], b.regs[0x1A])
+	}
+	if got := d.SampleRate(); got != 1000.0/256 {
+		t.Errorf("DLPF 5 Hz, divider 255: %v Hz, want 1 kHz/256", got)
+	}
 	for _, bad := range []Config{{DLPF: 7}, {Accel: 4}, {Gyro: 4}} {
 		n := len(b.txs)
 		if err := d.Configure(bad); !errors.Is(err, devices.ErrInvalidValue) || len(b.txs) != n {
