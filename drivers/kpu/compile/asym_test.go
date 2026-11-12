@@ -139,3 +139,45 @@ func TestAsymmetricExtremeAccumulator(t *testing.T) {
 		}
 	}
 }
+
+// TestLowerAsymmetricSAMEStride2: TF SAME stride-2 3×3 layers (regular and
+// depthwise, as in the official uint8 MobileNet) with a weight zero point,
+// lowered at full resolution (Fuse.Full) and sampled at the odd pixels as
+// the OddSample reader does, against qnet's stride-2 SAME layer with the
+// equivalent symmetric weights: within 1 LSB.
+func TestLowerAsymmetricSAMEStride2(t *testing.T) {
+	r := rand.New(rand.NewPCG(5, 2026))
+	var hist [2]int
+	for n := range 200 {
+		l := randomLayer(r)
+		for l.KH != 3 {
+			l = randomLayer(r)
+		}
+		h, w := 2*(1+r.IntN(12)), 2*(1+r.IntN(12))
+		l.In.H, l.In.W = h, w
+		l.StrideH, l.StrideW, l.Padding = 2, 2, qi8.PaddingSame
+		l.Out.H, l.Out.W = h/2, w/2
+		c := chain{conv: l, in: l.In, out: l.Out}
+		a, zw := asymmetric(r, &c)
+		in := make([]int8, c.in.Len())
+		for i := range in {
+			in[i] = int8(r.IntN(256) - 128)
+		}
+		want := c.run(t, in)
+		lc, err := lowerZW(&a, Fuse{Full: true}, 0, 16384, zw)
+		if err != nil {
+			t.Fatalf("layer %d (%v, z_w %d): %v", n, a.Kind, zw, err)
+		}
+		full := emulate(t, lc, in, c.in, qi8.Shape{H: h, W: w, C: l.Out.C})
+		got := sampleAt(full, l.Out, 1)
+		for i := range want {
+			d := int(got[i]) - int(want[i])
+			d = max(d, -d)
+			if d > 1 {
+				t.Fatalf("layer %d (%v %v, z_x %d, z_w %d): output %d: KPU %d, qnet %d", n, a.Kind, l.In, a.InQ.ZP, zw, i, got[i], want[i])
+			}
+			hist[d]++
+		}
+	}
+	t.Logf("200 SAME stride-2 asymmetric layers: %d equal, %d at 1 LSB", hist[0], hist[1])
+}
