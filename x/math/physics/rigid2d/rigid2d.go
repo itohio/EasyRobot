@@ -23,7 +23,11 @@
 // paddle and a wall stays on its side of the wall and may overlap the
 // paddle.
 //
-// float32, deterministic for a given sequence of steps, no allocation.
+// float32, no allocation. Deterministic on a given target: the same steps
+// give bit-identical state on the same architecture and build, but not
+// across them. Go may fuse a*b+c into one rounding (FMA): arm64 builds do,
+// amd64 does only with GOAMD64=v3 or higher, so the same run drifts apart
+// between them. Whether the RP2040's soft float matches either is not known.
 package rigid2d
 
 import "github.com/chewxy/math32"
@@ -163,6 +167,9 @@ func (b *Ball) segment(s *Segment, px, py, dt float32) {
 			side := sy*ex - sx*ey
 			if side == 0 {
 				side = c // started on the line: the side it is on now
+			}
+			if (c >= 0) == (side >= 0) && c*c >= b.R*b.R*l2 {
+				return // on its side and at least R away: no square root
 			}
 			l := math32.Sqrt(l2)
 			nx, ny, d := -ey/l, ex/l, c/l // left normal

@@ -16,7 +16,7 @@ evidence: "go test -race ./x/math/physics/rigid2d pass (25 tests, 2026-11-12, af
 
 **What it does:** steps balls (circles with angular velocity) among kinematic line segments and axis-aligned boxes that move at a set velocity (walls, paddles), for the owner's spinning Pong. Generic: any 2D game or demo with balls bouncing off moving surfaces.
 
-**Where:** `x/math/physics/rigid2d/rigid2d.go` — `Material`, `Ball`, `Segment`, `Box`, `Params`, `World` (:32-99), `Step` (:102-145), segment contact (:147-197), box contact (:200-224), `contact` impulse (:229-259).
+**Where:** `x/math/physics/rigid2d/rigid2d.go` — `Material`, `Ball`, `Segment`, `Box`, `Params`, `World` (:36-103), `Step` (:106-149), segment contact (:151-204), box contact (:206-231), `contact` impulse (:236-266).
 
 **Inputs → outputs:** `World{Params{GX, GY, Magnus, LinearDamping, AngularDamping}, Balls, Segments, Boxes}`; `Step(dt)` moves the kinematic shapes by their velocity, then each ball, and resolves contacts. `Ball.Contacts` counts the contacts of the last step (e.g. for a sound on a hit); a ball resting on a surface touches it every step (Contacts 1, a micro-bounce of |VY| ≈ 0.02 m/s at 240 Hz).
 
@@ -25,7 +25,7 @@ evidence: "go test -race ./x/math/physics/rigid2d pass (25 tests, 2026-11-12, af
   - That rotation keeps |v| in exact arithmetic, so lift does no work; in float32 |v| drifts about 0.5 % per 100k steps (fpv-gate's probe).
   - Then gravity, then damping by e^(−c·dt); the exponentials are computed once per dt and coefficients.
 - **Contact:**
-  - The closest point gives the normal. Segments are two-sided; for a segment's interior the normal is the line's own and points to the side the ball was on at the start of the step (against the segment where it was then), so a ball pushed onto or across the line in this step is pushed back, not through. A ball centred exactly on a segment's end is pushed back the way it came. A box with the centre inside pushes out through the nearest face. The overlap is pushed out.
+  - The closest point gives the normal. Segments are two-sided; for a segment's interior the normal is the line's own and points to the side the ball was on at the start of the step (against the segment where it was then), so a ball pushed onto or across the line in this step is pushed back, not through. A ball centred exactly on a segment's end is pushed back the way it came. A ball on its side and at least R from a segment's line is rejected without a square root, so walls the ball merely runs alongside cost a few multiplies (review E7). A box with the centre inside pushes out through the nearest face. The overlap is pushed out.
   - Boxes are resolved before segments, so walls win: a ball squeezed between a paddle and a wall stays on its side of the wall and may be left overlapping the paddle (review E2: with segments first, the paddle's push-out carried the ball through the wall).
   - If the contact point (v + ω × r, r = −R·n) approaches the surface (moving at its velocity), the normal impulse is (1 + e)·(−vn)·m.
   - The tangential impulse that would stop the slip is −vt·m/(1 + 1/k), with I = k·m·R², clamped to μ times the normal impulse (Coulomb). In the slip regime that takes exactly μ·(1+e)·|vn| off the tangential speed. The spin changes by −jt/(k·R).
@@ -33,6 +33,8 @@ evidence: "go test -race ./x/math/physics/rigid2d pass (25 tests, 2026-11-12, af
 - **Consequences (tested):** a slippery wall barely changes the spin; a grippy wall leaves the ball rolling; a grippy paddle moving along its face, along y or x, imparts spin in proportion to its speed; a strongly spun ball's path curls back.
 
 **Limits:** no ball–ball contacts; discrete contacts (keep speed·dt under about the radius, or substep); restitution and friction belong to the surface, not the ball; a ball squeezed between a paddle and a wall overlaps the paddle.
+
+**Determinism:** bit-identical on a given target (architecture and build), not across targets (review E6). Go may fuse a·b+c into one rounding: `go build -gcflags=-S` shows 33 fused multiply-adds in the package on arm64, 0 on amd64 by default and 22 with `GOAMD64=v3`. The Pong scene after 5,000 steps differs between arm64 and amd64 in the last bits of every ball field (`ER-SIMALGO-logs/e6-fma-arch.txt`). Whether the RP2040's soft float matches the host is not known. A replay or lockstep game must run every peer on the same target.
 
 ## Completeness review
 
@@ -65,7 +67,7 @@ evidence: "go test -race ./x/math/physics/rigid2d pass (25 tests, 2026-11-12, af
     - `TestSegmentExactHits`: a centre landing exactly on the line from below, exactly on end A along the segment, exactly on end B diagonally, and a ball starting on the line, each pushed out the way it came or is going.
     - `TestFastWallSweepsTheBall`: a wall passing the ball's centre in one step sweeps it along.
     - `TestKinematicShapesMove`.
-  - **Determinism and allocation:** `TestDeterministic` (5,000 steps, bit-identical). `TestStepDoesNotAllocate`: two balls resting under gravity, one on a segment and one on a box, so both contact paths apply an impulse every step (checked), and a dt that changes every step, so the damping cache refreshes every step. It asserts a raw `MemStats.Mallocs` delta of 0 over 1,000 steps; `AllocsPerRun`'s integer division hid fewer than one allocation per step (review E1).
+  - **Determinism and allocation:** `TestDeterministic` (5,000 steps, bit-identical on one target). `TestStepDoesNotAllocate`: two balls resting under gravity, one on a segment and one on a box, so both contact paths apply an impulse every step (checked), and a dt that changes every step, so the damping cache refreshes every step. It asserts a raw `MemStats.Mallocs` delta of 0 over 1,000 steps; `AllocsPerRun`'s integer division hid fewer than one allocation per step (review E1).
   - Run: `go test -race -count=1 ./x/math/physics/rigid2d/`, pass, 2026-11-12.
 - Correct: yes on these properties: 24 mutants of the solver, the Magnus rotation, gravity, damping, the damping cache and geometry each fail a test (`ER-SIMALGO-logs/rigid2d-mutants-r2.txt`).
 - Speed (host, Apple M5, a busy shared machine, so wide spreads; `ER-SIMALGO-logs/rigid2d-bench-host.txt`):
@@ -75,8 +77,8 @@ evidence: "go test -race ./x/math/physics/rigid2d pass (25 tests, 2026-11-12, af
 
 ## TODOs
 
-- [ ] Step time on the Tufty 2040 (RP2040, soft float); switch to fixed point only if it does not fit the frame — x/math/physics/rigid2d/rigid2d.go:102 #p2
-- [ ] Ball–ball contacts if a demo needs several balls — x/math/physics/rigid2d/rigid2d.go:229 #p3
+- [ ] Step time on the Tufty 2040 (RP2040, soft float); switch to fixed point only if it does not fit the frame — x/math/physics/rigid2d/rigid2d.go:106 #p2
+- [ ] Ball–ball contacts if a demo needs several balls — x/math/physics/rigid2d/rigid2d.go:236 #p3
 
 ## Links
 
