@@ -249,8 +249,9 @@ type Options struct {
 
 // Sensor drives one OV2640.
 type Sensor struct {
-	Bus  sensor.Bus
-	Opts Options
+	Bus     sensor.Bus
+	Opts    Options
+	quality uint8 // QS from SetQuality, rewritten by Init (0: the sensor's default)
 }
 
 func (s *Sensor) Name() string { return "OV2640" }
@@ -292,6 +293,13 @@ func (s *Sensor) Init(m sensor.Mode) error {
 	if err := s.setFormat(m.Format); err != nil {
 		return err
 	}
+	if s.quality != 0 && m.Format == sensor.JPEG {
+		// The soft reset at the start of Init drops QS (review
+		// R-K210-REC-R3 F5).
+		if err := s.write([]reg{{bankSel, bankDSP}, {qs, s.quality}}); err != nil {
+			return err
+		}
+	}
 	if m.TestPattern {
 		return s.write([]reg{{bankSel, bankSensor}, {com7, sm.com7 | com7ColorBar}})
 	}
@@ -300,7 +308,10 @@ func (s *Sensor) Init(m sensor.Mode) error {
 
 // SetQuality sets the JPEG quantisation scale (DSP register QS, as
 // esp32-camera's set_quality): lower is better quality and larger frames.
+// The value is kept and written again by every JPEG Init (0 leaves the
+// sensor's default after the next Init).
 func (s *Sensor) SetQuality(q uint8) error {
+	s.quality = q
 	return s.write([]reg{{bankSel, bankDSP}, {qs, q}})
 }
 

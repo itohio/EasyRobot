@@ -223,3 +223,77 @@ func TestCropInLargerModes(t *testing.T) {
 		t.Errorf("window %d×%d at (%d,%d) vhyx %#x, want 160×120 units at (80,60)", dsp(hSize), dsp(vSize), dsp(xOffL), dsp(yOffL), dsp(vhyx))
 	}
 }
+
+// TestQualitySurvivesInit (review R-K210-REC-R3 F5): Init starts with a
+// soft reset, which drops QS; a quality set before is written again by a
+// JPEG Init (and not by a raw one).
+func TestQualitySurvivesInit(t *testing.T) {
+	bus := &recBus{}
+	s := &Sensor{Bus: bus}
+	if err := s.SetQuality(40); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		f    sensor.Format
+		want bool
+	}{{sensor.JPEG, true}, {sensor.RGB565, false}} {
+		bus.writes = nil
+		if err := s.Init(sensor.Mode{Resolution: sensor.Resolution{W: 1600, H: 1200}, Format: c.f}); err != nil {
+			t.Fatal(err)
+		}
+		reset, qsAfter := -1, false
+		for i, w := range bus.writes {
+			if w == [3]uint8{bankSensor, com7, com7SRST} {
+				reset = i
+			}
+			if w == [3]uint8{bankDSP, qs, 40} && reset >= 0 && i > reset {
+				qsAfter = true
+			}
+		}
+		if qsAfter != c.want {
+			t.Errorf("%v: QS 40 written after the reset %v, want %v", c.f, qsAfter, c.want)
+		}
+	}
+}
+
+// TestLargerModeDetails (review R-K210-REC-R3 mutant survivors): 320×480
+// needs SVGA (CIF is only 296 high); crop offsets of 256 and more reach
+// VHYX's high bits; colour bars keep each mode's COM7; the JPEG HREF option
+// leaves RGB565's IMAGE_MODE alone.
+func TestLargerModeDetails(t *testing.T) {
+	init := func(m sensor.Mode, o Options) *recBus {
+		bus := &recBus{}
+		if err := (&Sensor{Bus: bus, Opts: o}).Init(m); err != nil {
+			t.Fatalf("%v: %v", m, err)
+		}
+		return bus
+	}
+	dsp := func(b *recBus, r uint8) uint8 { return b.last[[2]uint8{bankDSP, r}] }
+	sen := func(b *recBus, r uint8) uint8 { return b.last[[2]uint8{bankSensor, r}] }
+
+	if b := init(sensor.Mode{Resolution: sensor.Resolution{W: 320, H: 480}, Format: sensor.RGB565}, Options{}); sen(b, com7) != com7ResSVGA {
+		t.Errorf("320×480: COM7 %#x, want SVGA", sen(b, com7))
+	}
+	// Crop 640×800 in UXGA: offX 480 (VHYX bits 0–2 = 480>>8 = 1); crop
+	// 1024×600: offY 300 (bits 4–6 = 300>>4&0x70 = 0x10).
+	b := init(sensor.Mode{Resolution: sensor.Resolution{W: 640, H: 800}, Format: sensor.JPEG, Crop: true}, Options{})
+	if dsp(b, xOffL) != 480&0xFF || dsp(b, vhyx)&0x07 != 1 {
+		t.Errorf("crop 640×800: XOFFL %d VHYX %#x, want offX 480", dsp(b, xOffL), dsp(b, vhyx))
+	}
+	b = init(sensor.Mode{Resolution: sensor.Resolution{W: 1024, H: 600}, Format: sensor.JPEG, Crop: true}, Options{})
+	if dsp(b, yOffL) != 300&0xFF || dsp(b, vhyx)&0x70 != 0x10 {
+		t.Errorf("crop 1024×600: YOFFL %d VHYX %#x, want offY 300", dsp(b, yOffL), dsp(b, vhyx))
+	}
+	for _, c := range []struct {
+		res  sensor.Resolution
+		com7 uint8
+	}{{sensor.Resolution{W: 800, H: 600}, com7ResSVGA}, {sensor.Resolution{W: 1600, H: 1200}, com7ResUXGA}} {
+		b := init(sensor.Mode{Resolution: c.res, Format: sensor.RGB565, TestPattern: true}, Options{})
+		if sen(b, com7) != c.com7|com7ColorBar {
+			t.Errorf("%v colour bars: COM7 %#x, want %#x", c.res, sen(b, com7), c.com7|com7ColorBar)
+		}
+	}
+	if b := init(sensor.Mode{Resolution: sensor.QVGA, Format: sensor.RGB565}, Options{JPEGSensorHREF: true}); dsp(b, imageMode) != imageModeRGB565 {
+		t.Errorf("RGB565 with JPEGSensorHREF: IMAGE_MODE %#x, want RGB565", dsp(b, imageMode))
+	}
+}
