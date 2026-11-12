@@ -170,49 +170,48 @@ func TestBusErrorsPropagate(t *testing.T) {
 	if ok, err := d.DataReady(); err != nack || ok {
 		t.Errorf("DataReady: %v %v, want false and the error", ok, err)
 	}
-	// A Configure that fails part way leaves the chip with the writes that
-	// landed; Config() and the scaling must follow them (review S1: the gyro
-	// and accel range writes landing before a failed INT write left 1 g
-	// reading 8× low). Writes in order: PWR_MGMT_1, SMPLRT_DIV, CONFIG,
-	// GYRO_CONFIG, ACCEL_CONFIG, INT_PIN_CFG, INT_ENABLE.
-	target := Config{SampleRateDiv: 9, DLPF: DLPF44Hz, Gyro: Gyro2000DPS, Accel: Accel8G, DataReadyInterrupt: true}
-	for k := 1; k <= 7; k++ { // fail the k-th of Configure's 7 writes
+	// Fault injection at each of Configure's 7 register writes, over a
+	// device already configured differently. The oracle is the fake bus's
+	// register file, not the driver: whatever landed, Config() must equal
+	// the configuration the registers hold, and Read must scale a known raw
+	// sample with the ranges in the registers (literal LSB tables from the
+	// register map). Review S1: the range writes landing before a failed
+	// later write left 1 g reading 8× low.
+	accelLSB := [4]float64{16384, 8192, 4096, 2048} // per g, AFS_SEL 0..3
+	gyroLSB := [4]float64{131, 65.5, 32.8, 16.4}    // per °/s, FS_SEL 0..3
+	prev := Config{SampleRateDiv: 3, DLPF: DLPF94Hz, Gyro: Gyro250DPS, Accel: Accel2G}
+	next := Config{SampleRateDiv: 9, DLPF: DLPF44Hz, Gyro: Gyro2000DPS, Accel: Accel8G, DataReadyInterrupt: true}
+	for k := 1; k <= 7; k++ { // fail the k-th write
 		b := &fakeBus{}
 		d := New(b, 0)
-		b.err, b.failFrom = nack, k
-		if err := d.Configure(target); err != nack || len(b.txs) != k {
+		if err := d.Configure(prev); err != nil {
+			t.Fatal(err)
+		}
+		b.txs, b.err, b.failFrom = nil, nack, k
+		if err := d.Configure(next); err != nack || len(b.txs) != k {
 			t.Errorf("write %d failing: err %v after %d writes, want the error at once", k, err, len(b.txs))
 		}
-		want := Config{}
-		if k > 2 {
-			want.SampleRateDiv = target.SampleRateDiv
+		inChip := Config{
+			SampleRateDiv:      b.regs[0x19],
+			DLPF:               DLPF(b.regs[0x1A] & 7),
+			Gyro:               GyroRange(b.regs[0x1B] >> 3 & 3),
+			Accel:              AccelRange(b.regs[0x1C] >> 3 & 3),
+			DataReadyInterrupt: b.regs[0x38]&1 != 0,
 		}
-		if k > 3 {
-			want.DLPF = target.DLPF
+		if d.Config() != inChip {
+			t.Errorf("write %d failing: Config() %+v, registers hold %+v", k, d.Config(), inChip)
 		}
-		if k > 4 {
-			want.Gyro = target.Gyro
-		}
-		if k > 5 {
-			want.Accel = target.Accel
-		}
-		if d.Config() != want {
-			t.Errorf("write %d failing: Config() %+v, want what landed %+v", k, d.Config(), want)
-		}
-		// the scaling matches the range in the chip: 4096 counts read as 1 g
-		// once ±8 g landed, as 0.25 g before
 		b.err = nil
-		put16(b.regs[:], 0x3B+4, 4096)
+		put16(b.regs[:], 0x3B+4, 4096) // accel z
+		put16(b.regs[:], 0x43, 3280)   // gyro x
 		var s Sample
 		if err := d.Read(&s); err != nil {
 			t.Fatal(err)
 		}
-		g := 9.80665 / 4.0
-		if k > 5 {
-			g = 9.80665
-		}
-		if math.Abs(float64(s.Accel[2])-g) > 1e-4 {
-			t.Errorf("write %d failing: accel z %v m/s², want %v for the range in the chip", k, s.Accel[2], g)
+		wantA := 4096 / accelLSB[b.regs[0x1C]>>3&3] * 9.80665
+		wantG := 3280 / gyroLSB[b.regs[0x1B]>>3&3] * math.Pi / 180
+		if math.Abs(float64(s.Accel[2])-wantA) > 1e-4*wantA || math.Abs(float64(s.Gyro[0])-wantG) > 1e-4*wantG {
+			t.Errorf("write %d failing: read accel z %v m/s², gyro x %v rad/s; the ranges in the registers give %v, %v", k, s.Accel[2], s.Gyro[0], wantA, wantG)
 		}
 	}
 	d = New(b, 0)

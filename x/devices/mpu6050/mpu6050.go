@@ -174,9 +174,9 @@ func (d *Device) Probe() (id uint8, ok bool, err error) {
 
 // Configure wakes the device and applies c. An out-of-range field gives
 // devices.ErrInvalidValue before anything is written. The writes are not
-// atomic: on a bus error Configure stops, and the configuration it records
-// (and Read scales with) is what landed before the failure, so the scaling
-// always matches the ranges in the chip.
+// atomic: on a bus error Configure stops, and Config (and Read's scaling)
+// then hold the fields whose writes succeeded. The failed write may still
+// have reached the chip, so call Configure again after an error.
 func (d *Device) Configure(c Config) error {
 	if !c.valid() {
 		return devices.ErrInvalidValue
@@ -214,9 +214,9 @@ func (d *Device) Configure(c Config) error {
 	return nil
 }
 
-// Config is the configuration last applied (the zero value before
-// [Device.Configure]). Configure writes only the registers in Config and
-// PWR_MGMT_1; PWR_MGMT_2, USER_CTRL and FIFO_EN keep whatever they hold.
+// Config is the configuration as far as the last [Device.Configure] got
+// (the zero value before it). Configure writes only the registers in Config
+// and PWR_MGMT_1; PWR_MGMT_2, USER_CTRL and FIFO_EN keep whatever they hold.
 func (d *Device) Config() Config { return d.cfg }
 
 // SampleRate is the configured sample rate in Hz.

@@ -192,7 +192,7 @@ func TestDetectorBaselineTimeConstant(t *testing.T) {
 }
 
 // A sensor that reads zero before it wakes does not seed the filter: no
-// step when real samples start. A NaN sample is ignored.
+// step when real samples start. A NaN or infinite sample is ignored.
 func TestDetectorPrimingAndBadSamples(t *testing.T) {
 	d := newDetector(t)
 	for i := 0; i < 50; i++ {
@@ -213,12 +213,15 @@ func TestDetectorPrimingAndBadSamples(t *testing.T) {
 		if i == 700 {
 			a[1] = nan
 		}
+		if i == 1100 {
+			a[0] = float32(math.Inf(1))
+		}
 		if d.Update(a) {
 			steps++
 		}
 	}
 	if steps < 39 || steps > 41 {
-		t.Fatalf("a NaN sample mid-walk: %d steps in 20 s at 2/s, want 40±1", steps)
+		t.Fatalf("a NaN and an infinite sample mid-walk: %d steps in 20 s at 2/s, want 40±1", steps)
 	}
 }
 
@@ -280,6 +283,22 @@ func TestHeading(t *testing.T) {
 	}
 	if h, ok := Heading([4]float32{1, 0, 0, 0}, [3]float32{0, 2, 0}); !ok || math.Abs(float64(h)-math.Pi/2) > 1e-6 {
 		t.Errorf("identity, axis y: %v %v, want π/2", h, ok)
+	}
+	// The refusal cone is about 6° (horizontal part 0.1 of the unit axis),
+	// whatever the axis length: an axis 5.5° from vertical is refused, one
+	// 6° from vertical points along +x; a zero axis has no direction.
+	for _, c := range []struct {
+		deg float64
+		ok  bool
+	}{{5.5, false}, {6, true}} {
+		th := c.deg * math.Pi / 180
+		h, ok := Heading([4]float32{1, 0, 0, 0}, [3]float32{float32(10 * math.Sin(th)), 0, float32(10 * math.Cos(th))})
+		if ok != c.ok || (ok && math.Abs(float64(h)) > 1e-6) {
+			t.Errorf("axis %.1f° from vertical (length 10): %v %v, want ok %v (heading 0)", c.deg, h, ok, c.ok)
+		}
+	}
+	if _, ok := Heading([4]float32{1, 0, 0, 0}, [3]float32{}); ok {
+		t.Error("a zero axis has no heading")
 	}
 }
 

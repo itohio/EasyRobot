@@ -56,14 +56,14 @@ No algorithm notes (glue code). Non-trivial pieces reviewed here: Linux epoll GP
 ## Build targets and dependencies
 
 - **linux** (any arch): builds (`GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build ./x/devices/...` OK, 2026-11-09). Uses `syscall` + `golang.org/x/sys/unix`, no CGO.
-- **windows**: core builds; only `encoder`/`motor` fail (F1 — stub applies to windows too; cross-build 2026-11-09).
+- **windows**: everything builds except `encoder` and `motor`, which imports it: `encoder`'s non-TinyGo, non-Linux `configurePins` (`encoder/stub.go:7`) returns nothing where `encoder.go:77` uses its error. darwin fails the same way. Cross-build `GOOS=windows GOARCH=arm64 CGO_ENABLED=0 go build ./x/devices/...` and `./x/devices/motor/`, 2026-11-12.
 - **darwin**: root package builds but provides **no Serial, I2C, Pin or PWM implementation** — `serial_stub.go` is empty, `pin_stub.go` `stubPin` does not satisfy `Pin` (methods `High() error`, `Read()`, `SetInterrupt(…, func())`), `NewPin(uint8) *stubPin` has a different signature from linux `NewPin(int) (*LinuxPin, error)`. Hence F2 (`cmd/monitor`, `cmd/spectrometer/*` need `NewSerialWithConfig`/`ListSerialPorts`) and every serial app is linux/windows-only. `README.md:28` claims macOS hosts work.
 - **TinyGo**: `machine.Pin.SetInterrupt` takes `func(machine.Pin)` while `devices.Pin` requires `func(devices.Pin)`, so `machine.Pin` is not a `devices.Pin`; `NewTinyGoPin` returns the adapter `TinyGoPin` (`pin_tinygo.go:21-39`, the `Pin` value made once when the interrupt is set; three setup allocations, none in the handler), also used by `servo.pinNumberToPin`. The I2C target events are TinyGo's `I2CReceive`/`I2CRequest`/`I2CFinish` (aliased on TinyGo, `i2c_tinygo.go`; one host definition, `i2c_event.go`); the old `I2CTargetEvent{Start,Stop,Address,Data,Error}` names did not exist in `machine` and broke every TinyGo build that imported `x/devices`. **Per package, tinygo 0.43 (2026-11-12):** the root package and `servo` build (tufty2040, compiled through a main that imports them); `encoder` and `motor` still fail (`encoder/tinygo.go:9`, undefined `devices.PinConfig`), and `xiao` fails on `-target=xiao` (`xiao_pwm.go:91,143,198`), both older than the adapter. `machine.I2C` satisfies `devices.I2C`; `machine.SPI`, `machine.UART` [INFERENCE]. Board tags in the repo: `rp2040` (drivers/lidar, cmd/elrs-rx), `esp32` (cmd/elrs-rx), `sam && xiao` (x/devices/xiao, drivers/manipulator, cmd/elrs-rx).
 - Allocation: Linux paths allocate per call (`fmt.Sprintf` paths, `make` in `ReadRegister`); fine on SBC.
 
 ## Tests and evidence
 
-- No tests in `x/devices` root (baseline: build ok, vet ok, no test files). `go vet ./x/devices/...` darwin: only the encoder build error; linux vet: `encoder/example_test.go:11` "ExampleEncoder refers to unknown identifier: Encoder".
+- `x/devices` root: `i2c_event_test.go` (the host I2C event values match TinyGo's `machine` ones) passes; `go test -count=1 ./x/devices/` ok, 2026-11-12. `go vet ./x/devices/...` on darwin and windows gives only the `encoder` build error above; on linux only `encoder/example_test.go:11` "ExampleEncoder refers to unknown identifier: Encoder".
 - Not run: anything touching `/dev`, `/sys`, COM ports.
 
 ## API notes (ease of use, composability)

@@ -10,13 +10,13 @@ tests: [x/math/nav/pdr/pdr_test.go]
 test_result: pass
 complete: yes
 correct: yes
-evidence: "go test -race ./x/math/nav/pdr pass (12 tests incl. a badge-mounted walk with a Mahony heading, 2026-11-12, after fpv-gate ER-SIMALGO-D); 18 mutants all fail (ER-SIMALGO-logs/pdr-mutants-r2.txt); host 9–21 ns/sample, 0 allocs; tinygo 0.43 tufty2040 build with mpu6050 + Mahony allocates only at construction"
+evidence: "go test -race ./x/math/nav/pdr pass (13 tests incl. a badge-mounted walk with a Mahony heading, 2026-11-12, after fpv-gate ER-SIMALGO-D); 18 mutants all fail (ER-SIMALGO-logs/pdr-mutants-r2.txt), plus fpv-gate's round-2 survivors N1–N4 and N8 (ER-SIMALGO-logs/pdr-heading-mutants.txt); Detector.Update 0 allocs, 14.6–60.8 ns/op on an Apple M5 (10 cores, go1.27.2 darwin/arm64) at load average 55 — timing depends on load, so it is no figure of merit; tinygo 0.43 tufty2040 build with mpu6050 + Mahony allocates only at construction"
 ---
 # Pedestrian dead reckoning (step detector, heading, track)
 
 **What it does:** counts steps from a body-worn accelerometer, gives the walking direction as the heading of a chosen body axis from an attitude filter's orientation, and advances a 2D position by one step length along it for each step.
 
-**Where:** `x/math/nav/pdr/pdr.go` — `DetectorConfig`, `DefaultDetectorConfig` (:31-46), `Detector`, `NewDetector` (:53-85), `Update` (:88-119), `Steps` (:121), `Heading` (:125-149), `Track`, `Step` (:151-163).
+**Where:** `x/math/nav/pdr/pdr.go` — `DetectorConfig`, `DefaultDetectorConfig` (:31-46), `Detector`, `NewDetector` (:53-85), `Update` (:88-118), `Steps` (:121), `Heading` (:123-147), `Track`, `Step` (:149-163).
 
 **Inputs → outputs:**
 - `Detector.Update(a [3]float32 m/s²) bool` once per sample → true on the sample that completes a step. Any orientation: only |a| is used. NaN/Inf samples are ignored; zero samples before the sensor wakes do not seed the filter.
@@ -45,12 +45,12 @@ evidence: "go test -race ./x/math/nav/pdr pass (12 tests incl. a badge-mounted w
     - `TestDetectorFollowsAScaleError`: 0.9 g and 1.12 g accelerometers.
     - `TestDetectorAnyOrientation`: gravity along x, −y, z and two diagonals give identical counts.
     - `TestDetectorBaselineTimeConstant`: a +0.5 m/s² level step reaches 63 % in `Baseline` s ±5 %, with no steps.
-    - `TestDetectorPrimingAndBadSamples`: zero samples before waking then 30 s of noisy rest give 0 steps; a NaN mid-walk leaves the count right.
+    - `TestDetectorPrimingAndBadSamples`: zero samples before waking then 30 s of noisy rest give 0 steps; a NaN and a +Inf sample mid-walk leave the count right.
     - `TestDetectorMinInterval`.
     - `TestDetectorHysteresis`: with `MinInterval` 0, a bounce barely above `Threshold` with noise still counts 40±1 in 20 s at 2/s; firing on the fall through `Threshold` instead of the baseline counts 44–57 (review S5).
     - `TestNewDetectorRefusesBadConfig`: includes ±Inf/NaN and a gap beyond int32.
   - **Heading:**
-    - `TestHeading`: the badge's −Z at four turns, in portrait and with the IMU x axis vertical; the vertical axis is refused.
+    - `TestHeading`: the badge's −Z at four turns, in portrait and with the IMU x axis vertical; the vertical axis is refused. The refusal cone, whatever the axis length (10): 5.5° from vertical refused, 6° accepted with heading 0; a zero axis refused.
     - `TestWalkWithMahonyHeading`: a chest-worn badge (IMU +Y up), 10 s settling, 11 steps, a 90° left turn about the IMU's y axis through a 6-axis Mahony, 11 steps. The legs come out ≈ 11 step lengths each and the turn +90° ±10°.
   - **Track and allocation:** `TestTrackStep`, `TestDetectorDoesNotAllocate`.
   - **Run:** `go test -race -count=1 ./x/math/nav/pdr/` pass, 2026-11-12.
