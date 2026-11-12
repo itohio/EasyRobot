@@ -147,6 +147,8 @@ func TestValidate(t *testing.T) {
 		{"missing requant", func(ls []qnet.Layer) []qnet.Layer { ls[2].Requant = nil; return ls }, 2, qnet.ErrParams},
 		{"invalid requant", func(ls []qnet.Layer) []qnet.Layer { ls[2].Requant[3].Mult = 5; return ls }, 2, qnet.ErrParams},
 		{"params on pool", func(ls []qnet.Layer) []qnet.Layer { ls[6].Weights = ls[0].Weights; return ls }, 6, qnet.ErrParams},
+		{"weight zero point on pool", func(ls []qnet.Layer) []qnet.Layer { ls[6].WZP = 3; return ls }, 6, qnet.ErrParams},
+		{"TiesUp on conv", func(ls []qnet.Layer) []qnet.Layer { ls[0].TiesUp = true; return ls }, 0, qnet.ErrParams},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

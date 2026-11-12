@@ -1019,8 +1019,13 @@ func (c *converter) quantize(o *operator) error {
 	if err != nil {
 		return err
 	}
-	if ot, _, err := c.tensorAt(o, 0, true); err == nil && ot.typ != typeInt8 {
-		return c.failT(&ot, "QUANTIZE to a non-int8 type is not supported")
+	if ot, oi, err := c.tensorAt(o, 0, true); err == nil {
+		if oi < 0 {
+			return ErrFormat // no output tensor: malformed, as in output()
+		}
+		if ot.typ != typeInt8 {
+			return c.failT(&ot, "QUANTIZE to a non-int8 type is not supported")
+		}
 	}
 	if t.typ == typeFloat32 || t.typ == typeUInt8 {
 		if p, ok := c.prod[idx]; !ok || p != -1 || len(c.layers) != 0 {

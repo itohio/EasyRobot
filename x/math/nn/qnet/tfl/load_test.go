@@ -383,6 +383,31 @@ func TestLoadErrors(t *testing.T) {
 			b.sparse(int(w))
 			return opConv2D, optConv2D, optsConv2D(padSame, 1, 1, actNone, 1, 1)
 		}), ""},
+		{"uint8 weight zero point 256", "CONV_2D", conv(func(b *mb, in, w, out int32) (int32, uint8, *tableSpec) {
+			asU8(b, in, 130)
+			asU8(b, w, 256)
+			b.tensorTable(int(w)).sub(tensorQuantization).vecF32(quantScale, []float32{0.01}) // per-tensor
+			asU8(b, out, 124)
+			return opConv2D, optConv2D, optsConv2D(padSame, 1, 1, actNone, 1, 1)
+		}), "w"},
+		{"uint8 weight zero point -1", "CONV_2D", conv(func(b *mb, in, w, out int32) (int32, uint8, *tableSpec) {
+			asU8(b, in, 130)
+			asU8(b, w, -1)
+			b.tensorTable(int(w)).sub(tensorQuantization).vecF32(quantScale, []float32{0.01}) // per-tensor
+			asU8(b, out, 124)
+			return opConv2D, optConv2D, optsConv2D(padSame, 1, 1, actNone, 1, 1)
+		}), "w"},
+	}
+	// the top of the uint8 weight zero-point range loads: 255 is WZP 127
+	g, err := Load(conv(func(b *mb, in, w, out int32) (int32, uint8, *tableSpec) {
+		asU8(b, in, 130)
+		asU8(b, w, 255)
+		b.tensorTable(int(w)).sub(tensorQuantization).vecF32(quantScale, []float32{0.01})
+		asU8(b, out, 124)
+		return opConv2D, optConv2D, optsConv2D(padSame, 1, 1, actNone, 1, 1)
+	}))
+	if err != nil || len(g.Layers) != 1 || g.Layers[0].WZP != 127 {
+		t.Fatalf("uint8 weight zero point 255: err %v, layers %d, want one layer with WZP 127", err, len(g.Layers))
 	}
 	for _, c := range unsupported {
 		_, err := Load(c.model)
@@ -422,6 +447,17 @@ func TestLoadErrors(t *testing.T) {
 	b.io([]int32{x}, []int32{q})
 	if _, err := Load(b.bytes()); !errors.As(err, &oe) || oe.Op != "QUANTIZE" || oe.Index != 1 || !strings.Contains(oe.Reason, `tensor "q"`) {
 		t.Fatalf("quantize to uint8: %v", err)
+	}
+
+	// a QUANTIZE without an output tensor (index −1) is malformed
+	b = newMB()
+	x = b.act([]int32{1, 2, 2, 2}, 0.1, 0)
+	y = b.act([]int32{1, 2, 2, 2}, 0.1, 0)
+	b.op(opMaxPool2D, []int32{x}, []int32{y}, optPool2D, optsPool2D(padSame, 1, 1, 1, 1, actNone))
+	b.op(opQuantize, []int32{y}, []int32{-1}, 0, nil)
+	b.io([]int32{x}, []int32{y})
+	if _, err := Load(b.bytes()); err != ErrFormat {
+		t.Fatalf("quantize without an output: %v, want ErrFormat", err)
 	}
 
 	// broadcasting Add, pool with fused activation, softmax output quant,
