@@ -3,7 +3,7 @@
 package qi8
 
 // Test-only emulation of the PIE kernels (build tag qi8pieemu): pure-Go
-// models of qi8_pie_dot_rows and qi8_pie_dw_px, so that impl_esp32s3.go's
+// models of qi8_pie_dot_rows_rq and qi8_pie_dw_px, so that impl_esp32s3.go's
 // layouts, packing and loops run under `go test -tags qi8pieemu` on the
 // host. The models compute the kernels' documented results and panic when
 // a precondition the assembly relies on is violated (16-byte alignment, the

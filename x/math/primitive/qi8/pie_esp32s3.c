@@ -8,10 +8,12 @@
 // (loopnez), the PIE vector registers q0–q3 and the accumulators ACCX and
 // QACC without naming them as clobbers: TinyGo 0.43's clang rejects those
 // register names in clobber lists. This is correct only while no
-// compiler-generated code in these functions uses hardware loops or PIE
-// (review R-NN-R3-N2 checked qi8_pie_dot_rows at 6d62a57 for -Oz, -O1, -O2,
-// -O3 and -Os: the enclosing C loop is a plain branch loop and the compiler
-// emits no ee.*; qi8_pie_dw_px, added later, has not been disassembled yet),
+// compiler-generated code in these functions uses hardware loops or PIE.
+// Checked 2026-11-12 for qi8_dot_row (inlined into qi8_pie_dot_rows_rq)
+// and qi8_pie_dw_px: `tinygo clang --target=xtensa -mcpu=esp32s3 -S` at
+// -Oz, -O1, -O2, -O3 and -Os emits exactly the asm's own 3 loop
+// instructions and 23 ee.* instructions (the enclosing C loops are plain
+// branch loops),
 // and while no interrupt handler uses them: TinyGo's interrupt entry saves
 // neither the loop registers nor PIE state, so an ISR that used either would
 // corrupt a running kernel. Moving the loops into a separate .S file (as
@@ -141,10 +143,10 @@ static inline int8_t qi8_requantize_mode(int32_t acc, const qi8_requant_t *r, in
     return (int8_t)v;
 }
 
-// qi8_pie_dot_rows_rq is qi8_pie_dot_rows followed, per row, by the layer's
-// requantisation: dst[r] = requantize(dot_r + biasEff[r], rq[r]) with
-// output zero point zp, clamp [lo, hi] and rounding mode round (as
-// qi8_requantize_mode). It saves the per-output round trip to Go.
+// qi8_pie_dot_rows_rq computes each row's dot product (qi8_dot_row) and
+// then the layer's requantisation: dst[r] = requantize(dot_r + biasEff[r],
+// rq[r]) with output zero point zp, clamp [lo, hi] and rounding mode round
+// (as qi8_requantize_mode). It saves the per-output round trip to Go.
 void qi8_pie_dot_rows_rq(const int8_t *patch, const int8_t *w, int k, int rows, const int32_t *biasEff,
                          const qi8_requant_t *rq, int32_t zp, int32_t lo, int32_t hi, int round, int8_t *dst) {
     for (int r = 0; r < rows; r++) {

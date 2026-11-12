@@ -483,7 +483,10 @@ func TestConv2DReference(t *testing.T) {
 func TestDepthwiseConv2DReference(t *testing.T) {
 	g := newGen(4)
 	m := &mismatchLog{t: t}
-	for c := range 3000 {
+	// The last 120 cases have 33…128 channels: the generic loop accumulates
+	// runs of dwChunk = 32 channels, so these cross one or more run edges.
+	wide := []int{33, 40, 64, 65, 96, 128}
+	for c := range 3000 + 120 {
 		cp := randConvParams(g, true)
 		if c%2 == 0 { // bias towards the 3x3 stride 1/2 hot path
 			cp.KH, cp.KW = 3, 3
@@ -491,6 +494,10 @@ func TestDepthwiseConv2DReference(t *testing.T) {
 			if cp.In.H < 3 || cp.In.W < 3 {
 				cp.Padding = PaddingSame
 			}
+		}
+		if c >= 3000 {
+			cp.In.C = wide[(c-3000)%len(wide)]
+			cp.OutC = cp.In.C
 		}
 		p := DepthwiseConv2DParams{
 			In: cp.In, KH: cp.KH, KW: cp.KW, StrideH: cp.StrideH, StrideW: cp.StrideW,
