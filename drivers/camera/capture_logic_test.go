@@ -131,6 +131,7 @@ func TestJPEGBufSize(t *testing.T) {
 		{1024, 768, 49 * nodeBytes},   // 196,608 B: fits internal SRAM
 		{320, 240, 5 * nodeBytes},
 		{16, 16, nodeBytes}, // at least one descriptor
+		{0, 0, nodeBytes},   // even for an empty frame (verify: the floor was never reached)
 		{4096, 4096, max},   // capped
 	} {
 		if got := jpegBufSize(tt.w, tt.h, max); got != tt.want {
