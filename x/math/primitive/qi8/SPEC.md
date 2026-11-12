@@ -344,6 +344,12 @@ with pure-Go models of its C kernels (`pie_emu.go`, which also asserts the
 kernels' alignment and read-ahead preconditions), so `go test -tags
 qi8pieemu` runs the layer suite against it; `make qi8-pie` does that and
 compiles the PIE build with TinyGo.
+The test-only tag `qi8ctest` (cgo) compiles the chip kernels' C
+requantisation, `requant_c.h`, for the host under UndefinedBehaviorSanitizer,
+and `TestCRequantizeMatchesGo` requires it to equal `requantizeMode` on
+329,480 cases (int32 edges × every shift × zero points × clamps × both modes,
+plus random); `make qi8-ctest` runs it and fails, rather than skips, without
+cgo.
 
 Whole-model offload (K210 KPU and similar) is outside this interface: it runs
 a compiled model in a model runner (e.g. `drivers/kpu` or a `qnet` backend)
