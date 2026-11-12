@@ -139,9 +139,8 @@ func newGraphInfo(g *qnet.Graph) graphInfo {
 			}
 		}
 	}
-	if g.Outputs == nil {
-		gi.out[n-1] = true
-	}
+	// Explicit outputs end a segment. The last layer's output never sits
+	// inside one, so the default output (Outputs nil) needs no mark.
 	for _, o := range g.Outputs {
 		if o >= 0 && o < n {
 			gi.out[o] = true
@@ -159,7 +158,10 @@ func (gi graphInfo) follows(j int) bool {
 
 // group finds the KPU group starting at layer i: [Pad] conv [act] [pool],
 // with the longest fusion Lower accepts. ok is false if layer i does not
-// start one. A Sampler mode returns the sampler on layer i−1's output.
+// start one. Every layer it fuses after the first reads only its
+// predecessor, whose output has no other reader and is not a graph output
+// (follows), so the group's inner tensors can stay inside the KPU layer.
+// A Sampler mode returns the sampler on layer i−1's output.
 func (gi graphInfo) group(i int, mode Mode) (Group, Fuse, *qnet.Layer, bool) {
 	ls := gi.g.Layers
 	if mode.Sampler {
@@ -229,10 +231,7 @@ func Compile(g *qnet.Graph, newRunner RunnerFunc) (*Backend, error) {
 	gi := newGraphInfo(g)
 	b := &Backend{segs: map[*qnet.Layer]*Segment{}}
 	for i := 0; i < len(g.Layers); {
-		s, err := gi.segment(i)
-		if err != nil {
-			return nil, err
-		}
+		s := gi.segment(i)
 		if s == nil {
 			i++
 			continue
@@ -251,7 +250,7 @@ func Compile(g *qnet.Graph, newRunner RunnerFunc) (*Backend, error) {
 // memory layer by layer; nil if layer i starts no group. A Full layer (a
 // stride-2 depthwise, or a TF SAME stride-2 conv) joins only together with
 // its sampling reader: the 1×1 conv after it, else a Sampler.
-func (gi graphInfo) segment(i int) (*Segment, error) {
+func (gi graphInfo) segment(i int) *Segment {
 	var s *Segment
 	j := i
 	push := func(gr Group, conv *qnet.Layer, f Fuse) {
@@ -271,7 +270,7 @@ func (gi graphInfo) segment(i int) (*Segment, error) {
 			break // a graph output or a second reader ends the segment
 		}
 		if gr, f, conv, ok := gi.group(j, Mode{}); ok {
-			if !gi.inner(gr) || !fits(conv, f, false) {
+			if !fits(conv, f, false) {
 				break
 			}
 			push(gr, conv, f)
@@ -279,7 +278,7 @@ func (gi graphInfo) segment(i int) (*Segment, error) {
 		}
 		// A layer at full resolution, then its sampling reader.
 		gr, f, conv, ok := gi.group(j, Mode{Full: true})
-		if !ok || !gi.inner(gr) {
+		if !ok {
 			break
 		}
 		next := gr.First + gr.Count
@@ -292,7 +291,7 @@ func (gi graphInfo) segment(i int) (*Segment, error) {
 		if ok {
 			gr2, f2, conv2, ok = gi.group(next, sample)
 		}
-		if !ok || !gi.inner(gr2) {
+		if !ok {
 			sample.Sampler = true
 			gr2, f2, conv2, ok = gi.group(next, sample)
 		}
@@ -305,7 +304,7 @@ func (gi graphInfo) segment(i int) (*Segment, error) {
 	if s != nil {
 		s.Count = j - i
 	}
-	return s, nil
+	return s
 }
 
 // fits reports whether a lowered layer's input and output fit KPU memory
@@ -323,17 +322,6 @@ func fits(conv *qnet.Layer, f Fuse, readPast bool) bool {
 		n += kmodel.UploadLayout(ow, oh).RowLines
 	}
 	return n <= ramLines
-}
-
-// inner reports whether every output inside the group but the last has a
-// single reader in the group (so it can stay in the KPU layer).
-func (gi graphInfo) inner(gr Group) bool {
-	for k := gr.First + 1; k < gr.First+gr.Count; k++ {
-		if !gi.follows(k) {
-			return false
-		}
-	}
-	return true
 }
 
 // build lowers the segment's groups with ping-pong KPU addresses (the input

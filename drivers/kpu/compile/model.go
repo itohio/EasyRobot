@@ -33,10 +33,7 @@ func Kmodel(g *qnet.Graph) ([]byte, Info, error) {
 		return nil, Info{}, fmt.Errorf("%w: a kmodel has one output, the last layer (graph outputs %v)", ErrUnsupported, g.Outputs)
 	}
 	gi := newGraphInfo(g)
-	s, err := gi.segment(0)
-	if err != nil {
-		return nil, Info{}, err
-	}
+	s := gi.segment(0)
 	n := 0
 	if s != nil {
 		n = s.Count
