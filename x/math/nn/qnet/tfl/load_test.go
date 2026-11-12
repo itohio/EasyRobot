@@ -3,6 +3,7 @@ package tfl
 import (
 	"bytes"
 	"errors"
+	"math"
 	"math/rand/v2"
 	"strings"
 	"testing"
@@ -296,6 +297,43 @@ func TestLoadZeroMultiplier(t *testing.T) {
 	}
 }
 
+// TestLoadUint8Multiplier pins TFLite's uint8 multiplier rule: the scale
+// product sIn·sW is formed in float32 before widening
+// (GetQuantizedConvolutionMultipler). The scales are those of operator 4 of
+// TF's mobilenet_v1_0.25_224_quant, where the float32 and float64 products
+// give different multipliers (and the float64 one gives 3 wrong outputs
+// against LiteRT, ER-QU8 §3).
+func TestLoadUint8Multiplier(t *testing.T) {
+	sIn := math.Float32frombits(0x3cc0becb) // also the output scale
+	sW := math.Float32frombits(0x3ca90ce2)
+	f32, err := qi8.QuantizeMultiplier(float64(sIn*sW) / float64(sIn))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f64, err := qi8.QuantizeMultiplier(float64(sIn) * float64(sW) / float64(sIn))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f32 == f64 {
+		t.Fatal("the scales no longer separate the two rules")
+	}
+	b := newMB()
+	in := int32(b.tensor("in", []int32{1, 2, 2, 4}, typeUInt8, 0, []float32{sIn}, []int64{128}, 0))
+	w := int32(b.tensor("w", []int32{2, 1, 1, 4}, typeUInt8, b.buffer(b.randBytes(8)), []float32{sW}, []int64{120}, 0))
+	out := int32(b.tensor("out", []int32{1, 2, 2, 2}, typeUInt8, 0, []float32{sIn}, []int64{131}, 0))
+	b.op(opConv2D, []int32{in, w, -1}, []int32{out}, optConv2D, optsConv2D(padSame, 1, 1, actNone, 1, 1))
+	b.io([]int32{in}, []int32{out})
+	g, err := Load(b.bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for c, r := range g.Layers[0].Requant {
+		if r != f32 {
+			t.Fatalf("channel %d multiplier %+v, want the float32-product %+v (float64 product: %+v)", c, r, f32, f64)
+		}
+	}
+}
+
 func TestLoadErrors(t *testing.T) {
 	conv := func(mod func(b *mb, in, w, out int32) (code int32, opt uint8, opts *tableSpec)) []byte {
 		b := newMB()
@@ -372,6 +410,18 @@ func TestLoadErrors(t *testing.T) {
 	var oe *OpError
 	if _, err := Load(b.bytes()); !errors.As(err, &oe) || oe.Op != "ADD" || oe.Index != 1 || !strings.Contains(oe.Reason, `tensor "a"`) {
 		t.Fatalf("uint8 add: %v", err)
+	}
+
+	// QUANTIZE to uint8 is refused, naming the output tensor
+	b = newMB()
+	x = b.act([]int32{1, 2, 2, 2}, 0.1, 0)
+	y = b.act([]int32{1, 2, 2, 2}, 0.1, 0)
+	q := int32(b.tensor("q", []int32{1, 2, 2, 2}, typeUInt8, 0, []float32{0.1}, []int64{128}, 0))
+	b.op(opMaxPool2D, []int32{x}, []int32{y}, optPool2D, optsPool2D(padSame, 1, 1, 1, 1, actNone))
+	b.op(opQuantize, []int32{y}, []int32{q}, 0, nil)
+	b.io([]int32{x}, []int32{q})
+	if _, err := Load(b.bytes()); !errors.As(err, &oe) || oe.Op != "QUANTIZE" || oe.Index != 1 || !strings.Contains(oe.Reason, `tensor "q"`) {
+		t.Fatalf("quantize to uint8: %v", err)
 	}
 
 	// broadcasting Add, pool with fused activation, softmax output quant,
