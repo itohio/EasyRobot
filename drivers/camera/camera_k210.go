@@ -76,7 +76,7 @@ var _ Backend = (*Camera)(nil)
 // frames come back ErrIncomplete.
 const (
 	jpegChunk   = 256
-	jpegLines   = 1023 // DVP LINE_NUM is 10 bits
+	jpegLines   = dvpMaxLines
 	JPEGBufSize = jpegChunk * jpegLines
 )
 
@@ -149,22 +149,6 @@ func Open(cfg Config, pins Pins) (*Camera, error) {
 		return nil, err
 	}
 	return c, nil
-}
-
-func checkFormat(cfg Config) error {
-	switch cfg.Format {
-	case sensor.Y8, sensor.RGB565, sensor.RGB888Planar:
-		if cfg.W == 0 || cfg.H == 0 || cfg.W%32 != 0 {
-			return ErrFormat
-		}
-	case sensor.JPEG:
-		if cfg.W == 0 || cfg.H == 0 {
-			return ErrFormat
-		}
-	default:
-		return ErrFormat
-	}
-	return nil
 }
 
 // Reconfigure switches an open camera to cfg (cfg.XCLK is ignored): the
