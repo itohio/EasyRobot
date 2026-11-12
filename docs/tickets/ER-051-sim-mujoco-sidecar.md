@@ -29,7 +29,7 @@ Owner's answers (roster `decisions.md`, 2026-11-10): SIM decisions 1–4 approve
 
 ```text
 mujoco_sidecar --listen unix:///tmp/sim.sock [--viewer]
-  ModelLoad → mj_loadXML from bytes, set timestep = physics_dt, store substeps and seed
+  ModelLoad → MjModel.from_xml_string(mjcf), set timestep = physics_dt, store substeps and seed
   Command   → write ctrl[], mj_step × substeps, read qpos/qvel/sensordata/contacts/actuator_force → State
   Reset     → mj_resetData, reseed
 ```
@@ -40,17 +40,18 @@ Dependencies: ER-048, ER-050 (protocol), ER-053 (an MJCF to load). The download 
 
 - **Download gate, one approval** (decision 2: at the start of S1; ux's UX-27 S3, major, Leader accepted): the first action of this ticket is to ask Leader for the owner's go on the **complete** list below, once. Every item is recorded with version, source and sha256 in the evidence; nothing outside the list is installed.
 
-  | Item | Why | Source (product's proposal; exact versions pinned at the ask) |
+  | Item | Why | Source (pinned at the ask) |
   |---|---|---|
-  | `uv` (if not already on the host) | creates the venv under `~/src/tmp/` | astral.sh release or Homebrew |
-  | Python 3.12 (uv-managed) | the sidecar's runtime | uv's managed Python |
-  | `mujoco` 4.x | the physics engine and its Python binding | PyPI `mujoco` |
-  | `numpy` | `mujoco`'s dependency | PyPI |
+  | `mujoco-core[rendering]==4.0.1` | the physics engine and its Python binding, with the viewer's rendering stack; pinned instead of the `mujoco` metapackage, which since 4.0.0 also pulls in mujoco-studio, mujoco-studio-wasm and websockets | PyPI |
+  | `numpy` | `mujoco-core`'s dependency | PyPI, as `mujoco-core` requires |
+  | `glfw` | a hard dependency of the rendering extra (the viewer) | PyPI, as `mujoco-core[rendering]` requires |
+  | `pyopengl` | the rendering extra's OpenGL binding | PyPI, as `mujoco-core[rendering]` requires |
   | `protobuf` (Python runtime) | decoding `Envelope` frames | PyPI `protobuf` |
-  | Python code for `types/sim` | the messages in Python | generated with `protoc --python_out` from the repo's `protoc` (no extra plugin), or a small hand-written decoder if `protoc` isn't installed (no download then) |
-  | viewer dependencies (`glfw`, pulled in by `mujoco`'s viewer) | `--viewer` only | PyPI, as `mujoco` requires |
 
-  - **macOS viewer:** MuJoCo's interactive viewer on macOS needs its `mjpython` launcher (#verify against the installed version); `--viewer` starts the sidecar under `mjpython`, and headless runs use plain `python`.
+  - **Already on the host, no approval needed** (verify observed): `uv` 0.13.1 and CPython 3.12.15 (`mujoco` 4.0.1 needs Python ≥ 3.11; cp312 arm64 wheels exist). The venv lives under `~/src/tmp/`.
+  - **Python messages for `types/sim`, offline** (verify's SIM-tickets fix 10): no `protoc` on the host, so the sidecar loads a descriptor set built with the offline `buf` from ER-048 (`buf build --path proto/types/sim -o sim.binpb`) and creates the classes at start with `message_factory.GetMessages`; no generator plugin, no download.
+  - **Check at the ask:** `uv pip compile` of the pinned list (run on the owner's go) shows nothing outside this table.
+  - **macOS viewer:** MuJoCo's interactive viewer on macOS runs under the `mjpython` launcher, which `mujoco-core` installs on Darwin (verify confirmed from the MuJoCo Python docs); `--viewer` starts the sidecar under `mjpython`, and headless runs use plain `python`.
 - The sidecar maps the typed `State` fields from named MJCF sensors and sites (the names ER-053 emits), not from array positions guessed at, and copies **every named MJCF sensor** into `State.sensors` (name and its `sensordata` slice), so a new sensor needs no sidecar change (UX-27 S2).
 - **One command** (UX-27 S6): a small Go launcher, `x/sim/sidecar.Start(ctx, opts) (addr string, stop func() error, err error)`, starts the sidecar on a temp Unix socket (under `mjpython` with the viewer) and stops it; `cmd/sim-wheeled --backend mujoco` and `cmd/simcheck` use it.
 - Headless by default; `--viewer` opens MuJoCo's passive viewer for debugging.
@@ -77,6 +78,10 @@ Source/test edits follow the owner's autonomy instruction once Leader schedules 
 ## Effort uncertainty and revision trigger
 
 Product's guess: **M** (inferred). Revisit when a kill criterion fires or an open question changes the scope.
+
+## Log
+
+- 2026-11-12: verify's fixes (`docs/verification/SIM-tickets.md`, accepted with 11 fixes; Leader msg m-40a81d6669b0): the gate pins `mujoco-core[rendering]==4.0.1` (core, numpy, glfw, pyopengl) plus the protobuf runtime instead of the `mujoco` metapackage; uv and Python 3.12 noted as present; Python messages from a `buf`-built descriptor set via `message_factory.GetMessages` (no `protoc`); `mjpython` resolved; `MjModel.from_xml_string`.
 
 ## Implementation evidence
 

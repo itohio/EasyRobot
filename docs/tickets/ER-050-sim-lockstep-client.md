@@ -9,7 +9,7 @@ workstream: [W3, W6]
 milestone: M-d
 tags: [easyrobot, ticket, simulation, sim-s1]
 created: 2026-11-10
-updated: 2026-11-10
+updated: 2026-11-12
 ---
 # ER-050 — Sim S1: lockstep client — `Sim` over length-prefixed protobuf on a Unix socket or TCP
 
@@ -41,7 +41,7 @@ Dependencies: ER-048, ER-049.
 - One outstanding request at a time (lockstep); a reply's `step` must match the command's.
 - Timeouts per call (default 1 s), errors typed and wrapped with the address.
 - Buffers reused across steps; no allocation per step after warm-up.
-- A test server in Go (wrapping ER-055's fake) lets the client pass the conformance suite without MuJoCo.
+- A test server in Go (wrapping ER-049's in-test stub backend) lets the client pass the conformance suite without MuJoCo.
 
 Not in scope: the sidecar (ER-051); dndm transport (later).
 
@@ -50,8 +50,8 @@ Source/test edits follow the owner's autonomy instruction once Leader schedules 
 ## Acceptance evidence required later
 
 - [ ] The client, against the in-process test server over a Unix socket, passes ER-049's conformance suite.
-- [ ] Round trip for a 2-wheel `Command`/`State` over a Unix socket: median ≤ 100 µs, p99 ≤ 500 µs on the Mac (fake backend; transport cost only).
-- [ ] After 1,000 warm-up steps, 0 allocations per `Step` (`testing.AllocsPerRun`).
+- [ ] Round trip for a 2-wheel `Command`/`State` over a Unix socket: median ≤ 100 µs, p99 ≤ 500 µs on the Mac (ER-049's stub backend; transport cost only).
+- [ ] After 1,000 warm-up steps, 0 allocations per `Step` (`testing.AllocsPerRun`) with a 2-wheel, 2-contact, 3-sensor `State`. Encoding uses `MarshalAppend` into a reused buffer (0 allocations, verify measured); **decoding is a hand-written `protowire` decoder into reused structs**, matching sensor names against the names seen at load without allocating strings (verify's SIM-tickets fix 1).
 - [ ] A server that dies mid-run gives a typed error naming the address within the timeout, not a hang.
 
 ## Open questions
@@ -61,6 +61,10 @@ Source/test edits follow the owner's autonomy instruction once Leader schedules 
 ## Effort uncertainty and revision trigger
 
 Product's guess: **S** (inferred). Revisit when a kill criterion fires or an open question changes the scope.
+
+## Log
+
+- 2026-11-12: verify's fixes (`docs/verification/SIM-tickets.md`, accepted with 11 fixes; Leader msg m-40a81d6669b0): 0 allocations per `Step` through a hand-written `protowire` decoder (stock `proto.Unmarshal` allocates 21); the conformance run uses ER-049's in-test stub server, not ER-055, so no new dependency.
 
 ## Implementation evidence
 

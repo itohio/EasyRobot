@@ -43,13 +43,18 @@ message State {
   uint64 step = 1; uint64 sim_time_us = 2;
   repeated float joint_position = 3; repeated float joint_velocity = 4;
   Pose body_pose = 5; Twist body_twist = 6;   // ground truth, world frame
-  Imu imu = 7;                                // accel (m/s²), gyro (rad/s), no noise; noise is ER-054's
+  types.devices.IMUReading imu = 7;           // acceleration (m/s²), angular_velocity (rad/s); exact, noise is ER-054's
   repeated Contact contacts = 8;
   repeated float actuator_force = 9; repeated bool actuator_saturated = 10;
   types.core.Frame frame = 11;                // optional; camera later
-  repeated SensorReading sensors = 12;        // every named MJCF sensor (UX-27 S2)
+  repeated SimSensor sensors = 12;            // every named MJCF sensor (UX-27 S2)
 }
-message SensorReading { string name = 1; repeated float values = 2; } // the MJCF sensor's name and its sensordata slice
+message SimSensor { string name = 1; repeated float values = 2; } // an MJCF sensor's name and its sensordata slice
+// Defined here, reusing existing messages (verify's fix 9; proto/types/control has no Pose or Twist):
+message Pose    { types.math.Vector3D position = 1; types.math.Quaternion orientation = 2; } // world frame
+message Twist   { types.math.Vector3D linear = 1;   types.math.Vector3D angular = 2; }       // m/s, rad/s
+message Contact { string geom = 1; float normal_force = 2; types.math.Vector3D position = 3; } // N, world frame
+message RenderRequest { string camera = 1; uint32 width = 2; uint32 height = 3; }             // camera later
 ```
 
 ## Dependencies and scope
@@ -57,7 +62,7 @@ message SensorReading { string name = 1; repeated float values = 2; } // the MJC
 Dependencies: none.
 
 - Field names and units in comments; every repeated field is indexed by the actuator or joint order the model defines (ER-052).
-- Reuse `types/core` `Frame` and existing pose/twist messages where they exist (`proto/types/control`); new ones only where none fits.
+- Reuse what exists: `types.core.Frame`, `types.math.Vector3D` and `Quaternion`, and `types.devices.IMUReading` for the IMU (its magnetometer, temperature and timestamp fields stay unset). `types.devices.SensorReading` is a typed oneof for device drivers, so the sim's generic name-and-values reading is a separate `SimSensor`, not a second `SensorReading`.
 - **One place to add a sensor** (ux's UX-27 S2, major, Leader accepted): `State.sensors` carries every named MJCF sensor generically, so a new sensor (a ToF, a bumper, a line sensor) needs no proto change and no sidecar change. The typed `imu` field stays for speed.
 - A golden binary fixture of one `Command` and one `State` is checked in, so a later schema change shows up as a diff.
 
@@ -67,19 +72,24 @@ Source/test edits follow the owner's autonomy instruction once Leader schedules 
 
 ## Acceptance evidence required later
 
-- [ ] `make proto` (or the repo's generator) builds `types/sim` with no warnings; generated code is committed. **Offline** (ux's UX-27 second rating R2): no `protoc` is on the host and the Makefile's `install-tools` fetches `@latest`, so the build uses `buf` v1.75.0 and `protoc-gen-go` v1.36.12 (the version in `go.mod`) built from the local module cache with `GOPROXY=off` (both observed in `~/go/pkg/mod`), as abugaga's ABU-084 did; no download. If either is missing at build time, it joins ER-051's single approval list instead of being fetched.
+- [ ] The generated Go code for `types/sim` builds with no warnings and is committed. **Offline recipe** (ux's UX-27 R2; verify's SIM-tickets fix 4): no `protoc` on the host; build `buf` v1.75.0 and `protoc-gen-go` v1.36.12 (the version in `go.mod`) from **copies** of their directories in `~/go/pkg/mod` (`go install …@version` with `GOPROXY=off` fails); `~/.cache/buf` must hold `wellknowntypes`; run `buf generate --path proto/types/sim` so the 27 existing `.pb.go` headers aren't rewritten (v1.36.10 → v1.36.12). If any piece is missing, it joins ER-051's single approval list instead of being fetched.
 - [ ] A round-trip test marshals and unmarshals each `Envelope` case, including a `Command` and a `State` for a 2-wheel robot with IMU and two contacts; byte-equal on re-marshal.
 - [ ] That `State` is ≤ 512 B on the wire (product's budget; a frame and generic sensors excluded).
-- [ ] A `State` with three `SensorReading`s (1, 3 and 8 values) round-trips byte-equal.
+- [ ] A `State` with three `SimSensor`s (1, 3 and 8 values) round-trips byte-equal.
+- [ ] `buf build` compiles the sketch's messages (verify measured 206 B for the 2-wheel `State`, 271 B with three sensors).
 - [ ] The golden fixtures decode with the generated code.
 
 ## Open questions
 
-- Whether `Pose`/`Twist` come from `proto/types/control` or `types/math` (the implementer picks the existing one; no duplicate).
+None.
 
 ## Effort uncertainty and revision trigger
 
 Product's guess: **S** (inferred). Revisit when a kill criterion fires or an open question changes the scope.
+
+## Log
+
+- 2026-11-12: verify's fixes (`docs/verification/SIM-tickets.md`, accepted with 11 fixes; Leader msg m-40a81d6669b0): the IMU reuses `types.devices.IMUReading`; `Pose`, `Twist`, `Contact`, `RenderRequest` defined from `types.math` (no Pose/Twist in `proto/types/control`); the generic reading is `SimSensor`, apart from `types.devices.SensorReading`; the offline generation recipe (module-directory copies, `wellknowntypes`, `--path proto/types/sim`).
 
 ## Implementation evidence
 

@@ -8,7 +8,7 @@ owner: easyrobot
 workstream: [W3, W6]
 milestone: M-d
 tags: [easyrobot, ticket, simulation, sim-s1]
-created: 2026-11-10
+created: 2026-11-12
 updated: 2026-11-12
 ---
 # ER-060 — Sim S1: wheel odometry — encoder ticks → 2D pose from the robot description
@@ -29,13 +29,13 @@ Package `x/robot/wheeled/odometry` (or next to `wheels/differential`; the implem
 
 ```go
 type Odometry struct { /* geometry, last ticks, pose */ }
-func New(w model.Wheeled, countsPerRev int) *Odometry
-func (o *Odometry) Update(ticks []int32, out *Pose2D) error // integrates the tick deltas since the last call
+func New(w model.Wheeled /* x/robot/model */, countsPerRev int) *Odometry
+func (o *Odometry) Update(ticks []int32, out *wheeled.Pose2D) error // integrates the tick deltas since the last call
 ```
 
 ## Dependencies and scope
 
-Dependencies: ER-052; ER-038 (wheel rates in rad/s).
+Dependencies: ER-052, ER-055 and ER-057 (the over-the-fake acceptance case), ER-059 (`Pose2D`); ER-038 (wheel rates in rad/s).
 
 - Uses the differential kinematics (`differential.Forward`) for the tick-delta → twist step; no second copy of the kinematics.
 - Handles counter wrap; typed error for a wrong wheel count.
@@ -59,6 +59,10 @@ None.
 ## Effort uncertainty and revision trigger
 
 Product's guess: **S** (inferred). Revisit when a kill criterion fires or an open question changes the scope.
+
+## Log
+
+- 2026-11-12: verify's fixes (`docs/verification/SIM-tickets.md`, accepted with 11 fixes; Leader msg m-40a81d6669b0): depends on ER-055 and ER-057 for its over-the-fake case and on ER-059 for `Pose2D`; the description comes from `x/robot/model`; created date corrected to the 2026-11-12 fold.
 
 ## Implementation evidence
 

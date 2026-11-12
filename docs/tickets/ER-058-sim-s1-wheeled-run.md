@@ -41,7 +41,7 @@ Dependencies: ER-050, ER-051, ER-053, ER-054, ER-056 (determinism known before r
 
 - **The loop uses only `Base` and `Clock`** (ER-059), never `simpb` types; ground truth for the log comes from ER-059's optional `Truth` interface, found by type assertion (implemented by `simbase` only; the column stays empty on hardware), so the same loop binary can drive the hardware base later (UX-27 S1, second rating R3).
 - Controllers: a constant twist (straight) and the existing rigid-body path tracker for a 1 m square (`x/math/control/motion/rigidbody`, after ER-038 fixes its sign).
-- **Teleop** (UX-27 S4): `--scenario teleop` reads the twist from the keyboard (arrow keys or WASD, a step per press, space stops), best with `--viewer`. **Keys go to the terminal** (ux's UX-27 second rating R4): with `--viewer`, the MuJoCo window can take focus, so the run prints `keys go to this terminal; click it if the viewer has focus` at start (reading keys from the viewer's own key callback is #verify against MuJoCo's passive viewer, a later option); the RC receiver (`cmd/elrs-rx`, the input the real robot will use) is a later input on the same path.
+- **Teleop** (UX-27 S4): `--scenario teleop` reads the twist from the keyboard (arrow keys or WASD, a step per press, space stops), best with `--viewer`. **Keys go to the terminal** (ux's UX-27 second rating R4): with `--viewer`, the MuJoCo window can take focus, so the run prints `keys go to this terminal; click it if the viewer has focus` at start (reading keys from the viewer is a later option: MuJoCo's `launch_passive(…, key_callback=…)` is documented); the RC receiver (`cmd/elrs-rx`, the input the real robot will use) is a later input on the same path.
 - **One command** (UX-27 S6): `--backend mujoco` starts ER-051's sidecar on a temp socket and stops it on exit; `--backend unix://…` keeps the two-process form for debugging; `--backend fake` runs ER-055 in-process.
 - **Result at a glance** (UX-27 S5): each scripted run ends with one line in `simcheck`'s format (value, deviation, threshold, PASS/FAIL, and the kill action on FAIL); `--compare` prints fake and MuJoCo side by side (distance, heading, final error, odometry drift, sim speed).
 - The same binary runs against the fake and the sidecar; results are compared.
@@ -59,7 +59,7 @@ Source/test edits follow the owner's autonomy instruction once Leader schedules 
 - [ ] `--compare` prints the fake and MuJoCo runs side by side; the table goes in the evidence.
 - [ ] **Teleop:** with `--backend mujoco --viewer --scenario teleop`, scripted key presses (a test feeding stdin) move the robot forward, turn it and stop it; a person's check in the viewer is recorded once.
 - [ ] `--backend mujoco` leaves no sidecar process behind after a normal exit or Ctrl+C.
-- [ ] The loop package imports no `types/sim` (ER-059's grep test).
+- [ ] **The loop is its own package** (`x/robot/wheeled/loop`, product's proposal), used by `cmd/sim-wheeled`: a test runs `go list -deps` on it and finds no `types/sim` and no `x/sim/...`; a mutant that imports `simbase` into the loop package fails that test (verify's SIM-tickets fix 8; moved here from ER-059).
 - [ ] **Kill / rethink:** < 80 % of the commanded distance, heading drift > 10° over the straight run, or saturation at 0.2 m/s with a controller that works on the fake → tune model parameters first (friction, masses, motor limits from decision 7); if still failing, the sim choice goes back to Leader.
 
 ## Open questions
@@ -70,6 +70,10 @@ Source/test edits follow the owner's autonomy instruction once Leader schedules 
 ## Effort uncertainty and revision trigger
 
 Product's guess: **M** (inferred). Revisit when a kill criterion fires or an open question changes the scope.
+
+## Log
+
+- 2026-11-12: verify's fixes (`docs/verification/SIM-tickets.md`, accepted with 11 fixes; Leader msg m-40a81d6669b0): the loop is its own package with a `go list -deps` test against `types/sim` and `x/sim` (moved from ER-059); MuJoCo's passive viewer documents `key_callback`, so viewer keys are a later option without the #verify.
 
 ## Implementation evidence
 

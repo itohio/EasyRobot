@@ -9,7 +9,7 @@ workstream: [W3, W6]
 milestone: M-d
 tags: [easyrobot, ticket, simulation, sim-s1]
 created: 2026-11-10
-updated: 2026-11-10
+updated: 2026-11-12
 ---
 # ER-049 — Sim S1: Go `Sim` interface and a backend conformance suite
 
@@ -56,7 +56,7 @@ Source/test edits follow the owner's autonomy instruction once Leader schedules 
 
 - [ ] `x/sim` compiles with the interface and typed errors; `go vet` clean.
 - [ ] The conformance suite passes against a minimal in-test stub backend; a deliberately broken stub (skips the step-gap check) fails it. Every later backend (ER-050 client, ER-055 fake, ER-051 sidecar) runs the same suite.
-- [ ] The suite includes an allocation check (`testing.AllocsPerRun` on `Step`) that each backend must pass with 0.
+- [ ] The suite includes an allocation check (`testing.AllocsPerRun` on `Step`): 0 for in-process backends (ER-055) and for the client (ER-050), whose `State` decoding is a hand-written `protowire` decoder into reused structs, because stock `proto.Unmarshal` allocates (verify measured 21 per `State`, 33 with three sensors; verify's SIM-tickets fix 1).
 
 ## Open questions
 
@@ -65,6 +65,10 @@ Source/test edits follow the owner's autonomy instruction once Leader schedules 
 ## Effort uncertainty and revision trigger
 
 Product's guess: **S** (inferred). Revisit when a kill criterion fires or an open question changes the scope.
+
+## Log
+
+- 2026-11-12: verify's fixes (`docs/verification/SIM-tickets.md`, accepted with 11 fixes; Leader msg m-40a81d6669b0): the allocation check's bound: 0 for in-process backends and for the client with ER-050's hand decoder.
 
 ## Implementation evidence
 

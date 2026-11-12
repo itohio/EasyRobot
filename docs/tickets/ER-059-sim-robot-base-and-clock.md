@@ -8,7 +8,7 @@ owner: easyrobot
 workstream: [W3, W6]
 milestone: M-d
 tags: [easyrobot, ticket, simulation, sim-s1]
-created: 2026-11-10
+created: 2026-11-12
 updated: 2026-11-12
 ---
 # ER-059 — Sim S1: robot-facing `wheeled.Base` interface and `Clock` — the seam between sim and real robot
@@ -28,6 +28,8 @@ Owner's answers (roster `decisions.md`, 2026-11-10): SIM decisions 1–4 approve
 Package `x/robot/wheeled` (product's proposal for the path; next to the kinematics is also fine):
 
 ```go
+type Imu struct { Accel, Gyro [3]float32 }          // m/s², rad/s; the robot's own type, not simpb (ER-060 and the hardware base share it)
+type Pose2D struct { X, Y, Theta float64 }          // metres, radians; float64 so odometry doesn't drift (ER-060)
 type Base interface {
     SetTwist(v, omega float32) error  // chassis twist; the base maps it to its actuators
     Encoders(out []int32) error       // ticks per wheel, in the description's wheel order
@@ -65,7 +67,6 @@ Source/test edits follow the owner's autonomy instruction once Leader schedules 
 
 - [ ] `x/robot/wheeled` compiles with `Base`, `Clock` and typed errors; `go vet` clean.
 - [ ] `basetest.Conformance` passes against a minimal in-test stub (records the twist, returns scripted ticks, a manual clock); a broken stub that ignores the twist fails it.
-- [ ] A grep test in ER-058's package finds no import of `types/sim` (the loop is backend-neutral).
 - [ ] `basetest` checks every optional interface a base claims: a stub claiming `Ranger` returns its scripted range by name and `ErrNoSensor` for an unknown name; a stub without `Contact` fails the type assertion and the suite skips that check with the reason.
 - [ ] No allocation per `Range`, `Contact` and `Pose` call.
 
@@ -76,6 +77,10 @@ Source/test edits follow the owner's autonomy instruction once Leader schedules 
 ## Effort uncertainty and revision trigger
 
 Product's guess: **S** (inferred). Revisit when a kill criterion fires or an open question changes the scope.
+
+## Log
+
+- 2026-11-12: verify's fixes (`docs/verification/SIM-tickets.md`, accepted with 11 fixes; Leader msg m-40a81d6669b0): `Imu` and `Pose2D` defined here as robot types, shared by ER-060; the import test moved to ER-058's loop package; created date corrected to the 2026-11-12 fold.
 
 ## Implementation evidence
 

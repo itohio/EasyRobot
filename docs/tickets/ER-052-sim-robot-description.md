@@ -9,7 +9,7 @@ workstream: [W3, W6]
 milestone: M-d
 tags: [easyrobot, ticket, simulation, sim-s1]
 created: 2026-11-10
-updated: 2026-11-10
+updated: 2026-11-12
 ---
 # ER-052 — Sim S1: robot description structs — a wheeled base with masses and motor torque and speed
 
@@ -25,7 +25,7 @@ Owner's answers (roster `decisions.md`, 2026-11-10): SIM decisions 1–4 approve
 
 ## Interface sketch
 
-Package `x/sim/model` (product's proposal; hexapod later extends `chain.Body` with the same fields):
+Package `x/robot/model` (product's proposal; the robot's source of truth lives with the robot, not under `x/sim`; hexapod later extends `chain.Body` with the same fields):
 
 ```go
 type Motor struct { StallTorque, NoLoadSpeed float32 } // N·m, rad/s
@@ -46,7 +46,7 @@ func (w Wheeled) Validate() error
 
 Dependencies: none.
 
-- `Validate` refuses non-positive masses or radii, zero motor limits, wheels inside the chassis, and an empty driven set, each with a typed error naming the field.
+- `Validate` refuses non-positive masses or radii, zero motor limits and an empty driven set, each with a typed error naming the field. Wheels overlapping the chassis are allowed: MuJoCo filters contacts between a parent body and its children [INFERENCE, verify's note], so the exporter needs no gap.
 - `DifferentialBase` matches the differential kinematics: its `track` is the `base` that `differential.New` takes.
 - Defaults for motor stall torque and no-load speed are placeholders marked `TODO(owner: part numbers)` until the owner supplies them (decision 7, open).
 
@@ -67,6 +67,10 @@ Source/test edits follow the owner's autonomy instruction once Leader schedules 
 ## Effort uncertainty and revision trigger
 
 Product's guess: **S** (inferred). Revisit when a kill criterion fires or an open question changes the scope.
+
+## Log
+
+- 2026-11-12: verify's fixes (`docs/verification/SIM-tickets.md`, accepted with 11 fixes; Leader msg m-40a81d6669b0): the package moves to `x/robot/model` (layering: robot bricks don't depend on `x/sim`); the "wheels inside the chassis" refusal is dropped.
 
 ## Implementation evidence
 

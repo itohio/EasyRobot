@@ -28,7 +28,7 @@ Owner's answers (roster `decisions.md`, 2026-11-10): SIM decisions 1–4 approve
 Package `x/sim/mjcf`:
 
 ```go
-func Wheeled(w model.Wheeled, opt Options) ([]byte, error)
+func Wheeled(w model.Wheeled, opt Options) ([]byte, error) // model = x/robot/model (ER-052)
 type Options struct { PhysicsDT float32; Floor bool }
 // Names: actuators "wheel_<i>", joints "wheel_<i>_joint", sensors "imu_acc", "imu_gyro", "wheel_<i>_pos"
 ```
@@ -38,7 +38,7 @@ type Options struct { PhysicsDT float32; Floor bool }
 Dependencies: ER-052.
 
 - Chassis as a box with its mass; wheels as cylinders on hinge joints about their axle; casters as frictionless-ish spheres; a floor plane with the description's friction.
-- Wheel motors as **velocity actuators** with `forcerange = ±StallTorque` and `ctrlrange = ±NoLoadSpeed` (the motor model's limits).
+- Wheel motors as **velocity actuators** with `forcerange = ±StallTorque` and `ctrlrange = ±NoLoadSpeed` (the motor model's limits). The velocity gain `kv` is `StallTorque / NoLoadSpeed` (N·m per rad/s), so the actuator follows the motor's straight-line torque–speed curve instead of MuJoCo's default `kv = 1` [INFERENCE, verify's note].
 - An IMU site with `accelerometer` and `gyro`; a `jointpos` sensor per wheel for the encoders (ER-054 quantises them).
 - Every sensor gets a unique `name`, since the sidecar forwards each named sensor into `State.sensors` (ER-048, UX-27 S2).
 - Output is deterministic: the same description gives byte-identical MJCF.
@@ -61,6 +61,10 @@ Source/test edits follow the owner's autonomy instruction once Leader schedules 
 ## Effort uncertainty and revision trigger
 
 Product's guess: **S** (inferred). Revisit when a kill criterion fires or an open question changes the scope.
+
+## Log
+
+- 2026-11-12: verify's fixes (`docs/verification/SIM-tickets.md`, accepted with 11 fixes; Leader msg m-40a81d6669b0): velocity actuators get `kv = StallTorque / NoLoadSpeed`; the description package is `x/robot/model`.
 
 ## Implementation evidence
 

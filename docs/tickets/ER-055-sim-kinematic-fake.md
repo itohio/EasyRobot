@@ -9,7 +9,7 @@ workstream: [W3, W6]
 milestone: M-d
 tags: [easyrobot, ticket, simulation, sim-s1]
 created: 2026-11-10
-updated: 2026-11-10
+updated: 2026-11-12
 ---
 # ER-055 — Sim S1: kinematic fake backend — a pure-Go differential integrator implementing `Sim` for CI
 
@@ -28,7 +28,7 @@ Owner's answers (roster `decisions.md`, 2026-11-10): SIM decisions 1–4 approve
 `x/sim/fake`:
 
 ```go
-func NewDifferential(w model.Wheeled) sim.Sim // integrates wheel velocity targets → pose, exact IMU (gyro = ω, accel from v̇)
+func NewDifferential(w model.Wheeled) sim.Sim // model = x/robot/model (ER-052); // integrates wheel velocity targets → pose, exact IMU (gyro = ω, accel from v̇)
 ```
 
 ## Dependencies and scope
@@ -36,7 +36,7 @@ func NewDifferential(w model.Wheeled) sim.Sim // integrates wheel velocity targe
 Dependencies: ER-049, ER-052; ER-038's differential fix (wheel rates in rad/s from the radius) if it lands first, otherwise this ticket converts linear speeds explicitly.
 
 - Uses `differential.Forward` for the chassis twist (no second copy of the kinematics).
-- Integrates pose per substep (`physics_dt`), honouring the motor's no-load speed as a clamp and reporting `actuator_saturated` when clamped.
+- Integrates pose per substep (`physics_dt`) in **float64** internal state (float32 accumulation over 5,000 substeps drifts by about 1.2e-4 m and 1.9e-4 rad at the rates below, verify measured; verify's SIM-tickets fix 6), converting to float32 only when filling `State`; honouring the motor's no-load speed as a clamp and reporting `actuator_saturated` when clamped.
 - Deterministic and allocation-free per step.
 
 Not in scope: forces, slip, contacts (MuJoCo's job).
@@ -46,7 +46,7 @@ Source/test edits follow the owner's autonomy instruction once Leader schedules 
 ## Acceptance evidence required later
 
 - [ ] Passes ER-049's conformance suite.
-- [ ] Wheels at equal rate r·ω for 10 s: straight-line distance = v·t within 1e-4 m; opposite rates: heading change = ω·t within 1e-5 rad.
+- [ ] At v = 0.2 m/s (equal wheel rates) for 10 s with 2 ms substeps: straight-line distance = v·t within 1e-6 m. At ω = 2.5 rad/s (opposite rates) for 10 s: heading change = ω·t, wrapped, within 1e-6 rad. A float32 accumulation of the same run is checked to fail these bounds, so the float64 state is shown to matter.
 - [ ] A target above the no-load speed is clamped and flagged `actuator_saturated`.
 - [ ] 0 allocations per `Step`.
 
@@ -57,6 +57,10 @@ None.
 ## Effort uncertainty and revision trigger
 
 Product's guess: **S** (inferred). Revisit when a kill criterion fires or an open question changes the scope.
+
+## Log
+
+- 2026-11-12: verify's fixes (`docs/verification/SIM-tickets.md`, accepted with 11 fixes; Leader msg m-40a81d6669b0): float64 internal state; the rates are stated (0.2 m/s, 2.5 rad/s, 10 s, 2 ms substeps) and the bounds are 1e-6 m and 1e-6 rad, with a float32 run shown to miss them.
 
 ## Implementation evidence
 

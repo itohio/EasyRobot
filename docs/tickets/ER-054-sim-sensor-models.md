@@ -28,7 +28,7 @@ Owner's answers (roster `decisions.md`, 2026-11-10): SIM decisions 1–4 approve
 Package `x/sim/sensor`:
 
 ```go
-type IMUModel interface { Apply(truth *simpb.Imu, out *simpb.Imu) }   // bias, white noise, seeded
+type IMUModel interface { Apply(truth *devicespb.IMUReading, out *devicespb.IMUReading) } // bias, white noise, seeded (types.devices.IMUReading, ER-048)
 type EncoderModel interface { Ticks(jointPos float32) int32 }          // counts per revolution
 func NewIMU(cfg IMUConfig, seed uint64) IMUModel
 func NewEncoder(countsPerRev int) EncoderModel
@@ -41,7 +41,7 @@ Dependencies: ER-048.
 - IMU: per-axis bias and Gaussian white noise from config (accel m/s², gyro rad/s); seeded, so the same seed gives the same stream.
 - Encoder: floor(angle / 2π × counts) with wrap handling over many turns.
 - No allocation per call.
-- **Add a sensor (recipe, UX-27 S2):** with ER-048's generic `State.sensors` and ER-051 forwarding every named MJCF sensor, a new sensor touches two places:
+- **Add a sensor (recipe, UX-27 S2):** with ER-048's generic `State.sensors` and ER-051 forwarding every named MJCF sensor, a new sensor touches three places:
   1. the robot description and exporter (ER-052, ER-053): its placement and its MJCF element with a unique name;
   2. a Go model here, if it needs noise or quantisation (it reads `State.sensors` by name);
   3. to use it in a controller, the matching optional interface beside `wheeled.Base` (ER-059: `Ranger`, `Contact`), implemented by `simbase` (ER-057) from `State.sensors`; a new kind of sensor adds one new small interface, never a method on `Base` (ux's UX-27 second rating R1).
@@ -66,6 +66,10 @@ Source/test edits follow the owner's autonomy instruction once Leader schedules 
 ## Effort uncertainty and revision trigger
 
 Product's guess: **S** (inferred). Revisit when a kill criterion fires or an open question changes the scope.
+
+## Log
+
+- 2026-11-12: verify's fixes (`docs/verification/SIM-tickets.md`, accepted with 11 fixes; Leader msg m-40a81d6669b0): the IMU model takes `types.devices.IMUReading`; the recipe says three places.
 
 ## Implementation evidence
 
