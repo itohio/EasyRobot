@@ -213,9 +213,13 @@ func (m *Model) checkLayer(l Layer) error {
 			return err
 		}
 		// dma_parameter's byte counts follow the output shape (as SetOutShape
-		// writes them; review R-K210-K9a K9a-1).
+		// writes them; review R-K210-K9a K9a-1). Above 65,536 pixels per
+		// channel the KPU ignores channel_byte_num (send_data_out must be
+		// off): SetOutShape saturates it and ncc truncates it to 16 bits, so
+		// both are accepted (K9a-2).
 		chb, total, px := a[11]>>16&0xffff, a[11]>>32, uint64(w*h)
-		if total != px*uint64(ch)-1 || chb != min(px, maxChannelBytes)-1 || (a[11]&1 != 0 && px > maxChannelBytes) {
+		chbOK := chb == min(px, maxChannelBytes)-1 || (px > maxChannelBytes && chb == (px-1)&0xffff)
+		if total != px*uint64(ch)-1 || !chbOK || (a[11]&1 != 0 && px > maxChannelBytes) {
 			return fmt.Errorf("%w: dma_parameter byte counts %d/%d do not match the output %d×%d×%d", ErrFormat, chb+1, total+1, w, h, ch)
 		}
 		if c.Flags&FlagMainMemOut != 0 {

@@ -55,7 +55,7 @@ Bit positions from `kpu.h`; "nncase" is what rc5 writes; tiny3 values are given 
 | 8 | `write_back_cfg` | wb_channel_switch_addr 0–14, wb_row_switch_addr 16–19, wb_group 20–22 | output layout |
 | 9 | `conv_value` | shr_w 0–3, shr_x 4–7, arg_w 8–31, arg_x 32–55 | zero-point terms; arg_w and arg_x are signed 24-bit (tiny3 layer 0: arg_w 0xC00000 = −4,194,304) |
 | 10 | `conv_value2` | arg_add 0–39 | zero-point product term |
-| 11 | `dma_parameter` | send_data_out 0, channel_byte_num 16–31, dma_total_byte 32–63 | send_data_out streams the output to `FIFO_DATA_OUT` (for DMA); byte counts − 1 (W·H, W·H·C). `drivers/kpu` leaves it off and reads the output from KPU RAM. `Check` requires the byte counts to match the output shape (channel_byte_num saturates at 65,535 when send_data_out is off). |
+| 11 | `dma_parameter` | send_data_out 0, channel_byte_num 16–31, dma_total_byte 32–63 | send_data_out streams the output to `FIFO_DATA_OUT` (for DMA); byte counts − 1 (W·H, W·H·C). `drivers/kpu` leaves it off and reads the output from KPU RAM. `Check` requires the byte counts to match the output shape. Above 65,536 pixels per channel send_data_out must be off and channel_byte_num is ignored by the KPU: `SetOutShape` saturates it at 65,535, ncc truncates it to 16 bits, and `Check` accepts either. |
 
 **pool_type** (nncase emulator; stride = kernel). **Silicon: regular convs only.** In depthwise mode a non-zero pool_type gives wrong output on the UnitV (ER-K210-K9 evidence, K9e). `kmodel.Check` refuses such a layer (ErrUnsupported). nncase never pools a depthwise layer: it lowers a stride-2 depthwise at full resolution and puts the left-top sampler on the following 1×1 conv.
 

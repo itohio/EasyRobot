@@ -345,3 +345,62 @@ func TestChannelByteNum(t *testing.T) {
 		t.Error("rejected SetSendDataOut set the bit")
 	}
 }
+
+// TestCheckLargeOutputChannelBytes (review R-K210-K9a K9a-2/K9a-3): with
+// send_data_out off and more than 65,536 output pixels per channel the KPU
+// ignores channel_byte_num, and ncc writes it truncated to 16 bits
+// (K210Conv2d.cs) where SetOutShape saturates: Check accepts both, refuses
+// any other value, and refuses such an output with send_data_out on.
+// 512×200 has bit 15 set in W·H − 1 (0x18FFF), so the truncation must keep
+// all 16 bits.
+func TestCheckLargeOutputChannelBytes(t *testing.T) {
+	build := func(w, h int, chb uint64, send bool) error {
+		b := NewBuilder(true, 0)
+		b.SetMainMem(uint32(w * h))
+		b.AddOutput(Output{Address: 0, Size: uint32(w * h)})
+		a := NewArgs()
+		l := UploadLayout(w, h)
+		must(t, a.SetSrcAddr(0))
+		must(t, a.SetDstAddr(uint32(l.ChanLines)))
+		must(t, a.SetInShape(w, h, 1))
+		must(t, a.SetOutShape(w, h, 1))
+		must(t, a.SetInLayout(l))
+		must(t, a.SetOutLayout(l))
+		must(t, a.SetKernel(1, false))
+		must(t, a.SetLoad(1, 1, 1))
+		a[11] = a[11]&^(0xffff<<16) | chb<<16
+		if send {
+			a[11] |= 1
+		}
+		bn, err := EncodeBN([]BN{{Mul: 1, Shift: 0}})
+		must(t, err)
+		var act [16]ActSegment
+		for i := range act {
+			act[i] = ActSegment{StartX: int64(i) - 1<<35}
+		}
+		actb, err := EncodeAct(act)
+		must(t, err)
+		b.AddConvToMain(0, a, []byte{1}, bn, actb)
+		_, err = b.Build()
+		return err
+	}
+	for _, c := range []struct {
+		name string
+		w, h int
+		chb  uint64
+		send bool
+		ok   bool
+	}{
+		{"saturated (SetOutShape)", 300, 220, 65535, false, true},
+		{"truncated (ncc)", 300, 220, (300*220 - 1) & 0xffff, false, true},
+		{"truncated (ncc), bit 15 set", 512, 200, (512*200 - 1) & 0xffff, false, true},
+		{"truncated to 15 bits", 512, 200, (512*200 - 1) & 0x7fff, false, false},
+		{"other value", 300, 220, 1234, false, false},
+		{"saturated with send_data_out", 300, 220, 65535, true, false},
+	} {
+		err := build(c.w, c.h, c.chb, c.send)
+		if c.ok != (err == nil) || (err != nil && !errors.Is(err, ErrFormat)) {
+			t.Errorf("%s %d×%d: err %v, want ok %v", c.name, c.w, c.h, err, c.ok)
+		}
+	}
+}
