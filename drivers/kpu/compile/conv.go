@@ -31,16 +31,42 @@ const (
 	mulBound     = 1 << 23 // BN norm_mul is signed 24-bit
 )
 
-// LowerConv lowers a qnet Conv2D (1×1 or 3×3) or DepthwiseConv2D (3×3,
-// multiplier 1), stride 1, SAME (1×1 also VALID), with its input at KPU
-// line address src and its output at dst, both in the standard layout for
-// their width (kmodel.UploadLayout).
+// Fuse names the qnet layers lowered together with a conv into one KPU
+// layer. Each must directly chain with the conv (shapes and quantisation).
+type Fuse struct {
+	// Pad is a Pad(1,1,1,1) directly before a stride-2 VALID 3×3 conv: the
+	// pair becomes a stride-1 SAME conv on the unpadded input (pad_value =
+	// PadValue) followed by the KPU's left-top 2×2 sampler, which centres
+	// the windows on even pixels exactly as the explicit pad does.
+	Pad *qnet.Layer
+	// Act is a standalone ReLU or ReLU6 directly after the conv; it
+	// tightens the conv's clamp.
+	Act *qnet.Layer
+	// Pool is a MaxPool2D or AvgPool2D with kernel = stride ∈ {2, 4},
+	// VALID, directly after a stride-1 conv (or after Act).
+	Pool *qnet.Layer
+}
+
+// LowerConv lowers a single qnet conv layer (see Lower) without fusion.
+func LowerConv(l *qnet.Layer, src, dst uint32) (Conv, error) { return Lower(l, Fuse{}, src, dst) }
+
+// Lower lowers a qnet Conv2D (1×1 or 3×3) or DepthwiseConv2D (3×3,
+// multiplier 1), together with the layers in f, with its input at KPU line
+// address src and its output at dst, both in the standard layout for their
+// width (kmodel.UploadLayout).
+//
+// Supported: stride 1 SAME (1×1 also VALID); stride 2 as Pad(1,1) + 3×3
+// VALID or as 1×1 VALID, on even H and W (the left-top sampler); a fused
+// 2×2 or 4×4 max or average pool after a stride-1 conv; a fused ReLU or
+// ReLU6. TF SAME stride 2 is rejected: its windows centre on odd pixels,
+// which the KPU cannot sample (export with Pad(1,1) + VALID instead).
 //
 // The integers are exact up to requantisation (design note, "Integer
 // mapping"): KPU tensors are uint8 x′ = q + 128 and weights w′ = q_w + 128;
 // arg_x = −128, arg_w = −(zp_in + 128), arg_add = 128·(zp_in + 128)·k²
-// (the hardware multiplies by IC for a conv) and pad_value = zp_in + 128,
-// so the KPU accumulator equals qnet's Σ q_w·(q_x − zp_in).
+// (the hardware multiplies by IC for a conv) and pad_value = zp_in + 128
+// (PadValue + 128 with a fused Pad), so the KPU accumulator equals qnet's
+// Σ q_w·(q_x − zp_in).
 //
 // Requantisation is split: per channel, BN computes y = (acc·mul >> s) +
 // add ≈ (acc + bias)·M_c·2^P; the layer's activation table then rounds
@@ -49,8 +75,8 @@ const (
 // ≤ 24 that keeps every channel's y inside 2^34, its BN add inside int32 and
 // its mul inside 24 bits. The two roundings (BN floors, the activation
 // rounds half up) make the result differ from qnet's single rounding by at
-// most 1 LSB.
-func LowerConv(l *qnet.Layer, src, dst uint32) (Conv, error) {
+// most 1 LSB; a fused average pool floors where qnet rounds, one LSB more.
+func Lower(l *qnet.Layer, f Fuse, src, dst uint32) (Conv, error) {
 	dw := l.Kind == qnet.DepthwiseConv2D
 	if l.Kind != qnet.Conv2D && !dw {
 		return Conv{}, fmt.Errorf("%w: kind %v", ErrUnsupported, l.Kind)
@@ -59,19 +85,14 @@ func LowerConv(l *qnet.Layer, src, dst uint32) (Conv, error) {
 	if l.KW != k || (k != 1 && k != 3) || (dw && k != 3) {
 		return Conv{}, fmt.Errorf("%w: %d×%d kernel", ErrUnsupported, l.KH, l.KW)
 	}
-	if l.StrideH != 1 || l.StrideW != 1 {
-		return Conv{}, fmt.Errorf("%w: stride %d×%d (stride 2 is the left-top sampler, K9c)", ErrUnsupported, l.StrideH, l.StrideW)
+	g, err := geometry(l, f)
+	if err != nil {
+		return Conv{}, err
 	}
-	if k == 3 && l.Padding != qi8.PaddingSame {
-		return Conv{}, fmt.Errorf("%w: 3×3 needs SAME padding", ErrUnsupported)
-	}
-	in := l.In
+	in := g.in
 	oc := l.Out.C
 	if dw && oc != in.C {
 		return Conv{}, fmt.Errorf("%w: depthwise multiplier %d", ErrUnsupported, oc/max(in.C, 1))
-	}
-	if l.Out.H != in.H || l.Out.W != in.W {
-		return Conv{}, fmt.Errorf("%w: output %v for input %v", ErrUnsupported, l.Out, in)
 	}
 	taps := k * k * in.C
 	if dw {
@@ -84,18 +105,18 @@ func LowerConv(l *qnet.Layer, src, dst uint32) (Conv, error) {
 	if len(l.Weights) != nw || len(l.Requant) != oc || (l.Bias != nil && len(l.Bias) != oc) {
 		return Conv{}, fmt.Errorf("%w: %d weights, %d requants, %d biases for %d output channels", kmodel.ErrFormat, len(l.Weights), len(l.Requant), len(l.Bias), oc)
 	}
-	if l.ActMin > l.ActMax {
-		return Conv{}, fmt.Errorf("%w: clamp [%d, %d]", kmodel.ErrFormat, l.ActMin, l.ActMax)
+	lo, hi, err := clamp(l, f.Act)
+	if err != nil {
+		return Conv{}, err
 	}
 
 	zpIn := int64(l.InQ.ZP) + 128
 	a := kmodel.NewArgs()
-	l1 := kmodel.UploadLayout(in.W, in.H)
 	for _, err := range []error{
 		a.SetSrcAddr(src), a.SetDstAddr(dst),
-		a.SetInShape(in.W, in.H, in.C), a.SetOutShape(in.W, in.H, oc),
-		a.SetInLayout(l1), a.SetOutLayout(l1),
-		a.SetKernel(k, dw), a.SetPool(0),
+		a.SetInShape(in.W, in.H, in.C), a.SetOutShape(g.outW, g.outH, oc),
+		a.SetInLayout(kmodel.UploadLayout(in.W, in.H)), a.SetOutLayout(kmodel.UploadLayout(g.outW, g.outH)),
+		a.SetKernel(k, dw), a.SetPool(g.pool),
 		a.SetConvValue(-128, 0, -zpIn, 0), a.SetArgAdd(128 * zpIn * int64(k*k)),
 		setLoad(&a, k, in.C, oc, dw),
 	} {
@@ -103,7 +124,7 @@ func LowerConv(l *qnet.Layer, src, dst uint32) (Conv, error) {
 			return Conv{}, err
 		}
 	}
-	a.SetPadValue(uint8(zpIn))
+	a.SetPadValue(uint8(g.pad + 128))
 
 	w := make([]uint16, nw)
 	for i, v := range l.Weights {
@@ -121,11 +142,120 @@ func LowerConv(l *qnet.Layer, src, dst uint32) (Conv, error) {
 	if err != nil {
 		return Conv{}, err
 	}
-	actb, err := kmodel.EncodeAct(activation(int64(l.OutQ.ZP)+128, int64(l.ActMin)+128, int64(l.ActMax)+128, p))
+	actb, err := kmodel.EncodeAct(activation(int64(l.OutQ.ZP)+128, lo+128, hi+128, p))
 	if err != nil {
 		return Conv{}, err
 	}
 	return Conv{Args: a, Weights: weights, BN: bnb, Act: actb}, nil
+}
+
+// lowered is the KPU geometry of a conv with its fused layers.
+type lowered struct {
+	in         qi8.Shape // the KPU layer's input (unpadded with a fused Pad)
+	outW, outH int       // its output after the pool or sampler
+	pool       int       // pool_type
+	pad        int64     // int8 value of out-of-image taps
+}
+
+func same(a, b qnet.Quant) bool { return a == b }
+
+func geometry(l *qnet.Layer, f Fuse) (lowered, error) {
+	k, s := l.KH, l.StrideH
+	if l.StrideW != s || (s != 1 && s != 2) {
+		return lowered{}, fmt.Errorf("%w: stride %d×%d", ErrUnsupported, l.StrideH, l.StrideW)
+	}
+	g := lowered{in: l.In, pad: int64(l.InQ.ZP)}
+	if s == 1 {
+		if f.Pad != nil {
+			return lowered{}, fmt.Errorf("%w: a fused Pad needs a stride-2 VALID conv", ErrUnsupported)
+		}
+		if k == 3 && l.Padding != qi8.PaddingSame {
+			return lowered{}, fmt.Errorf("%w: stride-1 3×3 needs SAME padding", ErrUnsupported)
+		}
+		if l.Out.H != l.In.H || l.Out.W != l.In.W {
+			return lowered{}, fmt.Errorf("%w: output %v for input %v", ErrUnsupported, l.Out, l.In)
+		}
+		g.outW, g.outH = l.In.W, l.In.H
+		if f.Pool != nil {
+			p := f.Pool
+			pk := p.KH
+			if (p.Kind != qnet.MaxPool2D && p.Kind != qnet.AvgPool2D) || p.KW != pk || p.StrideH != pk || p.StrideW != pk || (pk != 2 && pk != 4) || p.Padding != qi8.PaddingValid {
+				return lowered{}, fmt.Errorf("%w: pool %v %d×%d stride %d×%d", ErrUnsupported, p.Kind, p.KH, p.KW, p.StrideH, p.StrideW)
+			}
+			if p.In != l.Out || l.In.H%pk != 0 || l.In.W%pk != 0 || p.Out != (qi8.Shape{H: l.In.H / pk, W: l.In.W / pk, C: l.Out.C}) || !same(p.InQ, l.OutQ) || !same(p.OutQ, l.OutQ) {
+				return lowered{}, fmt.Errorf("%w: pool does not chain with the conv (%v → %v)", ErrUnsupported, p.In, p.Out)
+			}
+			g.pool = map[[2]int]int{{2, 0}: 1, {2, 1}: 2, {4, 0}: 3, {4, 1}: 4}[[2]int{pk, b2i(p.Kind == qnet.AvgPool2D)}]
+			g.outW, g.outH = l.In.W/pk, l.In.H/pk
+		}
+		return g, nil
+	}
+	// Stride 2: the KPU's left-top sampler.
+	if f.Pool != nil {
+		return lowered{}, fmt.Errorf("%w: a pool after a stride-2 conv (the sampler uses the pool slot)", ErrUnsupported)
+	}
+	if l.Padding != qi8.PaddingValid {
+		return lowered{}, fmt.Errorf("%w: stride 2 with SAME padding (windows on odd pixels); export as Pad(1,1) + VALID", ErrUnsupported)
+	}
+	if k == 3 {
+		p := f.Pad
+		if p == nil || p.Kind != qnet.Pad || p.Pads != [6]int{1, 1, 1, 1, 0, 0} {
+			return lowered{}, fmt.Errorf("%w: a stride-2 3×3 conv needs a fused Pad(1,1,1,1)", ErrUnsupported)
+		}
+		if p.Out != l.In || p.In != (qi8.Shape{H: l.In.H - 2, W: l.In.W - 2, C: l.In.C}) || !same(p.OutQ, l.InQ) {
+			return lowered{}, fmt.Errorf("%w: Pad does not chain with the conv (%v → %v)", ErrUnsupported, p.In, p.Out)
+		}
+		g.in, g.pad = p.In, int64(p.PadValue)
+	} else if f.Pad != nil {
+		return lowered{}, fmt.Errorf("%w: a fused Pad before a 1×1 conv", ErrUnsupported)
+	}
+	if g.in.H%2 != 0 || g.in.W%2 != 0 {
+		return lowered{}, fmt.Errorf("%w: stride 2 on odd size %d×%d", ErrUnsupported, g.in.H, g.in.W)
+	}
+	g.outW, g.outH, g.pool = g.in.W/2, g.in.H/2, 5
+	if l.Out.H != g.outH || l.Out.W != g.outW {
+		return lowered{}, fmt.Errorf("%w: output %v for stride-2 input %v", ErrUnsupported, l.Out, g.in)
+	}
+	return g, nil
+}
+
+func b2i(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// clamp returns the conv's output clamp, tightened by a fused ReLU/ReLU6.
+func clamp(l *qnet.Layer, act *qnet.Layer) (lo, hi int64, err error) {
+	lo, hi = int64(l.ActMin), int64(l.ActMax)
+	if lo > hi {
+		return 0, 0, fmt.Errorf("%w: clamp [%d, %d]", kmodel.ErrFormat, lo, hi)
+	}
+	if act == nil {
+		return lo, hi, nil
+	}
+	if act.In != l.Out || act.Out != l.Out || !same(act.InQ, l.OutQ) || !same(act.OutQ, l.OutQ) {
+		return 0, 0, fmt.Errorf("%w: %v does not chain with the conv", ErrUnsupported, act.Kind)
+	}
+	// The second clamp [lo2, hi2] applied after the first: their
+	// intersection, or the second's bound nearest the first range if they
+	// do not overlap.
+	lo2, hi2 := int64(l.OutQ.ZP), int64(127)
+	switch act.Kind {
+	case qnet.ReLU:
+	case qnet.ReLU6:
+		hi2 = int64(qi8.Quantize6(l.OutQ.Scale, l.OutQ.ZP))
+	default:
+		return 0, 0, fmt.Errorf("%w: fused activation %v", ErrUnsupported, act.Kind)
+	}
+	switch {
+	case hi < lo2:
+		return lo2, lo2, nil
+	case lo > hi2:
+		return hi2, hi2, nil
+	}
+	return max(lo, lo2), min(hi, hi2), nil
 }
 
 // setLoad plans the weight loads as ncc does: a conv loads as many whole

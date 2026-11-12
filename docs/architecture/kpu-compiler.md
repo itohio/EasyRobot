@@ -122,11 +122,11 @@ Requantisation is approximate:
 |---|---|---|
 | K9a | `kmodel.Builder`, BN/activation encoders and `Args` setters (the compiler's output seam); `Check` validates `Outputs`; doc fixes (review R-K210-K8b K4) | ncc's kmodels rebuilt byte-identical; round-trip tests; mutation-checked |
 | K9b | Lower one Conv2D/Depthwise (1×1, 3×3, stride 1, SAME) from `qnet.Layer` to Args + blobs | host: `Emulate(lowered)` vs `qnet.RunLayer` ≤ 1 LSB on ≥ 1,000 random layers; mutation-checked tests |
-| K9c | Activation tables (ReLU/ReLU6/clamp/LeakyReLU), fused pools, stride 2 via Pad(1,1)+VALID + left-top | as K9b, plus the stride-2 pattern recognised and TF SAME rejected |
+| K9c | `compile.Lower` with `Fuse{Pad, Act, Pool}`: stride 2 via Pad(1,1)+VALID (or 1×1 VALID) + left-top, fused 2×2/4×4 max/average pools, fused ReLU/ReLU6 clamps | as K9b on random chains (≤ 1 LSB, ≤ 2 with average pool, which floors where qnet rounds), plus TF SAME stride 2 rejected |
 | K9d | `kpu.Compile` → `qnet.Backend`: segments, AI-SRAM plan, int8 NHWC ↔ uint8 CHW at boundaries, emulated engine | host: `qnet.MobileNetV1(0.25, 256, 256, 0)` + `SyntheticParams` cut at `conv_pw_13`, KPU backend vs CPU runner per layer ≤ 1 LSB; `Run` allocates nothing |
 | K9e | The same graph on the UnitV | board vs host emulation per layer ≤ 1 LSB; ms/frame vs the K210 CPU at 256×256 |
 | K9f | **End-to-end target:** the int8 TFLite MobileNetV1-0.25 256×256 (Pad(1,1)+VALID export) through `tfl.Load` → KPU, cut at `conv_pw_13` | features vs the TFLite reference interpreter on camera frames (≤ 1 LSB per layer up to the cut); class agreement on frames with clear objects (K8c-3's deferred check) |
-| K9g | Row-band tiling; CPU Add/Concat between segments; FC-on-KPU option; MobileNetV2 at QVGA | per layer ≤ 1 LSB vs CPU; fits 2 MiB |
+| K9g | Row-band tiling; CPU Add/Concat between segments; FC-on-KPU option; LeakyReLU tables (two sloped segments); MobileNetV2 at QVGA | per layer ≤ 1 LSB vs CPU; fits 2 MiB |
 
 ## Open questions (resolved by measurement in the milestones)
 

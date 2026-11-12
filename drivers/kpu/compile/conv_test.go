@@ -12,8 +12,8 @@ import (
 )
 
 // emulate runs a lowered conv with kmodel's integer model of the KPU on an
-// int8 NHWC input and returns the int8 NHWC output.
-func emulate(t *testing.T, c Conv, in []int8, s qi8.Shape, oc int) []int8 {
+// int8 NHWC input of shape s and returns the int8 NHWC output of shape o.
+func emulate(t *testing.T, c Conv, in []int8, s, o qi8.Shape) []int8 {
 	t.Helper()
 	data := append(append(append([]byte{}, c.Weights...), c.BN...), c.Act...)
 	m := &kmodel.Model{Data: data}
@@ -29,15 +29,15 @@ func emulate(t *testing.T, c Conv, in []int8, s qi8.Shape, oc int) []int8 {
 			}
 		}
 	}
-	out := make([]byte, s.H*s.W*oc)
+	out := make([]byte, o.H*o.W*o.C)
 	if err := p.Emulate(chw, out); err != nil {
 		t.Fatal(err)
 	}
 	nhwc := make([]int8, len(out))
-	for y := range s.H {
-		for x := range s.W {
-			for ch := range oc {
-				nhwc[(y*s.W+x)*oc+ch] = int8(int16(out[(ch*s.H+y)*s.W+x]) - 128)
+	for y := range o.H {
+		for x := range o.W {
+			for ch := range o.C {
+				nhwc[(y*o.W+x)*o.C+ch] = int8(int16(out[(ch*o.H+y)*o.W+x]) - 128)
 			}
 		}
 	}
@@ -120,7 +120,7 @@ func TestLowerConvMatchesQnet(t *testing.T) {
 		if err != nil {
 			t.Fatalf("layer %d (%v k%d %v→%d): %v", n, l.Kind, l.KH, l.In, l.Out.C, err)
 		}
-		got := emulate(t, c, in, l.In, l.Out.C)
+		got := emulate(t, c, in, l.In, l.Out)
 		for i := range want {
 			d := int(got[i]) - int(want[i])
 			if d < -1 || d > 1 {
