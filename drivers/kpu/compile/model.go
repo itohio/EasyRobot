@@ -47,7 +47,7 @@ func Kmodel(g *qnet.Graph) ([]byte, Info, error) {
 		if n == 0 {
 			where = "start a KPU segment"
 		}
-		return nil, Info{}, fmt.Errorf("layer %d (%v %v → %v) cannot %s: %w", n, l.Kind, l.In, l.Out, where, reason(l))
+		return nil, Info{}, fmt.Errorf("layer %d (%v %v → %v) cannot %s: %w", n, l.Kind, l.In, l.Out, where, reason(g, n))
 	}
 	data, _, err := s.kmodel(g)
 	if err != nil {
@@ -60,16 +60,25 @@ func Kmodel(g *qnet.Graph) ([]byte, Info, error) {
 	}, nil
 }
 
-// reason explains why layer l does not lower: Lower's error in the most
+// reason explains why layer i does not lower: Lower's error in the most
 // specific mode that applies, or ErrUnsupported when l lowers alone (then
 // its sampling reader, KPU memory or the graph's structure stopped it).
-func reason(l *qnet.Layer) error {
+func reason(g *qnet.Graph, i int) error {
+	l := &g.Layers[i]
+	var f Fuse
+	if l.Kind == qnet.Pad && i+1 < len(g.Layers) {
+		// A Pad is lowered with the conv after it: that conv's refusal is
+		// the reason (e.g. the 256-row input limit).
+		f.Pad, l = l, &g.Layers[i+1]
+	}
 	if l.Kind != qnet.Conv2D && l.Kind != qnet.DepthwiseConv2D {
 		return fmt.Errorf("%w: the KPU runs convolutions (with a fused Pad, ReLU/ReLU6 or pool)", ErrUnsupported)
 	}
-	_, err := Lower(l, Fuse{Full: true}, 0, 0)
+	full := f
+	full.Full = true
+	_, err := Lower(l, full, 0, 0)
 	if errors.Is(err, errNotFull) {
-		_, err = Lower(l, Fuse{}, 0, 0)
+		_, err = Lower(l, f, 0, 0)
 	}
 	if err == nil {
 		return fmt.Errorf("%w: its sampling reader, KPU memory (2 MiB for its input and output) or a second reader of its input", ErrUnsupported)
@@ -100,8 +109,13 @@ func Resize(g *qnet.Graph, h, w int) (*qnet.Graph, error) {
 		in := qi8.Shape{H: h, W: w, C: l.In.C}
 		if p := producer(r, i); p >= 0 {
 			in = r.Layers[p].Out
-		} else if p == -2 {
-			in = r.Layers[l.From[0]].Out // two inputs of equal shape (Add, Mul)
+		} else if p == -2 { // two inputs of equal shape (Add, Mul)
+			for _, f := range l.From {
+				if f >= 0 { // else the graph input: the resized shape above
+					in = r.Layers[f].Out
+					break
+				}
+			}
 		}
 		l.In = in
 		switch l.Kind {
