@@ -207,19 +207,37 @@ func Init() (Region, ModeRegs, error) {
 }
 
 // The cache operations act on len(b) rounded up to whole cache lines
-// (Region.syncRange), with interrupts masked: the ROM sync uses one shared
-// EXTMEM register set, so an interrupt handler doing a cache operation in
-// between would retarget it (ESP-IDF's esp_cache_msync is a critical
-// section too).
+// (Region.syncRange), in windows of at most syncChunk bytes with interrupts
+// masked: the ROM sync uses one shared EXTMEM register set, so an interrupt
+// handler doing a cache operation in between would retarget it (ESP-IDF's
+// esp_cache_msync is a critical section too); the windows bound how long
+// interrupts wait (P2: up to 843 µs for a fully dirty D-cache in one call).
+
+func writeBackChunk(p, n uint32) {
+	state := interrupt.Disable()
+	writeBack(p, n)
+	interrupt.Restore(state)
+}
+
+func invalidateChunk(p, n uint32) {
+	state := interrupt.Disable()
+	romInvalidate(p, n)
+	interrupt.Restore(state)
+}
+
+func writeBackInvalidateChunk(p, n uint32) {
+	state := interrupt.Disable()
+	writeBack(p, n)
+	romInvalidate(p, n)
+	interrupt.Restore(state)
+}
 
 // Writeback writes dirty cache lines of b to PSRAM. Call before a DMA
 // engine reads b.
 func Writeback(b []byte) error {
 	p, n, err := region.syncRange(b)
-	if err == nil && n > 0 {
-		state := interrupt.Disable()
-		writeBack(p, n)
-		interrupt.Restore(state)
+	if err == nil {
+		eachChunk(p, n, writeBackChunk)
 	}
 	return err
 }
@@ -228,10 +246,8 @@ func Writeback(b []byte) error {
 // re-reads PSRAM. Call after a DMA engine wrote b, before reading it.
 func Invalidate(b []byte) error {
 	p, n, err := region.syncRange(b)
-	if err == nil && n > 0 {
-		state := interrupt.Disable()
-		romInvalidate(p, n)
-		interrupt.Restore(state)
+	if err == nil {
+		eachChunk(p, n, invalidateChunk)
 	}
 	return err
 }
@@ -240,11 +256,8 @@ func Invalidate(b []byte) error {
 // writes it, so no dirty line is evicted over the DMA's data later.
 func WritebackInvalidate(b []byte) error {
 	p, n, err := region.syncRange(b)
-	if err == nil && n > 0 {
-		state := interrupt.Disable()
-		writeBack(p, n)
-		romInvalidate(p, n)
-		interrupt.Restore(state)
+	if err == nil {
+		eachChunk(p, n, writeBackInvalidateChunk)
 	}
 	return err
 }

@@ -252,3 +252,26 @@ func TestSyncRange(t *testing.T) {
 		t.Errorf("no region: %v, want ErrNoInit", err)
 	}
 }
+
+// Cache maintenance runs in windows of at most syncChunk bytes (review
+// R-ESP32CAM-E7 P2): each window has interrupts off, and a fully dirty 32 KB
+// D-cache took 843 µs to write back on the board.
+func TestEachChunk(t *testing.T) {
+	for _, n := range []uint32{0, 32, syncChunk - 32, syncChunk, syncChunk + 32, 790272, 1548288} {
+		var got []uint32
+		next := uint32(0x3D800000)
+		eachChunk(0x3D800000, n, func(p, c uint32) {
+			if p != next || c == 0 || c > syncChunk || c%CacheLine != 0 {
+				t.Errorf("n %d: chunk at %#x size %d (expected start %#x)", n, p, c, next)
+			}
+			next = p + c
+			got = append(got, c)
+		})
+		if next-0x3D800000 != n {
+			t.Errorf("n %d: chunks cover %d bytes", n, next-0x3D800000)
+		}
+		if want := int((n + syncChunk - 1) / syncChunk); len(got) != want {
+			t.Errorf("n %d: %d chunks, want %d", n, len(got), want)
+		}
+	}
+}
