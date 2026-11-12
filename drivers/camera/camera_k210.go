@@ -153,13 +153,17 @@ func Open(cfg Config, pins Pins) (*Camera, error) {
 
 // Reconfigure switches an open camera to cfg (cfg.XCLK is ignored): the
 // sensor is re-initialised and the DVP set up for the new format and size,
-// without powering the sensor down. On error the camera is unusable until a
-// successful Reconfigure.
+// without powering the sensor down. The sensor's JPEG quality survives; its
+// auto exposure and gain restart from their defaults, so the first frames
+// after a switch ramp (about 6 on the UnitV). If the sensor's Init fails,
+// the sensor is half programmed, so the camera is marked unusable: Capture
+// returns ErrFormat until a successful Reconfigure.
 func (c *Camera) Reconfigure(cfg Config) error {
 	if err := checkFormat(cfg); err != nil {
 		return err
 	}
 	if err := c.drv.Init(cfg.Mode); err != nil {
+		c.cfg = Config{} // review R-K210-REC-R4 R1: Capture refuses it
 		return err
 	}
 	c.cfg = cfg
@@ -212,6 +216,9 @@ func captureOne() error { return dvpCaptureOne(time.Second) }
 // alias. RGB565 comes out as little-endian 16-bit pixels in raster order;
 // JPEG from FF D8 to FF D9, or ErrIncomplete.
 func (c *Camera) Capture(buf []byte) (Frame, error) {
+	if err := checkFormat(c.cfg); err != nil {
+		return Frame{}, err // after a failed Reconfigure
+	}
 	n := FrameSize(c.cfg)
 	if c.cfg.Format == sensor.JPEG {
 		n = JPEGBufSize

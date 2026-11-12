@@ -25,6 +25,7 @@ func TestCheckFormatDVPLines(t *testing.T) {
 		{cfg(1600, 1200, sensor.JPEG), true},
 		{cfg(320, 240, sensor.RGB565), true},
 		{cfg(330, 240, sensor.RGB565), false}, // width not a multiple of 32
+		{Config{}, false},                     // what a failed Reconfigure leaves: Capture refuses it
 	} {
 		err := checkFormat(c.cfg)
 		if c.ok != (err == nil) || (err != nil && !errors.Is(err, ErrFormat)) {
