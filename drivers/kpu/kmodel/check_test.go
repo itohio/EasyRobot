@@ -143,6 +143,8 @@ func TestCheckRejects(t *testing.T) {
 		{"conv output group 0", func(f *fixture) { f.setArg(8, 7<<20, 0) }, ErrFormat},
 		{"conv input wider than its slot", func(f *fixture) { f.setArg(7, 7<<28, 4<<28); f.setArg(3, 0x3ff, 31) }, ErrFormat},
 		{"conv main-memory output past main memory", func(f *fixture) { f.setBody(conv, 1, fxMain-fxN+1) }, ErrFormat},
+		{"conv channel_byte_num not W·H − 1 (review K9a-1)", func(f *fixture) { f.setArg(11, 0xffff<<16, 0x1234<<16) }, ErrFormat},
+		{"conv dma_total_byte not W·H·C − 1 (review K9a-1)", func(f *fixture) { f.setArg(11, 0xffffffff<<32, 7<<32) }, ErrFormat},
 		{"pool on a depthwise conv (the KPU does not pool in depthwise mode)", func(f *fixture) {
 			f.setArg(0, 1<<3, 1<<3) // depthwise
 			f.setArg(4, 0xf<<4, 5<<4)
@@ -219,6 +221,7 @@ func TestCheckBoundariesAccepted(t *testing.T) {
 		{"depthwise weights end at the file end", func(f *fixture) {
 			f.setArg(0, 1<<3, 1<<3) // depthwise: ic·k·k bytes
 			f.setArg(2, 0x3ff<<32, uint64(fxC-1)<<32)
+			f.setArg(11, 0xffffffff<<32, uint64(fxW*fxH*fxC-1)<<32) // DMA total for 3 channels
 			f.setBody(conv, 3, uint32(len(f.data)-fxC))
 			f.setBody(conv, 0, 0) // output stays in KPU memory (3 channels now)
 		}},

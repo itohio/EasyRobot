@@ -61,9 +61,9 @@ func model(t *testing.T) *kmodel.Model {
 	a[1] = srcAddr | dstAddr<<32
 	a[2] = (inC - 1) | (outC-1)<<32
 	a[3] = (w - 1) | (h-1)<<10 | (w-1)<<32 | (h-1)<<42
-	a[7] = 16 | 1<<16 | 4<<28 // input layout: 4 per line, 1 line per row, 16 per group
-	a[8] = 16 | 1<<16 | 4<<20 // output layout, same
-	a[11] = 1                 // send_data_out: the runner must clear it
+	a[7] = 16 | 1<<16 | 4<<28                  // input layout: 4 per line, 1 line per row, 16 per group
+	a[8] = 16 | 1<<16 | 4<<20                  // output layout, same
+	a[11] = 1 | (w*h-1)<<16 | (w*h*outC-1)<<32 // send_data_out (the runner must clear it) and byte counts
 	for i, v := range a {
 		binary.LittleEndian.PutUint64(f[argsOff+8*i:], v)
 	}

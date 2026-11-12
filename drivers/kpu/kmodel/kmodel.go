@@ -203,6 +203,12 @@ func (m *Model) checkLayer(l Layer) error {
 		if err := a.OutLayout().check(a.DstAddr(), w, h, ch); err != nil {
 			return err
 		}
+		// dma_parameter's byte counts follow the output shape (as SetOutShape
+		// writes them; review R-K210-K9a K9a-1).
+		chb, total, px := a[11]>>16&0xffff, a[11]>>32, uint64(w*h)
+		if total != px*uint64(ch)-1 || chb != min(px, maxChannelBytes)-1 || (a[11]&1 != 0 && px > maxChannelBytes) {
+			return fmt.Errorf("%w: dma_parameter byte counts %d/%d do not match the output %d×%d×%d", ErrFormat, chb+1, total+1, w, h, ch)
+		}
 		if c.Flags&FlagMainMemOut != 0 {
 			return in(c.MainMemOut, uint64(w*h*ch))
 		}

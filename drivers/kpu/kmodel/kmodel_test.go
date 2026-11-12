@@ -50,7 +50,7 @@ func convArgs(src, dst uint32, w, h, c, oc int, in, out Layout) Args {
 	a[3] = uint64(w-1) | uint64(h-1)<<10 | uint64(w-1)<<32 | uint64(h-1)<<42
 	a[7] = uint64(in.ChanLines) | uint64(in.RowLines)<<16 | uint64(in.Group)<<28
 	a[8] = uint64(out.ChanLines) | uint64(out.RowLines)<<16 | uint64(out.Group)<<20
-	a[11] = 1 // send_data_out set in the file: the runner must clear it
+	a[11] = 1 | uint64(w*h-1)<<16 | uint64(w*h*oc-1)<<32 // send_data_out set in the file: the runner must clear it
 	return a
 }
 
