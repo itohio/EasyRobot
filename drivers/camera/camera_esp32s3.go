@@ -35,11 +35,18 @@ const (
 	defaultXCLK = 20_000_000
 	sccbHz      = 100_000
 	// MaxJPEG is the largest buffer Capture uses for JPEG: maxNodes
-	// descriptors of nodeBytes (1,548,288 B). In internal SRAM the practical
-	// limit is the free RAM (M3/M45 evidence: 290–322 KB alongside FatFs);
-	// PSRAM (SetCacheSync) takes the whole of it.
+	// descriptors of nodeBytes (1,548,288 B), reachable with a PSRAM buffer
+	// (SetCacheSync). Internal SRAM buffers are limited by the free heap
+	// (~400 KB in all; M3/M45 evidence: 290–322 KB next to FatFs).
 	MaxJPEG = maxNodes * nodeBytes
 )
+
+// JPEGBufSize is the JPEG buffer to pass to Capture for cfg's resolution:
+// W·H/4 bytes rounded up to whole descriptors, at most MaxJPEG. That holds
+// OV3660 JPEGs at quality ≥ 10 (≤ 0.18 B/pixel at 2048×1536, E7 evidence);
+// a busier scene at a low quality number can still exceed it (ErrBufSize:
+// raise the quality number). Sizes above ~300 KB need a PSRAM buffer.
+func JPEGBufSize(cfg Config) int { return jpegBufSize(cfg.W, cfg.H, MaxJPEG) }
 
 func (p Pins) i2c() *machine.I2C {
 	if p.I2C == nil {

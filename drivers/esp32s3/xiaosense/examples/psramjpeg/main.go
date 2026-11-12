@@ -7,8 +7,9 @@
 //	tinygo build -target=xiao-esp32s3 ./drivers/esp32s3/xiaosense/examples/psramjpeg
 //
 // Option (tinygo -ldflags "-X main.quality=6"): JPEG quality 0 (best) … 63,
-// default 10. A 1.5 MB PSRAM buffer holds what internal RAM cannot (internal
-// RAM fits 2048×1536 only at quality ≥ 40, M3 evidence).
+// default 10. The PSRAM buffer (camera.JPEGBufSize, 790 KB at 2048×1536)
+// holds what internal RAM cannot (internal RAM fits 2048×1536 only at
+// quality ≥ 40, M3 evidence).
 package main
 
 import (
@@ -36,8 +37,9 @@ func main() {
 			time.Sleep(time.Second)
 		}
 	}
+	cfg := camera.Config{Mode: sensor.Mode{Resolution: sensor.Resolution{W: 2048, H: 1536}, Format: sensor.JPEG}}
 	arena := psram.NewArena(r)
-	buf, err := arena.Alloc(camera.MaxJPEG)
+	buf, err := arena.Alloc(camera.JPEGBufSize(cfg)) // 790 KB for 2048×1536
 	if err != nil {
 		for {
 			println("psramjpeg: alloc:", err.Error())
@@ -46,7 +48,6 @@ func main() {
 	}
 	println("psramjpeg: psram", r.Size(), "B; buffer", len(buf), "B at", uintptr(unsafe.Pointer(&buf[0])))
 
-	cfg := camera.Config{Mode: sensor.Mode{Resolution: sensor.Resolution{W: 2048, H: 1536}, Format: sensor.JPEG}}
 	cam, err := camera.Open(cfg, xiaosense.CameraPins)
 	for err != nil {
 		println("psramjpeg: open:", err.Error())

@@ -76,7 +76,7 @@ func main() {
 
 	n := camera.FrameSize(cfg)
 	if cfg.Format == sensor.JPEG {
-		n = jpegBuf
+		n = min(camera.JPEGBufSize(cfg), jpegBuf) // internal SRAM: at most 290 KB next to the rest
 	}
 	buf := align4(n)
 	enc := frame.NewEncoder(machine.Serial)

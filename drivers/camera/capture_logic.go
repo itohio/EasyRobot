@@ -78,3 +78,11 @@ func eofIndex(eofAddr, base uint32, used int) int {
 	}
 	return i
 }
+
+// jpegBufSize is the JPEG buffer to use for a w×h frame: w·h/4 bytes (OV3660
+// JPEGs at quality ≥ 10 stayed under 0.18 B/pixel at 2048×1536, E7
+// evidence), rounded up to whole descriptors, at least one, at most limit.
+func jpegBufSize(w, h uint16, limit int) int {
+	n := (int(w)*int(h)/4 + nodeBytes - 1) / nodeBytes * nodeBytes
+	return min(max(n, nodeBytes), limit)
+}

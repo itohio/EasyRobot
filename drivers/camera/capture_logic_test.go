@@ -118,3 +118,23 @@ func TestEOFIndex(t *testing.T) {
 		}
 	}
 }
+
+// JPEG buffer size follows the configured resolution (review C3): W·H/4,
+// whole descriptors, at least one, at most the backend maximum.
+func TestJPEGBufSize(t *testing.T) {
+	const max = 384 * nodeBytes
+	for _, tt := range []struct {
+		w, h uint16
+		want int
+	}{
+		{2048, 1536, 196 * nodeBytes}, // 786,432 B → 195.04 nodes, rounded up
+		{1024, 768, 49 * nodeBytes},   // 196,608 B: fits internal SRAM
+		{320, 240, 5 * nodeBytes},
+		{16, 16, nodeBytes}, // at least one descriptor
+		{4096, 4096, max},   // capped
+	} {
+		if got := jpegBufSize(tt.w, tt.h, max); got != tt.want {
+			t.Errorf("%dx%d: %d, want %d", tt.w, tt.h, got, tt.want)
+		}
+	}
+}

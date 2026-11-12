@@ -28,10 +28,11 @@
 //   - Raw formats (Y8, RGB565, YUV422): Capture needs FrameSize(cfg) bytes;
 //     RGB565 comes out little-endian, pixels in raster order.
 //   - JPEG: FrameSize returns 0 because the sensor decides the size. The
-//     caller passes a buffer of the backend's maximum JPEG size (documented
-//     per backend; ESP32-S3: MaxJPEG); Frame.Data is truncated to the JPEG's
-//     length, from FF D8 to FF D9 inclusive. A JPEG larger than the buffer
-//     gives ErrBufSize.
+//     caller passes a buffer sized for the configured resolution and
+//     quality, up to the backend's maximum (documented per backend;
+//     ESP32-S3: JPEGBufSize(cfg), at most MaxJPEG, PSRAM for large ones);
+//     Frame.Data is truncated to the JPEG's length, from FF D8 to FF D9
+//     inclusive. A JPEG larger than the buffer gives ErrBufSize.
 //   - Frame.Data aliases the caller's buffer (or a host alias of it) and is
 //     valid until the next Capture.
 //   - Capture does not allocate. The controls and Identify go over SCCB and
