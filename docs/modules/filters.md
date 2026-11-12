@@ -37,13 +37,14 @@ test_result: fail
 
 ## Algorithms
 
-<!-- vault:algorithms h=38ab62c2f766 -->
+<!-- vault:algorithms h=1d160f0d72d9 -->
 
-Counts: 2 tested · 2 implemented · 12 partial · 1 stub · 0 unverified (17 algorithms)
+Counts: 3 tested · 2 implemented · 11 partial · 1 stub · 0 unverified (17 algorithms)
 
 | Algorithm | Status | Tests | Summary |
 |---|---|---|---|
 | [[madgwick-ahrs]] | tested | pass | Matches reference equations, converges |
+| [[mahony-ahrs]] | tested | pass | 6-DOF and 9-DOF converge to a static tilt; Euler(q) gives roll/pitch/yaw of the [w,x,y,z] output |
 | [[moving-average-filters]] | tested | pass | `Filter` = running-sum SMA over a ring buffer (averages over the samples seen so far until the… |
 | [[fir-windowed-sinc-lowpass-highpass]] | implemented | pass | Correct by probe |
 | [[iir-rbj-biquad-bandpass-bandstop]] | implemented | pass | Correct by probe |
@@ -55,7 +56,6 @@ Counts: 2 tested · 2 implemented · 12 partial · 1 stub · 0 unverified (17 al
 | [[iir-butterworth-filters]] | partial | pass | LP unstable, HP wrong, order ignored |
 | [[linear-kalman-filter]] | partial | pass | Covariance aliasing kills filter after 1 update |
 | [[log-odds-occupancy-mapping]] | partial | pass | Hits rarely marked, diagonal ranges wrong |
-| [[mahony-ahrs]] | partial | pass | 6-DOF error sign flipped (converges upside down) |
 | [[median-filter]] | partial | none | Periodic passthrough |
 | [[phase-locked-loop]] | partial | fail | Single-wrap phase error |
 | [[savitzky-golay-filter]] | partial | none | Right coefficients, wrong application |
@@ -73,7 +73,7 @@ Counts: 2 tested · 2 implemented · 12 partial · 1 stub · 0 unverified (17 al
 
 - `GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=readonly go test -count=1 -json ./x/math/filter/...` (2026-11-09; raw `tmp/easyrobot/filters/test-2026-11-09.json`): ahrs 9 pass, ekalman 6, fir 8, iir 13, kalman 6, ma 8, slam 12 — ok; **pll FAIL 9 pass / 2 fail** (`TestLoop_FrequencyTracking` impl defect, `TestLoop_Rotate` test defect; `TestLoop_NoiseLowSNR/5dB_Medium` flaky — unseeded global rand); agc, gaussian, median, savgol have no tests. Same as baseline 2026-11-08 §4.
 - Probes (all under `~/src/tmp/easyrobot/filters/`): `kfprobe` (KF/EKF vs scalar reference), `ahrsprobe` (convergence), `dspprobe` (FIR/IIR magnitude responses, Gaussian impulse, median spikes), `sgprobe`, `pllprobe`, `slamprobe`. Results in the algorithm notes.
-- Test quality: most filter tests only assert "not NaN" or loose bounds after one step; none would have caught the KF/EKF covariance collapse, the unstable Butterworth LP, or the Mahony sign error.
+- Test quality: most filter tests only assert "not NaN" or loose bounds after one step; none would have caught the KF/EKF covariance collapse or the unstable Butterworth LP. The Mahony sign error is now caught by `ahrs/convergence_test.go` (2026-11-12, [[mahony-ahrs]]).
 
 ## API notes (ease of use, composability)
 

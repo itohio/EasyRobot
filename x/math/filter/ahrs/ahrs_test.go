@@ -355,7 +355,7 @@ func mahonyReferenceStep(m mahonyRefStruct) (vec.Quaternion, vec.Vector3D) {
 			2 * (q1*q2 + q3*q4),
 			q1*q1 - q2*q2 - q3*q3 + q4*q4,
 		}
-		e = reference.Cross(accel).(vec.Vector3D)
+		e = accel.Cross(reference).(vec.Vector3D) // a × v (x-io MahonyAHRS)
 	}
 
 	var eInt vec.Vector3D

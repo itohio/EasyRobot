@@ -221,11 +221,13 @@ func (m *MahonyAHRS) calculateWOMag() {
 		q1*q1 - q2*q2 - q3*q3 + q4*q4,
 	}
 
-	// Error is cross product between estimated direction and measured direction of gravity
+	// Error is the cross product of the measured and the estimated direction
+	// of gravity, a × v, as in the 9-DOF path (v × a turns the feedback
+	// round and the filter settles upside down)
 	e := vec.Vector3D{
-		v[1]*az - v[2]*ay,
-		v[2]*ax - v[0]*az,
-		v[0]*ay - v[1]*ax,
+		ay*v[2] - az*v[1],
+		az*v[0] - ax*v[2],
+		ax*v[1] - ay*v[0],
 	}
 	if m.GainI > 0 {
 		m.eInt[0] += e[0] // accumulate integral error

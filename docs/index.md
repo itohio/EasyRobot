@@ -24,9 +24,9 @@ From the roadmap's no-hardware demo checkpoints ([[roadmap#8. Next|roadmap §8]]
 
 The sixth checkpoint, M-b's synthetic recorder round trip, follows: it needs [[ER-027-marshaller-fixes|ER-027]] and [[ER-031-spi-slave-feature-framing|ER-031]]. Full order, accepted order changes and the T-IK mapping: [[tickets/index|ticket index]].
 
-<!-- vault:status h=ca6749eb19b7 -->
+<!-- vault:status h=95ab37291421 -->
 
-State: 67 tested · 29 implemented · 138 partial · 10 stub · 13 unverified (257 algorithms)
+State: 68 tested · 29 implemented · 137 partial · 10 stub · 13 unverified (257 algorithms)
 
 <!-- /vault:status -->
 
@@ -55,7 +55,7 @@ State: 67 tested · 29 implemented · 138 partial · 10 stub · 13 unverified (2
 
 Algorithm notes per module by status (generated from the algorithm notes; `tested` needs passing value tests).
 
-<!-- vault:modules h=a218725812ba -->
+<!-- vault:modules h=44afbce2e517 -->
 
 | Module | tested | implemented | partial | stub | unverified | total |
 |---|---|---|---|---|---|---|
@@ -69,7 +69,7 @@ Algorithm notes per module by status (generated from the algorithm notes; `teste
 | [[audio-modem-cli]] | 0 | 0 | 2 | 0 | 0 | 2 |
 | [[bit-buffer]] | 2 | 0 | 2 | 0 | 0 | 4 |
 | [[dsp-core]] | 4 | 0 | 7 | 0 | 0 | 11 |
-| [[filters]] | 2 | 2 | 12 | 1 | 0 | 17 |
+| [[filters]] | 3 | 2 | 11 | 1 | 0 | 17 |
 | [[line-coding-and-fec]] | 2 | 2 | 6 | 1 | 0 | 11 |
 | [[modulation]] | 0 | 4 | 14 | 2 | 0 | 20 |
 | [[peg-protocol-parser]] | 0 | 0 | 2 | 0 | 0 | 2 |
@@ -103,7 +103,7 @@ Algorithm notes per module by status (generated from the algorithm notes; `teste
 | [[vision]] | 0 | 0 | 8 | 2 | 3 | 13 |
 | **Knowledge engine** | | | | | | |
 | [[knowledge-engine]] | 0 | 0 | 0 | 0 | 0 | 0 |
-| **All** | 67 | 29 | 138 | 10 | 13 | 257 |
+| **All** | 68 | 29 | 137 | 10 | 13 | 257 |
 
 <!-- /vault:modules -->
 
@@ -113,7 +113,7 @@ The knowledge engine is its own Go module and is catalogued in [[knowledge-engin
 
 Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs tagged with the ticket. The defects themselves are in the linked notes and in [[todo]].
 
-<!-- vault:tickets h=b6db3630d057 -->
+<!-- vault:tickets h=6eaff9f05a0f -->
 
 | Ticket | Title | Status | Workstream | Open p1 |
 |---|---|---|---|---|
@@ -132,7 +132,7 @@ Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs 
 | [[ER-014-small-llm-native-graph\|ER-014]] | Run a bounded small local decoder through EasyRobot graph | blocked | W9 | 0 |
 | [[ER-015-measured-backend-comparison\|ER-015]] | Measure approved backend costs without hidden fallback | blocked | W9 | 0 |
 | [[ER-016-serialization-boundaries\|ER-016]] | Prove graph tensor serialization and resume boundaries | blocked | W9 | 0 |
-| [[ER-019-filter-correctness\|ER-019]] | Filter correctness | backlog | W7 | 17 |
+| [[ER-019-filter-correctness\|ER-019]] | Filter correctness | backlog | W7 | 15 |
 | [[ER-020-eager-views-newas-norm-gradients\|ER-020]] | Eager tensor views, NewAs aliasing and norm gradients | backlog | W9 | 38 |
 | [[ER-021-mat-vec-quaternion-qr-inverse\|ER-021]] | mat/vec: quaternion from matrix, QR and inverse tolerance | backlog | W3, W9 | 8 |
 | [[ER-022-audio-modem-acquisition\|ER-022]] | Audio modem acquisition, sync, drift and BER tests | blocked | W7 | 54 |

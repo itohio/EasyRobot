@@ -1,37 +1,43 @@
 ---
 type: algorithm
-status: partial
+status: tested
 tags: [easyrobot, filter, ahrs, imu]
 workstream: [W3, W7]
 module: "[[filters]]"
-summary: "6-DOF error sign flipped (converges upside down)"
-source: [x/math/filter/ahrs/mahony.go]
-tests: [x/math/filter/ahrs/ahrs_test.go]
+summary: "6-DOF and 9-DOF converge to a static tilt; Euler(q) gives roll/pitch/yaw of the [w,x,y,z] output"
+source: [x/math/filter/ahrs/mahony.go, x/math/filter/ahrs/euler.go]
+tests: [x/math/filter/ahrs/ahrs_test.go, x/math/filter/ahrs/convergence_test.go]
 test_result: pass
 complete: yes
-correct: no
-evidence: "ahrs 9/9 pass; probe ahrsprobe: 6-DOF converges to roll -150° (upside down) instead of 30°; 9-DOF converges to 30°"
+correct: yes
+evidence: "go test -race ./x/math/filter/ahrs 15/15 pass (2026-11-12): 6- and 9-DOF converge to roll 30°/pitch −20° (9-DOF also yaw 40°); a constant gyro bias is learned by the integral (GainI·eInt = −bias within 1e-3, attitude within 0.002; dropping the integral in either path fails); yaw rate integrates to +90°; zero accel and accel scale handled; Update allocates 0; red before the fix: 6-DOF settled at the mirror tilt (ER-SIMALGO-logs/mahony-fail-before.txt); mutants in ER-SIMALGO-logs/mahony-mutants-r2.txt all fail"
 ---
 # Mahony AHRS (complementary PI filter)
 
 **What it does:** Quaternion attitude filter: error = cross product of measured vs estimated gravity (and magnetic) direction, fed back to the gyro through PI gains (`GainP`, `GainI`).
 
-**Where:** `x/math/filter/ahrs/mahony.go`: `NewMahony` :24, `Update` :72-86, `calculate` (9-DOF) :100-201, `calculateWOMag` (6-DOF) :203-262.
+**Where:** `x/math/filter/ahrs/mahony.go`: `NewMahony` :24, `Update` :72-86, `calculate` (9-DOF) :100-201, `calculateWOMag` (6-DOF) :203-264. `x/math/filter/ahrs/euler.go`: `Euler` :18.
 
-**Inputs → outputs:** same 3×3 input as [[madgwick-ahrs]] (rows accel, gyro rad/s, mag); output quaternion `[w,x,y,z]`. No allocations.
+**Inputs → outputs:** same 3×3 input as [[madgwick-ahrs]] (rows accel, gyro rad/s, mag); output quaternion `[w,x,y,z]`, the rotation from the sensor frame to the world frame (z up; x along the horizontal magnetic field with a magnetometer). `Euler(q)` gives roll, pitch, yaw (Z-Y-X; yaw counter-clockwise seen from above, relative to the start without a magnetometer). `vec.Quaternion`'s own `Roll/Pitch/Yaw` read w from index 3 and do not apply to this output. `Update(dt, &m)` with a `*mat.Matrix3x3` allocates nothing.
 
 ## Completeness review
 
-- Complete: yes (IMU + MARG paths, integral term with anti-windup when `GainI==0`). Integral accumulates `e` without `dt` (:170-172, :231-233) — same as the x-io reference, but makes `GainI` sample-rate dependent.
-- Tested: `TestMahonyCalculateWith/WithoutMagnetometerMatchesReference` compare one step to stored golden quaternions/integrals; they would pass with either error sign because the golden values were evidently produced by this code. Run: go test -count=1 -json ./x/math/filter/ahrs (2026-11-09, raw tmp/easyrobot/filters/test-2026-11-09.json) → ok.
-- Correct: **no for 6-DOF**, yes for 9-DOF.
-  - `mahony.go:225-229` computes `e = v × a` (estimated × measured) while the 9-DOF path (:164-168) and the x-io reference use `e = a × v`. The 6-DOF feedback therefore has the wrong sign. Probe (`tmp/easyrobot/filters/ahrsprobe/main.go`, static roll 30°, Kp=2, Ki=0, 40 s): 6-DOF ends at roll **−150.00°** (q≈[0.259,−0.966,0,0], gravity flipped); 9-DOF ends at 30.00°.
+- Complete: yes (IMU + MARG paths, integral term with anti-windup when `GainI==0`). Integral accumulates `e` without `dt` (:170-172, :233-235) — same as the x-io reference, but makes `GainI` sample-rate dependent.
+- Tested: `TestMahonyCalculateWith/WithoutMagnetometerMatchesReference` compare one step with the test's own x-io reference step (its 6-DOF error was `v × a` like the bug; now `a × v`). `convergence_test.go`:
+  - `TestMahonyConvergesToAStaticTilt`: both paths, 40 s at 100 Hz from identity; gravity estimate within 0.01 of the measured direction; 9-DOF roll/pitch/yaw within 0.02 rad.
+  - `TestMahonyCancelsAGyroBias`: 10 min at a tilted pose, bias (0.12, −0.16, 0.1) rad/s, Kp 2, Ki 0.005. The attitude stays within 0.002, and `GainI·eInt` equals −bias within 1e-3: the part across gravity for 6-DOF, all of it for 9-DOF. Without the integral the tilt would be |bias|/Kp ≈ 0.1 rad.
+  - `TestMahonyAccelEdgeCases`: a zero accel sample integrates the gyro alone without NaN; |a| = 1 and 9.81 give the same attitude.
+  - `TestMahonyIntegratesTheYawRate`: +90°/s for 1 s → +90° ± 2°.
+  - `TestEulerOfKnownOrientations`: incl. both gimbal-lock clamps.
+  - `TestMahonyUpdateDoesNotAllocate`.
+  - Run: `go test -race -count=1 ./x/math/filter/ahrs/` pass, 2026-11-12.
+- Correct: yes for 6-DOF and 9-DOF. The 6-DOF error was `e = v × a` (estimated × measured; the 9-DOF path and the x-io reference use `a × v`), so it settled at the mirror tilt (red run: gravity estimate −(0.34, 0.47, 0.81) for a measured +(0.34, 0.47, 0.81)); fixed to `a × v` (`mahony.go:224-231`).
 
 ## TODOs
 
-- [ ] Flip 6-DOF error to `a × v` (match :164-168) — mahony.go:225-229 #p1 #ER-019
-- [ ] Convergence test from a tilted static pose for both paths — ahrs_test.go #p1 #ER-019
-- [ ] Scale integral by dt (document gain units) — mahony.go:170,231 #p3
+- [x] Flip 6-DOF error to `a × v` (match :164-168) — mahony.go:225-229 #p1 #ER-019
+- [x] Convergence test from a tilted static pose for both paths — ahrs_test.go #p1 #ER-019
+- [ ] Scale integral by dt (document gain units) — mahony.go:170,233 #p3
 
 ## Links
 

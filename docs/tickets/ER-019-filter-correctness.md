@@ -39,7 +39,7 @@ Source/test edits are approved by the owner's autonomy instruction (roster `deci
 
 - [ ] Stage A: PLL test across the ±π seam and with |phase| > 3π fails first, then passes; `TestLoop_Rotate` fixed and noise seeded; AGC step-response test (attack/release time constants within 10 %) fails first, then passes.
 - [ ] KF/EKF: multi-step test vs a scalar/float64 reference (P and x after N updates) fails first, then passes.
-- [ ] Mahony: convergence from a tilted static pose for both 6- and 9-DOF paths.
+- [x] Mahony: convergence from a tilted static pose for both 6- and 9-DOF paths.
 - [ ] IIR/FIR: response tests against known coefficient sets (LP/HP −3 dB at fc; BP/BS in-band ≈ 0 dB, out-of-band < −40 dB).
 - [ ] Ring-buffer filters: output over the first w samples uses only the samples seen; matches a naive reference afterwards.
 - [ ] `go test -count=1 ./x/math/filter/...` passes.
@@ -50,4 +50,4 @@ Product's guess: **M**. Sizes are product's guesses ([[roadmap#1. Milestones at 
 
 ## Implementation evidence
 
-None. Planning ticket only.
+- **Mahony (2026-11-12, ER-SIMALGO, for the badge's 6-axis MPU6050):** `TestMahonyConvergesToAStaticTilt` failed first (6-DOF settled at the mirror tilt), then passes with the 6-DOF error `a × v` (`mahony.go:224-231`); plus bias, yaw-rate, `Euler` and no-allocation tests in `convergence_test.go`, and the 6-DOF reference step in `ahrs_test.go` corrected to `a × v`. `go test -race -count=1 ./x/math/filter/ahrs/` pass. Details: [[mahony-ahrs]]. The other items are open.
