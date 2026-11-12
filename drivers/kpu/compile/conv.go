@@ -122,7 +122,9 @@ func LowerConv(l *qnet.Layer, src, dst uint32) (Conv, error) { return Lower(l, F
 // y/2^P (y_mul 1, shift P), adds zp_out + 128 and clamps to
 // [ActMin, ActMax] + 128 with two flat segments. P is the largest value
 // ≤ 24 that keeps every channel's y inside 2^34, its BN add inside int32 and
-// its mul inside 24 bits. The two roundings (BN floors, the activation
+// its mul inside 24 bits; a layer where some channel's mul would then be
+// too coarse (its rounding worth more than ½ output LSB on an accumulator
+// whose output is not clamped) is refused. The two roundings (BN floors, the activation
 // rounds half up) make the result differ from qnet's single rounding by at
 // most 1 LSB; a fused average pool floors where qnet rounds, one LSB more.
 func Lower(l *qnet.Layer, f Fuse, src, dst uint32) (Conv, error) {
@@ -424,6 +426,14 @@ func batchNorm(l *qnet.Layer, taps int64, zw int8) ([]kmodel.BN, int, error) {
 				ok = false
 				break
 			}
+			if a := unclamped(accMax, b, m); a > math.Ldexp(1, s+p) {
+				// mul's rounding (≤ ½ unit) moves the output by up to
+				// |acc|/2^(s+P+1) LSB; keep that ≤ ½ LSB on every
+				// accumulator whose output is not clamped, so the result
+				// stays within 1 LSB of qnet's. P only falls from here:
+				// refuse.
+				return nil, 0, fmt.Errorf("%w: channel %d's multiplier %.3g needs more BN precision than post-shift %d leaves", ErrUnsupported, c, m, p)
+			}
 			bn[c] = kmodel.BN{Mul: int64(mul), Add: int64(add), Shift: uint(s)}
 		}
 		if ok {
@@ -431,6 +441,16 @@ func batchNorm(l *qnet.Layer, taps int64, zw int8) ([]kmodel.BN, int, error) {
 		}
 	}
 	return nil, 0, fmt.Errorf("%w: requantisation multipliers out of the KPU's range", ErrUnsupported)
+}
+
+// unclamped is the largest |acc| ≤ accMax whose output (acc + b)·m lies
+// within 256 LSB of zero, beyond which every output clamps; 0 if none does.
+func unclamped(accMax, b, m float64) float64 {
+	lo, hi := max(-b-256/m, -accMax), min(-b+256/m, accMax)
+	if lo > hi {
+		return 0
+	}
+	return max(math.Abs(lo), math.Abs(hi))
 }
 
 // activation is the layer's table: out = clamp(zp + round(y/2^p), lo, hi)
