@@ -121,8 +121,9 @@ func (pl *convPlan) setQuant(bias []int32, rq []Requant, inZP, outZP, actMin, ac
 }
 
 // conv2DGeneric is the Conv2D inner loop. All arguments are validated
-// against pl. Output channels are computed in pairs (dotZP2: each input
-// byte is loaded once for two weight rows). A weight zero point enters as
+// against pl. Output channels are computed four at a time (dotZP4: each
+// input byte is loaded once for four weight rows), then a pair (dotZP2) and
+// a single channel for the remainder. A weight zero point enters as
 // Σ (x−zp)(w−WZP) = Σ (x−zp)·w − WZP·Σ (x−zp): the window sum is computed
 // once per output pixel (not per channel) and only when WZP ≠ 0; int32
 // addition wraps, so the decomposition gives the same int32.

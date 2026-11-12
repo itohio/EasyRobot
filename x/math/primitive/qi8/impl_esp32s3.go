@@ -19,9 +19,10 @@ package qi8
 // Prepare over the full kernel window). Every term is an exact integer and
 // int32 addition wraps modulo 2^32, so the result is the same int32 bit for
 // bit; requantisation then follows the layer's rounding mode
-// (qi8_requantize_mode, the C transcription of requantizeMode, checked
-// bit-exact on the chip). SPEC.md allows this zero-point folding for
-// accelerated paths.
+// (qi8_requantize_mode in requant_c.h, the C transcription of
+// requantizeMode: equal to Go on the host under UBSan, tag qi8ctest;
+// checked bit-exact on the chip before the overflow-free zero-point add,
+// not since). SPEC.md allows this zero-point folding for accelerated paths.
 //
 // Scratch layout (from the first 16-byte-aligned byte of Scratch), with
 // K = taps·inC (conv) or In (FC), K32 = K rounded up to 32, R = output
