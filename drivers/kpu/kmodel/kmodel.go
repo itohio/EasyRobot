@@ -188,6 +188,10 @@ func (m *Model) checkLayer(l Layer) error {
 			return ErrFormat
 		}
 		a := m.Args(c)
+		if a[0]>>3&1 != 0 && a[4]>>4&0xf != 0 {
+			// The silicon computes a wrong output (ER-K210-K9 evidence, K9e).
+			return fmt.Errorf("%w: pool_type %d on a depthwise conv (the KPU does not pool in depthwise mode)", ErrUnsupported, a[4]>>4&0xf)
+		}
 		if err := m.checkTables(c, &a); err != nil {
 			return err
 		}

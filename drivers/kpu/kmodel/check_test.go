@@ -143,6 +143,10 @@ func TestCheckRejects(t *testing.T) {
 		{"conv output group 0", func(f *fixture) { f.setArg(8, 7<<20, 0) }, ErrFormat},
 		{"conv input wider than its slot", func(f *fixture) { f.setArg(7, 7<<28, 4<<28); f.setArg(3, 0x3ff, 31) }, ErrFormat},
 		{"conv main-memory output past main memory", func(f *fixture) { f.setBody(conv, 1, fxMain-fxN+1) }, ErrFormat},
+		{"pool on a depthwise conv (the KPU does not pool in depthwise mode)", func(f *fixture) {
+			f.setArg(0, 1<<3, 1<<3) // depthwise
+			f.setArg(4, 0xf<<4, 5<<4)
+		}, ErrUnsupported},
 
 		{"dequantize body short", bodyLen(deq, 20), ErrFormat},
 		{"dequantize input past main memory", func(f *fixture) { f.setBody(deq, 1, fxMain-fxN+1) }, ErrFormat},

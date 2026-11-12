@@ -57,7 +57,7 @@ Bit positions from `kpu.h`; "nncase" is what rc5 writes; tiny3 values are given 
 | 10 | `conv_value2` | arg_add 0–39 | zero-point product term |
 | 11 | `dma_parameter` | send_data_out 0, channel_byte_num 16–31, dma_total_byte 32–63 | send_data_out streams the output to `FIFO_DATA_OUT` (for DMA); byte counts − 1 (W·H, W·H·C). `drivers/kpu` leaves it off and reads the output from KPU RAM. |
 
-**pool_type** (nncase emulator; stride = kernel). **Silicon: regular convs only.** In depthwise mode a non-zero pool_type gives wrong output on the UnitV (ER-K210-K9 evidence, K9e). nncase never pools a depthwise layer: it lowers a stride-2 depthwise at full resolution and puts the left-top sampler on the following 1×1 conv.
+**pool_type** (nncase emulator; stride = kernel). **Silicon: regular convs only.** In depthwise mode a non-zero pool_type gives wrong output on the UnitV (ER-K210-K9 evidence, K9e). `kmodel.Check` refuses such a layer (ErrUnsupported). nncase never pools a depthwise layer: it lowers a stride-2 depthwise at full resolution and puts the left-top sampler on the following 1×1 conv.
 
 | Value | Pool |
 |---|---|
