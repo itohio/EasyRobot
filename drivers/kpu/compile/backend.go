@@ -22,6 +22,7 @@ type RunnerFunc func(m *kmodel.Model, main []byte) (*kpu.Runner, error)
 type Group struct {
 	First, Count int
 	Mode         Mode
+	c            Conv // lowered at addresses 0 (the planner's one Lower per group)
 }
 
 // Mode is how a group is lowered beyond plain fusion (see Fuse).
@@ -175,10 +176,11 @@ func (gi graphInfo) group(i int, mode Mode) (Group, Fuse, *qnet.Layer, bool) {
 	if mode.Sampler {
 		sl := Sampler(&ls[i-1])
 		f := mode.fuse(nil, nil, nil)
-		if _, err := Lower(&sl, f, 0, 0); err != nil {
+		c, err := Lower(&sl, f, 0, 0)
+		if err != nil {
 			return Group{}, Fuse{}, nil, false
 		}
-		return Group{First: i, Mode: mode}, f, &sl, true
+		return Group{First: i, Mode: mode, c: c}, f, &sl, true
 	}
 	j := i
 	var f Fuse
@@ -215,9 +217,9 @@ func (gi graphInfo) group(i int, mode Mode) (Group, Fuse, *qnet.Layer, bool) {
 		{mode.fuse(f.Pad, act, nil), base + b2i(act != nil)},
 		{mode.fuse(f.Pad, nil, nil), base},
 	}
-	for _, c := range cands {
-		if _, err := Lower(conv, c.f, 0, 0); err == nil {
-			return Group{First: i, Count: c.n, Mode: mode}, c.f, conv, true
+	for _, cd := range cands {
+		if c, err := Lower(conv, cd.f, 0, 0); err == nil {
+			return Group{First: i, Count: cd.n, Mode: mode, c: c}, cd.f, conv, true
 		}
 	}
 	return Group{}, Fuse{}, nil, false
@@ -244,7 +246,7 @@ func Compile(g *qnet.Graph, newRunner RunnerFunc) (*Backend, error) {
 			i++
 			continue
 		}
-		if err := s.build(g, newRunner); err != nil {
+		if err := s.build(newRunner); err != nil {
 			return nil, fmt.Errorf("compile: segment at layer %d: %w", i, err)
 		}
 		b.segs[&g.Layers[s.First]] = s
@@ -278,7 +280,7 @@ func (gi graphInfo) segment(i int) *Segment {
 			break // a graph output or a second reader ends the segment
 		}
 		if gr, f, conv, ok := gi.group(j, Mode{}); ok {
-			if !fits(conv, f, false) {
+			if !fits(gr, false) {
 				break
 			}
 			push(gr, conv, f)
@@ -303,7 +305,7 @@ func (gi graphInfo) segment(i int) *Segment {
 			sample.Sampler = true
 			gr2, f2, conv2, ok = gi.group(next, sample)
 		}
-		if !ok || !fits(conv, f, odd) || !fits(conv2, f2, false) {
+		if !ok || !fits(gr, odd) || !fits(gr2, false) {
 			break
 		}
 		push(gr, conv, f)
@@ -318,13 +320,10 @@ func (gi graphInfo) segment(i int) *Segment {
 // fits reports whether a lowered layer's input and output fit KPU memory
 // together (else it needs row-band tiling, K9g); readPast reserves one more
 // output row for an OddSample reader.
-func fits(conv *qnet.Layer, f Fuse, readPast bool) bool {
-	c, err := Lower(conv, f, 0, 0)
-	if err != nil {
-		return false
-	}
-	iw, ih, ic := c.Args.InShape()
-	ow, oh, oc := c.Args.OutShape()
+func fits(gr Group, readPast bool) bool {
+	a := gr.c.Args
+	iw, ih, ic := a.InShape()
+	ow, oh, oc := a.OutShape()
 	n := lines(qi8.Shape{H: ih, W: iw, C: ic}) + lines(qi8.Shape{H: oh, W: ow, C: oc})
 	if readPast {
 		n += kmodel.UploadLayout(ow, oh).RowLines
@@ -335,8 +334,8 @@ func fits(conv *qnet.Layer, f Fuse, readPast bool) bool {
 // build lowers the segment's groups with ping-pong KPU addresses (the input
 // at the top of memory, outputs alternating bottom and top), assembles the
 // kmodel and its runner.
-func (s *Segment) build(g *qnet.Graph, newRunner RunnerFunc) error {
-	data, kin, err := s.kmodel(g)
+func (s *Segment) build(newRunner RunnerFunc) error {
+	data, kin, err := s.kmodel()
 	if err != nil {
 		return err
 	}
@@ -354,8 +353,7 @@ func (s *Segment) build(g *qnet.Graph, newRunner RunnerFunc) error {
 
 // kmodel assembles the segment's kmodel file and returns it with the KPU
 // input shape.
-func (s *Segment) kmodel(g *qnet.Graph) ([]byte, qi8.Shape, error) {
-	gi := newGraphInfo(g)
+func (s *Segment) kmodel() ([]byte, qi8.Shape, error) {
 	b := kmodel.NewBuilder(true, 0)
 	outLen := uint32(s.out.Len())
 	b.SetMainMem(outLen)
@@ -364,15 +362,8 @@ func (s *Segment) kmodel(g *qnet.Graph) ([]byte, qi8.Shape, error) {
 	src := uint32(ramLines - lines(kin))
 	top := true // where the current input sits
 	for k, gr := range s.Groups {
-		_, f, conv, ok := gi.group(gr.First, gr.Mode)
-		if !ok {
-			return nil, kin, fmt.Errorf("group at layer %d vanished", gr.First)
-		}
-		probe, err := Lower(conv, f, 0, 0) // the KPU output shape (full resolution for Full)
-		if err != nil {
-			return nil, kin, err
-		}
-		ow, oh, oc := probe.Args.OutShape()
+		a := gr.c.Args // lowered at addresses 0; the source holds only the row skip
+		ow, oh, oc := a.OutShape()
 		dst := uint32(0)
 		if !top {
 			n := lines(qi8.Shape{H: oh, W: ow, C: oc})
@@ -381,14 +372,17 @@ func (s *Segment) kmodel(g *qnet.Graph) ([]byte, qi8.Shape, error) {
 			}
 			dst = uint32(ramLines - n)
 		}
-		c, err := Lower(conv, f, src, dst)
-		if err != nil {
+		if err := a.SetSrcAddr(src + a.SrcAddr()); err != nil {
 			return nil, kin, err
 		}
+		if err := a.SetDstAddr(dst); err != nil {
+			return nil, kin, err
+		}
+		c := gr.c
 		if k == len(s.Groups)-1 {
-			b.AddConvToMain(0, c.Args, c.Weights, c.BN, c.Act)
+			b.AddConvToMain(0, a, c.Weights, c.BN, c.Act)
 		} else {
-			b.AddConv(c.Args, c.Weights, c.BN, c.Act)
+			b.AddConv(a, c.Weights, c.BN, c.Act)
 		}
 		src, top = dst, !top
 	}

@@ -46,7 +46,7 @@ func Kmodel(g *qnet.Graph) ([]byte, Info, error) {
 		}
 		return nil, Info{}, fmt.Errorf("layer %d (%v %v → %v) cannot %s: %w", n, l.Kind, l.In, l.Out, where, reason(g, n))
 	}
-	data, _, err := s.kmodel(g)
+	data, _, err := s.kmodel()
 	if err != nil {
 		return nil, Info{}, err
 	}
