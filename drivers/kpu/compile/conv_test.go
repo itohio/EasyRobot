@@ -106,6 +106,7 @@ func TestLowerConvMatchesQnet(t *testing.T) {
 		layers = 200
 	}
 	var hist [2]int
+	var byRound [2][2]int // [qi8.RoundExact, qi8.RoundTFLite][equal, 1 LSB]
 	for n := range layers {
 		l := randomLayer(r)
 		in := make([]int8, l.In.H*l.In.W*l.In.C)
@@ -128,9 +129,11 @@ func TestLowerConvMatchesQnet(t *testing.T) {
 					n, l.Kind, l.KH, l.In, l.Out.C, l.InQ.ZP, l.OutQ.ZP, l.ActMin, l.ActMax, l.Round, i, got[i], want[i])
 			}
 			hist[max(d, -d)]++
+			byRound[l.Round][max(d, -d)]++
 		}
 	}
-	t.Logf("%d layers, %d outputs: %d equal, %d at 1 LSB", layers, hist[0]+hist[1], hist[0], hist[1])
+	t.Logf("%d layers, %d outputs: %d equal, %d at 1 LSB (RoundExact %d at 1 of %d, RoundTFLite %d at 1 of %d)", layers, hist[0]+hist[1], hist[0], hist[1],
+		byRound[0][1], byRound[0][0]+byRound[0][1], byRound[1][1], byRound[1][0]+byRound[1][1])
 }
 
 func TestLowerConvRejects(t *testing.T) {
@@ -185,17 +188,31 @@ func evalAct(t [16]kmodel.ActSegment, y int64) int64 {
 }
 
 // TestActivationTable: the table computes clamp(zp + round(y/2^p), lo, hi)
-// exactly (positive halves round up), including at both clamp edges.
+// exactly, including at both clamp edges: halves round up, or with
+// tiesAway (RoundTFLite layers) away from zero, also on every exact tie.
 func TestActivationTable(t *testing.T) {
-	for _, c := range []struct{ zp, lo, hi int64 }{{128, 0, 255}, {100, 100, 255}, {0, 0, 177}, {200, 30, 220}, {77, 77, 77}} {
-		for _, p := range []int{1, 5, 17, 24} {
-			tab := activation(c.zp, c.lo, c.hi, p)
-			for y := (c.lo - c.zp - 3) << p; y <= (c.hi-c.zp+3)<<p; y += max(1, int64(1)<<p/7) {
+	for _, tiesAway := range []bool{false, true} {
+		for _, c := range []struct{ zp, lo, hi int64 }{{128, 0, 255}, {100, 100, 255}, {0, 0, 177}, {200, 30, 220}, {77, 77, 77}, {0, 30, 220}, {255, 0, 255}} {
+			for _, p := range []int{1, 5, 17, 24} {
+				tab := activation(c.zp, c.lo, c.hi, p, tiesAway)
 				half := int64(1) << (p - 1)
-				r := (y + half) >> p // round half up
-				want := max(c.lo, min(c.hi, c.zp+r))
-				if got := evalAct(tab, y); got != want {
-					t.Fatalf("zp %d [%d,%d] p %d y %d: got %d, want %d", c.zp, c.lo, c.hi, p, y, got, want)
+				check := func(y int64) {
+					r := (y + half) >> p // round half up
+					if tiesAway && y < 0 {
+						r = -((-y + half) >> p)
+					}
+					want := max(c.lo, min(c.hi, c.zp+r))
+					if got := evalAct(tab, y); got != want {
+						t.Fatalf("tiesAway %v zp %d [%d,%d] p %d y %d: got %d, want %d", tiesAway, c.zp, c.lo, c.hi, p, y, got, want)
+					}
+				}
+				for y := (c.lo - c.zp - 3) << p; y <= (c.hi-c.zp+3)<<p; y += max(1, int64(1)<<p/7) {
+					check(y)
+				}
+				for k := c.lo - c.zp - 3; k <= c.hi-c.zp+3; k++ { // every tie and its neighbours
+					for _, d := range []int64{-1, 0, 1} {
+						check(k<<p + half + d)
+					}
 				}
 			}
 		}

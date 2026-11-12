@@ -239,3 +239,39 @@ func TestLowerConvAsymmetricSpread(t *testing.T) {
 		}
 	}
 }
+
+// TestNegativeTieRoundTFLite (review R-K210-K9b L3, RoundTFLite only): a
+// layer whose output is exactly −0.5 LSB (accumulator 0, bias −2, M = ¼)
+// gives TFLite's −1 (ties away from zero) on the KPU when it is a
+// RoundTFLite layer; a RoundExact layer keeps the half-up table (0, within
+// the 1 LSB bar).
+func TestNegativeTieRoundTFLite(t *testing.T) {
+	for _, c := range []struct {
+		round qi8.Rounding
+		want  int8 // zp_out −100 plus the rounded −0.5
+	}{{qi8.RoundTFLite, -101}, {qi8.RoundExact, -100}} {
+		l := conv1x1(t, 4, []float64{0.25}, []int32{-2})
+		l.Round = c.round
+		conv, err := LowerConv(&l, 0, 1024)
+		if err != nil {
+			t.Fatal(err)
+		}
+		in := make([]int8, l.In.Len())
+		for i := range in {
+			in[i] = -128 // the input zero point: accumulator 0
+		}
+		qn := make([]int8, l.Out.Len())
+		if err := qnet.RunLayer(&l, qn, in); err != nil {
+			t.Fatal(err)
+		}
+		got := emulate(t, conv, in, l.In, l.Out)
+		for i := range got {
+			if got[i] != c.want {
+				t.Errorf("round %d output %d: KPU %d, want %d (qnet %d)", c.round, i, got[i], c.want, qn[i])
+			}
+		}
+		if c.round == qi8.RoundTFLite && qn[0] != c.want {
+			t.Errorf("qnet RoundTFLite gives %d, the test expects %d", qn[0], c.want)
+		}
+	}
+}

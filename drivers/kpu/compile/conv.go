@@ -127,9 +127,10 @@ func LowerConv(l *qnet.Layer, src, dst uint32) (Conv, error) { return Lower(l, F
 // ≤ 24 that keeps every channel's y inside 2^34, its BN add inside int32 and
 // its mul inside 24 bits; a layer where some channel's mul would then be
 // too coarse (its rounding worth more than ½ output LSB on an accumulator
-// whose output is not clamped) is refused. The two roundings (BN floors, the activation
-// rounds half up) make the result differ from qnet's single rounding by at
-// most 1 LSB; a fused average pool floors where qnet rounds, one LSB more.
+// whose output is not clamped) is refused. The two roundings (BN floors,
+// the activation rounds half up, negative ties away from zero for
+// RoundTFLite layers) make the result differ from qnet's single rounding by
+// at most 1 LSB; a fused average pool floors where qnet rounds, one LSB more.
 func Lower(l *qnet.Layer, f Fuse, src, dst uint32) (Conv, error) {
 	dw := l.Kind == qnet.DepthwiseConv2D
 	if l.Kind != qnet.Conv2D && !dw {
@@ -201,7 +202,7 @@ func Lower(l *qnet.Layer, f Fuse, src, dst uint32) (Conv, error) {
 	if err != nil {
 		return Conv{}, err
 	}
-	actb, err := kmodel.EncodeAct(activation(int64(l.OutQ.ZP)+128, lo+128, hi+128, p))
+	actb, err := kmodel.EncodeAct(activation(int64(l.OutQ.ZP)+128, lo+128, hi+128, p, l.Round == qi8.RoundTFLite))
 	if err != nil {
 		return Conv{}, err
 	}
@@ -454,17 +455,34 @@ func unclamped(accMax, b, m float64) float64 {
 }
 
 // activation is the layer's table: out = clamp(zp + round(y/2^p), lo, hi)
-// in uint8, with flat segments below lo and from hi.
-func activation(zp, lo, hi int64, p int) [16]kmodel.ActSegment {
+// in uint8, with flat segments below lo and from hi. The KPU's carry shift
+// rounds halves up; with tiesAway a negative half rounds away from zero, as
+// TFLite's RoundingDivideByPOT does.
+func activation(zp, lo, hi int64, p int, tiesAway bool) [16]kmodel.ActSegment {
 	var t [16]kmodel.ActSegment
 	t[0] = kmodel.ActSegment{StartX: -1 << 35, Add: lo}
 	// Below xLo the linear segment would give less than lo; from xHi on, more
 	// than hi (just below xHi it already rounds up to hi).
 	xLo := (lo - zp) << p
 	xHi := max((hi-zp)<<p, xLo+1)
-	t[1] = kmodel.ActSegment{StartX: xLo, Mul: 1, Shift: uint(p), Add: lo}
-	t[2] = kmodel.ActSegment{StartX: xHi, Add: hi}
-	for i := 3; i < 16; i++ {
+	n := 1
+	if tiesAway && xLo < 0 {
+		// Negative y gets its own segment starting one higher: there
+		// (y − 1 − xLo)/2^p rounds a negative tie down and leaves every
+		// other y as it was. xLo is a multiple of 2^p, so at y = xLo both
+		// segments give lo.
+		t[n] = kmodel.ActSegment{StartX: min(xLo+1, xHi), Mul: 1, Shift: uint(p), Add: lo}
+		n++
+		if xHi > 0 {
+			t[n] = kmodel.ActSegment{StartX: 0, Mul: 1, Shift: uint(p), Add: zp}
+			n++
+		}
+	} else {
+		t[n] = kmodel.ActSegment{StartX: xLo, Mul: 1, Shift: uint(p), Add: lo}
+		n++
+	}
+	t[n] = kmodel.ActSegment{StartX: xHi, Add: hi}
+	for i := n + 1; i < 16; i++ {
 		t[i] = kmodel.ActSegment{StartX: 1<<35 - 16 + int64(i), Add: hi}
 	}
 	return t
