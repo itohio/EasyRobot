@@ -24,9 +24,9 @@ From the roadmap's no-hardware demo checkpoints ([[roadmap#8. Next|roadmap §8]]
 
 The sixth checkpoint, M-b's synthetic recorder round trip, follows: it needs [[ER-027-marshaller-fixes|ER-027]] and [[ER-031-spi-slave-feature-framing|ER-031]]. Full order, accepted order changes and the T-IK mapping: [[tickets/index|ticket index]].
 
-<!-- vault:status h=d0f03ec1bd42 -->
+<!-- vault:status h=3a92ec9b616e -->
 
-State: 70 tested · 29 implemented · 137 partial · 10 stub · 13 unverified (259 algorithms)
+State: 71 tested · 29 implemented · 137 partial · 10 stub · 13 unverified (260 algorithms)
 
 <!-- /vault:status -->
 
@@ -55,7 +55,7 @@ State: 70 tested · 29 implemented · 137 partial · 10 stub · 13 unverified (2
 
 Algorithm notes per module by status (generated from the algorithm notes; `tested` needs passing value tests).
 
-<!-- vault:modules h=99319dfffed7 -->
+<!-- vault:modules h=79a8ad517421 -->
 
 | Module | tested | implemented | partial | stub | unverified | total |
 |---|---|---|---|---|---|---|
@@ -88,7 +88,7 @@ Algorithm notes per module by status (generated from the algorithm notes; `teste
 | [[gps-geodesy]] | 0 | 1 | 3 | 0 | 0 | 4 |
 | [[grid-maps]] | 3 | 2 | 2 | 0 | 0 | 7 |
 | [[interpolation]] | 5 | 0 | 3 | 0 | 0 | 8 |
-| [[simulation-algorithms]] | 1 | 0 | 0 | 0 | 0 | 1 |
+| [[simulation-algorithms]] | 2 | 0 | 0 | 0 | 0 | 2 |
 | **Devices and apps** | | | | | | |
 | [[actuators]] | 0 | 1 | 4 | 0 | 1 | 6 |
 | [[apps]] | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -105,7 +105,7 @@ Algorithm notes per module by status (generated from the algorithm notes; `teste
 | [[vision]] | 0 | 0 | 8 | 2 | 3 | 13 |
 | **Knowledge engine** | | | | | | |
 | [[knowledge-engine]] | 0 | 0 | 0 | 0 | 0 | 0 |
-| **All** | 70 | 29 | 137 | 10 | 13 | 259 |
+| **All** | 71 | 29 | 137 | 10 | 13 | 260 |
 
 <!-- /vault:modules -->
 
@@ -115,7 +115,7 @@ The knowledge engine is its own Go module and is catalogued in [[knowledge-engin
 
 Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs tagged with the ticket. The defects themselves are in the linked notes and in [[todo]].
 
-<!-- vault:tickets h=3d8642dc5535 -->
+<!-- vault:tickets h=32cba28070cb -->
 
 | Ticket | Title | Status | Workstream | Open p1 |
 |---|---|---|---|---|
@@ -176,7 +176,6 @@ Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs 
 | [[ER-060-sim-wheel-odometry\|ER-060]] | Sim S1: wheel odometry — encoder ticks → 2D pose from the robot description | proposed | W3, W6 | 0 |
 | [[ER-061-sim-liquid-2d\|ER-061]] | 2D liquid automaton with continuous gravity (port from tinytufty2040) — x/math/automata/liquid | blocked |  | 0 |
 | [[ER-062-sim-game-of-life\|ER-062]] | Game of Life, bit-packed (port from tinytufty2040) — x/math/automata/life | blocked |  | 0 |
-| [[ER-063-sim-boids-moving-walls\|ER-063]] | Boids with moving walls (port from tinygui) — x/math/swarm/boids | ready |  | 0 |
 | [[ER-064-sim-liquid-3d\|ER-064]] | 3D liquid automaton driven by the IMU's continuous gravity vector | proposed |  | 0 |
 | [[ER-065-sim-fluid-dynamics\|ER-065]] | Fluid dynamics: Stam stable fluids, 2D first — x/math/fluid | proposed |  | 0 |
 | [[ER-066-ray-casting-dda\|ER-066]] | Ray casting: grid DDA traversal and a 2.5D column helper — x/math/grid | proposed |  | 0 |

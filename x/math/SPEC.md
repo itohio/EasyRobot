@@ -359,6 +359,19 @@ type Filter interface {
 **Features**:
 - float32, deterministic, no allocation per step (TinyGo, RP2040)
 
+### 14. Swarm (`x/math/swarm`)
+
+**Purpose**: Flocking for games and demos
+
+**Status**: ✅ **Tested** (host tests; no on-device timing yet)
+
+**Types**:
+- `boids.Flock`: Reynolds flocking (separation, alignment, cohesion) in fixed point (1/256 cell), speeds kept between limits by an octagonal norm
+- `boids.Box`: the window onto the boids' world; it turns and shakes, sweeping its walls through the flock while boids away from the walls keep their world heading
+
+**Features**:
+- Integer only, deterministic on every target, no allocation after `New` (TinyGo, RP2040)
+
 ## Design Principles
 
 ### In-Place Operations
@@ -453,6 +466,7 @@ Potential optimizations for:
 5. **Primitives** (`x/math/primitive`): Core foundation, working
 6. **Navigation** (`x/math/nav/pdr`): step detector and track, tested on synthetic signals (no hardware run yet)
 7. **Physics** (`x/math/physics/rigid2d`): ball contacts with spin, tested on the host (no on-device timing yet)
+8. **Swarm** (`x/math/swarm/boids`): fixed-point flocking in a moving box, tested on the host (no on-device timing yet)
 
 ### ⚠️ Draft - Not Tested with Real Hardware
 
@@ -581,6 +595,7 @@ x/math/
 ├── grid/             # Grid operations (⚠️ Draft)
 ├── nav/              # Dead reckoning: pdr (✅ Tested, synthetic signals)
 ├── physics/          # Fixed-step game physics: rigid2d (✅ Tested, host)
+├── swarm/            # Flocking: boids (✅ Tested, host)
 └── primitive/        # Low-level primitives (✅ Working)
 ```
 

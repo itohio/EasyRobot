@@ -2,7 +2,7 @@
 id: ER-063
 title: "Boids with moving walls (port from tinygui) — x/math/swarm/boids"
 type: ticket
-status: ready
+status: done
 kind: implementation
 owner: easyrobot
 workstream:
@@ -31,9 +31,9 @@ Every piece: check written first (red), tests, host benchmark, `tinygo build -ta
 
 ## Acceptance evidence required later
 
-- [ ] tinygui's four boids tests pass on the port, red first.
-- [ ] Speed stays within [VMin, VMax] for 10,000 steps; no boid leaves the box when it turns 22.5° per press.
-- [ ] 0 allocations per `Step`; host benchmark at N = 128; tufty2040 build.
+- [x] tinygui's four boids tests pass on the port, red first (against a missing package, 2026-11-12).
+- [x] Speed stays within [VMin, VMax] for 10,000 steps; no boid leaves the box when it turns 22.5° per press (`TestTurnPerPressFor10000Steps`).
+- [x] 0 allocations per `Step` (raw mallocs over 1,000 steps); host benchmark at N = 128 (70–88 µs per step); tufty2040 build (allocations only in `New`).
 
 ## Effort uncertainty and revision trigger
 
@@ -41,4 +41,4 @@ easyrobot's guess: **M**. Revisit when the badge's frame budget or the owner's s
 
 ## Implementation evidence
 
-None.
+`x/math/swarm/boids` (`boids.go`, `boids_test.go`), note [[boids-flocking]], `x/math/SPEC.md` §14. Ported from `cfbd1b0`. R-TG-1 has no finding in the ported files; its numerics note holds, and the sine table is now a literal. The one change to the flock's behaviour: a velocity that steering cancels to zero keeps its old heading instead of turning east, a bias the new mirror-symmetry test found. 14 tests, 25 mutants all fail; fpv-gate found the flock core bit-identical to tinygui's in 60 of 60 runs (`verification/ER-SIMALGO-boids063.md`). Evidence `~/src/docs/evidence/ER-SIMALGO.md` §ER-063 and `ER-SIMALGO-logs/boids-*.txt`. RP2040 step time not measured (no board run).
