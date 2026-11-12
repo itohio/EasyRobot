@@ -1,10 +1,12 @@
 package compile
 
 import (
+	"fmt"
 	"math/rand/v2"
 	"testing"
 
 	"github.com/itohio/EasyRobot/drivers/kpu"
+	"github.com/itohio/EasyRobot/drivers/kpu/kmodel"
 	"github.com/itohio/EasyRobot/x/math/nn/qnet"
 	"github.com/itohio/EasyRobot/x/math/primitive/qi8"
 )
@@ -253,8 +255,8 @@ func TestMixedGraph(t *testing.T) {
 		d := int(got[j]) - int(cpu[j])
 		fh[min(max(d, -d), 3)]++
 	}
-	if fh[0] < len(cpu)/2 {
-		t.Errorf("mixed graph output far from the CPU runner: %v", fh)
+	if fh[2]+fh[3] != 0 {
+		t.Errorf("mixed graph output more than 1 LSB from the CPU runner: %v", fh)
 	}
 	t.Logf("plan %v; final output vs CPU runner: %d equal, %d at 1, %d at 2, %d at ≥3", kinds, fh[0], fh[1], fh[2], fh[3])
 }
@@ -353,39 +355,53 @@ func TestSamplerEven(t *testing.T) {
 	}
 }
 
-// TestSegmentAddresses: in every compiled layer the input region of KPU
-// memory (read from SrcAddr, one row in for an OddSample reader) and the
-// output region do not overlap and stay inside KPU memory (the KPU reads
-// its input while it writes; the emulator would not notice either).
+// TestSegmentAddresses: in every compiled layer of MobileNets at several
+// sizes and widths, the input region of KPU memory (read from SrcAddr, one
+// row in for an OddSample reader) and the output region, as the layouts in
+// the layer argument address them, do not overlap and stay inside KPU
+// memory (the KPU reads its input while it writes; the emulator would not
+// notice either).
 func TestSegmentAddresses(t *testing.T) {
-	same := mobileNetSAME(t, 0.25, 256)
-	for name, g := range map[string]*qnet.Graph{
-		"Pad + VALID": mobileNetPad(t, 0.25, 256),
-		"TF SAME":     same,
-		// From pw1: the Full depthwise layers write at the top of memory,
-		// so their readers' extra row must be reserved there.
-		"TF SAME from pw1": {Layers: same.Layers[2:]},
-	} {
+	graphs := map[string]*qnet.Graph{}
+	for _, size := range []int{32, 96, 160, 224, 256} {
+		for _, alpha := range []float32{0.25, 0.5} {
+			same := mobileNetSAME(t, alpha, size)
+			graphs[fmt.Sprintf("Pad + VALID α %v %d²", alpha, size)] = mobileNetPad(t, alpha, size)
+			graphs[fmt.Sprintf("TF SAME α %v %d²", alpha, size)] = same
+			// From pw1: the Full depthwise layers write at the top of
+			// memory, so their readers' extra row must be reserved there.
+			graphs[fmt.Sprintf("TF SAME from pw1 α %v %d²", alpha, size)] = &qnet.Graph{Layers: same.Layers[2:]}
+		}
+	}
+	// The footprint of a tensor as the KPU addresses it: from its first
+	// line, ChanLines per channel group (the layout written into the
+	// argument, not this package's lines()).
+	region := func(addr uint32, l kmodel.Layout, c int) (int, int) {
+		return int(addr), int(addr) + l.ChanLines*((c+l.Group-1)/l.Group)
+	}
+	for name, g := range graphs {
 		b, err := Compile(g, kpu.NewEmulated)
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("%s: %v", name, err)
 		}
-		m := b.Segments()[0].Model
-		for i, l := range m.Layers {
-			c, err := l.Conv()
-			if err != nil {
-				t.Fatal(err)
-			}
-			a := m.Args(c)
-			iw, ih, ic := a.InShape()
-			ow, oh, oc := a.OutShape()
-			in0, in1 := int(a.SrcAddr()), int(a.SrcAddr())+lines(qi8.Shape{H: ih, W: iw, C: ic})
-			out0, out1 := int(a.DstAddr()), int(a.DstAddr())+lines(qi8.Shape{H: oh, W: ow, C: oc})
-			if in0 < out1 && out0 < in1 {
-				t.Errorf("%s layer %d: input lines [%d,%d) overlap output [%d,%d)", name, i, in0, in1, out0, out1)
-			}
-			if in1 > ramLines || out1 > ramLines {
-				t.Errorf("%s layer %d: input [%d,%d) or output [%d,%d) beyond KPU memory", name, i, in0, in1, out0, out1)
+		for _, seg := range b.Segments() {
+			m := seg.Model
+			for i, l := range m.Layers {
+				c, err := l.Conv()
+				if err != nil {
+					t.Fatal(err)
+				}
+				a := m.Args(c)
+				_, _, ic := a.InShape()
+				_, _, oc := a.OutShape()
+				in0, in1 := region(a.SrcAddr(), a.InLayout(), ic)
+				out0, out1 := region(a.DstAddr(), a.OutLayout(), oc)
+				if in0 < out1 && out0 < in1 {
+					t.Errorf("%s layer %d: input lines [%d,%d) overlap output [%d,%d)", name, i, in0, in1, out0, out1)
+				}
+				if in1 > ramLines || out1 > ramLines {
+					t.Errorf("%s layer %d: input [%d,%d) or output [%d,%d) beyond KPU memory", name, i, in0, in1, out0, out1)
+				}
 			}
 		}
 	}
