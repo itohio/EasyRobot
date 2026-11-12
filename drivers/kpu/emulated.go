@@ -16,9 +16,13 @@ const emuBase = 0x8000_0000
 type emulated struct {
 	m            *kmodel.Model
 	mem          []byte
-	params       map[uint32]*kmodel.ConvParams // by weights offset
+	params       map[tables]*kmodel.ConvParams // by table offsets
 	in, out, tmp []byte
 }
+
+// tables identifies a conv's parameters: its weight, BN and activation
+// table offsets (convs may share a weight blob and differ in the others).
+type tables struct{ weights, bn, act uint32 }
 
 func (e *emulated) ram() []byte { return e.mem }
 func (e *emulated) now() uint64 { return 0 }
@@ -31,15 +35,15 @@ func grow(b []byte, n int) []byte {
 }
 
 func (e *emulated) conv(a *kmodel.Args) error {
-	wOff := uint32(a[5]>>32) - emuBase
-	p := e.params[wOff]
+	key := tables{uint32(a[5]>>32) - emuBase, uint32(a[4]>>32) - emuBase, uint32(a[7]>>32) - emuBase}
+	p := e.params[key]
 	if p == nil {
-		q, err := e.m.ParamsAt(*a, wOff, uint32(a[4]>>32)-emuBase, uint32(a[7]>>32)-emuBase)
+		q, err := e.m.ParamsAt(*a, key.weights, key.bn, key.act)
 		if err != nil {
 			return err
 		}
 		p = &q
-		e.params[wOff] = p
+		e.params[key] = p
 	}
 	p.Args = *a // the addresses and flags of this run
 	w, h, c := a.InShape()
@@ -65,5 +69,5 @@ func (e *emulated) conv(a *kmodel.Args) error {
 // nothing. It is for checking models and compilers on the host, not for
 // speed. Times reports zeros.
 func NewEmulated(m *kmodel.Model, main []byte) (*Runner, error) {
-	return newRunner(m, main, emuBase, &emulated{m: m, mem: make([]byte, kmodel.RAMSize), params: map[uint32]*kmodel.ConvParams{}})
+	return newRunner(m, main, emuBase, &emulated{m: m, mem: make([]byte, kmodel.RAMSize), params: map[tables]*kmodel.ConvParams{}})
 }
