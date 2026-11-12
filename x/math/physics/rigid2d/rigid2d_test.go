@@ -231,6 +231,82 @@ func TestSegmentFromBelow(t *testing.T) {
 	}
 }
 
+// A paddle rising into the top wall squeezes the ball against it: the ball
+// must never be pushed through the wall (review E2: the paddle's push-out
+// carried it past the wall's line, and the wall then pushed it out on the
+// far side). The ball's centre stays at least R below the wall while the
+// paddle keeps rising into and through the wall.
+func TestSqueezedBallDoesNotTunnel(t *testing.T) {
+	m := Material{Restitution: 0.9, Friction: 0.1}
+	for _, vy := range []float32{0.3, 3} {
+		w := World{
+			Balls:    []Ball{pingPong(0.5, 0.55, 0, 0, 0)},
+			Segments: []Segment{{AX: 0, AY: 0.6, BX: 1, BY: 0.6, Material: m}},
+			Boxes:    []Box{{MinX: 0.45, MinY: 0.3, MaxX: 0.55, MaxY: 0.5, VY: vy, Material: Material{Restitution: 0.9, Friction: 0.9}}},
+		}
+		for i := 0; i < 400; i++ {
+			w.Step(dt)
+			if b := w.Balls[0]; b.Y > 0.6-b.R+1e-5 {
+				t.Fatalf("paddle at %v m/s, step %d: ball at y %v, through the wall at 0.6 (box top %v)", vy, i, b.Y, w.Boxes[0].MaxY)
+			}
+		}
+	}
+}
+
+// A ball whose centre lands exactly on a segment's line, or exactly on its
+// end, is still pushed back to the side it came from (review E5: on the
+// line it was always pushed to the left normal's side, i.e. through when
+// coming from the right; on the end it got no contact).
+func TestSegmentExactHits(t *testing.T) {
+	const h = 1.0 / 256 // exact in float32: the step lands exactly on the target
+	m := Material{Restitution: 1}
+	// A→B along +x: the left normal points up; come from below onto the line
+	w := World{Balls: []Ball{pingPong(0.5, -1.0/64, 0, 4, 0)}, Segments: []Segment{{AX: 0, AY: 0, BX: 1, BY: 0, Material: m}}}
+	w.Step(h)
+	if b := w.Balls[0]; b.Contacts != 1 || b.Y > -b.R+1e-6 || b.VY >= 0 {
+		t.Fatalf("centre exactly on the line from below: %+v, want pushed back below with vy < 0", b)
+	}
+	// along the segment onto its ends A and B
+	for _, c := range []struct{ x, vx float32 }{{-1.0 / 64, 4}, {1 + 1.0/64, -4}} {
+		w = World{Balls: []Ball{pingPong(c.x, 0, c.vx, 0, 0)}, Segments: []Segment{{AX: 0, AY: 0, BX: 1, BY: 0, Material: m}}}
+		w.Step(h)
+		end := float32(0)
+		if c.vx < 0 {
+			end = 1
+		}
+		if b := w.Balls[0]; b.Contacts != 1 || math.Abs(float64(b.X-(end-b.R*c.vx/4))) > 1e-6 || b.VX != -c.vx {
+			t.Fatalf("centre exactly on the end at x %v: %+v, want pushed back with vx %v", end, b, -c.vx)
+		}
+	}
+	// onto B diagonally: pushed back along the way it came, 45° up and right
+	w = World{Balls: []Ball{pingPong(1+1.0/64, 1.0/64, -4, -4, 0)}, Segments: []Segment{{AX: 0, AY: 0, BX: 1, BY: 0, Material: m}}}
+	w.Step(h)
+	if b, r := w.Balls[0], float64(w.Balls[0].R)/math.Sqrt2; b.Contacts != 1 || math.Abs(float64(b.X)-1-r) > 1e-6 || math.Abs(float64(b.Y)-r) > 1e-6 {
+		t.Fatalf("centre exactly on B from up-right: %+v, want at (1+R/√2, R/√2)", b)
+	}
+	// starting on the line (no side to come from), it is pushed out on the
+	// side it moves to
+	w = World{Balls: []Ball{pingPong(0.5, 0, 0, -1, 0)}, Segments: []Segment{{AX: 0, AY: 0, BX: 1, BY: 0, Material: m}}}
+	w.Step(h)
+	if b := w.Balls[0]; math.Abs(float64(b.Y+b.R)) > 1e-6 {
+		t.Fatalf("starting on the line, moving down: %+v, want pushed out below (y = −R)", b)
+	}
+}
+
+// A wall moving fast enough to pass the ball's centre in one step sweeps
+// the ball along (the side is taken against where the wall was at the
+// start of the step), it does not pass over it.
+func TestFastWallSweepsTheBall(t *testing.T) {
+	w := World{
+		Balls:    []Ball{pingPong(0.5, 0, 0, 0, 0)},
+		Segments: []Segment{{AX: 0, AY: 0.03, BX: 1, BY: 0.03, VY: -12, Material: Material{Restitution: 0.5}}}, // 0.05 m per step
+	}
+	w.Step(dt)
+	if b, s := w.Balls[0], w.Segments[0]; b.Y > s.AY-b.R+1e-5 || b.VY > -12 {
+		t.Fatalf("wall at y %v after the step: ball %+v, want below it moving down faster than the wall", s.AY, b)
+	}
+}
+
 // A paddle moving along x (its top face, along its length) drags the ball's
 // bottom forward: the ball gains vx and counter-clockwise spin until its
 // contact point moves with the box (vx + ω·R = 1 m/s).

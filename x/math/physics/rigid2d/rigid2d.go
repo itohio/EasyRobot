@@ -19,7 +19,9 @@
 //
 // Limits: no ball–ball contacts; contacts are discrete, so a ball should not
 // travel more than about its radius per step (use a smaller dt or substeps
-// for faster balls).
+// for faster balls). Walls win over paddles: a ball squeezed between a
+// paddle and a wall stays on its side of the wall and may overlap the
+// paddle.
 //
 // float32, deterministic for a given sequence of steps, no allocation.
 package rigid2d
@@ -115,6 +117,7 @@ func (w *World) Step(dt float32) {
 	lin, ang := w.damp.factors(dt, w.LinearDamping, w.AngularDamping)
 	for i := range w.Balls {
 		b := &w.Balls[i]
+		px, py := b.X, b.Y // where the ball starts this step
 		if w.Magnus != 0 && b.W != 0 {
 			// rotate v by θ = Magnus·ω·dt (Cayley form: exact length, no trig)
 			th := w.Magnus * b.W * dt
@@ -128,28 +131,42 @@ func (w *World) Step(dt float32) {
 		b.X += b.VX * dt
 		b.Y += b.VY * dt
 		b.Contacts = 0
-		for j := range w.Segments {
-			b.segment(&w.Segments[j])
-		}
+		// Boxes first, segments last: a paddle that squeezes the ball against
+		// a wall may push it into the wall, and the wall, resolved after it,
+		// pushes it back to the side it started on, so walls are never
+		// crossed (the ball may be left overlapping the paddle instead).
 		for j := range w.Boxes {
 			b.box(&w.Boxes[j])
+		}
+		for j := range w.Segments {
+			b.segment(&w.Segments[j], px, py, dt)
 		}
 	}
 }
 
 // segment resolves a contact with s. Against the segment's interior the
 // normal is the line's own (a closest point computed on a long segment
-// would tilt it by rounding); against an end it points from the end.
-func (b *Ball) segment(s *Segment) {
+// would tilt it by rounding), pointing to the side the ball was on at the
+// start of the step (px, py, against the segment where it was then), so a
+// ball pushed onto or across the line this step is pushed back, not
+// through. Against an end the normal points from the end; a ball centred
+// exactly on the end is pushed back the way it came.
+func (b *Ball) segment(s *Segment, px, py, dt float32) {
 	ex, ey := s.BX-s.AX, s.BY-s.AY
 	l2 := ex*ex + ey*ey
 	rx, ry := b.X-s.AX, b.Y-s.AY
+	// the ball's start relative to A at the start of the step
+	sx, sy := px-(s.AX-s.VX*dt), py-(s.AY-s.VY*dt)
 	if l2 > 0 {
 		if t := rx*ex + ry*ey; t > 0 && t < l2 {
+			c := ry*ex - rx*ey // l × the distance along the left normal
+			side := sy*ex - sx*ey
+			if side == 0 {
+				side = c // started on the line: the side it is on now
+			}
 			l := math32.Sqrt(l2)
-			nx, ny := -ey/l, ex/l // left normal
-			d := rx*nx + ry*ny
-			if d < 0 {
+			nx, ny, d := -ey/l, ex/l, c/l // left normal
+			if side < 0 {
 				nx, ny, d = -nx, -ny, -d
 			}
 			if d < b.R {
@@ -159,11 +176,21 @@ func (b *Ball) segment(s *Segment) {
 		}
 		if rx*ex+ry*ey >= l2 {
 			rx, ry = b.X-s.BX, b.Y-s.BY
+			sx, sy = sx-ex, sy-ey // start relative to B
 		}
 	}
 	d2 := rx*rx + ry*ry
-	if d2 >= b.R*b.R || d2 == 0 {
-		return // apart, or a degenerate segment at the centre
+	if d2 >= b.R*b.R {
+		return
+	}
+	if d2 == 0 { // centred on the end: back the way it came
+		rx, ry = sx, sy
+		if d2 = rx*rx + ry*ry; d2 == 0 {
+			return // it has not moved relative to the end: no direction
+		}
+		n := math32.Sqrt(d2)
+		b.contact(rx/n, ry/n, b.R, s.VX, s.VY, s.Material)
+		return
 	}
 	d := math32.Sqrt(d2)
 	b.contact(rx/d, ry/d, b.R-d, s.VX, s.VY, s.Material)
