@@ -22,9 +22,11 @@ const (
 	wbUnity       = 0x40
 )
 
-// ErrNoLineTime means Options.LineNS is 0, so exposure cannot be converted
-// between µs and line periods.
-var ErrNoLineTime = errors.New("ov2640: line period unknown (Options.LineNS)")
+// ErrNoLineTime means the line period of the current mode is unknown
+// (Options.LineNS is 0, or the sensor runs in a mode LineNS does not
+// describe: SVGA, UXGA or JPEG), so exposure cannot be converted between µs
+// and line periods.
+var ErrNoLineTime = errors.New("ov2640: line period unknown for this mode (Options.LineNS)")
 
 // LineNS estimates the line period for one clock setup only: the K210
 // backend's raw (non-JPEG) CIF mode, CLKRC 2× ÷4 (Options ClockDouble true,
@@ -81,8 +83,9 @@ func decodeGain(v uint8) float32 {
 	return g
 }
 
-// SetControls applies c. Manual exposure needs Options.LineNS. It does not
-// allocate.
+// SetControls applies c. Manual exposure needs Options.LineNS and a raw CIF
+// mode (the setup LineNS describes; review R-K210-REC-R3 F3), else
+// ErrNoLineTime. It does not allocate.
 func (s *Sensor) SetControls(c sensor.Controls) error {
 	com8v, err := s.read(bankSensor, com8)
 	if err != nil {
@@ -101,7 +104,7 @@ func (s *Sensor) SetControls(c sensor.Controls) error {
 	regs[0], regs[1] = reg{bankSel, bankSensor}, reg{com8, com8v}
 	n := 2
 	if !c.AutoExposure {
-		if s.Opts.LineNS == 0 {
+		if s.Opts.LineNS == 0 || s.noLineTime {
 			return ErrNoLineTime
 		}
 		lines := (uint64(c.ExposureUS)*1000 + uint64(s.Opts.LineNS)/2) / uint64(s.Opts.LineNS)
@@ -157,7 +160,8 @@ func wbReg(g float32) uint8 {
 }
 
 // ReadControls reads the current settings, including the values the auto
-// loops chose. ExposureUS is 0 when Options.LineNS is unknown.
+// loops chose. ExposureUS is 0 when the line period of the current mode is
+// unknown (see ErrNoLineTime).
 func (s *Sensor) ReadControls() (sensor.Controls, error) {
 	var c sensor.Controls
 	var v [8]uint8
@@ -178,7 +182,9 @@ func (s *Sensor) ReadControls() (sensor.Controls, error) {
 	c.AutoExposure = v[0]&com8AEC != 0
 	c.AutoGain = v[0]&com8AGC != 0
 	lines := uint32(v[1]&0x03) | uint32(v[2])<<2 | uint32(v[3]&0x3F)<<10
-	c.ExposureUS = uint32(uint64(lines) * uint64(s.Opts.LineNS) / 1000)
+	if !s.noLineTime {
+		c.ExposureUS = uint32(uint64(lines) * uint64(s.Opts.LineNS) / 1000)
+	}
 	c.Gain = decodeGain(v[4])
 	c.AutoWB = v[5]&ctrl1WB != 0
 	c.WB = [3]float32{float32(v[6]) / wbUnity, float32(v[7]) / wbUnity, float32(b) / wbUnity}

@@ -241,9 +241,10 @@ type Options struct {
 	// every frame arrives whole; with HREF = VSYNC about half the frames
 	// lose their tail (ER-K210-REC evidence, R3).
 	JPEGSensorHREF bool
-	// LineNS is the sensor's line period in ns for this clock setup; it
-	// converts exposure between µs and AEC line periods. The backend measures
-	// or computes it (0 = unknown: manual exposure is refused).
+	// LineNS is the sensor's raw CIF line period in ns for this clock setup;
+	// it converts exposure between µs and AEC line periods. The backend
+	// measures or computes it (0 = unknown: manual exposure is refused, as it
+	// is in SVGA, UXGA and JPEG modes, whose line periods differ).
 	LineNS uint32
 }
 
@@ -252,6 +253,9 @@ type Sensor struct {
 	Bus     sensor.Bus
 	Opts    Options
 	quality uint8 // QS from SetQuality, rewritten by Init (0: the sensor's default)
+	// noLineTime is set by Init for modes Options.LineNS does not describe
+	// (anything but raw CIF): exposure in µs is refused there.
+	noLineTime bool
 }
 
 func (s *Sensor) Name() string { return "OV2640" }
@@ -280,6 +284,7 @@ func (s *Sensor) Init(m sensor.Mode) error {
 		return ErrMode
 	}
 	sm := modeFor(m.W, m.H)
+	s.noLineTime = sm.com7 != com7ResCIF || m.Format == sensor.JPEG
 	if err := s.write([]reg{{bankSel, bankSensor}, {com7, com7SRST}}); err != nil {
 		return err
 	}

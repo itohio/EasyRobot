@@ -141,3 +141,51 @@ func TestManualExposureNeedsLineTime(t *testing.T) {
 		t.Fatalf("err = %v, want ErrNoLineTime", err)
 	}
 }
+
+// TestExposureOnlyWhereLineTimeHolds (review R-K210-REC-R3 F3): LineNS is
+// the raw CIF line period, so µs exposure is refused, and read back as 0,
+// in SVGA, UXGA and JPEG modes; raw CIF keeps converting.
+func TestExposureOnlyWhereLineTimeHolds(t *testing.T) {
+	for _, c := range []struct {
+		m  sensor.Mode
+		ok bool
+	}{
+		{sensor.Mode{Resolution: sensor.QVGA, Format: sensor.RGB565}, true},
+		{sensor.Mode{Resolution: sensor.QVGA, Format: sensor.JPEG}, false},
+		{sensor.Mode{Resolution: sensor.Resolution{W: 800, H: 600}, Format: sensor.RGB565}, false},
+		{sensor.Mode{Resolution: sensor.Resolution{W: 1600, H: 1200}, Format: sensor.Y8}, false},
+	} {
+		s := &Sensor{Bus: &regBus{}, Opts: Options{LineNS: 50_000}}
+		if err := s.Init(c.m); err != nil {
+			t.Fatalf("%v: %v", c.m, err)
+		}
+		err := s.SetControls(sensor.Controls{ExposureUS: 1000})
+		if c.ok != (err == nil) || (!c.ok && !errors.Is(err, ErrNoLineTime)) {
+			t.Errorf("%v: SetControls err = %v, want ok %v", c.m, err, c.ok)
+		}
+		if !c.ok {
+			continue
+		}
+		got, err := s.ReadControls()
+		if err != nil || got.ExposureUS != 1000 {
+			t.Errorf("%v: ReadControls ExposureUS %d (%v), want 1000", c.m, got.ExposureUS, err)
+		}
+	}
+	// A mode switch back to raw CIF makes the conversion valid again, and
+	// ReadControls reports 0 µs in a mode without a line time.
+	s := &Sensor{Bus: &regBus{}, Opts: Options{LineNS: 50_000}}
+	for _, m := range []sensor.Mode{{Resolution: sensor.QVGA, Format: sensor.RGB565}, {Resolution: sensor.Resolution{W: 1600, H: 1200}, Format: sensor.JPEG}} {
+		if err := s.Init(m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got, _ := s.ReadControls(); got.ExposureUS != 0 {
+		t.Errorf("UXGA JPEG: ReadControls ExposureUS %d, want 0", got.ExposureUS)
+	}
+	if err := s.Init(sensor.Mode{Resolution: sensor.QVGA, Format: sensor.RGB565}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetControls(sensor.Controls{ExposureUS: 1000}); err != nil {
+		t.Errorf("back to raw CIF: %v", err)
+	}
+}
