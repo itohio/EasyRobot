@@ -145,6 +145,7 @@ func TestCheckRejects(t *testing.T) {
 		{"conv main-memory output past main memory", func(f *fixture) { f.setBody(conv, 1, fxMain-fxN+1) }, ErrFormat},
 		{"conv channel_byte_num not W·H − 1 (review K9a-1)", func(f *fixture) { f.setArg(11, 0xffff<<16, 0x1234<<16) }, ErrFormat},
 		{"conv dma_total_byte not W·H·C − 1 (review K9a-1)", func(f *fixture) { f.setArg(11, 0xffffffff<<32, 7<<32) }, ErrFormat},
+		{"conv input of 257 rows (the KPU runs at most 256; review K9same S6)", func(f *fixture) { f.setArg(3, 0x1ff<<10, 256<<10) }, ErrUnsupported},
 		{"pool on a depthwise conv (the KPU does not pool in depthwise mode)", func(f *fixture) {
 			f.setArg(0, 1<<3, 1<<3) // depthwise
 			f.setArg(4, 0xf<<4, 5<<4)

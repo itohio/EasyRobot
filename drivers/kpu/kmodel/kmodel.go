@@ -80,6 +80,11 @@ var (
 	ErrUnsupported = errors.New("kmodel: layer type not supported")
 )
 
+// MaxInputRows is the most input rows a KPU layer runs on silicon: the
+// field holds 512, but a 257- or 258-row input never raises the done
+// interrupt (ER-K210-K9 evidence, kpushape).
+const MaxInputRows = 256
+
 // Output is one model output: Size bytes at Address in main memory.
 type Output struct{ Address, Size uint32 }
 
@@ -196,6 +201,10 @@ func (m *Model) checkLayer(l Layer) error {
 			return err
 		}
 		w, h, ch := a.InShape()
+		if h > MaxInputRows {
+			// Each Run would time out (review R-K210-K9same S6).
+			return fmt.Errorf("%w: a %d-row input (the KPU runs at most %d)", ErrUnsupported, h, MaxInputRows)
+		}
 		if err := a.InLayout().check(a.SrcAddr(), w, h, ch); err != nil {
 			return err
 		}

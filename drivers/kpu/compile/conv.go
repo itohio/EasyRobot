@@ -29,7 +29,7 @@ const (
 	maxPostShift = 24      // P: output scale 2^P carried from BN to the activation
 	yBound       = 1 << 34 // |BN output| stays inside the 36-bit activation compare
 	mulBound     = 1 << 23 // BN norm_mul is signed 24-bit
-	maxRows      = 256     // KPU input rows (258 never finish on silicon)
+	maxRows      = kmodel.MaxInputRows
 )
 
 // Fuse names the qnet layers lowered together with a conv into one KPU
