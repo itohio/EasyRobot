@@ -3,7 +3,7 @@ type: ticket
 status: active
 tags: [easyrobot, ticket, index]
 created: 2026-11-08
-updated: 2026-11-09
+updated: 2026-11-12
 source_revision: abb5c9cca7f756c632548d9c7be2436b46dc2e4d
 ---
 # EasyRobot tickets
@@ -65,6 +65,19 @@ One ticket-ID scheme: `ER-NNN`, one file each in `tickets/`. The ER-R2 proposals
 | [[ER-045-k210-native-int8-benchmark\|ER-045]] | Native int8 conv/dot/GEMV benchmark on one K210 hart | measurement | blocked | k210 | K210-nn | K210-M5 | ER-041; int8 kernels |
 | [[ER-046-k210-kpu-kmodel-runner\|ER-046]] | KPU kmodel v3 run through a pure-Go runner | implementation | ready | k210 | K210-nn | K210-M6 | ER-041; nncase approval |
 | [[ER-047-k210-feature-tensor-out\|ER-047]] | UnitV camera → KPU → feature tensor stream | implementation | blocked | k210 | [K210-camera, K210-nn, W4] | K210-M7 | ER-044, ER-046 |
+| [[ER-048-sim-proto-contract\|ER-048]] | Sim S1: `types/sim` protobuf contract — Command, State, ModelLoad | design + implementation | proposed | easyrobot | [W3, W6] | M-d | none |
+| [[ER-049-sim-go-interface\|ER-049]] | Sim S1: Go `Sim` interface and a backend conformance suite | implementation | proposed | easyrobot | [W3, W6] | M-d | ER-048 |
+| [[ER-050-sim-lockstep-client\|ER-050]] | Sim S1: lockstep client — `Sim` over length-prefixed protobuf on a Unix socket or TCP | implementation | proposed | easyrobot | [W3, W6] | M-d | ER-048, ER-049 |
+| [[ER-051-sim-mujoco-sidecar\|ER-051]] | Sim S1: MuJoCo sidecar — load MJCF, step in lockstep, fill State, headless with an optional viewer | implementation | proposed | easyrobot | [W3, W6] | M-d | ER-048, ER-050, ER-053; download at S1 start |
+| [[ER-052-sim-robot-description\|ER-052]] | Sim S1: robot description structs — a wheeled base with masses and motor torque and speed | implementation | proposed | easyrobot | [W3, W6] | M-d | none |
+| [[ER-053-sim-mjcf-exporter\|ER-053]] | Sim S1: MJCF exporter — wheeled description → MJCF bytes with named actuators and sensors | implementation | proposed | easyrobot | [W3, W6] | M-d | ER-052 |
+| [[ER-054-sim-sensor-models\|ER-054]] | Sim S1: sensor models — IMU noise and wheel-encoder quantisation from ground truth | implementation | proposed | easyrobot | [W3, W6] | M-d | ER-048 |
+| [[ER-055-sim-kinematic-fake\|ER-055]] | Sim S1: kinematic fake backend — a pure-Go differential integrator implementing `Sim` for CI | implementation | proposed | easyrobot | [W3, W6] | M-d | ER-049, ER-052 (ER-038 if first) |
+| [[ER-056-sim-determinism-speed\|ER-056]] | Sim S1: determinism and speed checks with the note's kill criteria | measurement | proposed | easyrobot | [W3, W6] | M-d | ER-050, ER-051, ER-053, ER-055 |
+| [[ER-057-sim-wheeled-controller-adapter\|ER-057]] | Sim S1: `simbase` — the sim implementation of `wheeled.Base` and `Clock` over `Sim` | implementation | proposed | easyrobot | [W3, W6] | M-d | ER-049, ER-052, ER-054, ER-059, ER-038 |
+| [[ER-058-sim-s1-wheeled-run\|ER-058]] | Sim S1: wheeled run, the house — a differential robot driven through `wheeled.Base` with logged results, teleop and kill criteria | measurement | proposed | easyrobot | [W3, W6] | M-d | ER-050, ER-051, ER-053, ER-054, ER-056, ER-057, ER-059, ER-060, ER-038 |
+| [[ER-059-sim-robot-base-and-clock\|ER-059]] | Sim S1: robot-facing `wheeled.Base` interface and `Clock` — the seam between sim and real robot | design + implementation | proposed | easyrobot | [W3, W6] | M-d | none |
+| [[ER-060-sim-wheel-odometry\|ER-060]] | Sim S1: wheel odometry — encoder ticks → 2D pose from the robot description | implementation | proposed | easyrobot | [W3, W6] | M-d | ER-052, ER-038 |
 
 ER-015 additionally requires the completed ticket for each optional path it measures. ER-005/007/009 keep Xtensa, K230 and K510 independent and **UNVERIFIED**. ER-011's external CPU reference is not ER-014's native graph execution. ER-026 is one ticket with two stages: stage 1 host (ready), stage 2 TinyGo (blocked on owner approval).
 
