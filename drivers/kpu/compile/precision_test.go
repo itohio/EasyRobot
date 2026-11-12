@@ -190,3 +190,52 @@ func TestLowerConvClampedChannel(t *testing.T) {
 		}
 	}
 }
+
+// TestLowerConvAsymmetricSpread (review R-K210-QU8 Q1/Q5): a weight zero
+// point of −128 doubles the accumulator bound, so the post-shift P drops
+// by one (13 → 12) and the small channel's BN multiplier loses a bit. A 3×3
+// conv over 256 channels with multipliers 1/64 and 2⁻²⁰ lowers exactly
+// with symmetric weights but is refused with WZP −128; at 2⁻¹⁹ both lower,
+// and the KPU output stays within 1 LSB of qnet.
+func TestLowerConvAsymmetricSpread(t *testing.T) {
+	for _, c := range []struct {
+		exp int
+		wzp int8
+		ok  bool
+	}{{20, 0, true}, {20, -128, false}, {19, -128, true}} {
+		l := conv1x1(t, 256, []float64{1.0 / 64, math.Ldexp(1, -c.exp)}, []int32{0, 0})
+		l.KH, l.KW, l.Padding = 3, 3, qi8.PaddingSame
+		l.Weights = make([]int8, 9*256*2)
+		for i := range l.Weights {
+			l.Weights[i] = 127
+		}
+		l.WZP = c.wzp
+		conv, err := LowerConv(&l, 0, 1024)
+		if !c.ok {
+			if !errors.Is(err, ErrUnsupported) {
+				t.Errorf("2^-%d, WZP %d: err %v, want ErrUnsupported", c.exp, c.wzp, err)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("2^-%d, WZP %d: %v", c.exp, c.wzp, err)
+			continue
+		}
+		for _, v := range []int8{127, -128, 0} {
+			in := make([]int8, l.In.Len())
+			for i := range in {
+				in[i] = v
+			}
+			got := emulate(t, conv, in, l.In, l.Out)
+			want := make([]int8, l.Out.Len())
+			if err := qnet.RunLayer(&l, want, in); err != nil {
+				t.Fatal(err)
+			}
+			for i := range want {
+				if d := int(got[i]) - int(want[i]); d > 1 || d < -1 {
+					t.Errorf("2^-%d, WZP %d, input %d, output %d: KPU %d, qnet %d", c.exp, c.wzp, v, i, got[i], want[i])
+				}
+			}
+		}
+	}
+}

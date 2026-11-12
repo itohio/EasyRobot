@@ -172,7 +172,8 @@ func TestResizeResidualOnInput(t *testing.T) {
 // TestKmodelRefusalReasons (review R-K210-K9same S2): refusals name the
 // actual limit. A Pad(1,1)+VALID net too tall for the KPU is refused for
 // its 256-row input limit (the Pad's conv), not because a Pad is not a
-// convolution; a global pool is refused as a non-convolution.
+// convolution; a global pool is refused as a non-convolution, a TiesUp
+// average pool for its rounding.
 func TestKmodelRefusalReasons(t *testing.T) {
 	for _, c := range []struct {
 		name string
@@ -187,6 +188,15 @@ func TestKmodelRefusalReasons(t *testing.T) {
 				KH: last.Out.H, KW: last.Out.W, StrideH: 1, StrideW: 1, Padding: qi8.PaddingValid}
 			return &qnet.Graph{Layers: append(append([]qnet.Layer(nil), g.Layers...), pool)}
 		}(), "runs convolutions"},
+		// Review R-K210-QU8 Q6: a TFLite uint8 average pool after the last
+		// conv is not fused (the KPU floors the mean); the refusal says so.
+		{"SAME with a TiesUp average pool", func() *qnet.Graph {
+			g := mobileNetSAME(t, 0.25, 64)
+			last := g.Layers[len(g.Layers)-1]
+			pool := qnet.Layer{Kind: qnet.AvgPool2D, In: last.Out, Out: qi8.Shape{H: last.Out.H / 2, W: last.Out.W / 2, C: last.Out.C}, InQ: last.OutQ, OutQ: last.OutQ,
+				KH: 2, KW: 2, StrideH: 2, StrideW: 2, Padding: qi8.PaddingValid, TiesUp: true}
+			return &qnet.Graph{Layers: append(append([]qnet.Layer(nil), g.Layers...), pool)}
+		}(), "rounds ties up"},
 	} {
 		_, _, err := Kmodel(c.g)
 		if !errors.Is(err, ErrUnsupported) || !strings.Contains(err.Error(), c.want) {

@@ -46,7 +46,8 @@ type Fuse struct {
 	// Pool is a MaxPool2D or AvgPool2D with kernel = stride ∈ {2, 4},
 	// VALID, directly after a stride-1 regular conv (or after Act). The
 	// KPU does not pool in depthwise mode (ER-K210-K9 evidence, K9e), so a
-	// depthwise conv takes no pool.
+	// depthwise conv takes no pool. An AvgPool2D with TiesUp (TFLite uint8,
+	// which rounds the mean half up) is declined: the KPU floors the mean.
 	Pool *qnet.Layer
 	// Full lowers a stride-2 depthwise conv (with its Pad), or a TF SAME
 	// stride-2 3×3 regular conv, at full resolution: stride 1, no pool,
