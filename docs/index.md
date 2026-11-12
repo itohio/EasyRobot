@@ -24,9 +24,9 @@ From the roadmap's no-hardware demo checkpoints ([[roadmap#8. Next|roadmap §8]]
 
 The sixth checkpoint, M-b's synthetic recorder round trip, follows: it needs [[ER-027-marshaller-fixes|ER-027]] and [[ER-031-spi-slave-feature-framing|ER-031]]. Full order, accepted order changes and the T-IK mapping: [[tickets/index|ticket index]].
 
-<!-- vault:status h=244d66d9ba5b -->
+<!-- vault:status h=ca6749eb19b7 -->
 
-State: 66 tested · 29 implemented · 138 partial · 10 stub · 13 unverified (256 algorithms)
+State: 67 tested · 29 implemented · 138 partial · 10 stub · 13 unverified (257 algorithms)
 
 <!-- /vault:status -->
 
@@ -55,7 +55,7 @@ State: 66 tested · 29 implemented · 138 partial · 10 stub · 13 unverified (2
 
 Algorithm notes per module by status (generated from the algorithm notes; `tested` needs passing value tests).
 
-<!-- vault:modules h=604f7b1df024 -->
+<!-- vault:modules h=a218725812ba -->
 
 | Module | tested | implemented | partial | stub | unverified | total |
 |---|---|---|---|---|---|---|
@@ -94,7 +94,7 @@ Algorithm notes per module by status (generated from the algorithm notes; `teste
 | [[device-io]] | 0 | 0 | 0 | 0 | 0 | 0 |
 | [[lidar]] | 0 | 0 | 3 | 0 | 0 | 3 |
 | [[nmea]] | 1 | 0 | 1 | 0 | 0 | 2 |
-| [[sensors]] | 0 | 0 | 4 | 0 | 2 | 6 |
+| [[sensors]] | 1 | 0 | 4 | 0 | 2 | 7 |
 | **IO, camera, vision** | | | | | | |
 | [[camera-io]] | 0 | 0 | 0 | 0 | 4 | 4 |
 | [[marshallers]] | 3 | 0 | 5 | 0 | 0 | 8 |
@@ -103,7 +103,7 @@ Algorithm notes per module by status (generated from the algorithm notes; `teste
 | [[vision]] | 0 | 0 | 8 | 2 | 3 | 13 |
 | **Knowledge engine** | | | | | | |
 | [[knowledge-engine]] | 0 | 0 | 0 | 0 | 0 | 0 |
-| **All** | 66 | 29 | 138 | 10 | 13 | 256 |
+| **All** | 67 | 29 | 138 | 10 | 13 | 257 |
 
 <!-- /vault:modules -->
 

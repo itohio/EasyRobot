@@ -200,13 +200,16 @@ import (
 i2c := machine.I2C0
 i2c.Configure(machine.I2CConfig{})
 
-// Create device
-imu := mpu6050.New(i2c, 0x68)
-imu.Configure()
+// Create the device, check it is an MPU6050, configure 100 Hz, 44 Hz DLPF, ±4 g, ±500 °/s
+imu := mpu6050.New(i2c, 0) // 0 = 0x68
+if _, ok, err := imu.Probe(); err != nil || !ok {
+    // no MPU6050 on the bus
+}
+imu.Configure(mpu6050.Config{SampleRateDiv: 9, DLPF: mpu6050.DLPF44Hz, Accel: mpu6050.Accel4G, Gyro: mpu6050.Gyro500DPS})
 
-// Read accelerometer
-accel, err := imu.ReadAccelerometer()
-if err != nil {
+// One burst: accel m/s², gyro rad/s, temperature °C; no allocation
+var s mpu6050.Sample
+if err := imu.Read(&s); err != nil {
     // handle error
 }
 ```
