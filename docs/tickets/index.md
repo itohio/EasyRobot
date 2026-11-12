@@ -12,7 +12,7 @@ source_revision: abb5c9cca7f756c632548d9c7be2436b46dc2e4d
 
 Owner instruction (2026-11-08, verbatim): "properly update dndm, easyrobot projects so i can start improving on them".
 
-One ticket-ID scheme: `ER-NNN`, one file each in `tickets/`. The ER-R2 proposals T-IK-01…15 and the knowledge-engine slices KE-2…KE-4 are absorbed below (`maps:` in each ticket's frontmatter). TODO lines tag their ticket as `#ER-0xx` or `#backlog` ([[conventions#TODO lines|TODO lines]]). States: `done` = acceptance evidenced in the ticket; `ready` = dependencies met and acceptance concrete, waiting for scheduling; `backlog` = proposed, not execution permission; `blocked` = prerequisites or owner input unmet. Owner `easyrobot` is the EasyRobot peer of the personal mp roster.
+One ticket-ID scheme: `ER-NNN`, one file each in `tickets/`. The ER-R2 proposals T-IK-01…15 and the knowledge-engine slices KE-2…KE-4 are absorbed below (`maps:` in each ticket's frontmatter). TODO lines tag their ticket as `#ER-0xx` or `#backlog` ([[conventions#TODO lines|TODO lines]]). States: `done` = acceptance evidenced in the ticket; `ready` = dependencies met and acceptance concrete, waiting for scheduling; `backlog` = proposed, not execution permission; `blocked` = prerequisites or owner input unmet. `proposed` = written and verified as a plan, not yet scheduled (moves to `ready` when the owner or Leader schedules it). Owner `easyrobot` is the EasyRobot peer of the personal mp roster.
 
 ## All tickets
 
@@ -74,10 +74,10 @@ One ticket-ID scheme: `ER-NNN`, one file each in `tickets/`. The ER-R2 proposals
 | [[ER-054-sim-sensor-models\|ER-054]] | Sim S1: sensor models — IMU noise and wheel-encoder quantisation from ground truth | implementation | proposed | easyrobot | [W3, W6] | M-d | ER-048 |
 | [[ER-055-sim-kinematic-fake\|ER-055]] | Sim S1: kinematic fake backend — a pure-Go differential integrator implementing `Sim` for CI | implementation | proposed | easyrobot | [W3, W6] | M-d | ER-049, ER-052 (ER-038 if first) |
 | [[ER-056-sim-determinism-speed\|ER-056]] | Sim S1: determinism and speed checks with the note's kill criteria | measurement | proposed | easyrobot | [W3, W6] | M-d | ER-050, ER-051, ER-053, ER-055 |
-| [[ER-057-sim-wheeled-controller-adapter\|ER-057]] | Sim S1: `simbase` — the sim implementation of `wheeled.Base` and `Clock` over `Sim` | implementation | proposed | easyrobot | [W3, W6] | M-d | ER-049, ER-052, ER-054, ER-059, ER-038 |
+| [[ER-057-sim-wheeled-controller-adapter\|ER-057]] | Sim S1: `simbase` — the sim implementation of `wheeled.Base` and `Clock` over `Sim` | implementation | proposed | easyrobot | [W3, W6] | M-d | ER-049, ER-052, ER-054, ER-055, ER-059, ER-038 |
 | [[ER-058-sim-s1-wheeled-run\|ER-058]] | Sim S1: wheeled run, the house — a differential robot driven through `wheeled.Base` with logged results, teleop and kill criteria | measurement | proposed | easyrobot | [W3, W6] | M-d | ER-050, ER-051, ER-053, ER-054, ER-056, ER-057, ER-059, ER-060, ER-038 |
 | [[ER-059-sim-robot-base-and-clock\|ER-059]] | Sim S1: robot-facing `wheeled.Base` interface and `Clock` — the seam between sim and real robot | design + implementation | proposed | easyrobot | [W3, W6] | M-d | none |
-| [[ER-060-sim-wheel-odometry\|ER-060]] | Sim S1: wheel odometry — encoder ticks → 2D pose from the robot description | implementation | proposed | easyrobot | [W3, W6] | M-d | ER-052, ER-038 |
+| [[ER-060-sim-wheel-odometry\|ER-060]] | Sim S1: wheel odometry — encoder ticks → 2D pose from the robot description | implementation | proposed | easyrobot | [W3, W6] | M-d | ER-052, ER-055, ER-057, ER-059, ER-038 |
 
 ER-015 additionally requires the completed ticket for each optional path it measures. ER-005/007/009 keep Xtensa, K230 and K510 independent and **UNVERIFIED**. ER-011's external CPU reference is not ER-014's native graph execution. ER-026 is one ticket with two stages: stage 1 host (ready), stage 2 TinyGo (blocked on owner approval).
 
