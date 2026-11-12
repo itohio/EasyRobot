@@ -28,7 +28,7 @@ Owner's answers (roster `decisions.md`, 2026-11-10): SIM decisions 1–4 approve
 `x/sim/fake`:
 
 ```go
-func NewDifferential(w model.Wheeled) sim.Sim // model = x/robot/model (ER-052); // integrates wheel velocity targets → pose, exact IMU (gyro = ω, accel from v̇)
+func NewDifferential(w model.Wheeled) sim.Sim // model = x/robot/model (ER-052); integrates wheel velocity targets → pose, exact IMU (gyro = ω, accel from v̇)
 ```
 
 ## Dependencies and scope
@@ -65,3 +65,4 @@ Product's guess: **S** (inferred). Revisit when a kill criterion fires or an ope
 ## Implementation evidence
 
 None. Proposed ticket; becomes `ready` after ux's UX-27 and verify.
+- 2026-11-12: verify's SIM-tickets addendum (Leader msg m-55f54b6de686): doubled comment in the sketch merged.

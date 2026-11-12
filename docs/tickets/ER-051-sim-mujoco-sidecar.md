@@ -49,7 +49,7 @@ Dependencies: ER-048, ER-050 (protocol), ER-053 (an MJCF to load). The download 
   | `protobuf` (Python runtime) | decoding `Envelope` frames | PyPI `protobuf` |
 
   - **Already on the host, no approval needed** (verify observed): `uv` 0.13.1 and CPython 3.12.15 (`mujoco` 4.0.1 needs Python ≥ 3.11; cp312 arm64 wheels exist). The venv lives under `~/src/tmp/`.
-  - **Python messages for `types/sim`, offline** (verify's SIM-tickets fix 10): no `protoc` on the host, so the sidecar loads a descriptor set built with the offline `buf` from ER-048 (`buf build --path proto/types/sim -o sim.binpb`) and creates the classes at start with `message_factory.GetMessages`; no generator plugin, no download.
+  - **Python messages for `types/sim`, offline** (verify's SIM-tickets fix 10): no `protoc` on the host, so the sidecar loads a descriptor set built with the offline `buf` from ER-048 (`cd proto && buf build --path types/sim -o sim.binpb`, or `buf build proto --path proto/types/sim -o sim.binpb` from the repo root; verify's SIM-tickets addendum N1) and creates the classes at start with `message_factory.GetMessages`; no generator plugin, no download.
   - **Check at the ask:** `uv pip compile` of the pinned list (run on the owner's go) shows nothing outside this table.
   - **macOS viewer:** MuJoCo's interactive viewer on macOS runs under the `mjpython` launcher, which `mujoco-core` installs on Darwin (verify confirmed from the MuJoCo Python docs); `--viewer` starts the sidecar under `mjpython`, and headless runs use plain `python`.
 - The sidecar maps the typed `State` fields from named MJCF sensors and sites (the names ER-053 emits), not from array positions guessed at, and copies **every named MJCF sensor** into `State.sensors` (name and its `sensordata` slice), so a new sensor needs no sidecar change (UX-27 S2).
@@ -86,3 +86,4 @@ Product's guess: **M** (inferred). Revisit when a kill criterion fires or an ope
 ## Implementation evidence
 
 None. Proposed ticket; becomes `ready` after ux's UX-27 second rating and verify.
+- 2026-11-12: verify's SIM-tickets addendum (Leader msg m-55f54b6de686): the descriptor set is built from `proto/` (`cd proto && buf build --path types/sim -o sim.binpb`).

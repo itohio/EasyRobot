@@ -72,11 +72,11 @@ Source/test edits follow the owner's autonomy instruction once Leader schedules 
 
 ## Acceptance evidence required later
 
-- [ ] The generated Go code for `types/sim` builds with no warnings and is committed. **Offline recipe** (ux's UX-27 R2; verify's SIM-tickets fix 4): no `protoc` on the host; build `buf` v1.75.0 and `protoc-gen-go` v1.36.12 (the version in `go.mod`) from **copies** of their directories in `~/go/pkg/mod` (`go install …@version` with `GOPROXY=off` fails); `~/.cache/buf` must hold `wellknowntypes`; run `buf generate --path proto/types/sim` so the 27 existing `.pb.go` headers aren't rewritten (v1.36.10 → v1.36.12). If any piece is missing, it joins ER-051's single approval list instead of being fetched.
+- [ ] The generated Go code for `types/sim` builds with no warnings and is committed. **Offline recipe** (ux's UX-27 R2; verify's SIM-tickets fix 4): no `protoc` on the host; build `buf` v1.75.0 and `protoc-gen-go` v1.36.12 (the version in `go.mod`) from **copies** of their directories in `~/go/pkg/mod` (`go install …@version` with `GOPROXY=off` fails); `~/.cache/buf` must hold `wellknowntypes`; run `cd proto && buf generate --path types/sim` (the buf module root is `proto/`; verify's SIM-tickets addendum N1) so the 27 existing `.pb.go` headers aren't rewritten (v1.36.10 → v1.36.12). If any piece is missing, it joins ER-051's single approval list instead of being fetched.
 - [ ] A round-trip test marshals and unmarshals each `Envelope` case, including a `Command` and a `State` for a 2-wheel robot with IMU and two contacts; byte-equal on re-marshal.
 - [ ] That `State` is ≤ 512 B on the wire (product's budget; a frame and generic sensors excluded).
 - [ ] A `State` with three `SimSensor`s (1, 3 and 8 values) round-trips byte-equal.
-- [ ] `buf build` compiles the sketch's messages (verify measured 206 B for the 2-wheel `State`, 271 B with three sensors).
+- [ ] `buf build` compiles the sketch's messages (verify measured 220 B for the 2-wheel `State`, 307 B with three sensors).
 - [ ] The golden fixtures decode with the generated code.
 
 ## Open questions
@@ -94,3 +94,4 @@ Product's guess: **S** (inferred). Revisit when a kill criterion fires or an ope
 ## Implementation evidence
 
 None. Proposed ticket; becomes `ready` after ux's UX-27 second rating and verify.
+- 2026-11-12: verify's SIM-tickets addendum (Leader msg m-55f54b6de686): `cd proto && buf generate --path types/sim` (buf's module root is `proto/`); verify's current `State` sizes (220/307 B).

@@ -39,6 +39,8 @@ type Sim interface {
 
 `x/sim/simtest.Conformance(t, newBackend func() sim.Sim)`: the shared suite.
 
+`x/sim/simtest.NewStub(cfg simtest.StubConfig) *simtest.Stub` (exported so other packages' tests can use it; verify's SIM-tickets addendum N3): a scriptable in-memory backend implementing `sim.Sim`. `StubConfig` sets the wheel, contact and sensor counts and names, `physics_dt` and `substeps`; `Stub.Script(func(step uint64, cmd *simpb.Command, out *simpb.State))` fills each `State` beyond the step and time bookkeeping. ER-050's test server wraps it.
+
 ## Dependencies and scope
 
 Dependencies: ER-048.
@@ -55,8 +57,8 @@ Source/test edits follow the owner's autonomy instruction once Leader schedules 
 ## Acceptance evidence required later
 
 - [ ] `x/sim` compiles with the interface and typed errors; `go vet` clean.
-- [ ] The conformance suite passes against a minimal in-test stub backend; a deliberately broken stub (skips the step-gap check) fails it. Every later backend (ER-050 client, ER-055 fake, ER-051 sidecar) runs the same suite.
-- [ ] The suite includes an allocation check (`testing.AllocsPerRun` on `Step`): 0 for in-process backends (ER-055) and for the client (ER-050), whose `State` decoding is a hand-written `protowire` decoder into reused structs, because stock `proto.Unmarshal` allocates (verify measured 21 per `State`, 33 with three sensors; verify's SIM-tickets fix 1).
+- [ ] The conformance suite passes against `simtest.NewStub` (also with 2 wheels, 2 contacts and 3 sensors); a deliberately broken stub (skips the step-gap check) fails it. Every later backend (ER-050 client, ER-055 fake, ER-051 sidecar) runs the same suite.
+- [ ] The suite includes an allocation check (`testing.AllocsPerRun` on `Step`): 0 for in-process backends (ER-055) and for the client (ER-050), whose `State` decoding is a hand-written `protowire` decoder into reused structs, because stock `proto.Unmarshal` allocates (verify measured 23 per `State`, 35 with three sensors; verify's SIM-tickets fix 1).
 
 ## Open questions
 
@@ -73,3 +75,4 @@ Product's guess: **S** (inferred). Revisit when a kill criterion fires or an ope
 ## Implementation evidence
 
 None. Proposed ticket; becomes `ready` after ux's UX-27 and verify.
+- 2026-11-12: verify's SIM-tickets addendum (Leader msg m-55f54b6de686): `simtest.NewStub` exported so ER-050's test server can use it; stock-unmarshal figures updated (23/35 allocations).
