@@ -111,7 +111,9 @@ var _ Backend = (*Camera)(nil)
 // CacheSync is the D-cache maintenance Capture needs for buffers in PSRAM:
 // the GDMA writes PSRAM behind the cache. drivers/esp32s3/psram.Cache
 // implements it. Both methods take cache-line (32 B) aligned slices and
-// fail for memory they do not manage.
+// fail for memory they do not manage. It is an interface, called once per
+// frame, so that PSRAM stays optional and drivers/camera does not import the
+// psram package; the backend itself is still chosen by build tag.
 type CacheSync interface {
 	WritebackInvalidate([]byte) error
 	Invalidate([]byte) error
@@ -229,8 +231,13 @@ func inDMARAM(b []byte) bool {
 // buf must be 4-byte aligned in DMA-capable internal SRAM, or 32-byte
 // aligned in memory the SetCacheSync implementation manages (PSRAM);
 // otherwise ErrBufAlign. A frame that does not complete (no VSYNC or EOF
-// within 2 s, wrong length, JPEG without SOI/EOI) gives ErrTimeout.
-// Frame.Data aliases buf.
+// within 2 s, wrong length, JPEG without SOI/EOI) gives ErrTimeout; a GDMA
+// FIFO overflow or underflow gives ErrOverflow (raw status: DMAStatus).
+//
+// buf belongs to the capture until Capture returns: nothing else (another
+// goroutine, another DMA user) may read or write it meanwhile, or a PSRAM
+// line it pulls into the D-cache would hide what the GDMA writes behind it.
+// Frame.Data aliases buf and stays valid until the next Capture into it.
 func (c *Camera) Capture(buf []byte) (Frame, error) {
 	c.dmaStatus = 0 // a Capture that returns before the DMA leaves 0, not the previous status
 	jpeg := c.cfg.Format == sensor.JPEG
@@ -272,8 +279,8 @@ func (c *Camera) Capture(buf []byte) (Frame, error) {
 	ended, err := dmaOutcome(raw)
 	if ext {
 		m := (got + cacheLine - 1) &^ (cacheLine - 1)
-		if c.ext.Invalidate(buf[:m:m]) != nil {
-			return Frame{}, ErrBufAlign
+		if err := c.ext.Invalidate(buf[:m:m]); err != nil {
+			return Frame{}, err // unreachable today: the same range passed WritebackInvalidate
 		}
 	}
 	if err != nil {
