@@ -86,7 +86,7 @@ Requantisation is approximate:
   - Its input is uploaded once: int8 NHWC → uint8 CHW, then `UploadTo` in the first layer's layout.
   - Its output is read back once (`DownloadFrom`, then uint8 CHW → int8 NHWC).
   - Intermediate tensors stay in AI SRAM.
-- **Conversion at boundaries:** the CHW↔NHWC transpose and the ±128 shift happen only there, on the CPU. [INFERENCE: cost similar to K8c-1's upload and read-back, a few hundred µs at QVGA; measured in K9d.]
+- **Conversion at boundaries:** the CHW↔NHWC transpose and the ±128 shift happen only there, on the CPU. [INFERENCE: cost similar to K8c-1's upload and read-back, a few hundred µs at QVGA; measured in K9e.]
 - **AI-SRAM plan:** 2 MiB = 32,768 lines. A tensor takes `row_length·H·⌈C/group⌉` lines. Live tensors in a chain are only the current input and output, so a two-region ping-pong (nncase's top/bottom allocation) suffices. The plan is computed at compile time and checked: every layer's input + output ≤ 2 MiB.
 - **Row-band tiling** applies when input + output > 2 MiB. Example: MobileNetV2's first expanded depthwise at QVGA (verify O-007 Q4).
   - The layer is split into horizontal bands with a 1-row halo for 3×3, each band a separate layer argument with its own image size and addresses, run in turn.
@@ -112,19 +112,26 @@ Requantisation is approximate:
 
 ## Milestones (each with its check)
 
+**First end-to-end target** (owner, 2026-11-10, for the recorder firmware ER-K210-REC):
+- MobileNetV1 int8 TFLite at **256×256**, cut at a stated layer: by default the last pointwise conv `conv_pw_13`, 8×8×(1024·α).
+- α = 0.25 at first, a model built locally from the official weights with the Pad(1,1)+VALID export, until the owner's own model exists.
+- Its feature tensor, with its quantisation, is what the recorder stores.
+- At 256×256 the largest activation (128×128×16 for α = 0.25, 256 KiB) plus its input fits AI SRAM, so the target needs no row-band tiling.
+
 | Step | Scope | Check |
 |---|---|---|
-| K9a | Lower one Conv2D/Depthwise (1×1, 3×3, stride 1, SAME) from `qnet.Layer` to Args + blobs | host: `Emulate(lowered)` vs `qnet.RunLayer` ≤ 1 LSB on ≥ 1,000 random layers; mutation-checked tests |
-| K9b | Activation tables (ReLU/ReLU6/clamp/LeakyReLU), fused pools, stride 2 via Pad(1,1)+VALID + left-top | as K9a, plus the stride-2 pattern recognised and rejected for TF SAME |
-| K9c | `kpu.Compile` → `qnet.Backend`: segments, AI-SRAM plan, int8 NHWC ↔ uint8 CHW at boundaries, emulated engine | host: `qnet.MobileNetV1(0.25,128,128,0)` + `SyntheticParams`, KPU backend vs CPU runner per layer ≤ 1 LSB; `Run` allocates nothing |
-| K9d | The same graph on the UnitV | board vs host emulation per layer ≤ 1 LSB; ms/frame vs K7/K8c (CPU 533 ms at 128×128) |
-| K9e | A real int8 TFLite MobileNetV1-0.25 (exported with Pad(1,1)+VALID) through `tfl.Load` → KPU | class agreement with the TFLite reference interpreter on camera frames |
-| K9f | Row-band tiling; CPU Add/Concat between segments; FC-on-KPU option; MobileNetV2 at QVGA | per layer ≤ 1 LSB vs CPU; fits 2 MiB |
+| K9a | `kmodel.Builder`, BN/activation encoders and `Args` setters (the compiler's output seam); `Check` validates `Outputs`; doc fixes (review R-K210-K8b K4) | ncc's kmodels rebuilt byte-identical; round-trip tests; mutation-checked |
+| K9b | Lower one Conv2D/Depthwise (1×1, 3×3, stride 1, SAME) from `qnet.Layer` to Args + blobs | host: `Emulate(lowered)` vs `qnet.RunLayer` ≤ 1 LSB on ≥ 1,000 random layers; mutation-checked tests |
+| K9c | Activation tables (ReLU/ReLU6/clamp/LeakyReLU), fused pools, stride 2 via Pad(1,1)+VALID + left-top | as K9b, plus the stride-2 pattern recognised and TF SAME rejected |
+| K9d | `kpu.Compile` → `qnet.Backend`: segments, AI-SRAM plan, int8 NHWC ↔ uint8 CHW at boundaries, emulated engine | host: `qnet.MobileNetV1(0.25, 256, 256, 0)` + `SyntheticParams` cut at `conv_pw_13`, KPU backend vs CPU runner per layer ≤ 1 LSB; `Run` allocates nothing |
+| K9e | The same graph on the UnitV | board vs host emulation per layer ≤ 1 LSB; ms/frame vs the K210 CPU at 256×256 |
+| K9f | **End-to-end target:** the int8 TFLite MobileNetV1-0.25 256×256 (Pad(1,1)+VALID export) through `tfl.Load` → KPU, cut at `conv_pw_13` | features vs the TFLite reference interpreter on camera frames (≤ 1 LSB per layer up to the cut); class agreement on frames with clear objects (K8c-3's deferred check) |
+| K9g | Row-band tiling; CPU Add/Concat between segments; FC-on-KPU option; MobileNetV2 at QVGA | per layer ≤ 1 LSB vs CPU; fits 2 MiB |
 
 ## Open questions (resolved by measurement in the milestones)
 
-1. The KPU accumulator width: does a 3×3×1024 conv of extreme values overflow? (K9a: probe on the board.)
-2. What `first_stride`, `bypass_conv`, `full_add`, `ram_flag` and `kernel_offset` do. nncase leaves them 0. `first_stride` may be a true stride-2 path. (K9b: probe on the board.)
-3. TF-SAME stride 2 on the first layer via a one-pixel input shift at upload (K9b).
-4. The ≥ 4×4 depthwise output limit: is it hardware or nncase? (K9b: probe on the board.)
-5. Whether BN's floor shift and the activation's 36-bit compare explain the ±1 LSB silicon difference. If so, the emulator can model the hardware exactly. (K9a, from the K8c per-layer data.)
+1. The KPU accumulator width: does a 3×3×1024 conv of extreme values overflow? (K9b: probe on the board.)
+2. What `first_stride`, `bypass_conv`, `full_add`, `ram_flag` and `kernel_offset` do. nncase leaves them 0. `first_stride` may be a true stride-2 path. (K9c: probe on the board.)
+3. TF-SAME stride 2 on the first layer via a one-pixel input shift at upload (K9c).
+4. The ≥ 4×4 depthwise output limit: is it hardware or nncase? (K9c: probe on the board.)
+5. Whether BN's floor shift and the activation's 36-bit compare explain the ±1 LSB silicon difference. If so, the emulator can model the hardware exactly. (K9b, from the K8c per-layer data.)

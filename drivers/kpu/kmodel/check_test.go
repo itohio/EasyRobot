@@ -321,3 +321,24 @@ func FuzzCheckedModelRuns(f *testing.F) {
 		}
 	})
 }
+
+// TestCheckOutputs: a Model assembled without Parse (as a compiler may)
+// must have its outputs checked too (review R-K210-K8b K4).
+func TestCheckOutputs(t *testing.T) {
+	m, err := Parse(newFixture().data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Outputs = []Output{{Address: fxMain - 16, Size: 16}}
+	if err := m.Check(); err != nil {
+		t.Errorf("output ending at main memory end rejected: %v", err)
+	}
+	m.Outputs = []Output{{Address: fxMain - 16, Size: 17}}
+	if err := m.Check(); !errors.Is(err, ErrFormat) {
+		t.Errorf("output past main memory: err %v, want ErrFormat", err)
+	}
+	m.Outputs = []Output{{Address: 1 << 31, Size: 1 << 31}}
+	if err := m.Check(); !errors.Is(err, ErrFormat) {
+		t.Errorf("output address+size overflowing uint32: err %v, want ErrFormat", err)
+	}
+}

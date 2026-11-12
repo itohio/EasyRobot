@@ -114,17 +114,41 @@ out = clamp(carry_shift((y − x_start)·y_mul, shift) + bias[seg], 0, 255)
 | 1×1 conv | `oc·IC + ic` |
 | 1×1 depthwise | `oc` |
 
-With more than one load, each load holds `o_ch_num_coef + 1` output channels.
+With more than one load, each load holds `o_ch_num_coef + 1` output channels. The weight blob is `IC·k·k·OC` bytes (`IC·k·k` for depthwise), doubled with 16-bit weights (header flag bit 0 clear). That is not `para_size × loads`: nncase's last load is partial (MobileNet layer 26: 3 loads of 30,720 B for 65,536 B), and `Check` sizes the blob from the shape.
+
+## Table sizes and alignment
+
+| Table | Size | Alignment in the file (ncc) |
+|---|---|---|
+| layer argument | 12 × u64 = 96 B | 8 |
+| weights | see above | 128 |
+| batch norm | 8 B per output channel | 128 |
+| activation | 16 × u64 + 16 result_bias bytes = 144 B | 256 |
+
+`kmodel.EncodeBN` and `kmodel.EncodeAct` write the last two; `kmodel.Builder` lays a model out exactly as ncc does. Rebuilt from their parsed parts, all five ncc kmodels of the K8 evidence (tiny1/2/3, mbnet025fe, mbnet025) are byte-identical (ER-K210-K9 evidence, K9a).
 
 ## kmodel v3 container
 
 Layout is in the `kmodel` package doc. Layer types are listed in `kpu.h` `kpu_model_layer_type_t`; K210 types start at 10240.
-- **K210 conv body:** flags (bit 0 = main-memory output), main-memory output address, and file offsets of the layer argument, weights, BN and activation tables.
+- **Bodies** start right after the layer table, in layer order. Each is padded with zeros so that it **ends** on a multiple of 8 in the file. The padding counts in its size.
+- **K210 conv body:** flags (bit 0 = main-memory output), main-memory output address, and file offsets of the layer argument, weights, BN and activation tables. ncc places those four inside the conv's own body, right after these six words.
+- **CPU layer bodies** (all u32 unless noted; addresses are byte offsets in main memory, except where marked KPU):
+
+  | Layer | Fields in order |
+  |---|---|
+  | Quantize | flags, in, out, count, scale f32, bias f32 (float in → uint8 out) |
+  | Dequantize | flags, in, out, count, scale f32, bias f32 (uint8 in → float out) |
+  | GlobalAveragePool2D | flags, in, out, kernel size, channels (float) |
+  | K210AddPadding | flags, in, out (KPU line address), channels |
+  | K210RemovePadding | flags, in, out, channels (keeps byte 16·c of each channel) |
+  | K210Upload | flags, in, out (KPU line address), width, height, channels |
+
 - **CPU layers:** they work on a main-memory arena (`main_mem_usage` bytes).
 - **What nncase emits, in practice:**
   - nothing for the input: the first conv reads uint8 CHW straight from KPU RAM;
   - `Dequantize` at the end;
   - for a classifier head: `Dequantize → GlobalAveragePool2D → Quantize → K210AddPadding → K210Conv2d (1×1, on a 4×4 padded map) → K210RemovePadding → Dequantize`.
+- `Runner.Output(i)` panics for i outside the model's outputs; `Check` guarantees each output lies inside main memory.
 
 ## Compiler constraints learned from nncase rc5
 
@@ -132,7 +156,7 @@ Layout is in the `kmodel` package doc. Layer types are listed in `kpu.h` `kpu_mo
   - nncase rc5 accepts a stride-2 3×3 depthwise only as PAD(1,1) → depthwise VALID stride 2 → 1×1 conv, and PAD only with exactly that padding. The official MobileNetV1 TFLite therefore fails with "DepthwiseConv2d is not supported".
 - Max 1024 channels (10-bit fields), width ≤ 1024, height ≤ 512, and the tensor must fit 2 MiB together with the other live tensors.
 - Activations: anything a 16-segment piecewise-linear function of the BN output can express.
-- **Fully connected layers** have two routes:
-  - on the CPU (`kpu_kmodel_fully_connected`, float);
-  - as a 1×1 conv on a 4×4 zero-padded map (AddPadding/RemovePadding), which is how nncase runs a classifier on the KPU. The KPU's minimum useful width is 4.
+- **Fully connected layers:**
+  - on the KPU as a 1×1 conv on a 4×4 zero-padded map (AddPadding/RemovePadding), which is how nncase runs a classifier on the KPU and what `drivers/kpu` runs. The KPU's minimum useful width is 4.
+  - The kmodel format also has a float CPU layer (`KL_FULLY_CONNECTED`, `kpu_kmodel_fully_connected`), but `drivers/kpu` does not implement it, and `Check` rejects it as unsupported. The K9 compiler runs FC on qnet's CPU kernels outside the kmodel instead ([[kpu-compiler]]).
 - **rc5's simulator** has no Quantize layer and is not bit-exact with the silicon. Differences grow about 1 LSB per layer (evidence ER-K210-K8).

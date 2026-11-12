@@ -2,6 +2,7 @@ package kmodel
 
 import (
 	"encoding/binary"
+	"fmt"
 	"math"
 	"unsafe"
 )
@@ -59,6 +60,182 @@ func (a *Args) SetBN(addr uint32) { a[4] = a[4]&0xffff_ffff | uint64(addr)<<32 }
 
 // SetAct sets kernel_calc_type_cfg.active_addr (activation table).
 func (a *Args) SetAct(addr uint32) { a[7] = a[7]&0xffff_ffff | uint64(addr)<<32 }
+
+// NewArgs returns a layer argument with the constant fields nncase rc5
+// writes for every conv: load_para 1, dma_burst_size 15 (kernel_pool_type_cfg),
+// load_coor 1 (kernel_load_cfg), load_act 1 (kernel_calc_type_cfg). The
+// setters below fill the rest. Each checks its values against the field
+// widths and the KPU's limits and returns an error, leaving the argument
+// unchanged, for any value that does not fit (review R-K210-K8b B1): a
+// masked value can read back as a different valid one (width 1025 as 1).
+func NewArgs() Args {
+	var a Args
+	a[4] = 1<<10 | 15<<16
+	a[5] = 1
+	a[7] = 1 << 31
+	return a
+}
+
+func setBits(w *uint64, lo, n uint, v uint64) {
+	m := (uint64(1)<<n - 1) << lo
+	*w = *w&^m | v<<lo&m
+}
+
+func rangeErr(field string, v any) error {
+	return fmt.Errorf("%w: %s %v out of range", ErrFormat, field, v)
+}
+
+func signedFits(v int64, bits uint) bool { return v >= -1<<(bits-1) && v < 1<<(bits-1) }
+
+func checkShape(w, h, c int) error {
+	if w < 1 || w > maxWidth || h < 1 || h > maxHeight || c < 1 || c > maxChannels {
+		return rangeErr("shape (w, h, c)", [3]int{w, h, c})
+	}
+	return nil
+}
+
+// SetSrcAddr sets the input's KPU memory line address (15 bits).
+func (a *Args) SetSrcAddr(addr uint32) error {
+	if addr > 0x7fff {
+		return rangeErr("source line address", addr)
+	}
+	setBits(&a[1], 0, 15, uint64(addr))
+	return nil
+}
+
+// SetDstAddr sets the output's KPU memory line address (15 bits).
+func (a *Args) SetDstAddr(addr uint32) error {
+	if addr > 0x7fff {
+		return rangeErr("destination line address", addr)
+	}
+	setBits(&a[1], 32, 15, uint64(addr))
+	return nil
+}
+
+// SetInShape sets the input width (1–1024), height (1–512) and channels
+// (1–1024); the registers hold value − 1.
+func (a *Args) SetInShape(w, h, c int) error {
+	if err := checkShape(w, h, c); err != nil {
+		return err
+	}
+	setBits(&a[3], 0, 10, uint64(w-1))
+	setBits(&a[3], 10, 9, uint64(h-1))
+	setBits(&a[2], 0, 10, uint64(c-1))
+	return nil
+}
+
+// SetOutShape sets the output width, height and channels (limits as
+// SetInShape) and the matching dma_parameter byte counts (W·H per channel,
+// W·H·C in all).
+func (a *Args) SetOutShape(w, h, c int) error {
+	if err := checkShape(w, h, c); err != nil {
+		return err
+	}
+	setBits(&a[3], 32, 10, uint64(w-1))
+	setBits(&a[3], 42, 9, uint64(h-1))
+	setBits(&a[2], 32, 10, uint64(c-1))
+	setBits(&a[11], 16, 16, uint64(w*h-1))
+	setBits(&a[11], 32, 32, uint64(w*h*c-1))
+	return nil
+}
+
+func checkLayout(l Layout) error {
+	if (l.Group != 1 && l.Group != 2 && l.Group != 4) || l.RowLines < 1 || l.RowLines > 15 || l.ChanLines < 1 || l.ChanLines > 0x7fff {
+		return rangeErr("layout", l)
+	}
+	return nil
+}
+
+// SetInLayout sets kernel_calc_type_cfg's coef_group (1, 2 or 4),
+// row_switch_addr (1–15) and channel_switch_addr (1–32767).
+func (a *Args) SetInLayout(l Layout) error {
+	if err := checkLayout(l); err != nil {
+		return err
+	}
+	setBits(&a[7], 28, 3, uint64(l.Group))
+	setBits(&a[7], 16, 4, uint64(l.RowLines))
+	setBits(&a[7], 0, 15, uint64(l.ChanLines))
+	return nil
+}
+
+// SetOutLayout sets write_back_cfg's wb_group, wb_row_switch_addr and
+// wb_channel_switch_addr (ranges as SetInLayout).
+func (a *Args) SetOutLayout(l Layout) error {
+	if err := checkLayout(l); err != nil {
+		return err
+	}
+	setBits(&a[8], 20, 3, uint64(l.Group))
+	setBits(&a[8], 16, 4, uint64(l.RowLines))
+	setBits(&a[8], 0, 15, uint64(l.ChanLines))
+	return nil
+}
+
+// SetKernel sets kernel_type (k = 3 → 1 for 3×3, k = 1 → 0 for 1×1) and
+// interrupt_enabe.depth_wise_layer.
+func (a *Args) SetKernel(k int, depthwise bool) error {
+	if k != 1 && k != 3 {
+		return rangeErr("kernel size", k)
+	}
+	var t, d uint64
+	if k == 3 {
+		t = 1
+	}
+	if depthwise {
+		d = 1
+	}
+	setBits(&a[4], 0, 3, t)
+	setBits(&a[0], 3, 1, d)
+	return nil
+}
+
+// SetPool sets pool_type: 0 none, 1/2 2×2 max/average, 3/4 4×4 max/average,
+// 5 left-top 2×2 sampler (the types nncase's emulator defines).
+func (a *Args) SetPool(t int) error {
+	if t < 0 || t > 5 {
+		return rangeErr("pool type", t)
+	}
+	setBits(&a[4], 4, 4, uint64(t))
+	return nil
+}
+
+// SetPadValue sets pad_value, the uint8 read for out-of-image taps.
+func (a *Args) SetPadValue(v uint8) { setBits(&a[4], 24, 8, uint64(v)) }
+
+// SetConvValue sets conv_value: arg_x and arg_w (signed 24-bit) with their
+// shifts shr_x and shr_w (0–15).
+func (a *Args) SetConvValue(argX int64, shrX uint, argW int64, shrW uint) error {
+	if !signedFits(argX, 24) || !signedFits(argW, 24) || shrX > 15 || shrW > 15 {
+		return rangeErr("conv_value (arg_x, shr_x, arg_w, shr_w)", [4]int64{argX, int64(shrX), argW, int64(shrW)})
+	}
+	setBits(&a[9], 0, 4, uint64(shrW))
+	setBits(&a[9], 4, 4, uint64(shrX))
+	setBits(&a[9], 8, 24, uint64(argW))
+	setBits(&a[9], 32, 24, uint64(argX))
+	return nil
+}
+
+// SetArgAdd sets conv_value2.arg_add (signed 40-bit).
+func (a *Args) SetArgAdd(v int64) error {
+	if !signedFits(v, 40) {
+		return rangeErr("arg_add", v)
+	}
+	setBits(&a[10], 0, 40, uint64(v))
+	return nil
+}
+
+// SetLoad sets how the KPU loads the weights: paraSize bytes per load
+// (kernel_load_cfg.para_size, < 2^17), loads loads (1–64; load_time =
+// loads − 1) and chansPerLoad output channels per load (1–1024;
+// image_channel_num.o_ch_num_coef).
+func (a *Args) SetLoad(paraSize uint32, loads, chansPerLoad int) error {
+	if paraSize >= 1<<17 || loads < 1 || loads > 64 || chansPerLoad < 1 || chansPerLoad > maxChannels {
+		return rangeErr("load (para_size, loads, channels per load)", [3]int64{int64(paraSize), int64(loads), int64(chansPerLoad)})
+	}
+	setBits(&a[5], 15, 17, uint64(paraSize))
+	setBits(&a[5], 1, 6, uint64(loads-1))
+	setBits(&a[2], 48, 10, uint64(chansPerLoad-1))
+	return nil
+}
 
 // Layout is how a CHW uint8 tensor sits in KPU memory, in 64-byte lines:
 // Group channels share a line (each gets 64/Group bytes of it), a row takes

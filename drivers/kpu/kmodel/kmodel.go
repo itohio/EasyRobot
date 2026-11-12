@@ -147,13 +147,20 @@ func Parse(data []byte) (*Model, error) {
 // EightBitMode reports the KPU 8-bit mode bit of the header flags.
 func (m *Model) EightBitMode() bool { return m.Flags&1 != 0 }
 
-// Check verifies that every layer is a supported type, that its body is
-// long enough, and that everything it addresses lies inside the file, main
-// memory (MainMemUsage bytes) or KPU memory. After Check, running the model
-// cannot index out of range.
+// Check verifies that every output lies in main memory, that every layer is
+// a supported type with a long enough body, and that everything it
+// addresses lies inside the file, main memory (MainMemUsage bytes) or KPU
+// memory. After Check, running the model cannot index out of range.
 func (m *Model) Check() error {
 	if len(m.Layers) == 0 || m.Layers[0].Type != K210Conv {
 		return fmt.Errorf("%w: the first layer must be a K210 conv", ErrFormat)
+	}
+	// Parse checks the outputs too, but a compiler may assemble a Model
+	// without it.
+	for i, o := range m.Outputs {
+		if uint64(o.Address)+uint64(o.Size) > uint64(m.MainMemUsage) {
+			return fmt.Errorf("%w: output %d past main memory", ErrFormat, i)
+		}
 	}
 	for i, l := range m.Layers {
 		if err := m.checkLayer(l); err != nil {
