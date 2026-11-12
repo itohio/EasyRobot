@@ -15,12 +15,20 @@ import (
 type RunnerFunc func(m *kmodel.Model, main []byte) (*kpu.Runner, error)
 
 // Group is one KPU layer of a segment: graph layers [First, First+Count)
-// ([Pad] conv [ReLU/ReLU6] [pool]) lowered together. Full marks a stride-2
-// depthwise lowered at full resolution, Subsample the 1×1 conv after it
-// that samples (see Fuse).
+// ([Pad] conv [ReLU/ReLU6] [pool]) lowered together, with the lowering
+// mode (Fuse's Full, Subsample, OddSample). A Sampler group has no graph
+// layers (Count 0): it is the identity conv (Sampler) on layer First−1's
+// output, sampling the Full layer before it.
 type Group struct {
-	First, Count    int
-	Full, Subsample bool
+	First, Count int
+	Mode         Mode
+}
+
+// Mode is how a group is lowered beyond plain fusion (see Fuse).
+type Mode struct{ Full, Subsample, OddSample, Sampler bool }
+
+func (m Mode) fuse(pad, act, pool *qnet.Layer) Fuse {
+	return Fuse{Pad: pad, Act: act, Pool: pool, Full: m.Full, Subsample: m.Subsample, OddSample: m.OddSample}
 }
 
 // Segment is a run of graph layers the KPU executes as one kmodel.
@@ -151,11 +159,19 @@ func (gi graphInfo) follows(j int) bool {
 
 // group finds the KPU group starting at layer i: [Pad] conv [act] [pool],
 // with the longest fusion Lower accepts. ok is false if layer i does not
-// start one.
-func (gi graphInfo) group(i int, full, subsample bool) (Group, Fuse, *qnet.Layer, bool) {
+// start one. A Sampler mode returns the sampler on layer i−1's output.
+func (gi graphInfo) group(i int, mode Mode) (Group, Fuse, *qnet.Layer, bool) {
 	ls := gi.g.Layers
+	if mode.Sampler {
+		sl := Sampler(&ls[i-1])
+		f := mode.fuse(nil, nil, nil)
+		if _, err := Lower(&sl, f, 0, 0); err != nil {
+			return Group{}, Fuse{}, nil, false
+		}
+		return Group{First: i, Mode: mode}, f, &sl, true
+	}
 	j := i
-	f := Fuse{Full: full, Subsample: subsample}
+	var f Fuse
 	if ls[j].Kind == qnet.Pad {
 		if !gi.follows(j + 1) {
 			return Group{}, Fuse{}, nil, false
@@ -185,13 +201,13 @@ func (gi graphInfo) group(i int, full, subsample bool) (Group, Fuse, *qnet.Layer
 		f Fuse
 		n int
 	}{
-		{Fuse{Pad: f.Pad, Act: act, Pool: pool, Full: full, Subsample: subsample}, base + b2i(act != nil) + b2i(pool != nil)},
-		{Fuse{Pad: f.Pad, Act: act, Full: full, Subsample: subsample}, base + b2i(act != nil)},
-		{Fuse{Pad: f.Pad, Full: full, Subsample: subsample}, base},
+		{mode.fuse(f.Pad, act, pool), base + b2i(act != nil) + b2i(pool != nil)},
+		{mode.fuse(f.Pad, act, nil), base + b2i(act != nil)},
+		{mode.fuse(f.Pad, nil, nil), base},
 	}
 	for _, c := range cands {
 		if _, err := Lower(conv, c.f, 0, 0); err == nil {
-			return Group{First: i, Count: c.n, Full: full, Subsample: subsample}, c.f, conv, true
+			return Group{First: i, Count: c.n, Mode: mode}, c.f, conv, true
 		}
 	}
 	return Group{}, Fuse{}, nil, false
@@ -232,9 +248,9 @@ func Compile(g *qnet.Graph, newRunner RunnerFunc) (*Backend, error) {
 }
 
 // segment collects the longest chain of groups from layer i that fits KPU
-// memory layer by layer; nil if layer i starts no group. A stride-2
-// depthwise joins only together with the 1×1 conv after it (Full +
-// Subsample).
+// memory layer by layer; nil if layer i starts no group. A Full layer (a
+// stride-2 depthwise, or a TF SAME stride-2 conv) joins only together with
+// its sampling reader: the 1×1 conv after it, else a Sampler.
 func (gi graphInfo) segment(i int) (*Segment, error) {
 	var s *Segment
 	j := i
@@ -254,21 +270,33 @@ func (gi graphInfo) segment(i int) (*Segment, error) {
 		if s != nil && !gi.follows(j) {
 			break // a graph output or a second reader ends the segment
 		}
-		if gr, f, conv, ok := gi.group(j, false, false); ok {
-			if !gi.inner(gr) || !fits(conv, f) {
+		if gr, f, conv, ok := gi.group(j, Mode{}); ok {
+			if !gi.inner(gr) || !fits(conv, f, false) {
 				break
 			}
 			push(gr, conv, f)
 			continue
 		}
-		// A stride-2 depthwise at full resolution, then the sampling 1×1;
-		// the depthwise joins only together with it.
-		gr, f, conv, ok := gi.group(j, true, false)
-		if !ok || !gi.inner(gr) || !fits(conv, f) || !gi.follows(gr.First+gr.Count) {
+		// A layer at full resolution, then its sampling reader.
+		gr, f, conv, ok := gi.group(j, Mode{Full: true})
+		if !ok || !gi.inner(gr) {
 			break
 		}
-		gr2, f2, conv2, ok := gi.group(gr.First+gr.Count, false, true)
-		if !ok || !gi.inner(gr2) || !fits(conv2, f2) {
+		next := gr.First + gr.Count
+		odd := f.Pad == nil // TF SAME: odd pixels; Pad(1,1)+VALID: even
+		sample := Mode{Subsample: true, OddSample: odd}
+		var gr2 Group
+		var f2 Fuse
+		var conv2 *qnet.Layer
+		ok = gi.follows(next) // follows is false past the last layer
+		if ok {
+			gr2, f2, conv2, ok = gi.group(next, sample)
+		}
+		if !ok || !gi.inner(gr2) {
+			sample.Sampler = true
+			gr2, f2, conv2, ok = gi.group(next, sample)
+		}
+		if !ok || !fits(conv, f, odd) || !fits(conv2, f2, false) {
 			break
 		}
 		push(gr, conv, f)
@@ -281,15 +309,20 @@ func (gi graphInfo) segment(i int) (*Segment, error) {
 }
 
 // fits reports whether a lowered layer's input and output fit KPU memory
-// together (else it needs row-band tiling, K9g).
-func fits(conv *qnet.Layer, f Fuse) bool {
+// together (else it needs row-band tiling, K9g); readPast reserves one more
+// output row for an OddSample reader.
+func fits(conv *qnet.Layer, f Fuse, readPast bool) bool {
 	c, err := Lower(conv, f, 0, 0)
 	if err != nil {
 		return false
 	}
 	iw, ih, ic := c.Args.InShape()
 	ow, oh, oc := c.Args.OutShape()
-	return lines(qi8.Shape{H: ih, W: iw, C: ic})+lines(qi8.Shape{H: oh, W: ow, C: oc}) <= ramLines
+	n := lines(qi8.Shape{H: ih, W: iw, C: ic}) + lines(qi8.Shape{H: oh, W: ow, C: oc})
+	if readPast {
+		n += kmodel.UploadLayout(ow, oh).RowLines
+	}
+	return n <= ramLines
 }
 
 // inner reports whether every output inside the group but the last has a
@@ -307,40 +340,7 @@ func (gi graphInfo) inner(gr Group) bool {
 // at the top of memory, outputs alternating bottom and top), assembles the
 // kmodel and its runner.
 func (s *Segment) build(g *qnet.Graph, newRunner RunnerFunc) error {
-	gi := newGraphInfo(g)
-	b := kmodel.NewBuilder(true, 0)
-	outLen := uint32(s.out.Len())
-	b.SetMainMem(outLen)
-	b.AddOutput(kmodel.Output{Address: 0, Size: outLen})
-	src := uint32(ramLines - lines(s.in))
-	top := true // where the current input sits
-	for k, gr := range s.Groups {
-		_, f, conv, ok := gi.group(gr.First, gr.Full, gr.Subsample)
-		if !ok {
-			return fmt.Errorf("group at layer %d vanished", gr.First)
-		}
-		probe, err := Lower(conv, f, 0, 0) // the KPU output shape (full resolution for Full)
-		if err != nil {
-			return err
-		}
-		ow, oh, oc := probe.Args.OutShape()
-		dst := uint32(0)
-		if !top {
-			dst = uint32(ramLines - lines(qi8.Shape{H: oh, W: ow, C: oc}))
-		}
-		c, err := Lower(conv, f, src, dst)
-		if err != nil {
-			return err
-		}
-		bn, act := c.BN, c.Act
-		if k == len(s.Groups)-1 {
-			b.AddConvToMain(0, c.Args, c.Weights, bn, act)
-		} else {
-			b.AddConv(c.Args, c.Weights, bn, act)
-		}
-		src, top = dst, !top
-	}
-	data, err := b.Build()
+	data, kin, err := s.kmodel(g)
 	if err != nil {
 		return err
 	}
@@ -352,6 +352,50 @@ func (s *Segment) build(g *qnet.Graph, newRunner RunnerFunc) error {
 	if err != nil {
 		return err
 	}
-	s.Model, s.Runner, s.chw = m, r, make([]byte, s.in.Len())
+	s.Model, s.Runner, s.chw = m, r, make([]byte, kin.Len())
 	return nil
+}
+
+// kmodel assembles the segment's kmodel file and returns it with the KPU
+// input shape.
+func (s *Segment) kmodel(g *qnet.Graph) ([]byte, qi8.Shape, error) {
+	gi := newGraphInfo(g)
+	b := kmodel.NewBuilder(true, 0)
+	outLen := uint32(s.out.Len())
+	b.SetMainMem(outLen)
+	b.AddOutput(kmodel.Output{Address: 0, Size: outLen})
+	kin := s.in
+	src := uint32(ramLines - lines(kin))
+	top := true // where the current input sits
+	for k, gr := range s.Groups {
+		_, f, conv, ok := gi.group(gr.First, gr.Mode)
+		if !ok {
+			return nil, kin, fmt.Errorf("group at layer %d vanished", gr.First)
+		}
+		probe, err := Lower(conv, f, 0, 0) // the KPU output shape (full resolution for Full)
+		if err != nil {
+			return nil, kin, err
+		}
+		ow, oh, oc := probe.Args.OutShape()
+		dst := uint32(0)
+		if !top {
+			n := lines(qi8.Shape{H: oh, W: ow, C: oc})
+			if k+1 < len(s.Groups) && s.Groups[k+1].Mode.OddSample {
+				n += kmodel.UploadLayout(ow, oh).RowLines // the reader reads one row past
+			}
+			dst = uint32(ramLines - n)
+		}
+		c, err := Lower(conv, f, src, dst)
+		if err != nil {
+			return nil, kin, err
+		}
+		if k == len(s.Groups)-1 {
+			b.AddConvToMain(0, c.Args, c.Weights, c.BN, c.Act)
+		} else {
+			b.AddConv(c.Args, c.Weights, c.BN, c.Act)
+		}
+		src, top = dst, !top
+	}
+	data, err := b.Build()
+	return data, kin, err
 }

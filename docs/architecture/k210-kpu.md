@@ -66,7 +66,10 @@ Bit positions from `kpu.h`; "nncase" is what rc5 writes; tiny3 values are given 
 | 2 | 2×2 average |
 | 3 | 4×4 max |
 | 4 | 4×4 average |
-| 5 | 2×2 "left-top": keep the top-left pixel, which is how nncase does stride 2 |
+| 5 | 2×2 "left-top": keep the top-left pixel (even rows and columns), which is how nncase does stride 2 |
+| 6 | 2×2 "right-top": keep the top-right pixel (even rows, odd columns). Runs on silicon like 1 and 5 (ER-K210-K9 evidence, `kpupool`). With the input read from one row down it samples odd rows and columns: TF SAME stride 2 |
+
+nncase v0.2's enum continues with 7 left-top 4×4, 8 2×2 mean stride 1 and 9 2×2 max stride 1; they are not used here and not checked on silicon.
 
 The conv itself is always stride 1, with SAME padding filled with `pad_value`. Output size = input size, then divided by the pool stride.
 
@@ -152,9 +155,9 @@ Layout is in the `kmodel` package doc. Layer types are listed in `kpu.h` `kpu_mo
 
 ## Compiler constraints learned from nncase rc5
 
-- Only 3×3 and 1×1 kernels, stride 1. Stride 2 is the conv followed by left-top 2×2 pooling, so windows centre on even pixels (for a depthwise conv, the pooling goes on the next 1×1 conv, see pool_type). That equals TF `PAD [[1,1],[1,1]]` + VALID, not TF SAME (which centres on odd pixels for even sizes).
+- Only 3×3 and 1×1 kernels, stride 1. Stride 2 is the conv followed by left-top 2×2 pooling, so windows centre on even pixels (for a depthwise conv, the pooling goes on the next 1×1 conv, see pool_type). That equals TF `PAD [[1,1],[1,1]]` + VALID, not TF SAME (which centres on odd pixels for even sizes). `drivers/kpu/compile` also runs TF SAME stride 2 exactly: the conv at full resolution, then the next layer reads from one row down with the right-top sampler ([[kpu-compiler]]).
   - nncase rc5 accepts a stride-2 3×3 depthwise only as PAD(1,1) → depthwise VALID stride 2 → 1×1 conv, and PAD only with exactly that padding. The official MobileNetV1 TFLite therefore fails with "DepthwiseConv2d is not supported".
-- Max 1024 channels (10-bit fields), width ≤ 1024, height ≤ 512, and the tensor must fit 2 MiB together with the other live tensors.
+- Max 1024 channels (10-bit fields), width ≤ 1024 (512 measured), and the tensor must fit 2 MiB together with the other live tensors. **Input height ≤ 256 on silicon**, although the field is 9 bits: a 257- or 258-row input never raises the done interrupt (64×258, 256×257, 256×258 time out; 256×256, 512×128 and 300×220 run; ER-K210-K9 evidence, `kpushape`).
 - Activations: anything a 16-segment piecewise-linear function of the BN output can express.
 - **Fully connected layers:**
   - on the KPU as a 1×1 conv on a 4×4 zero-padded map (AddPadding/RemovePadding), which is how nncase runs a classifier on the KPU and what `drivers/kpu` runs. The KPU's minimum useful width is 4.

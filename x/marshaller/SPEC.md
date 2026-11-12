@@ -128,6 +128,8 @@ marshaller/
 │   ├── streams.go         # Stream coordination
 │   ├── unmarshaller.go    # GoCV unmarshaller
 │   └── ...
+├── kmodel/
+│   └── kmodel.go          # K210 kmodel marshaller/unmarshaller (KPU)
 └── v4l/
     ├── types.go           # V4L types and interfaces
     ├── device.go          # Device management
@@ -282,6 +284,16 @@ func NewMarshaller(opts ...types.Option) *Marshaller {
 - Unmarshaller only (no marshal support)
 - Returns concrete type
 - Loads models into EasyRobot format
+
+#### Kmodel Marshaller (K210 KPU)
+- **Constructor:** `kmodel.NewMarshaller(opts ...types.Option) *Marshaller`, `kmodel.NewUnmarshaller(opts ...types.Option) *Unmarshaller`
+- **Features:** `Marshal` compiles a `*qnet.Graph`, `qnet.Graph` or int8 TFLite flatbuffer (`[]byte`, read by the pure-Go `qnet/tfl`) into a Kendryte kmodel v3 through `drivers/kpu/compile`; `Unmarshal` reads a kmodel into `*kmodel.Model` (128-byte-aligned copy, `Parse`, `Check`). Options `kmodel.WithCut(n)` (keep qnet layers 0..n) and `kmodel.WithInputSize(h, w)` (re-derive shapes of a size-agnostic graph) travel in `types.Options.Metadata`.
+- **Use Case:** building KPU models for the K210 (`drivers/kpu`), e.g. a MobileNet feature extractor cut at `conv_pw_13`; the `cmd/kmodelc` CLI wraps it.
+
+**Implementation Notes:**
+- One kmodel holds one KPU segment and no CPU layers: every layer up to the cut must lower onto the KPU, otherwise `Marshal` returns an error naming the first layer that does not (graphs with CPU layers run through `compile.Compile` as a `qnet.Backend` instead)
+- Input and output are uint8 CHW (int8 value + 128); `Marshaller.Info` describes their shapes and quantisation for the last `Marshal` (so one `Marshaller` is not safe for concurrent `Marshal` calls)
+- Design and limits: `docs/architecture/kpu-compiler.md`
 
 ## Model Format Support
 

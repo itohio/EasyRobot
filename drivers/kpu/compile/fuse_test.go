@@ -192,19 +192,32 @@ func TestLowerFusedRejects(t *testing.T) {
 		base chain
 		mod  func(c *chain)
 	}{
-		"TF SAME stride 2":       {s2, func(c *chain) { c.fuse.Pad = nil; c.conv.Padding = qi8.PaddingSame; c.conv.In = c.in }},
-		"stride 2 without Pad":   {s2, func(c *chain) { c.fuse.Pad = nil; c.conv.In = c.in }},
-		"Pad (0,2,0,2)":          {s2, func(c *chain) { c.fuse.Pad.Pads = [6]int{0, 2, 0, 2, 0, 0} }},
-		"Pad with a channel pad": {s2, func(c *chain) { c.fuse.Pad.Pads = [6]int{1, 1, 1, 1, 0, 1} }},
-		"Pad not chaining":       {s2, func(c *chain) { c.fuse.Pad.In.C++ }},
-		"stride 2 odd height":    {s2, func(c *chain) { c.fuse.Pad.In.H++; c.fuse.Pad.Out.H++; c.conv.In.H++ }},
-		"pool after stride 2":    {s2, func(c *chain) { c.fuse.Pool = &qnet.Layer{Kind: qnet.MaxPool2D, KH: 2, KW: 2, StrideH: 2, StrideW: 2} }},
-		"Pad before stride 1":    {pool, func(c *chain) { c.fuse.Pad = &qnet.Layer{Kind: qnet.Pad, Pads: [6]int{1, 1, 1, 1, 0, 0}} }},
-		"pool kernel ≠ stride":   {pool, func(c *chain) { c.fuse.Pool.StrideH, c.fuse.Pool.StrideW = 1, 1 }},
-		"3×3 pool":               {pool, func(c *chain) { c.fuse.Pool.KH, c.fuse.Pool.KW, c.fuse.Pool.StrideH, c.fuse.Pool.StrideW = 3, 3, 3, 3 }},
-		"pool SAME":              {pool, func(c *chain) { c.fuse.Pool.Padding = qi8.PaddingSame }},
-		"pool not dividing":      {pool, func(c *chain) { c.conv.In.W++; c.conv.Out.W++; c.fuse.Pool.In.W++ }},
-		"pool quantisation":      {pool, func(c *chain) { c.fuse.Pool.OutQ.ZP++ }},
+		"TF SAME stride 2 without Full": {s2, func(c *chain) { c.fuse.Pad = nil; c.conv.Padding = qi8.PaddingSame; c.conv.In = c.in }},
+		"TF SAME stride 2 with Pad":     {s2, func(c *chain) { c.conv.Padding = qi8.PaddingSame; c.fuse.Full = true }},
+		"TF SAME stride 2 odd size": {s2, func(c *chain) {
+			c.fuse.Pad, c.fuse.Full = nil, true
+			c.conv.Padding, c.conv.In = qi8.PaddingSame, c.in
+			c.conv.In.H++
+			c.conv.Out.H = (c.conv.In.H + 1) / 2
+		}},
+		"257-row input": {pool, func(c *chain) {
+			c.fuse.Pool = nil
+			c.conv.In.H, c.conv.Out.H = 257, 257
+		}},
+		"OddSample without Subsample": {s2, func(c *chain) { c.fuse.OddSample = true }},
+		"Full on a stride-1 conv":     {pool, func(c *chain) { c.fuse.Pool = nil; c.fuse.Full = true }},
+		"stride 2 without Pad":        {s2, func(c *chain) { c.fuse.Pad = nil; c.conv.In = c.in }},
+		"Pad (0,2,0,2)":               {s2, func(c *chain) { c.fuse.Pad.Pads = [6]int{0, 2, 0, 2, 0, 0} }},
+		"Pad with a channel pad":      {s2, func(c *chain) { c.fuse.Pad.Pads = [6]int{1, 1, 1, 1, 0, 1} }},
+		"Pad not chaining":            {s2, func(c *chain) { c.fuse.Pad.In.C++ }},
+		"stride 2 odd height":         {s2, func(c *chain) { c.fuse.Pad.In.H++; c.fuse.Pad.Out.H++; c.conv.In.H++ }},
+		"pool after stride 2":         {s2, func(c *chain) { c.fuse.Pool = &qnet.Layer{Kind: qnet.MaxPool2D, KH: 2, KW: 2, StrideH: 2, StrideW: 2} }},
+		"Pad before stride 1":         {pool, func(c *chain) { c.fuse.Pad = &qnet.Layer{Kind: qnet.Pad, Pads: [6]int{1, 1, 1, 1, 0, 0}} }},
+		"pool kernel ≠ stride":        {pool, func(c *chain) { c.fuse.Pool.StrideH, c.fuse.Pool.StrideW = 1, 1 }},
+		"3×3 pool":                    {pool, func(c *chain) { c.fuse.Pool.KH, c.fuse.Pool.KW, c.fuse.Pool.StrideH, c.fuse.Pool.StrideW = 3, 3, 3, 3 }},
+		"pool SAME":                   {pool, func(c *chain) { c.fuse.Pool.Padding = qi8.PaddingSame }},
+		"pool not dividing":           {pool, func(c *chain) { c.conv.In.W++; c.conv.Out.W++; c.fuse.Pool.In.W++ }},
+		"pool quantisation":           {pool, func(c *chain) { c.fuse.Pool.OutQ.ZP++ }},
 		"fused LeakyReLU": {pool, func(c *chain) {
 			c.fuse.Pool = nil
 			c.fuse.Act = &qnet.Layer{Kind: qnet.LeakyReLU, In: c.conv.Out, Out: c.conv.Out, InQ: c.conv.OutQ, OutQ: c.conv.OutQ}
@@ -226,8 +239,8 @@ func TestLowerFusedRejects(t *testing.T) {
 			}
 			c.fuse.Pool.In.C, c.fuse.Pool.Out.C = ch, ch
 		}},
-		"Full on a regular conv":  {s2, func(c *chain) { c.fuse.Full = true }},
-		"Subsample on a 3×3 conv": {pool, func(c *chain) { c.fuse.Pool = nil; c.conv.KH, c.conv.KW = 3, 3; c.fuse.Subsample = true }},
+		"Full on a Pad + VALID regular conv": {s2, func(c *chain) { c.fuse.Full = true }},
+		"Subsample on a 3×3 conv":            {pool, func(c *chain) { c.fuse.Pool = nil; c.conv.KH, c.conv.KW = 3, 3; c.fuse.Subsample = true }},
 		"stride-2 depthwise without Full": {s2, func(c *chain) {
 			ch := c.conv.In.C
 			c.conv.Kind, c.conv.Out.C = qnet.DepthwiseConv2D, ch

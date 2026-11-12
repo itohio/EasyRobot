@@ -208,9 +208,12 @@ func (a *Args) SetKernel(k int, depthwise bool) error {
 }
 
 // SetPool sets pool_type: 0 none, 1/2 2×2 max/average, 3/4 4×4 max/average,
-// 5 left-top 2×2 sampler (the types nncase's emulator defines).
+// 5 left-top and 6 right-top 2×2 samplers (the types modelled by Emulate;
+// nncase v0.2's K210 runtime also lists 7 left-top 4×4 and 8/9 2×2
+// stride-1 mean/max). Pools work on regular convs only: the KPU does not
+// pool in depthwise mode (ER-K210-K9 evidence, K9e).
 func (a *Args) SetPool(t int) error {
-	if t < 0 || t > 5 {
+	if t < 0 || t > 6 {
 		return rangeErr("pool type", t)
 	}
 	setBits(&a[4], 4, 4, uint64(t))

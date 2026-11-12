@@ -29,6 +29,7 @@ const (
 	maxPostShift = 24      // P: output scale 2^P carried from BN to the activation
 	yBound       = 1 << 34 // |BN output| stays inside the 36-bit activation compare
 	mulBound     = 1 << 23 // BN norm_mul is signed 24-bit
+	maxRows      = 256     // KPU input rows (258 never finish on silicon)
 )
 
 // Fuse names the qnet layers lowered together with a conv into one KPU
@@ -47,10 +48,12 @@ type Fuse struct {
 	// KPU does not pool in depthwise mode (ER-K210-K9 evidence, K9e), so a
 	// depthwise conv takes no pool.
 	Pool *qnet.Layer
-	// Full lowers a stride-2 depthwise conv (with its Pad) at full
-	// resolution: stride 1, no pool, output the size of its unpadded input.
-	// The KPU cannot sample a depthwise layer, so the next layer must be a
-	// 1×1 conv lowered with Subsample. This is nncase's stride-2 depthwise
+	// Full lowers a stride-2 depthwise conv (with its Pad), or a TF SAME
+	// stride-2 3×3 regular conv, at full resolution: stride 1, no pool,
+	// output the size of its unpadded input. The KPU cannot sample a
+	// depthwise layer, nor the odd pixels of a regular one, so the next KPU
+	// layer samples: a 1×1 conv lowered with Subsample, or the identity
+	// Sampler. This is nncase's stride-2 depthwise
 	// (K210SeparableConv2dTransform).
 	Full bool
 	// Subsample lowers a 1×1 stride-1 conv whose input arrives at twice its
@@ -58,6 +61,35 @@ type Fuse struct {
 	// sampler. A 1×1 conv commutes with the subsampling, so the pair is
 	// exact.
 	Subsample bool
+	// OddSample, with Subsample, samples the odd rows and columns instead:
+	// the right-top sampler (pool_type 6, odd columns) on the input read
+	// from one row down (odd rows). That is TF SAME stride 2 on an even
+	// size, whose windows centre on odd pixels; the Full layer before it
+	// computed them at full resolution. The reader reads one row past its
+	// writer's tensor (never sampled): the plan reserves it.
+	OddSample bool
+}
+
+// Sampler returns the identity 1×1 conv on l's output (same shape and
+// quantisation): lowered with Subsample (and OddSample), it samples a Full
+// layer's output when the graph's next layer is not a 1×1 conv. Exact:
+// weights 1 on the diagonal and multiplier 1 make every rounding vanish.
+func Sampler(l *qnet.Layer) qnet.Layer {
+	c := l.Out.C
+	w := make([]int8, c*c)
+	for i := range c {
+		w[i*c+i] = 1
+	}
+	one, _ := qi8.QuantizeMultiplier(1)
+	rq := make([]qi8.Requant, c)
+	for i := range rq {
+		rq[i] = one
+	}
+	return qnet.Layer{
+		Kind: qnet.Conv2D, In: l.Out, Out: l.Out, InQ: l.OutQ, OutQ: l.OutQ,
+		KH: 1, KW: 1, StrideH: 1, StrideW: 1, Padding: qi8.PaddingValid,
+		ActMin: -128, ActMax: 127, Weights: w, Requant: rq,
+	}
 }
 
 // LowerConv lowers a single qnet conv layer (see Lower) without fusion.
@@ -69,10 +101,12 @@ func LowerConv(l *qnet.Layer, src, dst uint32) (Conv, error) { return Lower(l, F
 // width (kmodel.UploadLayout).
 //
 // Supported: stride 1 SAME (1×1 also VALID); stride 2 as Pad(1,1) + 3×3
-// VALID or as 1×1 VALID, on even H and W (the left-top sampler); a fused
-// 2×2 or 4×4 max or average pool after a stride-1 conv; a fused ReLU or
-// ReLU6. TF SAME stride 2 is rejected: its windows centre on odd pixels,
-// which the KPU cannot sample (export with Pad(1,1) + VALID instead).
+// VALID or as 1×1 VALID, on even H and W (the left-top sampler); TF SAME
+// stride 2 on even H and W, whose windows centre on odd pixels, as Full
+// followed by an OddSample reader; a fused 2×2 or 4×4 max or average pool
+// after a stride-1 conv; a fused ReLU or ReLU6. The KPU layer's input and
+// output are at most 256 rows (a 258-row input never finishes on silicon,
+// ER-K210-K9 evidence).
 //
 // The integers are exact up to requantisation (design note, "Integer
 // mapping"): KPU tensors are uint8 x′ = q + 128 and weights w′ = q_w + 128;
@@ -103,6 +137,9 @@ func Lower(l *qnet.Layer, f Fuse, src, dst uint32) (Conv, error) {
 		return Conv{}, err
 	}
 	in := g.in
+	if in.H > maxRows {
+		return Conv{}, fmt.Errorf("%w: a %d-row KPU input (at most %d)", ErrUnsupported, in.H, maxRows)
+	}
 	oc := l.Out.C
 	if dw && oc != in.C {
 		return Conv{}, fmt.Errorf("%w: depthwise multiplier %d", ErrUnsupported, oc/max(in.C, 1))
@@ -124,11 +161,12 @@ func Lower(l *qnet.Layer, f Fuse, src, dst uint32) (Conv, error) {
 	}
 
 	zpIn := int64(l.InQ.ZP) + 128
+	inLayout := kmodel.UploadLayout(in.W, in.H)
 	a := kmodel.NewArgs()
 	for _, err := range []error{
-		a.SetSrcAddr(src), a.SetDstAddr(dst),
+		a.SetSrcAddr(src + uint32(g.skip*inLayout.RowLines)), a.SetDstAddr(dst),
 		a.SetInShape(in.W, in.H, in.C), a.SetOutShape(g.outW, g.outH, oc),
-		a.SetInLayout(kmodel.UploadLayout(in.W, in.H)), a.SetOutLayout(kmodel.UploadLayout(g.outW, g.outH)),
+		a.SetInLayout(inLayout), a.SetOutLayout(kmodel.UploadLayout(g.outW, g.outH)),
 		a.SetKernel(k, dw), a.SetPool(g.pool),
 		a.SetConvValue(-128, 0, -zpIn, 0), a.SetArgAdd(128 * zpIn * int64(k*k)),
 		setLoad(&a, k, in.C, oc, dw),
@@ -168,9 +206,12 @@ type lowered struct {
 	outW, outH int       // its output after the pool or sampler
 	pool       int       // pool_type
 	pad        int64     // int8 value of out-of-image taps
+	skip       int       // input rows to skip at the start of each channel block
 }
 
 func same(a, b qnet.Quant) bool { return a == b }
+
+var errNotFull = fmt.Errorf("%w: Full is for a stride-2 depthwise or TF SAME stride-2 conv", ErrUnsupported)
 
 func geometry(l *qnet.Layer, f Fuse) (lowered, error) {
 	k, s := l.KH, l.StrideH
@@ -182,8 +223,11 @@ func geometry(l *qnet.Layer, f Fuse) (lowered, error) {
 	if f.Pool != nil && dw {
 		return lowered{}, fmt.Errorf("%w: a pool on a depthwise conv (the KPU does not pool in depthwise mode)", ErrUnsupported)
 	}
-	if f.Full && !(dw && s == 2) {
-		return lowered{}, fmt.Errorf("%w: Full is for a stride-2 depthwise conv", ErrUnsupported)
+	if f.Full && !(s == 2 && (dw || (k == 3 && l.Padding == qi8.PaddingSame))) {
+		return lowered{}, errNotFull
+	}
+	if f.OddSample && !f.Subsample {
+		return lowered{}, fmt.Errorf("%w: OddSample needs Subsample", ErrUnsupported)
 	}
 	if f.Subsample {
 		if dw || k != 1 || s != 1 || f.Pad != nil || f.Pool != nil {
@@ -191,6 +235,9 @@ func geometry(l *qnet.Layer, f Fuse) (lowered, error) {
 		}
 		g.in = qi8.Shape{H: 2 * l.In.H, W: 2 * l.In.W, C: l.In.C}
 		g.outW, g.outH, g.pool = l.In.W, l.In.H, 5
+		if f.OddSample {
+			g.pool, g.skip = 6, 1 // right-top sampler, from one row down
+		}
 		if l.Out.H != l.In.H || l.Out.W != l.In.W {
 			return lowered{}, fmt.Errorf("%w: output %v for input %v", ErrUnsupported, l.Out, l.In)
 		}
@@ -221,12 +268,23 @@ func geometry(l *qnet.Layer, f Fuse) (lowered, error) {
 		}
 		return g, nil
 	}
-	// Stride 2: the KPU's left-top sampler.
+	// Stride 2: the KPU's left-top or right-top sampler.
 	if f.Pool != nil {
 		return lowered{}, fmt.Errorf("%w: a pool after a stride-2 conv (the sampler uses the pool slot)", ErrUnsupported)
 	}
-	if l.Padding != qi8.PaddingValid {
-		return lowered{}, fmt.Errorf("%w: stride 2 with SAME padding (windows on odd pixels); export as Pad(1,1) + VALID", ErrUnsupported)
+	if l.Padding == qi8.PaddingSame && k == 3 {
+		// TF SAME stride 2 on an even size: windows centre on odd pixels.
+		if f.Pad != nil || l.In.H%2 != 0 || l.In.W%2 != 0 || l.Out.H != l.In.H/2 || l.Out.W != l.In.W/2 {
+			return lowered{}, fmt.Errorf("%w: SAME stride 2 needs an even input and no fused Pad", ErrUnsupported)
+		}
+		if !f.Full {
+			return lowered{}, fmt.Errorf("%w: a SAME stride-2 conv needs Full and an OddSample reader after it", ErrUnsupported)
+		}
+		g.outW, g.outH = l.In.W, l.In.H // full resolution; the reader samples the odd pixels
+		return g, nil
+	}
+	if l.Padding != qi8.PaddingValid && k == 3 {
+		return lowered{}, fmt.Errorf("%w: stride-2 padding %v", ErrUnsupported, l.Padding)
 	}
 	if k == 3 {
 		p := f.Pad

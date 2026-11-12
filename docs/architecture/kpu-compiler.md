@@ -40,7 +40,8 @@ Owner decision (2026-11-10): models come as int8 TFLite files or as our own `qne
 |---|---|---|
 | Conv2D 1×1 or 3×3, stride 1, SAME | yes | |
 | DepthwiseConv2D 3×3 (multiplier 1), stride 1, SAME | yes | |
-| stride 2 | yes, only as conv + left-top 2×2 sampler | the window must be centred on even pixels: the graph has to be `Pad(1,1)` + VALID, the training rule (see below). A stride-2 **depthwise** runs at full resolution and the following 1×1 conv samples (`Fuse.Full` / `Fuse.Subsample`): the KPU does not pool in depthwise mode. Without such a 1×1 after it, the depthwise stays on the CPU |
+| stride 2, `Pad(1,1)` + 3×3 VALID or 1×1 VALID | yes: conv + left-top 2×2 sampler | windows centred on even pixels. A stride-2 **depthwise** runs at full resolution (`Fuse.Full`) and the next KPU layer samples (`Fuse.Subsample`): the KPU does not pool in depthwise mode |
+| stride 2, TF SAME 3×3 (even H and W) | yes, exact, no extra KPU work but a sampler | windows centred on odd pixels. The conv (regular or depthwise) runs at full resolution (`Fuse.Full`); the next KPU layer reads from one row down with the right-top sampler (`Fuse.OddSample`). That reader is the next 1×1 conv when there is one, else an identity 1×1 conv (`compile.Sampler`, exact: weights 1 and multiplier 1). The official MobileNetV1 exports need one Sampler, after the stem |
 | MaxPool2D / AvgPool2D 2×2 or 4×4, stride = kernel, directly after a regular conv | fused into that conv | `pool_type`; not after a depthwise conv (CPU) |
 | everything else (Add, Concat, FC, Mean/GAP, Softmax, Logistic, Mul, resizes) | no | CPU (qnet kernels) |
 
@@ -103,10 +104,9 @@ Requantisation is approximate:
 
 ## Training and export rules for the owner's models
 
-- **Stride 2** as `Pad(1,1)` + VALID, not TF SAME. SAME on even sizes centres windows on odd pixels; the KPU's left-top sampler takes even ones.
-  - For the first layer only, the compiler could shift the uploaded input by one pixel instead (open question 3).
+- **Stride 2:** TF SAME and `Pad(1,1)` + VALID both run exactly, on even sizes. SAME on an odd size is refused.
 - **Kernels** 1×1 and 3×3 only; depthwise multiplier 1.
-- **Sizes:** W ≤ 1024, H ≤ 512, C ≤ 1024. nncase rejects depthwise outputs smaller than 4×4: whether that is a hardware limit is open question 4.
+- **Sizes:** W ≤ 1024, H ≤ 256 per KPU layer input (silicon, see [[k210-kpu]]), C ≤ 1024. A full-resolution stride-2 layer's input is the full image, so 256 rows is also the limit for the input image until row-band tiling (K9g). nncase rejects depthwise outputs smaller than 4×4: whether that is a hardware limit is open question 4.
 - **Activations:** anything piecewise-linear in 16 segments: ReLU, ReLU6, clamps, LeakyReLU, hard-sigmoid/hard-swish approximations.
 - **Residual Add and Concat** run on the CPU and cost a read-back plus re-upload each. Prefer V1-style plain chains for KPU efficiency, or keep adds few.
 
@@ -114,7 +114,7 @@ Requantisation is approximate:
 
 **First end-to-end target** (owner, 2026-11-10, for the recorder firmware ER-K210-REC):
 - MobileNetV1 int8 TFLite at **256×256**, cut at a stated layer: by default the last pointwise conv `conv_pw_13`, 8×8×(1024·α).
-- α = 0.25 at first, a model built locally from the official weights with the Pad(1,1)+VALID export, until the owner's own model exists.
+- α = 0.25 at first, until the owner's own model exists: an official int8 MobileNetV1-0.25 export (TF SAME; `vww_96_int8.tflite`, resized to 256×256 by `kmodelc -input`) or a local Pad(1,1)+VALID one.
 - Its feature tensor, with its quantisation, is what the recorder stores.
 - At 256×256 the largest activation (128×128×16 for α = 0.25, 256 KiB) plus its input fits AI SRAM, so the target needs no row-band tiling.
 
@@ -125,13 +125,15 @@ Requantisation is approximate:
 | K9c | `compile.Lower` with `Fuse{Pad, Act, Pool}`: stride 2 via Pad(1,1)+VALID (or 1×1 VALID) + left-top, fused 2×2/4×4 max/average pools, fused ReLU/ReLU6 clamps | as K9b on random chains (≤ 1 LSB, ≤ 2 with average pool, which floors where qnet rounds), plus TF SAME stride 2 rejected |
 | K9d | `compile.Compile(g, kpu.New \| kpu.NewEmulated)` → `qnet.Backend`: segments, AI-SRAM plan, int8 NHWC ↔ uint8 CHW at boundaries | host: MobileNetV1-0.25 256×256 built with Pad(1,1)+VALID from `qnet.Layer` values (qnet's own builder uses TF SAME) + `SyntheticParams`, cut at `conv_pw_13`, one KPU segment, per layer ≤ 1 LSB vs qnet; `Run` allocates nothing |
 | K9e | The same graph on the UnitV | board vs host emulation per layer ≤ 1 LSB; ms/frame vs the K210 CPU at 256×256 |
-| K9f | **End-to-end target:** the int8 TFLite MobileNetV1-0.25 256×256 (Pad(1,1)+VALID export) through `tfl.Load` → KPU, cut at `conv_pw_13` | features vs the TFLite reference interpreter on camera frames (≤ 1 LSB per layer up to the cut); class agreement on frames with clear objects (K8c-3's deferred check) |
+| K9 SAME | TF SAME stride 2 (`Fuse.Full` + `Fuse.OddSample`, `compile.Sampler`); `compile.Kmodel`/`Cut`/`Resize`; `x/marshaller/kmodel` and `cmd/kmodelc` (TFLite → kmodel) | host: qnet's MobileNetV1-0.25 (TF SAME) one segment, per layer ≤ 1 LSB, Samplers exact; board: per layer equal to `Emulate`, final equal to the CPU runner |
+| K9f | **End-to-end target:** the int8 TFLite MobileNetV1-0.25 256×256 (TF SAME or Pad(1,1)+VALID export) through `tfl.Load` → KPU, cut at `conv_pw_13` | features vs the TFLite reference interpreter on camera frames (≤ 1 LSB per layer up to the cut); class agreement on frames with clear objects (K8c-3's deferred check) |
 | K9g | Row-band tiling; CPU Add/Concat between segments; FC-on-KPU option; LeakyReLU tables (two sloped segments); MobileNetV2 at QVGA | per layer ≤ 1 LSB vs CPU; fits 2 MiB |
 
 ## Open questions (resolved by measurement in the milestones)
 
 1. The KPU accumulator width: does a 3×3×1024 conv of extreme values overflow? (K9b: probe on the board.)
 2. What `first_stride`, `bypass_conv`, `full_add`, `ram_flag` and `kernel_offset` do. nncase leaves them 0. `first_stride` may be a true stride-2 path. (K9c: probe on the board.)
-3. TF-SAME stride 2 on the first layer via a one-pixel input shift at upload (K9c).
+3. ~~TF-SAME stride 2 on the first layer via a one-pixel input shift at upload.~~ Resolved: any SAME stride-2 layer runs exactly as full resolution + right-top sampler from one row down (pool_type 6 checked on silicon). An upload with pad rows is impossible at 256×256 anyway (258 rows exceed the 256-row limit).
 4. The ≥ 4×4 depthwise output limit: is it hardware or nncase? (K9c: probe on the board.)
 5. Whether BN's floor shift and the activation's 36-bit compare explain the ±1 LSB silicon difference. If so, the emulator can model the hardware exactly. (K9b, from the K8c per-layer data.)
+6. Hand-made probe layers (`kpupool`, `kpushape`: BN mul 2¹⁰ shift 15, activation shift 4) differ from `Emulate` on 2–3 % of outputs on silicon, while every compiler-lowered layer matched exactly. Which BN/activation settings the emulator models inexactly is open (K9g).

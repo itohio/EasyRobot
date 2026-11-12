@@ -10,12 +10,11 @@ import (
 )
 
 // mobileNetPad builds MobileNetV1 at width alpha and input size×size×3 the
-// KPU way: every stride-2 conv is Pad(1,1) + 3×3 VALID (TF's SAME stride 2
-// centres windows on odd pixels, which the KPU cannot sample). It is cut at
-// the last pointwise conv (conv_pw_13), with qnet's synthetic quantisation
-// and parameters. With sameStride2At ≥ 0, that depthwise block keeps TF
-// SAME stride 2 instead, a layer the KPU rejects.
-func mobileNetPad(t *testing.T, alpha float32, size int, sameStride2At int) *qnet.Graph {
+// nncase way: every stride-2 conv is Pad(1,1) + 3×3 VALID (windows on even
+// pixels; mobileNetSAME is the TF SAME variant). It is cut at the last
+// pointwise conv (conv_pw_13), with qnet's synthetic quantisation and
+// parameters.
+func mobileNetPad(t *testing.T, alpha float32, size int) *qnet.Graph {
 	t.Helper()
 	blocks := [13]struct{ c, s int }{
 		{64, 1}, {128, 2}, {128, 1}, {256, 2}, {256, 1}, {512, 2},
@@ -25,10 +24,10 @@ func mobileNetPad(t *testing.T, alpha float32, size int, sameStride2At int) *qne
 	lo, hi := qi8.ActReLU6(act.Scale, act.ZP)
 	var ls []qnet.Layer
 	s := qi8.Shape{H: size, W: size, C: 3}
-	conv := func(kind qnet.Kind, inQ qnet.Quant, outC, k, stride int, same bool) {
+	conv := func(kind qnet.Kind, inQ qnet.Quant, outC, k, stride int) {
 		in := s
 		pad := qi8.PaddingSame
-		if stride == 2 && !same {
+		if stride == 2 {
 			ls = append(ls, qnet.Layer{Kind: qnet.Pad, In: s, Out: qi8.Shape{H: s.H + 2, W: s.W + 2, C: s.C},
 				InQ: inQ, OutQ: inQ, Pads: [6]int{1, 1, 1, 1, 0, 0}, PadValue: inQ.ZP})
 			in = ls[len(ls)-1].Out
@@ -46,10 +45,10 @@ func mobileNetPad(t *testing.T, alpha float32, size int, sameStride2At int) *qne
 		ls = append(ls, l)
 		s = out
 	}
-	conv(qnet.Conv2D, qnet.MobileNetInputQuant, int(32*alpha), 3, 2, false)
-	for i, b := range blocks {
-		conv(qnet.DepthwiseConv2D, act, s.C, 3, b.s, i == sameStride2At)
-		conv(qnet.Conv2D, act, int(float32(b.c)*alpha), 1, 1, false)
+	conv(qnet.Conv2D, qnet.MobileNetInputQuant, int(32*alpha), 3, 2)
+	for _, b := range blocks {
+		conv(qnet.DepthwiseConv2D, act, s.C, 3, b.s)
+		conv(qnet.Conv2D, act, int(float32(b.c)*alpha), 1, 1)
 	}
 	g := &qnet.Graph{Layers: ls}
 	if err := qnet.SyntheticParams(g, 210); err != nil {
@@ -117,7 +116,7 @@ func TestMobileNetOnKPU(t *testing.T) {
 	if testing.Short() {
 		size = 64
 	}
-	g := mobileNetPad(t, 0.25, size, -1)
+	g := mobileNetPad(t, 0.25, size)
 	b, err := Compile(g, kpu.NewEmulated)
 	if err != nil {
 		t.Fatal(err)
@@ -138,7 +137,7 @@ func TestMobileNetOnKPU(t *testing.T) {
 	ks.Runner.OnLayer = func(i int) {
 		gr := ks.Groups[i]
 		s := g.Layers[gr.First+gr.Count-1].Out
-		if gr.Full {
+		if gr.Mode.Full {
 			s.H, s.W = 2*s.H, 2*s.W
 		}
 		buf := make([]byte, s.Len())
@@ -168,7 +167,7 @@ func TestMobileNetOnKPU(t *testing.T) {
 			y = dst
 		}
 		got := outs[i]
-		if gr.Full { // full-resolution depthwise: compare at even pixels
+		if gr.Mode.Full { // full-resolution depthwise: compare at even pixels
 			got = sampleEven(got, g.Layers[gr.First+gr.Count-1].Out)
 		}
 		for j := range y {
@@ -204,11 +203,26 @@ func TestMobileNetOnKPU(t *testing.T) {
 	}
 }
 
-// TestMixedGraph: a layer the KPU rejects (TF SAME stride 2) splits the
-// graph into KPU, CPU and KPU segments; the KPU-backed result follows the
-// CPU runner.
+// TestMixedGraph: a layer the KPU cannot run (a 3×3 stride-1 max pool)
+// splits the graph into KPU, CPU and KPU segments; the KPU-backed result
+// follows the CPU runner.
 func TestMixedGraph(t *testing.T) {
-	g := mobileNetPad(t, 0.25, 64, 3) // block 4's depthwise keeps SAME stride 2
+	base := mobileNetPad(t, 0.25, 64)
+	k := -1 // a pointwise conv in the middle, followed by a stride-1 depthwise
+	for i := len(base.Layers) / 3; i < len(base.Layers)-1; i++ {
+		if l, n := base.Layers[i], base.Layers[i+1]; l.Kind == qnet.Conv2D && l.KH == 1 && n.Kind == qnet.DepthwiseConv2D && n.StrideH == 1 {
+			k = i
+			break
+		}
+	}
+	prev := base.Layers[k]
+	pool := qnet.Layer{Kind: qnet.MaxPool2D, In: prev.Out, Out: prev.Out, InQ: prev.OutQ, OutQ: prev.OutQ,
+		KH: 3, KW: 3, StrideH: 1, StrideW: 1, Padding: qi8.PaddingSame}
+	ls := append(append(append([]qnet.Layer(nil), base.Layers[:k+1]...), pool), base.Layers[k+1:]...)
+	g := &qnet.Graph{Layers: ls}
+	if err := g.Validate(); err != nil {
+		t.Fatal(err)
+	}
 	b, err := Compile(g, kpu.NewEmulated)
 	if err != nil {
 		t.Fatal(err)
@@ -222,8 +236,8 @@ func TestMixedGraph(t *testing.T) {
 			kinds = append(kinds, g.Layers[s.First].Kind.String())
 		}
 	}
-	if len(b.Segments()) != 2 || len(r.Plan().Segments) != 3 || r.Plan().Segments[1].Backend != nil || g.Layers[r.Plan().Segments[1].First].StrideH != 2 {
-		t.Fatalf("plan %v; want KPU, the SAME stride-2 depthwise on the CPU, KPU", kinds)
+	if len(b.Segments()) != 2 || len(r.Plan().Segments) != 3 || r.Plan().Segments[1].Backend != nil || g.Layers[r.Plan().Segments[1].First].Kind != qnet.MaxPool2D {
+		t.Fatalf("plan %v; want KPU, the 3×3 max pool on the CPU, KPU", kinds)
 	}
 	in := randomInput(g.Layers[0].In.Len(), 2)
 	got, err := r.Run(in)
@@ -249,7 +263,7 @@ func TestMixedGraph(t *testing.T) {
 // ends a segment (its tensor must reach main memory), and qnet's planner
 // accepts the claims.
 func TestSegmentBoundaries(t *testing.T) {
-	base := mobileNetPad(t, 0.25, 32, -1)
+	base := mobileNetPad(t, 0.25, 32)
 	// Cut to the first 8 layers: Pad, conv0, dw1, pw1, Pad, dw2, pw2, dw3.
 	ls := append([]qnet.Layer(nil), base.Layers[:8]...)
 	cases := map[string]struct {
@@ -259,10 +273,9 @@ func TestSegmentBoundaries(t *testing.T) {
 		"plain chain": {qnet.Graph{Layers: ls}, [][2]int{{0, 8}}},
 		// pw1 (layer 3) is also a graph output: the first segment ends there.
 		"intermediate output": {qnet.Graph{Layers: ls, Outputs: []int{3, 7}}, [][2]int{{0, 4}, {4, 4}}},
-		// The stride-2 depthwise (layer 5) is a graph output: it cannot be
-		// lowered at full resolution with its sampler in the next 1×1, so it
-		// and its Pad stay on the CPU.
-		"stride-2 depthwise output": {qnet.Graph{Layers: ls, Outputs: []int{5, 7}}, [][2]int{{0, 4}, {6, 2}}},
+		// The stride-2 depthwise (layer 5) is a graph output: the next 1×1
+		// cannot sample it, so a Sampler does and the segment ends there.
+		"stride-2 depthwise output": {qnet.Graph{Layers: ls, Outputs: []int{5, 7}}, [][2]int{{0, 6}, {6, 2}}},
 	}
 	// dw1's output (layer 2) is read by a second depthwise (layer 3) and by
 	// an Add of both: the first segment must end at layer 2, and the second
@@ -310,31 +323,196 @@ func TestSegmentBoundaries(t *testing.T) {
 	}
 }
 
-// TestSegmentAddresses: in every compiled layer the input and output
-// regions of KPU memory do not overlap (the KPU reads its input while it
-// writes; the emulator would not notice an overlap).
-func TestSegmentAddresses(t *testing.T) {
-	g := mobileNetPad(t, 0.25, 256, -1)
+// TestSamplerEven: a stride-2 depthwise with its Pad(1,1) and nothing
+// after it runs at full resolution, and a Sampler takes the even pixels;
+// the output is within 1 LSB of qnet (the depthwise's rounding), as for any
+// single KPU layer.
+func TestSamplerEven(t *testing.T) {
+	base := mobileNetPad(t, 0.25, 32)
+	g := &qnet.Graph{Layers: append([]qnet.Layer(nil), base.Layers[4:6]...)} // Pad, dw2
 	b, err := Compile(g, kpu.NewEmulated)
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := b.Segments()[0].Model
-	for i, l := range m.Layers {
-		c, err := l.Conv()
+	if ss := b.Segments(); len(ss) != 1 || len(ss[0].Groups) != 2 || !ss[0].Groups[1].Mode.Sampler || ss[0].Groups[1].Mode.OddSample {
+		t.Fatalf("segments %+v; want the Full depthwise and an even Sampler", ss)
+	}
+	in := randomInput(g.Layers[0].In.Len(), 5)
+	got, err := newRunner(t, g, b).Run(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := newRunner(t, g).Run(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for j := range want {
+		if d := int(got[j]) - int(want[j]); d > 1 || d < -1 {
+			t.Fatalf("output %d: KPU %d, qnet %d", j, got[j], want[j])
+		}
+	}
+}
+
+// TestSegmentAddresses: in every compiled layer the input region of KPU
+// memory (read from SrcAddr, one row in for an OddSample reader) and the
+// output region do not overlap and stay inside KPU memory (the KPU reads
+// its input while it writes; the emulator would not notice either).
+func TestSegmentAddresses(t *testing.T) {
+	same := mobileNetSAME(t, 0.25, 256)
+	for name, g := range map[string]*qnet.Graph{
+		"Pad + VALID": mobileNetPad(t, 0.25, 256),
+		"TF SAME":     same,
+		// From pw1: the Full depthwise layers write at the top of memory,
+		// so their readers' extra row must be reserved there.
+		"TF SAME from pw1": {Layers: same.Layers[2:]},
+	} {
+		b, err := Compile(g, kpu.NewEmulated)
 		if err != nil {
 			t.Fatal(err)
 		}
-		a := m.Args(c)
-		iw, ih, ic := a.InShape()
-		ow, oh, oc := a.OutShape()
-		in0, in1 := int(a.SrcAddr()), int(a.SrcAddr())+lines(qi8.Shape{H: ih, W: iw, C: ic})
-		out0, out1 := int(a.DstAddr()), int(a.DstAddr())+lines(qi8.Shape{H: oh, W: ow, C: oc})
-		if in0 < out1 && out0 < in1 {
-			t.Errorf("layer %d: input lines [%d,%d) overlap output [%d,%d)", i, in0, in1, out0, out1)
-		}
-		if in1 > ramLines || out1 > ramLines {
-			t.Errorf("layer %d: beyond KPU memory", i)
+		m := b.Segments()[0].Model
+		for i, l := range m.Layers {
+			c, err := l.Conv()
+			if err != nil {
+				t.Fatal(err)
+			}
+			a := m.Args(c)
+			iw, ih, ic := a.InShape()
+			ow, oh, oc := a.OutShape()
+			in0, in1 := int(a.SrcAddr()), int(a.SrcAddr())+lines(qi8.Shape{H: ih, W: iw, C: ic})
+			out0, out1 := int(a.DstAddr()), int(a.DstAddr())+lines(qi8.Shape{H: oh, W: ow, C: oc})
+			if in0 < out1 && out0 < in1 {
+				t.Errorf("%s layer %d: input lines [%d,%d) overlap output [%d,%d)", name, i, in0, in1, out0, out1)
+			}
+			if in1 > ramLines || out1 > ramLines {
+				t.Errorf("%s layer %d: input [%d,%d) or output [%d,%d) beyond KPU memory", name, i, in0, in1, out0, out1)
+			}
 		}
 	}
+}
+
+// mobileNetSAME is qnet's own MobileNetV1 (TF SAME stride 2, like the
+// official TFLite model) cut at conv_pw_13, with synthetic parameters.
+func mobileNetSAME(t *testing.T, alpha float32, size int) *qnet.Graph {
+	t.Helper()
+	ls := make([]qnet.Layer, qnet.MobileNetV1Layers(0))
+	full, err := qnet.MobileNetV1(alpha, size, size, 0, ls)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := &qnet.Graph{Layers: full.Layers[:len(full.Layers)-1]} // drop the global average pool
+	for i := range g.Layers {
+		l := &g.Layers[i]
+		nw, nb, nr := l.ParamCounts()
+		l.Weights, l.Bias, l.Requant = make([]int8, nw), make([]int32, nb), make([]qi8.Requant, nr)
+	}
+	if err := qnet.SyntheticParams(g, 210); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	return g
+}
+
+// TestOfficialMobileNetSAME: TF SAME stride 2 runs exactly on the KPU
+// model. Each stride-2 layer runs at full resolution; the 1×1 conv after a
+// depthwise samples its odd pixels, and an identity Sampler those of the
+// stem (a 3×3 depthwise follows it). One segment of 28 KPU layers; per
+// layer within 1 LSB of qnet, the Sampler exact.
+func TestOfficialMobileNetSAME(t *testing.T) {
+	size := 256
+	if testing.Short() {
+		size = 64
+	}
+	g := mobileNetSAME(t, 0.25, size)
+	b, err := Compile(g, kpu.NewEmulated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newRunner(t, g, b)
+	if segs := r.Plan().Segments; len(segs) != 1 || segs[0].Backend != b {
+		var got []int
+		for _, s := range b.Segments() {
+			got = append(got, s.First, s.Count)
+		}
+		t.Fatalf("plan: %d segments (KPU %v); want one KPU segment of %d layers", len(segs), got, len(g.Layers))
+	}
+	ks := b.Segments()[0]
+	if len(ks.Groups) != 28 || !ks.Groups[1].Mode.Sampler || !ks.Groups[0].Mode.Full {
+		t.Fatalf("groups %+v; want the Full stem, its Sampler, then 26 more", ks.Groups)
+	}
+	outs := make([][]int8, len(ks.Groups))
+	ks.Runner.OnLayer = func(i int) {
+		gr := ks.Groups[i]
+		s := g.Layers[gr.First+gr.Count-1].Out
+		if gr.Mode.Full {
+			s.H, s.W = 2*s.H, 2*s.W
+		}
+		buf := make([]byte, s.Len())
+		if err := ks.Runner.LayerOutput(i, buf); err != nil {
+			t.Fatal(err)
+		}
+		outs[i] = chw2nhwc(buf, s)
+	}
+	in := randomInput(g.Layers[0].In.Len(), 1)
+	got, err := r.Run(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ks.Runner.OnLayer = nil
+	var hist [2]int
+	x := in
+	for i, gr := range ks.Groups {
+		y := x
+		for k := gr.First; k < gr.First+gr.Count; k++ {
+			l := &g.Layers[k]
+			dst := make([]int8, l.Out.Len())
+			if err := qnet.RunLayer(l, dst, y); err != nil {
+				t.Fatal(err)
+			}
+			y = dst
+		}
+		out := g.Layers[gr.First+gr.Count-1].Out
+		kpuOut := outs[i]
+		if gr.Mode.Full { // odd pixels of the full-resolution layer
+			kpuOut = sampleAt(kpuOut, out, 1)
+		}
+		for j := range y {
+			d := int(kpuOut[j]) - int(y[j])
+			d = max(d, -d)
+			if d > 1 || (d > 0 && gr.Mode.Sampler) { // the Sampler copies
+				t.Fatalf("KPU layer %d (graph %d..%d %v, mode %+v): output %d: KPU %d, qnet %d", i, gr.First, gr.First+gr.Count-1, g.Layers[gr.First].Kind, gr.Mode, j, kpuOut[j], y[j])
+			}
+			hist[d]++
+		}
+		x = kpuOut
+	}
+	cpu, err := newRunner(t, g).Run(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	same := 0
+	for j := range cpu {
+		if cpu[j] == got[j] {
+			same++
+		}
+	}
+	t.Logf("%d×%d SAME: %d KPU layers, per layer %d equal, %d at 1 LSB; final %d of %d equal to the CPU runner", size, size, len(ks.Groups), hist[0], hist[1], same, len(cpu))
+	if same != len(cpu) && hist[1] == 0 {
+		t.Errorf("final output differs from the CPU runner although every layer is exact")
+	}
+}
+
+// sampleAt takes the pixels (2y+off, 2x+off) of a full-resolution NHWC
+// tensor whose strided shape is half.
+func sampleAt(full []int8, half qi8.Shape, off int) []int8 {
+	out := make([]int8, half.Len())
+	w := 2 * half.W
+	for y := range half.H {
+		for x := range half.W {
+			copy(out[(y*half.W+x)*half.C:(y*half.W+x+1)*half.C], full[((2*y+off)*w+2*x+off)*half.C:])
+		}
+	}
+	return out
 }

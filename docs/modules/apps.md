@@ -4,7 +4,7 @@ group: "Devices and apps"
 status: partial
 tags: [easyrobot, apps, devices]
 workstream: [W3, W8, W1]
-packages: [cmd/elrs-rx, cmd/manipulator, cmd/monitor, cmd/cr30, cmd/spectrometer, cmd/calibrate, cmd/display, drivers/lidar, drivers/manipulator]
+packages: [cmd/elrs-rx, cmd/manipulator, cmd/monitor, cmd/cr30, cmd/spectrometer, cmd/calibrate, cmd/display, cmd/kmodelc, drivers/lidar, drivers/manipulator]
 test_result: none
 ---
 # Device apps and nodes (cmd/*, drivers/*)
@@ -23,6 +23,7 @@ test_result: none
 | `cmd/cr30` | 1035 | GoCV, cobra | CR30 colorimeter measurement UI (spectrum plot, colorscience) — driver in [[sensors]] | no: OpenCV |
 | `cmd/spectrometer` | ~3.9 k Go + ~6 k lines of SPEC/PLAN/REVIEW/WORK md | GoCV, cobra, serial | camera spectrometer: calibrate, measure via CR30, freerun; 5 subcommands return "not implemented yet" (`main.go:184-233`) | no: OpenCV + F2 (`ports`, `internal/acquirer`) |
 | `cmd/calibrate` | 1906 | GoCV, cobra | mono/stereo camera calibration (`cam-mono`, stereo) — vision side, see [[camera-io]]/[[vision]] | no: OpenCV |
+| `cmd/kmodelc` | 91 | pure Go: `x/marshaller/kmodel`, `qnet/tfl`, `drivers/kpu/compile` | int8 TFLite → K210 kmodel v3 for the KPU: `kmodelc [-input HxW] [-cut N] in.tflite out.kmodel`, `-list` shows the qnet layers; refuses (exit 1, nothing written) when a layer up to the cut cannot run on the KPU, naming it — see [[kpu-compiler]] | builds |
 | `cmd/display` | 2.0 k + DESIGN/README | GoCV, cobra | generic source→destination frame/tensor viewer; `destination.IntentDestination` is reused by `drivers/lidar` and `cmd/cr30` for dndm publishing | no: OpenCV |
 
 ## Public API

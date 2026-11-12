@@ -26,7 +26,7 @@ evidence: "go test -count=1 per package → all ok: root 6, csv 48, gob 4, graph
 | `graph` | 3750 / 512 | mmap graph store + executable trees — [[graph-marshaller-mmap-format]], [[graph-marshaller-op-registry]] |
 | `storage` | 1845 / 820 | `MappedStorage` back ends: file mmap (`!tinygo`, unix/windows/stub), memory, flash (`tinygo`), tar/tar.gz — [[mapped-storage-file-memory]], [[tar-archive-mapped-storage]] |
 
-Out of scope here: `audio` ([[audio-io]]), `tflite` ([[tflite]]), `gocv` and `v4l` ([[camera-io]]).
+Out of scope here: `audio` ([[audio-io]]), `tflite` ([[tflite]]), `gocv` and `v4l` ([[camera-io]]), `kmodel` (K210 KPU models, [[kpu-compiler]]).
 
 ## Public API
 

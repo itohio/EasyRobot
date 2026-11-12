@@ -185,7 +185,8 @@ func (p *ConvParams) EmulateInto(in, out, scratch []byte) error {
 	return pool(p.Pool, pix, w, h, oc, out, ow, oh)
 }
 
-// pool applies pool_type t (nncase's emulator: stride = kernel, no padding).
+// pool applies pool_type t (nncase's emulator: stride = kernel, no padding;
+// type 6, the right-top sampler, from nncase v0.2's K210 kernels).
 func pool(t int, src []byte, w, h, c int, dst []byte, ow, oh int) error {
 	if t == 0 {
 		if ow != w || oh != h {
@@ -196,7 +197,7 @@ func pool(t int, src []byte, w, h, c int, dst []byte, ow, oh int) error {
 	}
 	k := 2
 	switch t {
-	case 1, 2, 5:
+	case 1, 2, 5, 6:
 	case 3, 4:
 		k = 4
 	default:
@@ -206,7 +207,7 @@ func pool(t int, src []byte, w, h, c int, dst []byte, ow, oh int) error {
 		for oy := range oh {
 			for ox := range ow {
 				var mx, sum, n int
-				first := -1
+				first, rightTop := -1, 0
 				for ky := range k {
 					for kx := range k {
 						iy, ix := oy*k+ky, ox*k+kx
@@ -216,6 +217,9 @@ func pool(t int, src []byte, w, h, c int, dst []byte, ow, oh int) error {
 						v := int(src[(ch*h+iy)*w+ix])
 						if first < 0 {
 							first = v
+						}
+						if ky == 0 && kx == 1 {
+							rightTop = v
 						}
 						mx = max(mx, v)
 						sum += v
@@ -233,6 +237,8 @@ func pool(t int, src []byte, w, h, c int, dst []byte, ow, oh int) error {
 					v = sum / n
 				case 5:
 					v = first
+				case 6: // right-top: offset (row 0, column 1); 0 off the image (nncase v0.2)
+					v = rightTop
 				}
 				dst[(ch*oh+oy)*ow+ox] = byte(v)
 			}

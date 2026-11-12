@@ -113,7 +113,7 @@ func TestPool(t *testing.T) {
 	for _, c := range []struct {
 		typ  int
 		want []byte
-	}{{1, []byte{9, 6}}, {2, []byte{4, 3}}, {5, []byte{1, 2}}} {
+	}{{1, []byte{9, 6}}, {2, []byte{4, 3}}, {5, []byte{1, 2}}, {6, []byte{9, 2}}} {
 		dst := make([]byte, 2)
 		if err := pool(c.typ, src, 4, 2, 1, dst, 2, 1); err != nil {
 			t.Fatal(err)
