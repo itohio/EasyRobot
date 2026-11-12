@@ -48,6 +48,7 @@ func TestInitProgramsOutputSizeAndFormat(t *testing.T) {
 		{sensor.Mode{Resolution: sensor.QVGA, Format: sensor.YUV422}, false, imageModeYUV422, 80, 60},
 		{sensor.Mode{Resolution: sensor.QVGA, Format: sensor.RGB565}, true, imageModeRGB565, 80, 60}, // option is YUV-only
 		{sensor.Mode{Resolution: sensor.QVGA, Format: sensor.JPEG}, false, imageModeJPEG | imageModeHV, 80, 60},
+		{sensor.Mode{Resolution: sensor.Resolution{W: 256, H: 256}, Format: sensor.RGB888Planar}, false, imageModeRGB565, 64, 64}, // RGB565 on the bus; the capture side splits planes
 	}
 	for _, tt := range tests {
 		bus := &recBus{}
