@@ -171,8 +171,10 @@ func (d *Device) Probe() (id uint8, ok bool, err error) {
 }
 
 // Configure wakes the device and applies c. An out-of-range field gives
-// devices.ErrInvalidValue before anything is written; [Device.Read] scales
-// with c from then on.
+// devices.ErrInvalidValue before anything is written. The writes are not
+// atomic: on a bus error Configure stops, and the configuration it records
+// (and Read scales with) is what landed before the failure, so the scaling
+// always matches the ranges in the chip.
 func (d *Device) Configure(c Config) error {
 	if !c.valid() {
 		return devices.ErrInvalidValue
@@ -181,20 +183,32 @@ func (d *Device) Configure(c Config) error {
 	if c.DataReadyInterrupt {
 		intEnable = intDataReady
 	}
-	for _, w := range [...][2]uint8{
-		{RegPwrMgmt1, pwrClockPLLGyroX},
-		{RegSmplrtDiv, c.SampleRateDiv},
-		{RegConfig, uint8(c.DLPF)},
-		{RegGyroConfig, uint8(c.Gyro) << 3},
-		{RegAccelConfig, uint8(c.Accel) << 3},
-		{RegIntPinCfg, intLatch | intReadClear},
-		{RegIntEnable, intEnable},
-	} {
-		if err := d.write8(w[0], w[1]); err != nil {
-			return err
-		}
+	if err := d.write8(RegPwrMgmt1, pwrClockPLLGyroX); err != nil {
+		return err
 	}
-	d.cfg = c
+	if err := d.write8(RegSmplrtDiv, c.SampleRateDiv); err != nil {
+		return err
+	}
+	d.cfg.SampleRateDiv = c.SampleRateDiv
+	if err := d.write8(RegConfig, uint8(c.DLPF)); err != nil {
+		return err
+	}
+	d.cfg.DLPF = c.DLPF
+	if err := d.write8(RegGyroConfig, uint8(c.Gyro)<<3); err != nil {
+		return err
+	}
+	d.cfg.Gyro = c.Gyro
+	if err := d.write8(RegAccelConfig, uint8(c.Accel)<<3); err != nil {
+		return err
+	}
+	d.cfg.Accel = c.Accel
+	if err := d.write8(RegIntPinCfg, intLatch|intReadClear); err != nil {
+		return err
+	}
+	if err := d.write8(RegIntEnable, intEnable); err != nil {
+		return err
+	}
+	d.cfg.DataReadyInterrupt = c.DataReadyInterrupt
 	return nil
 }
 

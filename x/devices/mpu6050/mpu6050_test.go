@@ -142,7 +142,7 @@ func TestConfigure(t *testing.T) {
 }
 
 // TestBusErrorsPropagate: every operation returns the bus error; a
-// Configure that fails part way keeps the previous configuration.
+// Configure that fails part way records exactly the writes that landed.
 func TestBusErrorsPropagate(t *testing.T) {
 	nack := errors.New("nack")
 	b := &fakeBus{}
@@ -159,15 +159,52 @@ func TestBusErrorsPropagate(t *testing.T) {
 	if ok, err := d.DataReady(); err != nack || ok {
 		t.Errorf("DataReady: %v %v, want false and the error", ok, err)
 	}
+	// A Configure that fails part way leaves the chip with the writes that
+	// landed; Config() and the scaling must follow them (review S1: the gyro
+	// and accel range writes landing before a failed INT write left 1 g
+	// reading 8× low). Writes in order: PWR_MGMT_1, SMPLRT_DIV, CONFIG,
+	// GYRO_CONFIG, ACCEL_CONFIG, INT_PIN_CFG, INT_ENABLE.
+	target := Config{SampleRateDiv: 9, DLPF: DLPF44Hz, Gyro: Gyro2000DPS, Accel: Accel8G, DataReadyInterrupt: true}
 	for k := 1; k <= 7; k++ { // fail the k-th of Configure's 7 writes
-		b.err, b.failFrom, b.txs = nack, k, nil
-		if err := d.Configure(Config{Accel: Accel16G}); err != nack || len(b.txs) != k {
+		b := &fakeBus{}
+		d := New(b, 0)
+		b.err, b.failFrom = nack, k
+		if err := d.Configure(target); err != nack || len(b.txs) != k {
 			t.Errorf("write %d failing: err %v after %d writes, want the error at once", k, err, len(b.txs))
 		}
-		if d.Config() != (Config{}) {
-			t.Errorf("write %d failing: config %+v changed", k, d.Config())
+		want := Config{}
+		if k > 2 {
+			want.SampleRateDiv = target.SampleRateDiv
+		}
+		if k > 3 {
+			want.DLPF = target.DLPF
+		}
+		if k > 4 {
+			want.Gyro = target.Gyro
+		}
+		if k > 5 {
+			want.Accel = target.Accel
+		}
+		if d.Config() != want {
+			t.Errorf("write %d failing: Config() %+v, want what landed %+v", k, d.Config(), want)
+		}
+		// the scaling matches the range in the chip: 4096 counts read as 1 g
+		// once ±8 g landed, as 0.25 g before
+		b.err = nil
+		put16(b.regs[:], 0x3B+4, 4096)
+		var s Sample
+		if err := d.Read(&s); err != nil {
+			t.Fatal(err)
+		}
+		g := 9.80665 / 4.0
+		if k > 5 {
+			g = 9.80665
+		}
+		if math.Abs(float64(s.Accel[2])-g) > 1e-4 {
+			t.Errorf("write %d failing: accel z %v m/s², want %v for the range in the chip", k, s.Accel[2], g)
 		}
 	}
+	d = New(b, 0)
 	// a ready flag read before the failure must not leak into a failed read
 	b.err, b.failFrom = nil, 0
 	b.regs[0x3A] = 0x01
