@@ -113,7 +113,7 @@ The knowledge engine is its own Go module and is catalogued in [[knowledge-engin
 
 Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs tagged with the ticket. The defects themselves are in the linked notes and in [[todo]].
 
-<!-- vault:tickets h=438094d87e9c -->
+<!-- vault:tickets h=35e2f2a2c498 -->
 
 | Ticket | Title | Status | Workstream | Open p1 |
 |---|---|---|---|---|
@@ -159,6 +159,19 @@ Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs 
 | [[ER-045-k210-native-int8-benchmark\|ER-045]] | Native int8 conv/dot/GEMV benchmark on one K210 hart | blocked | K210-nn | 0 |
 | [[ER-046-k210-kpu-kmodel-runner\|ER-046]] | KPU kmodel v3 run through a pure-Go runner | ready | K210-nn | 0 |
 | [[ER-047-k210-feature-tensor-out\|ER-047]] | UnitV camera → KPU → feature tensor stream | blocked | K210-camera, K210-nn, W4 | 0 |
+| [[ER-048-sim-proto-contract\|ER-048]] | Sim S1: `types/sim` protobuf contract — Command, State, ModelLoad | proposed | W3, W6 | 0 |
+| [[ER-049-sim-go-interface\|ER-049]] | Sim S1: Go `Sim` interface and a backend conformance suite | proposed | W3, W6 | 0 |
+| [[ER-050-sim-lockstep-client\|ER-050]] | Sim S1: lockstep client — `Sim` over length-prefixed protobuf on a Unix socket or TCP | proposed | W3, W6 | 0 |
+| [[ER-051-sim-mujoco-sidecar\|ER-051]] | Sim S1: MuJoCo sidecar — load MJCF, step in lockstep, fill State, headless with an optional viewer | proposed | W3, W6 | 0 |
+| [[ER-052-sim-robot-description\|ER-052]] | Sim S1: robot description structs — a wheeled base with masses and motor torque and speed | proposed | W3, W6 | 0 |
+| [[ER-053-sim-mjcf-exporter\|ER-053]] | Sim S1: MJCF exporter — wheeled description → MJCF bytes with named actuators and sensors | proposed | W3, W6 | 0 |
+| [[ER-054-sim-sensor-models\|ER-054]] | Sim S1: sensor models — IMU noise and wheel-encoder quantisation from ground truth | proposed | W3, W6 | 0 |
+| [[ER-055-sim-kinematic-fake\|ER-055]] | Sim S1: kinematic fake backend — a pure-Go differential integrator implementing `Sim` for CI | proposed | W3, W6 | 0 |
+| [[ER-056-sim-determinism-speed\|ER-056]] | Sim S1: determinism and speed checks with the note's kill criteria | proposed | W3, W6 | 0 |
+| [[ER-057-sim-wheeled-controller-adapter\|ER-057]] | Sim S1: `simbase` — the sim implementation of `wheeled.Base` and `Clock` over `Sim` | proposed | W3, W6 | 0 |
+| [[ER-058-sim-s1-wheeled-run\|ER-058]] | Sim S1: wheeled run, the house — a differential robot driven through `wheeled.Base` with logged results, teleop and kill criteria | proposed | W3, W6 | 0 |
+| [[ER-059-sim-robot-base-and-clock\|ER-059]] | Sim S1: robot-facing `wheeled.Base` interface and `Clock` — the seam between sim and real robot | proposed | W3, W6 | 0 |
+| [[ER-060-sim-wheel-odometry\|ER-060]] | Sim S1: wheel odometry — encoder ticks → 2D pose from the robot description | proposed | W3, W6 | 0 |
 
 <!-- /vault:tickets -->
 
