@@ -177,7 +177,7 @@ func (r *Runner) conv(l kmodel.Layer, first bool, input, ram []byte, t *LayerTim
 	a.SetBN(r.base + c.BNOffset)
 	a.SetAct(r.base + c.ActOffset)
 	a.SetIntEnable()
-	a.SetSendDataOut(false)
+	_ = a.SetSendDataOut(false) // clearing never fails
 	t0 := r.e.now()
 	if err := r.e.conv(a); err != nil {
 		return err

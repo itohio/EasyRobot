@@ -44,13 +44,25 @@ func (a *Args) OutShape() (w, h, c int) {
 func (a *Args) SetIntEnable() { a[0] |= 1 }
 
 // SetSendDataOut sets or clears dma_parameter.send_data_out (stream the
-// output through the KPU output FIFO as well).
-func (a *Args) SetSendDataOut(on bool) {
+// output through the KPU output FIFO as well). Streaming needs the
+// per-channel byte count W·H − 1 in 16 bits: on an output of more than
+// 65,536 pixels per channel it returns ErrFormat.
+func (a *Args) SetSendDataOut(on bool) error {
+	if on {
+		if w, h, _ := a.OutShape(); w*h > maxChannelBytes {
+			return rangeErr("send_data_out on a per-channel output of", w*h)
+		}
+	}
 	a[11] &^= 1
 	if on {
 		a[11] |= 1
 	}
+	return nil
 }
+
+// maxChannelBytes is the largest per-channel output dma_parameter's 16-bit
+// channel_byte_num (value − 1) holds.
+const maxChannelBytes = 1 << 16
 
 // SetWeights sets kernel_load_cfg.para_start_addr.
 func (a *Args) SetWeights(addr uint32) { a[5] = a[5]&0xffff_ffff | uint64(addr)<<32 }
@@ -126,15 +138,22 @@ func (a *Args) SetInShape(w, h, c int) error {
 
 // SetOutShape sets the output width, height and channels (limits as
 // SetInShape) and the matching dma_parameter byte counts (W·H per channel,
-// W·H·C in all).
+// W·H·C in all). The 16-bit per-channel count only matters for
+// send_data_out: above 65,536 pixels per channel it is refused with
+// send_data_out on, and saturated at 65,535 with it off, where the KPU
+// ignores it (a 300×220 output, 66,000 pixels, runs and matches the Go
+// model on the UnitV: ER-K210-K9 evidence, kpushape).
 func (a *Args) SetOutShape(w, h, c int) error {
 	if err := checkShape(w, h, c); err != nil {
 		return err
 	}
+	if w*h > maxChannelBytes && a[11]&1 != 0 {
+		return rangeErr("per-channel output with send_data_out on", w*h)
+	}
 	setBits(&a[3], 32, 10, uint64(w-1))
 	setBits(&a[3], 42, 9, uint64(h-1))
 	setBits(&a[2], 32, 10, uint64(c-1))
-	setBits(&a[11], 16, 16, uint64(w*h-1))
+	setBits(&a[11], 16, 16, uint64(min(w*h, maxChannelBytes)-1))
 	setBits(&a[11], 32, 32, uint64(w*h*c-1))
 	return nil
 }

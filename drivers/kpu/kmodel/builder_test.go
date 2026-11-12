@@ -312,3 +312,36 @@ func TestSettersRejectOutOfRange(t *testing.T) {
 		t.Errorf("limits read back as %d×%d×%d", w, h, c)
 	}
 }
+
+// TestChannelByteNum: dma_parameter.channel_byte_num is 16 bits (W·H − 1
+// per channel) and only matters with send_data_out on. An output of more
+// than 65,536 pixels per channel is refused while send_data_out is on, in
+// either order of the two setters; with it off the shape is accepted.
+func TestChannelByteNum(t *testing.T) {
+	a := NewArgs()
+	if err := a.SetOutShape(256, 256, 1); err != nil {
+		t.Fatalf("65,536 pixels: %v", err)
+	}
+	if got := a[11] >> 16 & 0xffff; got != 65535 {
+		t.Errorf("channel_byte_num %d, want 65535", got)
+	}
+	if err := a.SetSendDataOut(true); err != nil {
+		t.Fatalf("send_data_out with 65,536 pixels: %v", err)
+	}
+	if err := a.SetOutShape(512, 256, 1); !errors.Is(err, ErrFormat) {
+		t.Errorf("131,072 pixels with send_data_out on: err %v, want ErrFormat", err)
+	}
+	if w, h, _ := a.OutShape(); w != 256 || h != 256 {
+		t.Errorf("rejected SetOutShape changed the shape to %d×%d", w, h)
+	}
+	b := NewArgs()
+	if err := b.SetOutShape(512, 256, 1); err != nil {
+		t.Fatalf("131,072 pixels with send_data_out off: %v", err)
+	}
+	if err := b.SetSendDataOut(true); !errors.Is(err, ErrFormat) {
+		t.Errorf("send_data_out on a 131,072-pixel output: err %v, want ErrFormat", err)
+	}
+	if b[11]&1 != 0 {
+		t.Error("rejected SetSendDataOut set the bit")
+	}
+}
