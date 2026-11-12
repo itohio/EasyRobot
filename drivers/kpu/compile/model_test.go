@@ -197,6 +197,30 @@ func TestKmodelRefusalReasons(t *testing.T) {
 				KH: 2, KW: 2, StrideH: 2, StrideW: 2, Padding: qi8.PaddingValid, TiesUp: true}
 			return &qnet.Graph{Layers: append(append([]qnet.Layer(nil), g.Layers...), pool)}
 		}(), "rounds ties up"},
+		// A Pad whose next layer does not read it: the Pad's own reason,
+		// not that layer's (review recheck of 881d789).
+		{"Pad not read by the next layer", func() *qnet.Graph {
+			s := qi8.Shape{H: 8, W: 8, C: 4}
+			pad := qnet.Layer{Kind: qnet.Pad, In: s, Out: qi8.Shape{H: 10, W: 10, C: 4}, InQ: ruleQ, OutQ: ruleQ, Pads: [6]int{1, 1, 1, 1, 0, 0}}
+			c2 := ruleConv(s, 4, 3)
+			c2.From = []int{0} // the conv after the Pad reads layer 0
+			c3 := ruleConv(pad.Out, 4, 3)
+			c3.Padding, c3.Out, c3.From = qi8.PaddingValid, s, []int{1} // the Pad's reader
+			add := qnet.Layer{Kind: qnet.Add, From: []int{2, 3}, In: s, Out: s, InQ: ruleQ, In2Q: ruleQ, OutQ: ruleQ}
+			add.ActMin, add.ActMax = qi8.ActNone()
+			rq, err := qi8.QuantizeAddMultipliers(0.5, 0.5)
+			if err != nil {
+				t.Fatal(err)
+			}
+			add.AddRQ = rq
+			return ruleGraph(t, &qnet.Graph{Layers: []qnet.Layer{ruleConv(s, 4, 3), pad, c2, c3, add}})
+		}(), "Pad lowers only"},
+		// A trailing Pad has no layer after it to borrow a reason from.
+		{"trailing Pad", func() *qnet.Graph {
+			s := qi8.Shape{H: 8, W: 8, C: 4}
+			pad := qnet.Layer{Kind: qnet.Pad, In: s, Out: qi8.Shape{H: 10, W: 10, C: 4}, InQ: ruleQ, OutQ: ruleQ, Pads: [6]int{1, 1, 1, 1, 0, 0}}
+			return ruleGraph(t, &qnet.Graph{Layers: []qnet.Layer{ruleConv(s, 4, 3), pad}})
+		}(), "Pad lowers only"},
 	} {
 		_, _, err := Kmodel(c.g)
 		if !errors.Is(err, ErrUnsupported) || !strings.Contains(err.Error(), c.want) {

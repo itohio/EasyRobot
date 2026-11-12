@@ -190,7 +190,7 @@ func dvpConfigure(format uint32, w, h uint16, ai, display bool) {
 	cfg |= format << kendryte.DVP_DVP_CFG_FORMAT_Pos
 	// SDK dvp_set_image_size: bursts per line = width/8/4 with 4-beat bursts.
 	cfg |= uint32(w/32) << kendryte.DVP_DVP_CFG_HREF_BURST_NUM_Pos
-	cfg |= uint32(h) << kendryte.DVP_DVP_CFG_LINE_NUM_Pos
+	cfg |= uint32(h) << kendryte.DVP_DVP_CFG_LINE_NUM_Pos & kendryte.DVP_DVP_CFG_LINE_NUM_Msk // h ≤ 1023 (checkDVPFormat)
 	if ai {
 		cfg |= kendryte.DVP_DVP_CFG_AI_OUTPUT_ENABLE
 	}

@@ -63,9 +63,13 @@ func Kmodel(g *qnet.Graph) ([]byte, Info, error) {
 func reason(g *qnet.Graph, i int) error {
 	l := &g.Layers[i]
 	var f Fuse
-	if l.Kind == qnet.Pad && i+1 < len(g.Layers) {
-		// A Pad is lowered with the conv after it: that conv's refusal is
-		// the reason (e.g. the 256-row input limit).
+	if l.Kind == qnet.Pad {
+		// A Pad is lowered with the conv after it, when that conv reads it:
+		// then the conv's refusal is the reason (e.g. the 256-row input
+		// limit).
+		if i+1 >= len(g.Layers) || producer(g, i+1) != i {
+			return fmt.Errorf("%w: a Pad lowers only together with the conv right after it that reads it", ErrUnsupported)
+		}
 		f.Pad, l = l, &g.Layers[i+1]
 	}
 	if l.Kind == qnet.AvgPool2D && l.TiesUp {

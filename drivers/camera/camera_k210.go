@@ -124,7 +124,7 @@ func powerDown() {
 // the DVP up for that frame size. Formats: Y8 (sensor YUV422, the DVP keeps
 // Y), RGB565, RGB888Planar (sensor RGB565, the DVP's AI output) and JPEG.
 func Open(cfg Config, pins Pins) (*Camera, error) {
-	if err := checkFormat(cfg); err != nil {
+	if err := checkDVPFormat(cfg); err != nil {
 		return nil, err
 	}
 	id, err := Identify(cfg, pins)
@@ -159,7 +159,7 @@ func Open(cfg Config, pins Pins) (*Camera, error) {
 // the sensor is half programmed, so the camera is marked unusable: Capture
 // returns ErrFormat until a successful Reconfigure.
 func (c *Camera) Reconfigure(cfg Config) error {
-	if err := checkFormat(cfg); err != nil {
+	if err := checkDVPFormat(cfg); err != nil {
 		return err
 	}
 	if err := c.drv.Init(cfg.Mode); err != nil {
@@ -216,7 +216,7 @@ func captureOne() error { return dvpCaptureOne(time.Second) }
 // alias. RGB565 comes out as little-endian 16-bit pixels in raster order;
 // JPEG from FF D8 to FF D9, or ErrIncomplete.
 func (c *Camera) Capture(buf []byte) (Frame, error) {
-	if err := checkFormat(c.cfg); err != nil {
+	if err := checkDVPFormat(c.cfg); err != nil {
 		return Frame{}, err // after a failed Reconfigure
 	}
 	n := FrameSize(c.cfg)
