@@ -24,8 +24,9 @@
 //     ErrNoDriver; driver without controls ErrNoControls; a JPEG frame
 //     without its FF D8 or FF D9 marker ErrIncomplete.
 //   - A failed Open leaves the sensor powered down.
-//   - Raw formats (Y8, RGB565, YUV422): Capture needs FrameSize(cfg) bytes;
-//     RGB565 comes out little-endian, pixels in raster order.
+//   - Raw formats (Y8, RGB565, RGB888Planar, YUV422): Capture needs
+//     FrameSize(cfg) bytes; RGB565 comes out little-endian, pixels in raster
+//     order; RGB888Planar as the R, G and B planes, each W×H in raster order.
 //   - JPEG: FrameSize returns 0 because the sensor decides the size. The
 //     caller passes a buffer of the backend's maximum JPEG size (documented
 //     per backend); Frame.Data is truncated to the JPEG's length, from FF D8
@@ -85,6 +86,8 @@ func FrameSize(cfg Config) int {
 		n = px
 	case sensor.RGB565, sensor.YUV422:
 		n = 2 * px
+	case sensor.RGB888Planar:
+		n = 3 * px
 	default:
 		return 0
 	}

@@ -63,8 +63,9 @@ func Identify(cfg Config, pins Pins) (sensor.ID, error) {
 	return sensor.Identify(sccbBus{})
 }
 
-// The K210 DVP path captures Y8 and RGB565 at widths that are multiples of
-// 32, and OV2640 JPEG at any sensor size up to 1600×1200; other formats and
+// The K210 DVP path captures Y8, RGB565 and RGB888Planar (the DVP's AI
+// output, the KPU's input layout) at widths that are multiples of 32, and
+// OV2640 JPEG at any sensor size up to 1600×1200; other formats and
 // sizes give ErrFormat. Buffers must be 8-byte aligned (ErrBufAlign).
 var _ Backend = (*Camera)(nil)
 
@@ -121,14 +122,10 @@ func powerDown() {
 
 // Open powers the sensor up, identifies it, configures it for cfg and sets
 // the DVP up for that frame size. Formats: Y8 (sensor YUV422, the DVP keeps
-// Y) and RGB565.
+// Y), RGB565, RGB888Planar (sensor RGB565, the DVP's AI output) and JPEG.
 func Open(cfg Config, pins Pins) (*Camera, error) {
-	jpeg := cfg.Format == sensor.JPEG
-	if cfg.Format != sensor.Y8 && cfg.Format != sensor.RGB565 && !jpeg {
-		return nil, ErrFormat
-	}
-	if cfg.W == 0 || cfg.H == 0 || (!jpeg && cfg.W%32 != 0) {
-		return nil, ErrFormat
+	if err := checkFormat(cfg); err != nil {
+		return nil, err
 	}
 	id, err := Identify(cfg, pins)
 	if err != nil {
@@ -146,21 +143,56 @@ func Open(cfg Config, pins Pins) (*Camera, error) {
 		powerDown()
 		return nil, ErrNoDriver
 	}
-	if err := s.Init(cfg.Mode); err != nil {
+	c := &Camera{id: id, drv: s}
+	if err := c.Reconfigure(cfg); err != nil {
 		powerDown()
 		return nil, err
 	}
-	c := &Camera{cfg: cfg, id: id, drv: s}
-	switch {
-	case cfg.Format == sensor.Y8:
-		c.planes = make([]byte, 2*int(cfg.W)*int(cfg.H))
+	return c, nil
+}
+
+func checkFormat(cfg Config) error {
+	switch cfg.Format {
+	case sensor.Y8, sensor.RGB565, sensor.RGB888Planar:
+		if cfg.W == 0 || cfg.H == 0 || cfg.W%32 != 0 {
+			return ErrFormat
+		}
+	case sensor.JPEG:
+		if cfg.W == 0 || cfg.H == 0 {
+			return ErrFormat
+		}
+	default:
+		return ErrFormat
+	}
+	return nil
+}
+
+// Reconfigure switches an open camera to cfg (cfg.XCLK is ignored): the
+// sensor is re-initialised and the DVP set up for the new format and size,
+// without powering the sensor down. On error the camera is unusable until a
+// successful Reconfigure.
+func (c *Camera) Reconfigure(cfg Config) error {
+	if err := checkFormat(cfg); err != nil {
+		return err
+	}
+	if err := c.drv.Init(cfg.Mode); err != nil {
+		return err
+	}
+	c.cfg = cfg
+	switch cfg.Format {
+	case sensor.Y8:
+		if n := 2 * int(cfg.W) * int(cfg.H); len(c.planes) < n {
+			c.planes = make([]byte, n)
+		}
 		dvpConfigure(kendryte.DVP_DVP_CFG_FORMAT_Y, cfg.W, cfg.H, true, false)
-	case jpeg: // the display output stores bytes as they come: lines of jpegChunk
+	case sensor.RGB888Planar:
+		dvpConfigure(kendryte.DVP_DVP_CFG_FORMAT_RGB, cfg.W, cfg.H, true, false)
+	case sensor.JPEG: // the display output stores bytes as they come: lines of jpegChunk
 		dvpConfigure(kendryte.DVP_DVP_CFG_FORMAT_RGB, jpegChunk/2, jpegLines, false, true)
 	default:
 		dvpConfigure(kendryte.DVP_DVP_CFG_FORMAT_RGB, cfg.W, cfg.H, false, true)
 	}
-	return c, nil
+	return nil
 }
 
 // Sensor returns the identified sensor.
@@ -205,11 +237,17 @@ func (c *Camera) Capture(buf []byte) (Frame, error) {
 	if physAddr(buf)&7 != 0 || !inSRAM(buf) {
 		return Frame{}, ErrBufAlign
 	}
-	if c.cfg.Format == sensor.Y8 {
+	switch c.cfg.Format {
+	case sensor.Y8:
 		kendryte.DVP.R_ADDR.Set(physAddr(buf))
 		kendryte.DVP.G_ADDR.Set(physAddr(c.planes[:n]))
-		kendryte.DVP.B_ADDR.Set(physAddr(c.planes[n:]))
-	} else {
+		kendryte.DVP.B_ADDR.Set(physAddr(c.planes[n : 2*n]))
+	case sensor.RGB888Planar:
+		p := n / 3
+		kendryte.DVP.R_ADDR.Set(physAddr(buf[:p]))
+		kendryte.DVP.G_ADDR.Set(physAddr(buf[p : 2*p]))
+		kendryte.DVP.B_ADDR.Set(physAddr(buf[2*p:]))
+	default:
 		kendryte.DVP.RGB_ADDR.Set(physAddr(buf))
 	}
 	if err := dvpCaptureOne(time.Second); err != nil {

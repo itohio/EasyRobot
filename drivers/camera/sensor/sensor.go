@@ -13,6 +13,10 @@ const (
 	RGB565                   // 16-bit RGB
 	YUV422                   // YUYV
 	JPEG                     // on-sensor JPEG (OV2640, OV3660, OV5640)
+	// RGB888Planar is a capture-side format: the sensor sends RGB565 and
+	// the capture engine writes three 8-bit planes, R then G then B (the
+	// K210 DVP's AI output, the KPU's CHW input layout).
+	RGB888Planar
 )
 
 // Resolution is an image size in pixels.

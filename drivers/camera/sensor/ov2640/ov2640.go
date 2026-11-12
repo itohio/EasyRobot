@@ -222,7 +222,7 @@ var (
 )
 
 // ErrMode is returned for a size or format this driver does not set up.
-var ErrMode = errors.New("ov2640: unsupported mode (sizes up to 1600×1200, multiples of 4; Y8, RGB565, YUV422, JPEG)")
+var ErrMode = errors.New("ov2640: unsupported mode (sizes up to 1600×1200, multiples of 4; Y8, RGB565, RGB888Planar, YUV422, JPEG)")
 
 // Options are host-specific choices.
 type Options struct {
@@ -265,12 +265,13 @@ func (s *Sensor) write(regs []reg) error {
 }
 
 // Init soft-resets the sensor and configures it for m. Y8 uses the YUV422
-// sensor output; the capture backend keeps only Y. m.TestPattern turns on
+// sensor output; the capture backend keeps only Y. RGB888Planar uses the
+// RGB565 output; the capture backend splits it into planes. m.TestPattern turns on
 // the sensor's colour bars (COM7 bit 1). The sensor mode is the smallest of
 // CIF (400×296), SVGA (800×600) and UXGA (1600×1200) that holds m.
 func (s *Sensor) Init(m sensor.Mode) error {
 	switch m.Format {
-	case sensor.RGB565, sensor.YUV422, sensor.Y8, sensor.JPEG:
+	case sensor.RGB565, sensor.RGB888Planar, sensor.YUV422, sensor.Y8, sensor.JPEG:
 	default:
 		return ErrMode
 	}
@@ -306,7 +307,7 @@ func (s *Sensor) SetQuality(q uint8) error {
 func (s *Sensor) setFormat(f sensor.Format) error {
 	var regs []reg
 	switch f {
-	case sensor.RGB565:
+	case sensor.RGB565, sensor.RGB888Planar:
 		regs = settingsRGB565[:]
 	case sensor.YUV422, sensor.Y8:
 		regs = settingsYUV422[:]

@@ -24,6 +24,7 @@ func TestFrameSize(t *testing.T) {
 		{cfg(160, 120, sensor.Y8), 19200},
 		{cfg(320, 240, sensor.RGB565), 153600},
 		{cfg(320, 240, sensor.YUV422), 153600},
+		{cfg(256, 256, sensor.RGB888Planar), 196608},
 		{cfg(320, 240, sensor.JPEG), 0},
 		{cfg(320, 240, 0), 0},
 		{cfg(0, 240, sensor.Y8), 0},
