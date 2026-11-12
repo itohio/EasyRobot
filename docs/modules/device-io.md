@@ -17,14 +17,16 @@ test_result: none
 |---|---|---|---|
 | `pin.go`, `i2c.go`, `spi.go`, `serial.go`, `pwm.go`, `errors.go`, `spectrometer.go` | 27/36/14/39/32/31/39 | — | interfaces, `SerialConfig`, shared errors, `Spectrometer` (see [[sensors]]) |
 | `pin_linux.go` | 211 | `!tinygo && linux` | sysfs GPIO (`/sys/class/gpio`), epoll edge interrupts |
-| `i2c_linux.go` | 180 | `!tinygo && linux` | `/dev/i2c-N` + `I2C_SLAVE` ioctl; target mode returns `ErrNotSupported` |
+| `i2c_linux.go` | 170 | `!tinygo && linux` | `/dev/i2c-N` + `I2C_SLAVE` ioctl; target mode returns `ErrNotSupported` |
 | `spi_linux.go` | 185 | `!tinygo && linux` | `/dev/spidevB.C` ioctls (mode, bits, speed, `SPI_IOC_MESSAGE`) |
 | `pwm_linux.go` | 275 | `!tinygo && linux` | sysfs PWM (`/sys/class/pwm`), RPi GPIO→pwmchip table |
 | `serial_linux.go` | 261 | `!tinygo && linux` | termios raw 8N1, custom baud via `BOTHER`, `ListSerialPorts` |
 | `serial_windows.go` | 218 | `!tinygo && windows` | `CreateFile` COM ports, registry enumeration |
 | `raspberrypi.go` | 156 | `!tinygo && linux` | RPi device-path helpers and enable checks |
-| `*_tinygo.go` (pin/i2c/spi/serial) | 25/18/5/5 | `tinygo` | type aliases to `machine` constants; "use machine.X directly" |
-| `*_stub.go` (pin/i2c/spi/serial) | 43/14/24/3 | `!tinygo && !linux` (serial: `&& !windows`) | constants + non-conforming stubs |
+| `pin_tinygo.go` | 39 | `tinygo` | edge constants aliased to `machine`; `TinyGoPin` adapter (`NewTinyGoPin`) |
+| `i2c_tinygo.go`, `spi_tinygo.go`, `serial_tinygo.go` | 17/5/5 | `tinygo` | target events aliased to `machine` (`I2CReceive/I2CRequest/I2CFinish`); "use machine.X directly" |
+| `i2c_event.go` (+ `i2c_event_test.go`) | 16 (+14) | `!tinygo` | the host I2C target events, TinyGo's names and values 0/1/2 (pinned by the test) |
+| `*_stub.go` (pin/spi/serial) | 43/24/3 | `!tinygo && !linux` (serial: `&& !windows`) | constants + non-conforming stubs |
 | `README.md`, `INTERFACES.md` | 214/247 | — | design docs |
 
 ## Public API
@@ -56,7 +58,7 @@ No algorithm notes (glue code). Non-trivial pieces reviewed here: Linux epoll GP
 - **linux** (any arch): builds (`GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build ./x/devices/...` OK, 2026-11-09). Uses `syscall` + `golang.org/x/sys/unix`, no CGO.
 - **windows**: core builds; only `encoder`/`motor` fail (F1 — stub applies to windows too; cross-build 2026-11-09).
 - **darwin**: root package builds but provides **no Serial, I2C, Pin or PWM implementation** — `serial_stub.go` is empty, `pin_stub.go` `stubPin` does not satisfy `Pin` (methods `High() error`, `Read()`, `SetInterrupt(…, func())`), `NewPin(uint8) *stubPin` has a different signature from linux `NewPin(int) (*LinuxPin, error)`. Hence F2 (`cmd/monitor`, `cmd/spectrometer/*` need `NewSerialWithConfig`/`ListSerialPorts`) and every serial app is linux/windows-only. `README.md:28` claims macOS hosts work.
-- **TinyGo**: the interfaces are meant to be satisfied by `machine.*`, but `machine.Pin.SetInterrupt` takes `func(machine.Pin)` while `devices.Pin` requires `func(devices.Pin)`, so `machine.Pin` is **not** a `devices.Pin`; `NewTinyGoPin` (`pin_tinygo.go:23-25`) and `servo.pinNumberToPin` would not compile [INFERENCE: TinyGo signature from memory; TinyGo not run]. `machine.I2C`, `machine.SPI`, `machine.UART` match their interfaces [INFERENCE]. Board tags in the repo: `rp2040` (drivers/lidar, cmd/elrs-rx), `esp32` (cmd/elrs-rx), `sam && xiao` (x/devices/xiao, drivers/manipulator, cmd/elrs-rx).
+- **TinyGo**: `machine.Pin.SetInterrupt` takes `func(machine.Pin)` while `devices.Pin` requires `func(devices.Pin)`, so `machine.Pin` is not a `devices.Pin`; `NewTinyGoPin` returns the adapter `TinyGoPin` (`pin_tinygo.go:21-39`, the `Pin` value made once when the interrupt is set; three setup allocations, none in the handler), also used by `servo.pinNumberToPin`. The I2C target events are TinyGo's `I2CReceive`/`I2CRequest`/`I2CFinish` (aliased on TinyGo, `i2c_tinygo.go`; one host definition, `i2c_event.go`); the old `I2CTargetEvent{Start,Stop,Address,Data,Error}` names did not exist in `machine` and broke every TinyGo build that imported `x/devices`. **Per package, tinygo 0.43 (2026-11-12):** the root package and `servo` build (tufty2040, compiled through a main that imports them); `encoder` and `motor` still fail (`encoder/tinygo.go:9`, undefined `devices.PinConfig`), and `xiao` fails on `-target=xiao` (`xiao_pwm.go:91,143,198`), both older than the adapter. `machine.I2C` satisfies `devices.I2C`; `machine.SPI`, `machine.UART` [INFERENCE]. Board tags in the repo: `rp2040` (drivers/lidar, cmd/elrs-rx), `esp32` (cmd/elrs-rx), `sam && xiao` (x/devices/xiao, drivers/manipulator, cmd/elrs-rx).
 - Allocation: Linux paths allocate per call (`fmt.Sprintf` paths, `make` in `ReadRegister`); fine on SBC.
 
 ## Tests and evidence
@@ -75,7 +77,8 @@ Algorithm defects are tracked in the algorithm notes (table above) and rolled up
 
 - [ ] Add darwin serial (termios via x/sys/unix works on darwin) or a stub with `NewSerialWithConfig`/`ListSerialPorts` returning `ErrNotSupported` (fixes F2) — x/devices/serial_stub.go:1-3 #p1 #ER-025
 - [ ] Make `stubPin` satisfy `Pin` and unify `NewPin` signature across platforms — x/devices/pin_stub.go:20-43 #p2
-- [ ] Resolve `machine.Pin` vs `devices.Pin` callback mismatch (e.g. `SetInterrupt(PinChange, func())` or an adapter type) — x/devices/pin.go:26; x/devices/pin_tinygo.go:23-25 #p1 #ER-025
+- [x] Resolve `machine.Pin` vs `devices.Pin` callback mismatch: adapter type `TinyGoPin` (tinygo 0.43 tufty2040 build, 2026-11-12) — x/devices/pin.go:26; x/devices/pin_tinygo.go:21-39 #p1 #ER-025
+- [ ] `encoder`/`motor` do not build under TinyGo: `devices.PinConfig` and `Pin.Configure` do not exist — x/devices/encoder/tinygo.go:9 #p2 #ER-026
 - [ ] Use blocking reads with timeout instead of `VMIN=0,VTIME=0` polling — x/devices/serial_linux.go:86-87 #p2
 - [ ] Add pin mode/pull configuration to the abstraction — x/devices/pin.go #p2
 - [ ] Replace sysfs GPIO with gpiochip (character device) — x/devices/pin_linux.go #p3

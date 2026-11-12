@@ -8,17 +8,6 @@ import (
 	"syscall"
 )
 
-// I2CTargetEvent represents an I2C target mode event.
-type I2CTargetEvent uint8
-
-const (
-	I2CTargetEventStart I2CTargetEvent = iota
-	I2CTargetEventStop
-	I2CTargetEventAddress
-	I2CTargetEventData
-	I2CTargetEventError
-)
-
 // LinuxI2C implements I2C bus using Linux i2c-dev interface.
 // Note: Linux I2C only supports controller mode, not target mode.
 type LinuxI2C struct {
@@ -35,6 +24,7 @@ var _ I2C = (*LinuxI2C)(nil)
 // Common Raspberry Pi I2C buses:
 //   - /dev/i2c-1 - Primary I2C (GPIO 2/3, SDA/SCL) - most common
 //   - /dev/i2c-0 - Secondary I2C (if available)
+//
 // Note: I2C must be enabled via raspi-config (Interfacing Options -> I2C).
 func NewI2C(device string) (*LinuxI2C, error) {
 	fd, err := os.OpenFile(device, os.O_RDWR, 0)
@@ -171,7 +161,7 @@ func (b *LinuxI2C) Listen(addr uint16) error {
 
 // WaitForEvent is not supported on Linux I2C (controller mode only).
 func (b *LinuxI2C) WaitForEvent(buf []byte) (I2CTargetEvent, int, error) {
-	return I2CTargetEventError, 0, ErrNotSupported
+	return I2CFinish, 0, ErrNotSupported
 }
 
 // Reply is not supported on Linux I2C (controller mode only).

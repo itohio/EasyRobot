@@ -24,11 +24,12 @@ evidence: "build tag sam && xiao (TinyGo only); not compiled (no TinyGo). Host b
 
 - Complete: no — TCC2 pins commented out (`:95-96`); TCC0 channel ≥ 4 on WO[4..5] maps to CC[0..1] on SAMD21 (TCC0 has 4 CC registers) [INFERENCE], so D6/D7 may alias D9/D3.
 - Tested: none (TinyGo only).
-- Correct: unknown. Suspect: `machine.PWMConfig.Period` in TinyGo is the period in **nanoseconds** [INFERENCE: TinyGo API from memory], but `configureTCC` passes TCC counts `48 MHz/64/f` (`:139-143`, 15000 for 50 Hz → 15 µs = 66.7 kHz). Duty values use the same self-computed `period` (`:253`) instead of `tcc.Top()`. If TinyGo honours ns, servo pulses are wrong; the "Verified" comments suggest the owner saw servos move, so needs a bench check. `Channel` requires `pin.(machine.Pin)` type assertion (`:198`) — but `machine.Pin` cannot be a `devices.Pin` (see [[device-io]]).
+- Correct: unknown. Suspect: `machine.PWMConfig.Period` in TinyGo is the period in **nanoseconds** [INFERENCE: TinyGo API from memory], but `configureTCC` passes TCC counts `48 MHz/64/f` (`:139-143`, 15000 for 50 Hz → 15 µs = 66.7 kHz). Duty values use the same self-computed `period` (`:253`) instead of `tcc.Top()`. If TinyGo honours ns, servo pulses are wrong; the "Verified" comments suggest the owner saw servos move, so needs a bench check. `Channel` asserts `pin.(machine.Pin)` (`:198`), while `servo` now passes `devices.TinyGoPin` (the adapter in [[device-io]]), so a servo array on the XIAO would get an error; the package also fails to build on `-target=xiao` (`xiao_pwm.go:91,143,198`, tinygo 0.43, 2026-11-12).
 
 ## TODOs
 
 - [ ] Pass `Period: 1e9/frequency` (ns) and use `tcc.Top()` for duty scaling; bench-check 50 Hz/1500 µs on a scope — x/devices/xiao/xiao_pwm.go:130-152,247-258 #p1 #ER-025
+- [ ] `Channel` accepts `devices.TinyGoPin` (servo passes it) as well as `machine.Pin`; make the package build on `-target=xiao` — x/devices/xiao/xiao_pwm.go:198 #p2 #ER-025
 - [ ] Verify TCC0 WO[4..7] → CC mapping for D6/D7 — x/devices/xiao/xiao_pwm.go:80-81 #p2
 
 ## Links

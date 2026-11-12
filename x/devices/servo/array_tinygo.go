@@ -11,9 +11,8 @@ import (
 )
 
 // pinNumberToPin converts a pin number to a devices.Pin for TinyGo.
-// For TinyGo, machine.Pin directly implements devices.Pin.
 func pinNumberToPin(pinNum uint32) devices.Pin {
-	return machine.Pin(pinNum)
+	return devices.NewTinyGoPin(machine.Pin(pinNum))
 }
 
 // newServoArray creates a new servo array for TinyGo.

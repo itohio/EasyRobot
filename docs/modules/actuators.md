@@ -54,7 +54,7 @@ Counts: 0 tested · 1 implemented · 4 partial · 0 stub · 1 unverified (6 algo
 ## Build targets and dependencies
 
 - Pure Go, no CGO. Host: servo array not constructible off TinyGo (`array_stub.go:14-15`); motor and encoder fail on darwin and windows (F1). Linux: all build (cross-build 2026-11-09).
-- TinyGo: xiao (`sam && xiao`) and servo (`tinygo`) target boards; `encoder/tinygo.go` uses undefined `devices.PinConfig` and a non-existent `Pin.Configure` → would not compile [INFERENCE from grep]; servo/encoder/xiao also hit the `machine.Pin` vs `devices.Pin` mismatch ([[device-io]]). Motor/encoder use goroutines, `time.Ticker`, `sync`, float32 — TinyGo-friendly; PCA9685 allocates per write.
+- TinyGo: xiao (`sam && xiao`) and servo (`tinygo`) target boards. `servo` builds under tinygo 0.43 since the `TinyGoPin` adapter ([[device-io]], 2026-11-12); `encoder`/`motor` fail (`encoder/tinygo.go` uses undefined `devices.PinConfig` and a non-existent `Pin.Configure`); `xiao` fails on `-target=xiao` and its `Channel` rejects the adapter ([[xiao-samd21-tcc-pwm]]). Motor/encoder use goroutines, `time.Ticker`, `sync`, float32 — TinyGo-friendly; PCA9685 allocates per write.
 
 ## Tests and evidence
 

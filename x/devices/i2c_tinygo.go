@@ -4,15 +4,14 @@ package devices
 
 import "machine"
 
-// Use device-specific I2C directly
+// machine.I2C is used directly as I2C (and, where the port has target mode,
+// I2CTarget).
 
-// I2CTargetEvent represents an I2C target mode event.
+// I2CTargetEvent is an I2C target-mode event.
 type I2CTargetEvent = machine.I2CTargetEvent
 
 const (
-	I2CTargetEventStart   = machine.I2CTargetEventStart
-	I2CTargetEventStop    = machine.I2CTargetEventStop
-	I2CTargetEventAddress = machine.I2CTargetEventAddress
-	I2CTargetEventData    = machine.I2CTargetEventData
-	I2CTargetEventError   = machine.I2CTargetEventError
+	I2CReceive = machine.I2CReceive
+	I2CRequest = machine.I2CRequest
+	I2CFinish  = machine.I2CFinish
 )

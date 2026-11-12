@@ -24,7 +24,7 @@ evidence: "probe tmp/easyrobot/devices/actprobe (2026-11-09): AngleToMicrosecond
 
 - Complete: **no.** Only TinyGo can construct an array (`array_stub.go:14-15` "PWM servo array not implemented for this platform", Linux `LinuxPWMDevice` exists in [[device-io]] but is not used); no per-servo offset/trim, direction inversion or non-linear calibration — exactly the "helpers to configure joints properly" the owner asks for in W3; no speed/acceleration limiting (done separately by `vaj` in `drivers/manipulator`).
 - Tested: none; probe checks the linear map and clamping (values above).
-- Correct: **no.** `Stop` takes `a.mu` then calls `Set`, which takes `a.mu` again (`array.go:~76-85` → `:~52`): **self-deadlock** (probe: no return within 500 ms). `Configure` copies motors but does not re-set channels; `uint32(us)` truncates; `NewMotorConfig` recomputes `Default` only when `Default == 90` (`types.go:29-36`). `array_tinygo.go:15-17` returns `machine.Pin` as `devices.Pin`, which does not type-check because `machine.Pin.SetInterrupt` takes `func(machine.Pin)` (see [[device-io]]) [INFERENCE: TinyGo not run].
+- Correct: **no.** `Stop` takes `a.mu` then calls `Set`, which takes `a.mu` again (`array.go:~76-85` → `:~52`): **self-deadlock** (probe: no return within 500 ms). `Configure` copies motors but does not re-set channels; `uint32(us)` truncates; `NewMotorConfig` recomputes `Default` only when `Default == 90` (`types.go:29-36`). `array_tinygo.go:14-16` converts the pin number with `devices.NewTinyGoPin` and builds under tinygo 0.43 (tufty2040, 2026-11-12, [[device-io]]); on the XIAO, `xiao.Channel` still asserts `machine.Pin` and rejects the adapter (see [[xiao-samd21-tcc-pwm]]).
 
 ## TODOs
 

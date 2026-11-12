@@ -113,7 +113,7 @@ The knowledge engine is its own Go module and is catalogued in [[knowledge-engin
 
 Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs tagged with the ticket. The defects themselves are in the linked notes and in [[todo]].
 
-<!-- vault:tickets h=35e2f2a2c498 -->
+<!-- vault:tickets h=b6db3630d057 -->
 
 | Ticket | Title | Status | Workstream | Open p1 |
 |---|---|---|---|---|
@@ -138,7 +138,7 @@ Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs 
 | [[ER-022-audio-modem-acquisition\|ER-022]] | Audio modem acquisition, sync, drift and BER tests | blocked | W7 | 54 |
 | [[ER-023-coding-fixes\|ER-023]] | Coding: GF(256) RS, CRC catalogue, line codes, LFSR, Gray, PEG | backlog | W7 | 17 |
 | [[ER-024-lidar-decoder-fixes\|ER-024]] | Lidar decoder fixes | blocked | W8 | 9 |
-| [[ER-025-device-fixes\|ER-025]] | Device fixes: encoder, PCA9685, servo array, NMEA, serial | backlog | W3, W8 | 13 |
+| [[ER-025-device-fixes\|ER-025]] | Device fixes: encoder, PCA9685, servo array, NMEA, serial | backlog | W3, W8 | 12 |
 | [[ER-026-build-green\|ER-026]] | Build green: host part, then TinyGo stage | ready | all | 11 |
 | [[ER-027-marshaller-fixes\|ER-027]] | Marshallers: proto small ints, json/yaml ints, graph node data | backlog | W4 | 10 |
 | [[ER-028-graph-fixes\|ER-028]] | Graph: cycle checks, detached handles, RRT*, decision-tree Balance | backlog | W6 | 17 |
