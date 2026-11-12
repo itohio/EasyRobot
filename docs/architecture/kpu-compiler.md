@@ -28,7 +28,7 @@ Owner decision (2026-11-10): models come as int8 TFLite files or as our own `qne
 - qnet already has an accelerator seam: `qnet.Backend` (`Claim` a chain of layers, `Run` it from `src` to `dst`, NHWC int8). The KPU compiler is a `Backend` built ahead of time from the graph:
 
   ```go
-  b, err := kpu.Compile(&g, opts)        // lowering, AI-SRAM plan, weight blobs; one-time allocation
+  b, err := compile.Compile(&g, kpu.New) // lowering, AI-SRAM plan, weight blobs; kpu.NewEmulated on a host
   r, err := qnet.NewRunner(&g, arena, b) // qnet plans KPU segments and CPU layers together
   ```
 
@@ -40,8 +40,8 @@ Owner decision (2026-11-10): models come as int8 TFLite files or as our own `qne
 |---|---|---|
 | Conv2D 1×1 or 3×3, stride 1, SAME | yes | |
 | DepthwiseConv2D 3×3 (multiplier 1), stride 1, SAME | yes | |
-| stride 2 | yes, only as conv + left-top 2×2 sampler | the window must be centred on even pixels: the graph has to be `Pad(1,1)` + VALID, the training rule (see below) |
-| MaxPool2D / AvgPool2D 2×2 or 4×4, stride = kernel, directly after a conv | fused into that conv | `pool_type` |
+| stride 2 | yes, only as conv + left-top 2×2 sampler | the window must be centred on even pixels: the graph has to be `Pad(1,1)` + VALID, the training rule (see below). A stride-2 **depthwise** runs at full resolution and the following 1×1 conv samples (`Fuse.Full` / `Fuse.Subsample`): the KPU does not pool in depthwise mode. Without such a 1×1 after it, the depthwise stays on the CPU |
+| MaxPool2D / AvgPool2D 2×2 or 4×4, stride = kernel, directly after a regular conv | fused into that conv | `pool_type`; not after a depthwise conv (CPU) |
 | everything else (Add, Concat, FC, Mean/GAP, Softmax, Logistic, Mul, resizes) | no | CPU (qnet kernels) |
 
 ### Integer mapping
@@ -123,7 +123,7 @@ Requantisation is approximate:
 | K9a | `kmodel.Builder`, BN/activation encoders and `Args` setters (the compiler's output seam); `Check` validates `Outputs`; doc fixes (review R-K210-K8b K4) | ncc's kmodels rebuilt byte-identical; round-trip tests; mutation-checked |
 | K9b | Lower one Conv2D/Depthwise (1×1, 3×3, stride 1, SAME) from `qnet.Layer` to Args + blobs | host: `Emulate(lowered)` vs `qnet.RunLayer` ≤ 1 LSB on ≥ 1,000 random layers; mutation-checked tests |
 | K9c | `compile.Lower` with `Fuse{Pad, Act, Pool}`: stride 2 via Pad(1,1)+VALID (or 1×1 VALID) + left-top, fused 2×2/4×4 max/average pools, fused ReLU/ReLU6 clamps | as K9b on random chains (≤ 1 LSB, ≤ 2 with average pool, which floors where qnet rounds), plus TF SAME stride 2 rejected |
-| K9d | `kpu.Compile` → `qnet.Backend`: segments, AI-SRAM plan, int8 NHWC ↔ uint8 CHW at boundaries, emulated engine | host: `qnet.MobileNetV1(0.25, 256, 256, 0)` + `SyntheticParams` cut at `conv_pw_13`, KPU backend vs CPU runner per layer ≤ 1 LSB; `Run` allocates nothing |
+| K9d | `compile.Compile(g, kpu.New \| kpu.NewEmulated)` → `qnet.Backend`: segments, AI-SRAM plan, int8 NHWC ↔ uint8 CHW at boundaries | host: MobileNetV1-0.25 256×256 built with Pad(1,1)+VALID from `qnet.Layer` values (qnet's own builder uses TF SAME) + `SyntheticParams`, cut at `conv_pw_13`, one KPU segment, per layer ≤ 1 LSB vs qnet; `Run` allocates nothing |
 | K9e | The same graph on the UnitV | board vs host emulation per layer ≤ 1 LSB; ms/frame vs the K210 CPU at 256×256 |
 | K9f | **End-to-end target:** the int8 TFLite MobileNetV1-0.25 256×256 (Pad(1,1)+VALID export) through `tfl.Load` → KPU, cut at `conv_pw_13` | features vs the TFLite reference interpreter on camera frames (≤ 1 LSB per layer up to the cut); class agreement on frames with clear objects (K8c-3's deferred check) |
 | K9g | Row-band tiling; CPU Add/Concat between segments; FC-on-KPU option; LeakyReLU tables (two sloped segments); MobileNetV2 at QVGA | per layer ≤ 1 LSB vs CPU; fits 2 MiB |

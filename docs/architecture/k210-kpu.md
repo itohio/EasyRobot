@@ -57,7 +57,7 @@ Bit positions from `kpu.h`; "nncase" is what rc5 writes; tiny3 values are given 
 | 10 | `conv_value2` | arg_add 0–39 | zero-point product term |
 | 11 | `dma_parameter` | send_data_out 0, channel_byte_num 16–31, dma_total_byte 32–63 | send_data_out streams the output to `FIFO_DATA_OUT` (for DMA); byte counts − 1 (W·H, W·H·C). `drivers/kpu` leaves it off and reads the output from KPU RAM. |
 
-**pool_type** (nncase emulator; stride = kernel):
+**pool_type** (nncase emulator; stride = kernel). **Silicon: regular convs only.** In depthwise mode a non-zero pool_type gives wrong output on the UnitV (ER-K210-K9 evidence, K9e). nncase never pools a depthwise layer: it lowers a stride-2 depthwise at full resolution and puts the left-top sampler on the following 1×1 conv.
 
 | Value | Pool |
 |---|---|
@@ -152,7 +152,7 @@ Layout is in the `kmodel` package doc. Layer types are listed in `kpu.h` `kpu_mo
 
 ## Compiler constraints learned from nncase rc5
 
-- Only 3×3 and 1×1 kernels, stride 1. Stride 2 is the conv followed by left-top 2×2 pooling, so windows centre on even pixels. That equals TF `PAD [[1,1],[1,1]]` + VALID, not TF SAME (which centres on odd pixels for even sizes).
+- Only 3×3 and 1×1 kernels, stride 1. Stride 2 is the conv followed by left-top 2×2 pooling, so windows centre on even pixels (for a depthwise conv, the pooling goes on the next 1×1 conv, see pool_type). That equals TF `PAD [[1,1],[1,1]]` + VALID, not TF SAME (which centres on odd pixels for even sizes).
   - nncase rc5 accepts a stride-2 3×3 depthwise only as PAD(1,1) → depthwise VALID stride 2 → 1×1 conv, and PAD only with exactly that padding. The official MobileNetV1 TFLite therefore fails with "DepthwiseConv2d is not supported".
 - Max 1024 channels (10-bit fields), width ≤ 1024, height ≤ 512, and the tensor must fit 2 MiB together with the other live tensors.
 - Activations: anything a 16-segment piecewise-linear function of the BN output can express.

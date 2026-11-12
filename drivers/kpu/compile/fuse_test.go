@@ -21,6 +21,15 @@ type chain struct {
 // 1×1 VALID), or stride 1 with an optional fused ReLU/ReLU6 and pool.
 func randomChain(r *rand.Rand) chain {
 	l := randomLayer(r)
+	// A depthwise conv takes neither a pool nor the stride-2 sampler on the
+	// KPU (pairs are tested in TestStride2DepthwisePair): use a regular conv.
+	if l.Kind == qnet.DepthwiseConv2D {
+		l.Kind = qnet.Conv2D
+		l.Weights = make([]int8, l.KH*l.KW*l.In.C*l.Out.C)
+		for i := range l.Weights {
+			l.Weights[i] = int8(r.IntN(255) - 127)
+		}
+	}
 	c := chain{in: l.In}
 	evenUp := func(v int) int { return v + v%2 }
 	switch r.IntN(3) {
@@ -204,6 +213,31 @@ func TestLowerFusedRejects(t *testing.T) {
 			c.fuse.Pool = nil
 			c.fuse.Act = &qnet.Layer{Kind: qnet.ReLU, In: c.conv.Out, Out: c.conv.Out, InQ: c.conv.OutQ, OutQ: qnet.Quant{Scale: 1, ZP: 3}}
 		}},
+		"pool on a depthwise conv": {pool, func(c *chain) {
+			// A valid depthwise in every other respect, with the pool.
+			ch := c.conv.In.C
+			c.conv.Kind, c.conv.KH, c.conv.KW, c.conv.Padding = qnet.DepthwiseConv2D, 3, 3, qi8.PaddingSame
+			c.conv.Out.C = ch
+			c.conv.Weights = make([]int8, 9*ch)
+			c.conv.Requant = make([]qi8.Requant, ch)
+			c.conv.Bias = make([]int32, ch)
+			for i := range c.conv.Requant {
+				c.conv.Requant[i] = qi8.Requant{Mult: 1 << 30, Shift: -8}
+			}
+			c.fuse.Pool.In.C, c.fuse.Pool.Out.C = ch, ch
+		}},
+		"Full on a regular conv":  {s2, func(c *chain) { c.fuse.Full = true }},
+		"Subsample on a 3×3 conv": {pool, func(c *chain) { c.fuse.Pool = nil; c.conv.KH, c.conv.KW = 3, 3; c.fuse.Subsample = true }},
+		"stride-2 depthwise without Full": {s2, func(c *chain) {
+			ch := c.conv.In.C
+			c.conv.Kind, c.conv.Out.C = qnet.DepthwiseConv2D, ch
+			c.conv.Weights = make([]int8, 9*ch)
+			c.conv.Requant = make([]qi8.Requant, ch)
+			c.conv.Bias = make([]int32, ch)
+			for i := range c.conv.Requant {
+				c.conv.Requant[i] = qi8.Requant{Mult: 1 << 30, Shift: -8}
+			}
+		}},
 	}
 	for name, tc := range cases {
 		c := clone(tc.base)
@@ -243,4 +277,92 @@ func TestFusedClamp(t *testing.T) {
 			t.Errorf("%v after [%d,%d] (zp %d): [%d,%d] %v, want [%d,%d]", c.act, c.min, c.max, c.conv.OutQ.ZP, lo, hi, err, c.wantLo, c.wantHi)
 		}
 	}
+}
+
+// pair is a stride-2 depthwise (Pad + 3×3 VALID) and the 1×1 conv after
+// it, lowered as Full + Subsample.
+func randomPair(r *rand.Rand) (pad, dw, pw qnet.Layer, in qi8.Shape) {
+	for {
+		l := randomLayer(r)
+		if l.Kind == qnet.DepthwiseConv2D {
+			dw = l
+			break
+		}
+	}
+	in = qi8.Shape{H: 2 * (1 + r.IntN(12)), W: 2 * (1 + r.IntN(12)), C: dw.In.C}
+	pad = qnet.Layer{Kind: qnet.Pad, In: in, Out: qi8.Shape{H: in.H + 2, W: in.W + 2, C: in.C},
+		InQ: dw.InQ, OutQ: dw.InQ, Pads: [6]int{1, 1, 1, 1, 0, 0}, PadValue: dw.InQ.ZP}
+	dw.In, dw.Out = pad.Out, qi8.Shape{H: in.H / 2, W: in.W / 2, C: in.C}
+	dw.StrideH, dw.StrideW, dw.Padding = 2, 2, qi8.PaddingValid
+	for {
+		pw = randomLayer(r)
+		if pw.Kind == qnet.Conv2D && pw.KH == 1 {
+			break
+		}
+	}
+	oc := pw.Out.C
+	pw.In, pw.Out, pw.InQ = dw.Out, qi8.Shape{H: dw.Out.H, W: dw.Out.W, C: oc}, dw.OutQ
+	pw.Weights = make([]int8, in.C*oc)
+	for i := range pw.Weights {
+		pw.Weights[i] = int8(r.IntN(255) - 127)
+	}
+	return pad, dw, pw, in
+}
+
+// TestStride2DepthwisePair: a stride-2 depthwise lowered at full resolution
+// (Full) and the 1×1 conv after it with the left-top sampler (Subsample):
+// the depthwise's full-resolution output at even pixels and the 1×1's
+// output (from the KPU's sampled input) are each within 1 LSB of qnet.
+func TestStride2DepthwisePair(t *testing.T) {
+	r := rand.New(rand.NewPCG(9, 212))
+	pairs := 600
+	if testing.Short() {
+		pairs = 100
+	}
+	var hist [2]int
+	for n := range pairs {
+		pad, dw, pw, in := randomPair(r)
+		x := make([]int8, in.Len())
+		for i := range x {
+			x[i] = int8(r.IntN(256) - 128)
+		}
+		run := func(l *qnet.Layer, src []int8) []int8 {
+			dst := make([]int8, l.Out.Len())
+			if err := qnet.RunLayer(l, dst, src); err != nil {
+				t.Fatal(err)
+			}
+			return dst
+		}
+		wantDW := run(&dw, run(&pad, x))
+		ldw, err := Lower(&dw, Fuse{Pad: &pad, Full: true}, 0, 16384)
+		if err != nil {
+			t.Fatalf("pair %d: depthwise: %v", n, err)
+		}
+		full := emulate(t, ldw, x, in, in) // full resolution
+		half := dw.Out
+		sampled := make([]int8, half.Len())
+		for y := range half.H {
+			for xx := range half.W {
+				copy(sampled[(y*half.W+xx)*half.C:(y*half.W+xx+1)*half.C], full[(2*y*in.W+2*xx)*in.C:])
+			}
+		}
+		check := func(got, want []int8, what string) {
+			for i := range want {
+				d := int(got[i]) - int(want[i])
+				d = max(d, -d)
+				if d > 1 {
+					t.Fatalf("pair %d %s: output %d: KPU %d, qnet %d", n, what, i, got[i], want[i])
+				}
+				hist[d]++
+			}
+		}
+		check(sampled, wantDW, "depthwise (even pixels)")
+		lpw, err := Lower(&pw, Fuse{Subsample: true}, 16384, 0)
+		if err != nil {
+			t.Fatalf("pair %d: 1×1: %v", n, err)
+		}
+		gotPW := emulate(t, lpw, full, in, pw.Out) // input at full resolution
+		check(gotPW, run(&pw, sampled), "1×1 with sampler")
+	}
+	t.Logf("%d pairs, %d outputs: %d equal, %d at 1 LSB", pairs, hist[0]+hist[1], hist[0], hist[1])
 }

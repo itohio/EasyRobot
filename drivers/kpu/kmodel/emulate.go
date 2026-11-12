@@ -110,12 +110,22 @@ func carryShift(v int64, shift uint) int64 {
 // simulator uses), for checking the KPU layer by layer; the silicon agrees
 // with it to about 1 LSB (ER-K210-K8 evidence).
 func (p *ConvParams) Emulate(in, out []byte) error {
+	return p.EmulateInto(in, out, nil)
+}
+
+// EmulateInto is Emulate with a caller-provided scratch buffer of at least
+// W·H·OC bytes (the stride-1 output before pooling); with a shorter one it
+// allocates.
+func (p *ConvParams) EmulateInto(in, out, scratch []byte) error {
 	w, h, ic := p.Args.InShape()
 	ow, oh, oc := p.Args.OutShape()
 	if len(in) < w*h*ic || len(out) < ow*oh*oc || (p.Depthwise && ic != oc) {
 		return ErrFormat
 	}
-	pix := make([]byte, w*h*oc) // after conv, BN and activation, before pooling
+	pix := scratch // after conv, BN and activation, before pooling
+	if len(pix) < w*h*oc {
+		pix = make([]byte, w*h*oc)
+	}
 	k := p.Kernel
 	for o := range oc {
 		var ws []byte
@@ -211,6 +221,9 @@ func pool(t int, src []byte, w, h, c int, dst []byte, ow, oh int) error {
 						sum += v
 						n++
 					}
+				}
+				if n == 0 {
+					return ErrFormat // output larger than the pooled input
 				}
 				var v int
 				switch t {

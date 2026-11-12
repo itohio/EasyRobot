@@ -43,8 +43,21 @@ type Fuse struct {
 	// tightens the conv's clamp.
 	Act *qnet.Layer
 	// Pool is a MaxPool2D or AvgPool2D with kernel = stride ∈ {2, 4},
-	// VALID, directly after a stride-1 conv (or after Act).
+	// VALID, directly after a stride-1 regular conv (or after Act). The
+	// KPU does not pool in depthwise mode (ER-K210-K9 evidence, K9e), so a
+	// depthwise conv takes no pool.
 	Pool *qnet.Layer
+	// Full lowers a stride-2 depthwise conv (with its Pad) at full
+	// resolution: stride 1, no pool, output the size of its unpadded input.
+	// The KPU cannot sample a depthwise layer, so the next layer must be a
+	// 1×1 conv lowered with Subsample. This is nncase's stride-2 depthwise
+	// (K210SeparableConv2dTransform).
+	Full bool
+	// Subsample lowers a 1×1 stride-1 conv whose input arrives at twice its
+	// height and width, from a Full layer, and applies the left-top
+	// sampler. A 1×1 conv commutes with the subsampling, so the pair is
+	// exact.
+	Subsample bool
 }
 
 // LowerConv lowers a single qnet conv layer (see Lower) without fusion.
@@ -165,6 +178,24 @@ func geometry(l *qnet.Layer, f Fuse) (lowered, error) {
 		return lowered{}, fmt.Errorf("%w: stride %d×%d", ErrUnsupported, l.StrideH, l.StrideW)
 	}
 	g := lowered{in: l.In, pad: int64(l.InQ.ZP)}
+	dw := l.Kind == qnet.DepthwiseConv2D
+	if f.Pool != nil && dw {
+		return lowered{}, fmt.Errorf("%w: a pool on a depthwise conv (the KPU does not pool in depthwise mode)", ErrUnsupported)
+	}
+	if f.Full && !(dw && s == 2) {
+		return lowered{}, fmt.Errorf("%w: Full is for a stride-2 depthwise conv", ErrUnsupported)
+	}
+	if f.Subsample {
+		if dw || k != 1 || s != 1 || f.Pad != nil || f.Pool != nil {
+			return lowered{}, fmt.Errorf("%w: Subsample is for a 1×1 stride-1 conv without Pad or pool", ErrUnsupported)
+		}
+		g.in = qi8.Shape{H: 2 * l.In.H, W: 2 * l.In.W, C: l.In.C}
+		g.outW, g.outH, g.pool = l.In.W, l.In.H, 5
+		if l.Out.H != l.In.H || l.Out.W != l.In.W {
+			return lowered{}, fmt.Errorf("%w: output %v for input %v", ErrUnsupported, l.Out, l.In)
+		}
+		return g, nil
+	}
 	if s == 1 {
 		if f.Pad != nil {
 			return lowered{}, fmt.Errorf("%w: a fused Pad needs a stride-2 VALID conv", ErrUnsupported)
@@ -212,10 +243,17 @@ func geometry(l *qnet.Layer, f Fuse) (lowered, error) {
 	if g.in.H%2 != 0 || g.in.W%2 != 0 {
 		return lowered{}, fmt.Errorf("%w: stride 2 on odd size %d×%d", ErrUnsupported, g.in.H, g.in.W)
 	}
-	g.outW, g.outH, g.pool = g.in.W/2, g.in.H/2, 5
-	if l.Out.H != g.outH || l.Out.W != g.outW {
+	if l.Out.H != g.in.H/2 || l.Out.W != g.in.W/2 {
 		return lowered{}, fmt.Errorf("%w: output %v for stride-2 input %v", ErrUnsupported, l.Out, g.in)
 	}
+	if dw {
+		if !f.Full {
+			return lowered{}, fmt.Errorf("%w: a stride-2 depthwise conv needs Full and a Subsample 1×1 conv after it (the KPU does not pool in depthwise mode)", ErrUnsupported)
+		}
+		g.outW, g.outH = g.in.W, g.in.H // full resolution, no pool
+		return g, nil
+	}
+	g.outW, g.outH, g.pool = g.in.W/2, g.in.H/2, 5
 	return g, nil
 }
 
