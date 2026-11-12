@@ -54,9 +54,35 @@ func (r Requant) Valid() bool {
 
 // Apply returns round_half_away_from_zero(acc * M') as int64 (no zero point,
 // no clamping). r must be Valid.
+//
+// For Shift ≤ −1 (M' < 1/2, the usual case) the total shift s = 31−Shift is
+// at least 32, so only the high word of |acc|·Mult matters: the result is
+// (hi + 2^(s−33)) >> (s−32), or hi + (lo >> 31) for s = 32 — the same
+// integer as the 64-bit formula (the low word cannot carry past the next
+// multiple of 2^s), computed with an unsigned 32×32→64 multiply and 32-bit
+// shifts, which a 32-bit core (the ESP32-S3) does faster than 64-bit
+// variable shifts.
 func (r Requant) Apply(acc int32) int64 {
+	if r.Shift < 0 {
+		a := uint32(acc)
+		if acc < 0 {
+			a = -a // |acc| ≤ 2^31 fits uint32
+		}
+		p := uint64(a) * uint64(uint32(r.Mult))
+		hi := uint32(p >> 32) // < 2^30
+		var v uint32
+		if k := uint32(-1 - r.Shift); k == 0 {
+			v = hi + uint32(p)>>31
+		} else {
+			v = (hi + 1<<(k-1)) >> k
+		}
+		if acc < 0 {
+			return -int64(v)
+		}
+		return int64(v)
+	}
 	p := int64(acc) * int64(r.Mult) // |p| < 2^62
-	s := uint(31 - r.Shift)         // 1..62
+	s := uint(31 - r.Shift)         // 1..31 here
 	half := int64(1) << (s - 1)
 	if p >= 0 {
 		return (p + half) >> s

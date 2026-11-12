@@ -28,34 +28,33 @@ void qi8_pie_enable(void) {
     __asm__ volatile ("wsr.cpenable %0\n rsync" :: "r"(v));
 }
 
-// qi8_pie_dot_rows computes out[r] = sum_{i<k} patch[i] * w[r*k + i] for
-// r < rows (wrapping int32, the low 32 bits of the 40-bit ACCX).
+// qi8_dot_row returns sum_{i<k} patch[i] * w[i] for one row (wrapping int32,
+// the low 32 bits of the 40-bit ACCX) and advances *w to the next row.
 //
 // Requirements: patch and w 16-byte aligned; k a positive multiple of 32;
-// 16 readable bytes after patch[k-1] and after w[rows*k-1] (the software
+// 16 readable bytes after patch[k-1] and after the row (the software
 // pipeline loads one block ahead; the extra block is never multiplied).
-void qi8_pie_dot_rows(const int8_t *patch, const int8_t *w, int k, int rows, int32_t *out) {
-    for (int r = 0; r < rows; r++) {
-        const int8_t *a = patch;
-        int n = k >> 5;
-        int32_t acc;
-        __asm__ volatile (
-            "ee.zero.accx\n"
-            "ee.vld.128.ip q0, %1, 16\n"
-            "ee.vld.128.ip q1, %2, 16\n"
-            "loopnez %3, 1f\n"
-            "ee.vld.128.ip q3, %2, 16\n"
-            "ee.vmulas.s8.accx.ld.ip q2, %1, 16, q0, q1\n"
-            "ee.vld.128.ip q1, %2, 16\n"
-            "ee.vmulas.s8.accx.ld.ip q0, %1, 16, q2, q3\n"
-            "1:\n"
-            "rur.accx_0 %0\n"
-            : "=r"(acc), "+r"(a), "+r"(w), "+r"(n)
-            :
-            : "memory");
-        w -= 16; // the pipeline read one block past this row
-        out[r] = acc;
-    }
+static inline int32_t qi8_dot_row(const int8_t *patch, const int8_t **wp, int k) {
+    const int8_t *a = patch;
+    const int8_t *w = *wp;
+    int n = k >> 5;
+    int32_t acc;
+    __asm__ volatile (
+        "ee.zero.accx\n"
+        "ee.vld.128.ip q0, %1, 16\n"
+        "ee.vld.128.ip q1, %2, 16\n"
+        "loopnez %3, 1f\n"
+        "ee.vld.128.ip q3, %2, 16\n"
+        "ee.vmulas.s8.accx.ld.ip q2, %1, 16, q0, q1\n"
+        "ee.vld.128.ip q1, %2, 16\n"
+        "ee.vmulas.s8.accx.ld.ip q0, %1, 16, q2, q3\n"
+        "1:\n"
+        "rur.accx_0 %0\n"
+        : "=r"(acc), "+r"(a), "+r"(w), "+r"(n)
+        :
+        : "memory");
+    *wp = w - 16; // the pipeline read one block past this row
+    return acc;
 }
 
 // qi8_requant_t matches qi8.Requant{Mult, Shift int32}.
@@ -63,9 +62,38 @@ typedef struct {
     int32_t mult, shift;
 } qi8_requant_t;
 
+// qi8_mulhi returns the high 32 bits of a·b (and bit 31 of the low word in
+// *lo31) from four 16×16-bit products, which on the chip is faster than the
+// toolchain's 64-bit multiply (measured, ER-NN-PIPELINE step 3).
+static inline uint32_t qi8_mulhi(uint32_t a, uint32_t b, uint32_t *lo31) {
+    uint32_t al = a & 0xFFFF, ah = a >> 16, bl = b & 0xFFFF, bh = b >> 16;
+    uint32_t lh = al * bh, hl = ah * bl;
+    uint32_t mid = ((al * bl) >> 16) + (lh & 0xFFFF) + (hl & 0xFFFF);
+    *lo31 = (mid >> 15) & 1;
+    return ah * bh + (lh >> 16) + (hl >> 16) + (mid >> 16);
+}
+
 // qi8_requantize is requantize from quant.go: one exact rounding (half away
-// from zero) of acc·mult / 2^(31−shift), plus zp, clamped to [lo, hi].
+// from zero) of acc·mult / 2^(31−shift), plus zp, clamped to [lo, hi]. For
+// shift < 0 (total shift ≥ 32) it uses the same 32-bit form as Requant.Apply:
+// only the high word of |acc|·mult and, at shift −1, the low word's top bit
+// matter (|result| < 2^30, so the clamp stays in 32 bits).
 static inline int8_t qi8_requantize(int32_t acc, const qi8_requant_t *r, int32_t zp, int32_t lo, int32_t hi) {
+    if (r->shift < 0) {
+        uint32_t a = acc < 0 ? 0u - (uint32_t)acc : (uint32_t)acc;
+        uint32_t lo31;
+        uint32_t h = qi8_mulhi(a, (uint32_t)r->mult, &lo31);
+        uint32_t k = (uint32_t)(-1 - r->shift);
+        uint32_t m = k == 0 ? h + lo31 : (h + (1u << (k - 1))) >> k;
+        int32_t v = (acc < 0 ? -(int32_t)m : (int32_t)m) + zp;
+        if (v < lo) {
+            v = lo;
+        }
+        if (v > hi) {
+            v = hi;
+        }
+        return (int8_t)v;
+    }
     int64_t p = (int64_t)acc * (int64_t)r->mult;
     int s = 31 - r->shift;
     int64_t half = (int64_t)1 << (s - 1);
@@ -111,6 +139,18 @@ static inline int8_t qi8_requantize_mode(int32_t acc, const qi8_requant_t *r, in
         v = hi;
     }
     return (int8_t)v;
+}
+
+// qi8_pie_dot_rows_rq is qi8_pie_dot_rows followed, per row, by the layer's
+// requantisation: dst[r] = requantize(dot_r + biasEff[r], rq[r]) with
+// output zero point zp, clamp [lo, hi] and rounding mode round (as
+// qi8_requantize_mode). It saves the per-output round trip to Go.
+void qi8_pie_dot_rows_rq(const int8_t *patch, const int8_t *w, int k, int rows, const int32_t *biasEff,
+                         const qi8_requant_t *rq, int32_t zp, int32_t lo, int32_t hi, int round, int8_t *dst) {
+    for (int r = 0; r < rows; r++) {
+        int32_t acc = qi8_dot_row(patch, &w, k);
+        dst[r] = qi8_requantize_mode((int32_t)((uint32_t)acc + (uint32_t)biasEff[r]), &rq[r], zp, lo, hi, round);
+    }
 }
 
 // qi8_pie_dw_px computes one output pixel of a depthwise convolution:

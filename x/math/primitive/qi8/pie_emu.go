@@ -39,6 +39,13 @@ func pieDotRows(patch, w []int8, k32, rows int, acc []int32) {
 	}
 }
 
+func pieDotRowsRQ(l *pieLayout, rq []Requant, zp, lo, hi int64, round Rounding, dst []int8) {
+	pieDotRows(l.patch, l.wpack, l.k32, l.rows, l.acc)
+	for r := range l.rows {
+		dst[r] = requantizeMode(l.acc[r]+l.biasEff[r], rq[r], zp, lo, hi, round)
+	}
+}
+
 func pieDWPx(l *pieDWLayout, src []int8, direct bool, rq []Requant, pl *convPlan, dst []int8) {
 	emuAligned(l.wpack, "depthwise weights")
 	emuAligned(l.zprow, "zprow")

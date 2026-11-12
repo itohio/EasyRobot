@@ -68,6 +68,55 @@ func TestRequantApplyHand(t *testing.T) {
 	assert.Equal(t, int64(0), r.Apply(1))
 }
 
+// apply64 is Requant.Apply's defining 64-bit formula (one rounding, half
+// away from zero), kept here to check the 32-bit fast path against it.
+func apply64(r Requant, acc int32) int64 {
+	p := int64(acc) * int64(r.Mult)
+	s := uint(31 - r.Shift)
+	half := int64(1) << (s - 1)
+	if p >= 0 {
+		return (p + half) >> s
+	}
+	return -((-p + half) >> s)
+}
+
+// TestRequantApplyFastPath compares Apply with apply64 for every shift, the
+// multiplier extremes and accumulators at the int32 limits, at rounding
+// boundaries (exact halves of every shift) and at random.
+func TestRequantApplyFastPath(t *testing.T) {
+	g := newGen(91)
+	mults := []int32{multMin, multMin + 1, 1<<30 + 12345, math.MaxInt32 - 1, math.MaxInt32}
+	for range 20 {
+		mults = append(mults, multMin+int32(g.r.IntN(1<<30)))
+	}
+	accs := []int32{0, 1, -1, 2, -2, 3, -3, math.MaxInt32, math.MinInt32, math.MinInt32 + 1, math.MaxInt32 - 1}
+	for range 2000 {
+		accs = append(accs, int32(g.r.Uint32()), int32(g.r.Uint32())>>uint(g.r.IntN(31)))
+	}
+	n := 0
+	for shift := int32(MinShift); shift <= MaxShift; shift++ {
+		for _, m := range mults {
+			r := Requant{Mult: m, Shift: shift}
+			s := uint(31 - shift)
+			// accumulators whose product sits exactly on a rounding tie
+			ties := accs
+			if s <= 62 && m%2 == 0 {
+				tie := int64(1) << (s - 1) / int64(m&-m)
+				if tie > 0 && tie <= math.MaxInt32 {
+					ties = append(append([]int32(nil), accs...), int32(tie), -int32(tie))
+				}
+			}
+			for _, a := range ties {
+				if got, want := r.Apply(a), apply64(r, a); got != want {
+					t.Fatalf("Requant{%d, %d}.Apply(%d) = %d, want %d", m, shift, a, got, want)
+				}
+				n++
+			}
+		}
+	}
+	t.Logf("%d comparisons", n)
+}
+
 func TestActHelpers(t *testing.T) {
 	lo, hi := ActNone()
 	assert.Equal(t, [2]int8{-128, 127}, [2]int8{lo, hi})

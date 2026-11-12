@@ -117,12 +117,15 @@ func (pl *convPlan) setQuant(bias []int32, rq []Requant, inZP, outZP, actMin, ac
 }
 
 // conv2DGeneric is the Conv2D inner loop. All arguments are validated
-// against pl.
+// against pl. Output channels are computed in pairs (dotZP2: each input
+// byte is loaded once for two weight rows).
 func conv2DGeneric(dst, src, weights []int8, bias []int32, rq []Requant, pl *convPlan) {
 	g := &pl.geometry
 	inC, outC, wPerOut := g.ch, pl.outC, pl.wPerOut
-	zp, zpOut, lo, hi, tfl := pl.inZP, pl.outZP, pl.lo, pl.hi, pl.round == RoundTFLite
+	zp, zpOut, lo, hi := pl.inZP, pl.outZP, pl.lo, pl.hi
 	rowStride := g.inW * inC
+	wRow := g.kw * inC
+	rnd := pl.round
 	di := 0
 	for oy := range g.outH {
 		iy, ky0, ky1 := span(oy, g.strH, g.padT, g.kh, g.inH)
@@ -130,7 +133,45 @@ func conv2DGeneric(dst, src, weights []int8, bias []int32, rq []Requant, pl *con
 			ix, kx0, kx1 := span(ox, g.strW, g.padL, g.kw, g.inW)
 			n := (kx1 - kx0) * inC // contiguous run per kernel row (NHWC/OHWI)
 			xBase := iy*rowStride + (ix+kx0)*inC
-			for oc := range outC {
+			oc := 0
+			for ; oc+3 < outC; oc += 4 {
+				var a [4]int32
+				if len(bias) != 0 {
+					a = [4]int32{bias[oc], bias[oc+1], bias[oc+2], bias[oc+3]}
+				}
+				wBase := oc*wPerOut + kx0*inC
+				for ky := ky0; ky < ky1; ky++ {
+					xo := xBase + ky*rowStride
+					wo := wBase + ky*wRow
+					d := dotZP4(src[xo:xo+n], weights[wo:], wPerOut, zp)
+					a[0] += d[0]
+					a[1] += d[1]
+					a[2] += d[2]
+					a[3] += d[3]
+				}
+				for j := range a {
+					dst[di+j] = requantizeMode(a[j], rq[oc+j], zpOut, lo, hi, rnd)
+				}
+				di += 4
+			}
+			for ; oc+1 < outC; oc += 2 {
+				var a0, a1 int32
+				if len(bias) != 0 {
+					a0, a1 = bias[oc], bias[oc+1]
+				}
+				wBase := oc*wPerOut + kx0*inC
+				for ky := ky0; ky < ky1; ky++ {
+					xo := xBase + ky*rowStride
+					wo := wBase + ky*wRow
+					d0, d1 := dotZP2(src[xo:xo+n], weights[wo:wo+n], weights[wo+wPerOut:wo+wPerOut+n], zp)
+					a0 += d0
+					a1 += d1
+				}
+				dst[di] = requantizeMode(a0, rq[oc], zpOut, lo, hi, rnd)
+				dst[di+1] = requantizeMode(a1, rq[oc+1], zpOut, lo, hi, rnd)
+				di += 2
+			}
+			if oc < outC {
 				var acc int32
 				if len(bias) != 0 {
 					acc = bias[oc]
@@ -138,14 +179,10 @@ func conv2DGeneric(dst, src, weights []int8, bias []int32, rq []Requant, pl *con
 				wBase := oc*wPerOut + kx0*inC
 				for ky := ky0; ky < ky1; ky++ {
 					xo := xBase + ky*rowStride
-					wo := wBase + ky*g.kw*inC
+					wo := wBase + ky*wRow
 					acc += dotZP(src[xo:xo+n], weights[wo:wo+n], zp)
 				}
-				if tfl {
-					dst[di] = requantizeTFLite(acc, rq[oc], zpOut, lo, hi)
-				} else {
-					dst[di] = requantize(acc, rq[oc], zpOut, lo, hi)
-				}
+				dst[di] = requantizeMode(acc, rq[oc], zpOut, lo, hi, rnd)
 				di++
 			}
 		}
@@ -216,38 +253,59 @@ func (p DepthwiseConv2DParams) plan() (convPlan, error) {
 	return convPlan{geometry: g, outC: g.ch, wPerOut: g.taps, wLen: wLen, outLen: outLen}, nil
 }
 
+// dwChunk is how many channels the generic depthwise loop accumulates at
+// once (a stack array; no scratch needed).
+const dwChunk = 32
+
 // depthwiseConv2DGeneric is the DepthwiseConv2D inner loop. All arguments
-// are validated against pl.
+// are validated against pl. Per output pixel it walks the taps outermost and
+// a contiguous run of up to dwChunk channels innermost (sequential loads,
+// no per-element stride arithmetic); int32 addition wraps, so the sum order
+// does not change the result.
 func depthwiseConv2DGeneric(dst, src, weights []int8, bias []int32, rq []Requant, pl *convPlan) {
 	g := &pl.geometry
 	c := g.ch
 	zp, zpOut, lo, hi, tfl := pl.inZP, pl.outZP, pl.lo, pl.hi, pl.round == RoundTFLite
 	rowStride := g.inW * c
 	wRow := g.kw * c
+	var accBuf [dwChunk]int32
 	di := 0
 	for oy := range g.outH {
 		iy, ky0, ky1 := span(oy, g.strH, g.padT, g.kh, g.inH)
 		for ox := range g.outW {
 			ix, kx0, kx1 := span(ox, g.strW, g.padL, g.kw, g.inW)
 			base := iy*rowStride + ix*c
-			for ch := range c {
-				var acc int32
+			for c0 := 0; c0 < c; c0 += dwChunk {
+				acc := accBuf[:min(dwChunk, c-c0)]
+				n := len(acc)
 				if len(bias) != 0 {
-					acc = bias[ch]
+					copy(acc, bias[c0:c0+n])
+				} else {
+					clear(acc)
 				}
 				for ky := ky0; ky < ky1; ky++ {
-					xo := base + ky*rowStride + ch
-					wo := ky*wRow + ch
+					xo := base + ky*rowStride + c0
+					wo := ky*wRow + c0
 					for kx := kx0; kx < kx1; kx++ {
-						acc += (int32(src[xo+kx*c]) - zp) * int32(weights[wo+kx*c])
+						x := src[xo+kx*c:][:n]
+						w := weights[wo+kx*c:][:n]
+						for i := range acc {
+							acc[i] += (int32(x[i]) - zp) * int32(w[i])
+						}
 					}
 				}
+				out := dst[di : di+n]
+				r := rq[c0 : c0+n]
 				if tfl {
-					dst[di] = requantizeTFLite(acc, rq[ch], zpOut, lo, hi)
+					for i, a := range acc {
+						out[i] = requantizeTFLite(a, r[i], zpOut, lo, hi)
+					}
 				} else {
-					dst[di] = requantize(acc, rq[ch], zpOut, lo, hi)
+					for i, a := range acc {
+						out[i] = requantize(a, r[i], zpOut, lo, hi)
+					}
 				}
-				di++
+				di += n
 			}
 		}
 	}

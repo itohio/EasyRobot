@@ -6,7 +6,8 @@ package qi8
 // seam contract). Conv2D and FullyConnected run their dot products with PIE
 // (pie_esp32s3.c, ACCX accumulation); DepthwiseConv2D accumulates 16
 // channels per lane group in QACC; pools and activations use the generic
-// inner loops. The C kernels are reached through pieDotRows and pieDWPx:
+// inner loops. The C kernels are reached through pieDotRowsRQ (dot products
+// and the requantisation of every output row, both in C) and pieDWPx:
 // pie_cgo_esp32s3.go calls them on the chip; with the test-only tag
 // qi8pieemu, pie_emu.go replaces them with pure-Go models so the packing and
 // scratch logic of this file runs under `go test` on the host. Either way the
@@ -17,9 +18,10 @@ package qi8
 // padded cells hold zpIn, and adds biasEff = bias − zpIn·Σw (precomputed at
 // Prepare over the full kernel window). Every term is an exact integer and
 // int32 addition wraps modulo 2^32, so the result is the same int32 bit for
-// bit; requantisation then uses requantizeMode (C: qi8_requantize_mode) in the
-// layer's rounding mode. SPEC.md allows this
-// zero-point folding for accelerated paths.
+// bit; requantisation then follows the layer's rounding mode
+// (qi8_requantize_mode, the C transcription of requantizeMode, checked
+// bit-exact on the chip). SPEC.md allows this zero-point folding for
+// accelerated paths.
 //
 // Scratch layout (from the first 16-byte-aligned byte of Scratch), with
 // K = taps·inC (conv) or In (FC), K32 = K rounded up to 32, R = output
@@ -30,7 +32,7 @@ package qi8
 //	patch   K32 bytes     gathered input, zero tail
 //	slack   16 bytes      zero
 //	biasEff R int32       bias − zpIn·Σw
-//	acc     R int32       per-row dot products
+//	acc     R int32       per-row dot products (host emulation only)
 
 import "unsafe"
 
@@ -101,8 +103,6 @@ func (l *pieLayout) pack(w []int8, bias []int32, inZP int32) {
 	}
 }
 
-func (l *pieLayout) dotRows() { pieDotRows(l.patch, l.wpack, l.k32, l.rows, l.acc) }
-
 // unpack restores the rows of an in-place pack to stride k in w (first to
 // last, so a row never overwrites one not yet moved: r·k ≤ r·k32).
 func (l *pieLayout) unpack(w []int8) {
@@ -152,11 +152,8 @@ func conv2DRun(dst, src, _, scratch []int8, _ []int32, rq []Requant, pl *convPla
 				fill(patch[pi+left+n:pi+rowLen], zp)
 				pi += rowLen
 			}
-			l.dotRows()
-			for oc := range pl.outC {
-				dst[di] = requantizeMode(l.acc[oc]+l.biasEff[oc], rq[oc], zpOut, lo, hi, pl.round)
-				di++
-			}
+			pieDotRowsRQ(&l, rq, zpOut, lo, hi, pl.round, dst[di:di+pl.outC])
+			di += pl.outC
 		}
 	}
 }
@@ -302,10 +299,7 @@ func fullyConnectedUnpack(scratch, w []int8, pl *fcPlan) {
 func fullyConnectedRun(dst, src, _, scratch []int8, _ []int32, rq []Requant, pl *fcPlan) {
 	l := newPieLayout(scratch, pl.in, pl.out)
 	copy(l.patch, src[:pl.in])
-	l.dotRows()
-	for o := range pl.out {
-		dst[o] = requantizeMode(l.acc[o]+l.biasEff[o], rq[o], pl.outZP, pl.lo, pl.hi, pl.round)
-	}
+	pieDotRowsRQ(&l, rq, pl.outZP, pl.lo, pl.hi, pl.round, dst[:pl.out])
 }
 
 func maxPool2DRun(dst, src []int8, pl *poolPlan) { maxPool2DGeneric(dst, src, pl) }

@@ -67,6 +67,16 @@ func benchDepthwise(b *testing.B, in Shape, stride int) {
 func BenchmarkDepthwise3x3_S1_32x32x32(b *testing.B) { benchDepthwise(b, Shape{32, 32, 32}, 1) }
 func BenchmarkDepthwise3x3_S2_32x32x32(b *testing.B) { benchDepthwise(b, Shape{32, 32, 32}, 2) }
 
+// MobileNetV1-0.25 at 96×96 layer shapes (ER-NN-PIPELINE §A0; the same
+// shapes nnbench runs on the S3).
+func BenchmarkMobileNet_Conv3x3_S2_96x96x3_8(b *testing.B) { benchConv(b, Shape{96, 96, 3}, 8, 3, 2) }
+func BenchmarkMobileNet_DW3x3_S1_48x48x8(b *testing.B)     { benchDepthwise(b, Shape{48, 48, 8}, 1) }
+func BenchmarkMobileNet_PW_48x48x8_16(b *testing.B)        { benchConv(b, Shape{48, 48, 8}, 16, 1, 1) }
+func BenchmarkMobileNet_DW3x3_S1_24x24x32(b *testing.B)    { benchDepthwise(b, Shape{24, 24, 32}, 1) }
+func BenchmarkMobileNet_PW_24x24x32_32(b *testing.B)       { benchConv(b, Shape{24, 24, 32}, 32, 1, 1) }
+func BenchmarkMobileNet_DW3x3_S1_6x6x128(b *testing.B)     { benchDepthwise(b, Shape{6, 6, 128}, 1) }
+func BenchmarkMobileNet_PW_6x6x128_128(b *testing.B)       { benchConv(b, Shape{6, 6, 128}, 128, 1, 1) }
+
 func BenchmarkFullyConnected_1024x128(b *testing.B) {
 	p := FCParams{In: 1024, Out: 128, InZP: -3, OutZP: 5, ActMin: -128, ActMax: 127}
 	src, w := benchFill(p.In, 1), benchFill(p.In*p.Out, 2)

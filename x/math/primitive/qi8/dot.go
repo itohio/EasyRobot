@@ -29,6 +29,39 @@ func dotZP(x, w []int8, zp int32) int32 {
 	return acc
 }
 
+// dotZP2 returns Σ (x[i]−zp)·w0[i] and Σ (x[i]−zp)·w1[i]: two weight rows
+// against one input run, each input byte loaded and offset once.
+func dotZP2(x, w0, w1 []int8, zp int32) (int32, int32) {
+	w0 = w0[:len(x)]
+	w1 = w1[:len(x)]
+	var a0, a1 int32
+	for i, v := range x {
+		xv := int32(v) - zp
+		a0 += xv * int32(w0[i])
+		a1 += xv * int32(w1[i])
+	}
+	return a0, a1
+}
+
+// dotZP4 returns Σ (x[i]−zp)·w[r·stride+i] for the four weight rows r = 0..3
+// starting at w[0], each input byte loaded and offset once.
+func dotZP4(x, w []int8, stride int, zp int32) [4]int32 {
+	n := len(x)
+	w0 := w[:n]
+	w1 := w[stride : stride+n]
+	w2 := w[2*stride : 2*stride+n]
+	w3 := w[3*stride : 3*stride+n]
+	var a0, a1, a2, a3 int32
+	for i, v := range x {
+		xv := int32(v) - zp
+		a0 += xv * int32(w0[i])
+		a1 += xv * int32(w1[i])
+		a2 += xv * int32(w2[i])
+		a3 += xv * int32(w3[i])
+	}
+	return [4]int32{a0, a1, a2, a3}
+}
+
 // FCParams describes a fully connected layer (GEMV): out = W·(x-InZP) + bias.
 type FCParams struct {
 	In, Out int // input and output vector lengths

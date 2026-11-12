@@ -34,10 +34,9 @@ docs/.obsidian/workspace*.json
 /cmd/monitor/monitor
 /cmd/spectrometer/spectrometer
 /build/
-# nnbench firmware images built from the repo root (cmd/nnbench/README.md)
+# nnbench and qi8bench firmware images built from the repo root (their READMEs)
 /nnbench-*.bin
-# Python bytecode from the testdata generators
-__pycache__/
+/qi8bench-*.bin
 # Python bytecode from the testdata generators
 __pycache__/
 # Evidence reports live outside the repo (~/src/docs/evidence/)
