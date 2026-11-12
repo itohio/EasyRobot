@@ -16,13 +16,15 @@ evidence: "go test -race ./x/devices/mpu6050 pass (8 tests, fake register bus, l
 
 **What it does:** drives an InvenSense MPU-6050 over `devices.I2C`: WHO_AM_I probe, configuration (sample-rate divider, digital low-pass filter, accel and gyro full scale, data-ready interrupt), one 14-byte burst read of accel + temperature + gyro of the same sample, and conversion to SI units.
 
-**Where:** `x/devices/mpu6050/mpu6050.go` — `Config`, `Config.SampleRate`, `Config.Scale` (:97-146), `Device`, `New` (:149-165), `Probe` (:168), `Configure` (:178-213), `DataReady` (:224), `ReadRaw` (:230-242), `Read` (:245), `read8` (:259).
+**Where:** `x/devices/mpu6050/mpu6050.go` — `Config`, `Config.SampleRate`, `Config.Scale` (:97-146), `Device`, `New` (:148-167), `Probe` (:170), `Configure` (:180-215), `DataReady` (:226), `ReadRaw` (:232-244), `Read` (:247), `read8` (:261).
+
+**Concurrency:** a `Device`'s methods share one transfer buffer, so use it from one goroutine at a time or guard it with your own lock (review S3: `go test -race` flagged two goroutines reading at once). A lock inside would cost every read on the hot path.
 
 **Inputs → outputs:** `New(bus devices.I2C, addr)` (0 → 0x68; AD0 high is 0x69). `Probe() (id, ok, err)`: `ok` iff WHO_AM_I is 0x68 (an MPU-6500 answers 0x70, an MPU-9250 0x71, some clones 0x98: `id` lets the caller decide; log it). `Configure(Config)`: out-of-range fields give `devices.ErrInvalidValue` before any write. The writes are not atomic: a bus error stops at that write, and `Config()` and the scaling then hold exactly the fields whose writes landed. The ranges in the chip and the scaling never disagree (review S1: they used to, and 1 g read 8× low after a failed later write). `ReadRaw(*Raw)` counts; `Read(*Sample)` m/s², rad/s, °C with the configured ranges. Every call returns the bus error; on an error `Probe` gives id 0 and `DataReady` false (never a byte left from an earlier transfer). The chip powers up asleep: reads before `Configure` return stale or zero data. `Configure` does not touch PWR_MGMT_2, USER_CTRL or FIFO_EN.
 
 **Register use** (MPU-6000/6050 register map rev 4.2): `PWR_MGMT_1`=0x01 (awake, PLL on the X gyro, steadier than the internal oscillator); `SMPLRT_DIV`; `CONFIG.DLPF_CFG` 0–6 (0 = 260/256 Hz, gyro output 8 kHz; 1–6 = 184…5 Hz, gyro output 1 kHz; 7 refused); `GYRO_CONFIG.FS_SEL` and `ACCEL_CONFIG.AFS_SEL` bits 4:3; `INT_PIN_CFG`=0x30 (latched until any read) and `INT_ENABLE.DATA_RDY_EN` when `DataReadyInterrupt` is set, so an edge interrupt and a polled level both work; the burst reads 14 bytes from `ACCEL_XOUT_H` (0x3B).
 
-**Scaling:** accel 16384/8192/4096/2048 LSB/g × 9.80665 m/s²; gyro 131/65.5/32.8/16.4 LSB/(°/s) × π/180; temperature counts/340 + 36.53 °C. Sample rate = gyro output rate / (1 + divider).
+**Scaling:** accel 16384/8192/4096/2048 LSB/g × 9.80665 m/s²; gyro 131/65.5/32.8/16.4 LSB/(°/s) × π/180; temperature counts × (1/340) + 36.53 °C. The reciprocal is a multiply: with `/340` TinyGo calls the soft-float `__divsf3` for every sample on the RP2040, with `× (1/340)` it does not (`ER-SIMALGO-logs/s4-fdiv.txt`). Sample rate = gyro output rate / (1 + divider).
 
 **TinyGo:** the device holds one 15-byte buffer used by every transfer; reads fill caller values. `tinygo build -target=tufty2040 -print-allocs=mpu6050` reports only the `Device` from `New`. The Tufty 2040's Qw/ST port is `machine.I2C0` (GPIO4 SDA, GPIO5 SCL).
 
@@ -41,8 +43,8 @@ evidence: "go test -race ./x/devices/mpu6050 pass (8 tests, fake register bus, l
 
 ## TODOs
 
-- [ ] Gyro bias calibration (average at rest) and self-test — x/devices/mpu6050/mpu6050.go:178 #p3
-- [ ] Run on the badge's MPU6050 (log WHO_AM_I, 1 g at rest, data-ready at the configured rate, plausible temperature) — x/devices/mpu6050/mpu6050.go:230 #p2
+- [ ] Gyro bias calibration (average at rest) and self-test — x/devices/mpu6050/mpu6050.go:180 #p3
+- [ ] Run on the badge's MPU6050 (log WHO_AM_I, 1 g at rest, data-ready at the configured rate, plausible temperature) — x/devices/mpu6050/mpu6050.go:232 #p2
 
 ## Links
 

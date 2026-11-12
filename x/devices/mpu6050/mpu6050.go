@@ -141,11 +141,13 @@ func (c Config) Scale(r Raw) Sample {
 	return Sample{
 		Accel: [3]float32{float32(r.Accel[0]) * a, float32(r.Accel[1]) * a, float32(r.Accel[2]) * a},
 		Gyro:  [3]float32{float32(r.Gyro[0]) * g, float32(r.Gyro[1]) * g, float32(r.Gyro[2]) * g},
-		TempC: float32(r.Temp)/340 + 36.53,
+		TempC: float32(r.Temp)*(1.0/340) + 36.53, // a multiply: no soft-float divide per sample on the RP2040
 	}
 }
 
-// Device is an MPU-6050 on an I2C bus.
+// Device is an MPU-6050 on an I2C bus. Its methods share one transfer
+// buffer, so use a Device from one goroutine at a time (or guard it with
+// your own lock); a lock inside would cost every read.
 type Device struct {
 	bus  devices.I2C
 	addr uint16
