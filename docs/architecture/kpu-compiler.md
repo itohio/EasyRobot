@@ -42,7 +42,7 @@ Owner decision (2026-11-10): models come as int8 TFLite files or as our own `qne
 | DepthwiseConv2D 3×3 (multiplier 1), stride 1, SAME | yes | |
 | stride 2, `Pad(1,1)` + 3×3 VALID or 1×1 VALID | yes: conv + left-top 2×2 sampler | windows centred on even pixels. A stride-2 **depthwise** runs at full resolution (`Fuse.Full`) and the next KPU layer samples (`Fuse.Subsample`): the KPU does not pool in depthwise mode |
 | stride 2, TF SAME 3×3 (even H and W) | yes, exact, no extra KPU work but a sampler | windows centred on odd pixels. The conv (regular or depthwise) runs at full resolution (`Fuse.Full`); the next KPU layer reads from one row down with the right-top sampler (`Fuse.OddSample`). That reader is the next 1×1 conv when there is one, else an identity 1×1 conv (`compile.Sampler`, exact: weights 1 and multiplier 1). The official MobileNetV1 exports need one Sampler, after the stem |
-| MaxPool2D / AvgPool2D 2×2 or 4×4, stride = kernel, directly after a regular conv | fused into that conv | `pool_type`; not after a depthwise conv (CPU) |
+| MaxPool2D / AvgPool2D 2×2 or 4×4, stride = kernel, directly after a regular conv | fused into that conv | `pool_type`; not after a depthwise conv (CPU); not an AvgPool2D with `TiesUp` (TFLite uint8 rounds the mean half up, the KPU's mean floors: CPU) |
 | everything else (Add, Concat, FC, Mean/GAP, Softmax, Logistic, Mul, resizes) | no | CPU (qnet kernels) |
 
 ### Integer mapping
@@ -126,7 +126,7 @@ Requantisation is approximate:
 | K9d | `compile.Compile(g, kpu.New \| kpu.NewEmulated)` → `qnet.Backend`: segments, AI-SRAM plan, int8 NHWC ↔ uint8 CHW at boundaries | host: MobileNetV1-0.25 256×256 built with Pad(1,1)+VALID from `qnet.Layer` values (qnet's own builder uses TF SAME) + `SyntheticParams`, cut at `conv_pw_13`, one KPU segment, per layer ≤ 1 LSB vs qnet; `Run` allocates nothing |
 | K9e | The same graph on the UnitV | board vs host emulation per layer ≤ 1 LSB; ms/frame vs the K210 CPU at 256×256 |
 | K9 SAME | TF SAME stride 2 (`Fuse.Full` + `Fuse.OddSample`, `compile.Sampler`); `compile.Kmodel`/`Cut`/`Resize`; `x/marshaller/kmodel` and `cmd/kmodelc` (TFLite → kmodel) | host: qnet's MobileNetV1-0.25 (TF SAME) one segment, per layer ≤ 1 LSB, Samplers exact; board: per layer equal to `Emulate`, final equal to the CPU runner |
-| K9f | **End-to-end target:** the int8 TFLite MobileNetV1-0.25 256×256 (TF SAME or Pad(1,1)+VALID export) through `tfl.Load` → KPU, cut at `conv_pw_13` | features vs the TFLite reference interpreter on camera frames (≤ 1 LSB per layer up to the cut); class agreement on frames with clear objects (K8c-3's deferred check) |
+| K9f | **End-to-end target:** the official uint8 TFLite MobileNetV1-0.25 (224 export, resized to 256×256; asymmetric weights through `Layer.WZP`) through `tfl.Load` → KPU, cut at `conv_pw_13` | done on still images (ER-K210-K9 evidence): per layer ≤ 1 LSB vs qnet, which equals LiteRT; final features vs LiteRT cosine 0.992–0.997 on the host, 0.9925 on the board. Open: camera frames, and class agreement (needs the uncut model's classifier; K8c-3's deferred check) |
 | K9g | Row-band tiling; CPU Add/Concat between segments; FC-on-KPU option; LeakyReLU tables (two sloped segments); MobileNetV2 at QVGA | per layer ≤ 1 LSB vs CPU; fits 2 MiB |
 
 ## Open questions (resolved by measurement in the milestones)
