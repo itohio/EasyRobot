@@ -318,13 +318,18 @@ func (gi graphInfo) segment(i int) *Segment {
 }
 
 // fits reports whether a lowered layer's input and output fit KPU memory
-// together (else it needs row-band tiling, K9g); readPast reserves one more
-// output row for an OddSample reader.
+// together (else it needs row-band tiling, K9g). An OddSample reader reads
+// one row past its input, which counts too (review R-K210-K9same S3);
+// readPast reserves that row after the output, for the layer such a reader
+// follows.
 func fits(gr Group, readPast bool) bool {
 	a := gr.c.Args
 	iw, ih, ic := a.InShape()
 	ow, oh, oc := a.OutShape()
 	n := lines(qi8.Shape{H: ih, W: iw, C: ic}) + lines(qi8.Shape{H: oh, W: ow, C: oc})
+	if gr.Mode.OddSample {
+		n += kmodel.UploadLayout(iw, ih).RowLines
+	}
 	if readPast {
 		n += kmodel.UploadLayout(ow, oh).RowLines
 	}
