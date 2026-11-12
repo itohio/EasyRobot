@@ -22,7 +22,7 @@ type RunnerFunc func(m *kmodel.Model, main []byte) (*kpu.Runner, error)
 type Group struct {
 	First, Count int
 	Mode         Mode
-	c            Conv // lowered at addresses 0 (the planner's one Lower per group)
+	c            Conv // lowered at addresses 0 (the planner's one Lower per group); cleared once the segment's kmodel is built
 }
 
 // Mode is how a group is lowered beyond plain fusion (see Fuse).
@@ -353,6 +353,11 @@ func (s *Segment) build(newRunner RunnerFunc) error {
 		return err
 	}
 	s.Model, s.Runner, s.chw = m, r, make([]byte, kin.Len())
+	// The kmodel now holds the weights, BN and activation tables: drop the
+	// lowered copies (MobileNet-0.25 at 256²: 233,648 B).
+	for k := range s.Groups {
+		s.Groups[k].c = Conv{}
+	}
 	return nil
 }
 

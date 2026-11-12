@@ -18,8 +18,10 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -100,17 +102,14 @@ func run(input string, cut int, list bool, args []string) error {
 
 // writeFile writes b to path through a temporary file in the same directory
 // and a rename, so a failed write leaves no partial output (and an existing
-// file as it was).
+// file as it was). The file is created 0644 under the umask, as os.WriteFile
+// creates it.
 func writeFile(path string, b []byte) error {
-	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
+	f, tmp, err := createTemp(filepath.Dir(path), "."+filepath.Base(path)+"."+strconv.Itoa(os.Getpid())+".")
 	if err != nil {
 		return err
 	}
-	tmp := f.Name()
 	_, err = f.Write(b)
-	if err == nil {
-		err = f.Chmod(0o644)
-	}
 	if err == nil {
 		err = f.Sync()
 	}
@@ -124,4 +123,16 @@ func writeFile(path string, b []byte) error {
 		os.Remove(tmp)
 	}
 	return err
+}
+
+// createTemp creates a new file prefix+N in dir with mode 0644 (the umask
+// applies, unlike os.CreateTemp's 0600 and a later Chmod).
+func createTemp(dir, prefix string) (*os.File, string, error) {
+	for i := 0; ; i++ {
+		name := filepath.Join(dir, prefix+strconv.Itoa(i))
+		f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		if err == nil || !errors.Is(err, fs.ErrExist) || i == 999 {
+			return f, name, err
+		}
+	}
 }

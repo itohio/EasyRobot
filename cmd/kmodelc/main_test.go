@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -64,5 +65,25 @@ func TestWriteFileAtomic(t *testing.T) {
 			names = append(names, e.Name())
 		}
 		t.Errorf("dir holds %v, want only out.kmodel and sub", names)
+	}
+}
+
+// TestWriteFileTempTaken: a leftover temporary name is skipped, not
+// truncated or reused.
+func TestWriteFileTempTaken(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "out.kmodel")
+	taken := filepath.Join(dir, ".out.kmodel."+strconv.Itoa(os.Getpid())+".0")
+	if err := os.WriteFile(taken, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFile(out, []byte("kmodel")); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(out); err != nil || string(b) != "kmodel" {
+		t.Errorf("out = %q, %v", b, err)
+	}
+	if b, err := os.ReadFile(taken); err != nil || string(b) != "keep" {
+		t.Errorf("the taken name now holds %q, %v; want it untouched", b, err)
 	}
 }
