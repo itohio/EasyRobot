@@ -400,6 +400,56 @@ func TestSeparatingContactKeepsVelocity(t *testing.T) {
 	}
 }
 
+// A paddle moving into a resting ball along the contact normal knocks it
+// away at (1+e)·U: the surface's own normal velocity enters the impulse
+// (review E3).
+func TestPaddleStrikesARestingBall(t *testing.T) {
+	for _, e := range []float32{0, 0.8} {
+		w := World{
+			Balls: []Ball{pingPong(0.03, 0.5, 0, 0, 0)},
+			Boxes: []Box{{MinX: -0.1, MinY: 0.4, MaxX: 0, MaxY: 0.6, VX: 2, Material: Material{Restitution: e, Friction: 0.9}}},
+		}
+		bounce(&w, 100)
+		if b := w.Balls[0]; math.Abs(float64(b.VX-(1+e)*2)) > 1e-4 || b.VY != 0 || b.W != 0 {
+			t.Fatalf("e %v: %+v, want vx (1+e)·2 = %v, no vy, no spin", e, b, (1+e)*2)
+		}
+	}
+}
+
+// Every ball gets its contacts: two balls hitting different walls in the
+// same step both bounce (review E4).
+func TestEveryBallGetsContacts(t *testing.T) {
+	m := Material{Restitution: 1}
+	w := World{
+		Balls:    []Ball{pingPong(0.1, 0.5, -1, 0, 0), pingPong(0.9, 0.5, 1, 0, 0)},
+		Segments: []Segment{{AX: 0, AY: 0, BX: 0, BY: 1, Material: m}, {AX: 1, AY: 0, BX: 1, BY: 1, Material: m}},
+	}
+	for i := 0; i < 60; i++ {
+		w.Step(dt)
+	}
+	if a, b := w.Balls[0], w.Balls[1]; a.VX != 1 || b.VX != -1 {
+		t.Fatalf("after 0.25 s: vx %v and %v, want both reversed (1, −1)", a.VX, b.VX)
+	}
+}
+
+// InertiaK ≤ 0 (infinite inertia): a grippy hit leaves the spin exactly as
+// set and everything finite, and the tangential impulse acts as on a point
+// mass: it stops the contact point's slip (vy − ω·R = 0 here, within
+// μ·jn), so vy goes from −1 to ω·R = 0.06 (review E4: without the guards
+// the spin became NaN, or the tangential impulse vanished).
+func TestInfiniteInertiaHit(t *testing.T) {
+	for _, k := range []float32{0, -1} {
+		b := pingPong(0, 0.5, -1, -1, 3)
+		b.InertiaK = k
+		w := World{Balls: []Ball{b}, Segments: []Segment{{AX: -0.1, AY: 0, BX: -0.1, BY: 1, Material: Material{Restitution: 1, Friction: 0.9}}}}
+		bounce(&w, 1000)
+		b = w.Balls[0]
+		if b.W != 3 || math.IsNaN(float64(b.VX+b.VY)) || math.IsInf(float64(b.VX+b.VY), 0) || math.Abs(float64(b.VX-1)) > 1e-4 || math.Abs(float64(b.VY-3*b.R)) > 1e-4 {
+			t.Fatalf("InertiaK %v: %+v, want spin 3 kept, vx 1, vy ω·R = 0.06", k, b)
+		}
+	}
+}
+
 // The kinematic shapes move with their velocity each step.
 func TestKinematicShapesMove(t *testing.T) {
 	w := World{Boxes: []Box{{MaxX: 1, MaxY: 1, VY: 2}}, Segments: []Segment{{BX: 1, VX: -1}}}

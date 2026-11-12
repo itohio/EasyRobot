@@ -10,7 +10,7 @@ tests: [x/math/physics/rigid2d/rigid2d_test.go]
 test_result: pass
 complete: yes
 correct: yes
-evidence: "go test -race ./x/math/physics/rigid2d pass (22 tests, 2026-11-12, after fpv-gate ER-SIMALGO-E and review R-ER-SIMALGO-EF); 24 mutants all fail (ER-SIMALGO-logs/rigid2d-mutants-r2.txt); squeeze and exact-hit fix (review E2, E5): red first (ER-SIMALGO-logs/e2-fail-before.txt), 6 mutants of the fix and 4 earlier segment mutants fail (e2-mutants.txt); host step with contacts: 0.58 % contact steps 197–323 ns, every step in contact 78–207 ns (busy shared host), 0 allocs; allocation guard (review E1): 0 mallocs in 1,000 steps with an impulse on a segment and a box every step and a changing dt, and one injected allocation per impulse, cache refresh, box or segment contact fails it (ER-SIMALGO-logs/e1-alloc-mutants.txt); tinygo 0.43 tufty2040 build, no allocation in the package; RP2040 step time not measured (no board run)"
+evidence: "go test -race ./x/math/physics/rigid2d pass (25 tests, 2026-11-12, after fpv-gate ER-SIMALGO-E and review R-ER-SIMALGO-EF); 24 mutants all fail (ER-SIMALGO-logs/rigid2d-mutants-r2.txt); squeeze and exact-hit fix (review E2, E5): red first (ER-SIMALGO-logs/e2-fail-before.txt), 6 mutants of the fix and 4 earlier segment mutants fail (e2-mutants.txt); review E3/E4 test gaps: surface normal velocity, first-ball-only and both InertiaK guards now fail a test (e3e4-mutants.txt); host step with contacts: 0.58 % contact steps 197–323 ns, every step in contact 78–207 ns (busy shared host), 0 allocs; allocation guard (review E1): 0 mallocs in 1,000 steps with an impulse on a segment and a box every step and a changing dt, and one injected allocation per impulse, cache refresh, box or segment contact fails it (ER-SIMALGO-logs/e1-alloc-mutants.txt); tinygo 0.43 tufty2040 build, no allocation in the package; RP2040 step time not measured (no board run)"
 ---
 # 2D ball contact with spin (rigid2d)
 
@@ -48,6 +48,9 @@ evidence: "go test -race ./x/math/physics/rigid2d pass (22 tests, 2026-11-12, af
     - `TestSlidingFrictionIsCoulombsLimit`: a sliding hit loses exactly μ(1+e)|vn|.
     - `TestCoulombAndEnergyAtAStillWall`: 2,000 random hits; the tangential impulse stays ≤ μ·normal, sliding never reverses, a still wall never adds energy.
     - `TestSeparatingContactKeepsVelocity`.
+    - `TestPaddleStrikesARestingBall`: a paddle at 2 m/s into a resting ball gives vx = (1+e)·2 for e = 0 and 0.8 (review E3).
+    - `TestEveryBallGetsContacts`: two balls hitting different walls both bounce (review E4).
+    - `TestInfiniteInertiaHit`: `InertiaK` 0 and −1 keep the spin as set, stay finite, and take the point-mass tangential impulse (vy → ω·R) (review E4).
   - **Magnus and damping:**
     - `TestMagnusCurvesAndCanComeBack`: weak spin keeps going, curving to +y; strong spin comes back ≥ 0.3 m towards the paddle; clockwise spin curves to −y.
     - `TestMagnusTurnAndGravityAxes`: the turn per step is 2·atan(θ/2); gravity (3, −4) acts on both axes.
