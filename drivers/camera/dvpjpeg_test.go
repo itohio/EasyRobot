@@ -37,11 +37,28 @@ func TestDVPJPEG(t *testing.T) {
 		}
 	}
 	for name, stream := range map[string][]byte{
-		"no FF D9": append([]byte{0xFF, 0xD8, 1, 2}, make([]byte, 60)...),
-		"no FF D8": append([]byte{0, 0, 0xFF, 0xD9}, make([]byte, 60)...),
+		"no FF D9":           append([]byte{0xFF, 0xD8, 1, 2}, make([]byte, 60)...),
+		"no FF D8":           append([]byte{0, 0, 0xFF, 0xD9}, make([]byte, 60)...),
+		"FF but not D8":      append([]byte{0xFF, 0xD7, 0xFF, 0xD9}, make([]byte, 60)...),
+		"lone D9s, no FF D9": append([]byte{0xFF, 0xD8, 0xD9, 1, 0xD9, 0xD9, 0, 0xD9}, make([]byte, 56)...),
 	} {
 		if _, err := dvpJPEG(dvpLayout(stream)); !errors.Is(err, ErrIncomplete) {
 			t.Errorf("%s: err %v, want ErrIncomplete", name, err)
+		}
+	}
+	// Review R-K210-REC-R3 mutant survivors: the frame ends at the first
+	// FF D9, and an EOI in the buffer's last word is found.
+	for name, c := range map[string]struct {
+		stream []byte
+		n      int
+	}{
+		"two EOIs":           {append([]byte{0xFF, 0xD8, 7, 0xFF, 0xD9, 0, 0xFF, 0xD9}, make([]byte, 56)...), 5},
+		"EOI in last word":   {append(append([]byte{0xFF, 0xD8}, make([]byte, 58)...), 0, 0xD9, 0xFF, 0xD9), 64},
+		"lone D9 before EOI": {append([]byte{0xFF, 0xD8, 0xD9, 1, 0xFF, 0xD9}, make([]byte, 58)...), 6},
+	} {
+		b := dvpLayout(c.stream)
+		if n, err := dvpJPEG(b); err != nil || n != c.n || string(b[:n]) != string(c.stream[:c.n]) {
+			t.Errorf("%s: n %d err %v, want %d", name, n, err, c.n)
 		}
 	}
 }

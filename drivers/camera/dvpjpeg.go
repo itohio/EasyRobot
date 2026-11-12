@@ -23,7 +23,9 @@ func dvpJPEG(b []byte) (int, error) {
 		w = w>>24 | (w>>8)&0xFF00 | (w<<8)&0xFF0000 | w<<24
 		words[i] = w
 		for k := range 4 {
-			c := b[4*i+k]
+			// The byte just stored, from the register: b is uncached on the
+			// K210, so reading it back costs a bus load (review R3 F6).
+			c := byte(w >> (8 * k))
 			if prev == 0xFF && c == 0xD9 {
 				if b[0] != 0xFF || b[1] != 0xD8 {
 					return 0, ErrIncomplete
