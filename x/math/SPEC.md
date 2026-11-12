@@ -347,6 +347,18 @@ type Filter interface {
 - Value types with fixed state; no allocation per sample (TinyGo, RP2040)
 - Without a magnetometer the heading is relative and drifts with the gyro bias about the vertical
 
+### 13. Physics (`x/math/physics`)
+
+**Purpose**: Small fixed-step physics for games and demos
+
+**Status**: ✅ **Tested** (host tests; no on-device timing yet)
+
+**Types**:
+- `rigid2d.World`: balls with spin among kinematic segments and boxes. Impulse contacts use the surface's restitution and Coulomb friction; Magnus lift; linear and angular damping
+
+**Features**:
+- float32, deterministic, no allocation per step (TinyGo, RP2040)
+
 ## Design Principles
 
 ### In-Place Operations
@@ -440,6 +452,7 @@ Potential optimizations for:
 4. **Neural Networks** (`x/math/nn`): Fully implemented, tested (layers, models, losses)
 5. **Primitives** (`x/math/primitive`): Core foundation, working
 6. **Navigation** (`x/math/nav/pdr`): step detector and track, tested on synthetic signals (no hardware run yet)
+7. **Physics** (`x/math/physics/rigid2d`): ball contacts with spin, tested on the host (no on-device timing yet)
 
 ### ⚠️ Draft - Not Tested with Real Hardware
 
@@ -567,6 +580,7 @@ x/math/
 ├── graph/            # Graph algorithms (⚠️ Draft)
 ├── grid/             # Grid operations (⚠️ Draft)
 ├── nav/              # Dead reckoning: pdr (✅ Tested, synthetic signals)
+├── physics/          # Fixed-step game physics: rigid2d (✅ Tested, host)
 └── primitive/        # Low-level primitives (✅ Working)
 ```
 
