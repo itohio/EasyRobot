@@ -156,6 +156,40 @@ func TestEulerOfKnownOrientations(t *testing.T) {
 	}
 }
 
+// At and near pitch ±90° roll and yaw are not separable (only roll ∓ yaw
+// is), but the angles Euler returns must still describe q: rebuilt into a
+// quaternion they are within 0.1° of it (review S2: up to 179.5° off, e.g.
+// roll 60°, pitch 90° came back as roll −90°, yaw 90°).
+func TestEulerAtThePitchPoles(t *testing.T) {
+	s := uint32(2463534242)
+	rnd := func() float64 { s ^= s << 13; s ^= s >> 17; s ^= s << 5; return float64(s) / float64(^uint32(0)) }
+	worst := 0.0
+	for i := 0; i < 20000; i++ {
+		pitch := 90 - 0.01*rnd() // within 0.01° of the pole
+		if i%4 >= 2 {
+			pitch = 90 - 0.1*rnd() // both sides of the switch at ≈ 89.97°
+		}
+		if i%2 == 1 {
+			pitch = -pitch
+		}
+		if i%5 == 0 {
+			pitch = math.Copysign(90, pitch) // exactly at the pole
+		}
+		q := fromEuler((360*rnd()-180)*deg, pitch*deg, (360*rnd()-180)*deg)
+		roll, p, yaw := Euler(q)
+		back := fromEuler(float64(roll), float64(p), float64(yaw))
+		dot := math.Abs(float64(q[0])*float64(back[0]) + float64(q[1])*float64(back[1]) + float64(q[2])*float64(back[2]) + float64(q[3])*float64(back[3]))
+		angle := 2 * math.Acos(math.Min(1, dot)) / deg
+		if angle > worst {
+			worst = angle
+		}
+		if !(angle <= 0.1) {
+			t.Fatalf("case %d (pitch %.6f°): Euler gives (%.3f°, %.3f°, %.3f°), %.3f° from q", i, pitch, roll/deg, p/deg, yaw/deg, angle)
+		}
+	}
+	t.Logf("worst rebuilt error %.4f°", worst)
+}
+
 // Update with a *mat.Matrix3x3 allocates nothing (the badge calls it at
 // 100 Hz under TinyGo).
 func TestMahonyUpdateDoesNotAllocate(t *testing.T) {

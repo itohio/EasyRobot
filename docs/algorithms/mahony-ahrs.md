@@ -10,7 +10,7 @@ tests: [x/math/filter/ahrs/ahrs_test.go, x/math/filter/ahrs/convergence_test.go]
 test_result: pass
 complete: yes
 correct: yes
-evidence: "go test -race ./x/math/filter/ahrs 15/15 pass (2026-11-12): 6- and 9-DOF converge to roll 30°/pitch −20° (9-DOF also yaw 40°); a constant gyro bias is learned by the integral (GainI·eInt = −bias within 1e-3, attitude within 0.002; dropping the integral in either path fails); yaw rate integrates to +90°; zero accel and accel scale handled; Update allocates 0; red before the fix: 6-DOF settled at the mirror tilt (ER-SIMALGO-logs/mahony-fail-before.txt); mutants in ER-SIMALGO-logs/mahony-mutants-r2.txt all fail"
+evidence: "go test -race ./x/math/filter/ahrs 16/16 pass (2026-11-12): 6- and 9-DOF converge to roll 30°/pitch −20° (9-DOF also yaw 40°); a constant gyro bias is learned by the integral (GainI·eInt = −bias within 1e-3, attitude within 0.002; dropping the integral in either path fails); yaw rate integrates to +90°; zero accel and accel scale handled; Update allocates 0; red before the fix: 6-DOF settled at the mirror tilt (ER-SIMALGO-logs/mahony-fail-before.txt); mutants in ER-SIMALGO-logs/mahony-mutants-r2.txt all fail; review S2: Euler near pitch ±90° rebuilt within 0.067° of q over 20,000 poses (red before: 31° off; ER-SIMALGO-logs/s2-*.txt, 6 mutants fail)"
 ---
 # Mahony AHRS (complementary PI filter)
 
@@ -18,7 +18,7 @@ evidence: "go test -race ./x/math/filter/ahrs 15/15 pass (2026-11-12): 6- and 9-
 
 **Where:** `x/math/filter/ahrs/mahony.go`: `NewMahony` :24, `Update` :72-86, `calculate` (9-DOF) :100-201, `calculateWOMag` (6-DOF) :203-264. `x/math/filter/ahrs/euler.go`: `Euler` :18.
 
-**Inputs → outputs:** same 3×3 input as [[madgwick-ahrs]] (rows accel, gyro rad/s, mag); output quaternion `[w,x,y,z]`, the rotation from the sensor frame to the world frame (z up; x along the horizontal magnetic field with a magnetometer). `Euler(q)` gives roll, pitch, yaw (Z-Y-X; yaw counter-clockwise seen from above, relative to the start without a magnetometer). `vec.Quaternion`'s own `Roll/Pitch/Yaw` read w from index 3 and do not apply to this output. `Update(dt, &m)` with a `*mat.Matrix3x3` allocates nothing.
+**Inputs → outputs:** same 3×3 input as [[madgwick-ahrs]] (rows accel, gyro rad/s, mag); output quaternion `[w,x,y,z]`, the rotation from the sensor frame to the world frame (z up; x along the horizontal magnetic field with a magnetometer). `Euler(q)` gives roll, pitch, yaw (Z-Y-X; yaw counter-clockwise seen from above, relative to the start without a magnetometer). Within about 0.03° of pitch ±90° (|sin pitch| ≥ 0.99999988) only roll ∓ yaw is defined: `Euler` then returns roll 0 and the whole rotation about the vertical as yaw, so the angles still describe `q`. `vec.Quaternion`'s own `Roll/Pitch/Yaw` read w from index 3 and do not apply to this output. `Update(dt, &m)` with a `*mat.Matrix3x3` allocates nothing.
 
 ## Completeness review
 
@@ -29,6 +29,7 @@ evidence: "go test -race ./x/math/filter/ahrs 15/15 pass (2026-11-12): 6- and 9-
   - `TestMahonyAccelEdgeCases`: a zero accel sample integrates the gyro alone without NaN; |a| = 1 and 9.81 give the same attitude.
   - `TestMahonyIntegratesTheYawRate`: +90°/s for 1 s → +90° ± 2°.
   - `TestEulerOfKnownOrientations`: incl. both gimbal-lock clamps.
+  - `TestEulerAtThePitchPoles`: 20,000 poses within 0.1° of ±90° (a fifth exactly at the pole), random roll and yaw; the returned angles rebuilt into a quaternion are within 0.1° of `q` (worst 0.067°).
   - `TestMahonyUpdateDoesNotAllocate`.
   - Run: `go test -race -count=1 ./x/math/filter/ahrs/` pass, 2026-11-12.
 - Correct: yes for 6-DOF and 9-DOF. The 6-DOF error was `e = v × a` (estimated × measured; the 9-DOF path and the x-io reference use `a × v`), so it settled at the mirror tilt (red run: gravity estimate −(0.34, 0.47, 0.81) for a measured +(0.34, 0.47, 0.81)); fixed to `a × v` (`mahony.go:224-231`).
