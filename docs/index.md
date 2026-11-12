@@ -24,9 +24,9 @@ From the roadmap's no-hardware demo checkpoints ([[roadmap#8. Next|roadmap §8]]
 
 The sixth checkpoint, M-b's synthetic recorder round trip, follows: it needs [[ER-027-marshaller-fixes|ER-027]] and [[ER-031-spi-slave-feature-framing|ER-031]]. Full order, accepted order changes and the T-IK mapping: [[tickets/index|ticket index]].
 
-<!-- vault:status h=95ab37291421 -->
+<!-- vault:status h=fd33d77ed708 -->
 
-State: 68 tested · 29 implemented · 137 partial · 10 stub · 13 unverified (257 algorithms)
+State: 69 tested · 29 implemented · 137 partial · 10 stub · 13 unverified (258 algorithms)
 
 <!-- /vault:status -->
 
@@ -55,7 +55,7 @@ State: 68 tested · 29 implemented · 137 partial · 10 stub · 13 unverified (2
 
 Algorithm notes per module by status (generated from the algorithm notes; `tested` needs passing value tests).
 
-<!-- vault:modules h=44afbce2e517 -->
+<!-- vault:modules h=b05cee069a6c -->
 
 | Module | tested | implemented | partial | stub | unverified | total |
 |---|---|---|---|---|---|---|
@@ -63,6 +63,7 @@ Algorithm notes per module by status (generated from the algorithm notes; `teste
 | [[graph-and-planning]] | 7 | 1 | 9 | 0 | 0 | 17 |
 | [[kinematics]] | 7 | 5 | 2 | 0 | 0 | 14 |
 | [[motion-and-gait]] | 5 | 0 | 2 | 1 | 0 | 8 |
+| [[navigation]] | 1 | 0 | 0 | 0 | 0 | 1 |
 | [[pid-control]] | 1 | 0 | 0 | 0 | 0 | 1 |
 | **Signal, codecs, audio** | | | | | | |
 | [[audio-io]] | 1 | 1 | 1 | 0 | 1 | 4 |
@@ -103,7 +104,7 @@ Algorithm notes per module by status (generated from the algorithm notes; `teste
 | [[vision]] | 0 | 0 | 8 | 2 | 3 | 13 |
 | **Knowledge engine** | | | | | | |
 | [[knowledge-engine]] | 0 | 0 | 0 | 0 | 0 | 0 |
-| **All** | 68 | 29 | 137 | 10 | 13 | 257 |
+| **All** | 69 | 29 | 137 | 10 | 13 | 258 |
 
 <!-- /vault:modules -->
 

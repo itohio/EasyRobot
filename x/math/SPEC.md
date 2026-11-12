@@ -332,6 +332,21 @@ type Filter interface {
 - Zero allocations in hot paths
 - Architecture-specific optimizations potential (SIMD, NEON)
 
+### 12. Navigation (`x/math/nav`)
+
+**Purpose**: Dead reckoning from body-worn sensors
+
+**Status**: ✅ **Tested** on synthetic signals (no hardware run yet)
+
+**Types**:
+- `pdr.Detector`: steps from the accelerometer magnitude (low-pass, running baseline, threshold, minimum interval)
+- `pdr.Heading`: the horizontal direction of a chosen body axis (e.g. a badge's screen-out axis) from an attitude quaternion, for any mounting
+- `pdr.Track`: 2D position advanced one step length along a heading
+
+**Features**:
+- Value types with fixed state; no allocation per sample (TinyGo, RP2040)
+- Without a magnetometer the heading is relative and drifts with the gyro bias about the vertical
+
 ## Design Principles
 
 ### In-Place Operations
@@ -424,6 +439,7 @@ Potential optimizations for:
 3. **Tensor Operations** (`x/math/tensor`): Fully implemented, tested (80+ operations)
 4. **Neural Networks** (`x/math/nn`): Fully implemented, tested (layers, models, losses)
 5. **Primitives** (`x/math/primitive`): Core foundation, working
+6. **Navigation** (`x/math/nav/pdr`): step detector and track, tested on synthetic signals (no hardware run yet)
 
 ### ⚠️ Draft - Not Tested with Real Hardware
 
@@ -550,6 +566,7 @@ x/math/
 ├── interpolation/    # Interpolation algorithms (⚠️ Draft)
 ├── graph/            # Graph algorithms (⚠️ Draft)
 ├── grid/             # Grid operations (⚠️ Draft)
+├── nav/              # Dead reckoning: pdr (✅ Tested, synthetic signals)
 └── primitive/        # Low-level primitives (✅ Working)
 ```
 
