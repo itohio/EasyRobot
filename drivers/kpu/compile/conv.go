@@ -114,8 +114,8 @@ func LowerConv(l *qnet.Layer, src, dst uint32) (Conv, error) { return Lower(l, F
 // 128), arg_w = −(zp_in + 128), arg_add = (z_w + 128)·(zp_in + 128)·k² (the
 // hardware multiplies by IC for a conv) and pad_value = zp_in + 128
 // (PadValue + 128 with a fused Pad), so the KPU accumulator equals TFLite's
-// Σ (q_w − z_w)·(q_x − zp_in). qnet layers carry symmetric weights until the
-// ER-QU8 loader adds their zero point, so Lower uses z_w = 0.
+// Σ (q_w − z_w)·(q_x − zp_in), z_w = l.WZP (TFLite uint8 "quant" models,
+// shifted to int8 by qnet/tfl).
 //
 // Requantisation is split: per channel, BN computes y = (acc·mul >> s) +
 // add ≈ (acc + bias)·M_c·2^P; the layer's activation table then rounds
@@ -128,11 +128,6 @@ func LowerConv(l *qnet.Layer, src, dst uint32) (Conv, error) { return Lower(l, F
 // rounds half up) make the result differ from qnet's single rounding by at
 // most 1 LSB; a fused average pool floors where qnet rounds, one LSB more.
 func Lower(l *qnet.Layer, f Fuse, src, dst uint32) (Conv, error) {
-	return lowerZW(l, f, src, dst, 0)
-}
-
-// lowerZW is Lower for weights with zero point zw (int8, as the weights).
-func lowerZW(l *qnet.Layer, f Fuse, src, dst uint32, zw int8) (Conv, error) {
 	dw := l.Kind == qnet.DepthwiseConv2D
 	if l.Kind != qnet.Conv2D && !dw {
 		return Conv{}, fmt.Errorf("%w: kind %v", ErrUnsupported, l.Kind)
@@ -170,7 +165,7 @@ func lowerZW(l *qnet.Layer, f Fuse, src, dst uint32, zw int8) (Conv, error) {
 	}
 
 	zpIn := int64(l.InQ.ZP) + 128
-	zpW := int64(zw) + 128
+	zpW := int64(l.WZP) + 128
 	inLayout := kmodel.UploadLayout(in.W, in.H)
 	a := kmodel.NewArgs()
 	for _, err := range []error{
@@ -195,7 +190,7 @@ func lowerZW(l *qnet.Layer, f Fuse, src, dst uint32, zw int8) (Conv, error) {
 	if err != nil {
 		return Conv{}, err
 	}
-	bn, p, err := batchNorm(l, int64(taps), zw)
+	bn, p, err := batchNorm(l, int64(taps))
 	if err != nil {
 		return Conv{}, err
 	}
@@ -269,6 +264,9 @@ func geometry(l *qnet.Layer, f Fuse) (lowered, error) {
 			pk := p.KH
 			if (p.Kind != qnet.MaxPool2D && p.Kind != qnet.AvgPool2D) || p.KW != pk || p.StrideH != pk || p.StrideW != pk || (pk != 2 && pk != 4) || p.Padding != qi8.PaddingValid {
 				return lowered{}, fmt.Errorf("%w: pool %v %d×%d stride %d×%d", ErrUnsupported, p.Kind, p.KH, p.KW, p.StrideH, p.StrideW)
+			}
+			if p.Kind == qnet.AvgPool2D && p.TiesUp {
+				return lowered{}, fmt.Errorf("%w: average pool rounding ties up (TFLite uint8); the KPU's mean floors", ErrUnsupported)
 			}
 			if p.In != l.Out || l.In.H%pk != 0 || l.In.W%pk != 0 || p.Out != (qi8.Shape{H: l.In.H / pk, W: l.In.W / pk, C: l.Out.C}) || !same(p.InQ, l.OutQ) || !same(p.OutQ, l.OutQ) {
 				return lowered{}, fmt.Errorf("%w: pool does not chain with the conv (%v → %v)", ErrUnsupported, p.In, p.Out)
@@ -385,14 +383,13 @@ func multiplier(r qi8.Requant) float64 {
 	return float64(r.Mult) * math.Ldexp(1, int(r.Shift)-31)
 }
 
-// batchNorm picks the layer's post-shift P and each channel's BN entry, for
-// weights with zero point zw.
-func batchNorm(l *qnet.Layer, taps int64, zw int8) ([]kmodel.BN, int, error) {
+// batchNorm picks the layer's post-shift P and each channel's BN entry.
+func batchNorm(l *qnet.Layer, taps int64) ([]kmodel.BN, int, error) {
 	oc := len(l.Requant)
 	wMax := int64(128) // |q_w − z_w|; 128 bounds every symmetric int8 weight
-	if zw != 0 {
+	if l.WZP != 0 {
 		for _, v := range l.Weights {
-			wMax = max(wMax, abs64(int64(v)-int64(zw)))
+			wMax = max(wMax, abs64(int64(v)-int64(l.WZP)))
 		}
 	}
 	accMax := float64(taps*wMax) * 255 // |Σ (q_w − z_w)·(q_x − zp)|

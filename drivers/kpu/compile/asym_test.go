@@ -1,6 +1,7 @@
 package compile
 
 import (
+	"errors"
 	"math"
 	"math/rand/v2"
 	"testing"
@@ -9,31 +10,14 @@ import (
 	"github.com/itohio/EasyRobot/x/math/primitive/qi8"
 )
 
-// asymmetric splits the chain's conv weights into weights q_w and a zero
-// point z_w ≠ 0 with q_w − z_w = the reference weights (clamped so q_w
-// fits int8). It returns the asymmetric conv; c.conv keeps the reference.
-func asymmetric(r *rand.Rand, c *chain) (qnet.Layer, int8) {
-	zw := int8(r.IntN(201) - 100)
-	if zw == 0 {
-		zw = 1
-	}
-	a := c.conv
-	a.Weights = make([]int8, len(c.conv.Weights))
-	for i, v := range c.conv.Weights {
-		ref := min(max(int(v), -128-int(zw)), 127-int(zw))
-		c.conv.Weights[i] = int8(ref)
-		a.Weights[i] = int8(ref + int(zw))
-	}
-	return a, zw
-}
-
 // TestLowerAsymmetricWeights: layers with a weight zero point (TFLite uint8
-// "quant" models), lowered with z_w and run on the KPU model, against qnet
-// on the equivalent symmetric layer (weights q_w − z_w), which is exactly
-// TFLite's Σ (q_w − z_w)(q_x − z_x): within 1 LSB, 2 with average pool.
+// "quant" models, shifted to int8 by qnet/tfl: Layer.WZP), lowered and run
+// on the KPU model, against qnet's kernels on the same layer (Σ (q_w −
+// WZP)(q_x − z_x)), over the full weight range: within 1 LSB, 2 with
+// average pool.
 func TestLowerAsymmetricWeights(t *testing.T) {
 	r := rand.New(rand.NewPCG(8, 2026))
-	layers := 1200
+	layers := 600 // ≈ 1.3 M outputs; 75 s under -race at 1,200
 	if testing.Short() {
 		layers = 200
 	}
@@ -49,15 +33,21 @@ func TestLowerAsymmetricWeights(t *testing.T) {
 		} else {
 			c = randomChain(r)
 		}
-		a, zw := asymmetric(r, &c)
+		for i := range c.conv.Weights {
+			c.conv.Weights[i] = int8(r.IntN(256) - 128)
+		}
+		c.conv.WZP = int8(r.IntN(255) - 127)
+		if c.conv.WZP == 0 {
+			c.conv.WZP = 1
+		}
 		in := make([]int8, c.in.Len())
 		for i := range in {
 			in[i] = int8(r.IntN(256) - 128)
 		}
 		want := c.run(t, in)
-		lc, err := lowerZW(&a, c.fuse, 0, 16384, zw)
+		lc, err := Lower(&c.conv, c.fuse, 0, 16384)
 		if err != nil {
-			t.Fatalf("layer %d (%v k%d s%d, z_w %d): %v", n, a.Kind, a.KH, a.StrideH, zw, err)
+			t.Fatalf("layer %d (%v k%d s%d, WZP %d): %v", n, c.conv.Kind, c.conv.KH, c.conv.StrideH, c.conv.WZP, err)
 		}
 		got := emulate(t, lc, in, c.in, c.out)
 		tol := 1
@@ -68,7 +58,7 @@ func TestLowerAsymmetricWeights(t *testing.T) {
 			d := int(got[i]) - int(want[i])
 			d = max(d, -d)
 			if d > tol {
-				t.Fatalf("layer %d (%v k%d s%d, z_x %d, z_w %d): output %d: KPU %d, qnet %d", n, a.Kind, a.KH, a.StrideH, a.InQ.ZP, zw, i, got[i], want[i])
+				t.Fatalf("layer %d (%v k%d s%d, z_x %d, WZP %d): output %d: KPU %d, qnet %d", n, c.conv.Kind, c.conv.KH, c.conv.StrideH, c.conv.InQ.ZP, c.conv.WZP, i, got[i], want[i])
 			}
 			hist[d]++
 		}
@@ -76,7 +66,7 @@ func TestLowerAsymmetricWeights(t *testing.T) {
 	t.Logf("%d asymmetric layers, %d outputs: %d equal, %d at 1 LSB, %d at 2 (average pool only)", layers, hist[0]+hist[1]+hist[2], hist[0], hist[1], hist[2])
 }
 
-// TestAsymmetricExtremeAccumulator: q_w − z_w = 255 on every tap and
+// TestAsymmetricExtremeAccumulator: q_w − WZP = 255 on every tap and
 // q_x − z_x = 255 on every input give the largest accumulator, 255²·taps;
 // the BN scaling must keep it inside the 2^34 design bound, and the output
 // saturates as qnet's does.
@@ -85,7 +75,7 @@ func TestAsymmetricExtremeAccumulator(t *testing.T) {
 		const c = 16
 		l := qnet.Layer{Kind: qnet.Conv2D, In: qi8.Shape{H: 4, W: 4, C: c}, Out: qi8.Shape{H: 4, W: 4, C: c},
 			InQ: qnet.Quant{Scale: 1, ZP: -128}, OutQ: qnet.Quant{Scale: 1, ZP: -100},
-			KH: 1, KW: 1, StrideH: 1, StrideW: 1, Padding: qi8.PaddingValid, ActMin: -128, ActMax: 127}
+			KH: 1, KW: 1, StrideH: 1, StrideW: 1, Padding: qi8.PaddingValid, ActMin: -128, ActMax: 127, WZP: -128}
 		taps := c
 		if dw {
 			l.Kind, l.KH, l.KW, l.Padding = qnet.DepthwiseConv2D, 3, 3, qi8.PaddingSame
@@ -98,7 +88,7 @@ func TestAsymmetricExtremeAccumulator(t *testing.T) {
 		}
 		l.Weights = make([]int8, nw)
 		for i := range l.Weights {
-			l.Weights[i] = 127 // with z_w = −128: q_w − z_w = 255
+			l.Weights[i] = 127 // q_w − WZP = 255
 		}
 		acc := float64(taps) * 255 * 255
 		m := 3000 / acc // y ≈ 3000·2^P: the 2^34 bound decides P; the output clamps
@@ -110,9 +100,7 @@ func TestAsymmetricExtremeAccumulator(t *testing.T) {
 		for i := range l.Requant {
 			l.Requant[i] = rq
 		}
-		// The scaling keeps the BN output inside the 2^34 design bound (the
-		// 36-bit activation compare with a factor-2 margin).
-		bn, _, err := batchNorm(&l, int64(taps), -128)
+		bn, _, err := batchNorm(&l, int64(taps))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -121,7 +109,7 @@ func TestAsymmetricExtremeAccumulator(t *testing.T) {
 				t.Fatalf("depthwise %v: channel %d: BN output %.4g for the largest accumulator, beyond 2^34", dw, ch, y)
 			}
 		}
-		lc, err := lowerZW(&l, Fuse{}, 0, 16384, -128)
+		lc, err := Lower(&l, Fuse{}, 0, 16384)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -140,11 +128,32 @@ func TestAsymmetricExtremeAccumulator(t *testing.T) {
 	}
 }
 
+// TestTiesUpAveragePoolDeclined: TFLite's uint8 average pool rounds ties
+// up (Layer.TiesUp); the KPU's mean floors, so such a pool is not fused
+// (the conv lowers alone and the pool stays on the CPU).
+func TestTiesUpAveragePoolDeclined(t *testing.T) {
+	r := rand.New(rand.NewPCG(3, 9))
+	for {
+		c := randomChain(r)
+		if c.fuse.Pool == nil || c.fuse.Pool.Kind != qnet.AvgPool2D {
+			continue
+		}
+		if _, err := Lower(&c.conv, c.fuse, 0, 16384); err != nil {
+			t.Fatalf("ties-away average pool: %v", err)
+		}
+		c.fuse.Pool.TiesUp = true
+		if _, err := Lower(&c.conv, c.fuse, 0, 16384); !errors.Is(err, ErrUnsupported) {
+			t.Errorf("ties-up average pool: err %v, want ErrUnsupported", err)
+		}
+		return
+	}
+}
+
 // TestLowerAsymmetricSAMEStride2: TF SAME stride-2 3×3 layers (regular and
 // depthwise, as in the official uint8 MobileNet) with a weight zero point,
 // lowered at full resolution (Fuse.Full) and sampled at the odd pixels as
-// the OddSample reader does, against qnet's stride-2 SAME layer with the
-// equivalent symmetric weights: within 1 LSB.
+// the OddSample reader does, against qnet's stride-2 SAME layer: within
+// 1 LSB.
 func TestLowerAsymmetricSAMEStride2(t *testing.T) {
 	r := rand.New(rand.NewPCG(5, 2026))
 	var hist [2]int
@@ -157,24 +166,32 @@ func TestLowerAsymmetricSAMEStride2(t *testing.T) {
 		l.In.H, l.In.W = h, w
 		l.StrideH, l.StrideW, l.Padding = 2, 2, qi8.PaddingSame
 		l.Out.H, l.Out.W = h/2, w/2
-		c := chain{conv: l, in: l.In, out: l.Out}
-		a, zw := asymmetric(r, &c)
-		in := make([]int8, c.in.Len())
+		for i := range l.Weights {
+			l.Weights[i] = int8(r.IntN(256) - 128)
+		}
+		l.WZP = int8(r.IntN(255) - 127)
+		if l.WZP == 0 {
+			l.WZP = 1
+		}
+		in := make([]int8, l.In.Len())
 		for i := range in {
 			in[i] = int8(r.IntN(256) - 128)
 		}
-		want := c.run(t, in)
-		lc, err := lowerZW(&a, Fuse{Full: true}, 0, 16384, zw)
-		if err != nil {
-			t.Fatalf("layer %d (%v, z_w %d): %v", n, a.Kind, zw, err)
+		want := make([]int8, l.Out.Len())
+		if err := qnet.RunLayer(&l, want, in); err != nil {
+			t.Fatal(err)
 		}
-		full := emulate(t, lc, in, c.in, qi8.Shape{H: h, W: w, C: l.Out.C})
+		lc, err := Lower(&l, Fuse{Full: true}, 0, 16384)
+		if err != nil {
+			t.Fatalf("layer %d (%v, WZP %d): %v", n, l.Kind, l.WZP, err)
+		}
+		full := emulate(t, lc, in, l.In, qi8.Shape{H: h, W: w, C: l.Out.C})
 		got := sampleAt(full, l.Out, 1)
 		for i := range want {
 			d := int(got[i]) - int(want[i])
 			d = max(d, -d)
 			if d > 1 {
-				t.Fatalf("layer %d (%v %v, z_x %d, z_w %d): output %d: KPU %d, qnet %d", n, a.Kind, l.In, a.InQ.ZP, zw, i, got[i], want[i])
+				t.Fatalf("layer %d (%v %v, z_x %d, WZP %d): output %d: KPU %d, qnet %d", n, l.Kind, l.In, l.InQ.ZP, l.WZP, i, got[i], want[i])
 			}
 			hist[d]++
 		}

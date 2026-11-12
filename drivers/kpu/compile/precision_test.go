@@ -54,7 +54,7 @@ func TestLowerConvPrecisionFloor(t *testing.T) {
 func TestLowerConvYBound(t *testing.T) {
 	const ic = 1024
 	l := conv1x1(t, ic, []float64{math.Ldexp(1, -10)}, []int32{0})
-	bn, _, err := batchNorm(&l, ic, 0)
+	bn, _, err := batchNorm(&l, ic)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestLowerConvYBoundBias(t *testing.T) {
 	accMax := float64(ic) * 128 * 255
 	m := 0.95 * math.Ldexp(1, 14) / accMax // accMax·M·2^20 = 0.95·2^34
 	l := conv1x1(t, ic, []float64{m}, []int32{bias})
-	bn, _, err := batchNorm(&l, ic, 0)
+	bn, _, err := batchNorm(&l, ic)
 	if err != nil {
 		t.Fatal(err)
 	}
