@@ -110,10 +110,12 @@ func LowerConv(l *qnet.Layer, src, dst uint32) (Conv, error) { return Lower(l, F
 //
 // The integers are exact up to requantisation (design note, "Integer
 // mapping"): KPU tensors are uint8 x′ = q + 128 and weights w′ = q_w + 128;
-// arg_x = −128, arg_w = −(zp_in + 128), arg_add = 128·(zp_in + 128)·k²
-// (the hardware multiplies by IC for a conv) and pad_value = zp_in + 128
-// (PadValue + 128 with a fused Pad), so the KPU accumulator equals qnet's
-// Σ q_w·(q_x − zp_in).
+// with a weight zero point z_w (0 for symmetric weights), arg_x = −(z_w +
+// 128), arg_w = −(zp_in + 128), arg_add = (z_w + 128)·(zp_in + 128)·k² (the
+// hardware multiplies by IC for a conv) and pad_value = zp_in + 128
+// (PadValue + 128 with a fused Pad), so the KPU accumulator equals TFLite's
+// Σ (q_w − z_w)·(q_x − zp_in). qnet layers carry symmetric weights until the
+// ER-QU8 loader adds their zero point, so Lower uses z_w = 0.
 //
 // Requantisation is split: per channel, BN computes y = (acc·mul >> s) +
 // add ≈ (acc + bias)·M_c·2^P; the layer's activation table then rounds
@@ -124,6 +126,11 @@ func LowerConv(l *qnet.Layer, src, dst uint32) (Conv, error) { return Lower(l, F
 // rounds half up) make the result differ from qnet's single rounding by at
 // most 1 LSB; a fused average pool floors where qnet rounds, one LSB more.
 func Lower(l *qnet.Layer, f Fuse, src, dst uint32) (Conv, error) {
+	return lowerZW(l, f, src, dst, 0)
+}
+
+// lowerZW is Lower for weights with zero point zw (int8, as the weights).
+func lowerZW(l *qnet.Layer, f Fuse, src, dst uint32, zw int8) (Conv, error) {
 	dw := l.Kind == qnet.DepthwiseConv2D
 	if l.Kind != qnet.Conv2D && !dw {
 		return Conv{}, fmt.Errorf("%w: kind %v", ErrUnsupported, l.Kind)
@@ -161,6 +168,7 @@ func Lower(l *qnet.Layer, f Fuse, src, dst uint32) (Conv, error) {
 	}
 
 	zpIn := int64(l.InQ.ZP) + 128
+	zpW := int64(zw) + 128
 	inLayout := kmodel.UploadLayout(in.W, in.H)
 	a := kmodel.NewArgs()
 	for _, err := range []error{
@@ -168,7 +176,7 @@ func Lower(l *qnet.Layer, f Fuse, src, dst uint32) (Conv, error) {
 		a.SetInShape(in.W, in.H, in.C), a.SetOutShape(g.outW, g.outH, oc),
 		a.SetInLayout(inLayout), a.SetOutLayout(kmodel.UploadLayout(g.outW, g.outH)),
 		a.SetKernel(k, dw), a.SetPool(g.pool),
-		a.SetConvValue(-128, 0, -zpIn, 0), a.SetArgAdd(128 * zpIn * int64(k*k)),
+		a.SetConvValue(-zpW, 0, -zpIn, 0), a.SetArgAdd(zpW * zpIn * int64(k*k)),
 		setLoad(&a, k, in.C, oc, dw),
 	} {
 		if err != nil {
@@ -185,7 +193,7 @@ func Lower(l *qnet.Layer, f Fuse, src, dst uint32) (Conv, error) {
 	if err != nil {
 		return Conv{}, err
 	}
-	bn, p, err := batchNorm(l, int64(taps))
+	bn, p, err := batchNorm(l, int64(taps), zw)
 	if err != nil {
 		return Conv{}, err
 	}
@@ -369,14 +377,23 @@ func setLoad(a *kmodel.Args, k, ic, oc int, dw bool) error {
 }
 
 // multiplier returns qnet's real requantisation multiplier M = Mult·2^(Shift−31).
+func abs64(v int64) int64 { return max(v, -v) }
+
 func multiplier(r qi8.Requant) float64 {
 	return float64(r.Mult) * math.Ldexp(1, int(r.Shift)-31)
 }
 
-// batchNorm picks the layer's post-shift P and each channel's BN entry.
-func batchNorm(l *qnet.Layer, taps int64) ([]kmodel.BN, int, error) {
+// batchNorm picks the layer's post-shift P and each channel's BN entry, for
+// weights with zero point zw.
+func batchNorm(l *qnet.Layer, taps int64, zw int8) ([]kmodel.BN, int, error) {
 	oc := len(l.Requant)
-	accMax := float64(taps) * 128 * 255 // |Σ q_w·(q_x − zp)|
+	wMax := int64(128) // |q_w − z_w|; 128 bounds every symmetric int8 weight
+	if zw != 0 {
+		for _, v := range l.Weights {
+			wMax = max(wMax, abs64(int64(v)-int64(zw)))
+		}
+	}
+	accMax := float64(taps*wMax) * 255 // |Σ (q_w − z_w)·(q_x − zp)|
 	bias := func(c int) float64 {
 		if l.Bias == nil {
 			return 0

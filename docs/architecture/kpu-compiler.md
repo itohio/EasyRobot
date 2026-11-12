@@ -50,13 +50,13 @@ Owner decision (2026-11-10): models come as int8 TFLite files or as our own `qne
 The activation and weight mapping is exact:
 - **KPU tensors are uint8:** x′ = q + 128. Weights: w′ = q_w + 128.
 - **The KPU accumulates** Σ w′x′ + (arg_x·Σx′ >> shr_x) + (arg_w·Σw′ >> shr_w) + arg_add·n (n = taps × IC, or taps for depthwise).
-- **TFLite needs** Σ q_w·(q_x − zp_x) = Σ (w′ − 128)(x′ − 128 − zp_x). So:
+- **TFLite needs** Σ (q_w − zp_w)·(q_x − zp_x) = Σ (w′ − 128 − zp_w)(x′ − 128 − zp_x), with zp_w = 0 for symmetric int8 weights and zp_w = uint8 zero point − 128 for TF's uint8 "quant" models (ER-QU8). So:
 
   | Field | Value |
   |---|---|
-  | arg_x | −128 (shr_x 0) |
+  | arg_x | −(128 + zp_w) (shr_x 0) |
   | arg_w | −(128 + zp_x) (shr_w 0) |
-  | arg_add | 128·(128 + zp_x) per tap |
+  | arg_add | (128 + zp_w)·(128 + zp_x) per tap |
   | pad_value | zp_x + 128 |
 
   - arg_add is scaled by the tap count where nncase does (k·k folded in for 3×3; × IC by the hardware for conv).
