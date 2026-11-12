@@ -2,6 +2,7 @@ package rigid2d
 
 import (
 	"math"
+	"runtime"
 	"testing"
 )
 
@@ -368,10 +369,42 @@ func TestDeterministic(t *testing.T) {
 	}
 }
 
+// Step allocates nothing (the owner's rule), measured where allocations
+// could hide: two balls resting under gravity, one on a segment and one on
+// a box, so both contact paths apply an impulse every step, and a dt that
+// changes every step, so the damping cache refreshes every step. A raw
+// MemStats.Mallocs delta over 1,000 steps, not AllocsPerRun (its integer
+// division hides fewer than one allocation per run). Review E1.
 func TestStepDoesNotAllocate(t *testing.T) {
-	w := pong()
-	if n := testing.AllocsPerRun(1000, func() { w.Step(dt) }); n != 0 {
-		t.Fatalf("%v allocations per step", n)
+	m := Material{Restitution: 0.5, Friction: 0.3}
+	w := World{
+		// no linear damping, so a vy above v + g·h can only come from an
+		// impulse; the angular damping still refreshes the cache
+		Params:   Params{GY: -9.81, Magnus: 0.02, AngularDamping: 0.3},
+		Balls:    []Ball{pingPong(0, 0.02, 0, 0, 5), pingPong(5, 1.02, 0.1, 0, -5)},
+		Segments: []Segment{floor(m)},
+		Boxes:    []Box{{MinX: 4, MinY: 0.5, MaxX: 6, MaxY: 1, Material: m}},
+	}
+	h := func(i int) float32 { return dt * (1 + float32(i%2)/100) }
+	for i := 0; i < 10; i++ { // settle onto the surfaces
+		w.Step(h(i))
+	}
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	impulses := 0
+	for i := 0; i < 1000; i++ {
+		v0, v1 := w.Balls[0].VY, w.Balls[1].VY
+		w.Step(h(i))
+		if w.Balls[0].VY > v0+w.GY*h(i)+1e-6 && w.Balls[1].VY > v1+w.GY*h(i)+1e-6 {
+			impulses++
+		}
+	}
+	runtime.ReadMemStats(&after)
+	if impulses != 1000 {
+		t.Fatalf("%d of 1000 steps had an impulse on both balls; the scene must exercise the impulse path every step", impulses)
+	}
+	if n := after.Mallocs - before.Mallocs; n != 0 {
+		t.Fatalf("%d allocations in 1000 steps", n)
 	}
 }
 

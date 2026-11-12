@@ -10,7 +10,7 @@ tests: [x/math/physics/rigid2d/rigid2d_test.go]
 test_result: pass
 complete: yes
 correct: yes
-evidence: "go test -race ./x/math/physics/rigid2d pass (19 tests, 2026-11-12, after fpv-gate ER-SIMALGO-E); 24 mutants all fail (ER-SIMALGO-logs/rigid2d-mutants-r2.txt); host step with contacts: 0.58 % contact steps 197–323 ns, every step in contact 78–207 ns (busy shared host), 0 allocs; tinygo 0.43 tufty2040 build, no allocation in the package; RP2040 step time not measured (no board run)"
+evidence: "go test -race ./x/math/physics/rigid2d pass (19 tests, 2026-11-12, after fpv-gate ER-SIMALGO-E); 24 mutants all fail (ER-SIMALGO-logs/rigid2d-mutants-r2.txt); host step with contacts: 0.58 % contact steps 197–323 ns, every step in contact 78–207 ns (busy shared host), 0 allocs; allocation guard (review E1): 0 mallocs in 1,000 steps with an impulse on a segment and a box every step and a changing dt, and one injected allocation per impulse, cache refresh, box or segment contact fails it (ER-SIMALGO-logs/e1-alloc-mutants.txt); tinygo 0.43 tufty2040 build, no allocation in the package; RP2040 step time not measured (no board run)"
 ---
 # 2D ball contact with spin (rigid2d)
 
@@ -58,7 +58,7 @@ evidence: "go test -race ./x/math/physics/rigid2d pass (19 tests, 2026-11-12, af
     - `TestSegmentEnd`.
     - `TestSegmentFromBelow`: the top wall hit from below.
     - `TestKinematicShapesMove`.
-  - **Determinism and allocation:** `TestDeterministic` (5,000 steps, bit-identical); `TestStepDoesNotAllocate`.
+  - **Determinism and allocation:** `TestDeterministic` (5,000 steps, bit-identical). `TestStepDoesNotAllocate`: two balls resting under gravity, one on a segment and one on a box, so both contact paths apply an impulse every step (checked), and a dt that changes every step, so the damping cache refreshes every step. It asserts a raw `MemStats.Mallocs` delta of 0 over 1,000 steps; `AllocsPerRun`'s integer division hid fewer than one allocation per step (review E1).
   - Run: `go test -race -count=1 ./x/math/physics/rigid2d/`, pass, 2026-11-12.
 - Correct: yes on these properties: 24 mutants of the solver, the Magnus rotation, gravity, damping, the damping cache and geometry each fail a test (`ER-SIMALGO-logs/rigid2d-mutants-r2.txt`).
 - Speed (host, Apple M5, a busy shared machine, so wide spreads; `ER-SIMALGO-logs/rigid2d-bench-host.txt`):
