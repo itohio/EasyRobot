@@ -115,7 +115,7 @@ The knowledge engine is its own Go module and is catalogued in [[knowledge-engin
 
 Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs tagged with the ticket. The defects themselves are in the linked notes and in [[todo]].
 
-<!-- vault:tickets h=6eaff9f05a0f -->
+<!-- vault:tickets h=3d8642dc5535 -->
 
 | Ticket | Title | Status | Workstream | Open p1 |
 |---|---|---|---|---|
@@ -174,6 +174,12 @@ Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs 
 | [[ER-058-sim-s1-wheeled-run\|ER-058]] | Sim S1: wheeled run, the house — a differential robot driven through `wheeled.Base` with logged results, teleop and kill criteria | proposed | W3, W6 | 0 |
 | [[ER-059-sim-robot-base-and-clock\|ER-059]] | Sim S1: robot-facing `wheeled.Base` interface and `Clock` — the seam between sim and real robot | proposed | W3, W6 | 0 |
 | [[ER-060-sim-wheel-odometry\|ER-060]] | Sim S1: wheel odometry — encoder ticks → 2D pose from the robot description | proposed | W3, W6 | 0 |
+| [[ER-061-sim-liquid-2d\|ER-061]] | 2D liquid automaton with continuous gravity (port from tinytufty2040) — x/math/automata/liquid | blocked |  | 0 |
+| [[ER-062-sim-game-of-life\|ER-062]] | Game of Life, bit-packed (port from tinytufty2040) — x/math/automata/life | blocked |  | 0 |
+| [[ER-063-sim-boids-moving-walls\|ER-063]] | Boids with moving walls (port from tinygui) — x/math/swarm/boids | ready |  | 0 |
+| [[ER-064-sim-liquid-3d\|ER-064]] | 3D liquid automaton driven by the IMU's continuous gravity vector | proposed |  | 0 |
+| [[ER-065-sim-fluid-dynamics\|ER-065]] | Fluid dynamics: Stam stable fluids, 2D first — x/math/fluid | proposed |  | 0 |
+| [[ER-066-ray-casting-dda\|ER-066]] | Ray casting: grid DDA traversal and a 2.5D column helper — x/math/grid | proposed |  | 0 |
 
 <!-- /vault:tickets -->
 
