@@ -83,29 +83,37 @@ func (b *Backend) Run(layers []qnet.Layer, dst, src []int8) error {
 	if s == nil || len(layers) != s.Count || len(src) != s.in.Len() || len(dst) != s.out.Len() {
 		return ErrSegment
 	}
-	h, w, c := s.in.H, s.in.W, s.in.C
-	for y := range h {
-		for x := range w {
-			row := src[(y*w+x)*c:]
-			for ch := range c {
-				s.chw[(ch*h+y)*w+x] = byte(row[ch]) ^ 0x80 // q + 128
-			}
-		}
-	}
+	toCHW(s.chw, src, s.in.H*s.in.W, s.in.C)
 	if err := s.Runner.Run(s.chw); err != nil {
 		return err
 	}
-	out := s.Runner.Output(0)
-	h, w, c = s.out.H, s.out.W, s.out.C
-	for y := range h {
-		for x := range w {
-			row := dst[(y*w+x)*c:]
-			for ch := range c {
-				row[ch] = int8(out[(ch*h+y)*w+x] ^ 0x80) // − 128
-			}
+	fromCHW(dst, s.Runner.Output(0), s.out.H*s.out.W, s.out.C)
+	return nil
+}
+
+// toCHW converts int8 NHWC (hw pixels × c channels) to the KPU's uint8 CHW
+// (q + 128), one channel plane at a time: the plane is a hoisted slice, so
+// the inner loop is a strided load and a sequential store with no index
+// arithmetic beyond the stride (review R-K210-K9de D1).
+func toCHW(chw []byte, src []int8, hw, c int) {
+	for ch := range c {
+		d := chw[ch*hw : (ch+1)*hw]
+		s := src[ch:]
+		for i := range d {
+			d[i] = byte(s[i*c]) ^ 0x80
 		}
 	}
-	return nil
+}
+
+// fromCHW converts the KPU's uint8 CHW back to int8 NHWC (− 128).
+func fromCHW(dst []int8, chw []byte, hw, c int) {
+	for ch := range c {
+		p := chw[ch*hw : (ch+1)*hw]
+		d := dst[ch:]
+		for i, v := range p {
+			d[i*c] = int8(v ^ 0x80)
+		}
+	}
 }
 
 // graphInfo is the reader structure Compile needs.
