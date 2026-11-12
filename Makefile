@@ -103,6 +103,19 @@ qi8-pie:
 	@mkdir -p build
 	tinygo build -target=cmd/nnbench/target/xiao-esp32s3-noradio.json -print-allocs=qi8 -o build/nnbench-s3-pie.bin ./cmd/nnbench
 
+# The chip kernels' C requantisation (requant_c.h) on the host: built with
+# cgo under UndefinedBehaviorSanitizer (test-only tag qi8ctest) and compared
+# with the Go reference. Needs CGO_ENABLED=1 and a C compiler with UBSan
+# (clang or gcc); it fails, rather than skipping, when the test cannot run.
+.PHONY: qi8-ctest
+qi8-ctest:
+	@test "$$(go env CGO_ENABLED)" = 1 || { echo "qi8-ctest: cgo is off; the C requantisation test needs CGO_ENABLED=1 and a C compiler with UBSan"; exit 1; }
+	@mkdir -p build
+	go vet -tags qi8ctest ./x/math/primitive/qi8/
+	go test -count=1 -tags qi8ctest -run TestCRequantizeMatchesGo -v ./x/math/primitive/qi8/ > build/qi8-ctest.out 2>&1 || { cat build/qi8-ctest.out; exit 1; }
+	@grep -E '^(--- |ok|FAIL)|cases equal' build/qi8-ctest.out
+	@grep -q "cases equal" build/qi8-ctest.out || { echo "qi8-ctest: TestCRequantizeMatchesGo did not run"; exit 1; }
+
 .PHONY: flash-unitv
 flash-unitv: unitv
 	@test -n "$(UNITV_PORT)" || { echo "Set UNITV_PORT to the UnitV's serial port (macOS: /dev/cu.usbserial-…)."; exit 1; }
@@ -135,6 +148,7 @@ help:
 	@echo "  make unitv [UNITV_PROG=hello]  Build a UnitV (K210) example with tinygo into build/"
 	@echo "  make flash-unitv       Flash it with ktool (needs UNITV_PORT, KTOOL; asks y/N)"
 	@echo "  make qi8-pie          Test the qi8 PIE backend on its host emulation and compile it for the S3 (tinygo)"
+	@echo "  make qi8-ctest        Test the S3 kernels' C requantisation on the host against Go (cgo, UBSan)"
 	@echo "  make help             Display this help message"
 
 .DEFAULT_GOAL := help
