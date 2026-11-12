@@ -204,6 +204,8 @@ func (c *Camera) ReadControls() (sensor.Controls, error) {
 	return d.ReadControls()
 }
 
+func captureOne() error { return dvpCaptureOne(time.Second) }
+
 // Capture grabs the next whole frame into buf (FrameSize(cfg) bytes, or
 // JPEGBufSize for JPEG; 8-byte aligned, in cached SRAM: not a previous
 // Frame.Data, which is the uncached alias). Frame.Data is buf's uncached
@@ -234,21 +236,17 @@ func (c *Camera) Capture(buf []byte) (Frame, error) {
 	default:
 		kendryte.DVP.RGB_ADDR.Set(physAddr(buf))
 	}
-	if c.cfg.Format == sensor.JPEG {
-		// Through the uncached alias, so no dirty cache line is written
-		// back over the frame later.
-		clearJPEG(uncached(buf))
-	}
-	if err := dvpCaptureOne(time.Second); err != nil {
-		return Frame{}, err
-	}
 	data := uncached(buf)
 	if c.cfg.Format == sensor.JPEG {
-		m, err := dvpJPEG(data)
+		// Cleared and read through the uncached alias, so no dirty cache
+		// line is written back over the frame later.
+		m, err := captureJPEG(data, captureOne)
 		if err != nil {
 			return Frame{}, err
 		}
 		data = data[:m]
+	} else if err := captureOne(); err != nil {
+		return Frame{}, err
 	}
 	if c.cfg.Format == sensor.RGB565 {
 		// The DVP display output stores each pixel pair with the two 16-bit

@@ -48,9 +48,10 @@ func TestDVPJPEG(t *testing.T) {
 
 // TestDVPJPEGStaleTail: the capture buffer is reused. A frame cut short
 // (no FF D9) written over a longer previous frame must come back
-// ErrIncomplete: the previous frame's bytes after it must not complete it
-// (they can hold "D9 FF" pairs that read as FF D9 once reversed again).
-// Capture clears the buffer before each JPEG frame (clearJPEG).
+// ErrIncomplete from captureJPEG (the path Capture takes): the previous
+// frame's bytes after it must not complete it (they can hold "D9 FF" pairs
+// that read as FF D9 once reversed again). Frame and cut lengths are
+// random, so a partial clear fails too.
 func TestDVPJPEGStaleTail(t *testing.T) {
 	r := rand.New(rand.NewPCG(1, 2))
 	frame := func(n int, eoi bool) []byte {
@@ -69,17 +70,20 @@ func TestDVPJPEGStaleTail(t *testing.T) {
 		}
 		return s
 	}
-	buf := make([]byte, 64*1024)
+	words := make([]uint64, 64*1024/8) // 8-byte aligned, as the DVP buffer
+	buf := unsafe.Slice((*byte)(unsafe.Pointer(unsafe.SliceData(words))), 64*1024)
+	dvp := func(stream []byte) func() error { // the DVP writes only this frame's lines
+		return func() error { copy(buf, dvpLayout(stream)); return nil }
+	}
 	for k := range 200 {
-		clearJPEG(buf)
-		copy(buf, dvpLayout(frame(60000, true)))
-		if _, err := dvpJPEG(buf); err != nil {
-			t.Fatalf("frame %d: complete frame: %v", k, err)
+		long := 4 * (1000 + r.IntN(15000)) // up to 64,000 B
+		f := frame(long, true)
+		if n, err := captureJPEG(buf, dvp(f)); err != nil || n != long {
+			t.Fatalf("frame %d: complete %d-byte frame: n %d err %v", k, long, n, err)
 		}
-		clearJPEG(buf)
-		copy(buf, dvpLayout(frame(30000, false))) // cut: no EOI
-		if n, err := dvpJPEG(buf); !errors.Is(err, ErrIncomplete) {
-			t.Fatalf("frame %d: cut frame over a stale one: n %d err %v, want ErrIncomplete", k, n, err)
+		cut := 4 * (1 + r.IntN(long/4-1)) // shorter, no EOI
+		if n, err := captureJPEG(buf, dvp(frame(cut, false))); !errors.Is(err, ErrIncomplete) {
+			t.Fatalf("frame %d: %d-byte cut frame over a %d-byte one: n %d err %v, want ErrIncomplete", k, cut, long, n, err)
 		}
 	}
 }

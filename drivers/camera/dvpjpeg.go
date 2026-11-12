@@ -36,10 +36,29 @@ func dvpJPEG(b []byte) (int, error) {
 	return 0, ErrIncomplete
 }
 
-// clearJPEG zeroes a JPEG capture buffer before the DVP writes the next
-// frame into it. The DVP writes only the lines the sensor sends, so a cut
-// frame would otherwise end in the previous frame's bytes, which dvpJPEG
-// could read as the end marker. Zero bytes never form FF D9.
+// captureJPEG runs one JPEG capture into b (the buffer the DVP writes, 8-byte
+// aligned) and returns the frame's length: it zeroes b, lets capture fill
+// it, and extracts the JPEG (dvpJPEG). The DVP writes only the lines the
+// sensor sends, so without the clear a cut frame would end in the previous
+// frame's bytes, which dvpJPEG could read as the end marker. Zero bytes
+// never form FF D9.
+func captureJPEG(b []byte, capture func() error) (int, error) {
+	clearJPEG(b)
+	if err := capture(); err != nil {
+		return 0, err
+	}
+	return dvpJPEG(b)
+}
+
+// clearJPEG zeroes b, 8 bytes per store where b is 8-byte aligned (the DVP
+// buffer always is): b is uncached on the K210, where the byte-wise clear
+// costs a store per byte.
 func clearJPEG(b []byte) {
-	clear(b)
+	p := unsafe.Pointer(unsafe.SliceData(b))
+	if uintptr(p)&7 != 0 {
+		clear(b)
+		return
+	}
+	clear(unsafe.Slice((*uint64)(p), len(b)/8))
+	clear(b[len(b)&^7:])
 }
