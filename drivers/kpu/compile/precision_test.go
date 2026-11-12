@@ -115,3 +115,78 @@ func TestLowerConvYBoundBias(t *testing.T) {
 		t.Fatalf("BN output %.4g for the largest accumulator plus the bias, beyond 2^34", y)
 	}
 }
+
+// TestUnclampedWindow (review R-K210-K9b recheck): the precision floor
+// only counts accumulators whose output (acc + b)·m lies within 256 LSB
+// of zero; the window follows the bias and is empty when every output
+// clamps.
+func TestUnclampedWindow(t *testing.T) {
+	const m = 1.0 / 256 // 256 LSB = 65,536 accumulator units
+	for _, c := range []struct {
+		accMax, b, want float64
+	}{
+		{1e6, 0, 65536},         // the window, inside the range
+		{1000, 0, 1000},         // the whole range
+		{1000, 1e6, 0},          // every output clamps high
+		{1000, -1e6, 0},         // every output clamps low
+		{1e6, 30000, 95536},     // shifted window: [−95,536, 35,536], the far edge counts
+		{1e6, -30000, 95536},    // mirrored
+		{50000, 30000, 50000},   // clipped to the range on one side
+		{1e6, 65536 + 1e6, 1e6}, // touches −accMax only: (−1e6 + b)·m = 256
+		{1e6, 65537 + 1e6, 0},   // just past it
+		{100, 65536 + 100.5, 0}, // all clamp although the range is tiny
+	} {
+		if got := unclamped(c.accMax, c.b, m); got != c.want {
+			t.Errorf("unclamped(accMax %g, b %g): %g, want %g", c.accMax, c.b, got, c.want)
+		}
+	}
+}
+
+// TestLowerConvClampedChannel: a channel with a tiny multiplier is refused
+// at a small P (TestLowerConvPrecisionFloor) unless its bias clamps every
+// output, which its BN precision cannot change: then the layer lowers and
+// matches qnet. A bias that leaves outputs up to 200 LSB from zero keeps
+// them inside the window, so the layer is still refused.
+func TestLowerConvClampedChannel(t *testing.T) {
+	const m = 1.1e-5
+	big := int32(1 << 30) // forces P = 1 through channel 0
+	accMax := 4.0 * 128 * 255
+	for _, c := range []struct {
+		b  int32
+		ok bool
+	}{
+		{30_000_000, true},             // (acc + b)·m > 256 for every acc
+		{-30_000_000, true},            // < −256 for every acc
+		{int32(accMax + 200/m), false}, // reaches 200 LSB at acc = −accMax
+		{-int32(accMax + 200/m), false},
+	} {
+		l := conv1x1(t, 4, []float64{0.5, m}, []int32{big, c.b})
+		conv, err := LowerConv(&l, 0, 1024)
+		if !c.ok {
+			if !errors.Is(err, ErrUnsupported) {
+				t.Errorf("bias %d: err %v, want ErrUnsupported", c.b, err)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("bias %d: %v", c.b, err)
+			continue
+		}
+		for _, v := range []int8{127, -128, 0} {
+			in := make([]int8, l.In.Len())
+			for i := range in {
+				in[i] = v
+			}
+			got := emulate(t, conv, in, l.In, l.Out)
+			want := make([]int8, l.Out.Len())
+			if err := qnet.RunLayer(&l, want, in); err != nil {
+				t.Fatal(err)
+			}
+			for i := range want {
+				if d := int(got[i]) - int(want[i]); d > 1 || d < -1 {
+					t.Errorf("bias %d, input %d, output %d: KPU %d, qnet %d", c.b, v, i, got[i], want[i])
+				}
+			}
+		}
+	}
+}
