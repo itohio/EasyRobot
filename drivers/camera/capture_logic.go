@@ -86,3 +86,31 @@ func jpegBufSize(w, h uint16, limit int) int {
 	n := (int(w)*int(h)/4 + nodeBytes - 1) / nodeBytes * nodeBytes
 	return min(max(n, nodeBytes), limit)
 }
+
+// GDMA RX channel status bits (IN_INT_RAW, ESP32-S3), as in ESP-IDF's
+// soc/esp32s3/include/soc/gdma_reg.h and TinyGo's SVD. TRM v1.8 documents
+// bits 0–5 only and marks the FIFO-fault bits 6–9 reserved; on the board they
+// stayed clear on 80 good back-to-back frames (ER-ESP32CAM-E7 review fixes).
+const (
+	dmaSucEOF    = 1 << 1
+	dmaDscrErr   = 1 << 3
+	dmaDscrEmpty = 1 << 4
+	dmaFIFOFault = 1<<6 | 1<<7 | 1<<8 | 1<<9 // INFIFO_OVF_L1, UDF_L1, OVF_L3, UDF_L3
+)
+
+// dmaDone reports a status that ends the wait for a frame: EOF, a
+// descriptor problem, or a FIFO fault (the FIFO watermark bit does not).
+func dmaDone(raw uint32) bool {
+	return raw&(dmaSucEOF|dmaDscrErr|dmaDscrEmpty|dmaFIFOFault) != 0
+}
+
+// dmaOutcome turns the final GDMA status into whether the frame ended and
+// whether data was lost: any FIFO overflow or underflow is ErrOverflow, even
+// with an EOF (such a frame can still look like a JPEG).
+func dmaOutcome(raw uint32) (ended bool, err error) {
+	ended = raw&dmaSucEOF != 0
+	if raw&dmaFIFOFault != 0 {
+		return ended, ErrOverflow
+	}
+	return ended, nil
+}

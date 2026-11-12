@@ -139,3 +139,56 @@ func TestJPEGBufSize(t *testing.T) {
 		}
 	}
 }
+
+// GDMA RX status after a capture (IN_INT_RAW), review R-ESP32CAM-E7 P1: a
+// FIFO overflow or underflow is ErrOverflow whatever else is set; EOF ends
+// the frame; descriptor empty/error ends the transfer without a frame end.
+func TestDMAOutcome(t *testing.T) {
+	const (
+		sucEOF    = 1 << 1
+		dscrErr   = 1 << 3
+		dscrEmpty = 1 << 4
+		fullWM    = 1 << 5
+		ovfL1     = 1 << 6
+		udfL1     = 1 << 7
+		ovfL3     = 1 << 8
+		udfL3     = 1 << 9
+	)
+	for _, tt := range []struct {
+		raw   uint32
+		ended bool
+		err   error
+	}{
+		{sucEOF, true, nil},
+		{sucEOF | fullWM, true, nil}, // watermark is not an error
+		{dscrEmpty, false, nil},      // buffer ran out: frameResult decides (ErrBufSize/JPEG)
+		{dscrErr, false, nil},
+		{0, false, nil}, // deadline
+		{sucEOF | ovfL1, true, ErrOverflow},
+		{sucEOF | udfL1, true, ErrOverflow},
+		{ovfL3, false, ErrOverflow},
+		{dscrEmpty | udfL3, false, ErrOverflow},
+	} {
+		ended, err := dmaOutcome(tt.raw)
+		if ended != tt.ended || err != tt.err {
+			t.Errorf("raw %#x: ended %v err %v, want %v %v", tt.raw, ended, err, tt.ended, tt.err)
+		}
+	}
+	// Each status that must end the wait, one bit at a time (verify: a
+	// dmaDone checking only bit 8 of the four fault bits survived).
+	for _, bit := range []uint{1, 3, 4, 6, 7, 8, 9} {
+		if !dmaDone(1 << bit) {
+			t.Errorf("dmaDone(bit %d) = false, want true", bit)
+		}
+	}
+	for _, raw := range []uint32{0, 1 << 0, 1 << 2, 1 << 5} { // none, IN_DONE, ERR_EOF, watermark
+		if dmaDone(raw) {
+			t.Errorf("dmaDone(%#x) = true, want false", raw)
+		}
+	}
+	for _, bit := range []uint{6, 7, 8, 9} {
+		if _, err := dmaOutcome(1 << bit); err != ErrOverflow {
+			t.Errorf("dmaOutcome(bit %d): %v, want ErrOverflow", bit, err)
+		}
+	}
+}

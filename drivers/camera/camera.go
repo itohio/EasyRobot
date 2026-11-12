@@ -23,7 +23,9 @@
 //     driver rejects the mode); buffer too small
 //     ErrBufSize; buffer misaligned or in memory the capture engine cannot
 //     write ErrBufAlign; no frame in time ErrTimeout; unknown sensor
-//     ErrNoDriver; driver without controls ErrNoControls.
+//     ErrNoDriver; driver without controls ErrNoControls; the capture engine
+//     lost data (FIFO overflow/underflow, where the host reports it)
+//     ErrOverflow.
 //   - A failed Open leaves the sensor powered down.
 //   - Raw formats (Y8, RGB565, YUV422): Capture needs FrameSize(cfg) bytes;
 //     RGB565 comes out little-endian, pixels in raster order.
@@ -76,6 +78,7 @@ var (
 	ErrFormat     = errors.New("camera: format or size not supported by this backend")
 	ErrNoDriver   = errors.New("camera: no driver for this sensor")
 	ErrNoControls = errors.New("camera: sensor driver has no exposure/gain/white-balance controls")
+	ErrOverflow   = errors.New("camera: capture FIFO overflowed or underflowed; frame data lost")
 )
 
 // FrameSize is the buffer size Capture needs for cfg. It is 0 for JPEG

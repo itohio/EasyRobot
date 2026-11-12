@@ -126,6 +126,7 @@ type Camera struct {
 	bus         sccbBus
 	ch          *gdmaIn
 	ext         CacheSync
+	dmaStatus   uint32 // GDMA IN_INT_RAW of the last capture
 	vsyncActive bool
 	seq         uint32
 	descs       [maxNodes]dmaDesc // in the Camera allocation: internal SRAM, word aligned
@@ -231,6 +232,7 @@ func inDMARAM(b []byte) bool {
 // within 2 s, wrong length, JPEG without SOI/EOI) gives ErrTimeout.
 // Frame.Data aliases buf.
 func (c *Camera) Capture(buf []byte) (Frame, error) {
+	c.dmaStatus = 0 // a Capture that returns before the DMA leaves 0, not the previous status
 	jpeg := c.cfg.Format == sensor.JPEG
 	n := FrameSize(c.cfg)
 	if jpeg {
@@ -265,12 +267,17 @@ func (c *Camera) Capture(buf []byte) (Frame, error) {
 	frameLen := FrameSize(c.cfg)
 	buf = buf[:n]
 	used := buildChain(&c.descs, buf, n)
-	got, ended := captureOnce(c.pins, c.vsyncActive, c.ch, &c.descs, used, ext, time.Now().Add(2*time.Second))
+	got, raw := captureOnce(c.pins, c.vsyncActive, c.ch, &c.descs, used, ext, time.Now().Add(2*time.Second))
+	c.dmaStatus = raw
+	ended, err := dmaOutcome(raw)
 	if ext {
 		m := (got + cacheLine - 1) &^ (cacheLine - 1)
 		if c.ext.Invalidate(buf[:m:m]) != nil {
 			return Frame{}, ErrBufAlign
 		}
+	}
+	if err != nil {
+		return Frame{}, err
 	}
 	data, err := frameResult(jpeg, buf, got, frameLen, ended)
 	if err != nil {
@@ -282,6 +289,13 @@ func (c *Camera) Capture(buf []byte) (Frame, error) {
 	c.seq++
 	return Frame{Width: c.cfg.W, Height: c.cfg.H, Format: c.cfg.Format, Seq: c.seq, Data: data}, nil
 }
+
+// DMAStatus is the GDMA RX status (IN_INT_RAW) the last Capture ended with,
+// for diagnosis (ESP32-S3 only); 0 if that Capture returned before starting
+// the DMA (ErrBufSize, ErrBufAlign): bit 1 SUC_EOF, 3 DSCR_ERR, 4 DSCR_EMPTY,
+// 5 FIFO watermark, 6/8 INFIFO_OVF_L1/L3, 7/9 INFIFO_UDF_L1/L3. Any of
+// bits 6–9 makes Capture return ErrOverflow.
+func (c *Camera) DMAStatus() uint32 { return c.dmaStatus }
 
 // Close stops capture, powers the sensor down and stops XCLK.
 func (c *Camera) Close() error {

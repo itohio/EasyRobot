@@ -37,10 +37,6 @@ const (
 	// DMA-capable internal SRAM on the data bus (SOC_DMA_LOW … SOC_DMA_HIGH).
 	dmaLow  = 0x3FC88000
 	dmaHigh = 0x3FD00000
-
-	intSucEOF    = 1 << 1
-	intDscrErr   = 1 << 3
-	intDscrEmpty = 1 << 4
 )
 
 // dmaDesc is a GDMA linked-list descriptor: dw0 = size[11:0] |
@@ -186,14 +182,15 @@ func received(d *[maxNodes]dmaDesc, used int, eofDesc uint32) int {
 }
 
 // captureOnce arms LCD_CAM and the GDMA channel right after a VSYNC pulse and
-// waits for the frame's EOF. It returns the received length and whether the
-// frame ended (in_suc_eof) before the descriptors ran out or the deadline.
+// waits until the GDMA status ends the frame (dmaDone: EOF, descriptors out
+// or in error, FIFO overflow/underflow) or the deadline. It returns the
+// received length and the raw IN_INT_RAW status (dmaOutcome decides).
 //
 // ext selects PSRAM mode as esp32-camera's psram_mode does: no descriptor or
 // data bursts, external-memory block size 16 B (IN_EXT_MEM_BK_SIZE 0).
-func captureOnce(pins Pins, vsyncActive bool, ch *gdmaIn, d *[maxNodes]dmaDesc, used int, ext bool, deadline time.Time) (int, bool) {
+func captureOnce(pins Pins, vsyncActive bool, ch *gdmaIn, d *[maxNodes]dmaDesc, used int, ext bool, deadline time.Time) (int, uint32) {
 	if !waitPin(pins.VSYNC, vsyncActive, deadline) || !waitPin(pins.VSYNC, !vsyncActive, deadline) {
-		return 0, false
+		return 0, 0
 	}
 	cam := esp.LCD_CAM
 	cam.LC_DMA_INT_CLR.Set(0xF)
@@ -217,24 +214,20 @@ func captureOnce(pins Pins, vsyncActive bool, ch *gdmaIn, d *[maxNodes]dmaDesc, 
 	cam.SetCAM_CTRL_CAM_UPDATE(1)
 	cam.SetCAM_CTRL1_CAM_START(1)
 
-	ok := false
+	raw := uint32(0)
 	for time.Now().Before(deadline) {
-		raw := ch.intRaw.Get()
-		if raw&intSucEOF != 0 {
-			ok = true
-			break
-		}
-		if raw&(intDscrEmpty|intDscrErr) != 0 {
+		if raw = ch.intRaw.Get(); dmaDone(raw) {
 			break
 		}
 	}
 	cam.SetCAM_CTRL1_CAM_START(0)
 	ch.link.SetBits(esp.DMA_IN_LINK_CH_INLINK_STOP)
+	raw = ch.intRaw.Get() // final status, incl. a fault after the EOF
 	eof := uint32(0)
-	if ok {
+	if raw&dmaSucEOF != 0 {
 		eof = ch.sucEOFDesc.Get()
 	}
-	return received(d, used, eof), ok
+	return received(d, used, eof), raw
 }
 
 // sccbBus is the SCCB master on a machine.I2C. Its buffers live in the
