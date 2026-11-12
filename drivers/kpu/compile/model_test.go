@@ -106,34 +106,66 @@ func nhwc2chw(in []int8, s qi8.Shape) []byte {
 	return chw
 }
 
-// TestResizeResidualOnInput (review R-K210-K9same S1): an Add whose first
-// input is the graph input (From [-1, 0]) takes the resized input shape;
-// Resize used to index layer −1 and panic.
+// TestResizeResidualOnInput (review R-K210-K9same S1): Resize re-derives an
+// Add or Mul from its first input (qnet's In; only the second may
+// broadcast), including the graph input (From −1), which used to index
+// layer −1 and panic, and a layer whose output differs from the input size.
 func TestResizeResidualOnInput(t *testing.T) {
 	s := qi8.Shape{H: 8, W: 8, C: 4}
 	q := qnet.Quant{Scale: 0.05, ZP: -3}
-	c := qnet.Layer{Kind: qnet.Conv2D, In: s, Out: s, InQ: q, OutQ: q,
-		KH: 3, KW: 3, StrideH: 1, StrideW: 1, Padding: qi8.PaddingSame, ActMin: -128, ActMax: 127}
-	nw, nb, nr := c.ParamCounts()
-	c.Weights, c.Bias, c.Requant = make([]int8, nw), make([]int32, nb), make([]qi8.Requant, nr)
-	add := qnet.Layer{Kind: qnet.Add, From: []int{-1, 0}, In: s, Out: s, InQ: q, In2Q: q, OutQ: q}
-	add.ActMin, add.ActMax = qi8.ActNone()
-	rq, err := qi8.QuantizeAddMultipliers(0.5, 0.5)
-	if err != nil {
-		t.Fatal(err)
+	conv := func(in qi8.Shape, stride int) qnet.Layer {
+		out := qi8.Shape{H: in.H / stride, W: in.W / stride, C: in.C}
+		return qnet.Layer{Kind: qnet.Conv2D, In: in, Out: out, InQ: q, OutQ: q,
+			KH: 3, KW: 3, StrideH: stride, StrideW: stride, Padding: qi8.PaddingSame, ActMin: -128, ActMax: 127}
 	}
-	add.AddRQ = rq
-	g := &qnet.Graph{Layers: []qnet.Layer{c, add}}
-	if err := qnet.SyntheticParams(g, 1); err != nil {
-		t.Fatal(err)
+	elem := func(kind qnet.Kind, in qi8.Shape, from ...int) qnet.Layer {
+		l := qnet.Layer{Kind: kind, From: from, In: in, Out: in, InQ: q, In2Q: q, OutQ: q}
+		l.ActMin, l.ActMax = qi8.ActNone()
+		return l
 	}
-	r, err := Resize(g, 16, 24)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := qi8.Shape{H: 16, W: 24, C: 4}
-	if r.Layers[1].In != want || r.Layers[1].Out != want {
-		t.Errorf("Add after resize: %v → %v, want %v", r.Layers[1].In, r.Layers[1].Out, want)
+	mean := qnet.Layer{Kind: qnet.AvgPool2D, In: s, Out: qi8.Shape{H: 1, W: 1, C: 4}, InQ: q, OutQ: q,
+		KH: 8, KW: 8, StrideH: 8, StrideW: 8, Padding: qi8.PaddingValid}
+	half := qi8.Shape{H: 4, W: 4, C: 4}
+	for _, c := range []struct {
+		name   string
+		layers []qnet.Layer
+		want   qi8.Shape // the last layer's In and Out after resizing to 16×24
+	}{
+		{"add[-1, 0]", []qnet.Layer{conv(s, 1), elem(qnet.Add, s, -1, 0)}, qi8.Shape{H: 16, W: 24, C: 4}},
+		// The input times a per-channel mean (1×1×C, the broadcast operand).
+		{"mul[-1, mean]", []qnet.Layer{conv(s, 1), mean, elem(qnet.Mul, s, -1, 1)}, qi8.Shape{H: 16, W: 24, C: 4}},
+		{"mul[0, mean]", []qnet.Layer{conv(s, 1), mean, elem(qnet.Mul, s, 0, 1)}, qi8.Shape{H: 16, W: 24, C: 4}},
+		// After a stride-2 conv: the input size would be wrong.
+		{"stride 2, add[1, 0]", []qnet.Layer{conv(s, 2), conv(half, 1), elem(qnet.Add, half, 1, 0)}, qi8.Shape{H: 8, W: 12, C: 4}},
+		{"stride 2, add[0, 1]", []qnet.Layer{conv(s, 2), conv(half, 1), elem(qnet.Add, half, 0, 1)}, qi8.Shape{H: 8, W: 12, C: 4}},
+	} {
+		g := &qnet.Graph{Layers: c.layers}
+		for i := range g.Layers {
+			l := &g.Layers[i]
+			nw, nb, nr := l.ParamCounts()
+			l.Weights, l.Bias, l.Requant = make([]int8, nw), make([]int32, nb), make([]qi8.Requant, nr)
+			if l.Kind == qnet.Add {
+				rq, err := qi8.QuantizeAddMultipliers(0.5, 0.5)
+				if err != nil {
+					t.Fatal(err)
+				}
+				l.AddRQ = rq
+			}
+		}
+		if err := qnet.SyntheticParams(g, 1); err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if err := g.Validate(); err != nil {
+			t.Fatalf("%s: the graph itself: %v", c.name, err)
+		}
+		r, err := Resize(g, 16, 24)
+		if err != nil {
+			t.Errorf("%s: %v", c.name, err)
+			continue
+		}
+		if l := r.Layers[len(r.Layers)-1]; l.In != c.want || l.Out != c.want {
+			t.Errorf("%s: last layer %v → %v after resize, want %v", c.name, l.In, l.Out, c.want)
+		}
 	}
 }
 

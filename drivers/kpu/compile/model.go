@@ -106,13 +106,11 @@ func Resize(g *qnet.Graph, h, w int) (*qnet.Graph, error) {
 		in := qi8.Shape{H: h, W: w, C: l.In.C}
 		if p := producer(r, i); p >= 0 {
 			in = r.Layers[p].Out
-		} else if p == -2 { // two inputs of equal shape (Add, Mul)
-			for _, f := range l.From {
-				if f >= 0 { // else the graph input: the resized shape above
-					in = r.Layers[f].Out
-					break
-				}
-			}
+		} else if p == -2 && len(l.From) > 0 && l.From[0] >= 0 {
+			// Add, Mul: In is the first input's shape (only the second may
+			// broadcast, as qnet checks); a first input of −1 is the graph
+			// input, the resized shape above.
+			in = r.Layers[l.From[0]].Out
 		}
 		l.In = in
 		switch l.Kind {
