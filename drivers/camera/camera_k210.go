@@ -250,6 +250,11 @@ func (c *Camera) Capture(buf []byte) (Frame, error) {
 	default:
 		kendryte.DVP.RGB_ADDR.Set(physAddr(buf))
 	}
+	if c.cfg.Format == sensor.JPEG {
+		// Through the uncached alias, so no dirty cache line is written
+		// back over the frame later.
+		clearJPEG(uncached(buf))
+	}
 	if err := dvpCaptureOne(time.Second); err != nil {
 		return Frame{}, err
 	}

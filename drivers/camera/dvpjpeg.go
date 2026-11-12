@@ -35,3 +35,11 @@ func dvpJPEG(b []byte) (int, error) {
 	}
 	return 0, ErrIncomplete
 }
+
+// clearJPEG zeroes a JPEG capture buffer before the DVP writes the next
+// frame into it. The DVP writes only the lines the sensor sends, so a cut
+// frame would otherwise end in the previous frame's bytes, which dvpJPEG
+// could read as the end marker. Zero bytes never form FF D9.
+func clearJPEG(b []byte) {
+	clear(b)
+}

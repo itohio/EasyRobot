@@ -3,6 +3,7 @@ package camera
 import (
 	"encoding/binary"
 	"errors"
+	"math/rand/v2"
 	"testing"
 	"unsafe"
 )
@@ -41,6 +42,44 @@ func TestDVPJPEG(t *testing.T) {
 	} {
 		if _, err := dvpJPEG(dvpLayout(stream)); !errors.Is(err, ErrIncomplete) {
 			t.Errorf("%s: err %v, want ErrIncomplete", name, err)
+		}
+	}
+}
+
+// TestDVPJPEGStaleTail: the capture buffer is reused. A frame cut short
+// (no FF D9) written over a longer previous frame must come back
+// ErrIncomplete: the previous frame's bytes after it must not complete it
+// (they can hold "D9 FF" pairs that read as FF D9 once reversed again).
+// Capture clears the buffer before each JPEG frame (clearJPEG).
+func TestDVPJPEGStaleTail(t *testing.T) {
+	r := rand.New(rand.NewPCG(1, 2))
+	frame := func(n int, eoi bool) []byte {
+		s := make([]byte, n)
+		for i := range s {
+			s[i] = byte(r.IntN(256))
+		}
+		s[0], s[1] = 0xFF, 0xD8
+		for i := 2; i+1 < n; i++ { // no stray EOI inside the frame
+			if s[i] == 0xFF && s[i+1] == 0xD9 {
+				s[i+1] = 0x00
+			}
+		}
+		if eoi {
+			s[n-2], s[n-1] = 0xFF, 0xD9
+		}
+		return s
+	}
+	buf := make([]byte, 64*1024)
+	for k := range 200 {
+		clearJPEG(buf)
+		copy(buf, dvpLayout(frame(60000, true)))
+		if _, err := dvpJPEG(buf); err != nil {
+			t.Fatalf("frame %d: complete frame: %v", k, err)
+		}
+		clearJPEG(buf)
+		copy(buf, dvpLayout(frame(30000, false))) // cut: no EOI
+		if n, err := dvpJPEG(buf); !errors.Is(err, ErrIncomplete) {
+			t.Fatalf("frame %d: cut frame over a stale one: n %d err %v, want ErrIncomplete", k, n, err)
 		}
 	}
 }
