@@ -74,7 +74,7 @@ The conv itself is always stride 1, with SAME padding filled with `pad_value`. O
 
 `kmodel.ConvParams.Emulate` is a Go port of this arithmetic, and `kpu.NewEmulated` runs a whole kmodel on any host with it. Both are bit-identical to nncase rc5's simulator on tiny1/2/3 and on the 27-layer MobileNetV1-0.25 feature extractor. On the UnitV, each layer's output, computed from that layer's own KPU input, agrees with the port to within 1 LSB: 503,605 of 503,808 outputs equal, 203 at 1 LSB, none above (ER-K210-K8 evidence, K8c-2). The 1-LSB cases compound across layers, so a 27-layer output can differ from the simulator by up to about 25 LSB.
 
-**Quantisation.** For a range [min, max]: scale s = 255/(max − min), bias b = round(min·s), and real = (q + b)/s. Weights use the same with 8 bits (per tensor in rc5).
+**Quantisation.** For a range [min, max]: scale s = 255/(max − min), bias b = round(min·s), and real = (q + b)/s. Weights use the same with 8 bits. The rc5 release is built `CHANNEL_WISE`: it first scales each output channel's float weights by s = min(total max / channel max, total min / channel min) (the larger of the two if either is negative), stretching them to the tensor's range, then quantises the whole tensor with one scale and bias. This reproduces all 61 weight blobs of the K8 models byte for byte (ER-K210-K9 evidence, K9b); the per-tensor rule alone reproduces none.
 
 **Conv.** Inputs x and weights w are uint8.
 - For each output pixel, with Σ over the kernel window (3×3·IC, or IC for 1×1; 3×3 per channel for depthwise):
@@ -89,7 +89,7 @@ The conv itself is always stride 1, with SAME padding filled with `pad_value`. O
 ```
 y = (acc·norm_mul >> norm_shift) + norm_add
 ```
-- nncase (per-tensor mode): one mul = so/(sw·sx) at shift 15, then upscaled by postMul = 2^(shift − 15). add = round((bias·so − bo)·postMul). Folding the float bias and the output quantisation in here is how the conv bias reaches the hardware.
+- nncase rc5 (the `CHANNEL_WISE` build): per channel, mul and shift encode so·2^10/(sw_c·sx) as a 22-bit mantissa with shift ≤ 15 (the MobileNet files show shift 15, sometimes 14), and add = round((bias·so − bo)·2^10). The 2^10 ("postMul") is undone by the activation's linear segment: y_mul 1024, shift 20. Folding the float bias and the output quantisation in here is how the conv bias reaches the hardware.
 
 **Activation:** a 16-segment piecewise-linear table (16 × u64: shift_number 0–7, y_mul 8–23, x_start 24–59 as signed 36-bit; then 2 × u64 of 8 result_bias bytes):
 ```

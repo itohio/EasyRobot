@@ -65,7 +65,7 @@ The activation and weight mapping is exact:
 Requantisation is approximate:
 - **Batch norm then activation:** BN computes (acc·mul >> s) + add per channel (mul 24-bit signed, s ≤ 15). The activation then (y − start)·y_mul carry-shifted by up to 20 bits.
 - **Per-channel scale:** TFLite's per-channel multiplier M_c = s_w,c·s_x/s_out goes into BN mul_c. The int32 bias goes into BN add_c (bias·mul_c, shifted). The remaining 2^k scale goes into the activation's y_mul/shift (nncase's "postMul" upshift, which keeps precision when M_c is small).
-  - So per-channel weight scales are supported. nncase rc5 used a single weight scale per tensor, but that is a choice, not a hardware limit.
+  - So per-channel weight scales are supported. nncase rc5 instead folds them into the weights (each channel stretched to the tensor's range before one per-tensor quantisation, see [[k210-kpu]]). TFLite int8 weights already carry per-channel scales, so the compiler keeps the weights as they are and puts the scales in BN.
 - **Rounding:** BN shifts with a floor; the activation's `carry_shift` rounds a positive value half up, and gives a negative value whose dropped bit is set floor − 1 (rule in [[k210-kpu]]). TFLite rounds once (rounding doubling high multiply plus a rounding shift). So results can differ by 1 LSB from qnet's CPU output. The bar is ≤ 1 LSB per layer, not bit-exactness.
 - **Output zero point and clamps:**
   - zp_out + 128 goes into the active segment's result_bias byte.
