@@ -43,6 +43,12 @@
 // 0.02 m/s² of noise, five draws) is off by up to 7 mm after 2 s, 2 cm
 // after 4 s and 8 cm after 10 s.
 //
+// Gentle and slow strokes are tracked vertically only: rest asks the
+// vertical speed, so a horizontal stroke that never passes StillAccel is
+// taken for rest. fpv-gate measured (exact attitude) 3 cm in 1 s
+// horizontally at 0 %, and over 1.5–2 s 0, −6, 7, −40 and 2 %; through
+// Mahony, horizontal strokes tracked 2–68 %.
+//
 // An attitude error θ leaks g·sin θ into the horizontal acceleration
 // (0.17 m/s² per degree), which bias learning removes only while the
 // attitude error stays what it was at rest: a 6-axis Mahony filter (no
