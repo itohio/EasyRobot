@@ -10,7 +10,7 @@ tests: [x/math/fluid/flip/flip_test.go]
 test_result: pass
 complete: no
 correct: yes
-evidence: "go test ./x/math/fluid/flip pass (17 tests, 2026-11-13; -race with -short): still pool at every 5° × 5 gravities (360 cases) 0 pixel changes in 1000 frames (the r2 engine fails 68), sloshes decay and settle level within 3.0°, 1° and 2° tilts both ways move the liquid, slosh period within 6–8 % of linear wave theory and √2 longer at half gravity, dam front ≤ Ritter speed and reflects, level back within 0.05 cell after shaking, still surface within 2.4° of perpendicular at 7 angles, fast tilt 10 droplets vs slow 4, a 50-deep pool still; Size = what New allocates on 32-bit TinyGo, the Liquid included (21,408 B at 32×24/700, exact at 7 sizes; the r2 engine 52.9 KB on the badge); 42 of 43 mutants fail (ER-061-liquid/flip-mutants-r4.txt); 0 allocs per Step; host 105–107 µs per step; tinygo 0.43 tufty2040 build, allocations only in New; Tufty 2040 (tinygui, r2 engine) 38.3–39.3 ms per Step, this engine not yet timed there"
+evidence: "go test ./x/math/fluid/flip pass (18 tests, 2026-11-14; -race with -short): still pool at every 5° × 5 gravities (360 cases) 0 pixel changes in 1000 frames (the r2 engine fails 68), sloshes decay and settle level within 3.0°, 1° and 2° tilts both ways move the liquid, slosh period within 6–8 % of linear wave theory and √2 longer at half gravity, dam front ≤ Ritter speed and reflects, level back within 0.05 cell after shaking, still surface within 2.4° of perpendicular at 7 angles, fast tilt 10 droplets vs slow 4, a 50-deep pool still; Size = what New allocates on 32-bit TinyGo, the Liquid included (21,408 B at 32×24/700, exact at 7 sizes; the r2 engine 52.9 KB on the badge); 42 of 43 mutants fail (ER-061-liquid/flip-mutants-r4.txt); 0 allocs per Step; host 105–107 µs per step; tinygo 0.43 tufty2040 build, allocations only in New; Tufty 2040 (tinygui, r2 engine) 38.3–39.3 ms per Step, this engine not yet timed there"
 ---
 # 2D liquid: PIC/FLIP particles on a grid (flip)
 
@@ -18,9 +18,10 @@ evidence: "go test ./x/math/fluid/flip pass (17 tests, 2026-11-13; -race with -s
 
 **Where:** `x/math/fluid/flip/flip.go`:
 
-- types and setup: `Params`, `DefaultParams` (:36-60), `Liquid` (:80-101), `Size` (:107), `New` (:114-141), `Reset` (:147-167);
-- `Step` (:175-192) and its stages: `gravity` (:197), `advect` (:240-283), `walls` (:305), `bucket`, `separate`, `pair`, `half` (:329-423), `toGrid`, `mark` (:452-563), `solve`, `push` (:576-646), `fromGrid`, `blend` (:655-703);
-- drawing: `Raster` (:706).
+- types and setup: `Params`, `DefaultParams` (:39-63), `Liquid` (:83-104), `Size` (:112), `New` (:124-152), `Reset` (:157-177);
+- `Step` (:185-199) and its stages: `gravity` (:207), `advect` (:250-288), `walls` (:315), `bucket`, `separate`, `pair`, `half`, `norm` (:339-444), `toGrid`, `mark` (:471-582), `solve`, `push` (:595-664), `fromGrid`, `blend` (:674-719);
+- drawing: `Raster` (:725);
+- division: `div.go` (`recip16`, `udiv`, `sdiv`: exact and divide-free, for the badge), `div_tinygo.go` (`div` is `sdiv`), `div_gc.go` (`div` is `/`).
 
 **Inputs → outputs:** `New(w, h, n, Params)` (3 ≤ w, h ≤ 255 cells, the outer ring is wall; 1 ≤ n ≤ 65535) makes n particles packed at rest on the floor (`Reset`) and allocates `Size(w, h, n)` bytes (the `Liquid` and its arrays), nothing after. Positions `X, Y` are `uint16` in 1/256 cell (`Cell`), velocities `VX, VY` `int16` in 1/16384 cell per step (`VOne`), gravity `GX, GY` and `Params` in 1/65536 (`One`). Set gravity, call `Step` (one or more per frame), then `Raster(dst, pw, ph)` counts particles per pixel over the whole box for drawing at any size (2 px per cell gives the badge's pixelated look).
 
@@ -99,14 +100,15 @@ The first build without drift lost 10–20 % of its level after shaking; drift t
     - `TestStepDoesNotAllocate` (Step and Raster).
   - The first tests failed to build without the package (`ER-061-liquid/flip-fail-before.txt`); they were written alongside the engine, not before it. The 360-case stillness sweep was red first against the r2 engine (68 failures).
 - Correct: yes on these properties; 42 of 43 mutants fail a test (`ER-061-liquid/flip-mutants-r4.txt`), among them each part of the compact storage: no warm start, pressure wrapping instead of saturating, separation pushes truncated, a move truncated instead of rounded, velocities stored truncated, every stencil face counted, `Size` forgetting the pressure. The survivor: the rest density from the 0.3 radius instead of the 76/256 positions hold (1.5 % apart; kept, so the density aims at what `Reset` packs).
-- Speed: host `BenchmarkStep` 105.5–107.3 µs per step at a quiet moment (Apple M5, shared machine, 0 allocs; `ER-061-liquid/flip-bench-host-r4.txt`; under load both engines reach 120–150 µs). Tufty 2040 (tinygui, 2026-11-13, the r2 engine, 32×24 cells, 700 particles): `Step` 38.3–39.3 ms, `Raster(64×48)` 0.31 ms, 0 heap allocations per step (`docs/evidence/er-timing/fliptufty-serial.txt`). That is about 25 steps/s with nothing else running; the demo frame leaves room for about one step. This engine is not yet timed on the badge; `fliptufty` now prints the bytes and µs per step for five sizes.
-- TinyGo 0.43 `-target=tufty2040` (`fliptufty`, five sizes): 20,644 B flash; `-print-allocs=flip` reports only `New` (`flip-tinygo-tufty2040-r4.txt`).
+- Speed: host `BenchmarkStep` 105.5–107.3 µs per step at a quiet moment (Apple M5, shared machine, 0 allocs; `ER-061-liquid/flip-bench-host-r4.txt`; under load both engines reach 120–150 µs). Tufty 2040 (tinygui, 2026-11-13, the r2 engine, 32×24 cells, 700 particles): `Step` 38.3–39.3 ms, `Raster(64×48)` 0.31 ms, 0 heap allocations per step (`docs/evidence/er-timing/fliptufty-serial.txt`). That is about 25 steps/s with nothing else running; the demo frame leaves room for about one step. This engine on the badge (tinygui, fliptufty's swing at 2 px, `docs/evidence/er-timing/flipphase-badge.md`): `Step` 25.3 ms at 24×18 cells and 400 particles, 44.8 ms at 32×24 and 700; separate 30 %, solve 29 %, fromGrid 24 %, toGrid 12 % of it (host: separate 62 %; `ER-061-liquid/flip-perf-task1.md`).
+- Division on the badge (ER-061 performance task 2e): its core has no divide instruction, and TinyGo called a software routine for each of the step's divisions (about 3,600 at 24×18/400: `blend`, the normalisation, the separation's push). Under TinyGo they go through `sdiv` (reciprocal table in flash, then remainder steps until exact); the host keeps `/`. Same liquid bit for bit: seven scenarios hashed every 50 steps equal `6671770`'s on both division paths, and `TestSdivIsGoDivision` checks every divisor 1–1023 against `/`. Badge `Step` 20.8 ms at 24×18/400 (was 25.3), 36.6 ms at 32×24/700 (was 44.8) (tinygui, `docs/evidence/er-timing/flipphase-badge.md` § Task 2e: fromGrid −44 %, toGrid and separate −18 %, the rest unchanged); host unchanged within noise.
+- TinyGo 0.43 `-target=tufty2040` (`fliptufty`, five sizes): 20,644 B flash before task 2e; the reciprocal table and `sdiv` add 624 B (the phase timer: 20,020 → 20,644 B), all in flash; `-print-allocs=flip` reports only `New` (`flip-tinygo-tufty2040-r4.txt`).
 - GIFs (made with this engine): `~/src/docs/evidence/ER-061-liquid/flip-{tilt,splash,dam,still,still-60}.gif`; `still-60` is a direction that flickered before the jitter fix.
 
 ## TODOs
 
-- [ ] Pick the badge's size from the badge timing (38–39 ms per step at 32×24 cells and 700 particles on the previous engine; `fliptufty` times five sizes): a step every frame or every second frame, fewer particles or a smaller box — x/math/fluid/flip/flip.go:175 #p1 #ER-061
-- [ ] Before cutting quality: profile on the badge (on the host separation is 40 % of a step, the solve a quarter) — x/math/fluid/flip/flip.go:356 #p2
+- [ ] Pick the badge's size from the badge timing (20.8 ms per step at 24×18 cells and 400 particles, 36.6 ms at 32×24 and 700, after task 2e; `fliptufty` times five sizes): a step every frame or every second frame, fewer particles or a smaller box — x/math/fluid/flip/flip.go:185 #p1 #ER-061
+- [ ] Before cutting quality: the rest of the performance queue (index and bounds-check work on the badge's heaviest stages, then vector primitives; after task 2e the badge spends solve 36 %, separate 30 %, fromGrid 17 %, toGrid 12 % of 20.8 ms at 24×18/400) — x/math/fluid/flip/flip.go:366 #p2
 
 ## Links
 

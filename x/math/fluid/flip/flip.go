@@ -429,9 +429,18 @@ func (l *Liquid) pair(i, j int) {
 // pressed into its neighbour wobbles by that unit for ever.
 func half(a, b int32) int32 {
 	if a < 0 {
-		return -((-a + b) / (2 * b))
+		return -div(-a+b, 2*b)
 	}
-	return (a + b) / (2 * b)
+	return div(a+b, 2*b)
+}
+
+// norm is v/s for a face's weight sum s ≥ 1: div below divMax (four
+// particles' full weight; a packed liquid gives 650–900), / above.
+func norm(v, s int32) int32 {
+	if s < divMax {
+		return div(v, s)
+	}
+	return v / s
 }
 
 func (l *Liquid) cellOf(i int) int {
@@ -545,7 +554,7 @@ func (l *Liquid) toGrid() {
 		for i := 0; i <= w; i++ {
 			k := j*uw + i
 			if s := int32(l.pu[k]); s > 0 && i > 1 && i < w-1 && j > 0 && j < h-1 {
-				l.u[k] /= s
+				l.u[k] = norm(l.u[k], s)
 			} else {
 				l.u[k] = 0
 			}
@@ -556,7 +565,7 @@ func (l *Liquid) toGrid() {
 		for i := range w {
 			k := j*w + i
 			if s := int32(l.pv[k]); s > 0 && j > 1 && j < h-1 && i > 0 && i < w-1 {
-				l.v[k] /= s
+				l.v[k] = norm(l.v[k], s)
 			} else {
 				l.v[k] = 0
 			}
@@ -704,8 +713,8 @@ func blend(vp, f int32, ks [4]int, ws [4]int32, ok [4]bool, g []int32, pg []int1
 		pic += ws[n] * g[k]
 		corr += ws[n] * (g[k] - vel(pg[k]))
 	}
-	pic /= sw
-	corr /= sw
+	pic = div(pic, sw) // sw ≤ 256
+	corr = div(corr, sw)
 	return clamp(((256-f)*pic+f*(vp+corr))>>8, -One, One)
 }
 

@@ -685,3 +685,29 @@ func BenchmarkStep(b *testing.B) {
 		l.Step()
 	}
 }
+
+// sdiv is the step's division on the badge (whose core has no divide; see
+// div.go): it must give exactly what / gives, truncated towards zero, for
+// every divisor it takes (1–1023) and any int32 dividend, the extremes
+// included, or the badge's liquid would drift from the host's.
+func TestSdivIsGoDivision(t *testing.T) {
+	ns := []int32{0, 1, -1, 2, -2, 255, 256, -256, 65535, 65536, -65537, 1 << 24, -(1 << 24), math.MaxInt32, math.MaxInt32 - 1, math.MinInt32, math.MinInt32 + 1}
+	var r uint32 = 1
+	for range 2000 {
+		r = r*1664525 + 1013904223
+		ns = append(ns, int32(r), int32(r)>>8, int32(r)>>16)
+	}
+	bad := 0
+	for d := int32(1); d < divMax; d++ {
+		for _, n := range append(ns, d-1, d, d+1, -d, 1000*d-1, -1000*d+1) {
+			if got, want := sdiv(n, d), n/d; got != want {
+				if bad++; bad <= 5 {
+					t.Errorf("sdiv(%d, %d) = %d, / gives %d", n, d, got, want)
+				}
+			}
+		}
+	}
+	if bad > 5 {
+		t.Errorf("%d mismatches in all", bad)
+	}
+}
