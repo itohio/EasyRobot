@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"testing"
+	"unsafe"
 )
 
 // The box and fill the badge uses: 32×24 cells, 700 particles (a pool
@@ -569,16 +570,21 @@ func TestSpeedLimit(t *testing.T) {
 	}
 }
 
-// Size is what New allocates: the bytes of every slice it makes, for the
-// badge sizes and a tall box.
+// Size is what New allocates: the Liquid and every slice it makes, each
+// rounded to TinyGo's 16-byte heap blocks, for the badge sizes and a tall
+// box (simalgo/flipmem measures the same on 32-bit TinyGo).
 func TestSizeIsWhatNewAllocates(t *testing.T) {
 	for _, c := range [][3]int{{32, 24, 700}, {28, 21, 524}, {16, 12, 148}, {10, 40, 300}} {
 		l, err := New(c[0], c[1], c[2], DefaultParams())
 		if err != nil {
 			t.Fatal(err)
 		}
-		got := 2*(len(l.X)+len(l.Y)+len(l.VX)+len(l.VY)+len(l.order)) + len(l.last) +
-			4*(len(l.u)+len(l.v)) + 2*(len(l.pu)+len(l.pv)) + len(l.cell) + 2*(len(l.aux)+len(l.pres))
+		heap := func(b int) int { return (b + 15) / 16 * 16 } // TinyGo's 16-byte blocks
+		got := heap(int(unsafe.Sizeof(*l)))
+		for _, b := range []int{2 * cap(l.X), 2 * cap(l.Y), 2 * cap(l.VX), 2 * cap(l.VY), 2 * cap(l.order), cap(l.last),
+			4 * cap(l.u), 4 * cap(l.v), 2 * cap(l.pu), 2 * cap(l.pv), cap(l.cell), 2 * cap(l.aux), 2 * cap(l.pres)} {
+			got += heap(b)
+		}
 		if want := Size(c[0], c[1], c[2]); got != want {
 			t.Errorf("%dx%d, %d particles: New allocates %d B, Size says %d", c[0], c[1], c[2], got, want)
 		}

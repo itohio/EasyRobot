@@ -11,13 +11,16 @@
 // free: particle positions in 1/256 of a cell (Cell) and velocities in
 // 1/16384 of a cell per step (VOne), 16 bits each; per grid face a 32-bit
 // velocity and a 16-bit copy; per cell a byte and two 16-bit words. New
-// allocates Size(w, h, n) bytes: 21,094 for 32×24 cells and 700
-// particles, 16,056 for 28×21 and 524. One Step is one time step;
+// allocates Size(w, h, n) bytes on 32-bit TinyGo: 21,408 for 32×24 cells
+// and 700 particles, 16,400 for 28×21 and 524. One Step is one time step;
 // velocities are in cells per step and gravity in cells per step². No
 // allocation after New.
 package flip
 
-import "errors"
+import (
+	"errors"
+	"unsafe"
+)
 
 // One is one cell (or one cell per step) in the arithmetic, gravity and
 // Params: Q16.
@@ -100,17 +103,24 @@ type Liquid struct {
 	calm   int32 // 2²⁴/Calm, 0 when Calm is 0
 }
 
-// Size is the number of bytes of the arrays New allocates for a w×h box
-// of n particles: 11 per particle, 6 per grid face and 5 per cell. The
-// Liquid itself adds about 310 more (32-bit TinyGo: New took 21,408 B at
-// 32×24 with 700 particles, where Size is 21,094).
+// Size is the number of bytes New allocates for a w×h box of n
+// particles: the Liquid and its arrays (11 bytes per particle, 6 per grid
+// face, 5 per cell), each of the 14 allocations rounded up to 16 bytes as
+// TinyGo's heap rounds them. On 32-bit TinyGo that is exactly what New
+// takes (21,408 at 32×24 with 700 particles); a 64-bit Go heap rounds
+// differently.
 func Size(w, h, n int) int {
-	return n*(2+2+2+2+2+1) + ((w+1)*h+w*(h+1))*(4+2) + w*h*(1+2+2) + 2
+	f, g, c := (w+1)*h, w*(h+1), w*h
+	return block(int(unsafe.Sizeof(Liquid{}))) + 5*block(2*n) + block(n) +
+		block(4*f) + block(2*f) + block(4*g) + block(2*g) + block(c) + block(2*c+2) + block(2*c)
 }
+
+// block is n bytes rounded up to TinyGo's 16-byte heap blocks.
+func block(n int) int { return (n + 15) &^ 15 }
 
 // New makes a w×h-cell box (3 ≤ w, h ≤ 255; the border is wall) holding n
 // particles (1 ≤ n ≤ 65535) at rest on the floor (see Reset). It is the
-// only call that allocates: the Liquid and Size(w, h, n) bytes of arrays.
+// only call that allocates: Size(w, h, n) bytes, the Liquid and its arrays.
 func New(w, h, n int, p Params) (*Liquid, error) {
 	if w < 3 || h < 3 || w > 255 || h > 255 || n < 1 || n > 65535 || p.Iterations < 0 || p.Separate < 0 ||
 		p.Radius < One/8 || p.Radius >= One/2 || p.MaxV <= 0 || p.MaxV > One ||

@@ -10,7 +10,7 @@ tests: [x/math/fluid/flip/flip_test.go]
 test_result: pass
 complete: no
 correct: yes
-evidence: "go test ./x/math/fluid/flip pass (17 tests, 2026-11-13; -race with -short): still pool at every 5° × 5 gravities (360 cases) 0 pixel changes in 1000 frames (the r2 engine fails 68), sloshes decay and settle level within 3.0°, 1° and 2° tilts both ways move the liquid, slosh period within 6–8 % of linear wave theory and √2 longer at half gravity, dam front ≤ Ritter speed and reflects, level back within 0.05 cell after shaking, still surface within 2.4° of perpendicular at 7 angles, fast tilt 10 droplets vs slow 4, a 50-deep pool still; Size = what New allocates (21,094 B at 32×24/700, the r2 engine 52.9 KB on the badge); 42 of 43 mutants fail (ER-061-liquid/flip-mutants-r4.txt); 0 allocs per Step; host 105–107 µs per step; tinygo 0.43 tufty2040 build, allocations only in New; Tufty 2040 (tinygui, r2 engine) 38.3–39.3 ms per Step, this engine not yet timed there"
+evidence: "go test ./x/math/fluid/flip pass (17 tests, 2026-11-13; -race with -short): still pool at every 5° × 5 gravities (360 cases) 0 pixel changes in 1000 frames (the r2 engine fails 68), sloshes decay and settle level within 3.0°, 1° and 2° tilts both ways move the liquid, slosh period within 6–8 % of linear wave theory and √2 longer at half gravity, dam front ≤ Ritter speed and reflects, level back within 0.05 cell after shaking, still surface within 2.4° of perpendicular at 7 angles, fast tilt 10 droplets vs slow 4, a 50-deep pool still; Size = what New allocates on 32-bit TinyGo, the Liquid included (21,408 B at 32×24/700, exact at 7 sizes; the r2 engine 52.9 KB on the badge); 42 of 43 mutants fail (ER-061-liquid/flip-mutants-r4.txt); 0 allocs per Step; host 105–107 µs per step; tinygo 0.43 tufty2040 build, allocations only in New; Tufty 2040 (tinygui, r2 engine) 38.3–39.3 ms per Step, this engine not yet timed there"
 ---
 # 2D liquid: PIC/FLIP particles on a grid (flip)
 
@@ -22,7 +22,7 @@ evidence: "go test ./x/math/fluid/flip pass (17 tests, 2026-11-13; -race with -s
 - `Step` (:175-192) and its stages: `gravity` (:197), `advect` (:240-283), `walls` (:305), `bucket`, `separate`, `pair`, `half` (:329-423), `toGrid`, `mark` (:452-563), `solve`, `push` (:576-646), `fromGrid`, `blend` (:655-703);
 - drawing: `Raster` (:706).
 
-**Inputs → outputs:** `New(w, h, n, Params)` (3 ≤ w, h ≤ 255 cells, the outer ring is wall; 1 ≤ n ≤ 65535) makes n particles packed at rest on the floor (`Reset`) and allocates the `Liquid` and `Size(w, h, n)` bytes of arrays, nothing after. Positions `X, Y` are `uint16` in 1/256 cell (`Cell`), velocities `VX, VY` `int16` in 1/16384 cell per step (`VOne`), gravity `GX, GY` and `Params` in 1/65536 (`One`). Set gravity, call `Step` (one or more per frame), then `Raster(dst, pw, ph)` counts particles per pixel over the whole box for drawing at any size (2 px per cell gives the badge's pixelated look).
+**Inputs → outputs:** `New(w, h, n, Params)` (3 ≤ w, h ≤ 255 cells, the outer ring is wall; 1 ≤ n ≤ 65535) makes n particles packed at rest on the floor (`Reset`) and allocates `Size(w, h, n)` bytes (the `Liquid` and its arrays), nothing after. Positions `X, Y` are `uint16` in 1/256 cell (`Cell`), velocities `VX, VY` `int16` in 1/16384 cell per step (`VOne`), gravity `GX, GY` and `Params` in 1/65536 (`One`). Set gravity, call `Step` (one or more per frame), then `Raster(dst, pw, ph)` counts particles per pixel over the whole box for drawing at any size (2 px per cell gives the badge's pixelated look).
 
 **Method (per step):**
 
@@ -39,18 +39,18 @@ evidence: "go test ./x/math/fluid/flip pass (17 tests, 2026-11-13; -race with -s
 
 **Numbers:** the arithmetic is int32 in Q16 (velocities, gravity, pressure) with Q8 weights; every product is checked to stay in int32 (the speed limit bounds the transfers). Storage is 16-bit where it can be: positions Q8 (`uint16`, so boxes up to 255 cells), velocities Q14 (`int16`, up to ±2 cells per step), a particle moves by its velocity rounded to 1/256 cell. Divides normalise the transfers (one per face and two per particle) and size the separation pushes.
 
-**Memory:** `Size(w, h, n)` = 11 bytes per particle (positions, velocities, a bucket index, the last-move bits) + 6 per grid face (a 32-bit velocity, and a 16-bit copy that first holds the transfer's weight sums) + 5 per cell (type and last step's liquid bit in one byte; 16-bit density, shared with the separation buckets; 16-bit pressure): the arrays. The `Liquid` itself adds about 310 bytes. Face validity, wall faces and open sides are worked out from the indices rather than stored. The pressure is kept in 16 bits for the warm start: it holds g·depth up to half a cell per step (0.02 cell per step² under 25 cells of liquid) and saturates beyond (`TestDeepPoolStaysStill`, 50 cells deep).
+**Memory:** `Size(w, h, n)` = 11 bytes per particle (positions, velocities, a bucket index, the last-move bits) + 6 per grid face (a 32-bit velocity, and a 16-bit copy that first holds the transfer's weight sums) + 5 per cell (type and last step's liquid bit in one byte; 16-bit density, shared with the separation buckets; 16-bit pressure): the arrays, plus the `Liquid` itself (244 bytes on 32-bit), each of the 14 allocations rounded up to TinyGo's 16-byte heap blocks. On 32-bit TinyGo that is exactly what `New` takes (`ER-061-liquid/flip-new-wasip1-size.txt`). Face validity, wall faces and open sides are worked out from the indices rather than stored. The pressure is kept in 16 bits for the warm start: it holds g·depth up to half a cell per step (0.02 cell per step² under 25 cells of liquid) and saturates beyond (`TestDeepPoolStaysStill`, 50 cells deep).
 
 | Box (cells), particles | `Size` | `New` on 32-bit TinyGo | previous engine | host per step | liquid behaviour (fpv-gate's checks, per size) |
 |---|---:|---:|---:|---:|---|
-| 32×24, 700 | 21,094 B | 21,408 B | 52.6 KB (fpv-gate, same measurement) | 106–107 µs | all tests; still 0 of 360 directions × gravities flicker; sloshes ≥ 5 crossings |
-| 28×21, 524 | 16,056 B | 16,400 B | — | 76 µs | still 0 of 108; sloshes ≥ 4 crossings, settles within 3.7°; period within 15 % |
-| 24×18, 400 | 11,998 B | 12,288 B | — | — | (373 particles tested, below) |
-| 24×18, 373 | 11,701 B | 12,032 B | — | 53 µs | still 0 of 108; sloshes 3 crossings, then overdamped at strong gravity |
-| 20×15, 248 | 8,040 B | 8,336 B | — | 36 µs | still; overdamped (2 crossings): pours more than sloshes |
-| 16×12, 148 | 5,062 B | 5,392 B | — | 21 µs | still; no real slosh, surface up to 5° off |
+| 32×24, 700 | 21,408 B | 21,408 B | 52.6 KB (the r3 engine; fpv-gate, same method: m-30911cf13ed8, `docs/evidence/ER-SIMALGO.md` L233) | 106–107 µs | all tests; still 0 of 360 directions × gravities flicker; sloshes ≥ 5 crossings |
+| 28×21, 524 | 16,400 B | 16,400 B | — | 76 µs | still 0 of 108; sloshes ≥ 4 crossings, settles within 3.7°; period within 15 % |
+| 24×18, 400 | 12,288 B | 12,288 B | — | — | (373 particles tested, below) |
+| 24×18, 373 | 12,032 B | 12,032 B | — | 53 µs | still 0 of 108; sloshes 3 crossings, then overdamped at strong gravity |
+| 20×15, 248 | 8,336 B | 8,336 B | — | 36 µs | still; overdamped (2 crossings): pours more than sloshes |
+| 16×12, 148 | 5,392 B | 5,392 B | — | 21 µs | still; no real slosh, surface up to 5° off |
 
-`New` on 32-bit TinyGo: `TotalAlloc` around `New` in a `wasip1` build with `-gc=leaking` (fpv-gate's method; `tmp/easyrobot/simalgo/flipmem`, `ER-061-liquid/flip-new-wasip1-r4.txt`).
+`New` on 32-bit TinyGo: `TotalAlloc` around `New` in a `wasip1` build with `-gc=leaking` (fpv-gate's method; `tmp/easyrobot/simalgo/flipmem`, `ER-061-liquid/flip-new-wasip1-r4.txt`, `flip-new-wasip1-size.txt`).
 
 Host times are on a shared Apple M5 (32×24 at a quiet moment, the others under load, when 32×24 took 146 µs); the badge timer `fliptufty` prints `Size`, the heap it grew and µs per step for each size. The previous engine's 32×24 step took 38.3–39.3 ms on the badge; on the host this one is as fast at a quiet moment (105.5–107.3 µs against 100–105 µs) and 15–20 % slower under load.
 
@@ -61,7 +61,8 @@ Host times are on a shared Apple M5 (32×24 at a quiet moment, the others under 
 - Smooth the accelerometer: gravity noise moves a still liquid by itself, and noise above 0.45° keeps the last moves forgotten (a lone surface particle can then rock again).
 - Fewer than 12 sweeps let the warm-started solve run away (measured on the previous engine).
 - Packing varies a little: the level after violent shaking is within about 0.1–0.2 cell of the start, not exact.
-- The surface is level to within one row of particles (0.57 cell): the last part-filled row comes to rest lying to one side, which a fitted line reads as up to about 3° (2.7° measured after a violent slosh). The mean x can then be up to about 0.6 cell from where it started.
+- The surface is level to within one row of particles (0.57 cell): the last part-filled row comes to rest lying to one side as a terrace, which a fitted line reads as a tilt. How much depends on how full that row is, not on the direction: at gravity −90° and 0.02, 680–720 particles rest at +0.4°, +4.1°, −0.5°, −4.4°, +4.5° (700), −0.6°, −1.0°, −0.2°, 0.0°. Over every 15° plus five off-grid directions at three gravities (87 cases) 8 are outside 3° (worst 4.5°: fpv-gate's −90° at 0.02). The pressure solve sees whole cells, so a step under one cell drives no flow, and the rest bar holds it; levelling it needs a sub-cell free surface in the solve (ghost-fluid pressure), not a parameter (`Calm`, `FlipQ8`, `RestQ8`, `HoldQ8`, `Stick` tried: none better). The mean x can then be up to about 0.6 cell from where it started.
+- Small sloshes die fast: released from 8° at gravity 0.02 the pool crosses its rest twice (from 20° four times, 30° seven). A slosh moving the mean by under about half a cell is a wave under one cell, which the grid does not carry: pure FLIP with no rest bar still loses it in two crossings (and then never settles). A less damped default (`Calm` 1/32) adds a crossing or two at gravity 0.01 but leaves the still pool moving in many of the 360 directions × gravities, so the default stays.
 - A wedge of liquid in a corner can creep for a few thousand steps before it is fully level.
 
 ## Method choice

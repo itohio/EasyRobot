@@ -45,7 +45,7 @@ Volume is held by pushing overlapping particles apart and by a density drift ter
 
 **Package:** `x/math/fluid/flip`; easyrobot chose the path, recorded here. `x/math/fluid` itself stays for [[ER-065-sim-fluid-dynamics|ER-065]]'s stable-fluids grid solver (smoke and gas, no free surface); a free-surface particle liquid is a different method, so it gets its own subpackage. `x/math/automata/liquid` is not created, and the earlier pin to tinytufty2040's TG-2 step 8 is dropped with the automaton.
 
-**API:** `New(w, h, n, Params)` (the only allocation: the `Liquid` and `Size(w, h, n)` bytes of arrays), `Reset`, `Step`, `Raster(dst, w, h)` for drawing at any pixel size; `GX, GY` gravity (Q16) and `X, Y` (1/256 cell), `VX, VY` (1/16384 cell per step) particles are plain fields. One instance can serve several pages (Water, Fire's fuel). Not in scope: obstacles inside the box, two-way coupling with rigid bodies, rendering (tinygui's).
+**API:** `New(w, h, n, Params)` (the only allocation: `Size(w, h, n)` bytes, the `Liquid` and its arrays, exact on 32-bit TinyGo), `Reset`, `Step`, `Raster(dst, w, h)` for drawing at any pixel size; `GX, GY` gravity (Q16) and `X, Y` (1/256 cell), `VX, VY` (1/16384 cell per step) particles are plain fields. One instance can serve several pages (Water, Fire's fuel). Not in scope: obstacles inside the box, two-way coupling with rigid bodies, rendering (tinygui's).
 
 **Hardware:** no hardware or flashing by easyrobot. `tmp/easyrobot/simalgo/fliptufty` is the badge timer for tinygui to flash.
 
@@ -61,10 +61,10 @@ Volume is held by pushing overlapping particles apart and by a density drift ter
 - [x] Physics sanity (fpv-gate's recommendation): `TestSloshPeriodMatchesWaveTheory` — slosh period 174 and 250 steps against linear wave theory's 164 and 233, and √2 longer at half gravity (1.44).
 - [x] Fixed point, no float in the package; 0 allocations per `Step` and `Raster` (`TestStepDoesNotAllocate`); TinyGo 0.43 tufty2040 build with allocations only in `New`.
 - [x] Host GIFs of a tilt sequence, a fast-tilt splash, a dam break and a still pool (evidence below).
-- [x] Small enough for the badge (Leader m-9763228b24cb, m-329fdd2f62ef: ≤ ~25 KB at 32×24/700 and ≤ ~15 KB at 24×18/400; about 27 KB free). 16-bit particle storage, the pre-solve copy holding the transfer weights, a shared density/bucket array, 16-bit warm-start pressure, and face validity, walls and open sides worked out instead of stored. `New` on 32-bit TinyGo (`TotalAlloc` around it, `wasip1`, `-gc=leaking`, fpv-gate's method; `Size` counts the arrays alone):
-  - 32×24 cells, 700 particles: 21,408 B (`Size` 21,094), all of fpv-gate's checks above; the previous engine took 52.6 KB;
-  - 24×18, 400: 12,288 B (`Size` 11,998);
-  - 28×21, 524: 16,400 B (`Size` 16,056), still at all 108 directions × gravities tried, sloshes with ≥ 4 crossings, settles within 3.7°, period within 15 %;
+- [x] Small enough for the badge (Leader m-9763228b24cb, m-329fdd2f62ef: ≤ ~25 KB at 32×24/700 and ≤ ~15 KB at 24×18/400; about 27 KB free). 16-bit particle storage, the pre-solve copy holding the transfer weights, a shared density/bucket array, 16-bit warm-start pressure, and face validity, walls and open sides worked out instead of stored. `New` on 32-bit TinyGo (`TotalAlloc` around it, `wasip1`, `-gc=leaking`, fpv-gate's method; `Size` counts the `Liquid` and its arrays as TinyGo rounds them, and equals it):
+  - 32×24 cells, 700 particles: 21,408 B, all of fpv-gate's checks above; the r3 engine took 52.6 KB by the same method (fpv-gate on r3, m-30911cf13ed8, `docs/evidence/ER-SIMALGO.md` L233; the r2 engine's 52.9 KB is tinygui's badge heap, below);
+  - 24×18, 400: 12,288 B;
+  - 28×21, 524: 16,400 B, still at all 108 directions × gravities tried, sloshes with ≥ 4 crossings, settles within 3.7°, period within 15 %;
   - 24×18, 373: 12,032 B, still, sloshes 3 times, overdamped at strong gravity;
   - 20×15 (8,336 B) and 16×12 (5,392 B): still, but they pour rather than slosh.
   - `TestSizeIsWhatNewAllocates` pins `Size`; `TestDeepPoolStaysStill` pins the 16-bit pressure (it saturates past 25 cells of depth at 0.02, without wrapping round).
