@@ -357,7 +357,7 @@ type Filter interface {
 - `rigid2d.World`: balls with spin among kinematic segments and boxes. Impulse contacts use the surface's restitution and Coulomb friction; Magnus lift; linear and angular damping
 
 **Features**:
-- float32, deterministic, no allocation per step (TinyGo, RP2040)
+- float32, deterministic on a given target (arm64 fuses multiply-adds, amd64 by default does not), no allocation per step (TinyGo, RP2040)
 
 ### 14. Swarm (`x/math/swarm`)
 
