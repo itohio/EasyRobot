@@ -23,7 +23,7 @@ Owner (ER-SIMALGO): "full fluid dynamics later". Stam's stable fluids are uncond
 
 ## Dependencies and scope
 
-Package `x/math/fluid`: fixed-size grids, Jacobi or Gauss–Seidel pressure solve with a set iteration count, boundaries as solid cells. float32 vs fixed point decided by the RP2040 measurement. Not in scope: free surfaces (the automaton covers liquids).
+Package `x/math/fluid`: fixed-size grids, Jacobi or Gauss–Seidel pressure solve with a set iteration count, boundaries as solid cells. float32 vs fixed point decided by the RP2040 measurement. Not in scope: free surfaces (liquids are `x/math/fluid/flip`, [[ER-061-sim-liquid-2d|ER-061]]).
 
 Every piece: check written first (red), tests, host benchmark, `tinygo build -target=tufty2040` with no allocation in the package, verify, then commit. No hardware or flashing is authorised by this ticket; tinygui runs it on the badge.
 
