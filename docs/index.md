@@ -24,9 +24,9 @@ From the roadmap's no-hardware demo checkpoints ([[roadmap#8. Next|roadmap §8]]
 
 The sixth checkpoint, M-b's synthetic recorder round trip, follows: it needs [[ER-027-marshaller-fixes|ER-027]] and [[ER-031-spi-slave-feature-framing|ER-031]]. Full order, accepted order changes and the T-IK mapping: [[tickets/index|ticket index]].
 
-<!-- vault:status h=60a1ef31d43a -->
+<!-- vault:status h=a33c12b4e9aa -->
 
-State: 73 tested · 29 implemented · 137 partial · 10 stub · 13 unverified (262 algorithms)
+State: 74 tested · 29 implemented · 137 partial · 10 stub · 13 unverified (263 algorithms)
 
 <!-- /vault:status -->
 
@@ -55,7 +55,7 @@ State: 73 tested · 29 implemented · 137 partial · 10 stub · 13 unverified (2
 
 Algorithm notes per module by status (generated from the algorithm notes; `tested` needs passing value tests).
 
-<!-- vault:modules h=b96412516b10 -->
+<!-- vault:modules h=cb1cb0b6ec59 -->
 
 | Module | tested | implemented | partial | stub | unverified | total |
 |---|---|---|---|---|---|---|
@@ -63,7 +63,7 @@ Algorithm notes per module by status (generated from the algorithm notes; `teste
 | [[graph-and-planning]] | 7 | 1 | 9 | 0 | 0 | 17 |
 | [[kinematics]] | 7 | 5 | 2 | 0 | 0 | 14 |
 | [[motion-and-gait]] | 5 | 0 | 2 | 1 | 0 | 8 |
-| [[navigation]] | 2 | 0 | 0 | 0 | 0 | 2 |
+| [[navigation]] | 3 | 0 | 0 | 0 | 0 | 3 |
 | [[pid-control]] | 1 | 0 | 0 | 0 | 0 | 1 |
 | **Signal, codecs, audio** | | | | | | |
 | [[audio-io]] | 1 | 1 | 1 | 0 | 1 | 4 |
@@ -105,7 +105,7 @@ Algorithm notes per module by status (generated from the algorithm notes; `teste
 | [[vision]] | 0 | 0 | 8 | 2 | 3 | 13 |
 | **Knowledge engine** | | | | | | |
 | [[knowledge-engine]] | 0 | 0 | 0 | 0 | 0 | 0 |
-| **All** | 73 | 29 | 137 | 10 | 13 | 262 |
+| **All** | 74 | 29 | 137 | 10 | 13 | 263 |
 
 <!-- /vault:modules -->
 
@@ -115,7 +115,7 @@ The knowledge engine is its own Go module and is catalogued in [[knowledge-engin
 
 Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs tagged with the ticket. The defects themselves are in the linked notes and in [[todo]].
 
-<!-- vault:tickets h=894df0cfef94 -->
+<!-- vault:tickets h=20a89ea3bdf9 -->
 
 | Ticket | Title | Status | Workstream | Open p1 |
 |---|---|---|---|---|
@@ -180,6 +180,7 @@ Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs 
 | [[ER-065-sim-fluid-dynamics\|ER-065]] | Fluid dynamics: Stam stable fluids, 2D first — x/math/fluid | proposed |  | 0 |
 | [[ER-066-ray-casting-dda\|ER-066]] | Ray casting: grid DDA traversal and a 2.5D column helper — x/math/grid | proposed |  | 0 |
 | [[ER-067-strapdown-motion-path\|ER-067]] | Strapdown integrator with ZUPT for the badge's 3D motion path — x/math/nav/strapdown | active |  | 1 |
+| [[ER-068-startup-calibration\|ER-068]] | Startup calibration of the motion sensor at rest — x/math/nav/calib | active |  | 0 |
 
 <!-- /vault:tickets -->
 

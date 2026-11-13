@@ -240,6 +240,7 @@ type Nav struct {
 	rSlow      [3]float32 // and AvgTime: they part while the attitude still turns
 	primed     bool       // avg, rFast and rSlow hold a sample
 	calibrated bool       // Bias has been learned over one full rest
+	seeded     bool       // gBias comes from a calibration (Seed): the first rest keeps it
 	stillFor   float32    // s of the first rest so far
 	learned    float32    // samples averaged into Bias during the first rest
 	quietFor   float32    // s moving with a quiet gyro, no acceleration and speed under StillSpeed
@@ -277,6 +278,17 @@ func (n *Nav) Reset() {
 	n.quietFor, n.glideFor, n.staleFor, n.movingFor, n.calmFor, n.glideSum = 0, 0, 0, 0, 0, [3]float32{}
 	n.quietSum, n.quietLate, n.quietSq, n.lateFor, n.attRest, n.rot = [3]float32{}, [3]float32{}, 0, 0, n.att, false
 	n.sNew, n.sOld, n.sRot, n.chordMax = shadow{}, shadow{}, shadow{}, 0
+}
+
+// Seed gives the Nav a calibration's gyro bias (rad/s), as a calibration at
+// rest measures it over seconds (x/math/nav/calib): the first rest keeps it
+// rather than learning it from its own shorter stretch, and later rests
+// refine it from there as from a long rest. Call it before the first rest
+// ends. (The accelerometer's noise is not seeded: the first rest's estimate
+// of it is within 10 %, and seeding it changed nothing measurable.)
+func (n *Nav) Seed(gyroBias [3]float32) {
+	n.gBias, n.gbOld, n.gbNew = gyroBias, gyroBias, gyroBias
+	n.seeded = true
 }
 
 // Update advances by dt seconds with the attitude q ([w, x, y, z], sensor
@@ -398,7 +410,9 @@ func (n *Nav) update(dt float32, q [4]float32, f, w [3]float32) {
 			e := r[i] - n.Bias[i]
 			n.Bias[i] += (r[i] - n.Bias[i]) / n.learned
 			n.A[i] = r[i] - n.Bias[i]
-			n.gBias[i] += (w[i] - n.gBias[i]) / n.learned
+			if !n.seeded {
+				n.gBias[i] += (w[i] - n.gBias[i]) / n.learned
+			}
 			e2 += e * e
 		}
 		// the noise too, so the first rest after it judges a gentle start
@@ -409,6 +423,12 @@ func (n *Nav) update(dt float32, q [4]float32, f, w [3]float32) {
 			n.calibrated = true
 			n.tilt(n.Bias)
 			n.rest()
+			if n.seeded {
+				// the seed is as good as a long rest: the running averages
+				// start at their longest (a 0.5 s one soon replaced a 3 s
+				// calibration's gyro bias with its own noise)
+				n.restFor = 3 * c.AvgTime
+			}
 		}
 		return
 	}

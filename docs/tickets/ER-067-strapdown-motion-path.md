@@ -96,9 +96,9 @@ easyrobot's guess: **S**. Revisit if the badge trace shows drift the synthetic t
 
 ## Implementation evidence
 
-- `x/math/nav/strapdown/strapdown.go` and `strapdown_test.go`: `go test -race ./x/math/nav/strapdown/` pass, 37 tests, 2026-11-13.
+- `x/math/nav/strapdown/strapdown.go` and `strapdown_test.go`: `go test -race ./x/math/nav/strapdown/` pass, 38 tests (with ER-068's `Seed`), 2026-11-13.
 - The first tests failed to build without the package (`ER-SIMALGO-logs/strapdown-fail-before.txt`); they were written alongside the code. The gentle and slow stroke tests were red first against an earlier version (`strapdown-gentle-fail-before.txt`); the tilt-only test against r3 (`strapdown-tilt-r3-before.txt`); the power-on test against r7 (`strapdown-poweron-fail-before.txt`); the 48-case tilt test against r8 (`strapdown-tilt-r9-fail-before.txt`); the turn-then-stroke test against r9 (`strapdown-r10-turnstroke-fail-before.txt`).
 - 51 of 52 mutants of r10's code (the turn's error terms and corrections, the rotation's registration, the turned rest's checks, the glide, the stale rule, the offsets) fail a test, one is a constant (`strapdown-r10-mutants.txt`); r9's 31 (`strapdown-r9-mutants.txt`), r8's 29, r7's 23 and r3's 24 were run against those versions.
 - Host: 27 ns per `Update`, 0 allocs.
-- TinyGo: `motiontufty` is 94,264 B flash in all; one 736-byte allocation in `New` (`strapdown-tinygo-tufty2040-r10.txt`).
+- TinyGo: `motiontufty` is 94,296 B flash in all (94,264 before `Seed`, ER-068); one 736-byte allocation in `New` (`strapdown-tinygo-tufty2040-r10.txt`).
 - Tufty 2040 (tinygui, 2026-11-13, an earlier version): 87–88 µs per `Update`, 0 heap allocations (`docs/evidence/er-timing/motiontufty-serial.log`); r10 not yet timed on the badge.

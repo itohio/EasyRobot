@@ -1418,6 +1418,55 @@ func TestBadSamplesAreIgnored(t *testing.T) {
 	}
 }
 
+// Seeding with a calibration (TG-3): a Nav whose first rest is short (1.5 s
+// from power-on) on a noisy gyro (0.01 rad/s of noise, 0.01 rad/s of bias)
+// learns the bias from about 100 samples, and, held in motion afterwards
+// with no rest to relearn it, its attitude turns by what it got wrong.
+// Seeded with a 10 s calibration's bias (1000 samples), it keeps that and
+// turns about a third as much: over twenty draws the rms of the attitude
+// error after 20 s is under half the unseeded one.
+func TestSeedKeepsACalibrationsGyroBias(t *testing.T) {
+	q := quat{1, 0, 0, 0}
+	run := func(seed lcg, seeded bool) float64 {
+		n := newNav(t, DefaultConfig())
+		rnd, cal := seed, seed+1000
+		if seeded {
+			// a 10 s calibration of the same gyro: its mean, as the Calibrator gives it
+			var sum [3]float64
+			for range int(10 * rate) {
+				for k := range 3 {
+					sum[k] += 0.01 + 0.01*gauss(&cal)
+				}
+			}
+			n.Seed([3]float32{float32(sum[0] / (10 * rate)), float32(sum[1] / (10 * rate)), float32(sum[2] / (10 * rate))})
+		}
+		gyro := func() [3]float32 {
+			return [3]float32{float32(0.01 + 0.01*gauss(&rnd)), float32(0.01 + 0.01*gauss(&rnd)), float32(0.01 + 0.01*gauss(&rnd))}
+		}
+		for range int(1.5 * rate) {
+			n.Update(1/rate, q.f32(), v32(sensorForce(q, [3]float64{})), gyro())
+		}
+		if !n.calibrated {
+			t.Fatalf("not calibrated after 1.5 s at rest")
+		}
+		for i := range int(20 * rate) { // a hand shaking it, never still, not turning
+			a := 0.5 * math.Sin(2*math.Pi*5*float64(i)/rate)
+			n.Update(1/rate, q.f32(), v32(sensorForce(q, [3]float64{a, 0, 0})), gyro())
+		}
+		return 2 * math.Acos(math.Min(1, math.Abs(float64(n.Q[0]))))
+	}
+	var s2, u2 float64
+	for seed := lcg(1); seed <= 20; seed++ {
+		s, u := run(seed, true), run(seed, false)
+		s2, u2 = s2+s*s, u2+u*u
+	}
+	s, u := math.Sqrt(s2/20), math.Sqrt(u2/20)
+	t.Logf("attitude error after 20 s in motion: seeded %.4f rad, unseeded %.4f rad (rms)", s, u)
+	if s >= u/2 {
+		t.Errorf("seeded %.4f rad, unseeded %.4f rad: the calibration's bias is not kept", s, u)
+	}
+}
+
 // Reset puts the body back at the origin, moving, but keeps what it learned
 // of the sensor: with a 0.1 m/s² horizontal accelerometer bias (turned into
 // the attitude) and a gyro bias, the samples after Reset read no

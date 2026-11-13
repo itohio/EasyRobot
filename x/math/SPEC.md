@@ -342,6 +342,8 @@ type Filter interface {
 - `pdr.Detector`: steps from the accelerometer magnitude (low-pass, running baseline, threshold, minimum interval)
 - `pdr.Heading`: the horizontal direction of a chosen body axis (e.g. a badge's screen-out axis) from an attitude quaternion, for any mounting
 - `pdr.Track`: 2D position advanced one step length along a heading
+- `strapdown.Nav`: 3D translation from an IMU and an attitude, with zero-velocity updates at rest; `Seed` takes a startup calibration's gyro bias
+- `calib.Calibrator`: startup calibration at rest: finds the face that is down, waits for stillness, averages; gyro bias, readings at rest, noise and a drift forecast, with live per-axis statistics
 
 **Features**:
 - Value types with fixed state; no allocation per sample (TinyGo, RP2040)
@@ -464,7 +466,7 @@ Potential optimizations for:
 3. **Tensor Operations** (`x/math/tensor`): Fully implemented, tested (80+ operations)
 4. **Neural Networks** (`x/math/nn`): Fully implemented, tested (layers, models, losses)
 5. **Primitives** (`x/math/primitive`): Core foundation, working
-6. **Navigation** (`x/math/nav/pdr`): step detector and track, tested on synthetic signals (no hardware run yet)
+6. **Navigation** (`x/math/nav`): pdr step detector and track, strapdown with zero-velocity updates, startup calibration; tested on synthetic signals (no hardware run of strapdown or calib yet)
 7. **Physics** (`x/math/physics/rigid2d`): ball contacts with spin, tested on the host (no on-device timing yet)
 8. **Swarm** (`x/math/swarm/boids`): fixed-point flocking in a moving box, tested on the host (no on-device timing yet)
 
@@ -593,7 +595,7 @@ x/math/
 ├── interpolation/    # Interpolation algorithms (⚠️ Draft)
 ├── graph/            # Graph algorithms (⚠️ Draft)
 ├── grid/             # Grid operations (⚠️ Draft)
-├── nav/              # Dead reckoning: pdr (✅ Tested, synthetic signals)
+├── nav/              # Dead reckoning: pdr, strapdown, calib (✅ Tested, synthetic signals)
 ├── physics/          # Fixed-step game physics: rigid2d (✅ Tested, host)
 ├── swarm/            # Flocking: boids (✅ Tested, host)
 └── primitive/        # Low-level primitives (✅ Working)
