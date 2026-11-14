@@ -5,8 +5,11 @@ import "math"
 // MulParams describes a requantised element-wise product with cyclic
 // broadcast of b:
 //
-//	dst[i] = clamp(ZPOut + round((a[i]−ZPA)·(b[j]−ZPB)·M'), Min, Max),  j = i mod len(b)
+//	dst[i] = clamp(ZPOut + round((a[i]−ZPA)·(b[j]−ZPB)·M'), Min, Max),  j = (i / R) mod len(b)
 //
+// R is Repeat (0 or 1: each b value once per cycle; > 1: each b value
+// covers R consecutive a values, e.g. an H×W×1 b times an H×W×C a with
+// R = C).
 // M' is RQ (from QuantizeMul). Round selects the rounding of the product
 // (|·| ≤ 255² so no overflow): RoundExact rounds once, half away from zero
 // (Requant.Apply); RoundTFLite is TFLite's MultiplyByQuantizedMultiplier
@@ -17,6 +20,7 @@ type MulParams struct {
 	RQ              Requant
 	Min, Max        int8
 	Round           Rounding
+	Repeat          int
 }
 
 // QuantizeMul derives TFLite's int8 MUL multiplier: the real multiplier
@@ -45,11 +49,13 @@ func (p *MulParams) valid() error {
 }
 
 // Mul computes the requantised product (see MulParams). len(dst) must equal
-// len(a), and len(b) must be positive and divide len(a) (b is the same
-// shape as a, its trailing channel vector, or a scalar), else ErrLength.
-// dst may alias a (not b, unless len(b) == len(a)).
+// len(a), and len(b)·max(Repeat, 1) must be positive and divide len(a) (b
+// is the same shape as a, its trailing channel vector, a scalar, or with
+// Repeat one value per pixel), else ErrLength. dst may alias a (not b,
+// unless len(b) == len(a)).
 func Mul(dst, a, b []int8, p MulParams) error {
-	if len(dst) != len(a) || len(b) == 0 || len(a)%len(b) != 0 {
+	r := max(p.Repeat, 1)
+	if len(dst) != len(a) || len(b) == 0 || p.Repeat < 0 || len(a)%(len(b)*r) != 0 {
 		return ErrLength
 	}
 	if err := p.valid(); err != nil {
@@ -63,6 +69,17 @@ func Mul(dst, a, b []int8, p MulParams) error {
 func mulGeneric(dst, a, b []int8, p *MulParams) {
 	za, zb := int32(p.ZPA), int32(p.ZPB)
 	zo, lo, hi := int64(p.ZPOut), int64(p.Min), int64(p.Max)
+	if p.Repeat > 1 {
+		r := p.Repeat
+		for off := 0; off < len(a); off += r {
+			bv := int32(b[(off/r)%len(b)]) - zb
+			ar, dr := a[off:off+r], dst[off:off+r]
+			for j, av := range ar {
+				dr[j] = requantizeMode((int32(av)-za)*bv, p.RQ, zo, lo, hi, p.Round)
+			}
+		}
+		return
+	}
 	nb := len(b)
 	for off := 0; off < len(a); off += nb {
 		ar, dr := a[off:off+nb], dst[off:off+nb]
