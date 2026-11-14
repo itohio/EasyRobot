@@ -37,12 +37,24 @@ func TestFrameResultJPEG(t *testing.T) {
 	if _, err := frameResult(true, short, len(short), 0, false); err != ErrBufSize {
 		t.Errorf("JPEG larger than the buffer: %v, want ErrBufSize", err)
 	}
-	if _, err := frameResult(true, buf, len(j)/2, 0, false); err != ErrTimeout {
-		t.Errorf("frame stopped mid-JPEG with room left: %v, want ErrTimeout", err)
-	}
-	noSOI := append([]byte{0x00}, buf...)
-	if _, err := frameResult(true, noSOI, len(noSOI), 0, true); err != ErrTimeout {
-		t.Errorf("no SOI: %v, want ErrTimeout", err)
+	// Shared contract (Leader, merge into main): a cut JPEG frame, one
+	// without its FF D8 or FF D9 marker, is ErrIncomplete, as on the K210;
+	// ErrTimeout only when nothing arrived.
+	for _, tt := range []struct {
+		name  string
+		buf   []byte
+		got   int
+		ended bool
+		err   error
+	}{
+		{"deadline mid-JPEG with room left", buf, len(j) / 2, false, ErrIncomplete},
+		{"frame ended mid-JPEG (no EOI)", buf, len(j) / 2, true, ErrIncomplete},
+		{"frame ended, no SOI", append([]byte{0x00}, buf...), len(buf) + 1, true, ErrIncomplete},
+		{"nothing arrived", buf, 0, false, ErrTimeout},
+	} {
+		if _, err := frameResult(true, tt.buf, tt.got, 0, tt.ended); err != tt.err {
+			t.Errorf("%s: %v, want %v", tt.name, err, tt.err)
+		}
 	}
 }
 

@@ -9,17 +9,22 @@ package camera
 //   - JPEG: a complete JPEG (SOI … SOS … EOI) inside the received bytes is
 //     the frame, even if the sensor's padding after the EOI overran the
 //     buffer. Otherwise a full buffer means the JPEG is larger than it
-//     (ErrBufSize), anything else an incomplete frame (ErrTimeout).
+//     (ErrBufSize), nothing received means no frame came (ErrTimeout), and
+//     anything else is a cut frame without its FF D8 or FF D9 marker
+//     (ErrIncomplete, the shared contract).
 //   - Raw: the frame ended with exactly frameLen bytes, else ErrTimeout.
 func frameResult(jpeg bool, buf []byte, got, frameLen int, ended bool) ([]byte, error) {
 	if jpeg {
 		if data, ok := jpegSpan(buf[:got]); ok {
 			return data, nil
 		}
-		if !ended && got == len(buf) {
+		switch {
+		case !ended && got == len(buf):
 			return nil, ErrBufSize
+		case !ended && got == 0:
+			return nil, ErrTimeout
 		}
-		return nil, ErrTimeout
+		return nil, ErrIncomplete
 	}
 	if !ended || got != frameLen {
 		return nil, ErrTimeout

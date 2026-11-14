@@ -226,12 +226,13 @@ func inDMARAM(b []byte) bool {
 //   - JPEG: up to MaxJPEG bytes of buf are used; Frame.Data runs from FF D8
 //     to FF D9 (a complete JPEG counts even when the sensor's padding after
 //     the EOI overran the buffer). A JPEG larger than the buffer gives
-//     ErrBufSize.
+//     ErrBufSize; a JPEG frame cut short (data arrived, but without its
+//     FF D8 or FF D9 marker) gives ErrIncomplete.
 //
 // buf must be 4-byte aligned in DMA-capable internal SRAM, or 32-byte
 // aligned in memory the SetCacheSync implementation manages (PSRAM);
-// otherwise ErrBufAlign. A frame that does not complete (no VSYNC or EOF
-// within 2 s, wrong length, JPEG without SOI/EOI) gives ErrTimeout; a GDMA
+// otherwise ErrBufAlign. Nothing received within 2 s, or a raw frame that
+// does not end with exactly FrameSize(cfg) bytes, gives ErrTimeout; a GDMA
 // FIFO overflow or underflow gives ErrOverflow (raw status: DMAStatus).
 //
 // buf belongs to the capture until Capture returns: nothing else (another

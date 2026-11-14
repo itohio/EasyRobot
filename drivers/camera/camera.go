@@ -25,16 +25,17 @@
 //     write ErrBufAlign; no frame in time ErrTimeout; unknown sensor
 //     ErrNoDriver; driver without controls ErrNoControls; the capture engine
 //     lost data (FIFO overflow/underflow, where the host reports it)
-//     ErrOverflow.
+//     ErrOverflow; a JPEG frame cut short, without its FF D8 or FF D9
+//     marker, ErrIncomplete.
 //   - A failed Open leaves the sensor powered down.
 //   - Raw formats (Y8, RGB565, YUV422): Capture needs FrameSize(cfg) bytes;
 //     RGB565 comes out little-endian, pixels in raster order.
-//   - JPEG: FrameSize returns 0 because the sensor decides the size. The
-//     caller passes a buffer sized for the configured resolution and
-//     quality, up to the backend's maximum (documented per backend;
-//     ESP32-S3: JPEGBufSize(cfg), at most MaxJPEG, PSRAM for large ones);
-//     Frame.Data is truncated to the JPEG's length, from FF D8 to FF D9
-//     inclusive. A JPEG larger than the buffer gives ErrBufSize.
+//   - JPEG: FrameSize returns 0 because the sensor decides the size. Every
+//     backend has a function JPEGBufSize(cfg Config) int: the buffer to pass
+//     for cfg, at most the backend's maximum (ESP32-S3: follows the
+//     resolution, at most MaxJPEG, PSRAM for large ones). Frame.Data is
+//     truncated to the JPEG's length, from FF D8 to FF D9 inclusive. A JPEG
+//     larger than the buffer gives ErrBufSize; a cut frame ErrIncomplete.
 //   - Frame.Data aliases the caller's buffer (or a host alias of it) and is
 //     valid until the next Capture.
 //   - Capture does not allocate. The controls and Identify go over SCCB and
@@ -79,6 +80,7 @@ var (
 	ErrNoDriver   = errors.New("camera: no driver for this sensor")
 	ErrNoControls = errors.New("camera: sensor driver has no exposure/gain/white-balance controls")
 	ErrOverflow   = errors.New("camera: capture FIFO overflowed or underflowed; frame data lost")
+	ErrIncomplete = errors.New("camera: incomplete JPEG frame")
 )
 
 // FrameSize is the buffer size Capture needs for cfg. It is 0 for JPEG
