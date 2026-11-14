@@ -15,9 +15,10 @@ import (
 //   - JPEG: a complete JPEG (SOI … SOS … EOI) inside the received bytes is
 //     the frame, even if the sensor's padding after the EOI overran the
 //     buffer. Otherwise a full buffer means the JPEG is larger than it
-//     (ErrBufSize), nothing received means no frame came (ErrTimeout), and
-//     anything else is a cut frame without its FF D8 or FF D9 marker
-//     (ErrIncomplete, the shared contract).
+//     (ErrBufSize), nothing received before the deadline means no frame
+//     came (ErrTimeout), and anything else, including a frame that ended
+//     with nothing in it, is a cut frame without its FF D8 or FF D9 marker
+//     (ErrIncomplete, the shared contract; the K210 does the same).
 //   - Raw: the frame ended with exactly frameLen bytes, else ErrTimeout.
 func frameResult(jpeg bool, buf []byte, got, frameLen int, ended bool) ([]byte, error) {
 	if jpeg {
@@ -128,14 +129,18 @@ func dmaOutcome(raw uint32) (ended bool, err error) {
 	return ended, nil
 }
 
+// maxManualExposure bounds the exposure captureTimeout allows for: the
+// OV3660 caps a manual exposure at 65,531 lines, ≈ 3.77 s at 2048×1536.
+const maxManualExposure = 4 * time.Second
+
 // captureTimeout is how long Capture waits for a frame under controls c: 2 s,
-// plus three exposures when the exposure is manual, because a long manual
-// exposure stretches the frame and Capture may first wait out the frame in
-// progress.
+// plus three exposures when the exposure is manual (at most
+// maxManualExposure each), because a long manual exposure stretches the
+// frame and Capture may first wait out the frame in progress.
 func captureTimeout(c sensor.Controls) time.Duration {
 	d := 2 * time.Second
 	if !c.AutoExposure {
-		d += 3 * time.Duration(c.ExposureUS) * time.Microsecond
+		d += 3 * min(time.Duration(c.ExposureUS)*time.Microsecond, maxManualExposure)
 	}
 	return d
 }

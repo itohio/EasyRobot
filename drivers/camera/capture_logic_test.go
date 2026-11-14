@@ -53,6 +53,7 @@ func TestFrameResultJPEG(t *testing.T) {
 		{"frame ended mid-JPEG (no EOI)", buf, len(j) / 2, true, ErrIncomplete},
 		{"frame ended, no SOI", append([]byte{0x00}, buf...), len(buf) + 1, true, ErrIncomplete},
 		{"nothing arrived", buf, 0, false, ErrTimeout},
+		{"frame ended with nothing in it", buf, 0, true, ErrIncomplete}, // as the K210's dvpJPEG (verify F2)
 	} {
 		if _, err := frameResult(true, tt.buf, tt.got, 0, tt.ended); err != tt.err {
 			t.Errorf("%s: %v, want %v", tt.name, err, tt.err)
@@ -229,6 +230,9 @@ func TestCaptureTimeout(t *testing.T) {
 		{"auto exposure", sensor.Controls{AutoExposure: true, ExposureUS: 900_000}, 2 * time.Second},
 		{"manual 10 ms", sensor.Controls{ExposureUS: 10_000}, 2*time.Second + 30*time.Millisecond},
 		{"manual 1 s", sensor.Controls{ExposureUS: 1_000_000}, 5 * time.Second},
+		// The OV3660 caps a manual exposure at 65,531 lines (≈ 3.77 s at
+		// 2048×1536): a huge request must not block Capture for hours (verify F1).
+		{"manual MaxUint32 µs", sensor.Controls{ExposureUS: 1<<32 - 1}, 14 * time.Second}, // 2 s + 3 × 4 s
 	} {
 		if got := captureTimeout(tt.c); got != tt.want {
 			t.Errorf("%s: %v, want %v", tt.name, got, tt.want)

@@ -70,9 +70,10 @@ func wbReg(g float32) uint16 {
 	return uint16(v)
 }
 
-// SetControls applies c. A manual exposure longer than the mode's frame
-// stretches the frame to exposure + 4 lines (up to 65,535 lines, ≈ 3.8 s at
-// 2048×1536), so the frame rate drops to match; auto exposure or a shorter
+// SetControls applies c. A manual exposure is rounded to whole lines and
+// silently clamped to 65,531 lines (≈ 3.77 s at 2048×1536); one longer than
+// the mode's frame stretches the frame to exposure + 4 lines, so the frame
+// rate drops to match; auto exposure or a shorter
 // one restores the mode's frame length. Turning AutoWB off with c.WB from ReadControls
 // freezes the current gains (the AWB block stays on; clearing ISP_CONTROL_01
 // bit 0, as esp32-camera's set_whitebal(0) does, removes white balance

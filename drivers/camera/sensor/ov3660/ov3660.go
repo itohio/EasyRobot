@@ -431,14 +431,10 @@ const (
 // (v). It changes only the mirror/flip bits and is kept across Init. The
 // OV3660 on the XIAO ESP32-S3 Sense delivers a left-right mirrored image
 // without h (BADGECAM: printed text reads backwards).
+//
+// On a bus error the previous choice stays (the next Init applies it); the
+// registers may then be partly written.
 func (s *Sensor) SetMirror(h, v bool) error {
-	s.mirror = 0
-	if h {
-		s.mirror |= mirrorH
-	}
-	if v {
-		s.mirror |= mirrorV
-	}
 	for _, r := range [...]struct {
 		reg uint16
 		on  bool
@@ -454,6 +450,13 @@ func (s *Sensor) SetMirror(h, v bool) error {
 		if err := s.write(r.reg, cur); err != nil {
 			return err
 		}
+	}
+	s.mirror = 0
+	if h {
+		s.mirror |= mirrorH
+	}
+	if v {
+		s.mirror |= mirrorV
 	}
 	return nil
 }

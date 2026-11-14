@@ -208,3 +208,62 @@ func TestMirrorFlip(t *testing.T) {
 		t.Errorf("after Init (binned JPEG): 0x3820 %#x 0x3821 %#x, want %#x %#x", b.regs[regTiming20], b.regs[regTiming21], 0x01|bits, 0x21|bits)
 	}
 }
+
+// Init at a new size on the same Sensor takes that size's frame length:
+// auto exposure after 2048×1536 → 640×480 writes the binned VTS (verify F3).
+func TestInitRefreshesFrameLength(t *testing.T) {
+	b := newBus()
+	s := &Sensor{Bus: b}
+	if err := s.Init(mode(2048, 1536, sensor.JPEG)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetControls(sensor.Controls{ExposureUS: 1_000_000, Gain: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Init(mode(640, 480, sensor.JPEG)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetControls(sensor.Controls{AutoExposure: true, AutoGain: true, AutoWB: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got := b.get16(regXTotal + 2); got != 783 {
+		t.Errorf("VTS after Init 640x480 and auto exposure: %d, want 783 (binned 4:3)", got)
+	}
+}
+
+// failBus fails writes to one register.
+type failBus struct {
+	*regBus
+	fail uint16
+}
+
+func (b failBus) WriteReg16(dev uint8, r uint16, v uint8) error {
+	if r == b.fail {
+		return errors.New("bus error")
+	}
+	return b.regBus.WriteReg16(dev, r, v)
+}
+
+// A SetMirror that fails on the bus keeps the previous choice, which the
+// next Init applies (verify F4).
+func TestSetMirrorKeepsChoiceOnError(t *testing.T) {
+	b := newBus()
+	s := &Sensor{Bus: b}
+	if err := s.Init(mode(2048, 1536, sensor.JPEG)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetMirror(true, false); err != nil {
+		t.Fatal(err)
+	}
+	s.Bus = failBus{b, regTiming20}
+	if err := s.SetMirror(false, true); err == nil {
+		t.Fatal("SetMirror with a failing bus: nil error")
+	}
+	s.Bus = b
+	if err := s.Init(mode(2048, 1536, sensor.JPEG)); err != nil {
+		t.Fatal(err)
+	}
+	if b.regs[regTiming21]&flipBits == 0 || b.regs[regTiming20]&flipBits != 0 {
+		t.Errorf("after a failed SetMirror(false, true) and Init: 0x3821 %#x 0x3820 %#x, want the earlier mirror-only choice", b.regs[regTiming21], b.regs[regTiming20])
+	}
+}
