@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>client</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body{font:14px system-ui,sans-serif;margin:0;background:#111;color:#ddd;display:flex;flex-wrap:wrap}
+#view{flex:1 1 640px;padding:8px}#view img{width:100%;height:auto;background:#000;display:block;min-height:200px}
+#side{flex:0 0 340px;padding:8px 12px;box-sizing:border-box}
+fieldset{border:1px solid #444;margin:0 0 10px;padding:6px 10px}legend{color:#9cf}
+label{display:block;margin:4px 0}input[type=range]{width:100%}input[type=number]{width:100px}
+button{padding:4px 10px;margin:2px 0}#conn{font-size:16px;padding:6px 18px;width:100%}
+.mono{font-family:ui-monospace,monospace;font-size:12px;white-space:pre-wrap}
+.val{float:right;font-family:ui-monospace,monospace;font-size:12px;color:#9cf}
+.warn{color:#fb4}.err{color:#f88}.hint{color:#999;font-size:12px}
+textarea{width:100%;height:4.5em;background:#222;color:#ddd;border:1px solid #444;font:12px ui-monospace,monospace}
+</style></head><body>
+<div id="view"><img id="live" alt="live image (connect the badge cam)"></div>
+<div id="side">
+<button id="conn">Connect</button>
+<div class="mono" id="info">not connected</div>
+<div class="mono err" id="err"></div>
+<div class="mono warn" id="events"></div>
+<fieldset><legend>exposure</legend>
+<label><input type="checkbox" id="ae"> auto</label>
+<label>time <span class="val" id="expV"></span><input type="range" id="expR" min="0" max="1000" step="1"></label>
+</fieldset>
+<fieldset><legend>gain (ISO ≈ 100 × gain)</legend>
+<label><input type="checkbox" id="ag"> auto</label>
+<label>gain <span class="val" id="gainV"></span><input type="range" id="gainR" min="1" max="15.5" step="0.1"></label>
+</fieldset>
+<fieldset><legend>white balance</legend>
+<label><input type="checkbox" id="awb"> auto</label>
+<label>preset <select id="wbPreset"><option value="">—</option><option value="sunny">sunny</option><option value="cloudy">cloudy</option>
+<option value="office">office</option><option value="home">home</option></select></label>
+<label>temperature <span class="val" id="kV"></span><input type="range" id="kR" min="2000" max="10000" step="50"></label>
+<label>tint (green ↔ magenta) <span class="val" id="tintV"></span><input type="range" id="tintR" min="-1" max="1" step="0.01"></label>
+<label>R <span class="val" id="wbRV"></span><input type="range" id="wbR" min="0" max="3.99" step="0.01"></label>
+<label>G <span class="val" id="wbGV"></span><input type="range" id="wbG" min="0" max="3.99" step="0.01"></label>
+<label>B <span class="val" id="wbBV"></span><input type="range" id="wbB" min="0" max="3.99" step="0.01"></label>
+</fieldset>
+<fieldset><legend>image</legend>
+<label>size <select id="size">
+<option value="0">2048×1536</option><option value="1">1600×1200</option><option value="2">1024×768</option>
+<option value="3">800×600</option><option value="4">640×480</option></select></label>
+<label>quality (1 finest … 63) <span class="val" id="qV"></span><input type="range" id="q" min="1" max="63" step="1"></label>
+<div class="warn" id="qWarn"></div>
+<label><input type="checkbox" id="hm"> mirror left-right</label>
+<label><input type="checkbox" id="vf"> flip top-bottom</label>
+<div class="hint">Orientation check: the badge's buttons are at the bottom and on the right, the USB-C cable comes from the left, and printed text reads normally. If not, toggle mirror/flip.</div>
+</fieldset>
+<fieldset><legend>snapshot &amp; settings</legend>
+<button id="snap">snapshot (download)</button>
+<label>settings (<code>_scratch/badgecam/settings.json</code>; grab and peers apply it):</label>
+<textarea id="settings" readonly></textarea>
+<button id="save">save settings</button> <button id="copy">copy settings</button>
+<div class="mono" id="saveOut"></div>
+</fieldset>
+</div>
+<script type="module">
+import { FrameDecoder, parseStatus, defaultSettings, settingsCommands, wbPresets, wbFromTemp, tempFromGains, FormatJPEG } from "./camproto.js";
+
+const $ = (id) => document.getElementById(id);
+const EMIN = 100, EMAX = 3000000;
+const r2e = (v) => Math.round(EMIN * Math.pow(EMAX / EMIN, v / 1000));
+const e2r = (e) => Math.round(1000 * Math.log(Math.max(e, EMIN) / EMIN) / Math.log(EMAX / EMIN));
+const SIZES = ["2048×1536", "1600×1200", "1024×768", "800×600", "640×480"];
+
+let settings = { ...defaultSettings };
+try {
+  const r = await fetch("/settings.json", { cache: "no-store" });
+  if (r.ok) settings = { ...settings, ...(await r.json()) };
+} catch {}
+
+let port = null, reader = null, writer = null, decoder = null;
+let posting = false;
+let board = {}, lastJPEG = null, lastURL = null, lastT = 0, fps = 0, frames = 0, bytes = 0, w = 0, h = 0;
+
+const fmtExp = (us) => (us >= 1e6 ? (us / 1e6).toFixed(2) + " s" : us >= 1000 ? (us / 1000).toFixed(1) + " ms" : us + " µs");
+let wbTemp = null; // {kelvin, tint} the sliders show for manual gains
+
+// showSettings puts settings into the controls (and the JSON box).
+function showSettings() {
+  $("settings").value = JSON.stringify(settings);
+  const live = (board.exp_us ? +board.exp_us : 10000);
+  const exp = settings.exposure === "auto" ? live : settings.exposure;
+  $("ae").checked = settings.exposure === "auto";
+  $("expR").value = e2r(exp);
+  $("expV").textContent = fmtExp(exp) + (settings.exposure === "auto" ? " (auto)" : "");
+  const gain = settings.gain === "auto" ? +(board.gain || 1) : settings.gain;
+  $("ag").checked = settings.gain === "auto";
+  $("gainR").value = gain;
+  $("gainV").textContent = gain.toFixed(1) + "×" + (settings.gain === "auto" ? " (auto)" : "");
+  const auto = settings.wb === "auto" || settings.wb === undefined;
+  const gains = auto ? (board.wb || "1,1,1").split(",").map(Number) : settings.wb;
+  $("awb").checked = auto;
+  if (!wbTemp || auto) wbTemp = tempFromGains(gains);
+  $("kR").value = wbTemp.kelvin; $("kV").textContent = wbTemp.kelvin + " K";
+  $("tintR").value = wbTemp.tint; $("tintV").textContent = (wbTemp.tint > 0 ? "+" : "") + wbTemp.tint.toFixed(2);
+  ["wbR", "wbG", "wbB"].forEach((id, i) => { $(id).value = gains[i]; $(id + "V").textContent = gains[i].toFixed(2); });
+  const preset = !auto && Object.keys(wbPresets).find((k) => wbPresets[k].every((g, i) => Math.abs(g - gains[i]) < 0.005));
+  $("wbPreset").value = preset || "";
+  $("size").value = settings.size;
+  $("q").value = settings.quality; $("qV").textContent = settings.quality;
+  $("hm").checked = settings.mirror;
+  $("vf").checked = settings.flip;
+  // Measured (BADGECAM 17:05, gain 1, lit): 2048×1536 failed every frame at
+  // quality 5 (sensor JPEG output limit) and worked at 8; 1600×1200 worked at 5.
+  $("qWarn").textContent = settings.size === 0 && settings.quality <= 5
+    ? "2048×1536 at quality ≤ 5 failed every frame (the sensor's JPEG output limit): use quality ≥ 8 or 1600×1200"
+    : settings.quality < 25 ? "quality below 25: noisy (high gain, dark) frames can fail; watch the failure counter" : "";
+}
+
+// dragging reports whether a slider has the pointer (don't move it under the user).
+const dragging = () => document.activeElement && document.activeElement.type === "range" && document.activeElement.matches(":active");
+
+// slider wires a range input: while dragging, apply(make()) at most every
+// 200 ms (the live view follows); on release, once more with the final value.
+function slider(id, make) {
+  let last = 0, timer = null, sent = "";
+  const fire = () => {
+    last = performance.now(); timer = null;
+    const change = make(), key = JSON.stringify(change);
+    if (key !== sent) { sent = key; apply(change); } // release after the last input: no repeat
+  };
+  $(id).addEventListener("input", () => {
+    const wait = 200 - (performance.now() - last);
+    if (wait <= 0) fire(); else if (!timer) timer = setTimeout(fire, wait);
+  });
+  $(id).addEventListener("change", () => { clearTimeout(timer); fire(); });
+}
+
+let connectedAt = 0, lastCmd = "", lastCmdAt = 0, seenCRC = 0, seenDrop = 0, seenFails = 0;
+const events = []; // the last stream faults, with context, for diagnosis
+
+// noteFaults records each new CRC error, dropped image or board capture
+// failure with the time since Connect and the last command sent.
+function noteFaults() {
+  const s = decoder ? decoder.stats : {}, now = performance.now();
+  const add = (kind, n) => {
+    const t = new Date().toTimeString().slice(0, 8);
+    events.push(`${t} ${kind} +${n} (${((now - connectedAt) / 1000).toFixed(1)} s after Connect; last command "${lastCmd}" ${((now - lastCmdAt) / 1000).toFixed(1)} s ago)`);
+    if (events.length > 6) events.shift();
+  };
+  if ((s.crcErrors ?? 0) > seenCRC) { add("CRC", s.crcErrors - seenCRC); seenCRC = s.crcErrors; }
+  if ((s.dropped ?? 0) > seenDrop) { add("dropped", s.dropped - seenDrop); seenDrop = s.dropped; }
+  const f = +(board.fails ?? 0);
+  if (f > seenFails) { add("board capture failed", f - seenFails); seenFails = f; }
+  $("events").textContent = events.join("\n");
+}
+
+async function send(line) {
+  if (!writer) return;
+  lastCmd = line; lastCmdAt = performance.now();
+  await writer.write(new TextEncoder().encode(line + "\n"));
+}
+
+async function apply(change) {
+  Object.assign(settings, change);
+  showSettings();
+  for (const c of settingsCommands(settings)) {
+    const key = c[0];
+    if ((key === "Z" && "size" in change) || (key === "Q" && "quality" in change) || (key === "E" && "exposure" in change) ||
+        (key === "I" && "gain" in change) || (key === "W" && "wb" in change) ||
+    (key === "M" && ("mirror" in change || "flip" in change))) await send(c);
+  }
+}
+
+async function start() {
+  await send("X");
+  for (const c of settingsCommands(settings)) await send(c);
+  await send("S");
+}
+
+function onImage(ev) {
+  if (ev.meta.format !== FormatJPEG) return;
+  const now = performance.now();
+  if (lastT) fps += (1000 / (now - lastT) - fps) / 4;
+  lastT = now;
+  frames++;
+  lastJPEG = ev.data; bytes = ev.data.length; w = ev.meta.width; h = ev.meta.height;
+  const url = URL.createObjectURL(new Blob([ev.data], { type: "image/jpeg" }));
+  $("live").src = url;
+  if (lastURL) URL.revokeObjectURL(lastURL);
+  lastURL = url;
+  // Relay to the local server for peers (/frame.jpg, /snapshot); skip while
+  // the previous post is still in flight.
+  if (!posting) {
+    posting = true;
+    fetch("/frame", { method: "POST", body: ev.data }).catch(() => {}).finally(() => { posting = false; });
+  }
+}
+
+function onText(line) {
+  const i = line.indexOf("webcam: ");
+  if (i < 0) return;
+  line = line.slice(i);
+  const st = parseStatus(line);
+  if (st) {
+    if (seenFails === Infinity) seenFails = +(st.fails ?? 0); // board count is since boot
+    board = st; if (st.stream === "0") fps = 0; if (!dragging()) showSettings(); return;
+  }
+  if (line.startsWith("webcam: ready")) { start(); return; } // the board (re)booted: apply settings, stream
+  if (line.startsWith("webcam: error")) $("err").textContent = line.slice(8);
+}
+
+function render() {
+  if (!port) { $("info").textContent = "not connected"; return; }
+  noteFaults();
+  const s = decoder ? decoder.stats : {};
+  const exp = board.exp_us ? (board.exp_us / 1000).toFixed(1) + " ms" : "?";
+  $("info").textContent =
+    `fps ${fps.toFixed(2)}  frames ${frames}\n${w}×${h}  ${(bytes / 1024).toFixed(0)} KB\n` +
+    `exposure ${exp}${board.ae === "1" ? " (auto)" : ""}  gain ${board.gain ?? "?"}${board.ag === "1" ? " (auto)" : ""}\n` +
+    `white balance ${board.wb ?? "?"}${board.awb === "1" ? " (auto)" : ""}\n` +
+    `quality ${board.q ?? "?"}  stream ${board.stream === "1" ? "on" : "off"}\n` +
+    `failures: board ${board.fails ?? 0}, CRC ${s.crcErrors ?? 0}, dropped ${s.dropped ?? 0}`;
+}
+setInterval(render, 300);
+
+async function connect() {
+  $("err").textContent = "";
+  try {
+    port = await navigator.serial.requestPort({ filters: [{ usbVendorId: 0x303a }] });
+    await port.open({ baudRate: 115200, bufferSize: 1 << 20 });
+    await port.setSignals({ dataTerminalReady: false, requestToSend: false });
+  } catch (e) {
+    $("err").textContent = "connect: " + e.message;
+    port = null;
+    return;
+  }
+  $("conn").textContent = "Disconnect";
+  decoder = new FrameDecoder(); board = {}; frames = 0; fps = 0; lastT = 0;
+  connectedAt = performance.now(); seenCRC = seenDrop = 0; seenFails = Infinity; events.length = 0;
+  writer = port.writable.getWriter();
+  readLoop();
+  await start();
+}
+
+async function readLoop() {
+  reader = port.readable.getReader();
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      for (const ev of decoder.push(value)) ev.type === "image" ? onImage(ev) : onText(ev.line);
+    }
+  } catch (e) {
+    if (port) $("err").textContent = "read: " + e.message;
+  } finally {
+    reader.releaseLock();
+    reader = null;
+  }
+}
+
+async function disconnect() {
+  const p = port;
+  try { await send("X"); } catch {}
+  port = null;
+  try { if (reader) await reader.cancel(); } catch {}
+  try { writer.releaseLock(); } catch {}
+  writer = null;
+  try { await p.close(); } catch (e) { $("err").textContent = "close: " + e.message; }
+  $("conn").textContent = "Connect";
+  render();
+}
+
+$("conn").onclick = () => (port ? disconnect() : connect());
+slider("expR", () => ({ exposure: r2e(+$("expR").value) }));
+$("ae").onchange = () => apply({ exposure: $("ae").checked ? "auto" : r2e(+$("expR").value) });
+slider("gainR", () => ({ gain: +$("gainR").value }));
+$("ag").onchange = () => apply({ gain: $("ag").checked ? "auto" : +$("gainR").value });
+const tempGains = () => { wbTemp = { kelvin: +$("kR").value, tint: +$("tintR").value }; return { wb: wbFromTemp(wbTemp.kelvin, wbTemp.tint) }; };
+slider("kR", tempGains);
+slider("tintR", tempGains);
+for (const id of ["wbR", "wbG", "wbB"]) slider(id, () => {
+  const g = [+$("wbR").value, +$("wbG").value, +$("wbB").value];
+  wbTemp = tempFromGains(g); // the temperature/tint sliders follow
+  return { wb: g };
+});
+$("awb").onchange = () => apply({ wb: $("awb").checked ? "auto" : [+$("wbR").value, +$("wbG").value, +$("wbB").value] });
+$("wbPreset").onchange = () => { const p = wbPresets[$("wbPreset").value]; if (p) { wbTemp = tempFromGains(p); apply({ wb: p }); } };
+$("size").onchange = () => apply({ size: +$("size").value });
+slider("q", () => ({ quality: +$("q").value }));
+$("hm").onchange = () => apply({ mirror: $("hm").checked });
+$("vf").onchange = () => apply({ flip: $("vf").checked });
+$("snap").onclick = () => {
+  if (!lastJPEG) return;
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([lastJPEG], { type: "image/jpeg" }));
+  const t = new Date(), p = (n) => String(n).padStart(2, "0");
+  a.download = `${t.getFullYear()}${p(t.getMonth() + 1)}${p(t.getDate())}-${p(t.getHours())}${p(t.getMinutes())}${p(t.getSeconds())}.jpg`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+$("copy").onclick = () => navigator.clipboard.writeText($("settings").value);
+$("save").onclick = async () => {
+  const r = await fetch("/settings.json", { method: "PUT", body: JSON.stringify(settings) });
+  $("saveOut").textContent = r.ok ? "saved to " + (await r.json()).path : await r.text();
+};
+if (!("serial" in navigator)) $("err").textContent = "this browser has no Web Serial (use Chrome or Edge)";
+showSettings();
+render();
+</script></body></html>
