@@ -692,6 +692,7 @@ func (l *Liquid) fromGrid() {
 	w := l.W
 	uw := w + 1
 	const half = Cell / 2
+	cell, u, v, pu, pv := l.cell, l.u, l.v, l.pu, l.pv
 	for p := range l.X {
 		vx, vy := vel(l.VX[p]), vel(l.VY[p])
 		f := l.prm.FlipQ8
@@ -703,32 +704,40 @@ func (l *Liquid) fromGrid() {
 		// u face (fi, fj) lies between cells fj·w+fi−1 and fj·w+fi
 		i, j, a, b, c, d := weights(x, y-half)
 		k, cl := j*uw+i, j*w+i-1
-		w0, w1, w2 := l.wet(cl), l.wet(cl+1), l.wet(cl+2)
-		w3, w4, w5 := l.wet(cl+w), l.wet(cl+w+1), l.wet(cl+w+2)
-		l.VX[p] = store(blend(vx, f, [4]int{k, k + 1, k + uw, k + uw + 1}, [4]int32{a, b, c, d},
-			[4]bool{w0 || w1, w1 || w2, w3 || w4, w4 || w5}, l.u, l.pu))
+		w0, w1, w2 := cell[cl]&kind == fluid, cell[cl+1]&kind == fluid, cell[cl+2]&kind == fluid
+		w3, w4, w5 := cell[cl+w]&kind == fluid, cell[cl+w+1]&kind == fluid, cell[cl+w+2]&kind == fluid
+		l.VX[p] = store(blend(vx, f, u, pu, k, k+uw, a, b, c, d, w0 || w1, w1 || w2, w3 || w4, w4 || w5))
 		// v face (fi, fj) lies between cells (fj−1)·w+fi and fj·w+fi
 		i, j, a, b, c, d = weights(x-half, y)
 		k, ca := j*w+i, (j-1)*w+i
-		w0, w1 = l.wet(ca), l.wet(ca+1)
-		w3, w4 = l.wet(ca+w), l.wet(ca+w+1)
-		w2, w5 = l.wet(ca+2*w), l.wet(ca+2*w+1)
-		l.VY[p] = store(blend(vy, f, [4]int{k, k + 1, k + w, k + w + 1}, [4]int32{a, b, c, d},
-			[4]bool{w0 || w3, w1 || w4, w3 || w2, w4 || w5}, l.v, l.pv))
+		w0, w1 = cell[ca]&kind == fluid, cell[ca+1]&kind == fluid
+		w3, w4 = cell[ca+w]&kind == fluid, cell[ca+w+1]&kind == fluid
+		w2, w5 = cell[ca+2*w]&kind == fluid, cell[ca+2*w+1]&kind == fluid
+		l.VY[p] = store(blend(vy, f, v, pv, k, k+w, a, b, c, d, w0 || w3, w1 || w4, w3 || w2, w4 || w5))
 	}
 }
 
 // blend is one velocity component of fromGrid: the PIC value and the FLIP
-// change, each a weighted mean over the valid faces of the stencil.
-func blend(vp, f int32, ks [4]int, ws [4]int32, ok [4]bool, g []int32, pg []int16) int32 {
+// change, each a weighted mean over the valid faces of the 2×2 stencil
+// (faces k, k+1 and below them k2, k2+1, weights a, b, c, d). No closure:
+// TinyGo puts a closure's captured sums on the heap.
+func blend(vp, f int32, g []int32, pg []int16, k, k2 int, a, b, c, d int32, ok0, ok1, ok2, ok3 bool) int32 {
 	var sw, pic, corr int32
-	for n, k := range ks {
-		if ws[n] == 0 || !ok[n] {
-			continue
-		}
-		sw += ws[n]
-		pic += ws[n] * g[k]
-		corr += ws[n] * (g[k] - vel(pg[k]))
+	if a != 0 && ok0 {
+		gk := g[k]
+		sw, pic, corr = sw+a, pic+a*gk, corr+a*(gk-vel(pg[k]))
+	}
+	if b != 0 && ok1 {
+		gk := g[k+1]
+		sw, pic, corr = sw+b, pic+b*gk, corr+b*(gk-vel(pg[k+1]))
+	}
+	if c != 0 && ok2 {
+		gk := g[k2]
+		sw, pic, corr = sw+c, pic+c*gk, corr+c*(gk-vel(pg[k2]))
+	}
+	if d != 0 && ok3 {
+		gk := g[k2+1]
+		sw, pic, corr = sw+d, pic+d*gk, corr+d*(gk-vel(pg[k2+1]))
 	}
 	pic = div(pic, sw) // sw ≤ 256
 	corr = div(corr, sw)
