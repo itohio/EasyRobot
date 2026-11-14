@@ -5,12 +5,12 @@ tags: [easyrobot, navigation, imu, calibration, tinygo]
 workstream:
 module: "[[navigation]]"
 summary: "startup calibration of an IMU at rest: finds the face that is down, waits for stillness, averages for 3 s, restarts when moved; gyro bias, readings at rest, noise, live per-axis statistics and a forecast of heading and position drift checked against simulation; seeds strapdown's gyro bias"
-source: [x/math/nav/calib/calib.go]
-tests: [x/math/nav/calib/calib_test.go]
+source: [x/math/nav/calib/calib.go, x/math/nav/calib/poses.go]
+tests: [x/math/nav/calib/calib_test.go, x/math/nav/calib/poses_test.go]
 test_result: pass
 complete: no
 correct: yes
-evidence: "go test -race ./x/math/nav/calib pass (15 tests, 2026-11-13): six faces found; gyro bias within 5e-4 rad/s, readings at rest within 0.01 m/s², noise within 15 % at an MPU6050's noise; a nudge, a slow lean and a slow turn restart the run; tremor and gyro jitter never start it; the heading forecast 1.2 times the bias 40 runs left, the position forecast 1.05 times a minute of strapdown play (strokes of 0.5–2 s: 1.2–1.75); a warming gyro over the heading line; 28 of 29 mutants fail a test (calib-tg3-mutants.txt); 0 allocs, 10 ns per Update; Calibrator 216 B (212 on tufty2040); tinygo 0.43 tufty2040 (calibtufty, with Mahony and strapdown) 97,512 B flash, no allocation in calib"
+evidence: "go test -race ./x/math/nav/calib pass (15 tests, 2026-11-13): six faces found; gyro bias within 5e-4 rad/s, readings at rest within 0.01 m/s², noise within 15 % at an MPU6050's noise; a nudge, a slow lean and a slow turn restart the run; tremor and gyro jitter never start it; the heading forecast 1.2 times the bias 40 runs left, the position forecast 1.05 times a minute of strapdown play (strokes of 0.5–2 s: 1.2–1.75); a warming gyro over the heading line; 28 of 29 mutants fail a test (calib-tg3-mutants.txt); 0 allocs, 10 ns per Update; Calibrator 216 B (212 on tufty2040); tinygo 0.43 tufty2040 (calibtufty, with Mahony and strapdown) 97,512 B flash, no allocation in calib. Multi-pose solver (CAL-1, 2026-11-14): six tilted faces recover offset and scale within 1.5e-3 m/s² and 1e-4 at an MPU6050's noise over 3 s (exact without noise, condition 1.08); three faces the offset; a pressed pose stands out in its residual; non-still, too few, one-sided, coplanar and narrow-cone poses refused (condition above 10), every accepted random set within 0.006 m/s² and 0.12 %; 11 of 11 mutants fail a test; 0 allocs in AddPose/Solve; kernelbench calib fnv 3795608245 unchanged"
 ---
 # Startup calibration at rest (calib)
 
@@ -47,6 +47,16 @@ evidence: "go test -race ./x/math/nav/calib pass (15 tests, 2026-11-13): six fac
 - **Lines:** 2 °/min of heading (tinygui's scale runs to 6) and 5 cm/min of position (to 10): about four and 1.5 times what an MPU6050 at 100 Hz gives (0.48 °/min; 3.3 cm/min).
 - **Checked against simulation** (the tests below): the heading drift is 1.2 times the rms of the bias left by 40 calibrations; the position total is 1.05 times the rms stray of 20 minutes of strapdown play (exact attitude, the MPU6050's noise and offsets). Other plays: 20 × 0.5 s 1.18, 12 × 1.5 s 1.49, 10 × 2 s 1.75: the drift term overstates longer strokes, where the rests' biases do not all add.
 
+## Multi-pose calibration (CAL-1)
+
+**What it does:** removes the one-pose ambiguity. At rest the true force has length g in every pose, so the readings a = s∘f + o of a sensor with per-axis offset o and scale s lie on an axis-aligned ellipsoid. From several still poses (each a finished Calibrator run, `PoseOf`), a `Solver` fits the o and s that put every corrected force f = (a − o)/s on |f| = g. The table's tilt doesn't matter, only that the poses look in different directions. 3–5 poses fit the offset alone (scale 1; a true 2 % scale error then leaks about 0.2 m/s² into each offset); 6 or more fit offset and scale (the six faces, best with some tilted poses besides). The gyro bias is the mean of the poses' gyro means.
+
+**Where:** `x/math/nav/calib/poses.go`: `MaxPoses` (:44), `MaxCond` (:48), `ErrNotStill`, `ErrFull`, `ErrTooFew`, `ErrIllPosed` (:50), `Pose` (:66), `PoseOf` (:74), `Model` (:88), `Fit` (:103), `Fit.Apply` (:115), `Solver` (:124: the poses and the fit's scratch matrices), `NewSolver` (:135), `Len`, `Reset` (:143-146), `AddPose` (:151), `Solve` (:167), `SolveModel` (:176: the fit; `ErrIllPosed` if it doesn't converge in 200 iterations), `residual`, `cost`, `normal` (:262-282), `solve` (:312: Gaussian elimination), `condition` (:347: Jacobi eigenvalues).
+
+**Method:** Gauss-Newton with Levenberg damping on the residuals |f| − g, in float64, the parameters the offset and g times the inverse scale (so every Jacobian column is about 1). Quality: each pose's residual after the fit (with more poses than unknowns; with exactly 3 or 6 the fit passes through every pose), their RMS, and the condition number √(λmax/λmin) of the normal matrix, not rescaled (the parameters are already alike; scaling to a unit diagonal hid coplanar sets, verify CAL-1): about 1 when the poses span the axes evenly, 4–12 within a 30° cone, 10⁴ and more in one plane; above `MaxCond` (10) `ErrIllPosed`. Below it the offsets came within 0.006 m/s² and the scales 0.12 % at an MPU6050's noise. `AddPose` refuses a pose whose spread is at or above the Config's stillness thresholds (`ErrNotStill`), or past `MaxPoses` (`ErrFull`). No allocation in `AddPose`, `Solve` or `Reset`: the 6×6 matrices are scratch in the Solver (TinyGo heap-allocated them as locals; easyrobot's review), so TinyGo's `-print-allocs=calib` lists only `NewSolver`'s Solver (2,056 B, at setup).
+
+**Tested (`poses_test.go`, synthetic poses, the package's lcg noise):** `TestSixFacesRecoverOffsetAndScale` (offsets (0.31, −0.22, 0.47) m/s², scales (1.02, 0.97, 1.035), each face on a table tilted 1–3°: 1e-4 and 1e-5 without noise, 0.01 m/s² and 0.2 % at 0.015 m/s² over 300 samples), `TestThreeFacesRecoverTheOffset`, `TestTiltedPosesJoinTheFit` (six faces + four at ~45°; every pose |f| = g within 0.01 after `Apply`), `TestTheResidualShowsABadPose`, `TestTheGyroBiasIsTheMeanOverThePoses`, `TestANonStillPoseIsRefused`, `TestTooFewOrDegeneratePosesAreRefused` (two poses; six on one face; z up and down only), `TestDegeneratePoseSetsAreRefusedAndAcceptedFitsAreAccurate` (8 poses in a plane and within 5° refused; of 500 random 8-pose sets every accepted fit within 0.006 m/s² and 0.12 %), `TestTheConditionNumberReadsThePoseSpread`, `TestTheRMSIsTheResidualsRootMeanSquare`, `TestFourAndFivePosesFitTheOffset`, `TestNewSolverRefusesABadConfig`, `TestTheSolverIsBoundedAndResets`, `TestACalibratorRunIsAPose`, `TestTheSolverDoesNotAllocate`. Mutants: always offset-only, no condition check, the gyro bias not divided, accel stillness unchecked, the scale inverted, `Apply` multiplying, the bound off by one, `Solve` switching at 5 poses, `NewSolver` without its checks, a constant condition number, the RMS not divided by the count: all fail a test. Not yet on real data: no capture of three or more faces exists; tinygui's guided page (CAL-1) is where the owner runs it.
+
 ## Completeness review
 
 - Complete: no. The badge has not run it: tinygui draws the page (TG-3) and the owner's hand check is to come; fpv-gate's check of the seeded harness is open.
@@ -62,6 +72,7 @@ evidence: "go test -race ./x/math/nav/calib pass (15 tests, 2026-11-13): six fac
 
 ## TODOs
 
+- [ ] tinygui: the guided multi-pose page (CAL-1) on `Solver`, and the owner's run of it (the first real data)
 - [ ] tinygui: the calibration page (TG-3) on the badge; the owner's hand check (flat and on a side, a nudge restarts, the forecast against how the motion pages drift) — x/math/nav
 
 ## Links
