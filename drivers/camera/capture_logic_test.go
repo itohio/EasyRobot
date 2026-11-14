@@ -130,9 +130,10 @@ func TestJPEGBufSize(t *testing.T) {
 		{2048, 1536, 196 * nodeBytes}, // 786,432 B → 195.04 nodes, rounded up
 		{1024, 768, 49 * nodeBytes},   // 196,608 B: fits internal SRAM
 		{320, 240, 5 * nodeBytes},
-		{16, 16, nodeBytes}, // at least one descriptor
-		{0, 0, nodeBytes},   // even for an empty frame (verify: the floor was never reached)
-		{4096, 4096, max},   // capped
+		{126, 128, nodeBytes}, // W·H/4 = 4,032 exactly: one descriptor, not two (review C3-3)
+		{16, 16, nodeBytes},   // at least one descriptor
+		{0, 0, nodeBytes},     // even for an empty frame (verify: the floor was never reached)
+		{4096, 4096, max},     // capped
 	} {
 		if got := jpegBufSize(tt.w, tt.h, max); got != tt.want {
 			t.Errorf("%dx%d: %d, want %d", tt.w, tt.h, got, tt.want)
