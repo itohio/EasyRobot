@@ -367,66 +367,65 @@ func (l *Liquid) bucket() {
 // ones: each cell is matched with itself and with the four neighbours
 // after it (right, and the three below), which visits every pair once.
 // The buckets are from the start of the pass sequence; the pushes are too
-// small to matter in between.
+// small to matter in between. A particle's position stays in registers
+// while it meets its neighbours (wrapped to 16 bits after each push, as
+// the store would).
 func (l *Liquid) separate() {
 	w, h := l.W, l.H
-	start := l.aux
+	start, order, X, Y := l.aux, l.order, l.X, l.Y
 	for cy := range h {
 		for cx := range w {
 			c := cy*w + cx
-			a0, a1 := start[c], start[c+1]
+			a0, a1 := int(start[c]), int(start[c+1])
 			for a := a0; a < a1; a++ {
-				i := int(l.order[a])
-				for b := a + 1; b < a1; b++ {
-					l.pair(i, int(l.order[b]))
-				}
+				i := order[a]
+				x, y := int32(X[i]), int32(Y[i])
+				x, y = l.meet(x, y, order[a+1:a1])
 				if cx+1 < w {
-					l.pairs(i, c+1)
+					x, y = l.meet(x, y, order[start[c+1]:start[c+2]])
 				}
 				if cy+1 < h {
 					if cx > 0 {
-						l.pairs(i, c+w-1)
+						x, y = l.meet(x, y, order[start[c+w-1]:start[c+w]])
 					}
-					l.pairs(i, c+w)
+					x, y = l.meet(x, y, order[start[c+w]:start[c+w+1]])
 					if cx+1 < w {
-						l.pairs(i, c+w+1)
+						x, y = l.meet(x, y, order[start[c+w+1]:start[c+w+2]])
 					}
 				}
+				X[i], Y[i] = uint16(x), uint16(y)
 			}
 		}
 	}
 }
 
-// pairs separates particle i from every particle of cell c.
-func (l *Liquid) pairs(i, c int) {
-	for b := l.aux[c]; b < l.aux[c+1]; b++ {
-		l.pair(i, int(l.order[b]))
-	}
-}
-
-// pair pushes particles i and j apart if they overlap. Only overlapping
-// pairs (none in a liquid packed at rest) cost a square root and a divide.
-func (l *Liquid) pair(i, j int) {
+// meet pushes the particle at (x, y) and each particle in js apart where
+// they overlap and returns its new position. Only overlapping pairs (none
+// in a liquid packed at rest) cost a square root and a divide.
+func (l *Liquid) meet(x, y int32, js []uint16) (int32, int32) {
 	d0 := 2 * l.r
-	dx, dy := int32(l.X[j])-int32(l.X[i]), int32(l.Y[j])-int32(l.Y[i])
-	if dx >= d0 || dx <= -d0 || dy >= d0 || dy <= -d0 {
-		return
+	X, Y := l.X, l.Y
+	for _, j := range js {
+		xj, yj := int32(X[j]), int32(Y[j])
+		dx, dy := xj-x, yj-y
+		if dx >= d0 || dx <= -d0 || dy >= d0 || dy <= -d0 {
+			continue
+		}
+		d2 := dx*dx + dy*dy
+		if d2 >= d0*d0 {
+			continue
+		}
+		var px, py int32
+		if d2 == 0 { // on top of each other: split along x
+			px = d0 / 2
+		} else {
+			d := isqrt(d2)
+			px, py = half(dx*(d0-d), d), half(dy*(d0-d), d)
+		}
+		x, y = int32(uint16(x-px)), int32(uint16(y-py))
+		X[j], Y[j] = uint16(xj+px), uint16(yj+py)
 	}
-	d2 := dx*dx + dy*dy
-	if d2 >= d0*d0 {
-		return
-	}
-	var px, py int32
-	if d2 == 0 { // on top of each other: split along x
-		px = d0 / 2
-	} else {
-		d := isqrt(d2)
-		px, py = half(dx*(d0-d), d), half(dy*(d0-d), d)
-	}
-	l.X[i] = uint16(int32(l.X[i]) - px)
-	l.Y[i] = uint16(int32(l.Y[i]) - py)
-	l.X[j] = uint16(int32(l.X[j]) + px)
-	l.Y[j] = uint16(int32(l.Y[j]) + py)
+	return x, y
 }
 
 // half is a/(2b) rounded to the nearest position unit (b > 0). Truncated,
