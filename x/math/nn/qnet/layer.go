@@ -37,7 +37,8 @@ const (
 	// Logistic is TFLite's int8 sigmoid (OutQ must be LogisticOutQuant).
 	Logistic
 	// Mul is the requantised element-wise product of two producers; the
-	// second may be broadcast (its shape equal to In, 1×1×In.C or 1×1×1).
+	// second may be broadcast (its shape equal to In, 1×1×In.C or 1×1×1, or
+	// In.H×In.W×1 with PerPixel).
 	Mul
 	// Mean averages over H and W (Out is 1×1×C), requantising to OutQ.
 	Mean
@@ -61,6 +62,9 @@ const (
 	// ResizeBilinear is TFLite's integer bilinear resize of H and W to
 	// Out.H×Out.W on raw values (10-bit fixed-point weights).
 	ResizeBilinear
+	// Transpose permutes H, W and C (output axis k is input axis Perm[k]);
+	// values are copied unchanged (In/Out quantisation equal).
+	Transpose
 )
 
 // String returns the kind name.
@@ -106,6 +110,8 @@ func (k Kind) String() string {
 		return "leaky_relu"
 	case ResizeBilinear:
 		return "resize_bilinear"
+	case Transpose:
+		return "transpose"
 	}
 	return "invalid"
 }
@@ -142,7 +148,7 @@ var LogisticOutQuant = Quant{Scale: 1.0 / 256, ZP: -128}
 //	AvgPool2D:               geometry, TiesUp
 //	ReLU, ReLU6:             none (zero point and scale from InQ)
 //	Add:                     From (two producers), In2Q, ActMin/ActMax, Round, AddRQ or AddTFLite
-//	Mul:                     From (two producers), In2Q, ActMin/ActMax, Round, RQ
+//	Mul:                     From (two producers), In2Q, ActMin/ActMax, Round, RQ, PerPixel
 //	Mean, Requantize:        Round, RQ
 //	Reshape:                 Out (any shape of the same length)
 //	Softmax:                 SoftmaxParams
@@ -153,6 +159,7 @@ var LogisticOutQuant = Quant{Scale: 1.0 / 256, ZP: -128}
 //	ResizeBilinear:          Out.H, Out.W, AlignCorners, HalfPixel
 //	Const:                   Out, Weights (the data)
 //	LeakyReLU:               Round, RQ (identity), RQAlpha
+//	Transpose:               Perm
 //
 // Out.C is the output channel count of Conv2D and FullyConnected; Out of
 // Reshape, Concat, Const and (H, W) of the resizes are given; every other
@@ -224,6 +231,12 @@ type Layer struct {
 	// AlignCorners and HalfPixel select the resizes' index mapping
 	// (TFLite's align_corners and half_pixel_centers).
 	AlignCorners, HalfPixel bool
+	// Perm is Transpose's permutation of (H, W, C): output axis k is input
+	// axis Perm[k].
+	Perm [3]int
+	// PerPixel: Mul's second input is In.H×In.W×1, one value per pixel
+	// broadcast over C (YOLOX's objectness × class scores).
+	PerPixel bool
 }
 
 // Conv2DParams returns the qi8 parameters of a Conv2D layer.
@@ -270,10 +283,14 @@ func (l *Layer) AddParams() qi8.AddParams {
 
 // MulParams returns the qi8 parameters of a Mul layer.
 func (l *Layer) MulParams() qi8.MulParams {
-	return qi8.MulParams{
+	p := qi8.MulParams{
 		ZPA: l.InQ.ZP, ZPB: l.In2Q.ZP, ZPOut: l.OutQ.ZP,
 		RQ: l.RQ, Min: l.ActMin, Max: l.ActMax, Round: l.Round,
 	}
+	if l.PerPixel {
+		p.Repeat = l.In.C
+	}
+	return p
 }
 
 // MeanParams returns the qi8 parameters of a Mean layer.
@@ -296,6 +313,11 @@ func (l *Layer) PadParams() qi8.PadParams {
 // ResizeBilinear layer.
 func (l *Layer) ResizeParams() qi8.ResizeParams {
 	return qi8.ResizeParams{In: l.In, OutH: l.Out.H, OutW: l.Out.W, AlignCorners: l.AlignCorners, HalfPixel: l.HalfPixel}
+}
+
+// TransposeParams returns the qi8 parameters of a Transpose layer.
+func (l *Layer) TransposeParams() qi8.TransposeParams {
+	return qi8.TransposeParams{In: l.In, Perm: l.Perm}
 }
 
 // LeakyReLUParams returns the qi8 parameters of a LeakyReLU layer.
@@ -366,6 +388,8 @@ func (l *Layer) OutShape() (qi8.Shape, error) {
 		return l.Out, nil
 	case Pad:
 		s, err = l.PadParams().OutShape()
+	case Transpose:
+		s, err = l.TransposeParams().OutShape()
 	case ResizeNearest, ResizeBilinear:
 		if !positive(l.In) || l.Out.H <= 0 || l.Out.W <= 0 {
 			return qi8.Shape{}, ErrShape
@@ -481,6 +505,8 @@ func runStateless(l *Layer, dst []int8, srcs [][]int8) error {
 		return qi8.ResizeBilinear(dst, srcs[0], l.ResizeParams())
 	case LeakyReLU:
 		return qi8.LeakyReLU(dst, srcs[0], l.LeakyReLUParams())
+	case Transpose:
+		return qi8.Transpose(dst, srcs[0], l.TransposeParams())
 	}
 	return ErrKind
 }

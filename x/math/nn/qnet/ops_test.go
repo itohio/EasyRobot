@@ -231,3 +231,125 @@ func TestRunnerYOLOKinds(t *testing.T) {
 		}
 	}
 }
+
+// Transpose (the YOLOX head tail): runner equals RunLayer; the output shape
+// follows Perm, quantisation must pass through, and Perm must be a
+// permutation.
+func TestRunnerTranspose(t *testing.T) {
+	mk := func() qnet.Graph {
+		return qnet.Graph{Layers: []qnet.Layer{
+			{Kind: qnet.Transpose, In: qi8.Shape{H: 4, W: 5, C: 6}, Out: qi8.Shape{H: 6, W: 4, C: 5}, InQ: inQ, OutQ: inQ, Perm: [3]int{2, 0, 1}},
+			{Kind: qnet.Reshape, In: qi8.Shape{H: 6, W: 4, C: 5}, Out: qi8.Shape{H: 1, W: 6, C: 20}, InQ: inQ, OutQ: inQ},
+			{Kind: qnet.Transpose, In: qi8.Shape{H: 1, W: 6, C: 20}, Out: qi8.Shape{H: 1, W: 20, C: 6}, InQ: inQ, OutQ: inQ, Perm: [3]int{0, 2, 1}},
+		}}
+	}
+	g := mk()
+	if layer, err := g.Check(); err != nil {
+		t.Fatalf("layer %d: %v", layer, err)
+	}
+	r, err := qnet.NewRunner(&g, make([]int8, 4096))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for seed := uint64(1); seed <= 5; seed++ {
+		in := randInput(g.Layers[0].In.Len(), seed)
+		got, err := r.Run(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(u8s(got)) != string(u8s(reference(t, &g, in))) {
+			t.Fatalf("seed %d: runner differs from RunLayer", seed)
+		}
+		// Perm [2,0,1] then flatten and swap back = the input's H×W×C
+		// order with C outermost: out[w][c] = in at row-major (h, w', c) …
+		// checked directly for one value: in[h=1][w=2][c=3] lands at
+		// transpose-1 index ((3·4+1)·5+2) = 67, i.e. reshape (0, 3, 7),
+		// then transpose-2 index (7·6+3) = 45.
+		if got[45] != in[(1*5+2)*6+3] {
+			t.Fatalf("seed %d: value moved to the wrong place", seed)
+		}
+	}
+	cases := []struct {
+		name string
+		mod  func(ls []qnet.Layer)
+		want error
+	}{
+		{"perm not a permutation", func(ls []qnet.Layer) { ls[0].Perm = [3]int{2, 2, 1} }, qnet.ErrShape},
+		{"out shape not permuted", func(ls []qnet.Layer) { ls[0].Out = qi8.Shape{H: 4, W: 6, C: 5} }, qnet.ErrShape},
+		{"quantisation changed", func(ls []qnet.Layer) { ls[2].OutQ = qnet.Quant{Scale: 0.1, ZP: 0} }, qnet.ErrQuant},
+	}
+	for _, c := range cases {
+		g := mk()
+		c.mod(g.Layers)
+		if _, err := g.Check(); err != c.want {
+			t.Errorf("%s: %v, want %v", c.name, err, c.want)
+		}
+	}
+}
+
+// Mul with a per-pixel (H×W×1) second input: runner equals RunLayer, which
+// equals Mul against the operand expanded over C; the flag and the
+// producer's shape must agree.
+func TestRunnerMulPerPixel(t *testing.T) {
+	oq := qnet.Quant{Scale: 0.03, ZP: 5}
+	rq, err := qi8.QuantizeMul(inQ.Scale, 1.0/256, oq.Scale)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mk := func() qnet.Graph {
+		return qnet.Graph{Layers: []qnet.Layer{
+			{Kind: qnet.Logistic, In: qi8.Shape{H: 3, W: 4, C: 1}, Out: qi8.Shape{H: 3, W: 4, C: 1}, InQ: inQ, OutQ: qnet.LogisticOutQuant,
+				LogisticParams: mustLogistic(t, inQ)},
+			{Kind: qnet.Const, From: nil, In: qi8.Shape{H: 3, W: 4, C: 5}, Out: qi8.Shape{H: 3, W: 4, C: 5}, InQ: inQ, OutQ: inQ, Weights: randInput(60, 99)},
+			{Kind: qnet.Mul, From: []int{1, 0}, In: qi8.Shape{H: 3, W: 4, C: 5}, Out: qi8.Shape{H: 3, W: 4, C: 5}, InQ: inQ, In2Q: qnet.LogisticOutQuant,
+				OutQ: oq, ActMin: -128, ActMax: 127, Round: qi8.RoundTFLite, RQ: rq, PerPixel: true},
+		}}
+	}
+	g := mk()
+	if layer, err := g.Check(); err != nil {
+		t.Fatalf("layer %d: %v", layer, err)
+	}
+	r, err := qnet.NewRunner(&g, make([]int8, 4096))
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := randInput(12, 3)
+	got, err := r.Run(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(u8s(got)) != string(u8s(reference(t, &g, in))) {
+		t.Fatal("runner differs from RunLayer")
+	}
+	sig := make([]int8, 12)
+	if err := qnet.RunLayer(&g.Layers[0], sig, in); err != nil {
+		t.Fatal(err)
+	}
+	exp := make([]int8, 60)
+	for i := range exp {
+		exp[i] = sig[i/5]
+	}
+	want := make([]int8, 60)
+	p := g.Layers[2].MulParams()
+	p.Repeat = 0
+	if err := qi8.Mul(want, g.Layers[1].Weights, exp, p); err != nil {
+		t.Fatal(err)
+	}
+	if string(u8s(got)) != string(u8s(want)) {
+		t.Fatal("per-pixel Mul differs from Mul against the expanded operand")
+	}
+	g = mk()
+	g.Layers[2].PerPixel = false
+	if _, err := g.Check(); err != qnet.ErrShape {
+		t.Errorf("H×W×1 operand without PerPixel: %v, want ErrShape", err)
+	}
+}
+
+func mustLogistic(t testing.TB, q qnet.Quant) *qi8.LogisticParams {
+	t.Helper()
+	lp, err := qi8.QuantizeLogistic(q.Scale, q.ZP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &lp
+}

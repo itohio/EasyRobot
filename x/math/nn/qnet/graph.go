@@ -91,7 +91,7 @@ func (g *Graph) Validate() error {
 // Const, which must not be layer 0; layer 0 reads only the graph input),
 // positive In, Out equal to OutShape, valid scales, In/InQ (and the second
 // input's In2Q) equal to the producers' Out/OutQ (Mul's second input may be
-// In, 1×1×In.C or 1×1×1; Concat inputs agree with In off the axis, sum to Out
+// In, 1×1×In.C, 1×1×1, or In.H×In.W×1 with PerPixel; Concat inputs agree with In off the axis, sum to Out
 // on it and are quantised as OutQ), OutQ == InQ for pools, ReLUs, Reshape
 // and Const (whose In is Out), Softmax/Logistic OutQ ==
 // SoftmaxOutQuant/LogisticOutQuant, ActMin <= ActMax, len(Weights) and
@@ -231,8 +231,9 @@ func (g *Graph) checkLayer(i int, params bool) error {
 	switch l.Kind {
 	case Add, Mul:
 		ps, pq := g.output(g.producer(i, 1))
-		bc := l.Kind == Mul && (ps == qi8.Shape{H: 1, W: 1, C: l.In.C} || ps == qi8.Shape{H: 1, W: 1, C: 1})
-		if ps != l.In && !bc {
+		bc := l.Kind == Mul && !l.PerPixel && (ps == qi8.Shape{H: 1, W: 1, C: l.In.C} || ps == qi8.Shape{H: 1, W: 1, C: 1})
+		pp := ps == qi8.Shape{H: l.In.H, W: l.In.W, C: 1} && l.In.C > 1 && l.In.H*l.In.W > 1
+		if l.PerPixel != (l.Kind == Mul && pp) || (!l.PerPixel && ps != l.In && !bc) {
 			return ErrShape
 		}
 		if !l.In2Q.valid() || l.In2Q != pq {
