@@ -234,11 +234,13 @@ func (a *Arena) reserve(n int) (uint32, int, error) {
 }
 
 // syncChunk bounds one interrupts-off cache-maintenance window. Measured on
-// the board (ER-ESP32CAM-E7 review fixes, P2): a writeback costs ~14 µs when
-// nothing is dirty, and 843 µs when the whole 32 KB D-cache is dirty, the
-// same for 32 KB … 1.5 MB ranges. With 8 KB windows the longest measured
-// window is 222 µs (an 8 KB dirty writeback); a clean 790 KB pass costs
-// 1.3 ms in all instead of 14 µs, small next to a ~250 ms capture.
+// the board (ER-ESP32CAM-E7 review fixes, P2), each as one call: a writeback
+// costs ~14 µs when nothing is dirty and 843 µs when the whole 32 KB D-cache
+// is dirty, the same for 32 KB … 1.5 MB ranges; a separate 8 KB dirty
+// writeback took 222 µs. The longest single window inside a chunked 790 KB
+// or 1.5 MB call is not timed yet. Chunking splits, and adds to, the total
+// interrupts-off time: a clean 790 KB pass costs 1.3 ms in all instead of
+// 14 µs, small next to a ~250 ms capture.
 const syncChunk = 8 << 10
 
 // eachChunk calls f for consecutive pieces of [p, p+n) of at most syncChunk

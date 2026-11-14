@@ -253,25 +253,28 @@ func TestSyncRange(t *testing.T) {
 	}
 }
 
-// Cache maintenance runs in windows of at most syncChunk bytes (review
-// R-ESP32CAM-E7 P2): each window has interrupts off, and a fully dirty 32 KB
-// D-cache took 843 µs to write back on the board.
+// Cache maintenance runs in windows of at most 8 KB (review R-ESP32CAM-E7
+// P2): each window has interrupts off, and a fully dirty 32 KB D-cache took
+// 843 µs to write back in one call on the board. The window size is pinned
+// here as a number, not as syncChunk, so a larger syncChunk fails (verify
+// fix D): 790,272 B (the 2048×1536 JPEG buffer) is 97 windows, 1,548,288 B
+// is 189.
 func TestEachChunk(t *testing.T) {
-	for _, n := range []uint32{0, 32, syncChunk - 32, syncChunk, syncChunk + 32, 790272, 1548288} {
-		var got []uint32
+	const window = 8 << 10
+	for _, tt := range []struct{ n, windows uint32 }{
+		{0, 0}, {32, 1}, {window - 32, 1}, {window, 1}, {window + 32, 2}, {790272, 97}, {1548288, 189},
+	} {
+		var got uint32
 		next := uint32(0x3D800000)
-		eachChunk(0x3D800000, n, func(p, c uint32) {
-			if p != next || c == 0 || c > syncChunk || c%CacheLine != 0 {
-				t.Errorf("n %d: chunk at %#x size %d (expected start %#x)", n, p, c, next)
+		eachChunk(0x3D800000, tt.n, func(p, c uint32) {
+			if p != next || c == 0 || c > window || c%CacheLine != 0 {
+				t.Errorf("n %d: chunk at %#x size %d (expected start %#x)", tt.n, p, c, next)
 			}
 			next = p + c
-			got = append(got, c)
+			got++
 		})
-		if next-0x3D800000 != n {
-			t.Errorf("n %d: chunks cover %d bytes", n, next-0x3D800000)
-		}
-		if want := int((n + syncChunk - 1) / syncChunk); len(got) != want {
-			t.Errorf("n %d: %d chunks, want %d", n, len(got), want)
+		if next-0x3D800000 != tt.n || got != tt.windows {
+			t.Errorf("n %d: %d windows covering %d bytes, want %d covering %d", tt.n, got, next-0x3D800000, tt.windows, tt.n)
 		}
 	}
 }
