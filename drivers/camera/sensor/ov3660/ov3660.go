@@ -79,6 +79,7 @@ type Sensor struct {
 
 	lineNS uint32 // line period of the configured mode
 	vts    uint16 // frame length of the configured mode, lines
+	mirror uint8  // SetMirror choice: mirrorH (REG21 bit 1), mirrorV (REG20 bit 1)
 }
 
 // ErrMode is returned for a size or format this driver does not set up.
@@ -359,7 +360,8 @@ func ratioFor(w, h uint16) (ratio, bool) {
 	return ratio{}, false
 }
 
-// apply writes p: set_framesize, set_image_options (no flip or mirror) and set_pll.
+// apply writes p: set_framesize, set_image_options (with the SetMirror
+// choice) and set_pll.
 func (s *Sensor) apply(p framePlan) error {
 	pairs := [...][2]uint16{
 		{regXAddrSt, p.sx}, {regXAddrSt + 2, p.sy},
@@ -384,6 +386,12 @@ func (s *Sensor) apply(p framePlan) error {
 	if p.jpeg {
 		r21 |= 0x20
 	}
+	if s.mirror&mirrorH != 0 {
+		r21 |= flipBits
+	}
+	if s.mirror&mirrorV != 0 {
+		r20 |= flipBits
+	}
 	c := p.pll
 	ctrl3 := c.preDiv&3<<4 | c.seld5&3
 	if c.root2x {
@@ -406,4 +414,46 @@ func sleep(d time.Duration) {
 	for left := time.Until(end); left > 0; left = time.Until(end) {
 		time.Sleep(left)
 	}
+}
+
+// Mirror and flip bits: bit 1 of TIMING_TC_REG21 mirrors the sensor readout
+// left-right, bit 1 of TIMING_TC_REG20 flips it top-bottom. Bit 2 of each
+// (the ISP mirror/flip; esp32-camera sets both bits) shifts the Bayer phase
+// and the whole image comes out magenta (BADGECAM: G/R 0.51 with bits 2:1,
+// 1.14 with bit 1, 1.15 unmirrored).
+const (
+	flipBits = 0x02
+	mirrorH  = 1
+	mirrorV  = 2
+)
+
+// SetMirror mirrors the image left-right (h) and/or flips it top-bottom
+// (v). It changes only the mirror/flip bits and is kept across Init. The
+// OV3660 on the XIAO ESP32-S3 Sense delivers a left-right mirrored image
+// without h (BADGECAM: printed text reads backwards).
+func (s *Sensor) SetMirror(h, v bool) error {
+	s.mirror = 0
+	if h {
+		s.mirror |= mirrorH
+	}
+	if v {
+		s.mirror |= mirrorV
+	}
+	for _, r := range [...]struct {
+		reg uint16
+		on  bool
+	}{{regTiming21, h}, {regTiming20, v}} {
+		cur, err := s.read(r.reg)
+		if err != nil {
+			return err
+		}
+		cur &^= flipBits
+		if r.on {
+			cur |= flipBits
+		}
+		if err := s.write(r.reg, cur); err != nil {
+			return err
+		}
+	}
+	return nil
 }

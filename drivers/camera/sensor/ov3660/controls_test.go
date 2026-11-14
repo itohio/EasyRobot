@@ -166,3 +166,45 @@ func TestLongExposureStretchesFrame(t *testing.T) {
 		t.Errorf("auto exposure after 1 s: VTS %d, want the mode's %d", b.get16(regXTotal+2), modeVTS)
 	}
 }
+
+// Mirror and flip use the sensor readout bit (bit 1 of TIMING_TC_REG21 /
+// REG20) only: bit 2 (the ISP mirror/flip, which esp32-camera also sets)
+// shifts the Bayer phase and turns the whole image magenta (BADGECAM:
+// G/R 0.51 with both bits, 1.14 with bit 1 alone, 1.15 unmirrored).
+// SetMirror changes only those bits, and the choice survives a later Init
+// (a new size), binned or not. The OV3660 on the XIAO Sense delivers a
+// left-right mirrored image without hmirror (the badge's silkscreen reads
+// backwards).
+func TestMirrorFlip(t *testing.T) {
+	const bits = 0x02
+	b := newBus()
+	s := &Sensor{Bus: b}
+	if err := s.Init(mode(2048, 1536, sensor.JPEG)); err != nil {
+		t.Fatal(err)
+	}
+	r20, r21 := b.regs[regTiming20], b.regs[regTiming21]
+	if r20&bits != 0 || r21&bits != 0 {
+		t.Fatalf("Init without SetMirror: 0x3820 %#x 0x3821 %#x, want bits 2:1 clear", r20, r21)
+	}
+	if err := s.SetMirror(true, false); err != nil {
+		t.Fatal(err)
+	}
+	if b.regs[regTiming21] != r21|bits || b.regs[regTiming20] != r20 {
+		t.Errorf("hmirror: 0x3820 %#x 0x3821 %#x, want %#x %#x", b.regs[regTiming20], b.regs[regTiming21], r20, r21|bits)
+	}
+	if err := s.SetMirror(false, true); err != nil {
+		t.Fatal(err)
+	}
+	if b.regs[regTiming21] != r21 || b.regs[regTiming20] != r20|bits {
+		t.Errorf("vflip: 0x3820 %#x 0x3821 %#x, want %#x %#x", b.regs[regTiming20], b.regs[regTiming21], r20|bits, r21)
+	}
+	if err := s.SetMirror(true, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Init(mode(640, 480, sensor.JPEG)); err != nil { // binned: other bits differ
+		t.Fatal(err)
+	}
+	if b.regs[regTiming20] != 0x01|bits || b.regs[regTiming21] != 0x21|bits {
+		t.Errorf("after Init (binned JPEG): 0x3820 %#x 0x3821 %#x, want %#x %#x", b.regs[regTiming20], b.regs[regTiming21], 0x01|bits, 0x21|bits)
+	}
+}
