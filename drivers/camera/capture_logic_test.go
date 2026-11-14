@@ -145,6 +145,7 @@ func TestJPEGBufSize(t *testing.T) {
 // the frame; descriptor empty/error ends the transfer without a frame end.
 func TestDMAOutcome(t *testing.T) {
 	const (
+		inDone    = 1 << 0
 		sucEOF    = 1 << 1
 		dscrErr   = 1 << 3
 		dscrEmpty = 1 << 4
@@ -160,8 +161,9 @@ func TestDMAOutcome(t *testing.T) {
 		err   error
 	}{
 		{sucEOF, true, nil},
-		{sucEOF | fullWM, true, nil}, // watermark is not an error
-		{dscrEmpty, false, nil},      // buffer ran out: frameResult decides (ErrBufSize/JPEG)
+		{sucEOF | fullWM, true, nil},     // watermark is not an error
+		{dscrEmpty, false, nil},          // buffer ran out: frameResult decides (ErrBufSize/JPEG)
+		{inDone | dscrEmpty, false, nil}, // IN_DONE (a descriptor filled) is not a frame end (verify fix C)
 		{dscrErr, false, nil},
 		{0, false, nil}, // deadline
 		{sucEOF | ovfL1, true, ErrOverflow},
