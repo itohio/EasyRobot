@@ -19,6 +19,8 @@ type MahonyAHRS struct {
 	inputMatrix mat.Matrix3x3
 	// Output is quaternion (fixed [4]float32)
 	outputQuat vec.Quaternion
+	// fx is the 6-axis fixed-point state (-tags fixedmotion; empty otherwise)
+	fx fixed6
 }
 
 func NewMahony(opts ...Option) *MahonyAHRS {
@@ -37,6 +39,7 @@ func (m *MahonyAHRS) Reset() {
 	m.q = vec.Quaternion{1, 0, 0, 0}
 	m.eInt = vec.Vector3D{0, 0, 0}
 	m.outputQuat = vec.Quaternion{1, 0, 0, 0}
+	m.fx = fixed6{}
 }
 
 // asMatrix3x3 casts matTypes.Matrix to Matrix3x3 for direct access.
@@ -102,7 +105,7 @@ func (m *MahonyAHRS) calculate() {
 		panic("ahrs: accelerometer and gyroscope are required")
 	}
 	if !m.Options.HasMagnetometer {
-		m.calculateWOMag()
+		m.update6()
 		return
 	}
 
