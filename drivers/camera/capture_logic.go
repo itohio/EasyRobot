@@ -1,5 +1,11 @@
 package camera
 
+import (
+	"time"
+
+	"github.com/itohio/EasyRobot/drivers/camera/sensor"
+)
+
 // Host-independent capture decisions shared by the backends (no build tag,
 // tested on the host).
 
@@ -120,4 +126,16 @@ func dmaOutcome(raw uint32) (ended bool, err error) {
 		return ended, ErrOverflow
 	}
 	return ended, nil
+}
+
+// captureTimeout is how long Capture waits for a frame under controls c: 2 s,
+// plus three exposures when the exposure is manual, because a long manual
+// exposure stretches the frame and Capture may first wait out the frame in
+// progress.
+func captureTimeout(c sensor.Controls) time.Duration {
+	d := 2 * time.Second
+	if !c.AutoExposure {
+		d += 3 * time.Duration(c.ExposureUS) * time.Microsecond
+	}
+	return d
 }

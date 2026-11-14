@@ -20,7 +20,8 @@ const (
 	aecManual    = 0x01
 	agcManual    = 0x02
 	wbUnity      = 0x400
-	maxExposure  = 0xFFFF0 // 20-bit register, whole lines × 16
+	vtsMargin    = 4                         // frame lines beyond the exposure: VTS ≥ exposure lines + 4
+	maxExposure  = (0xFFFF - vtsMargin) << 4 // longest exposure the 16-bit VTS can hold, whole lines × 16
 	maxGain16    = 0x3FF
 )
 
@@ -69,7 +70,10 @@ func wbReg(g float32) uint16 {
 	return uint16(v)
 }
 
-// SetControls applies c. Turning AutoWB off with c.WB from ReadControls
+// SetControls applies c. A manual exposure longer than the mode's frame
+// stretches the frame to exposure + 4 lines (up to 65,535 lines, ≈ 3.8 s at
+// 2048×1536), so the frame rate drops to match; auto exposure or a shorter
+// one restores the mode's frame length. Turning AutoWB off with c.WB from ReadControls
 // freezes the current gains (the AWB block stays on; clearing ISP_CONTROL_01
 // bit 0, as esp32-camera's set_whitebal(0) does, removes white balance
 // altogether: C1 finding). It does not allocate.
@@ -87,8 +91,12 @@ func (s *Sensor) SetControls(c sensor.Controls) error {
 	if err := s.write(regAECManual, mode); err != nil {
 		return err
 	}
+	// The sensor exposes at most one frame: a longer manual exposure
+	// stretches the frame (VTS) to fit; otherwise the mode's VTS applies.
+	vts := s.vts
 	if !c.AutoExposure {
 		v := exposureReg(c.ExposureUS, s.lineNS)
+		vts = max(vts, uint16(v>>4)+vtsMargin)
 		if err := s.write(regExposure, uint8(v>>16&0x0F)); err != nil {
 			return err
 		}
@@ -98,6 +106,9 @@ func (s *Sensor) SetControls(c sensor.Controls) error {
 		if err := s.write(regExposure+2, uint8(v)&0xF0); err != nil {
 			return err
 		}
+	}
+	if err := s.write16(regXTotal+2, vts); err != nil {
+		return err
 	}
 	if !c.AutoGain {
 		if err := s.write16(regGain, gainReg(c.Gain)); err != nil {

@@ -78,6 +78,7 @@ type Sensor struct {
 	Opts Options
 
 	lineNS uint32 // line period of the configured mode
+	vts    uint16 // frame length of the configured mode, lines
 }
 
 // ErrMode is returned for a size or format this driver does not set up.
@@ -188,7 +189,7 @@ func (s *Sensor) Init(m sensor.Mode) error {
 			return err
 		}
 	}
-	s.lineNS = p.lineNS
+	s.lineNS, s.vts = p.lineNS, p.ty
 	return nil
 }
 

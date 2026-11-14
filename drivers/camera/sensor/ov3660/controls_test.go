@@ -119,3 +119,50 @@ func TestControlEncodingClamps(t *testing.T) {
 		t.Errorf("exposureReg(57 µs) = %#x, want 0", got)
 	}
 }
+
+// A manual exposure longer than the frame stretches the frame (VTS =
+// exposure lines + vtsMargin, at most 0xFFFF): the sensor cannot expose
+// longer than a frame (BADGECAM: 0.5–1 s exposures). A shorter exposure or
+// auto exposure restores the mode's VTS.
+func TestLongExposureStretchesFrame(t *testing.T) {
+	b := newBus()
+	s := &Sensor{Bus: b}
+	if err := s.Init(mode(2048, 1536, sensor.JPEG)); err != nil {
+		t.Fatal(err)
+	}
+	const modeVTS = 1564 // 4:3 entry; line 57.5 µs (HTS 2300 at 40 MHz SYSCLK)
+	if s.LineNS() != 57_500 || b.get16(regXTotal+2) != modeVTS {
+		t.Fatalf("line %d ns, VTS %d; want 57500, %d", s.LineNS(), b.get16(regXTotal+2), modeVTS)
+	}
+	exposure := func() uint32 {
+		return (uint32(b.regs[regExposure])<<16 | uint32(b.regs[regExposure+1])<<8 | uint32(b.regs[regExposure+2])) >> 4
+	}
+	for _, tt := range []struct {
+		name  string
+		c     sensor.Controls
+		lines uint32
+		vts   uint16
+	}{
+		{"1 s", sensor.Controls{ExposureUS: 1_000_000, Gain: 1}, 17391, 17391 + vtsMargin},
+		{"10 ms fits the mode's frame", sensor.Controls{ExposureUS: 10_000, Gain: 1}, 174, modeVTS},
+		{"exactly the frame", sensor.Controls{ExposureUS: (modeVTS - vtsMargin) * 57_500 / 1000, Gain: 1}, modeVTS - vtsMargin, modeVTS},
+		{"one line more", sensor.Controls{ExposureUS: (modeVTS - vtsMargin + 1) * 57_500 / 1000, Gain: 1}, modeVTS - vtsMargin + 1, modeVTS + 1},
+		{"10 s clamps to the longest frame", sensor.Controls{ExposureUS: 10_000_000, Gain: 1}, 0xFFFF - vtsMargin, 0xFFFF},
+	} {
+		if err := s.SetControls(tt.c); err != nil {
+			t.Fatal(err)
+		}
+		if got := exposure(); got != tt.lines || b.get16(regXTotal+2) != tt.vts {
+			t.Errorf("%s: %d lines, VTS %d; want %d, %d", tt.name, got, b.get16(regXTotal+2), tt.lines, tt.vts)
+		}
+	}
+	if err := s.SetControls(sensor.Controls{ExposureUS: 1_000_000, Gain: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetControls(sensor.Controls{AutoExposure: true, AutoGain: true, AutoWB: true}); err != nil {
+		t.Fatal(err)
+	}
+	if b.get16(regXTotal+2) != modeVTS {
+		t.Errorf("auto exposure after 1 s: VTS %d, want the mode's %d", b.get16(regXTotal+2), modeVTS)
+	}
+}

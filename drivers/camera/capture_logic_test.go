@@ -3,7 +3,9 @@ package camera
 import (
 	"errors"
 	"testing"
+	"time"
 
+	"github.com/itohio/EasyRobot/drivers/camera/sensor"
 	"github.com/itohio/EasyRobot/drivers/camera/sensor/ov2640"
 	"github.com/itohio/EasyRobot/drivers/camera/sensor/ov3660"
 )
@@ -211,6 +213,25 @@ func TestDMAOutcome(t *testing.T) {
 	for _, bit := range []uint{6, 7, 8, 9} {
 		if _, err := dmaOutcome(1 << bit); err != ErrOverflow {
 			t.Errorf("dmaOutcome(bit %d): %v, want ErrOverflow", bit, err)
+		}
+	}
+}
+
+// Capture waits 2 s for a frame, plus three exposures when the exposure is
+// manual: a long one stretches the frame (BADGECAM 0.5–1 s), and Capture may
+// wait for the current frame to end before its own starts.
+func TestCaptureTimeout(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		c    sensor.Controls
+		want time.Duration
+	}{
+		{"auto exposure", sensor.Controls{AutoExposure: true, ExposureUS: 900_000}, 2 * time.Second},
+		{"manual 10 ms", sensor.Controls{ExposureUS: 10_000}, 2*time.Second + 30*time.Millisecond},
+		{"manual 1 s", sensor.Controls{ExposureUS: 1_000_000}, 5 * time.Second},
+	} {
+		if got := captureTimeout(tt.c); got != tt.want {
+			t.Errorf("%s: %v, want %v", tt.name, got, tt.want)
 		}
 	}
 }

@@ -128,7 +128,8 @@ type Camera struct {
 	bus         sccbBus
 	ch          *gdmaIn
 	ext         CacheSync
-	dmaStatus   uint32 // GDMA IN_INT_RAW of the last capture
+	dmaStatus   uint32        // GDMA IN_INT_RAW of the last capture
+	timeout     time.Duration // per Capture: captureTimeout of the last SetControls
 	vsyncActive bool
 	seq         uint32
 	descs       [maxNodes]dmaDesc // in the Camera allocation: internal SRAM, word aligned
@@ -154,7 +155,7 @@ func Open(cfg Config, pins Pins) (*Camera, error) {
 	if pins.DMA > 4 {
 		return nil, ErrPins
 	}
-	c := &Camera{cfg: cfg, pins: pins, ch: gdmaChannel(pins.DMA)}
+	c := &Camera{cfg: cfg, pins: pins, ch: gdmaChannel(pins.DMA), timeout: captureTimeout(sensor.Controls{AutoExposure: true})}
 	fail := func(err error) (*Camera, error) {
 		powerDown(c.pins, &c.bus, c.id)
 		return nil, err
@@ -196,13 +197,18 @@ func (c *Camera) Sensor() sensor.ID { return c.id }
 func (c *Camera) Driver() sensor.Sensor { return c.drv }
 
 // SetControls sets exposure, gain and white balance, if the sensor driver
-// supports them.
+// supports them. A manual exposure also lengthens Capture's wait for a frame
+// (2 s plus three exposures).
 func (c *Camera) SetControls(ctl sensor.Controls) error {
 	d, ok := c.drv.(sensor.Controller)
 	if !ok {
 		return ErrNoControls
 	}
-	return d.SetControls(ctl)
+	if err := d.SetControls(ctl); err != nil {
+		return err
+	}
+	c.timeout = captureTimeout(ctl)
+	return nil
 }
 
 // ReadControls reads the sensor's current exposure, gain and white balance.
@@ -231,7 +237,8 @@ func inDMARAM(b []byte) bool {
 //
 // buf must be 4-byte aligned in DMA-capable internal SRAM, or 32-byte
 // aligned in memory the SetCacheSync implementation manages (PSRAM);
-// otherwise ErrBufAlign. Nothing received within 2 s, or a raw frame that
+// otherwise ErrBufAlign. Nothing received in time (2 s; more after a long
+// manual exposure, see SetControls), or a raw frame that
 // does not end with exactly FrameSize(cfg) bytes, gives ErrTimeout; a GDMA
 // FIFO overflow or underflow gives ErrOverflow (raw status: DMAStatus).
 //
@@ -275,7 +282,7 @@ func (c *Camera) Capture(buf []byte) (Frame, error) {
 	frameLen := FrameSize(c.cfg)
 	buf = buf[:n]
 	used := buildChain(&c.descs, buf, n)
-	got, raw := captureOnce(c.pins, c.vsyncActive, c.ch, &c.descs, used, ext, time.Now().Add(2*time.Second))
+	got, raw := captureOnce(c.pins, c.vsyncActive, c.ch, &c.descs, used, ext, time.Now().Add(c.timeout))
 	c.dmaStatus = raw
 	ended, err := dmaOutcome(raw)
 	if ext {
