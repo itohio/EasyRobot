@@ -138,6 +138,13 @@ func TestJPEGBufSize(t *testing.T) {
 			t.Errorf("%dx%d: %d, want %d", tt.w, tt.h, got, tt.want)
 		}
 	}
+	// Review C3-2: W·H is computed without overflowing the target's 32-bit
+	// int for the whole uint16 range (65535² > 2³¹). Red only where int is 32
+	// bits: run with tinygo test -target=wasm.
+	const big = 266297 * nodeBytes // 65535²/4 = 1,073,709,056 B → 266,296.9 nodes
+	if got := jpegBufSize(65535, 65535, 1<<31-1); got != big {
+		t.Errorf("65535x65535 uncapped: %d, want %d", got, big)
+	}
 }
 
 // GDMA RX status after a capture (IN_INT_RAW), review R-ESP32CAM-E7 P1: a
