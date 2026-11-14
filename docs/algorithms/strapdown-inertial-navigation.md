@@ -10,7 +10,7 @@ tests: [x/math/nav/strapdown/strapdown_test.go]
 test_result: pass
 complete: no
 correct: yes
-evidence: "go test -race ./x/math/nav/strapdown pass (38 tests, 2026-11-13): fpv-gate's 60 tilt-in-place cases (15–90°, 1/0.5/0.2 s, four axes) at an MPU6050's noise (accelerometer 0.03 m/s², gyro 0.002 rad/s) with offsets of 0.09, 0.7 (uncalibrated) and 1.05 m/s², 30 seeds from each of six ranges, gyro bias 0.005 and 0.02 rad/s: |P| and the paddle stray 0.0 mm in all 37,800 runs, every one at rest after (r8: worst 3 cm, r5: 58 cm); fpv-gate's runaway (a 45° turn, at once a 10 cm stroke, 30 s held): stroke read 50–150 %, no wake, under 1 mm of drift (r9: 306–335 %, 11 wakes, 1.7 m; red against r9, strapdown-r10-turnstroke-fail-before.txt); fpv-gate's after-turn set with noise, 5–20 cm: every stroke registered, 59–153 % over 180 runs, at rest; fpv-gate's wobble set with noise, 3–20 cm at 0.3 and 1 rad/s, ten seeds: 72–140 % over 240 runs; known failures (fpv-gate §r10, its seeds, 144 runs): 3 cm over 1.5 s 5 unregistered and 3 read the wrong way (−109, −736, −781 %), 3 cm in 2 s with no turn ends at −39 %, slow 2 s strokes snap back at their late rest (10 cm reads 48 %, one of three draws); exact attitude: strokes right after a turn within 1 %, strokes while the wrist wobbles within 15/30 % and 1 % short on average; slow horizontal strokes 5 cm in 2 s and faster within 1 %, 41/42 through Mahony with noise; a bias step at rest relearned within 2 s; 10 cm Pong strokes within 3.4 mm; 51 of 52 mutants of the new code fail a test, the other a constant (strapdown-r10-mutants.txt); Seed keeps a calibration's gyro bias (attitude error after 20 s in motion 0.013 rad seeded, 0.036 unseeded), 2 of 2 seeding mutants fail a test (strapdown-seed-mutants.txt); 0 allocs, 27 ns per Update; tinygo 0.43 tufty2040 (motiontufty) 94,296 B flash, one 736 B allocation in New"
+evidence: "go test -race ./x/math/nav/strapdown pass (40 tests, 2026-11-14; 38 before ExternalAttitude): fpv-gate's 60 tilt-in-place cases (15–90°, 1/0.5/0.2 s, four axes) at an MPU6050's noise (accelerometer 0.03 m/s², gyro 0.002 rad/s) with offsets of 0.09, 0.7 (uncalibrated) and 1.05 m/s², 30 seeds from each of six ranges, gyro bias 0.005 and 0.02 rad/s: |P| and the paddle stray 0.0 mm in all 37,800 runs, every one at rest after (r8: worst 3 cm, r5: 58 cm); fpv-gate's runaway (a 45° turn, at once a 10 cm stroke, 30 s held): stroke read 50–150 %, no wake, under 1 mm of drift (r9: 306–335 %, 11 wakes, 1.7 m; red against r9, strapdown-r10-turnstroke-fail-before.txt); fpv-gate's after-turn set with noise, 5–20 cm: every stroke registered, 59–153 % over 180 runs, at rest; fpv-gate's wobble set with noise, 3–20 cm at 0.3 and 1 rad/s, ten seeds: 72–140 % over 240 runs; known failures (fpv-gate §r10, its seeds, 144 runs): 3 cm over 1.5 s 5 unregistered and 3 read the wrong way (−109, −736, −781 %), 3 cm in 2 s with no turn ends at −39 %, slow 2 s strokes snap back at their late rest (10 cm reads 48 %, one of three draws); exact attitude: strokes right after a turn within 1 %, strokes while the wrist wobbles within 15/30 % and 1 % short on average; slow horizontal strokes 5 cm in 2 s and faster within 1 %, 41/42 through Mahony with noise; a bias step at rest relearned within 2 s; 10 cm Pong strokes within 3.4 mm; 51 of 52 mutants of the new code fail a test, the other a constant (strapdown-r10-mutants.txt); Seed keeps a calibration's gyro bias (attitude error after 20 s in motion 0.013 rad seeded, 0.036 unseeded), 2 of 2 seeding mutants fail a test (strapdown-seed-mutants.txt); 0 allocs, 27 ns per Update; tinygo 0.43 tufty2040 (motiontufty) 94,296 B flash, one 736 B allocation in New"
 ---
 # Strapdown integrator with zero-velocity updates (strapdown)
 
@@ -24,8 +24,20 @@ Until its first rest the attitude is an attitude filter's; from then on the Nav 
 
 **Where:** `x/math/nav/strapdown/strapdown.go`:
 
-- `offsetMax` (:146), `chordTurn` (:151), `Config`, `DefaultConfig` (:154-170), `Nav` (:184-238), `New` (:244), `Reset` (:256), `Seed` (:271);
-- `Update` (:287-299: the body-frame motion), `update` (:302-750: the world-frame motion), `register` (:764), `turnErr` (:797), `turnAxis` (:812), `learnTurn` (:832), `matrix` (:844), `mul` (:854), `tilt` (:871), `rest` (:888), `atRest` (:909), `shadow.step` (:935), `rotate` (:946), `turn` (:965), `lean` (:976), `unit` (:987).
+- `offsetMax` (:169), `chordTurn` (:174), `Config`, `DefaultConfig` (:177-199), `Nav` (:213-267), `New` (:273), `Reset` (:285), `Seed` (:300);
+- `Update` (:316-328: the body-frame motion), `update` (:331-781: the world-frame motion), `register` (:795), `turnErr` (:828), `turnAxis` (:843), `learnTurn` (:863), `matrix` (:875), `mul` (:885), `tilt` (:902), `rest` (:919), `atRest` (:940), `shadow.step` (:968), `rotate` (:979), `turn` (:998), `lean` (:976), `unit` (:987).
+
+**Attitude source (`Config.ExternalAttitude`, MATH-1 E1).** By default the Nav takes the filter's attitude until its first rest, then carries its own on the gyro and levels it to gravity only at rest. A filter leans into slow strokes; the gyro doesn't. But the MPU6050's gyro bias wanders: in the owner's capture owner-1 it changed by 0.0007 rad/s between two still stretches (76–88 s and 89–114 s), so between rests the Nav's own attitude drifts about 1° per 25 s. On a still desk with false wakes (fpv-gate's audit, E1) it reached 1.39°, which reads as 0.26 m/s² of fake acceleration.
+- `ExternalAttitude: true` takes the supplied `q` on every sample and skips the levelling at rest (`:435`, `:956`). The filter's levelling time constant (Mahony's 1/Kp) then sets the trade between drift and stroke lean, which is the caller's choice (MATH-1: the owner picks from fpv-gate's τ table). Default false: unchanged.
+- Measured through the badge app (tinytufty2040 `08cbac9` with fpv-gate's MATH-1 tests, Mahony Kp 2, τ 0.5 s, owner-1 and its sensor model):
+
+| | own attitude (default) | `ExternalAttitude` |
+|---|---|---|
+| E1, attitude on the desk (bar ≤ 0.5°) | 1.39° | 1.10° |
+| desk display wander | 199.8 cm | 11.2 cm |
+| 10 cm horizontal stroke from rest (bar 2 cells) | passes | 0.36 cells (the filter absorbs it as tilt: A5) |
+
+- Tests: `TestExternalAttitudeIsTheSuppliedOne` (Q is the supplied attitude from power-on, through the first rest, a 2 s rest and a biased turn; the accelerometer's horizontal offsets stay in Bias and A is nil, so neither rest levelled the attitude; the default moves them into the attitude and leaves Q), `TestExternalAttitudeStrokeTracks` (10 cm up in 1 s reads 10 cm and rests).
 
 **Inputs → outputs:** `New(Config)` returns a `Nav` at the origin. `Update(dt, q, f, w)` takes:
 
@@ -121,7 +133,7 @@ For Pong, the paddle follows the badge frame's up axis, `PB[1]` and `VB[1]` (own
 
 ## TODOs
 
-- [ ] Badge check with a hand (the owner, `motiontufty`): Pong strokes, gentle and slow ones included, move the paddle the badge's distance; slow horizontal strokes draw the path; 10 cm and back returns near the start; tilting in place stays put — x/math/nav/strapdown/strapdown.go:219 #p1 #ER-067
+- [ ] Badge check with a hand (the owner, `motiontufty`): Pong strokes, gentle and slow ones included, move the paddle the badge's distance; slow horizontal strokes draw the path; 10 cm and back returns near the start; tilting in place stays put — x/math/nav/strapdown/strapdown.go:213 #p1 #ER-067
 
 ## Links
 

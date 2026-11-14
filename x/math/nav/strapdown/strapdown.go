@@ -6,7 +6,12 @@
 // then on it carries its own on the gyro, less a gyro bias it learns at
 // rest, and levels it to gravity only at rest. A filter leans its attitude
 // into any acceleration it sees, so a slow horizontal stroke reads as tilt
-// and cancels itself; the gyro does not. After every sample the Nav is the
+// and cancels itself; the gyro does not. But a gyro's bias wanders (an
+// MPU6050's by 0.0007 rad/s between rests), so between rests the Nav's own
+// attitude drifts (about 1° in 25 s). Config.ExternalAttitude makes the
+// filter's attitude the Nav's on every sample instead: the filter's
+// levelling time constant (Mahony: 1/Kp) then sets the trade between the
+// two, which is the caller's to choose. After every sample the Nav is the
 // body's whole motion state: its attitude Q, position P and velocity V in
 // the world and PB, VB in the body frame (a turn in place moves neither),
 // linear acceleration A (world, every sample) and specific force F (sensor
@@ -178,6 +183,12 @@ type Config struct {
 	MaxGlide   float32 // s of looking still after which the body is at rest whatever its speed (≥ StillTime)
 	AvgTime    float32 // s, time constant of the force average, of bias learning after the first rest, and the first rest's learning time (> 0)
 	Damping    float32 // 1/s velocity decay while moving; 0 = none
+	// ExternalAttitude takes the attitude q given to Update on every
+	// sample, never carrying one on the gyro or levelling it at rest: the
+	// filter that supplies q sets how fast tilt is corrected from gravity,
+	// against how much a slow stroke leans it (see the package doc).
+	// False: the Nav's own attitude after the first rest.
+	ExternalAttitude bool
 }
 
 // DefaultConfig: standard gravity; still below 0.1 rad/s (6°/s), 0.2 m/s²
@@ -326,7 +337,7 @@ func (n *Nav) update(dt float32, q [4]float32, f, w [3]float32) {
 	// filter leans its attitude into any acceleration it sees (a slow
 	// stroke reads as tilt and cancels itself) and lags a turn; the gyro
 	// does neither.
-	if n.calibrated {
+	if n.calibrated && !c.ExternalAttitude {
 		n.att = turn(n.att, [3]float32{w[0] - n.gBias[0], w[1] - n.gBias[1], w[2] - n.gBias[2]}, dt)
 	} else {
 		n.att = q
@@ -421,7 +432,9 @@ func (n *Nav) update(dt float32, q [4]float32, f, w [3]float32) {
 		n.noise2 += (e2/3 - n.noise2) / n.learned
 		if n.stillFor >= c.StillTime+c.AvgTime {
 			n.calibrated = true
-			n.tilt(n.Bias)
+			if !c.ExternalAttitude { // the filter levels its own
+				n.tilt(n.Bias)
+			}
 			n.rest()
 			if n.seeded {
 				// the seed is as good as a long rest: the running averages
@@ -940,8 +953,10 @@ func (n *Nav) atRest(r, w [3]float32, dt float32) {
 		// level the attitude: move the older snapshot's horizontal bias
 		// (a tilt error, at rest) into the attitude over 4·AvgTime; the
 		// older snapshot has none of a motion's first samples
-		kl := min(n.snapFor/(4*c.AvgTime), 1)
-		n.tilt([3]float32{kl * n.biasOld[0], kl * n.biasOld[1], 0})
+		if !c.ExternalAttitude {
+			kl := min(n.snapFor/(4*c.AvgTime), 1)
+			n.tilt([3]float32{kl * n.biasOld[0], kl * n.biasOld[1], 0})
+		}
 		n.biasOld, n.biasNew, n.snapFor = n.biasNew, n.Bias, 0
 		n.gbOld, n.gbNew = n.gbNew, n.gBias
 		n.sOld, n.sNew = n.sNew, shadow{}
