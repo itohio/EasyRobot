@@ -64,7 +64,8 @@ type command struct {
 }
 
 // parseCommand parses one line. Unknown or malformed lines give cmdBad, an
-// empty line cmdNone. Numbers out of range are clamped to the range.
+// empty line cmdNone. Numbers out of range are clamped to the range; numbers
+// that don't fit their type at all (e.g. E 4294967296) are malformed.
 func parseCommand(line []byte) command {
 	f, n := fields(line)
 	if n == 0 {
