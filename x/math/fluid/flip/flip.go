@@ -71,6 +71,11 @@ const (
 
 	kind     = 3      // mask of the type
 	wasFluid = 1 << 2 // the cell was liquid last step
+	deep     = 1 << 3 // liquid with liquid on all four sides (set by solve)
+	openL    = 1 << 4 // the left side does not face the wall ring
+	openR    = 1 << 5
+	openU    = 1 << 6
+	openD    = 1 << 7
 )
 
 // Liquid is a box of W×H cells (the outer ring is wall) holding len(X)
@@ -89,7 +94,7 @@ type Liquid struct {
 
 	u, v   []int32  // face velocities (Q16): u at (i, j+½) on (W+1)×H, v at (i+½, j) on W×(H+1)
 	pu, pv []int16  // during the transfer its weight sums (Q8), then the face velocities before the solve (Q14)
-	cell   []uint8  // air, fluid or solid, and wasFluid
+	cell   []uint8  // air, fluid or solid; wasFluid, deep and the open sides
 	aux    []uint16 // particles around each cell centre (Q8 weights) for the solve; then the buckets' start for separate
 	pres   []int16  // pressure impulse per cell (Q16), kept between steps (warm start), saturating
 	order  []uint16 // particles bucketed by cell for separate
@@ -484,6 +489,18 @@ func (l *Liquid) toGrid() {
 			if i == 0 || j == 0 || i == w-1 || j == h-1 {
 				c |= solid
 			}
+			if i > 1 {
+				c |= openL
+			}
+			if i < w-2 {
+				c |= openR
+			}
+			if j > 1 {
+				c |= openU
+			}
+			if j < h-2 {
+				c |= openD
+			}
 			l.cell[k] = c
 		}
 	}
@@ -581,8 +598,9 @@ func (l *Liquid) mark(k int) {
 	}
 }
 
-// recipQ8[s] = 1/s in Q8 for the open-side count s of a cell.
-var recipQ8 = [5]int32{0, 256, 128, 85, 64}
+// recipSides[s] = 1/n in Q8, n the number of open sides in the side bits
+// s (cell byte >> 4).
+var recipSides = [16]int32{0, 256, 256, 128, 256, 128, 128, 85, 256, 128, 128, 85, 128, 85, 85, 64}
 
 // solve makes the face velocities divergence-free in fluid cells (Gauss–
 // Seidel with over-relaxation). It starts from last step's pressure (warm
@@ -591,75 +609,75 @@ var recipQ8 = [5]int32{0, 256, 128, 85, 64}
 // unbalanced, settles too. A cell that is no longer liquid forgets it. The
 // pressure is kept in 16 bits, enough for g·depth up to half a cell per
 // step (0.02 cell per step² under 25 cells of liquid); beyond, it
-// saturates and the warm start merely helps less.
+// saturates and the warm start merely helps less. Which cells are liquid
+// does not change during the solve, so what the sweeps need of a cell
+// (open sides, deep) is in its byte, and they skip rows with no liquid.
 func (l *Liquid) solve() {
 	w, h := l.W, l.H
+	cell, pres, aux, u, v := l.cell, l.pres, l.aux, l.u, l.v
+	var rows [8]uint32 // bit j: row j has liquid (h ≤ 255)
 	for j := 1; j < h-1; j++ {
 		for i := 1; i < w-1; i++ {
 			k := j*w + i
-			if !l.wet(k) {
-				l.pres[k] = 0
+			cb := cell[k]
+			if cb&kind != fluid {
+				pres[k] = 0
 				continue
 			}
-			l.push(i, j, int32(l.pres[k]))
+			rows[j>>5] |= 1 << (j & 31)
+			// deep: all four neighbours liquid
+			if cell[k-1]&kind == fluid && cell[k+1]&kind == fluid && cell[k-w]&kind == fluid && cell[k+w]&kind == fluid {
+				cb |= deep
+				cell[k] = cb
+			}
+			push(u, v, k, k+j, w, cb, int32(pres[k]))
 		}
 	}
+	drift, rest, over := l.drift, l.rest, l.prm.OverQ8
 	for range l.prm.Iterations {
 		for j := 1; j < h-1; j++ {
+			if rows[j>>5]&(1<<(j&31)) == 0 {
+				continue
+			}
 			for i := 1; i < w-1; i++ {
 				k := j*w + i
-				if !l.wet(k) {
+				cb := cell[k]
+				if cb&kind != fluid {
 					continue
 				}
 				ku := k + j // j·(w+1) + i
-				div := l.u[ku+1] - l.u[ku] + l.v[k+w] - l.v[k]
-				if l.drift != 0 {
-					c := int32(l.aux[k]) - l.rest
+				div := u[ku+1] - u[ku] + v[k+w] - v[k]
+				if drift != 0 {
+					c := int32(aux[k]) - rest
 					// pull a loose cell together only deep in the liquid (all four
 					// neighbours liquid): a surface cell is loose by nature, and so
 					// is one against a wall, which particles keep a radius from
-					if c > 0 || l.wet(k-1) && l.wet(k+1) && l.wet(k-w) && l.wet(k+w) {
-						div -= c * l.drift >> 8
+					if c > 0 || cb&deep != 0 {
+						div -= c * drift >> 8
 					}
 				}
-				open := 4
-				if i == 1 {
-					open--
-				}
-				if i == w-2 {
-					open--
-				}
-				if j == 1 {
-					open--
-				}
-				if j == h-2 {
-					open--
-				}
-				p := (-div * l.prm.OverQ8 >> 8) * recipQ8[open] >> 8
-				l.pres[k] = int16(clamp(int32(l.pres[k])+p, -32767, 32767))
-				l.push(i, j, p)
+				p := (-div * over >> 8) * recipSides[cb>>4] >> 8
+				pres[k] = int16(clamp(int32(pres[k])+p, -32767, 32767))
+				push(u, v, k, ku, w, cb, p)
 			}
 		}
 	}
 }
 
-// push applies a pressure impulse p in cell (i, j): out through every
-// side that does not face the wall ring.
-func (l *Liquid) push(i, j int, p int32) {
-	w := l.W
-	k := j*w + i
-	ku := k + j // its left u face, j·(w+1) + i
-	if i > 1 {
-		l.u[ku] -= p
+// push applies a pressure impulse p in cell k (left u face ku, cell byte
+// cb): out through every side that does not face the wall ring.
+func push(u, v []int32, k, ku, w int, cb uint8, p int32) {
+	if cb&openL != 0 {
+		u[ku] -= p
 	}
-	if i < w-2 {
-		l.u[ku+1] += p
+	if cb&openR != 0 {
+		u[ku+1] += p
 	}
-	if j > 1 {
-		l.v[k] -= p
+	if cb&openU != 0 {
+		v[k] -= p
 	}
-	if j < l.H-2 {
-		l.v[k+w] += p
+	if cb&openD != 0 {
+		v[k+w] += p
 	}
 }
 
