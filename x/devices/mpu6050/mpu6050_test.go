@@ -133,6 +133,28 @@ func TestConfigure(t *testing.T) {
 	if b.regs[0x38] != 0 {
 		t.Errorf("INT_ENABLE %#x, want 0 without the data-ready interrupt", b.regs[0x38])
 	}
+	// FIFO_OFLOW_EN is INT_ENABLE bit 4; INT_STATUS's FIFO_OFLOW_INT is the
+	// same bit (register map 4.2 §4.16, §4.18)
+	for _, c := range []struct {
+		cfg  Config
+		want byte
+	}{
+		{Config{FIFOOverflowInterrupt: true}, 0x10},
+		{Config{DataReadyInterrupt: true, FIFOOverflowInterrupt: true}, 0x11},
+	} {
+		if err := d.Configure(c.cfg); err != nil {
+			t.Fatal(err)
+		}
+		if b.regs[0x38] != c.want {
+			t.Errorf("%+v: INT_ENABLE %#x, want %#x", c.cfg, b.regs[0x38], c.want)
+		}
+		if d.Config() != c.cfg {
+			t.Errorf("Config() %+v, want %+v", d.Config(), c.cfg)
+		}
+	}
+	if IntStatusFIFOOverflow != 0x10 {
+		t.Errorf("IntStatusFIFOOverflow %#x, want INT_STATUS bit 4 (0x10)", IntStatusFIFOOverflow)
+	}
 	// the slowest settings: the 5 Hz filter (code 6, the last valid one)
 	// and the largest divider
 	if err := d.Configure(Config{SampleRateDiv: 255, DLPF: DLPF5Hz}); err != nil {
@@ -180,7 +202,7 @@ func TestBusErrorsPropagate(t *testing.T) {
 	accelLSB := [4]float64{16384, 8192, 4096, 2048} // per g, AFS_SEL 0..3
 	gyroLSB := [4]float64{131, 65.5, 32.8, 16.4}    // per °/s, FS_SEL 0..3
 	prev := Config{SampleRateDiv: 3, DLPF: DLPF94Hz, Gyro: Gyro250DPS, Accel: Accel2G}
-	next := Config{SampleRateDiv: 9, DLPF: DLPF44Hz, Gyro: Gyro2000DPS, Accel: Accel8G, DataReadyInterrupt: true}
+	next := Config{SampleRateDiv: 9, DLPF: DLPF44Hz, Gyro: Gyro2000DPS, Accel: Accel8G, DataReadyInterrupt: true, FIFOOverflowInterrupt: true}
 	for k := 1; k <= 7; k++ { // fail the k-th write
 		b := &fakeBus{}
 		d := New(b, 0)
@@ -192,11 +214,12 @@ func TestBusErrorsPropagate(t *testing.T) {
 			t.Errorf("write %d failing: err %v after %d writes, want the error at once", k, err, len(b.txs))
 		}
 		inChip := Config{
-			SampleRateDiv:      b.regs[0x19],
-			DLPF:               DLPF(b.regs[0x1A] & 7),
-			Gyro:               GyroRange(b.regs[0x1B] >> 3 & 3),
-			Accel:              AccelRange(b.regs[0x1C] >> 3 & 3),
-			DataReadyInterrupt: b.regs[0x38]&1 != 0,
+			SampleRateDiv:         b.regs[0x19],
+			DLPF:                  DLPF(b.regs[0x1A] & 7),
+			Gyro:                  GyroRange(b.regs[0x1B] >> 3 & 3),
+			Accel:                 AccelRange(b.regs[0x1C] >> 3 & 3),
+			DataReadyInterrupt:    b.regs[0x38]&1 != 0,
+			FIFOOverflowInterrupt: b.regs[0x38]&0x10 != 0,
 		}
 		if d.Config() != inChip {
 			t.Errorf("write %d failing: Config() %+v, registers hold %+v", k, d.Config(), inChip)

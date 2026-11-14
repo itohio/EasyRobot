@@ -43,6 +43,7 @@ const (
 	intLatch         = 0x20 // INT_PIN_CFG LATCH_INT_EN: INT held high until cleared
 	intReadClear     = 0x10 // INT_PIN_CFG INT_RD_CLEAR: any read clears it
 	intDataReady     = 0x01 // INT_ENABLE DATA_RDY_EN, INT_STATUS DATA_RDY_INT
+	intFIFOOverflow  = 0x10 // INT_ENABLE FIFO_OFLOW_EN
 	burstLen         = 14
 )
 
@@ -105,7 +106,18 @@ type Config struct {
 	// until any register read (a sample read clears it), so both an edge
 	// interrupt and a polled level work.
 	DataReadyInterrupt bool
+	// FIFOOverflowInterrupt enables FIFO_OFLOW_EN: a FIFO overflow (the
+	// 1,024-byte FIFO filled and dropped data) sets INT_STATUS's
+	// [IntStatusFIFOOverflow] bit and drives INT, latched like the data-ready
+	// interrupt. The register map ties the status bit to an interrupt being
+	// generated, so enable this when a caller drains the FIFO and must know
+	// it overflowed; reading INT_STATUS clears it.
+	FIFOOverflowInterrupt bool
 }
+
+// IntStatusFIFOOverflow is INT_STATUS's (RegIntStatus) FIFO_OFLOW_INT bit,
+// set by a FIFO overflow when Config.FIFOOverflowInterrupt is on.
+const IntStatusFIFOOverflow = 0x10
 
 func (c Config) valid() bool {
 	return c.DLPF <= DLPF5Hz && c.Accel <= Accel16G && c.Gyro <= Gyro2000DPS
@@ -183,7 +195,10 @@ func (d *Device) Configure(c Config) error {
 	}
 	var intEnable uint8
 	if c.DataReadyInterrupt {
-		intEnable = intDataReady
+		intEnable |= intDataReady
+	}
+	if c.FIFOOverflowInterrupt {
+		intEnable |= intFIFOOverflow
 	}
 	if err := d.write8(RegPwrMgmt1, pwrClockPLLGyroX); err != nil {
 		return err
@@ -211,6 +226,7 @@ func (d *Device) Configure(c Config) error {
 		return err
 	}
 	d.cfg.DataReadyInterrupt = c.DataReadyInterrupt
+	d.cfg.FIFOOverflowInterrupt = c.FIFOOverflowInterrupt
 	return nil
 }
 
