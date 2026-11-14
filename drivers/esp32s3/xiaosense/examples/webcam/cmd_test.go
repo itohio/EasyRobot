@@ -10,7 +10,8 @@ func TestParseCommand(t *testing.T) {
 		{"", command{kind: cmdNone}},
 		{"G", command{kind: cmdGrab, quality: defaultQuality}},
 		{"G 2 40", command{kind: cmdGrab, size: 2, quality: 40}},
-		{"G 0 10", command{kind: cmdGrab, quality: minQuality}}, // dark-room floor
+		{"G 0 10", command{kind: cmdGrab, quality: 10}}, // full sensor range (owner); the page warns below 25
+		{"G 0 0", command{kind: cmdGrab, quality: 1}},
 		{"G 0 99", command{kind: cmdGrab, quality: maxQuality}},
 		{"G 5", command{kind: cmdBad}}, // no such size
 		{"S", command{kind: cmdStart}},
@@ -19,7 +20,8 @@ func TestParseCommand(t *testing.T) {
 		{"Z 4", command{kind: cmdSize, size: 4}},
 		{"Z", command{kind: cmdBad}},
 		{"Q 25", command{kind: cmdQuality, quality: 25}},
-		{"Q 24", command{kind: cmdQuality, quality: minQuality}},
+		{"Q 24", command{kind: cmdQuality, quality: 24}},
+		{"Q 1", command{kind: cmdQuality, quality: 1}},
 		{"E 500000", command{kind: cmdExposure, exposure: 500_000}},
 		{"E 9000000", command{kind: cmdExposure, exposure: maxExposureUS}},
 		{"E 0", command{kind: cmdExposure, exposure: 1}},

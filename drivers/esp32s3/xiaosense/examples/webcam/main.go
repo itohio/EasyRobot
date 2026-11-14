@@ -11,7 +11,7 @@
 // flip), ? (status).
 // Replies are frame-v1 images and text lines starting "webcam: ":
 //
-//	webcam: status size=0 w=2048 h=1536 q=30 ae=1 exp_us=33120 ag=0 gain=1.00 hm=1 vf=0 stream=1 fps=3.1 bytes=231916
+//	webcam: status size=0 w=2048 h=1536 q=30 ae=1 exp_us=33120 ag=0 gain=1.00 hm=1 vf=0 stream=1 fps=3.1 bytes=231916 fails=0
 //	webcam: error <what>
 //
 // While streaming, a status line follows every 2 s and every command. At
@@ -108,10 +108,11 @@ type webcam struct {
 	mirrorH bool
 	mirrorV bool
 	stream  bool
-	fails   int     // consecutive failed image writes while streaming
+	wfails  int     // consecutive failed image writes while streaming
 	fps     float32 // smoothed images sent per second while streaming
 	last    time.Time
 	bytes   int
+	capFail uint32 // captures that failed (after 3 tries) since boot
 }
 
 func fatal(what string, err error) {
@@ -189,7 +190,7 @@ func (w *webcam) status() {
 	println("webcam: status size="+strconv.Itoa(w.size), "w="+strconv.Itoa(int(sizeW[w.size])), "h="+strconv.Itoa(int(sizeH[w.size])),
 		"q="+strconv.Itoa(int(w.quality)), "ae="+strconv.Itoa(b2i(w.ctl.AutoExposure)), "exp_us="+strconv.Itoa(int(ctl.ExposureUS)),
 		"ag="+strconv.Itoa(b2i(w.ctl.AutoGain)), "gain="+strconv.FormatFloat(float64(ctl.Gain), 'f', 2, 32),
-		"hm="+strconv.Itoa(b2i(w.mirrorH)), "vf="+strconv.Itoa(b2i(w.mirrorV)), "stream="+strconv.Itoa(b2i(w.stream)), "fps="+strconv.FormatFloat(float64(w.fps), 'f', 1, 32), "bytes="+strconv.Itoa(w.bytes))
+		"hm="+strconv.Itoa(b2i(w.mirrorH)), "vf="+strconv.Itoa(b2i(w.mirrorV)), "stream="+strconv.Itoa(b2i(w.stream)), "fps="+strconv.FormatFloat(float64(w.fps), 'f', 1, 32), "bytes="+strconv.Itoa(w.bytes), "fails="+strconv.Itoa(int(w.capFail)))
 }
 
 // send captures one image and writes it; it reports whether the write
@@ -208,6 +209,7 @@ func (w *webcam) send() bool {
 		}
 	}
 	if err != nil {
+		w.capFail++
 		println("webcam: error capture", err.Error())
 		return true
 	}
@@ -247,7 +249,7 @@ func (w *webcam) handle(c command) {
 		}
 		return
 	case cmdStart:
-		w.stream, w.fails, w.fps, w.last = true, 0, 0, time.Time{}
+		w.stream, w.wfails, w.fps, w.last = true, 0, 0, time.Time{}
 		return
 	case cmdStop:
 		w.stream = false
@@ -312,8 +314,8 @@ func main() {
 			continue
 		}
 		if w.send() {
-			w.fails = 0
-		} else if w.fails++; w.fails >= 3 {
+			w.wfails = 0
+		} else if w.wfails++; w.wfails >= 3 {
 			w.stream = false // host stopped reading
 			continue
 		}

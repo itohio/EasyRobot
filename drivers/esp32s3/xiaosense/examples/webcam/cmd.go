@@ -8,22 +8,23 @@ import "strconv"
 //	S                   start streaming images back to back
 //	X                   stop streaming
 //	Z <size>            frame size: 0 = 2048×1536, 1 = 1600×1200, 2 = 1024×768, 3 = 800×600, 4 = 640×480
-//	Q <quality>         JPEG quantisation 25 … 63 (smaller = better)
+//	Q <quality>         JPEG quantisation 1 … 63 (smaller = finer, larger JPEG)
 //	E <µs> | E a        manual exposure time (up to 3,000,000) | auto exposure
 //	I <gain> | I a      manual analogue gain (1 … 15.5) | auto gain
 //	M <h> <v>           mirror left-right (h) and flip top-bottom (v), 0 or 1
 //	?                   status line
 //
-// Quality below 25 is raised to 25: lower values corrupt dark frames
-// (ER-ESP32CAM-E7 evidence). Every command except G and S answers with a
-// status line.
+// The whole quality range is accepted (owner). Below 25, noisy frames
+// (high gain, dark) can come out corrupted (ER-ESP32CAM-E7 evidence): the
+// status line counts failed captures (fails=) so the host can warn. Every
+// command except G and S answers with a status line.
 
 // Sizes the webcam offers, indexed by the Z and G size argument.
 var sizeW = [...]uint16{2048, 1600, 1024, 800, 640}
 var sizeH = [...]uint16{1536, 1200, 768, 600, 480}
 
 const (
-	minQuality     = 25
+	minQuality     = 1
 	maxQuality     = 63
 	defaultQuality = 30
 	maxExposureUS  = 3_000_000
