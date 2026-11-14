@@ -12,6 +12,7 @@ import "strconv"
 //	E <µs> | E a        manual exposure time (up to 3,000,000) | auto exposure
 //	I <gain> | I a      manual analogue gain (1 … 15.5) | auto gain
 //	M <h> <v>           mirror left-right (h) and flip top-bottom (v), 0 or 1
+//	W a | W <r> <g> <b> auto white balance | manual red, green, blue gains (0 … 3.99)
 //	?                   status line
 //
 // The whole quality range is accepted (owner). Below 25, noisy frames
@@ -30,6 +31,7 @@ const (
 	maxExposureUS  = 3_000_000
 	minGain        = 1
 	maxGain        = 15.5
+	maxWB          = 3.99 // the 12-bit gain registers hold up to 4095/1024
 )
 
 type cmdKind uint8
@@ -44,6 +46,7 @@ const (
 	cmdExposure
 	cmdGain
 	cmdMirror
+	cmdWB
 	cmdStatus
 	cmdBad
 )
@@ -56,7 +59,8 @@ type command struct {
 	exposure uint32
 	gain     float32
 	auto     bool
-	h, v     bool // M
+	h, v     bool       // M
+	wb       [3]float32 // W: red, green, blue gains
 }
 
 // parseCommand parses one line. Unknown or malformed lines give cmdBad, an
@@ -120,6 +124,22 @@ func parseCommand(line []byte) command {
 		if okH && okV && (h == "0" || h == "1") && (v == "0" || v == "1") {
 			return command{kind: cmdMirror, h: h == "1", v: v == "1"}
 		}
+	case "W":
+		if a, _ := arg(1); a == "a" && n == 2 {
+			return command{kind: cmdWB, auto: true}
+		}
+		if n != 4 {
+			break
+		}
+		c := command{kind: cmdWB}
+		for i := range c.wb {
+			v, err := strconv.ParseFloat(f[i+1], 32)
+			if err != nil || v != v {
+				return command{kind: cmdBad}
+			}
+			c.wb[i] = float32(min(max(v, 0), maxWB))
+		}
+		return c
 	case "I":
 		a, _ := arg(1)
 		if a == "a" {
@@ -148,9 +168,9 @@ func parseQuality(a string) (uint8, bool) {
 	return uint8(min(max(v, minQuality), maxQuality)), true
 }
 
-// fields splits line at spaces into at most 3 fields, without allocating
+// fields splits line at spaces into at most 4 fields, without allocating
 // beyond the strings themselves.
-func fields(line []byte) (f [3]string, n int) {
+func fields(line []byte) (f [4]string, n int) {
 	start := -1
 	for i := 0; i <= len(line); i++ {
 		if i == len(line) || line[i] == ' ' || line[i] == '\t' {

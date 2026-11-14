@@ -7,11 +7,11 @@
 // with manual or auto exposure and gain. No radio.
 //
 // Commands are text lines (see cmd.go): G (one image), S/X (start/stop
-// streaming), Z (size), Q (quality), E (exposure), I (gain), M (mirror and
-// flip), ? (status).
+// streaming), Z (size), Q (quality), E (exposure), I (gain), W (white
+// balance), M (mirror and flip), ? (status).
 // Replies are frame-v1 images and text lines starting "webcam: ":
 //
-//	webcam: status size=0 w=2048 h=1536 q=30 ae=1 exp_us=33120 ag=0 gain=1.00 hm=1 vf=0 stream=1 fps=3.1 bytes=231916 fails=0
+//	webcam: status size=0 w=2048 h=1536 q=30 ae=1 exp_us=33120 ag=0 gain=1.00 awb=1 wb=1.47,1.00,1.31 hm=1 vf=0 stream=1 fps=3.1 bytes=231916 fails=0
 //	webcam: error <what>
 //
 // While streaming, a status line follows every 2 s and every command. At
@@ -172,6 +172,8 @@ func (w *webcam) setControls() {
 	}
 }
 
+func f2(v float32) string { return strconv.FormatFloat(float64(v), 'f', 2, 32) }
+
 func b2i(b bool) int {
 	if b {
 		return 1
@@ -184,12 +186,13 @@ func (w *webcam) status() {
 	ctl := w.ctl
 	if w.cam != nil {
 		if c, err := w.cam.ReadControls(); err == nil {
-			ctl.ExposureUS, ctl.Gain = c.ExposureUS, c.Gain
+			ctl.ExposureUS, ctl.Gain, ctl.WB = c.ExposureUS, c.Gain, c.WB
 		}
 	}
 	println("webcam: status size="+strconv.Itoa(w.size), "w="+strconv.Itoa(int(sizeW[w.size])), "h="+strconv.Itoa(int(sizeH[w.size])),
 		"q="+strconv.Itoa(int(w.quality)), "ae="+strconv.Itoa(b2i(w.ctl.AutoExposure)), "exp_us="+strconv.Itoa(int(ctl.ExposureUS)),
 		"ag="+strconv.Itoa(b2i(w.ctl.AutoGain)), "gain="+strconv.FormatFloat(float64(ctl.Gain), 'f', 2, 32),
+		"awb="+strconv.Itoa(b2i(w.ctl.AutoWB)), "wb="+f2(ctl.WB[0])+","+f2(ctl.WB[1])+","+f2(ctl.WB[2]),
 		"hm="+strconv.Itoa(b2i(w.mirrorH)), "vf="+strconv.Itoa(b2i(w.mirrorV)), "stream="+strconv.Itoa(b2i(w.stream)), "fps="+strconv.FormatFloat(float64(w.fps), 'f', 1, 32), "bytes="+strconv.Itoa(w.bytes), "fails="+strconv.Itoa(int(w.capFail)))
 }
 
@@ -275,6 +278,14 @@ func (w *webcam) handle(c command) {
 		w.mirrorH, w.mirrorV = c.h, c.v
 		if w.cam != nil {
 			w.setMirror()
+		}
+	case cmdWB:
+		w.ctl.AutoWB = c.auto
+		if !c.auto {
+			w.ctl.WB = c.wb
+		}
+		if w.cam != nil {
+			w.setControls()
 		}
 	case cmdGain:
 		w.ctl.AutoGain = c.auto

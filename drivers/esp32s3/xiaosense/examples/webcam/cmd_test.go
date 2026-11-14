@@ -36,6 +36,12 @@ func TestParseCommand(t *testing.T) {
 		{"M 0 1", command{kind: cmdMirror, v: true}},
 		{"M 1", command{kind: cmdBad}},
 		{"M 2 0", command{kind: cmdBad}},
+		{"W a", command{kind: cmdWB, auto: true}},
+		{"W 1.47 1.02 1.31", command{kind: cmdWB, wb: [3]float32{1.47, 1.02, 1.31}}},
+		{"W 5 1 1", command{kind: cmdWB, wb: [3]float32{maxWB, 1, 1}}},
+		{"W -1 1 1", command{kind: cmdWB, wb: [3]float32{0, 1, 1}}},
+		{"W 1 1", command{kind: cmdBad}},
+		{"W 1 NaN 1", command{kind: cmdBad}},
 		{"hello", command{kind: cmdBad}},
 		{"  Z\t3 ", command{kind: cmdSize, size: 3}},
 	} {
