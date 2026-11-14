@@ -1,25 +1,28 @@
 //go:build xiao_esp32s3
 
-// Command webcam turns the XIAO ESP32-S3 Sense into a USB "webcam": on each
-// request it captures one OV3660 JPEG, up to 2048×1536, by GDMA straight
-// into a PSRAM buffer and sends it over the USB serial port in the camera
-// frame format v1 (drivers/camera/frame). No radio.
+// Command webcam turns the XIAO ESP32-S3 Sense into a USB webcam: OV3660
+// JPEGs up to 2048×1536, captured by GDMA straight into a PSRAM buffer and
+// sent over the USB serial port in the camera frame format v1
+// (drivers/camera/frame), one on request or back to back while streaming,
+// with manual or auto exposure and gain. No radio.
 //
-// Request (one text line): "G <size> <quality>\n"
+// Commands are text lines (see cmd.go): G (one image), S/X (start/stop
+// streaming), Z (size), Q (quality), E (exposure), I (gain), M (mirror and
+// flip), ? (status).
+// Replies are frame-v1 images and text lines starting "webcam: ":
 //
-//	size:    0 = 2048×1536, 1 = 1600×1200, 2 = 1024×768, 3 = 800×600, 4 = 640×480
-//	quality: OV3660 JPEG quantisation 25 … 63 (smaller = better); values
-//	         below 25 are raised to 25, because lower ones corrupt dark frames
-//	         (ER-ESP32CAM-E7 evidence, outside the repo)
+//	webcam: status size=0 w=2048 h=1536 q=30 ae=1 exp_us=33120 ag=0 gain=1.00 hm=1 vf=0 stream=1 fps=3.1 bytes=231916
+//	webcam: error <what>
 //
-// Reply: one frame-v1 image (chunks with CRC-32, data_len = the exact JPEG
-// length), then the text line "webcam: sent <seq> <bytes> <ms>". Errors are
-// text lines starting "webcam: error". Auto exposure runs on the sensor; the
-// first capture after a size change waits for 8 settling frames.
+// While streaming, a status line follows every 2 s and every command. At
+// boot: size 0, quality 30, auto exposure, manual gain 1 (the lowest, least
+// noise; the badge-cam default), auto white balance, left-right mirror on
+// (this module's OV3660 image is mirrored without it, so text reads
+// backwards). Streaming stops by
+// itself when the host stops reading (3 writes in a row time out).
 //
-// Host: cmd/camframe can request and save images, e.g.
-//
-//	camframe -port <port> -trigger $'G 0 30\n' -n 1 -out DIR
+// Hosts: cmd/camclient (live view and controls in a browser), or
+// cmd/camframe -trigger $'G 0 30\n' for single images.
 //
 // Build with the stock target:
 //
@@ -38,72 +41,6 @@ import (
 	"github.com/itohio/EasyRobot/drivers/esp32s3/psram"
 	"github.com/itohio/EasyRobot/drivers/esp32s3/xiaosense"
 )
-
-var sizes = [...]sensor.Resolution{{W: 2048, H: 1536}, {W: 1600, H: 1200}, {W: 1024, H: 768}, {W: 800, H: 600}, {W: 640, H: 480}}
-
-const minQuality = 25
-
-var (
-	line [32]byte
-	n    int
-)
-
-// readRequest returns the size index and quality of the next "G s q" line.
-func readRequest() (int, uint8) {
-	for {
-		for machine.Serial.Buffered() == 0 {
-			time.Sleep(2 * time.Millisecond)
-		}
-		b, _ := machine.Serial.ReadByte()
-		if b != '\n' && b != '\r' {
-			if n < len(line) {
-				line[n] = b
-				n++
-			}
-			continue
-		}
-		req := line[:n]
-		n = 0
-		if len(req) == 0 || req[0] != 'G' {
-			continue
-		}
-		s, q := 0, 30
-		f := fields(req[1:])
-		if len(f) > 0 {
-			if v, err := strconv.Atoi(f[0]); err == nil && v >= 0 && v < len(sizes) {
-				s = v
-			}
-		}
-		if len(f) > 1 {
-			if v, err := strconv.Atoi(f[1]); err == nil && v >= 0 && v <= 63 {
-				q = v
-			}
-		}
-		if q < minQuality {
-			q = minQuality
-		}
-		return s, uint8(q)
-	}
-}
-
-func fields(b []byte) []string {
-	var out []string
-	start := -1
-	for i, c := range b {
-		if c == ' ' {
-			if start >= 0 {
-				out = append(out, string(b[start:i]))
-				start = -1
-			}
-		} else if start < 0 {
-			start = i
-		}
-	}
-	if start >= 0 {
-		out = append(out, string(b[start:]))
-	}
-	return out
-}
 
 // usbWriter writes to the USB serial port, retrying while the host drains
 // the FIFO: TinyGo 0.43's USB-Serial/JTAG Write drops bytes once the FIFO
@@ -131,76 +68,258 @@ func (usbWriter) Write(p []byte) (int, error) {
 	return done, nil
 }
 
-func open(s int) (*camera.Camera, camera.Config, error) {
-	cfg := camera.Config{Mode: sensor.Mode{Resolution: sizes[s], Format: sensor.JPEG}}
+// lineReader collects command lines from the USB serial port without
+// blocking.
+type lineReader struct {
+	buf [48]byte
+	n   int
+}
+
+// poll returns the next complete line, if one has arrived.
+func (r *lineReader) poll() ([]byte, bool) {
+	for machine.Serial.Buffered() > 0 {
+		b, err := machine.Serial.ReadByte()
+		if err != nil {
+			return nil, false
+		}
+		if b == '\n' || b == '\r' {
+			if r.n == 0 {
+				continue
+			}
+			l := r.buf[:r.n]
+			r.n = 0
+			return l, true
+		}
+		if r.n < len(r.buf) {
+			r.buf[r.n] = b
+			r.n++
+		}
+	}
+	return nil, false
+}
+
+type webcam struct {
+	cam     *camera.Camera
+	buf     []byte
+	enc     *frame.Encoder
+	size    int
+	quality uint8
+	ctl     sensor.Controls
+	mirrorH bool
+	mirrorV bool
+	stream  bool
+	fails   int     // consecutive failed image writes while streaming
+	fps     float32 // smoothed images sent per second while streaming
+	last    time.Time
+	bytes   int
+}
+
+func fatal(what string, err error) {
+	for {
+		println("webcam: error", what, err.Error())
+		time.Sleep(time.Second)
+	}
+}
+
+// open (re)opens the camera at w.size and applies quality and controls.
+// The first frames after it let auto exposure settle.
+func (w *webcam) open() bool {
+	if w.cam != nil {
+		w.cam.Close()
+		w.cam = nil
+	}
+	cfg := camera.Config{Mode: sensor.Mode{Resolution: sensor.Resolution{W: sizeW[w.size], H: sizeH[w.size]}, Format: sensor.JPEG}}
 	cam, err := camera.Open(cfg, xiaosense.CameraPins)
 	if err != nil {
-		return nil, cfg, err
+		println("webcam: error open", err.Error())
+		return false
 	}
 	cam.SetCacheSync(psram.Cache{})
-	return cam, cfg, nil
+	w.cam = cam
+	w.setQuality()
+	w.setMirror()
+	w.setControls()
+	settle := 8
+	if !w.ctl.AutoExposure {
+		settle = 2
+	}
+	for range settle {
+		cam.Capture(w.buf)
+	}
+	return true
+}
+
+func (w *webcam) setQuality() {
+	if d, ok := w.cam.Driver().(*ov3660.Sensor); ok {
+		if err := d.SetQuality(w.quality); err != nil {
+			println("webcam: error quality", err.Error())
+		}
+	}
+}
+
+func (w *webcam) setMirror() {
+	if d, ok := w.cam.Driver().(*ov3660.Sensor); ok {
+		if err := d.SetMirror(w.mirrorH, w.mirrorV); err != nil {
+			println("webcam: error mirror", err.Error())
+		}
+	}
+}
+
+func (w *webcam) setControls() {
+	if err := w.cam.SetControls(w.ctl); err != nil {
+		println("webcam: error controls", err.Error())
+	}
+}
+
+func b2i(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// status prints the status line with the sensor's live exposure and gain.
+func (w *webcam) status() {
+	ctl := w.ctl
+	if w.cam != nil {
+		if c, err := w.cam.ReadControls(); err == nil {
+			ctl.ExposureUS, ctl.Gain = c.ExposureUS, c.Gain
+		}
+	}
+	println("webcam: status size="+strconv.Itoa(w.size), "w="+strconv.Itoa(int(sizeW[w.size])), "h="+strconv.Itoa(int(sizeH[w.size])),
+		"q="+strconv.Itoa(int(w.quality)), "ae="+strconv.Itoa(b2i(w.ctl.AutoExposure)), "exp_us="+strconv.Itoa(int(ctl.ExposureUS)),
+		"ag="+strconv.Itoa(b2i(w.ctl.AutoGain)), "gain="+strconv.FormatFloat(float64(ctl.Gain), 'f', 2, 32),
+		"hm="+strconv.Itoa(b2i(w.mirrorH)), "vf="+strconv.Itoa(b2i(w.mirrorV)), "stream="+strconv.Itoa(b2i(w.stream)), "fps="+strconv.FormatFloat(float64(w.fps), 'f', 1, 32), "bytes="+strconv.Itoa(w.bytes))
+}
+
+// send captures one image and writes it; it reports whether the write
+// succeeded (a capture error is reported and counts as success: the host is
+// still there).
+func (w *webcam) send() bool {
+	if w.cam == nil && !w.open() {
+		time.Sleep(time.Second)
+		return true
+	}
+	var fr camera.Frame
+	var err error
+	for range 3 {
+		if fr, err = w.cam.Capture(w.buf); err == nil {
+			break
+		}
+	}
+	if err != nil {
+		println("webcam: error capture", err.Error())
+		return true
+	}
+	t := time.Now()
+	meta := frame.Meta{Width: sizeW[w.size], Height: sizeH[w.size], Format: frame.JPEG, Sensor: frame.Sensor(w.cam.Sensor().Model)}
+	if err := w.enc.WriteImage(meta, uint32(t.UnixMicro()), fr.Data); err != nil {
+		return false
+	}
+	w.bytes = len(fr.Data)
+	if dt := time.Since(w.last).Seconds(); !w.last.IsZero() && dt > 0 {
+		w.fps += (1/float32(dt) - w.fps) / 4
+	}
+	w.last = t
+	return true
+}
+
+func (w *webcam) handle(c command) {
+	switch c.kind {
+	case cmdNone:
+		return
+	case cmdBad:
+		println("webcam: error command")
+		return
+	case cmdGrab:
+		if c.size != w.size || w.cam == nil {
+			w.size = c.size
+			if !w.open() {
+				return
+			}
+		}
+		if c.quality != w.quality {
+			w.quality = c.quality
+			w.setQuality()
+		}
+		if w.send() {
+			println("webcam: sent", w.enc.Seq()-1, w.bytes)
+		}
+		return
+	case cmdStart:
+		w.stream, w.fails, w.fps, w.last = true, 0, 0, time.Time{}
+		return
+	case cmdStop:
+		w.stream = false
+	case cmdSize:
+		w.size = c.size
+		w.fps, w.last = 0, time.Time{}
+		w.open()
+	case cmdQuality:
+		w.quality = c.quality
+		if w.cam != nil {
+			w.setQuality()
+		}
+	case cmdExposure:
+		w.ctl.AutoExposure = c.auto
+		if !c.auto {
+			w.ctl.ExposureUS = c.exposure
+		}
+		w.fps, w.last = 0, time.Time{}
+		if w.cam != nil {
+			w.setControls()
+		}
+	case cmdMirror:
+		w.mirrorH, w.mirrorV = c.h, c.v
+		if w.cam != nil {
+			w.setMirror()
+		}
+	case cmdGain:
+		w.ctl.AutoGain = c.auto
+		if !c.auto {
+			w.ctl.Gain = c.gain
+		}
+		if w.cam != nil {
+			w.setControls()
+		}
+	}
+	w.status()
 }
 
 func main() {
 	time.Sleep(time.Second)
 	r, _, err := psram.Init()
 	if err != nil {
-		for {
-			println("webcam: error psram", err.Error())
-			time.Sleep(time.Second)
-		}
+		fatal("psram", err)
 	}
 	arena := psram.NewArena(r)
-	buf, err := arena.Alloc(camera.JPEGBufSize(camera.Config{Mode: sensor.Mode{Resolution: sizes[0], Format: sensor.JPEG}}))
+	buf, err := arena.Alloc(camera.JPEGBufSize(camera.Config{Mode: sensor.Mode{Resolution: sensor.Resolution{W: sizeW[0], H: sizeH[0]}, Format: sensor.JPEG}}))
 	if err != nil {
-		for {
-			println("webcam: error alloc", err.Error())
-			time.Sleep(time.Second)
-		}
+		fatal("alloc", err)
 	}
-	enc := frame.NewEncoder(usbWriter{})
-	var cam *camera.Camera
-	var cfg camera.Config
-	cur, settle := -1, 0
-	println("webcam: ready; request \"G <size 0-4> <quality 25-63>\"")
+	w := &webcam{buf: buf, enc: frame.NewEncoder(usbWriter{}), quality: defaultQuality,
+		ctl: sensor.Controls{AutoExposure: true, AutoGain: false, Gain: minGain, AutoWB: true}, mirrorH: true}
+	println("webcam: ready")
+	var lr lineReader
+	lastStatus := time.Now()
 	for {
-		s, q := readRequest()
-		if s != cur || cam == nil {
-			if cam != nil {
-				cam.Close()
-			}
-			if cam, cfg, err = open(s); err != nil {
-				println("webcam: error open", err.Error())
-				cam, cur = nil, -1
-				continue
-			}
-			cur, settle = s, 8
-		}
-		if d, ok := cam.Driver().(*ov3660.Sensor); ok {
-			if err := d.SetQuality(q); err != nil {
-				println("webcam: error quality", err.Error())
-			}
-		}
-		for ; settle > 0; settle-- { // auto exposure after (re)open
-			cam.Capture(buf)
-		}
-		t0 := time.Now()
-		var fr camera.Frame
-		for try := 0; try < 3; try++ {
-			if fr, err = cam.Capture(buf); err == nil {
-				break
-			}
-		}
-		if err != nil {
-			println("webcam: error capture", err.Error())
+		if l, ok := lr.poll(); ok {
+			w.handle(parseCommand(l))
 			continue
 		}
-		ms := time.Since(t0).Milliseconds()
-		meta := frame.Meta{Width: cfg.W, Height: cfg.H, Format: frame.JPEG, Sensor: frame.Sensor(cam.Sensor().Model)}
-		if err := enc.WriteImage(meta, uint32(t0.UnixMicro()), fr.Data); err != nil {
-			println("webcam: error write", err.Error())
+		if !w.stream {
+			time.Sleep(2 * time.Millisecond)
 			continue
 		}
-		println("webcam: sent", enc.Seq()-1, len(fr.Data), ms)
+		if w.send() {
+			w.fails = 0
+		} else if w.fails++; w.fails >= 3 {
+			w.stream = false // host stopped reading
+			continue
+		}
+		if time.Since(lastStatus) >= 2*time.Second {
+			w.status()
+			lastStatus = time.Now()
+		}
 	}
 }
