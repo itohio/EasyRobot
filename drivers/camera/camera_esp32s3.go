@@ -299,7 +299,8 @@ func (c *Camera) Capture(buf []byte) (Frame, error) {
 
 // DMAStatus is the GDMA RX status (IN_INT_RAW) the last Capture ended with,
 // for diagnosis (ESP32-S3 only); 0 if that Capture returned before starting
-// the DMA (ErrBufSize, ErrBufAlign): bit 1 SUC_EOF, 3 DSCR_ERR, 4 DSCR_EMPTY,
+// the DMA (ErrBufSize, ErrBufAlign) or saw no VSYNC before its deadline
+// (ErrTimeout, nothing received): bit 0 IN_DONE, 1 SUC_EOF, 3 DSCR_ERR, 4 DSCR_EMPTY,
 // 5 FIFO watermark, 6/8 INFIFO_OVF_L1/L3, 7/9 INFIFO_UDF_L1/L3. Any of
 // bits 6–9 makes Capture return ErrOverflow.
 func (c *Camera) DMAStatus() uint32 { return c.dmaStatus }
