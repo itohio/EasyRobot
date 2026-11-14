@@ -437,11 +437,13 @@ func TestLoadErrors(t *testing.T) {
 		t.Fatalf("uint8 add: %v", err)
 	}
 
-	// QUANTIZE to uint8 is refused, naming the output tensor
+	// QUANTIZE to uint8 other than a plain uint8 graph output (same scale,
+	// zero point + 128; that one is cut, see TestYOLOXTailMatchesInterpreter)
+	// is refused, naming the output tensor
 	b = newMB()
 	x = b.act([]int32{1, 2, 2, 2}, 0.1, 0)
 	y = b.act([]int32{1, 2, 2, 2}, 0.1, 0)
-	q := int32(b.tensor("q", []int32{1, 2, 2, 2}, typeUInt8, 0, []float32{0.1}, []int64{128}, 0))
+	q := int32(b.tensor("q", []int32{1, 2, 2, 2}, typeUInt8, 0, []float32{0.1}, []int64{100}, 0))
 	b.op(opMaxPool2D, []int32{x}, []int32{y}, optPool2D, optsPool2D(padSame, 1, 1, 1, 1, actNone))
 	b.op(opQuantize, []int32{y}, []int32{q}, 0, nil)
 	b.io([]int32{x}, []int32{q})

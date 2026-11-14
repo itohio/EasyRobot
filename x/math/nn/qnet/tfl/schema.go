@@ -70,6 +70,7 @@ const (
 	opResizeBilinear  = 23
 	opSoftmax         = 25
 	opPad             = 34
+	opTranspose       = 39
 	opMean            = 40
 	opSub             = 41
 	opPadV2           = 60
@@ -205,6 +206,8 @@ func opName(code int32) string {
 		return "RESIZE_NEAREST_NEIGHBOR"
 	case opQuantize:
 		return "QUANTIZE"
+	case opTranspose:
+		return "TRANSPOSE"
 	}
 	return ""
 }

@@ -38,16 +38,19 @@ import (
 // input with one channel and any multiplier, which becomes a Conv2D),
 // FULLY_CONNECTED, AVERAGE_POOL_2D and MAX_POOL_2D (no fused activation),
 // RESHAPE, SOFTMAX, ADD (same shapes), MUL (same shapes, or the smaller
-// operand per channel or scalar), LOGISTIC, MEAN (over H and W of a rank-4
+// operand per channel, per pixel (H×W×1) or scalar), LOGISTIC, MEAN (over H and W of a rank-4
 // tensor), CONCATENATION (any non-batch axis, inputs quantised as the
 // output), PAD and PADV2 (constant paddings, no batch padding),
-// RESIZE_NEAREST_NEIGHBOR and RESIZE_BILINEAR (rank 4), LEAKY_RELU, QUANTIZE
-// (int8 → int8 becomes a Requantize layer) and DEQUANTIZE. A constant int8 operand of ADD, MUL or
+// RESIZE_NEAREST_NEIGHBOR and RESIZE_BILINEAR (rank 4), LEAKY_RELU,
+// TRANSPOSE (rank 2–4, constant permutation keeping the batch axis first),
+// QUANTIZE (int8 → int8 becomes a Requantize layer) and DEQUANTIZE. A constant int8 operand of ADD, MUL or
 // CONCATENATION becomes a Const layer (not for the first operator). A float
 // or uint8 graph input quantised by the first operator (QUANTIZE), and
-// DEQUANTIZEs producing graph outputs, are cut: the graph then takes the
-// int8 input quantised as Layers[0].InQ and returns int8 outputs quantised
-// as their layers' OutQ; the caller converts. Tensors must be int8 or uint8
+// DEQUANTIZEs producing graph outputs, and int8 → uint8 QUANTIZEs producing
+// graph outputs with the same scale and the zero point + 128, are cut: the
+// graph then takes the int8 input quantised as Layers[0].InQ and returns
+// int8 outputs quantised as their layers' OutQ; the caller converts (for a
+// cut uint8 output: add 128). Tensors must be int8 or uint8
 // as above (bias int32) with per-tensor activation quantisation, symmetric
 // int8 weights (per-channel or per-tensor) and batch 1; one input and one or more
 // outputs (Graph.Outputs in the model's order, nil when the only output is
@@ -369,6 +372,8 @@ func (c *converter) convert(o *operator) error {
 		return c.resize(o)
 	case opLeakyRelu:
 		return c.leakyRelu(o)
+	case opTranspose:
+		return c.transpose(o)
 	}
 	return c.fail("operator not supported")
 }
@@ -954,8 +959,9 @@ func (c *converter) mul(o *operator) error {
 		a, b = b, a // the product is symmetric; broadcast the second
 	}
 	bc := b.shape == qi8.Shape{H: 1, W: 1, C: a.shape.C} || b.shape == qi8.Shape{H: 1, W: 1, C: 1}
-	if (b.shape != a.shape && !bc) || os != a.shape {
-		return c.fail("broadcasting other than per channel or scalar is not supported")
+	perPixel := !bc && b.shape == qi8.Shape{H: a.shape.H, W: a.shape.W, C: 1} && a.shape.C > 1
+	if (b.shape != a.shape && !bc && !perPixel) || os != a.shape {
+		return c.fail("broadcasting other than per channel, per pixel or scalar is not supported")
 	}
 	lo, hi, err := c.actRange(c.m.f.fieldU8(o.opts, mulAct, 0), oq)
 	if err != nil {
@@ -967,7 +973,7 @@ func (c *converter) mul(o *operator) error {
 	}
 	l := qnet.Layer{
 		Kind: qnet.Mul, In: a.shape, InQ: a.q, In2Q: b.q, Out: os, OutQ: oq,
-		ActMin: lo, ActMax: hi, Round: roundMul, RQ: rq,
+		ActMin: lo, ActMax: hi, Round: roundMul, RQ: rq, PerPixel: perPixel,
 	}
 	return c.emit(l, outIdx, a.from, b.from)
 }
@@ -1023,6 +1029,9 @@ func (c *converter) quantize(o *operator) error {
 		if oi < 0 {
 			return ErrFormat // no output tensor: malformed, as in output()
 		}
+		if ot.typ == typeUInt8 && t.typ == typeInt8 {
+			return c.quantizeOutput(o, &ot, oi)
+		}
 		if ot.typ != typeInt8 {
 			return c.failT(&ot, "QUANTIZE to a non-int8 type is not supported")
 		}
@@ -1060,6 +1069,27 @@ func (c *converter) quantize(o *operator) error {
 
 // dequantize cuts a DEQUANTIZE of the graph output: the graph returns the
 // int8 tensor instead.
+// quantizeOutput cuts an int8 → uint8 QUANTIZE that produces a graph output
+// with the same scale and the zero point shifted by 128 (a uint8 model
+// output): the graph returns the int8 tensor and the caller adds 128.
+func (c *converter) quantizeOutput(o *operator, ot *tensor, outIdx int) error {
+	x, err := c.input(o, 0)
+	if err != nil {
+		return err
+	}
+	if !c.isOutput(outIdx) {
+		return c.failT(ot, "QUANTIZE to uint8 is supported only for a graph output")
+	}
+	if s, err := c.shape(ot); err != nil || s != x.shape {
+		return c.failT(ot, "quantize output shape differs from its input")
+	}
+	if ot.scale.n != 1 || ot.zp.n != 1 || c.m.scaleAt(ot, 0) != x.q.Scale || c.m.zpAt(ot, 0) != int64(x.q.ZP)+128 {
+		return c.failT(ot, "uint8 graph output must keep the scale and shift the zero point by 128")
+	}
+	c.prod[outIdx] = x.from
+	return nil
+}
+
 func (c *converter) dequantize(o *operator) error {
 	x, err := c.input(o, 0)
 	if err != nil {
@@ -1207,6 +1237,44 @@ func (c *converter) resize(o *operator) error {
 		HalfPixel:    f.fieldU8(o.opts, halfSlot, 0) != 0,
 	}
 	return c.emit(l, outIdx, x.from)
+}
+
+// transpose converts TRANSPOSE of a rank 2–4 tensor with a constant
+// permutation that keeps the batch axis first. Tensor axis a of a rank-r
+// tensor is qnet axis a+3−r (the leading qnet axes of a lower rank have
+// size 1 and stay in place).
+func (c *converter) transpose(o *operator) error {
+	x, err := c.input(o, 0)
+	if err != nil {
+		return err
+	}
+	r, err := c.rank(o, 0)
+	if err != nil || r < 2 || r > 4 {
+		return c.fail("transpose input must be rank 2 to 4")
+	}
+	perm, _, err := c.ints(o, 1)
+	if err != nil {
+		return err
+	}
+	if len(perm) != r || perm[0] != 0 {
+		return c.fail("transpose permutation must keep the batch axis first")
+	}
+	l := qnet.Layer{Kind: qnet.Transpose, In: x.shape, InQ: x.q, Perm: [3]int{0, 1, 2}}
+	for a := 1; a < r; a++ {
+		if perm[a] < 1 || perm[a] >= int64(r) {
+			return c.fail("transpose permutation out of range")
+		}
+		l.Perm[a+3-r] = int(perm[a]) + 3 - r
+	}
+	outIdx, os, oq, err := c.output(o)
+	if err != nil {
+		return err
+	}
+	if oq != x.q {
+		return c.fail("transpose must keep the quantisation")
+	}
+	l.Out, l.OutQ = os, oq
+	return c.emit(l, outIdx, x.from) // emit checks Perm (a permutation) against Out
 }
 
 func (c *converter) leakyRelu(o *operator) error {
