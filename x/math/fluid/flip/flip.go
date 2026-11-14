@@ -537,55 +537,71 @@ func (l *Liquid) toGrid() {
 	// hold 128 particles' full weight on one face, far beyond any packing
 	// separate allows; a caller stacking more only gets clamped speeds)
 	uw := w + 1
+	u, v, pu, pv := l.u, l.v, l.pu, l.pv
 	for p := range l.X {
 		x, y := int32(l.X[p]), int32(l.Y[p])
 		// u faces sit at (i, j+½)
 		i, j, a, b, c, d := weights(x, y-half)
 		k := j*uw + i
 		vx := vel(l.VX[p])
-		l.u[k] += a * vx
-		l.u[k+1] += b * vx
-		l.u[k+uw] += c * vx
-		l.u[k+uw+1] += d * vx
-		l.pu[k] += int16(a)
-		l.pu[k+1] += int16(b)
-		l.pu[k+uw] += int16(c)
-		l.pu[k+uw+1] += int16(d)
+		u[k] += a * vx
+		u[k+1] += b * vx
+		u[k+uw] += c * vx
+		u[k+uw+1] += d * vx
+		pu[k] += int16(a)
+		pu[k+1] += int16(b)
+		pu[k+uw] += int16(c)
+		pu[k+uw+1] += int16(d)
 		// v faces sit at (i+½, j)
 		i, j, a, b, c, d = weights(x-half, y)
 		k = j*w + i
 		vy := vel(l.VY[p])
-		l.v[k] += a * vy
-		l.v[k+1] += b * vy
-		l.v[k+w] += c * vy
-		l.v[k+w+1] += d * vy
-		l.pv[k] += int16(a)
-		l.pv[k+1] += int16(b)
-		l.pv[k+w] += int16(c)
-		l.pv[k+w+1] += int16(d)
+		v[k] += a * vy
+		v[k+1] += b * vy
+		v[k+w] += c * vy
+		v[k+w+1] += d * vy
+		pv[k] += int16(a)
+		pv[k+1] += int16(b)
+		pv[k+w] += int16(c)
+		pv[k+w+1] += int16(d)
 	}
-	// normalise; faces touching the wall ring carry no flow; then keep
-	// the result for the FLIP update
+	// normalise the interior faces and keep the result for the FLIP
+	// update; a face touching the wall ring carries no flow, so it is zeroed
+	// (store(0) = 0) without a test per face
 	for j := range h {
-		for i := 0; i <= w; i++ {
-			k := j*uw + i
-			if s := int32(l.pu[k]); s > 0 && i > 1 && i < w-1 && j > 0 && j < h-1 {
-				l.u[k] = norm(l.u[k], s)
+		row := j * uw
+		if j == 0 || j == h-1 {
+			clear(u[row : row+uw])
+			clear(pu[row : row+uw])
+			continue
+		}
+		u[row], u[row+1], u[row+w-1], u[row+w] = 0, 0, 0, 0
+		pu[row], pu[row+1], pu[row+w-1], pu[row+w] = 0, 0, 0, 0
+		for k := row + 2; k < row+w-1; k++ {
+			if s := int32(pu[k]); s > 0 {
+				u[k] = norm(u[k], s)
 			} else {
-				l.u[k] = 0
+				u[k] = 0
 			}
-			l.pu[k] = store(l.u[k])
+			pu[k] = store(u[k])
 		}
 	}
 	for j := 0; j <= h; j++ {
-		for i := range w {
-			k := j*w + i
-			if s := int32(l.pv[k]); s > 0 && j > 1 && j < h-1 && i > 0 && i < w-1 {
-				l.v[k] = norm(l.v[k], s)
+		row := j * w
+		if j <= 1 || j >= h-1 {
+			clear(v[row : row+w])
+			clear(pv[row : row+w])
+			continue
+		}
+		v[row], v[row+w-1] = 0, 0
+		pv[row], pv[row+w-1] = 0, 0
+		for k := row + 1; k < row+w-1; k++ {
+			if s := int32(pv[k]); s > 0 {
+				v[k] = norm(v[k], s)
 			} else {
-				l.v[k] = 0
+				v[k] = 0
 			}
-			l.pv[k] = store(l.v[k])
+			pv[k] = store(v[k])
 		}
 	}
 }
