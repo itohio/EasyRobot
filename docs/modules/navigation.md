@@ -4,7 +4,7 @@ group: "Control and planning"
 status: tested
 tags: [easyrobot, navigation, dead-reckoning]
 workstream:
-packages: [x/math/nav/pdr, x/math/nav/strapdown, x/math/nav/calib]
+packages: [x/math/nav/pdr, x/math/nav/strapdown, x/math/nav/calib, x/math/nav/eskf]
 test_result: pass
 ---
 # Navigation (x/math/nav)
@@ -13,9 +13,10 @@ test_result: pass
 
 - its walking path: MPU6050 → [[mahony-ahrs]] → steps → track;
 - its 3D motion path: MPU6050 → Mahony → strapdown with zero-velocity updates;
-- its startup calibration at rest: MPU6050 → calib → gyro bias for Mahony and strapdown, and the page's live statistics and forecast.
+- its startup calibration at rest: MPU6050 → calib → gyro bias for Mahony and strapdown, and the page's live statistics and forecast;
+- its motion from one joint estimate: MPU6050 → [[error-state-kalman-filter]] (attitude, velocity, position and both biases with their covariance, in place of Mahony + strapdown); no application runs it yet.
 
-**Packages:** `x/math/nav/pdr` (pdr.go 163, pdr_test.go 389), `x/math/nav/strapdown` (strapdown.go 990, strapdown_test.go 1531) and `x/math/nav/calib` (calib.go 373, calib_test.go 500); no build tags.
+**Packages:** `x/math/nav/pdr` (pdr.go 163, pdr_test.go 389), `x/math/nav/strapdown` (strapdown.go 990, strapdown_test.go 1531), `x/math/nav/calib` (calib.go 373, calib_test.go 500) and `x/math/nav/eskf` (eskf.go 802, eskf_test.go 592); no build tags.
 
 ## Public API
 
@@ -29,12 +30,13 @@ test_result: pass
 
 ## Algorithms
 
-<!-- vault:algorithms h=f39ec6c2d3e2 -->
+<!-- vault:algorithms h=9851646e57be -->
 
-Counts: 3 tested · 0 implemented · 0 partial · 0 stub · 0 unverified (3 algorithms)
+Counts: 4 tested · 0 implemented · 0 partial · 0 stub · 0 unverified (4 algorithms)
 
 | Algorithm | Status | Tests | Summary |
 |---|---|---|---|
+| [[error-state-kalman-filter]] | tested | pass | error-state Kalman filter for a body's motion from a 6-axis IMU: attitude, velocity, position, gyro and accelerometer bias estimated jointly with their covariance (15 states, float32, sequential scalar updates); tilt from gravity gated on its innovation, zero velocity when the body isn't translating (rotating in place too), zero rate at rest gated so a slow turn stays out of the bias; a multi-pose calibration's fit as the prior; no alloc per sample |
 | [[pedestrian-dead-reckoning]] | tested | pass | steps from \|a\| + heading of a chosen body axis + track; synthetic-signal tests, no hardware yet |
 | [[startup-calibration]] | tested | pass | startup calibration of an IMU at rest: finds the face that is down, waits for stillness, averages for 3 s, restarts when moved; gyro bias, readings at rest, noise, live per-axis statistics and a forecast of heading and position drift checked against simulation; seeds strapdown's gyro bias |
 | [[strapdown-inertial-navigation]] | tested | pass | strapdown translation from an IMU: the Nav carries its own attitude on the gyro after the first rest (levelled at rest, gyro bias learned at rest), rotates the accelerometer's force into the world, removes gravity and integrates to velocity and position; zero-velocity updates at rest in 3D; a rotation in place moves nothing while it lasts and its rest takes up any translation it carried; every turned motion's rest takes the turned offsets' error out of the whole motion; bias learning in the world and the sensor frame; the Nav is the badge's whole motion state (Q, P, V, PB, VB, A, F); float32, no alloc per sample |
@@ -43,15 +45,16 @@ Counts: 3 tested · 0 implemented · 0 partial · 0 stub · 0 unverified (3 algo
 
 ## Build targets and dependencies
 
-Pure Go, float32, `errors`; value types, no allocation per sample. `pdr`, `strapdown` and `calib` use `chewxy/math32`. TinyGo 0.43 `-target=tufty2040`:
+Pure Go, float32, `errors`; value types, no allocation per sample. `pdr`, `strapdown`, `calib` and `eskf` use `chewxy/math32`. TinyGo 0.43 `-target=tufty2040`:
 
 - with mpu6050 + Mahony + pdr: allocations only at construction (2026-11-12);
 - with mpu6050 + Mahony + strapdown: one allocation in `strapdown`, the 736-byte `Nav` from `New`; none per sample; 94,296 B flash (2026-11-13);
-- with mpu6050 + Mahony + calib + seeded strapdown: no allocation in `calib` (the Calibrator is 212 bytes, a stack value); strapdown's `Nav` as above; 97,512 B flash (2026-11-13).
+- with mpu6050 + Mahony + calib + seeded strapdown: no allocation in `calib` (the Calibrator is 212 bytes, a stack value); strapdown's `Nav` as above; 97,512 B flash (2026-11-13);
+- eskf (`kernelbench`): one allocation, the 2488-byte `Filter` from `New`; none per sample; 119,500 B flash (2026-11-15).
 
 ## Tests and evidence
 
-`go test -race -count=1 ./x/math/nav/...` pass, 2026-11-13; details in [[pedestrian-dead-reckoning]], [[strapdown-inertial-navigation]] and [[startup-calibration]].
+`go test -race -count=1 ./x/math/nav/...` pass, 2026-11-13; details in [[pedestrian-dead-reckoning]], [[strapdown-inertial-navigation]], [[startup-calibration]] and [[error-state-kalman-filter]].
 
 ## TODOs
 

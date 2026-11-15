@@ -17,6 +17,7 @@ import (
 	"github.com/itohio/EasyRobot/x/math/fluid/flip"
 	"github.com/itohio/EasyRobot/x/math/mat"
 	"github.com/itohio/EasyRobot/x/math/nav/calib"
+	"github.com/itohio/EasyRobot/x/math/nav/eskf"
 	"github.com/itohio/EasyRobot/x/math/nav/pdr"
 	"github.com/itohio/EasyRobot/x/math/nav/strapdown"
 	"github.com/itohio/EasyRobot/x/math/swarm/boids"
@@ -123,6 +124,50 @@ func benchStrapdown(calls int) {
 	report("strapdown.Nav.Update", calls, t1-t0, a1-a0, h)
 }
 
+// still is a badge lying still (calibrated, upright), from a fixed seed:
+// the filter's at-rest path (zero velocity, zero rate) runs on it.
+var stillAcc, stillGyro [samples][3]float32
+
+func init() {
+	x := uint32(88172645)
+	noise := func(s float32) float32 {
+		x ^= x << 13
+		x ^= x >> 17
+		x ^= x << 5
+		return s * (float32(x>>8)/(1<<24) - 0.5)
+	}
+	for i := range samples {
+		stillAcc[i] = [3]float32{noise(0.06), 9.81 + noise(0.06), noise(0.06)}
+		stillGyro[i] = [3]float32{noise(0.004), noise(0.004), noise(0.004)}
+	}
+}
+
+// benchESKF times eskf.Filter.Update after its first rest, on the moving
+// stream or the still one.
+func benchESKF(calls int, moving bool) {
+	f, err := eskf.New(eskf.DefaultConfig())
+	if err != nil {
+		println(err.Error())
+		return
+	}
+	for c := range 200 { // the first rest: ready
+		f.Update(0.01, stillAcc[c%samples], stillGyro[c%samples])
+	}
+	a, g, name := &stillAcc, &stillGyro, "eskf.Filter.Update(at rest)"
+	if moving {
+		a, g, name = &acc, &gyro, "eskf.Filter.Update(moving)"
+	}
+	a0, t0 := heap(), now()
+	for c := range calls {
+		i := c % samples
+		f.Update(0.01, a[i], g[i])
+	}
+	t1, a1 := now(), heap()
+	h := newFNV()
+	h.f32(f.Q[0], f.Q[1], f.Q[2], f.Q[3], f.V[0], f.V[1], f.V[2], f.P[0], f.P[1], f.P[2])
+	report(name, calls, t1-t0, a1-a0, h)
+}
+
 func benchCalibrator(calls int) {
 	c, err := calib.New(calib.DefaultConfig())
 	if err != nil {
@@ -224,6 +269,8 @@ func main() {
 		println("kernelbench pass", pass)
 		benchMahony(1000)
 		benchStrapdown(1000)
+		benchESKF(1000, true)
+		benchESKF(1000, false)
 		benchCalibrator(1000)
 		benchDetector(1000)
 		benchFlip(300)

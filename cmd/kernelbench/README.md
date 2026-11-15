@@ -7,6 +7,8 @@ per frame, on the badge or the host:
 |---|---:|---|
 | `ahrs.MahonyAHRS.Update` (6-axis, KI 0, `*mat.Matrix3x3`) | 1000 | the 100-sample stream below |
 | `strapdown.Nav.Update` | 1000 | the stream, with Mahony's attitude per sample |
+| `eskf.Filter.Update`, moving | 1000 | the stream, after a 2 s first rest |
+| `eskf.Filter.Update`, at rest | 1000 | a still badge (zero velocity and zero rate run on every sample) |
 | `calib.Calibrator.Update` | 1000 | the stream |
 | `pdr.Detector.Update` | 1000 | the stream's accelerometer |
 | `flip.Liquid.Step` and `Raster` at 24×18/400 (the demo's Water) | 300 | gravity swinging ±40° every 120 steps, after 120 untimed settling steps |
