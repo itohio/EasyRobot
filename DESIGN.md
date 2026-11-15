@@ -72,7 +72,7 @@ EasyRobot is a cross-platform robotics framework designed to enable algorithm de
 - Vector operations (2D, 3D, 4D, generic)
 - Matrix operations (2x2, 3x3, 4x4, generic)
 - Interpolation (linear, bezier, cosine, spline)
-- Filters (PID, AHRS - Madgwick/Mahony)
+- Filters (PID, AHRS - Madgwick); navigation (Mahony attitude filter, error-state Kalman motion estimator)
 - Tensor support (dense/sparse)
 
 **logger**: removed (the zerolog wrapper `x/logger` was deleted with the deprecated pipeline cluster).

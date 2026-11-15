@@ -55,7 +55,7 @@ State: 75 tested · 29 implemented · 137 partial · 10 stub · 13 unverified (2
 
 Algorithm notes per module by status (generated from the algorithm notes; `tested` needs passing value tests).
 
-<!-- vault:modules h=339ba40283ce -->
+<!-- vault:modules h=b1270d34110e -->
 
 | Module | tested | implemented | partial | stub | unverified | total |
 |---|---|---|---|---|---|---|
@@ -63,14 +63,14 @@ Algorithm notes per module by status (generated from the algorithm notes; `teste
 | [[graph-and-planning]] | 7 | 1 | 9 | 0 | 0 | 17 |
 | [[kinematics]] | 7 | 5 | 2 | 0 | 0 | 14 |
 | [[motion-and-gait]] | 5 | 0 | 2 | 1 | 0 | 8 |
-| [[navigation]] | 4 | 0 | 0 | 0 | 0 | 4 |
+| [[navigation]] | 5 | 0 | 0 | 0 | 0 | 5 |
 | [[pid-control]] | 1 | 0 | 0 | 0 | 0 | 1 |
 | **Signal, codecs, audio** | | | | | | |
 | [[audio-io]] | 1 | 1 | 1 | 0 | 1 | 4 |
 | [[audio-modem-cli]] | 0 | 0 | 2 | 0 | 0 | 2 |
 | [[bit-buffer]] | 2 | 0 | 2 | 0 | 0 | 4 |
 | [[dsp-core]] | 4 | 0 | 7 | 0 | 0 | 11 |
-| [[filters]] | 3 | 2 | 11 | 1 | 0 | 17 |
+| [[filters]] | 2 | 2 | 11 | 1 | 0 | 16 |
 | [[line-coding-and-fec]] | 2 | 2 | 6 | 1 | 0 | 11 |
 | [[modulation]] | 0 | 4 | 14 | 2 | 0 | 20 |
 | [[peg-protocol-parser]] | 0 | 0 | 2 | 0 | 0 | 2 |

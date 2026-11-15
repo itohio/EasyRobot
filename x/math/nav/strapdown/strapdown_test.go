@@ -5,8 +5,8 @@ import (
 	"math"
 	"testing"
 
-	"github.com/itohio/EasyRobot/x/math/filter/ahrs"
 	"github.com/itohio/EasyRobot/x/math/mat"
+	"github.com/itohio/EasyRobot/x/math/nav/mahony"
 )
 
 const rate = 100.0 // Hz
@@ -207,22 +207,18 @@ type tiltNoise struct {
 
 // gridTilt runs the badge from attitude q0: 10 s at rest, a smooth tilt by
 // ang about the sensor axis over T, held 1 s, back over T, held 2 s; the
-// attitude is the badge's Mahony filter (KP 2), its integral term (0.005)
-// switched on after 5 s. Pure rotation about the IMU: nothing translates.
+// attitude is the badge's Mahony filter (Kp 2, its integral Ki 0.5/s²). Pure rotation about the IMU: nothing translates.
 // It returns the worst |P| and paddle |ΔPB[1]| from where the tilt began,
 // and whether the badge rests at the end.
 func gridTilt(t testing.TB, o tiltNoise, q0 quat, axis [3]float64, ang, T float64, rnd lcg) (worstP, worstPB float64, still bool) {
 	n := newNav(t, DefaultConfig())
-	f := ahrs.NewMahony(ahrs.WithKP(2), ahrs.WithKI(0))
+	f := newMahony(2, 0.5)
 	var in mat.Matrix3x3
 	gb := [3]float64{o.gyroBias, -o.gyroBias / 2, o.gyroBias * 0.75}
 	const settle = 10.0
 	prev := 0.0
 	var p0, pb0 [3]float32
 	for i := range int((settle + 2*T + 3) * rate) {
-		if i == int(5*rate) {
-			f.GainI = 0.005
-		}
 		tt := float64(i)/rate - settle
 		var a float64
 		switch {
@@ -243,8 +239,8 @@ func gridTilt(t testing.TB, o tiltNoise, q0 quat, axis [3]float64, ang, T float6
 			in[1][k] = float32(axis[k]*w + gb[k] + o.gyroSD*gauss(&rnd))
 		}
 		in[0] = v32(fs)
-		f.Update(1/rate, &in)
-		n.Update(1/rate, [4]float32(f.Output()), in[0], in[1])
+		_ = f.Update(1/rate, in[0], in[1])
+		n.Update(1/rate, f.Attitude(), in[0], in[1])
 		if i == int(settle*rate) {
 			p0, pb0 = n.P, n.PB
 		}
@@ -309,7 +305,7 @@ func TestTiltOnlyGivesNoTranslation(t *testing.T) {
 // shown when the stroke ends, and whether it rests.
 func wobbleStroke(t *testing.T, d, T, amp float64, rnd lcg) (got, live float64, still bool) {
 	n := newNav(t, DefaultConfig())
-	f := ahrs.NewMahony(ahrs.WithKP(2), ahrs.WithKI(0))
+	f := newMahony(2, 0)
 	var in mat.Matrix3x3
 	q := axisAngle([3]float64{1, 0, 0}, math.Pi/2)
 	ab, gb := [3]float64{0.04, -0.06, 0.05}, [3]float64{0.02, -0.01, 0.015}
@@ -336,8 +332,15 @@ func wobbleStroke(t *testing.T, d, T, amp float64, rnd lcg) (got, live float64, 
 			in[1][k] = float32(ax[k]*w + gb[k] + rnd.next(gyroNoise))
 		}
 		in[0] = v32(fs)
-		f.Update(1/rate, &in)
-		n.Update(1/rate, [4]float32(f.Output()), in[0], in[1])
+		// the startup calibration takes the gyro's bias out, as on the badge:
+		// the filter and the Nav see the corrected rate. (Raw, the bias put the
+		// levelled filter through a 1.5 s transient to its bias/Kp tilt, and
+		// the Nav's first rest, 0.8 s in, learned a bias 0.002 m/s² off.)
+		for k := range 3 {
+			in[1][k] -= float32(gb[k])
+		}
+		_ = f.Update(1/rate, in[0], in[1])
+		n.Update(1/rate, f.Attitude(), in[0], in[1])
 	}
 	return float64(n.P[2] - p0), live, n.Still
 }
@@ -499,7 +502,7 @@ func stroke(s, T, d float64) (z, v, a float64) {
 // and where the badge ends.
 func pong(t *testing.T, seed lcg) (worstD, worstV float64, end [3]float32, still bool) {
 	n := newNav(t, DefaultConfig())
-	f := ahrs.NewMahony(ahrs.WithKP(2), ahrs.WithKI(0))
+	f := newMahony(2, 0)
 	var in mat.Matrix3x3
 	q := axisAngle([3]float64{1, 0, 0}, math.Pi/2) // IMU +Y → world +Z
 	bias := [3]float64{0.04, -0.06, 0.05}
@@ -540,8 +543,8 @@ func pong(t *testing.T, seed lcg) (worstD, worstV float64, end [3]float32, still
 				z0 = d
 			}
 		}
-		f.Update(1/rate, &in)
-		n.Update(1/rate, [4]float32(f.Output()), in[0], in[1])
+		_ = f.Update(1/rate, in[0], in[1])
+		n.Update(1/rate, f.Attitude(), in[0], in[1])
 		if s >= 0 {
 			worstD = max(worstD, math.Abs((float64(n.P[2])-p0)-(z-z0)))
 			worstV = max(worstV, math.Abs(float64(n.V[2])-v))
@@ -577,7 +580,7 @@ func TestVerticalMovesTrackedForPong(t *testing.T) {
 // how far up the Nav moved over the stroke and whether it ends at rest.
 func upStroke(t *testing.T, d, T, sd float64, ab, gb [3]float64, rnd lcg) (float64, bool) {
 	n := newNav(t, DefaultConfig())
-	f := ahrs.NewMahony(ahrs.WithKP(2), ahrs.WithKI(0))
+	f := newMahony(2, 0)
 	var in mat.Matrix3x3
 	q := axisAngle([3]float64{1, 0, 0}, math.Pi/2) // IMU +Y → world +Z
 	const settle = 10.0
@@ -597,8 +600,8 @@ func upStroke(t *testing.T, d, T, sd float64, ab, gb [3]float64, rnd lcg) (float
 			in[1][k] = float32(gb[k] + rnd.next(gyroNoise))
 		}
 		in[0] = v32(fs)
-		f.Update(1/rate, &in)
-		n.Update(1/rate, [4]float32(f.Output()), in[0], in[1])
+		_ = f.Update(1/rate, in[0], in[1])
+		n.Update(1/rate, f.Attitude(), in[0], in[1])
 	}
 	return float64(n.P[2] - p0), n.Still
 }
@@ -651,7 +654,7 @@ func TestPowerOnWhileTheFilterSettles(t *testing.T) {
 	up := axisAngle([3]float64{1, 0, 0}, math.Pi/2)
 	for _, t0 := range []float64{2, 3, 5} {
 		n := newNav(t, DefaultConfig())
-		f := ahrs.NewMahony(ahrs.WithKP(2), ahrs.WithKI(0))
+		f := newMahony(2, 0)
 		var in mat.Matrix3x3
 		rnd := lcg(7)
 		ab := [3]float64{0.04, -0.06, 0.05}
@@ -677,8 +680,8 @@ func TestPowerOnWhileTheFilterSettles(t *testing.T) {
 			}
 			in[0] = v32(fs)
 			in[1] = [3]float32{0, 0, float32(w + rnd.next(gyroNoise))}
-			f.Update(1/rate, &in)
-			n.Update(1/rate, [4]float32(f.Output()), in[0], in[1])
+			_ = f.Update(1/rate, in[0], in[1])
+			n.Update(1/rate, f.Attitude(), in[0], in[1])
 			if i == int(t0*rate) {
 				p0 = n.P
 			}
@@ -793,12 +796,12 @@ func TestStrokeRightAfterATurn(t *testing.T) {
 }
 
 // noisy is the badge held upright, modelled as: an MPU6050's
-// noise and offsets (tiltNoise), the badge's Mahony filter (KP 2, its
-// integral term 0.005 from 5 s), 10 s at rest first. step turns the badge
+// noise and offsets (tiltNoise), the badge's Mahony filter (Kp 2, its
+// integral Ki 0.5/s²), 10 s at rest first. step turns the badge
 // by the body rate w and moves it by the world acceleration a.
 type noisy struct {
 	n     Nav
-	f     *ahrs.MahonyAHRS
+	f     *mahony.Filter
 	in    mat.Matrix3x3
 	o     tiltNoise
 	gb    [3]float64
@@ -809,16 +812,13 @@ type noisy struct {
 }
 
 func newNoisy(t testing.TB, o tiltNoise, seed lcg) *noisy {
-	r := &noisy{n: newNav(t, DefaultConfig()), f: ahrs.NewMahony(ahrs.WithKP(2), ahrs.WithKI(0)), o: o,
+	r := &noisy{n: newNav(t, DefaultConfig()), f: newMahony(2, 0.5), o: o,
 		gb: [3]float64{o.gyroBias, -o.gyroBias / 2, o.gyroBias * 0.75}, q: axisAngle([3]float64{1, 0, 0}, math.Pi/2), rnd: seed}
 	r.hold(10)
 	return r
 }
 
 func (r *noisy) step(w, a [3]float64) {
-	if r.i == int(5*rate) {
-		r.f.GainI = 0.005
-	}
 	r.i++
 	if wn := math.Sqrt(w[0]*w[0] + w[1]*w[1] + w[2]*w[2]); wn > 0 {
 		r.q = r.q.mul(axisAngle(w, wn/rate))
@@ -829,9 +829,9 @@ func (r *noisy) step(w, a [3]float64) {
 		r.in[1][k] = float32(w[k] + r.gb[k] + r.o.gyroSD*gauss(&r.rnd))
 	}
 	r.in[0] = v32(fs)
-	r.f.Update(1/rate, &r.in)
+	_ = r.f.Update(1/rate, r.in[0], r.in[1])
 	was := r.n.Still
-	r.n.Update(1/rate, [4]float32(r.f.Output()), r.in[0], r.in[1])
+	r.n.Update(1/rate, r.f.Attitude(), r.in[0], r.in[1])
 	if was && !r.n.Still {
 		r.wakes++
 	}
@@ -1530,4 +1530,14 @@ func BenchmarkUpdate(b *testing.B) {
 	for range b.N {
 		n.Update(0.01, q, f, w)
 	}
+}
+
+// newMahony is the badge's attitude filter, the Mahony brick, with gains kp
+// and ki (1/s, 1/s²).
+func newMahony(kp, ki float32) *mahony.Filter {
+	f, err := mahony.New(mahony.Config{Kp: kp, Ki: ki})
+	if err != nil {
+		panic(err)
+	}
+	return &f
 }

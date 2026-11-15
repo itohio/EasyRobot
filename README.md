@@ -8,7 +8,7 @@ Module: `github.com/itohio/EasyRobot` (Go 1.25).
 
 | Path | What is there |
 |---|---|
-| `x/math` | numerics and algorithms: `vec`, `mat`, `tensor`; `filter` (Mahony AHRS, Kalman and extended Kalman, FIR, IIR, moving average, median, Gaussian, Savitzky–Golay, PLL, AGC, SLAM); `nav`; `control` (PID); `dsp`; `interpolation`; `graph` (search and planning); `grid` (occupancy maps); `fluid` (a 2D FLIP liquid); `swarm` (boids); `physics`; `gps` (geodesy); `colorscience`; `learn`; `nn`; `protocol`; `shape`; `primitive` (kernels) |
+| `x/math` | numerics and algorithms: `vec`, `mat`, `tensor`; `filter` (Madgwick AHRS, Kalman and extended Kalman, FIR, IIR, moving average, median, Gaussian, Savitzky–Golay, PLL, AGC, SLAM); `nav` (the Mahony attitude filter, an error-state Kalman motion estimator, pedestrian and strapdown dead reckoning, calibration); `control` (PID); `dsp`; `interpolation`; `graph` (search and planning); `grid` (occupancy maps); `fluid` (a 2D FLIP liquid); `swarm` (boids); `physics`; `gps` (geodesy); `colorscience`; `learn`; `nn`; `protocol`; `shape`; `primitive` (kernels) |
 | `x/math/nav` | motion from an IMU: `strapdown` (dead reckoning with rest detection), `eskf` (error-state Kalman filter: attitude, velocity, position and both biases estimated jointly), `calib` (calibration at rest and from several poses), `pdr` (step detection) |
 | `x/devices` | sensor and actuator drivers over a small bus abstraction (I2C, SPI, serial, pins): IMU (`mpu6050`), optical flow (`adns3080`), time of flight (`vl53l0x`), spectral (`as734x`, `cr30`), lidar, GPS (`nmea`), RC link (`crsf`), servos and PWM (`servo`, `pca9685`), I/O expanders and muxes (`pcf8574`, `tca9548a`), motors, encoders |
 | `x/vision` | detection (including int8 YOLOX decoding), feature extraction and matching, stereo, visual odometry, transforms; mostly on OpenCV through GoCV |
@@ -46,7 +46,7 @@ go get github.com/itohio/EasyRobot@latest
 
 ```go
 import (
-	"github.com/itohio/EasyRobot/x/math/filter/ahrs"
+	"github.com/itohio/EasyRobot/x/math/nav/mahony"
 	"github.com/itohio/EasyRobot/x/math/nav/strapdown"
 )
 ```

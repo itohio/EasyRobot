@@ -17,7 +17,7 @@ test_result: fail
 |---|---|---|---|
 | `filter` | 21 | – | interfaces `Resetter`, `Updater[T]`, `Filter[T,K]`, `Processor[T]` (filter.go:3-21) |
 | `agc` | 58 | none | used by `dsp/modulation/{mpsk,qam}` demodulators |
-| `ahrs` | 596 | 525 | Madgwick, Mahony, functional options |
+| `ahrs` | 596 | 525 | Madgwick, Euler, functional options (the Mahony filter is `x/math/nav/mahony`) |
 | `ekalman` | 505 | 347 | EKF, numerical Jacobians |
 | `fir` | 259 | 133 | used by `dsp/modulation/internal/fir.go` |
 | `gaussian` | 139 | none | |
@@ -37,14 +37,13 @@ test_result: fail
 
 ## Algorithms
 
-<!-- vault:algorithms h=1d160f0d72d9 -->
+<!-- vault:algorithms h=0da409143584 -->
 
-Counts: 3 tested · 2 implemented · 11 partial · 1 stub · 0 unverified (17 algorithms)
+Counts: 2 tested · 2 implemented · 11 partial · 1 stub · 0 unverified (16 algorithms)
 
 | Algorithm | Status | Tests | Summary |
 |---|---|---|---|
 | [[madgwick-ahrs]] | tested | pass | Matches reference equations, converges |
-| [[mahony-ahrs]] | tested | pass | 6-DOF and 9-DOF converge to a static tilt; Euler(q) gives roll/pitch/yaw of the [w,x,y,z] output |
 | [[moving-average-filters]] | tested | pass | `Filter` = running-sum SMA over a ring buffer (averages over the samples seen so far until the… |
 | [[fir-windowed-sinc-lowpass-highpass]] | implemented | pass | Correct by probe |
 | [[iir-rbj-biquad-bandpass-bandstop]] | implemented | pass | Correct by probe |

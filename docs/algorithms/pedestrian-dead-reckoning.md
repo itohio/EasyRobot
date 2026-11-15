@@ -20,7 +20,7 @@ evidence: "go test -race ./x/math/nav/pdr pass (13 tests incl. a badge-mounted w
 
 **Inputs → outputs:**
 - `Detector.Update(a [3]float32 m/s²) bool` once per sample → true on the sample that completes a step. Any orientation: only |a| is used. NaN/Inf samples are ignored; zero samples before the sensor wakes do not seed the filter.
-- `Heading(q [4]float32, axis [3]float32) (rad, ok)`: q is the filter's `[w,x,y,z]` (sensor → world, z up, e.g. `[4]float32(mahony.Output())`). axis is the body axis that points where the wearer walks, in sensor coordinates. It returns that axis's horizontal direction, counter-clockwise from the world's x. `ok` is false within about 6° of vertical.
+- `Heading(q [4]float32, axis [3]float32) (rad, ok)`: q is the filter's `[w,x,y,z]` (sensor → world, z up, e.g. `mahony.Attitude()`). axis is the body axis that points where the wearer walks, in sensor coordinates. It returns that axis's horizontal direction, counter-clockwise from the world's x. `ok` is false within about 6° of vertical.
 - `Track.Step(heading)`: x along heading 0, y along +π/2, metres.
 
 **Badge mounting** (decided): screen right = IMU −X, up = +Y, out = −Z; the wearer walks along the screen-out axis, so `Heading(q, [0, 0, −1])`. The yaw of `ahrs.Euler` is the heading of the sensor's x axis and is undefined when that axis is near vertical. With the badge on its side the IMU's x axis is vertical, and Euler yaw stops being a direction. `Heading` works for any mounting.

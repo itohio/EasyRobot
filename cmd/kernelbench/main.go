@@ -13,11 +13,10 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/itohio/EasyRobot/x/math/filter/ahrs"
 	"github.com/itohio/EasyRobot/x/math/fluid/flip"
-	"github.com/itohio/EasyRobot/x/math/mat"
 	"github.com/itohio/EasyRobot/x/math/nav/calib"
 	"github.com/itohio/EasyRobot/x/math/nav/eskf"
+	"github.com/itohio/EasyRobot/x/math/nav/mahony"
 	"github.com/itohio/EasyRobot/x/math/nav/pdr"
 	"github.com/itohio/EasyRobot/x/math/nav/strapdown"
 	"github.com/itohio/EasyRobot/x/math/swarm/boids"
@@ -29,7 +28,7 @@ import (
 const samples = 100
 
 var acc, gyro [samples][3]float32
-var quat [samples][4]float32 // Mahony's attitude for each sample
+var quat [samples][4]float32 // the Mahony brick's attitude (Kp 1) for each sample
 
 func init() {
 	x := uint32(2463534242)
@@ -49,12 +48,13 @@ func init() {
 		acc[i] = [3]float32{noise(0.06), 9.81*float32(math.Sin(float64(tilt))) + push + noise(0.06), 9.81*float32(math.Cos(float64(tilt))) + noise(0.06)}
 		gyro[i] = [3]float32{0.4 + noise(0.004), noise(0.004), 0.05 + noise(0.004)}
 	}
-	m := ahrs.NewMahony(ahrs.WithKP(1), ahrs.WithKI(0), ahrs.WithMagnetometer(false))
-	var in mat.Matrix3x3
+	var m mahony.Filter
+	if err := mahony.Init(&m, mahony.Config{Kp: 1}); err != nil {
+		panic(err)
+	}
 	for i := range samples {
-		in = mat.Matrix3x3{acc[i], gyro[i], {}}
-		m.Update(0.01, &in)
-		quat[i] = [4]float32(m.Output())
+		_ = m.Update(0.01, acc[i], gyro[i])
+		quat[i] = m.Attitude()
 	}
 }
 
@@ -91,20 +91,27 @@ func report(name string, calls int, us int64, alloc uint64, h fnv) {
 	println(name, ":", us*1000/int64(calls), "ns/call over", calls, "calls, heap", alloc, "B, fnv", uint32(h))
 }
 
+// mahonyFilter is the Mahony brick's Filter, initialised in place.
+var mahonyFilter mahony.Filter
+
+// benchMahony times the Mahony brick (x/math/nav/mahony), the badge's
+// gain, on the stream.
 func benchMahony(calls int) {
-	m := ahrs.NewMahony(ahrs.WithKP(1), ahrs.WithKI(0), ahrs.WithMagnetometer(false))
-	var in mat.Matrix3x3
+	m := &mahonyFilter
+	if err := mahony.Init(m, mahony.DefaultConfig()); err != nil {
+		println(err.Error())
+		return
+	}
 	a0, t0 := heap(), now()
 	for c := range calls {
 		i := c % samples
-		in = mat.Matrix3x3{acc[i], gyro[i], {}}
-		m.Update(0.01, &in)
+		_ = m.Update(0.01, acc[i], gyro[i])
 	}
 	t1, a1 := now(), heap()
 	h := newFNV()
-	q := m.Output()
+	q := m.Attitude()
 	h.f32(q[0], q[1], q[2], q[3])
-	report("ahrs.Mahony.Update(6-axis)", calls, t1-t0, a1-a0, h)
+	report("mahony.Filter.Update", calls, t1-t0, a1-a0, h)
 }
 
 func benchStrapdown(calls int) {
@@ -142,11 +149,15 @@ func init() {
 	}
 }
 
-// benchESKF times eskf.Filter.Update after its first rest, on the moving
-// stream or the still one.
+// filter is the benchmark's eskf.Filter, initialised in place (Init): no
+// Filter on the heap or copied at start.
+var filter eskf.Filter
+
+// benchESKF times eskf.Filter.Update after 2 s held, on the moving stream
+// or the still one.
 func benchESKF(calls int, moving bool) {
-	f, err := eskf.New(eskf.DefaultConfig())
-	if err != nil {
+	f := &filter
+	if err := eskf.Init(f, eskf.DefaultConfig()); err != nil {
 		println(err.Error())
 		return
 	}
@@ -155,7 +166,7 @@ func benchESKF(calls int, moving bool) {
 		println(err.Error())
 		return
 	}
-	for c := range 200 { // the first rest: ready
+	for c := range 200 { // 2 s held
 		f.Update(0.01, stillAcc[c%samples], stillGyro[c%samples])
 	}
 	a, g, name := &stillAcc, &stillGyro, "eskf.Filter.Update(at rest)"

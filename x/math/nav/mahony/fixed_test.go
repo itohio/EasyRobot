@@ -1,12 +1,10 @@
 //go:build fixedmotion
 
-package ahrs
+package mahony
 
 import (
 	"math"
 	"testing"
-
-	"github.com/itohio/EasyRobot/x/math/mat"
 )
 
 // angle is the rotation between two attitudes, radians.
@@ -63,32 +61,34 @@ func scenes() []imuScene {
 		}
 		out = append(out, imuScene{"hand", kp, 0, 6000, hand}, imuScene{"zero-accel", kp, 0, 1000, freefall})
 	}
-	out = append(out, imuScene{"hand-ki", 2, 0.1, 6000, hand}, imuScene{"tilt-ki", 0.5, 0.05, 6000, tilt(45)})
-	// Ki 0.005 (the strapdown tests' setting) from
+	out = append(out, imuScene{"hand-ki", 2, 10, 6000, hand}, imuScene{"tilt-ki", 0.5, 5, 6000, tilt(45)})
+	// Ki 0.5/s² (0.005 per sample at 100 Hz, the strapdown tests' setting) from
 	// the start, with a large initial error: the integral grows large, so a
 	// gain off by a fraction of a percent shows (in Q16 it did, by 2.5e-4 rad)
 	for _, kp := range []float32{2, 10} {
 		for _, deg := range []float64{90, 180} {
-			out = append(out, imuScene{"tilt-ki5m", kp, 0.005, 6000, tilt(deg)})
+			out = append(out, imuScene{"tilt-ki5m", kp, 0.5, 6000, tilt(deg)})
 		}
-		out = append(out, imuScene{"spin-ki5m", kp, 0.005, 3000, spin(6)}, imuScene{"hand-ki5m", kp, 0.005, 6000, hand})
+		out = append(out, imuScene{"spin-ki5m", kp, 0.5, 3000, spin(6)}, imuScene{"hand-ki5m", kp, 0.5, 6000, hand})
 	}
 	return out
 }
 
 // The fixed-point 6-axis update (fixedmotion) follows the float one within
-// 1e-4 rad of attitude at every sample, from power-on through minutes of
-// rest, spins up to 6 rad/s, hand motion, zero accelerometer samples and
-// integral gains (0.005 from a large initial error among them); the badge
-// demo's gains (2 and 10) are among them.
-func TestFixedMahonyFollowsFloat(t *testing.T) {
+// 1e-4 rad of attitude at every sample: rest in several tilts, spins up to
+// 6 rad/s, hand motion, zero accelerometer samples and integral gains (the
+// ahrs filter's per-sample gains times 100 Hz), each from a level first
+// sample, so a large initial error (up to upside down) is among them; the
+// badge's gains (2 and 10).
+func TestFixedFollowsFloat(t *testing.T) {
 	if !fixedPath {
 		t.Fatal("built without the fixed-point path")
 	}
 	const tol = 1e-4
 	for _, sc := range scenes() {
-		fx := NewMahony(WithKP(sc.kp), WithKI(sc.ki), WithMagnetometer(false))
-		fl := NewMahony(WithKP(sc.kp), WithKI(sc.ki), WithMagnetometer(false))
+		fx, fl := newFilter(t, Config{Kp: sc.kp, Ki: sc.ki}), newFilter(t, Config{Kp: sc.kp, Ki: sc.ki})
+		_ = fx.Update(0.01, [3]float32{0, 0, 9.81}, [3]float32{})
+		_ = fl.Update(0.01, [3]float32{0, 0, 9.81}, [3]float32{})
 		x := uint32(2463534242)
 		noise := func(s float32) float32 {
 			x ^= x << 13
@@ -99,11 +99,9 @@ func TestFixedMahonyFollowsFloat(t *testing.T) {
 		worst := 0.0
 		for i := range sc.steps {
 			acc, gyro := sc.sample(i, noise)
-			in := mat.Matrix3x3{acc, gyro, {}}
-			fx.Update(0.01, &in)
-			fl.inputMatrix, fl.SamplePeriod = in, 0.01
-			fl.calculateWOMag()
-			e := angle([4]float32(fx.Output()), [4]float32(fl.q))
+			_ = fx.Update(0.01, acc, gyro)
+			fl.stepFloat(acc, gyro, 0.01) // the float path
+			e := angle(fx.Attitude(), fl.Attitude())
 			worst = max(worst, e)
 			if e > tol {
 				t.Fatalf("%s kp %g ki %g: sample %d, %.3g rad from the float path", sc.name, sc.kp, sc.ki, i, e)
@@ -113,27 +111,20 @@ func TestFixedMahonyFollowsFloat(t *testing.T) {
 	}
 }
 
-func TestFixedMahonyResetForgets(t *testing.T) {
-	m := NewMahony(WithKP(2), WithKI(0), WithMagnetometer(false))
-	in := mat.Matrix3x3{{0, 9.81, 0}, {0, 0, 3}, {}}
+// Init forgets the fixed-point state too: after it a level, still sensor
+// levels at the identity.
+func TestFixedInitForgets(t *testing.T) {
+	f := newFilter(t, Config{Kp: 2})
 	for range 200 {
-		m.Update(0.01, &in)
+		_ = f.Update(0.01, [3]float32{0, 9.81, 0}, [3]float32{0, 0, 3})
 	}
-	m.Reset()
-	if q := m.Output(); q != [4]float32{1, 0, 0, 0} {
-		t.Fatalf("after Reset: %v", q)
+	if err := Init(f, Config{Kp: 2}); err != nil {
+		t.Fatal(err)
 	}
-	in = mat.Matrix3x3{{0, 0, 9.81}, {}, {}}
-	m.Update(0.01, &in)
-	if e := angle([4]float32(m.Output()), [4]float32{1, 0, 0, 0}); e > 1e-6 {
-		t.Fatalf("level and still after Reset: %.3g rad from identity", e)
+	for range 2 {
+		_ = f.Update(0.01, [3]float32{0, 0, 9.81}, [3]float32{})
 	}
-}
-
-func TestFixedMahonyDoesNotAllocate(t *testing.T) {
-	m := NewMahony(WithKP(2), WithKI(0), WithMagnetometer(false))
-	in := mat.Matrix3x3{{0.1, 0.4, 9.7}, {0.4, 0.01, 0.05}, {}}
-	if n := testing.AllocsPerRun(1000, func() { m.Update(0.01, &in) }); n != 0 {
-		t.Fatalf("%g allocations per Update", n)
+	if e := angle(f.Attitude(), [4]float32{1, 0, 0, 0}); e > 1e-6 {
+		t.Fatalf("level and still after Init: %.3g rad from identity", e)
 	}
 }

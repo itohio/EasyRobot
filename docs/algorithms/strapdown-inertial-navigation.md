@@ -45,7 +45,7 @@ Until its first rest the attitude is an attitude filter's; from then on the Nav 
 
 **Inputs → outputs:** `New(Config)` returns a `Nav` at the origin. `Update(dt, q, f, w)` takes:
 
-- `q`: a filter's attitude, `[w,x,y,z]`, sensor to world, z up (e.g. `ahrs.MahonyAHRS.Output()`); used until the first rest, and again if a stale bias sends the Nav back to it;
+- `q`: a filter's attitude, `[w,x,y,z]`, sensor to world, z up (e.g. `mahony.Filter.Attitude()`); used until the first rest, and again if a stale bias sends the Nav back to it;
 - `f`: the specific force, sensor frame, m/s², +g up at rest;
 - `w`: the gyro rate, rad/s.
 

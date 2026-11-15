@@ -3,7 +3,7 @@
 // direction from an attitude filter, and Track advances a 2D position by one
 // step length along that heading for each step.
 //
-// Heading takes the filter's orientation (e.g. mahony.Output(), [w,x,y,z],
+// Heading takes the filter's orientation (e.g. mahony.Attitude(), [w,x,y,z],
 // sensor to world, z up) and the body axis that points where the wearer
 // walks, in sensor coordinates, and returns that axis's direction projected
 // onto the horizontal plane. It works for any mounting (a badge hangs with

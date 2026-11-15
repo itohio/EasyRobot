@@ -5,8 +5,8 @@ import (
 	"math"
 	"testing"
 
-	"github.com/itohio/EasyRobot/x/math/filter/ahrs"
 	"github.com/itohio/EasyRobot/x/math/mat"
+	"github.com/itohio/EasyRobot/x/math/nav/mahony"
 )
 
 const g = 9.80665
@@ -311,7 +311,7 @@ func TestWalkWithMahonyHeading(t *testing.T) {
 	const rate, L = 100.0, 0.7
 	d := newDetector(t)
 	tr := Track{StepLength: L}
-	f := ahrs.NewMahony(ahrs.WithKP(2), ahrs.WithKI(0))
+	f := newMahony(2, 0)
 	var in mat.Matrix3x3
 	const settle = 10.0 // standing still while the filter finds the badge's tilt
 	phase := 0.0
@@ -332,9 +332,9 @@ func TestWalkWithMahonyHeading(t *testing.T) {
 		}
 		in[0] = [3]float32{0, float32(g + bounce), 0}
 		in[1] = [3]float32{0, float32(yawRate), 0}
-		f.Update(1/rate, &in)
+		_ = f.Update(1/rate, in[0], in[1])
 		if d.Update(in[0]) {
-			q := f.Output()
+			q := f.Attitude()
 			h, ok := Heading([4]float32(q), [3]float32{0, 0, -1})
 			if !ok {
 				t.Fatalf("no heading at t = %.2f s", tt)
@@ -386,4 +386,14 @@ func BenchmarkDetectorUpdate(b *testing.B) {
 		d.Update(a)
 		i++
 	}
+}
+
+// newMahony is the badge's attitude filter, the Mahony brick, with gains kp
+// and ki (1/s, 1/s²).
+func newMahony(kp, ki float32) *mahony.Filter {
+	f, err := mahony.New(mahony.Config{Kp: kp, Ki: ki})
+	if err != nil {
+		panic(err)
+	}
+	return &f
 }

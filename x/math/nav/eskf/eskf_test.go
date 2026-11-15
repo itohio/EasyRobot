@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/itohio/EasyRobot/x/math/nav/calib"
+	"github.com/itohio/EasyRobot/x/math/nav/estimator"
+	"github.com/itohio/EasyRobot/x/math/nav/estimator/estimatortest"
 )
 
 // quat is a float64 quaternion [w,x,y,z] for the truth.
@@ -86,8 +88,8 @@ func newHand(seed uint64, tA, tG float64) *hand {
 	return h
 }
 
-// stillHand is a steady hand (the capture's 20 s held still).
-func stillHand(seed uint64) *hand { return newHand(seed, 0.031, 0.016) }
+// steadyHand is a steady hand (the capture's 20 s held still).
+func steadyHand(seed uint64) *hand { return newHand(seed, 0.031, 0.016) }
 
 // calibrated: a multi-pose calibration's fit applied to the samples (no
 // offset left), and the
@@ -147,7 +149,8 @@ func tiltErr(f *Filter, q quat) float64 {
 	fq := quat{float64(f.Q[0]), float64(f.Q[1]), float64(f.Q[2]), float64(f.Q[3])}
 	a := fq.conj().rot([3]float64{0, 0, 1})
 	b := q.conj().rot([3]float64{0, 0, 1})
-	return math.Acos(math.Min(1, a[0]*b[0]+a[1]*b[1]+a[2]*b[2])) * 180 / math.Pi
+	c := [3]float64{a[1]*b[2] - a[2]*b[1], a[2]*b[0] - a[0]*b[2], a[0]*b[1] - a[1]*b[0]}
+	return math.Atan2(math.Sqrt(c[0]*c[0]+c[1]*c[1]+c[2]*c[2]), a[0]*b[0]+a[1]*b[1]+a[2]*b[2]) * 180 / math.Pi
 }
 
 func dist(a, b [3]float32) float64 {
@@ -171,16 +174,57 @@ func quintic(t, A, T float64) (x, v float64) {
 	return A * (10*u*u*u - 15*u*u*u*u + 6*u*u*u*u*u), A / T * (30*u*u - 60*u*u*u + 30*u*u*u*u)
 }
 
+// exact: the force of attitude q with world acceleration a, the rate w:
+// no noise, no bias.
+func exact(q quat, a, w [3]float64) (acc, gyro [3]float32) {
+	f := q.conj().rot([3]float64{a[0], a[1], a[2] + StandardGravity})
+	for i := range 3 {
+		acc[i], gyro[i] = float32(f[i]), float32(w[i])
+	}
+	return
+}
+
+// shake feeds s seconds of vigorous shaking: the hand swings the body
+// through 3–8 Hz in changing directions, up to ~3 g and ~10 rad/s, and
+// the accelerometer clips at its full scale (±2 g) as a real one does.
+// update takes each sample; each, if not nil, runs after every sample.
+func shake(h *hand, update func(acc, gyro [3]float32), q quat, s float64, seed uint64, each func()) quat {
+	r := rng(seed)
+	c := DefaultConfig()
+	var amp, w [3]float64
+	var fr [3]float64
+	for k := range 3 {
+		amp[k], w[k], fr[k] = 12+8*r.gauss(), 4*r.gauss(), 3+5*math.Abs(r.gauss())/2
+	}
+	for i := range int(s * rate) {
+		tt := float64(i) / rate
+		var a, om [3]float64
+		for k := range 3 {
+			a[k] = amp[k] * math.Sin(2*math.Pi*fr[k]*tt+float64(k))
+			om[k] = w[k] * math.Cos(2*math.Pi*fr[(k+1)%3]*tt)
+		}
+		q = q.mul(axisAngle(om, math.Sqrt(om[0]*om[0]+om[1]*om[1]+om[2]*om[2])/rate))
+		acc, gyro, _ := h.sample(q, a, om)
+		for k := range 3 {
+			acc[k] = min(max(acc[k], -c.AccelRange), c.AccelRange)
+		}
+		update(acc, gyro)
+		if each != nil {
+			each()
+		}
+	}
+	return q
+}
+
 func TestNewRejectsConfig(t *testing.T) {
 	for name, mod := range map[string]func(*Config){
-		"G 0":              func(c *Config) { c.G = 0 },
-		"noise NaN":        func(c *Config) { c.AccelNoise = float32(math.NaN()) },
-		"gate negative":    func(c *Config) { c.Gate = -1 },
-		"TiltEvery 0":      func(c *Config) { c.TiltEvery = 0 },
-		"StillTime +Inf":   func(c *Config) { c.StillTime = float32(math.Inf(1)) },
-		"RestTime 0":       func(c *Config) { c.RestTime = 0 },
-		"StillAccel zero":  func(c *Config) { c.StillAccel = 0 },
-		"bias walk absent": func(c *Config) { c.GyroBiasWalk = 0 },
+		"G 0":                   func(c *Config) { c.Gravity = 0 },
+		"noise NaN":             func(c *Config) { c.AccelNoise = float32(math.NaN()) },
+		"TiltEvery 0":           func(c *Config) { c.TiltEvery = 0 },
+		"TiltNoise +Inf":        func(c *Config) { c.TiltNoise = float32(math.Inf(1)) },
+		"range negative":        func(c *Config) { c.GyroRange = -1 },
+		"bias walk absent":      func(c *Config) { c.GyroBiasWalk = 0 },
+		"LinAccelTime negative": func(c *Config) { c.LinAccelTime = -1 },
 	} {
 		c := DefaultConfig()
 		mod(&c)
@@ -190,480 +234,154 @@ func TestNewRejectsConfig(t *testing.T) {
 	}
 }
 
-// Until its first rest the filter holds still (Ready false, nothing moves);
-// the first rest sets the tilt from the force, in any pose.
-func TestFirstRestSetsTheTilt(t *testing.T) {
-	for _, pose := range []quat{upright, quat{1, 0, 0, 0}, upright.mul(axisAngle([3]float64{0, 0, 1}, 0.7)), axisAngle([3]float64{1, 1, 0}, 2.5)} {
-		h := stillHand(3)
+// The filter passes the motion estimator's conformance suite, set up as
+// deployed: a calibration's prior (the gyro's bias known to 2 mrad/s).
+// TranslationResponse runs one noise draw: its 3 cm strokes over 2 s pass
+// with 15-20 % error, and across draws they are off by 0-41 % (a known
+// limit, in the filter's note).
+func TestConformance(t *testing.T) {
+	estimatortest.Motion(t, func(t *testing.T) estimator.Motion {
 		f := newFilter(t)
-		calibrated(h, &f)
-		a, g, _ := h.sample(pose, [3]float64{}, [3]float64{})
-		f.Update(1/rate, a, g)
-		if f.Ready || f.P != [3]float32{} || f.V != [3]float32{} {
-			t.Fatalf("pose %v: ready or moving after one sample", pose)
+		fit := calib.Fit{RMS: 0.01, Scale: [3]float32{1, 1, 1}}
+		f.Prior(&fit, 0)
+		return &f
+	})
+}
+
+// Init sets a filter in place without allocating: a used filter (a prior,
+// another range, a minute of samples) initialised again equals a fresh one,
+// bit for bit; an invalid configuration is refused and leaves it as it was.
+func TestInit(t *testing.T) {
+	fresh := newFilter(t)
+	h := steadyHand(2)
+	f := newFilter(t)
+	calibrated(h, &f)
+	if err := f.SetRange(8*StandardGravity, 4); err != nil {
+		t.Fatal(err)
+	}
+	hold(h, &f, upright, 60)
+	used := f
+	bad := DefaultConfig()
+	bad.TiltEvery = 0
+	if err := Init(&f, bad); !errors.Is(err, ErrConfig) || f != used {
+		t.Errorf("Init with an invalid configuration: %v, filter changed %v (want ErrConfig, false)", err, f != used)
+	}
+	if err := Init(&f, DefaultConfig()); err != nil || f != fresh {
+		t.Errorf("Init of a used filter: %v, equals a fresh one %v (want nil, true)", err, f == fresh)
+	}
+	c := DefaultConfig()
+	if n := testing.AllocsPerRun(100, func() { _ = Init(&f, c) }); n != 0 {
+		t.Errorf("Init allocates %v times per call", n)
+	}
+}
+
+// The first accepted sample sets roll and pitch from its force, in any
+// pose: with an exact sample to 0.01°; a steady hand's tremor and noise,
+// the tilt updates averaging them, is within 0.5° after 5 s.
+func TestFirstSampleSetsTheTilt(t *testing.T) {
+	for _, pose := range []quat{upright, {1, 0, 0, 0}, upright.mul(axisAngle([3]float64{0, 0, 1}, 0.7)), axisAngle([3]float64{1, 1, 0}, 2.5)} {
+		f := newFilter(t)
+		if f.Ready() {
+			t.Fatal("Ready before any sample")
 		}
+		a, g := exact(pose, [3]float64{}, [3]float64{})
+		f.Update(1/rate, a, g)
+		if !f.Ready() || tiltErr(&f, pose) > 0.01 {
+			t.Errorf("pose %v, exact: Ready %v, tilt %.3f° (want true, ≤ 0.01°)", pose, f.Ready(), tiltErr(&f, pose))
+		}
+		h := steadyHand(3)
+		f = newFilter(t)
+		calibrated(h, &f)
 		var qt quat
-		for range int(2 * rate) {
+		for range int(5 * rate) {
 			a, g, qt = h.sample(pose, [3]float64{}, [3]float64{})
 			f.Update(1/rate, a, g)
 		}
-		if !f.Ready {
-			t.Fatalf("pose %v: not ready after 2 s in a steady hand", pose)
-		}
-		if e := tiltErr(&f, qt); e > 0.2 {
-			t.Errorf("pose %v: tilt %.2f° off the hand's true attitude after the first rest (want ≤ 0.2°)", pose, e)
+		if e := tiltErr(&f, qt); e > 0.5 {
+			t.Errorf("pose %v, a hand: tilt %.2f° after 5 s (want ≤ 0.5°)", pose, e)
 		}
 	}
 }
 
-// At rest the gyro's bias is what it reads: learned on a desk to 0.5
-// mrad/s in 5 s; in a steady hand, whose tremor is real rotation with about
-// a second of correlation, to what 5 s of it can average down to (0.016
-// rad/s · √(2·1 s / 5 s) ≈ 0.01).
-func TestRestLearnsTheGyroBias(t *testing.T) {
-	for _, c := range []struct {
-		name   string
-		tA, tG float64
-		within float64
-	}{{"desk", 0, 0, 0.0005}, {"steady hand", 0.031, 0.016, 0.01}} {
-		h := newHand(5, c.tA, c.tG)
-		f := newFilter(t)
-		hold(h, &f, upright, 5)
-		var e float64
-		for i := range 3 {
-			e = math.Max(e, math.Abs(float64(f.GyroBias[i])-h.gb[i]))
-		}
-		if e > c.within {
-			t.Errorf("%s: gyro bias %.4f rad/s off after 5 s at rest (want ≤ %.4f)", c.name, e, c.within)
-		}
-	}
-}
-
-// A gyro's bias wanders (0.7 mrad/s between still stretches in a hand-held
-// capture; an
-// MPU6050's moves by about 20 mrad/s, 1°/s, as it warms): once learned, a
-// real change is still followed, though the zero rate's gate (which keeps
-// slow turns out) refuses it at first. On a desk, after the bias has
-// settled, it steps by 20 mrad/s; within 5 s at rest the filter has it to
-// 0.5 mrad/s.
-func TestRestFollowsABiasChange(t *testing.T) {
-	for axis := range 3 {
-		h := newHand(19, 0, 0)
-		f := newFilter(t)
-		hold(h, &f, upright, 10)
-		h.gb[axis] += 0.02
-		hold(h, &f, upright, 5)
-		if e := math.Abs(float64(f.GyroBias[axis]) - h.gb[axis]); e > 0.0005 {
-			t.Errorf("axis %d: the bias still %.4f rad/s off 5 s after a 20 mrad/s step (want ≤ 0.0005)", axis, e)
-		}
-	}
-}
-
-// Slow rotation drifting to one side (a rest test against a moving bias
-// learns a slow turn as bias): a slow turn in a steady hand, calibrated,
-// is a turn. The gyro bias doesn't
-// absorb it (a rest test against a moving bias did), the tilt follows, and
-// the position stays put through the turn and 10 s held after it.
-func TestSlowTurnIsATurn(t *testing.T) {
-	for _, ax := range [][3]float64{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}} {
-		for _, c := range []struct{ A, T float64 }{{20, 2}, {20, 5}, {45, 5}} {
-			h := stillHand(7)
-			f := newFilter(t)
-			calibrated(h, &f)
-			hold(h, &f, upright, 10)
-			p0 := f.P
-			var tilt, moved, bias float64
-			for i := range int((c.T + 10) * rate) {
-				ang, w := quintic(float64(i)/rate, c.A*math.Pi/180, c.T)
-				a, g, qt := h.sample(upright.mul(axisAngle(ax, ang)), [3]float64{}, [3]float64{ax[0] * w, ax[1] * w, ax[2] * w})
-				f.Update(1/rate, a, g)
-				tilt = math.Max(tilt, tiltErr(&f, qt))
-				moved = math.Max(moved, dist(f.P, p0))
-				for k := range 3 {
-					bias = math.Max(bias, math.Abs(float64(f.GyroBias[k])-h.gb[k]))
-				}
-			}
-			if tilt > 0.25 || moved > 0.06 || bias > 0.004 {
-				t.Errorf("%v° / %v s about %v: tilt %.2f°, moved %.1f cm, gyro bias %.4f rad/s off (want ≤ 0.25°, 6 cm, 0.004)", c.A, c.T, ax, tilt, moved*100, bias)
-			}
-		}
-	}
-}
-
-// Uncalibrated (the accelerometer's offsets unseen) a turn leaves a tilt
-// the filter can't tell from an offset, and the world acceleration it
-// leaks keeps the body from looking calm; zero velocity must still come
-// once the body is still, or the speed runs on for good. With an
-// MPU6050's uncalibrated zero-g offsets (0.2–0.3 m/s²), after a 45° turn
-// and 10 s held, the body has stopped and moved at most 1.5 m: the honest
-// uncalibrated drift of a turn, against metres a second once it locks out.
-func TestUncalibratedTurnComesToRest(t *testing.T) {
-	for _, ax := range [][3]float64{{1, 0, 0}, {0, 0, 1}} {
-		for _, tremor := range []bool{false, true} {
-			h := newHand(7, 0, 0)
-			if tremor {
-				h = stillHand(7)
-			}
-			h.off = [3]float64{0.2, -0.3, 0.25}
-			f := newFilter(t)
-			hold(h, &f, upright, 10)
-			p0 := f.P
-			end := upright.mul(axisAngle(ax, math.Pi/4))
-			for i := range int(5 * rate) {
-				ang, w := quintic(float64(i)/rate, math.Pi/4, 5)
-				a, g, _ := h.sample(upright.mul(axisAngle(ax, ang)), [3]float64{}, [3]float64{ax[0] * w, ax[1] * w, ax[2] * w})
-				f.Update(1/rate, a, g)
-			}
-			hold(h, &f, end, 10)
-			speed := math.Sqrt(float64(f.V[0]*f.V[0] + f.V[1]*f.V[1] + f.V[2]*f.V[2]))
-			if moved := dist(f.P, p0); speed > 0.05 || moved > 1.5 {
-				t.Errorf("45° about %v, tremor %v: speed %.3f m/s, moved %.1f cm after 10 s held (want ≤ 0.05, 150 cm)", ax, tremor, speed, moved*100)
-			}
-		}
-	}
-}
-
-// Right after power-on, uncalibrated, the gyro's bias is still uncertain
-// and the zero rate's gate wide: a slow turn begun then (it looks still at
-// its slow start and end) must not be learned as bias. Only a quiet gyro
-// is rest.
-func TestEarlySlowTurnIsNotBias(t *testing.T) {
-	for _, ax := range [][3]float64{{1, 0, 0}, {0, 0, 1}} {
-		h := stillHand(13)
-		f := newFilter(t)
-		for !f.Ready {
-			a, g, _ := h.sample(upright, [3]float64{}, [3]float64{})
-			f.Update(1/rate, a, g)
-		}
-		var bias float64
-		for i := range int(7 * rate) {
-			ang, w := quintic(float64(i)/rate, 20*math.Pi/180, 5)
-			a, g, _ := h.sample(upright.mul(axisAngle(ax, ang)), [3]float64{}, [3]float64{ax[0] * w, ax[1] * w, ax[2] * w})
-			f.Update(1/rate, a, g)
-			for k := range 3 {
-				bias = math.Max(bias, math.Abs(float64(f.GyroBias[k])-h.gb[k]))
-			}
-		}
-		if bias > 0.02 {
-			t.Errorf("20°/5 s about %v right after the first rest: the gyro bias went %.3f rad/s off (want ≤ 0.02; the turn peaks at 0.13)", ax, bias)
-		}
-	}
-}
-
-// Powered on while turning slowly (0.04 rad/s about a horizontal axis: the
-// force looks steady), the filter waits for the turn to end before its
-// first rest sets the tilt; a rest mid-turn would set it 1–2° off.
-func TestFirstRestWaitsForATurnToEnd(t *testing.T) {
-	h := stillHand(17)
-	h.tA, h.tG = 0, 0
+// Nothing pulls the estimate: a body at rest, the
+// samples exact, stays put (60 s: within 5 mm, float rounding), and a body
+// set moving at 0.5 m/s (up: the tilt sees an acceleration along gravity
+// in full) keeps moving, its velocity integrated, never zeroed.
+func TestItOnlyIntegrates(t *testing.T) {
 	f := newFilter(t)
-	ax := [3]float64{1, 0, 0}
-	var qt quat
-	for i := range int(4 * rate) {
-		a, g, q := h.sample(upright.mul(axisAngle(ax, 0.04*float64(i)/rate)), [3]float64{}, [3]float64{0.04, 0, 0})
-		qt = q
-		f.Update(1/rate, a, g)
-		if f.Ready {
-			t.Fatalf("ready %.2f s into a 0.04 rad/s turn", float64(i)/rate)
-		}
-	}
-	for range int(2 * rate) {
-		var a, g [3]float32
-		a, g, qt = h.sample(upright.mul(axisAngle(ax, 0.16)), [3]float64{}, [3]float64{})
+	for range int(60 * rate) {
+		a, g := exact(upright, [3]float64{}, [3]float64{})
 		f.Update(1/rate, a, g)
 	}
-	if !f.Ready || tiltErr(&f, qt) > 0.5 {
-		t.Errorf("after the turn: ready %v, tilt %.2f° off (want ready, ≤ 0.5°)", f.Ready, tiltErr(&f, qt))
+	if d, v := dist(f.P, [3]float32{}), dist(f.V, [3]float32{}); d > 0.005 || v > 0.001 {
+		t.Errorf("exact samples at rest, 60 s: moved %.2f mm, speed %.4f m/s (want ≤ 5 mm, 0.001)", d*1000, v)
+	}
+	f = newFilter(t)
+	a, g := exact(upright, [3]float64{}, [3]float64{})
+	f.Update(1/rate, a, g)
+	for i := range int(10 * rate) {
+		var acc float64
+		if i < int(rate) {
+			acc = 0.5
+		}
+		a, g := exact(upright, [3]float64{0, 0, acc}, [3]float64{})
+		f.Update(1/rate, a, g)
+	}
+	if math.Abs(float64(f.V[2])-0.5) > 0.01 || math.Abs(float64(f.P[2])-4.75) > 0.05 {
+		t.Errorf("1 s at 0.5 m/s² up, then 9 s coasting: V %.3f m/s, P %.3f m (want 0.5, 4.75)", f.V[2], f.P[2])
 	}
 }
 
-// A turn in place doesn't move the body: from upright, 45°, 90° and 180°
-// about the screen's normal and 90° about the badge's right and up axes, in
-// 2 s, then 3 s held. With exact samples (the force of the attitude at the
-// sample, the gyro the rate at the sample) the position stays within
-// 1 mm and the speed under 5 mm/s; in a steady hand, calibrated, within
-// 5 mm and 2 cm/s. (With the force turned by the attitude at the step's
-// start and the references turned by an Euler step, exact samples moved
-// up to 17 cm, a hand 25 cm.)
-func TestTurnInPlaceStaysPut(t *testing.T) {
-	for _, ideal := range []bool{true, false} {
-		for _, c := range []struct {
-			ax  [3]float64
-			deg float64
-		}{{[3]float64{0, 0, 1}, 45}, {[3]float64{0, 0, 1}, 90}, {[3]float64{0, 0, 1}, 180}, {[3]float64{1, 0, 0}, 90}, {[3]float64{0, 1, 0}, 90}} {
-			f := newFilter(t)
-			h := stillHand(3)
-			if !ideal {
-				calibrated(h, &f)
-			}
-			feed := func(q quat, w [3]float64) {
-				if !ideal {
-					a, g, _ := h.sample(q, [3]float64{}, w)
-					f.Update(1/rate, a, g)
-					return
-				}
-				fw := q.conj().rot([3]float64{0, 0, StandardGravity})
-				f.Update(1/rate, [3]float32{float32(fw[0]), float32(fw[1]), float32(fw[2])}, [3]float32{float32(w[0]), float32(w[1]), float32(w[2])})
-			}
-			for range int(5 * rate) {
-				feed(upright, [3]float64{})
-			}
-			p0 := f.P
-			var vMax float64
-			for i := 1; i <= int(5*rate); i++ {
-				ang, w := quintic(float64(i)/rate, c.deg*math.Pi/180, 2)
-				feed(upright.mul(axisAngle(c.ax, ang)), [3]float64{c.ax[0] * w, c.ax[1] * w, c.ax[2] * w})
-				vMax = max(vMax, math.Sqrt(float64(f.V[0]*f.V[0]+f.V[1]*f.V[1]+f.V[2]*f.V[2])))
-			}
-			dMax, vLim := 0.001, 0.005
-			if !ideal {
-				dMax, vLim = 0.005, 0.02
-			}
-			if d := dist(f.P, p0); d > dMax || vMax > vLim {
-				t.Errorf("exact samples %v, %.0f° about %v: moved %.2f cm, speed up to %.3f m/s (want ≤ %.1f cm, ≤ %.3f m/s)", ideal, c.deg, c.ax, d*100, vMax, dMax*100, vLim)
-			}
-		}
-	}
-}
-
-// Squares drawn by hand: 15 and 30 cm
-// squares in the badge's plane (right, up, left, down; 1.5 s a side, 0.5 s
-// pauses) in a steady hand, calibrated, seeds 7–10: the path stays in
-// the square's box grown by 25 % of the side (to 1 mm: the 15 cm square of
-// seed 8 reaches 0.3 mm past it) and closes within 30 % of it. Measured:
-// 16–21 % for the 15 cm squares, 6–9 % for the 30 cm ones. A corner's
-// zero velocity missed reads 200 % and more.
-func TestSquaresClose(t *testing.T) {
-	for _, side := range []float64{0.15, 0.30} {
-		for seed := uint64(7); seed <= 10; seed++ {
-			h := stillHand(seed)
-			f := newFilter(t)
-			calibrated(h, &f)
-			hold(h, &f, upright, 10)
-			p0 := f.P
-			var out float64
-			for _, d := range [4][2]float64{{1, 0}, {0, 1}, {-1, 0}, {0, -1}} { // world x right, z up
-				for k := range 200 {
-					tt := float64(k) / rate
-					var acc float64
-					if tt < 1.5 {
-						u := tt / 1.5
-						acc = side / (1.5 * 1.5) * (60*u - 180*u*u + 120*u*u*u)
-					}
-					a, g, _ := h.sample(upright, [3]float64{d[0] * acc, 0, d[1] * acc}, [3]float64{})
-					f.Update(1/rate, a, g)
-					x, z, m := float64(f.P[0]-p0[0]), float64(f.P[2]-p0[2]), 0.25*side
-					out = math.Max(out, math.Hypot(math.Max(math.Max(-m-x, x-side-m), 0), math.Max(math.Max(-m-z, z-side-m), 0)))
-				}
-			}
-			if c := dist(f.P, p0); c > 0.30*side || out > 0.001 {
-				t.Errorf("%.0f cm square, seed %d: closes %.1f cm away, %.2f cm outside the box (want ≤ %.1f cm, ≤ 0.1)", side*100, seed, c*100, out*100, 30*side)
-			}
-		}
-	}
-}
-
-// A stroke from rest in a steady hand, calibrated, over 40 seeds and two
-// directions (80 strokes each): 10 cm in 1 s reads within 10 % in 62 of 80
-// (0.62–1.25×). Slow strokes mostly don't register in a hand: their middle
-// is as slow as the tremor, so zero velocity takes them (5 cm over 2 s
-// within 0.5–1.5× in 18 of 80, 3 cm in 11 of 80; under 5 of 80 each with
-// StillSpeed at 0.016). The floors keep those rates from falling.
-func TestStrokeRegisters(t *testing.T) {
-	// A slow stroke's middle has almost no acceleration while its speed is
-	// highest (3 cm over 2 s: under 0.05 m/s² for 0.9 s at 0.028 m/s), so
-	// it looks calm: zero velocity there would erase it.
-	for _, s := range []struct {
-		A, T, lo, hi float64
-		floor        int
-	}{{0.10, 1, 0.9, 1.1, 55}, {0.05, 2, 0.5, 1.5, 12}, {0.03, 2, 0.5, 1.5, 6}} {
-		in, lo, hi := 0, math.Inf(1), math.Inf(-1)
-		for seed := uint64(100); seed < 140; seed++ {
-			for _, d := range [][2]float64{{1, 0}, {0, 1}} {
-				h := stillHand(seed)
-				f := newFilter(t)
-				calibrated(h, &f)
-				hold(h, &f, upright, 10)
-				p0 := f.P
-				for k := range int((s.T + 1) * rate) {
-					u := float64(k) / rate / s.T
-					var acc float64
-					if u < 1 {
-						acc = s.A / (s.T * s.T) * (60*u - 180*u*u + 120*u*u*u)
-					}
-					a, g, _ := h.sample(upright, [3]float64{d[0] * acc, 0, d[1] * acc}, [3]float64{})
-					f.Update(1/rate, a, g)
-				}
-				r := (float64(f.P[0]-p0[0])*d[0] + float64(f.P[2]-p0[2])*d[1]) / s.A
-				if r >= s.lo && r <= s.hi {
-					in++
-				}
-				lo, hi = min(lo, r), max(hi, r)
-			}
-		}
-		if in < s.floor {
-			t.Errorf("%.0f cm in %.0f s in a hand: %d of 80 within %.1f–%.1f× (reads %.2f–%.2f×; want at least %d)", s.A*100, s.T, in, s.lo, s.hi, lo, hi, s.floor)
-		}
-	}
-}
-
-// On a desk (no tremor), uncalibrated, with an MPU6050's offsets and gyro
-// biases still being learned after 10 s, strokes over 2 s, right or up,
-// over 40 seeds (80 strokes each): 3 cm (0.028 m/s at most, under the calm
-// limit throughout) within 0.5–1.5× in 64 of 80, 5 cm (whose slowing end
-// breaks it) in 73 of 80, 10 cm (0.09 m/s: no rest in its middle) in 80
-// of 80 (0.83–1.13×). Without the shadow a 3 or 5 cm stroke reads 0;
-// StillSpeed at 0.022 loses the 3 cm strokes (52 of 80), at 0.025 nearly
-// all (6 of 80).
-func TestSlowStrokesOnADesk(t *testing.T) {
-	for _, s := range []struct {
-		A     float64
-		floor int
-	}{{0.03, 58}, {0.05, 68}, {0.10, 78}} {
-		in, lo, hi := 0, math.Inf(1), math.Inf(-1)
-		for seed := uint64(100); seed < 140; seed++ {
-			for _, d := range [][2]float64{{1, 0}, {0, 1}} {
-				h := newHand(seed, 0, 0)
-				h.off = [3]float64{0.04, -0.06, 0.05}
-				h.gb = [3]float64{0.01, -0.006, 0.008}
-				f := newFilter(t)
-				hold(h, &f, upright, 10)
-				p0 := f.P
-				for k := range int(2.5 * rate) {
-					u := float64(k) / rate / 2
-					var acc float64
-					if u < 1 {
-						acc = s.A / 4 * (60*u - 180*u*u + 120*u*u*u)
-					}
-					a, g, _ := h.sample(upright, [3]float64{d[0] * acc, 0, d[1] * acc}, [3]float64{})
-					f.Update(1/rate, a, g)
-				}
-				r := (float64(f.P[0]-p0[0])*d[0] + float64(f.P[2]-p0[2])*d[1]) / s.A
-				if r >= 0.5 && r <= 1.5 {
-					in++
-				}
-				lo, hi = min(lo, r), max(hi, r)
-			}
-		}
-		if in < s.floor {
-			t.Errorf("%.0f cm in 2 s on a desk: %d of 80 within 0.5–1.5× (reads %.2f–%.2f×; want at least %d)", s.A*100, in, lo, hi, s.floor)
-		}
-	}
-}
-
-// The filter's σ is honest at rest and, for the tilt and the velocity,
-// after a turn. Over 50 seeds (calibrated, a steady hand, 10 s held), the
-// mean normalised error squared lies in its χ² 95 % band at rest: tilt (2
-// degrees of freedom, band 1.45–2.55) measured 1.81, velocity (3, band
-// 2.32–3.68) 2.86; the gyro bias reads 3.80 (just over its band). Right
-// after a 30° turn the tilt reads 2.64 (just over its band), the velocity
-// 2.61 and the gyro bias 5.69 (σ too small); their bounds hold those
-// measured values, so a change in either direction shows. (With the force
-// turned by the attitude at the step's start, the tilt read 6.70 after the
-// turn and the velocity 4.55.)
-func TestSigmaIsHonestAtRest(t *testing.T) {
-	for _, c := range []struct {
-		turn            bool
-		tilt, vel, bias [2]float64 // bounds on the mean
-	}{
-		{false, [2]float64{1.45, 2.55}, [2]float64{2.32, 3.68}, [2]float64{2.8, 4.5}},
-		{true, [2]float64{2, 3.5}, [2]float64{2, 3.5}, [2]float64{4.5, 8}},
-	} {
-		var st, sv, sb float64
-		const seeds = 50
-		for seed := range seeds {
-			h := stillHand(uint64(100 + seed))
-			f := newFilter(t)
-			calibrated(h, &f)
-			hold(h, &f, upright, 10)
-			q := upright
-			if c.turn {
-				for i := range int(3.2 * rate) {
-					ang, w := quintic(float64(i)/rate, 30*math.Pi/180, 3)
-					var a, g [3]float32
-					a, g, q = h.sample(upright.mul(axisAngle([3]float64{1, 0, 0}, ang)), [3]float64{}, [3]float64{w, 0, 0})
-					f.Update(1/rate, a, g)
-				}
-			} else {
-				_, _, q = h.sample(upright, [3]float64{}, [3]float64{})
-			}
-			fq := quat{float64(f.Q[0]), float64(f.Q[1]), float64(f.Q[2]), float64(f.Q[3])}
-			u := fq.rot(q.conj().rot([3]float64{0, 0, 1})) // the true up seen through the filter: (δθ_y, −δθ_x, ~1)
-			att, vel, _ := f.Sigma()
-			st += u[1]*u[1]/float64(att[0]*att[0]) + u[0]*u[0]/float64(att[1]*att[1])
-			for k := range 3 {
-				sv += float64(f.V[k]*f.V[k]) / float64(vel[k]*vel[k])
-				e := float64(f.GyroBias[k]) - h.gb[k]
-				sb += e * e / float64(f.cov[iBg+k][iBg+k])
-			}
-		}
-		for _, m := range []struct {
-			name string
-			v    float64
-			b    [2]float64
-		}{{"tilt", st / seeds, c.tilt}, {"velocity", sv / seeds, c.vel}, {"gyro bias", sb / seeds, c.bias}} {
-			if m.v < m.b[0] || m.v > m.b[1] {
-				t.Errorf("turn %v: %s mean normalised error squared %.2f over %d seeds (want %.2f–%.2f)", c.turn, m.name, m.v, seeds, m.b[0], m.b[1])
-			}
-		}
-	}
-}
-
-// Ten minutes of a hand moving (turns, strokes, rests) in float32 leave the
-// covariance usable: finite, a positive diagonal and correlations within ±1
-// (what guard holds, pair by pair), and the estimate finite and bounded.
-// Definiteness is TestCovarianceStaysPositiveSemidefinite's and
-// TestCovarianceStaysPositiveDefiniteInShaking's.
-func TestTenMinutesStayAFilter(t *testing.T) {
-	h := stillHand(11)
+// The attitude stays a unit quaternion through two minutes of shaking.
+func TestQuaternionStaysNormalised(t *testing.T) {
+	h := steadyHand(6)
 	f := newFilter(t)
-	hold(h, &f, upright, 5)
-	r := rng(5)
+	worst := 0.0
+	shake(h, func(a, g [3]float32) { f.Update(1/rate, a, g) }, upright, 120, 6, func() {
+		n := math.Sqrt(float64(f.Q[0]*f.Q[0] + f.Q[1]*f.Q[1] + f.Q[2]*f.Q[2] + f.Q[3]*f.Q[3]))
+		worst = max(worst, math.Abs(n-1))
+	})
+	if worst > 1e-6 {
+		t.Errorf("|q| off 1 by up to %.2e (want ≤ 1e-6)", worst)
+	}
+}
+
+// The position only integrates: through 20 exact
+// turns and strokes no update moves it by more than the step's own
+// motion, the trapezoid of the velocity, to 0.1 mm. (When the tilt update
+// corrected the velocity and position through their correlation with the
+// attitude, one update moved it 9.9 m.)
+func TestNoPositionStep(t *testing.T) {
+	f := newFilter(t)
+	var worst float64
 	q := upright
-	for s := range 120 { // 5 s each: a turn or a stroke, then a pause
-		ax := [3]float64{r.gauss(), r.gauss(), r.gauss()}
-		A := 0.5 * r.gauss()
-		d := [3]float64{r.gauss(), r.gauss(), r.gauss()}
-		for i := range 500 {
+	for s := range 20 {
+		var ax [3]float64
+		ax[s%3] = 1
+		for i := 1; i <= int(3*rate); i++ {
 			tt := float64(i) / rate
-			var a [3]float64
-			w := [3]float64{}
+			var a, w [3]float64
 			if s%2 == 0 {
-				_, v := quintic(tt, A, 2)
-				n := math.Sqrt(ax[0]*ax[0] + ax[1]*ax[1] + ax[2]*ax[2])
-				for k := range 3 {
-					w[k] = ax[k] / n * v
-				}
+				_, wv := quintic(tt, 0.8, 2)
+				w = [3]float64{ax[0] * wv, ax[1] * wv, ax[2] * wv}
 				q = q.mul(axisAngle(w, math.Sqrt(w[0]*w[0]+w[1]*w[1]+w[2]*w[2])/rate))
-			} else if tt < 1.5 {
-				u := tt / 1.5
-				for k := range 3 {
-					a[k] = 0.1 * d[k] / 2.25 * (60*u - 180*u*u + 120*u*u*u)
-				}
+			} else if tt < 1 {
+				k := 0.2 * (60*tt - 180*tt*tt + 120*tt*tt*tt)
+				a = [3]float64{ax[0] * k, ax[1] * k, ax[2] * k}
 			}
-			acc, gyro, _ := h.sample(q, a, w)
+			acc, gyro := exact(q, a, w)
+			p0, v0 := f.P, f.V
 			f.Update(1/rate, acc, gyro)
-		}
-	}
-	for i := range n {
-		if !(f.cov[i][i] > 0) || math.IsInf(float64(f.cov[i][i]), 0) {
-			t.Fatalf("variance %d = %g after 10 minutes", i, f.cov[i][i])
-		}
-		for j := range n {
-			if rho := math.Abs(float64(f.cov[i][j])) / math.Sqrt(float64(f.cov[i][i])*float64(f.cov[j][j])); rho > 1.0001 || math.IsNaN(rho) {
-				t.Fatalf("correlation %d,%d = %g", i, j, rho)
+			var d float64
+			for k := range 3 {
+				e := float64(f.P[k]-p0[k]) - 0.5*float64(f.V[k]+v0[k])/rate
+				d += e * e
 			}
+			worst = max(worst, math.Sqrt(d))
 		}
 	}
-	for _, v := range [][3]float32{f.V, f.P, f.GyroBias, f.AccelBias} {
-		for _, x := range v {
-			if math.IsNaN(float64(x)) || math.IsInf(float64(x), 0) {
-				t.Fatalf("estimate not finite: V %v P %v bg %v ba %v", f.V, f.P, f.GyroBias, f.AccelBias)
-			}
-		}
-	}
-	if s := math.Sqrt(float64(f.V[0]*f.V[0] + f.V[1]*f.V[1] + f.V[2]*f.V[2])); s > 0.05 {
-		t.Errorf("speed %.3f m/s at the last pause (want ≤ 0.05)", s)
+	if worst > 1e-4 {
+		t.Errorf("the position stepped %.2e m beyond its integral (want ≤ 1e-4)", worst)
 	}
 }
 
@@ -671,25 +389,25 @@ func TestTenMinutesStayAFilter(t *testing.T) {
 // correlation to ±1, symmetric: a covariance broken by rounding (a negative
 // variance, a correlation over 1) is usable again after the next update.
 func TestGuardKeepsTheCovarianceUsable(t *testing.T) {
-	h := stillHand(3)
+	h := steadyHand(3)
 	f := newFilter(t)
 	hold(h, &f, upright, 10)
-	sd := math.Sqrt(float64(f.cov[iP][iP]) * float64(f.cov[iP+1][iP+1])) // two directions no measurement touches
-	f.cov[iP][iP+1], f.cov[iP+1][iP] = float32(10*sd), float32(10*sd)
-	f.cov[iBa+2][iBa+2] = -1
+	sd := math.Sqrt(float64(f.cov.p[iP][iP]) * float64(f.cov.p[iP+1][iP+1])) // two directions no measurement touches
+	f.cov.p[iP][iP+1], f.cov.p[iP+1][iP] = float32(10*sd), float32(10*sd)
+	f.cov.p[iBa+2][iBa+2] = -1
 	for range 2 * f.cfg.TiltEvery {
 		a, g, _ := h.sample(upright, [3]float64{}, [3]float64{})
 		f.Update(1/rate, a, g)
 	}
 	for i := range n {
-		if !(f.cov[i][i] > 0) {
-			t.Fatalf("variance %d = %g after an update", i, f.cov[i][i])
+		if !(f.cov.p[i][i] > 0) {
+			t.Fatalf("variance %d = %g after an update", i, f.cov.p[i][i])
 		}
 		for j := range n {
-			if f.cov[i][j] != f.cov[j][i] {
+			if f.cov.p[i][j] != f.cov.p[j][i] {
 				t.Fatalf("covariance not symmetric at %d,%d", i, j)
 			}
-			if rho := math.Abs(float64(f.cov[i][j])) / math.Sqrt(float64(f.cov[i][i])*float64(f.cov[j][j])); rho > 1.0001 {
+			if rho := math.Abs(float64(f.cov.p[i][j])) / math.Sqrt(float64(f.cov.p[i][i])*float64(f.cov.p[j][j])); rho > 1.0001 {
 				t.Fatalf("correlation %d,%d = %g after an update", i, j, rho)
 			}
 		}
@@ -718,7 +436,7 @@ func TestNonFiniteSampleIsRejected(t *testing.T) {
 			{"zero dt", 0, up, [3]float32{}},
 			{"negative dt", -0.01, up, [3]float32{}},
 		} {
-			h := stillHand(5)
+			h := steadyHand(5)
 			f := newFilter(t)
 			if ready {
 				hold(h, &f, upright, 5)
@@ -739,27 +457,27 @@ func TestNonFiniteSampleIsRejected(t *testing.T) {
 }
 
 // Prior's accelerometer-bias σ is the largest of the caller's
-// accelBiasSigma, the fit's RMS and 0.01 m/s²: the first rest seeds the
+// accelBiasSigma, the fit's RMS and 0.01 m/s²: the first sample seeds the
 // covariance with it. An exactly determined fit (RMS 0) with the caller's
 // 0.05 gives 0.05; a fit's RMS above the caller's wins; a negative, NaN or
-// infinite σ adds nothing.
+// infinite σ or RMS adds nothing (a saved fit can carry anything).
 func TestPriorTakesTheLargestSigma(t *testing.T) {
 	nan := float32(math.NaN())
 	for _, c := range []struct {
 		rms, sigma, want float32
-	}{{0, 0, 0.01}, {0, 0.05, 0.05}, {0.08, 0.05, 0.08}, {0.02, 0, 0.02}, {0, -1, 0.01}, {0, nan, 0.01}, {0, float32(math.Inf(1)), 0.01}} {
-		h := stillHand(4)
+	}{{0, 0, 0.01}, {0, 0.05, 0.05}, {0.08, 0.05, 0.08}, {0.02, 0, 0.02}, {0, -1, 0.01}, {0, nan, 0.01}, {0, float32(math.Inf(1)), 0.01}, {nan, 0.05, 0.05}, {float32(math.Inf(1)), 0, 0.01}, {float32(math.Inf(-1)), 0, 0.01}} {
+		h := steadyHand(4)
 		f := newFilter(t)
 		fit := calib.Fit{GyroBias: [3]float32{float32(h.gb[0]), float32(h.gb[1]), float32(h.gb[2])}, RMS: c.rms, Scale: [3]float32{1, 1, 1}}
 		h.off = [3]float64{}
 		f.Prior(&fit, c.sigma)
-		for !f.Ready {
+		for !f.Ready() {
 			a, g, _ := h.sample(upright, [3]float64{}, [3]float64{})
 			f.Update(1/rate, a, g)
 		}
 		for i := range 3 {
-			if got := math.Sqrt(float64(f.cov[iBa+i][iBa+i])); math.Abs(got-float64(c.want)) > 1e-6 {
-				t.Errorf("RMS %g, σ %g: the first rest's accelerometer-bias σ %.5f (want %.5f)", c.rms, c.sigma, got, c.want)
+			if got := math.Sqrt(float64(f.cov.p[iBa+i][iBa+i])); !(math.Abs(got-float64(c.want)) <= 1e-6) {
+				t.Errorf("RMS %g, σ %g: the first sample's accelerometer-bias σ %.5f (want %.5f)", c.rms, c.sigma, got, c.want)
 				break
 			}
 		}
@@ -816,12 +534,14 @@ func TestClippedWithANonFiniteOffset(t *testing.T) {
 	}
 }
 
-// A reading at the sensor's full scale is clipped (its true value is
-// unknown): the sample is counted in Clipped and skipped. At the badge's
-// ±2000 °/s a full-scale gyro sample used to leave a 20–35° tilt error for
-// minutes; skipped, the filter carries on: calibrated and still, the tilt
-// a minute later is what it would have been.
-func TestClippedSampleIsSkipped(t *testing.T) {
+// A reading at the sensor's full scale is clipped: its true value is beyond
+// the scale. A clipped gyro sample is skipped, the attitude's variance
+// grown by the full scale's angle over the step; a clipped accelerometer
+// alone still turns the attitude by the gyro, the velocity's variance
+// grown. Either way the sample is counted in Clipped, and calibrated and
+// still the tilt a minute later is within 0.5°. (At the badge's ±2000 °/s
+// a full-scale gyro sample once left a 20–35° tilt error for minutes.)
+func TestClippedSample(t *testing.T) {
 	c := DefaultConfig()
 	gr, ar := float64(c.GyroRange), float64(c.AccelRange)
 	for _, s := range []struct {
@@ -830,10 +550,10 @@ func TestClippedSampleIsSkipped(t *testing.T) {
 	}{
 		{"gyro at +full scale", [3]float64{}, [3]float64{gr, 0, 0}},
 		{"gyro at −full scale", [3]float64{}, [3]float64{0, 0, -gr}},
-		{"accelerometer at +full scale", [3]float64{0, ar, 0}, [3]float64{}},
-		{"accelerometer at −full scale", [3]float64{-ar, 0, 0}, [3]float64{}},
+		{"accelerometer at +full scale", [3]float64{0, ar, 0}, [3]float64{0.5, 0, 0}},
+		{"accelerometer at −full scale", [3]float64{-ar, 0, 0}, [3]float64{0, 0, 0.5}},
 	} {
-		h := stillHand(5)
+		h := steadyHand(5)
 		f := newFilter(t)
 		calibrated(h, &f)
 		hold(h, &f, upright, 10)
@@ -851,9 +571,23 @@ func TestClippedSampleIsSkipped(t *testing.T) {
 		if f.Clipped != before.Clipped+1 {
 			t.Errorf("%s: Clipped %d (want %d)", s.name, f.Clipped, before.Clipped+1)
 		}
-		f.Clipped, f.shocked = before.Clipped, before.shocked // the estimate is untouched; the sample is counted and flagged
-		if f != before {
-			t.Errorf("%s: the state changed", s.name)
+		if s.gyro != [3]float64{} && s.acc == [3]float64{} {
+			grew := f.cov.p[iTh][iTh] - before.cov.p[iTh][iTh]
+			want := float32(gr / rate * gr / rate)
+			f.Clipped, f.cov = before.Clipped, before.cov
+			if f != before {
+				t.Errorf("%s: the estimate changed", s.name)
+			}
+			if math.Abs(float64(grew-want)) > 1e-3*float64(want) {
+				t.Errorf("%s: the attitude's variance grew by %.4g (want %.4g)", s.name, grew, want)
+			}
+		} else {
+			if f.Q == before.Q {
+				t.Errorf("%s: the gyro's rotation was lost", s.name)
+			}
+			if f.cov.p[iV][iV] <= before.cov.p[iV][iV] {
+				t.Errorf("%s: the velocity's variance didn't grow", s.name)
+			}
 		}
 		var qt quat
 		for range int(60 * rate) {
@@ -866,211 +600,13 @@ func TestClippedSampleIsSkipped(t *testing.T) {
 	}
 }
 
-// Reset forgets the motion and returns the biases to the prior, so it
-// recovers from what the range check can't see: a 34 rad/s glitch is
-// inside ±2000 °/s, is integrated, and corrupts the gyro bias (0.06–0.08
-// rad/s), against which the gyro never looked quiet again. After Reset and
-// 5 s held the filter is Ready, its tilt within 0.5° and its gyro bias
-// within 5 mrad/s.
-func TestResetMakesTheFilterReadyAgain(t *testing.T) {
-	h := stillHand(5)
-	f := newFilter(t)
-	calibrated(h, &f)
-	hold(h, &f, upright, 10)
-	a, _, _ := h.sample(upright, [3]float64{}, [3]float64{})
-	f.Update(1/rate, a, [3]float32{34, 34, 34})
-	hold(h, &f, upright, 60)
-	f.Reset()
-	var qt quat
-	for range int(5 * rate) {
-		var g [3]float32
-		a, g, qt = h.sample(upright, [3]float64{}, [3]float64{})
-		f.Update(1/rate, a, g)
-	}
-	if !f.Ready {
-		t.Fatalf("not Ready 5 s after Reset (gyro bias %v)", f.GyroBias)
-	}
-	if e := tiltErr(&f, qt); e > 0.5 {
-		t.Errorf("tilt %.2f° off 5 s after Reset (want ≤ 0.5°)", e)
-	}
-	for i := range 3 {
-		if e := math.Abs(float64(f.GyroBias[i]) - h.gb[i]); e > 0.005 {
-			t.Errorf("gyro bias %v 5 s after Reset (true %v)", f.GyroBias, h.gb)
-			break
-		}
-	}
-}
-
-// shake feeds s seconds of vigorous shaking: the hand swings the body
-// through 3–8 Hz in changing directions, up to ~3 g and ~10 rad/s, and
-// the accelerometer clips at its full scale (±2 g) as a real one does.
-// each, if not nil, runs after every sample.
-func shake(h *hand, f *Filter, q quat, s float64, seed uint64, each func()) quat {
-	r := rng(seed)
-	c := f.cfg
-	var amp, w [3]float64
-	var fr [3]float64
-	for k := range 3 {
-		amp[k], w[k], fr[k] = 12+8*r.gauss(), 4*r.gauss(), 3+5*math.Abs(r.gauss())/2
-	}
-	for i := range int(s * rate) {
-		tt := float64(i) / rate
-		var a, om [3]float64
-		for k := range 3 {
-			a[k] = amp[k] * math.Sin(2*math.Pi*fr[k]*tt+float64(k))
-			om[k] = w[k] * math.Cos(2*math.Pi*fr[(k+1)%3]*tt)
-		}
-		q = q.mul(axisAngle(om, math.Sqrt(om[0]*om[0]+om[1]*om[1]+om[2]*om[2])/rate))
-		acc, gyro, _ := h.sample(q, a, om)
-		for k := range 3 {
-			acc[k] = min(max(acc[k], -c.AccelRange), c.AccelRange)
-		}
-		f.Update(1/rate, acc, gyro)
-		if each != nil {
-			each()
-		}
-	}
-	return q
-}
-
-// After vigorous shaking (10 s, the accelerometer clipping at ±2 g) the
-// body is put flat on a desk: within 10 s it is at rest (Still) for 5 s,
-// and from then on its speed stays under 0.1 m/s, its tilt within 1° and
-// its gyro bias within 5 mrad/s. Calibrated and not, three shakes each.
-// (The tilt update once ran gated while the body translated; a few
-// shaking samples a second passed its gate and dragged the gyro bias by
-// ~0.08 rad/s through the attitude–bias correlation, against which the
-// gyro never looked quiet on the desk: no rest, and the speed ran to km/s.)
-func TestRestAfterShaking(t *testing.T) {
-	for _, cal := range []bool{true, false} {
-		for seed := uint64(1); seed <= 3; seed++ {
-			h := stillHand(seed)
-			f := newFilter(t)
-			if cal {
-				calibrated(h, &f)
-			}
-			hold(h, &f, upright, 5)
-			shake(h, &f, upright, 10, seed, nil)
-			desk := newHand(seed+100, 0, 0)
-			desk.off, desk.gb = h.off, h.gb
-			still, rested := 0, -1.0
-			var vMax, tMax float64
-			var qt quat
-			for i := range int(60 * rate) {
-				var a, g [3]float32
-				a, g, qt = desk.sample(upright, [3]float64{}, [3]float64{})
-				f.Update(1/rate, a, g)
-				if f.Still {
-					still++
-				} else {
-					still = 0
-				}
-				if rested < 0 && still >= int(5*rate) {
-					rested = float64(i)/rate - 5
-				}
-				if rested >= 0 {
-					vMax = max(vMax, math.Sqrt(float64(f.V[0]*f.V[0]+f.V[1]*f.V[1]+f.V[2]*f.V[2])))
-					tMax = max(tMax, tiltErr(&f, qt))
-				}
-			}
-			bias := 0.0
-			for k := range 3 {
-				bias = max(bias, math.Abs(float64(f.GyroBias[k])-h.gb[k]))
-			}
-			if rested < 0 || rested > 10 || vMax > 0.1 || (cal && tMax > 1) || bias > 0.005 {
-				t.Errorf("calibrated %v, shake %d: rest from %.1f s after put-down (want ≤ 10; −1 never), then speed up to %.3f m/s (want ≤ 0.1), tilt %.2f°, gyro bias off by %.4f rad/s (want ≤ 0.005)", cal, seed, rested, vMax, tMax, bias)
-			}
-		}
-	}
-}
-
-// Violent motion (the force off gravity by over 0.5 g) is no evidence of
-// the gyro's bias: the tilt update there is gated and holds the bias. In
-// 8 s of unclipped shaking (±8 m/s² at 3–8 Hz, rotations of a few rad/s)
-// the gyro bias moves under 0.1 mrad/s (it moved 0.2–0.6 mrad/s before; on
-// a real badge's vigorous shaking, 80 mrad/s, enough to keep the gyro from
-// ever looking quiet again).
-func TestViolentMotionHoldsTheGyroBias(t *testing.T) {
-	for _, cal := range []bool{true, false} {
-		for seed := uint64(1); seed <= 5; seed++ {
-			h := stillHand(seed)
-			f := newFilter(t)
-			if cal {
-				calibrated(h, &f)
-			}
-			hold(h, &f, upright, 10)
-			b0 := f.GyroBias
-			r := rng(seed)
-			var w, fr [3]float64
-			for k := range 3 {
-				w[k], fr[k] = 3*r.gauss(), 3+2*math.Abs(r.gauss())
-			}
-			q := upright
-			for i := range int(8 * rate) {
-				tt := float64(i) / rate
-				var a, om [3]float64
-				for k := range 3 {
-					a[k] = 8 * math.Sin(2*math.Pi*fr[k]*tt+float64(k))
-					om[k] = w[k] * math.Cos(2*math.Pi*fr[(k+1)%3]*tt)
-				}
-				q = q.mul(axisAngle(om, math.Sqrt(om[0]*om[0]+om[1]*om[1]+om[2]*om[2])/rate))
-				acc, gyro, _ := h.sample(q, a, om)
-				f.Update(1/rate, acc, gyro)
-			}
-			for k := range 3 {
-				if d := math.Abs(float64(f.GyroBias[k] - b0[k])); d > 1e-4 {
-					t.Errorf("calibrated %v, seed %d: gyro bias moved %.5f rad/s over the shaking (want ≤ 0.0001)", cal, seed, d)
-					break
-				}
-			}
-		}
-	}
-}
-
-// After a clipped sample the motion was outside the model until the next
-// rest re-levels the attitude: until then the tilt update holds the gyro
-// bias even in gentle motion (not calm, not violent), which it otherwise
-// teaches. One clipped jolt, then 6 s of slow swinging: the gyro bias moves
-// under 0.1 mrad/s (without the hold, 0.8–0.9 mrad/s).
-func TestGyroBiasHeldUntilTheRestAfterAClip(t *testing.T) {
-	for _, cal := range []bool{true, false} {
-		for seed := uint64(1); seed <= 5; seed++ {
-			h := stillHand(seed)
-			f := newFilter(t)
-			if cal {
-				calibrated(h, &f)
-			}
-			hold(h, &f, upright, 10)
-			a, g, _ := h.sample(upright, [3]float64{}, [3]float64{})
-			a[1] = f.cfg.AccelRange
-			f.Update(1/rate, a, g)
-			b0 := f.GyroBias
-			q := upright
-			for i := range int(6 * rate) {
-				tt := float64(i) / rate
-				acc := [3]float64{1.5 * math.Sin(2*math.Pi*1.3*tt), 0, 1.2 * math.Sin(2*math.Pi*0.9*tt+1)}
-				om := [3]float64{0.6 * math.Sin(2*math.Pi*0.7*tt), 0.4 * math.Cos(2*math.Pi*0.5*tt), 0.3 * math.Sin(2*math.Pi*0.3*tt)}
-				q = q.mul(axisAngle(om, math.Sqrt(om[0]*om[0]+om[1]*om[1]+om[2]*om[2])/rate))
-				aa, gg, _ := h.sample(q, acc, om)
-				f.Update(1/rate, aa, gg)
-			}
-			for k := range 3 {
-				if d := math.Abs(float64(f.GyroBias[k] - b0[k])); d > 1e-4 {
-					t.Errorf("calibrated %v, seed %d: gyro bias moved %.5f rad/s after a clipped sample (want ≤ 0.0001)", cal, seed, d)
-					break
-				}
-			}
-		}
-	}
-}
-
 // minEigCorr: the smallest eigenvalue of P's correlation matrix (Jacobi
 // rotations in float64).
 func minEigCorr(f *Filter) float64 {
 	var a [n][n]float64
 	for i := range n {
 		for j := range n {
-			a[i][j] = float64(f.cov[i][j]) / math.Sqrt(float64(f.cov[i][i])*float64(f.cov[j][j]))
+			a[i][j] = float64(f.cov.p[i][j]) / math.Sqrt(float64(f.cov.p[i][i])*float64(f.cov.p[j][j]))
 		}
 	}
 	for range 100 {
@@ -1113,9 +649,9 @@ func minEigCorr(f *Filter) float64 {
 func TestMinEigCorrIsRight(t *testing.T) {
 	var f Filter
 	for i := range n {
-		f.cov[i][i] = float32(i + 1)
+		f.cov.p[i][i] = float32(i + 1)
 	}
-	f.cov[0][1], f.cov[1][0] = 1.2, 1.2                               // correlation 1.2/√2 ≈ 0.849: eigenvalues 1 ± 0.849
+	f.cov.p[0][1], f.cov.p[1][0] = 1.2, 1.2                           // correlation 1.2/√2 ≈ 0.849: eigenvalues 1 ± 0.849
 	if m := minEigCorr(&f); math.Abs(m-(1-1.2/math.Sqrt(2))) > 1e-6 { // float32(1.2) is not 1.2
 		t.Fatalf("smallest eigenvalue %g, want %g", m, 1-1.2/math.Sqrt(2))
 	}
@@ -1130,7 +666,7 @@ func TestMinEigCorrIsRight(t *testing.T) {
 func TestCovarianceStaysPositiveSemidefinite(t *testing.T) {
 	for _, cal := range []bool{true, false} {
 		for seed := uint64(11); seed <= 15; seed++ {
-			h := stillHand(seed)
+			h := steadyHand(seed)
 			f := newFilter(t)
 			if cal {
 				calibrated(h, &f)
@@ -1180,7 +716,7 @@ func minPivotCorr(f *Filter) float64 {
 	var a [n][n]float64
 	for i := range n {
 		for j := range n {
-			a[i][j] = float64(f.cov[i][j]) / math.Sqrt(float64(f.cov[i][i])*float64(f.cov[j][j]))
+			a[i][j] = float64(f.cov.p[i][j]) / math.Sqrt(float64(f.cov.p[i][i])*float64(f.cov.p[j][j]))
 		}
 	}
 	m := math.Inf(1)
@@ -1215,7 +751,7 @@ func minPivotCorr(f *Filter) float64 {
 func TestCovarianceStaysPositiveDefiniteInShaking(t *testing.T) {
 	for _, cal := range []bool{true, false} {
 		for seed := uint64(1); seed <= 5; seed++ {
-			h := stillHand(seed)
+			h := steadyHand(seed)
 			f := newFilter(t)
 			if cal {
 				calibrated(h, &f)
@@ -1229,7 +765,7 @@ func TestCovarianceStaysPositiveDefiniteInShaking(t *testing.T) {
 				}
 				worst = min(worst, p)
 			}
-			shake(h, &f, upright, 10, seed, check)
+			shake(h, func(a, g [3]float32) { f.Update(1/rate, a, g) }, upright, 10, seed, check)
 			for range int(20 * rate) {
 				a, g, _ := h.sample(upright, [3]float64{}, [3]float64{})
 				f.Update(1/rate, a, g)
@@ -1247,7 +783,7 @@ func TestCovarianceStaysPositiveDefiniteInShaking(t *testing.T) {
 // integrated, not clipped; an invalid range (negative, NaN, ∞) is refused
 // with ErrConfig and changes nothing. No allocation.
 func TestSetRangeTakesEffect(t *testing.T) {
-	h := stillHand(5)
+	h := steadyHand(5)
 	f := newFilter(t)
 	calibrated(h, &f)
 	hold(h, &f, upright, 10)
@@ -1278,8 +814,10 @@ func TestSetRangeTakesEffect(t *testing.T) {
 	}
 }
 
+// Update allocates nothing (a microcontroller's heap
+// is small and its collector slow).
 func TestUpdateDoesNotAllocate(t *testing.T) {
-	h := stillHand(1)
+	h := steadyHand(1)
 	f := newFilter(t)
 	a, g, _ := h.sample(upright, [3]float64{}, [3]float64{})
 	if n := testing.AllocsPerRun(200, func() { f.Update(1/rate, a, g) }); n != 0 {
@@ -1287,16 +825,357 @@ func TestUpdateDoesNotAllocate(t *testing.T) {
 	}
 }
 
-func BenchmarkUpdate(b *testing.B) {
-	h := stillHand(1)
-	f, _ := New(DefaultConfig())
-	hold(h, &f, upright, 2)
-	var acc, gyro [100][3]float32
-	for i := range 100 {
-		acc[i], gyro[i], _ = h.sample(upright.mul(axisAngle([3]float64{1, 0, 0}, 0.3*math.Sin(float64(i)/16))), [3]float64{0.5 * math.Sin(float64(i)/8), 0, 0}, [3]float64{0.02 * math.Cos(float64(i)/16), 0, 0})
+// A turn in place doesn't move the body: from upright, 45°, 90° and 180°
+// about the screen's normal and 90° about the right and up axes in 2 s,
+// exact samples (the force of the attitude at the sample, the gyro the
+// rate at the sample), after 5 s held: the position moves at most 1 mm
+// over the turn (measured 0.01–0.23 mm). With the force turned by the
+// attitude at the step's start and the references turned by an Euler step
+// it moved 2–17 cm. (After the turn the integration's own rounding, taught
+// to the accelerometer bias by the tilt, drifts it: up to 2 cm in 3 s.)
+func TestTurnInPlaceStaysPut(t *testing.T) {
+	for _, c := range []struct {
+		ax  [3]float64
+		deg float64
+	}{{[3]float64{0, 0, 1}, 45}, {[3]float64{0, 0, 1}, 90}, {[3]float64{0, 0, 1}, 180}, {[3]float64{1, 0, 0}, 90}, {[3]float64{0, 1, 0}, 90}} {
+		f := newFilter(t)
+		for range int(5 * rate) {
+			a, g := exact(upright, [3]float64{}, [3]float64{})
+			f.Update(1/rate, a, g)
+		}
+		p0 := f.P
+		for i := 1; i <= int(2*rate); i++ {
+			ang, w := quintic(float64(i)/rate, c.deg*math.Pi/180, 2)
+			a, g := exact(upright.mul(axisAngle(c.ax, ang)), [3]float64{}, [3]float64{c.ax[0] * w, c.ax[1] * w, c.ax[2] * w})
+			f.Update(1/rate, a, g)
+		}
+		if d := dist(f.P, p0); d > 0.001 {
+			t.Errorf("%.0f° about %v: moved %.2f mm over the turn (want ≤ 1 mm)", c.deg, c.ax, d*1000)
+		}
 	}
-	b.ResetTimer()
-	for i := range b.N {
-		f.Update(1/rate, acc[i%100], gyro[i%100])
+}
+
+// A slow turn in a steady hand, calibrated, is a turn: the gyro bias
+// doesn't absorb it (≤ 4 mrad/s; measured ≤ 0.24) and the tilt follows
+// (≤ 0.25°; measured ≤ 0.21°: the hand's tremor counts as the body's
+// acceleration and slows the tilt), through the turn and 10 s held after it.
+// (A rest test against a moving bias learned a slow turn as bias.)
+func TestSlowTurnIsATurn(t *testing.T) {
+	for _, ax := range [][3]float64{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}} {
+		for _, c := range []struct{ A, T float64 }{{20, 2}, {20, 5}, {45, 5}} {
+			h := steadyHand(7)
+			f := newFilter(t)
+			calibrated(h, &f)
+			hold(h, &f, upright, 10)
+			var tilt, bias float64
+			for i := range int((c.T + 10) * rate) {
+				ang, w := quintic(float64(i)/rate, c.A*math.Pi/180, c.T)
+				a, g, qt := h.sample(upright.mul(axisAngle(ax, ang)), [3]float64{}, [3]float64{ax[0] * w, ax[1] * w, ax[2] * w})
+				f.Update(1/rate, a, g)
+				tilt = math.Max(tilt, tiltErr(&f, qt))
+				for k := range 3 {
+					bias = math.Max(bias, math.Abs(float64(f.GyroBias[k])-h.gb[k]))
+				}
+			}
+			if tilt > 0.25 || bias > 0.004 {
+				t.Errorf("%v° / %v s about %v: tilt %.2f°, gyro bias %.4f rad/s off (want ≤ 0.25°, 0.004)", c.A, c.T, ax, tilt, bias)
+			}
+		}
+	}
+}
+
+// After 10 s of shaking with the accelerometer clipping at ±2 g, put flat
+// on a desk, a calibrated filter's tilt is within 0.5° 20 s later
+// (measured 0.01–0.10°): a clipped accelerometer sample keeps the gyro's
+// rotation, and the attitude's variance knows what was lost. (Skipping
+// such samples whole left the attitude 80° off at σ 0.2°, and the tilt
+// stuck 8.5° off on the desk.)
+func TestTiltRecoversAfterShaking(t *testing.T) {
+	for seed := uint64(1); seed <= 3; seed++ {
+		h := steadyHand(seed)
+		f := newFilter(t)
+		calibrated(h, &f)
+		hold(h, &f, upright, 5)
+		shake(h, func(a, g [3]float32) { f.Update(1/rate, a, g) }, upright, 10, seed, nil)
+		desk := newHand(seed+100, 0, 0)
+		desk.off, desk.gb = h.off, h.gb
+		var qt quat
+		for range int(20 * rate) {
+			var a, g [3]float32
+			a, g, qt = desk.sample(upright, [3]float64{}, [3]float64{})
+			f.Update(1/rate, a, g)
+		}
+		if e := tiltErr(&f, qt); e > 0.5 {
+			t.Errorf("shake %d: tilt %.2f° off 20 s after the put-down (want ≤ 0.5°)", seed, e)
+		}
+	}
+}
+
+// The filter's σ is not too small: over 50 seeds (calibrated, a steady
+// hand, 10 s held; and after a 30° turn) the mean normalised error squared
+// of the tilt (2 degrees of freedom), the velocity (3) and the gyro bias
+// (3) is under its χ² 95 % band's top. (It is far under: nothing observes
+// the velocity, whose σ keeps the start's 0.1 m/s, and the tilt's noise
+// counts a steady hand's tremor as the body's acceleration; measured tilt
+// 0.01, velocity 0.04 and 0.02, gyro bias under 0.01.)
+func TestSigmaIsNotTooSmall(t *testing.T) {
+	for _, turn := range []bool{false, true} {
+		var st, sv, sb float64
+		const seeds = 50
+		for seed := range seeds {
+			h := steadyHand(uint64(100 + seed))
+			f := newFilter(t)
+			calibrated(h, &f)
+			hold(h, &f, upright, 10)
+			q := upright
+			if turn {
+				for i := range int(3.2 * rate) {
+					ang, w := quintic(float64(i)/rate, 30*math.Pi/180, 3)
+					var a, g [3]float32
+					a, g, q = h.sample(upright.mul(axisAngle([3]float64{1, 0, 0}, ang)), [3]float64{}, [3]float64{w, 0, 0})
+					f.Update(1/rate, a, g)
+				}
+			} else {
+				_, _, q = h.sample(upright, [3]float64{}, [3]float64{})
+			}
+			fq := quat{float64(f.Q[0]), float64(f.Q[1]), float64(f.Q[2]), float64(f.Q[3])}
+			u := fq.rot(q.conj().rot([3]float64{0, 0, 1})) // the true up seen through the filter: (δθ_y, −δθ_x, ~1)
+			att, vel, _ := f.Sigma()
+			st += u[1]*u[1]/float64(att[0]*att[0]) + u[0]*u[0]/float64(att[1]*att[1])
+			for k := range 3 {
+				sv += float64(f.V[k]*f.V[k]) / float64(vel[k]*vel[k])
+				e := float64(f.GyroBias[k]) - h.gb[k]
+				sb += e * e / float64(f.cov.p[iBg+k][iBg+k])
+			}
+		}
+		for _, m := range []struct {
+			name   string
+			v, top float64
+		}{{"tilt", st / seeds, 2.55}, {"velocity", sv / seeds, 3.68}, {"gyro bias", sb / seeds, 3.68}} {
+			if m.v > m.top {
+				t.Errorf("turn %v: %s mean normalised error squared %.2f over %d seeds (want ≤ %.2f)", turn, m.name, m.v, seeds, m.top)
+			}
+		}
+	}
+}
+
+// Reset forgets the motion and returns the biases to the prior, so it
+// recovers from what the range check can't see: a 34 rad/s glitch is
+// inside ±2000 °/s, is integrated, and corrupts the attitude. After Reset
+// the next sample makes the filter Ready again, the gyro bias the prior's,
+// and 5 s held later its tilt is within 0.5°.
+func TestResetStartsAgain(t *testing.T) {
+	h := steadyHand(5)
+	f := newFilter(t)
+	calibrated(h, &f)
+	hold(h, &f, upright, 10)
+	a, _, _ := h.sample(upright, [3]float64{}, [3]float64{})
+	f.Update(1/rate, a, [3]float32{34, 34, 34})
+	hold(h, &f, upright, 10)
+	f.Reset()
+	if f.Ready() || f.P != [3]float32{} || f.V != [3]float32{} {
+		t.Fatalf("after Reset: Ready %v, P %v, V %v (want false, 0, 0)", f.Ready(), f.P, f.V)
+	}
+	a, g, _ := h.sample(upright, [3]float64{}, [3]float64{})
+	f.Update(1/rate, a, g)
+	if !f.Ready() {
+		t.Fatalf("not Ready after the first sample after Reset")
+	}
+	for i := range 3 {
+		if math.Abs(float64(f.GyroBias[i])-h.gb[i]) > 1e-6 {
+			t.Errorf("gyro bias %v after Reset (the prior %v)", f.GyroBias, h.gb)
+			break
+		}
+	}
+	var qt quat
+	for range int(5 * rate) {
+		a, g, qt = h.sample(upright, [3]float64{}, [3]float64{})
+		f.Update(1/rate, a, g)
+	}
+	if e := tiltErr(&f, qt); e > 0.5 {
+		t.Errorf("tilt %.2f° off 5 s after Reset (want ≤ 0.5°)", e)
+	}
+}
+
+// The tilt update corrects the attitude and the biases, never the velocity
+// or the position, even when the covariance correlates them (after exact
+// turns and strokes): a tilt measurement 5° off leaves V, P and their
+// variances bit for bit and moves the attitude.
+func TestTiltUpdateLeavesVelocityAndPosition(t *testing.T) {
+	f := newFilter(t)
+	q := upright
+	for s := range 4 {
+		var ax [3]float64
+		ax[s%3] = 1
+		for i := 1; i <= int(2*rate); i++ {
+			tt := float64(i) / rate
+			_, wv := quintic(tt, 0.5, 2)
+			w := [3]float64{ax[0] * wv, ax[1] * wv, ax[2] * wv}
+			q = q.mul(axisAngle(w, math.Sqrt(w[0]*w[0]+w[1]*w[1]+w[2]*w[2])/rate))
+			k := 0.3 * math.Sin(math.Pi*tt)
+			a, g := exact(q, [3]float64{k, 0, k}, w)
+			f.Update(1/rate, a, g)
+		}
+	}
+	if r := math.Abs(float64(f.cov.p[iTh][iV+1])) / math.Sqrt(float64(f.cov.p[iTh][iTh]*f.cov.p[iV+1][iV+1])); r < 0.01 {
+		t.Fatalf("attitude–velocity correlation %.4f: the scenario doesn't correlate them", r)
+	}
+	a, _ := exact(q.mul(axisAngle([3]float64{1, 0, 0}, 5*math.Pi/180)), [3]float64{}, [3]float64{})
+	v, p, q0 := f.V, f.P, f.Q
+	var vv, pv [3]float32
+	for i := range 3 {
+		vv[i], pv[i] = f.cov.p[iV+i][iV+i], f.cov.p[iP+i][iP+i]
+	}
+	if !f.tiltUpdate(a) {
+		t.Fatal("no tilt measured")
+	}
+	f.inject()
+	for i := range 3 {
+		if f.V[i] != v[i] || f.P[i] != p[i] || f.cov.p[iV+i][iV+i] != vv[i] || f.cov.p[iP+i][iP+i] != pv[i] {
+			t.Fatalf("the tilt update moved V %v → %v or P %v → %v, or their variances", v, f.V, p, f.P)
+		}
+	}
+	if f.Q == q0 {
+		t.Errorf("a tilt 5° off left the attitude unchanged")
+	}
+}
+
+// The accelerometer's bias is the calibration's: gravity's direction can't
+// tell it from a horizontal acceleration, so the tilt doesn't touch it.
+// Through 5 s of sustained sideways pushes (±2 m/s², 1 s each) while the
+// body turns, AccelBias stays the prior's bit for bit, and 2–10 s into the
+// rest after them the tilt is within 0.5° of the force. (With the bias in
+// the tilt's measurement a hand's strokes moved it by up to 1 m/s², and the
+// attitude settled 4–7° off the force at rest.)
+func TestAccelBiasIsTheCalibrations(t *testing.T) {
+	f := newFilter(t)
+	fit := calib.Fit{RMS: 0.01, Scale: [3]float32{1, 1, 1}}
+	f.Prior(&fit, 0.05)
+	q := upright
+	for range int(5 * rate) {
+		a, g := exact(q, [3]float64{}, [3]float64{})
+		f.Update(1/rate, a, g)
+	}
+	ba := f.AccelBias
+	for i := range int(5 * rate) {
+		tt := float64(i) / rate
+		push := 2.0
+		if int(tt)%2 == 1 {
+			push = -2
+		}
+		w := [3]float64{0.3 * math.Sin(2*tt), 0.4 * math.Cos(1.3*tt), 0.2}
+		q = q.mul(axisAngle(w, math.Sqrt(w[0]*w[0]+w[1]*w[1]+w[2]*w[2])/rate))
+		a, g := exact(q, [3]float64{push, 0.5 * push, 0}, w)
+		f.Update(1/rate, a, g)
+	}
+	if f.AccelBias != ba {
+		t.Errorf("the accelerometer bias moved from %v to %v through the pushes", ba, f.AccelBias)
+	}
+	worst := 0.0
+	for i := range int(10 * rate) {
+		a, g := exact(q, [3]float64{}, [3]float64{})
+		f.Update(1/rate, a, g)
+		if i >= int(2*rate) {
+			worst = max(worst, tiltErr(&f, q))
+		}
+	}
+	if worst > 0.5 {
+		t.Errorf("at rest after the pushes the tilt is up to %.2f° off (want ≤ 0.5°)", worst)
+	}
+}
+
+// The filter is deterministic: two fed the same two minutes (held, shaken
+// with the accelerometer clipping, held) are identical after every sample.
+func TestDeterministicReplay(t *testing.T) {
+	h1, h2 := steadyHand(8), steadyHand(8)
+	f1, f2 := newFilter(t), newFilter(t)
+	calibrated(h1, &f1)
+	calibrated(h2, &f2)
+	var a1, a2 [][3]float32
+	var g1, g2 [][3]float32
+	rec := func(h *hand, a, g *[][3]float32) func(x, y [3]float32) {
+		return func(x, y [3]float32) { *a, *g = append(*a, x), append(*g, y) }
+	}
+	for range int(30 * rate) {
+		x, y, _ := h1.sample(upright, [3]float64{}, [3]float64{})
+		a1, g1 = append(a1, x), append(g1, y)
+		x, y, _ = h2.sample(upright, [3]float64{}, [3]float64{})
+		a2, g2 = append(a2, x), append(g2, y)
+	}
+	shake(h1, rec(h1, &a1, &g1), upright, 60, 3, nil)
+	shake(h2, rec(h2, &a2, &g2), upright, 60, 3, nil)
+	for range int(30 * rate) {
+		x, y, _ := h1.sample(upright, [3]float64{}, [3]float64{})
+		a1, g1 = append(a1, x), append(g1, y)
+		x, y, _ = h2.sample(upright, [3]float64{}, [3]float64{})
+		a2, g2 = append(a2, x), append(g2, y)
+	}
+	for i := range a1 {
+		if a1[i] != a2[i] || g1[i] != g2[i] {
+			t.Fatalf("the two streams differ at sample %d", i)
+		}
+		f1.Update(1/rate, a1[i], g1[i])
+		f2.Update(1/rate, a2[i], g2[i])
+		if f1 != f2 {
+			t.Fatalf("the filters differ after sample %d", i)
+		}
+	}
+	if f1.Clipped == 0 {
+		t.Errorf("no clipped sample in the replay")
+	}
+}
+
+// Ten minutes of a hand moving (turns, strokes, pauses) in float32 leave the
+// covariance usable: finite, a positive diagonal and correlations within ±1
+// (what guard holds, pair by pair), and the estimate finite.
+// Definiteness is TestCovarianceStaysPositiveSemidefinite's and
+// TestCovarianceStaysPositiveDefiniteInShaking's.
+func TestTenMinutesStayAFilter(t *testing.T) {
+	h := steadyHand(11)
+	f := newFilter(t)
+	hold(h, &f, upright, 5)
+	r := rng(5)
+	q := upright
+	for s := range 120 { // 5 s each: a turn or a stroke, then a pause
+		ax := [3]float64{r.gauss(), r.gauss(), r.gauss()}
+		A := 0.5 * r.gauss()
+		d := [3]float64{r.gauss(), r.gauss(), r.gauss()}
+		for i := range 500 {
+			tt := float64(i) / rate
+			var a [3]float64
+			w := [3]float64{}
+			if s%2 == 0 {
+				_, v := quintic(tt, A, 2)
+				n := math.Sqrt(ax[0]*ax[0] + ax[1]*ax[1] + ax[2]*ax[2])
+				for k := range 3 {
+					w[k] = ax[k] / n * v
+				}
+				q = q.mul(axisAngle(w, math.Sqrt(w[0]*w[0]+w[1]*w[1]+w[2]*w[2])/rate))
+			} else if tt < 1.5 {
+				u := tt / 1.5
+				for k := range 3 {
+					a[k] = 0.1 * d[k] / 2.25 * (60*u - 180*u*u + 120*u*u*u)
+				}
+			}
+			acc, gyro, _ := h.sample(q, a, w)
+			f.Update(1/rate, acc, gyro)
+		}
+	}
+	for i := range n {
+		if !(f.cov.p[i][i] > 0) || math.IsInf(float64(f.cov.p[i][i]), 0) {
+			t.Fatalf("variance %d = %g after 10 minutes", i, f.cov.p[i][i])
+		}
+		for j := range n {
+			if rho := math.Abs(float64(f.cov.p[i][j])) / math.Sqrt(float64(f.cov.p[i][i])*float64(f.cov.p[j][j])); rho > 1.0001 || math.IsNaN(rho) {
+				t.Fatalf("correlation %d,%d = %g", i, j, rho)
+			}
+		}
+	}
+	for _, v := range [][3]float32{f.V, f.P, f.GyroBias, f.AccelBias} {
+		for _, x := range v {
+			if math.IsNaN(float64(x)) || math.IsInf(float64(x), 0) {
+				t.Fatalf("estimate not finite: V %v P %v bg %v ba %v", f.V, f.P, f.GyroBias, f.AccelBias)
+			}
+		}
 	}
 }

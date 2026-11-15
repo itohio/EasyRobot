@@ -1,13 +1,13 @@
 //go:build !fixedmotion
 
-package ahrs
+package mahony
 
 // fixedPath reports whether the 6-axis update runs in fixed point
-// (-tags fixedmotion, see mahony6_fixed.go). By default it is float32.
+// (-tags fixedmotion); in this build it doesn't.
 const fixedPath = false
 
 // fixed6 holds the fixed-point 6-axis state; empty in the float build.
 type fixed6 struct{}
 
-// update6 is the 6-axis update: float32 in the default build.
-func (m *MahonyAHRS) update6() { m.calculateWOMag() }
+// step is the 6-axis update: float32 in the default build.
+func (f *Filter) step(acc, gyro [3]float32, dt float32) { f.stepFloat(acc, gyro, dt) }

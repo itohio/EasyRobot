@@ -431,7 +431,7 @@ Listed in each note's TODO lines; counts only.
 | [[device-io]] | 4 | 3 |
 | [[dndm-and-protobuf]] | 4 | 3 |
 | [[dsp-core]] | 26 | 18 |
-| [[filters]] | 20 | 15 |
+| [[filters]] | 20 | 14 |
 | [[gps-geodesy]] | 6 | 2 |
 | [[graph-and-planning]] | 23 | 17 |
 | [[grid-maps]] | 13 | 10 |
@@ -446,7 +446,7 @@ Listed in each note's TODO lines; counts only.
 | [[mat-vec]] | 8 | 18 |
 | [[modulation]] | 42 | 14 |
 | [[motion-and-gait]] | 14 | 7 |
-| [[navigation]] | 1 | 4 |
+| [[navigation]] | 1 | 5 |
 | [[nmea]] | 4 | 2 |
 | [[nn]] | 34 | 16 |
 | [[overview]] | 1 | 2 |

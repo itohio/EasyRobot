@@ -2,7 +2,7 @@
 // IMU: the accelerometer's specific force is rotated into the world by an
 // attitude, gravity is removed, and the rest is integrated twice into
 // velocity and position. Until its first rest the Nav takes the attitude
-// of a filter (e.g. ahrs Mahony, [w,x,y,z], sensor to world, z up); from
+// of a filter (e.g. the mahony brick, [w,x,y,z], sensor to world, z up); from
 // then on it carries its own on the gyro, less a gyro bias it learns at
 // rest, and levels it to gravity only at rest. A filter leans its attitude
 // into any acceleration it sees, so a slow horizontal stroke reads as tilt

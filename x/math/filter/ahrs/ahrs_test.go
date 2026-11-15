@@ -16,91 +16,6 @@ const (
 	vecTol  = 2e-3  // Increased tolerance for integral error accumulation differences
 )
 
-func TestMahonyCalculateWithoutMagnetometerMatchesReference(t *testing.T) {
-	mah := NewMahony(WithMagnetometer(false), WithKP(0.5), WithKI(0.1))
-	mah.eInt = vec.Vector3D{0.01, -0.02, 0.005}
-	mah.q = vec.Quaternion{0.9659258, 0.2588190, 0.0, 0.0}
-	mah.SamplePeriod = 0.02 // Set sample period for reference calculation
-	
-	// Create input matrix: 3x3 where rows are [accel, gyro, mag]
-	input := mat.Matrix3x3{
-		{0.3, 0.4, 0.8660254},        // accel
-		{0.02, -0.03, 0.04},          // gyro
-		{0, 0, 0},                     // mag (not used)
-	}
-	
-	// Create reference struct with old field structure for reference calculation
-	refMah := mahonyRefStruct{
-		Options:      mah.Options,
-		accel:        vec.Vector3D{0.3, 0.4, 0.8660254},
-		gyro:         vec.Vector3D{0.02, -0.03, 0.04},
-		mag:          vec.Vector3D{0, 0, 0},
-		q:            mah.q,
-		eInt:         mah.eInt,
-		SamplePeriod: mah.SamplePeriod,
-	}
-	expectedQ, expectedEInt := mahonyReferenceStep(refMah)
-
-	mah.Update(0.02, input)
-
-	if !approxQuaternion(mah.q, expectedQ, quatTol) {
-		t.Fatalf("mahony (no mag) quaternion mismatch:\n\tgot:  %+v\n\texp:  %+v", mah.q, expectedQ)
-	}
-	if !approxVector3(mah.eInt, expectedEInt, vecTol) {
-		t.Fatalf("mahony (no mag) integral mismatch:\n\tgot:  %+v\n\texp:  %+v", mah.eInt, expectedEInt)
-	}
-}
-
-func TestMahonyCalculateWithMagnetometerMatchesReference(t *testing.T) {
-	mah := NewMahony(WithMagnetometer(true), WithKP(0.52), WithKI(0.12))
-	mah.eInt = vec.Vector3D{-0.02, 0.015, -0.01}
-	mah.q = vec.Quaternion{0.9238795, 0.2, -0.2, 0.2}
-	mah.SamplePeriod = 0.01 // Set sample period for reference calculation
-	
-	// Create input matrix: 3x3 where rows are [accel, gyro, mag]
-	input := mat.Matrix3x3{
-		{0.25, -0.45, 0.86},          // accel
-		{-0.015, 0.025, -0.035},      // gyro
-		{0.48, 0.12, -0.32},          // mag
-	}
-
-	// Create reference struct with old field structure for reference calculation
-	refMah := mahonyRefStruct{
-		Options:      mah.Options,
-		accel:        vec.Vector3D{0.25, -0.45, 0.86},
-		gyro:         vec.Vector3D{-0.015, 0.025, -0.035},
-		mag:          vec.Vector3D{0.48, 0.12, -0.32},
-		q:            mah.q,
-		eInt:         mah.eInt,
-		SamplePeriod: mah.SamplePeriod,
-	}
-	expectedQ, expectedEInt := mahonyReferenceStep(refMah)
-
-	mah.Update(0.01, input)
-
-	if !approxQuaternion(mah.q, expectedQ, quatTol) {
-		t.Fatalf("mahony (with mag) quaternion mismatch:\n\tgot:  %+v\n\texp:  %+v", mah.q, expectedQ)
-	}
-	if !approxVector3(mah.eInt, expectedEInt, vecTol) {
-		t.Fatalf("mahony (with mag) integral mismatch:\n\tgot:  %+v\n\texp:  %+v", mah.eInt, expectedEInt)
-	}
-}
-
-func TestMahonyReset(t *testing.T) {
-	mah := NewMahony()
-	mah.q = vec.Quaternion{0.8, -0.1, 0.3, 0.5}
-	mah.eInt = vec.Vector3D{0.01, -0.01, 0.02}
-
-	mah.Reset()
-
-	if want := (vec.Quaternion{1, 0, 0, 0}); mah.q != want {
-		t.Fatalf("mahony reset quaternion: got %v, want %v", mah.q, want)
-	}
-	if want := (vec.Vector3D{0, 0, 0}); mah.eInt != want {
-		t.Fatalf("mahony reset integral: got %v, want %v", mah.eInt, want)
-	}
-}
-
 func TestMadgwickCalculateWithMagnetometerMatchesReference(t *testing.T) {
 	mad := NewMadgwick(WithMagnetometer(true), WithKP(0.3))
 	mad.q = vec.Quaternion{0.9914449, 0.0871558, 0, 0.0871558}
@@ -195,16 +110,6 @@ func TestCalculatePreservesInputVectors(t *testing.T) {
 		input matTypes.Matrix
 	}{
 		{
-			name:  "mahony-with-mag",
-			init:  func() interface{} { return NewMahony(WithMagnetometer(true)) },
-			input: inputWithMag,
-		},
-		{
-			name:  "mahony-without-mag",
-			init:  func() interface{} { return NewMahony(WithMagnetometer(false)) },
-			input: inputWithoutMag,
-		},
-		{
 			name:  "madgwick-with-mag",
 			init:  func() interface{} { return NewMadgwick(WithMagnetometer(true)) },
 			input: inputWithMag,
@@ -221,25 +126,6 @@ func TestCalculatePreservesInputVectors(t *testing.T) {
 			filter := tc.init()
 
 			switch f := filter.(type) {
-			case *MahonyAHRS:
-				// Extract expected values from input matrix
-				inputMat := asMatrix3x3Test(tc.input, "TestCalculatePreservesInputVectors")
-				expectedAccel := vec.Vector3D{inputMat[0][0], inputMat[0][1], inputMat[0][2]}
-				expectedGyro := vec.Vector3D{inputMat[1][0], inputMat[1][1], inputMat[1][2]}
-				expectedMag := vec.Vector3D{inputMat[2][0], inputMat[2][1], inputMat[2][2]}
-
-				f.Update(0.01, tc.input)
-
-				// Check that input matrix was stored correctly
-				if f.inputMatrix[0][0] != expectedAccel[0] || f.inputMatrix[0][1] != expectedAccel[1] || f.inputMatrix[0][2] != expectedAccel[2] {
-					t.Fatalf("%s accelerometer: got [%f,%f,%f], want %v", tc.name, f.inputMatrix[0][0], f.inputMatrix[0][1], f.inputMatrix[0][2], expectedAccel)
-				}
-				if f.inputMatrix[1][0] != expectedGyro[0] || f.inputMatrix[1][1] != expectedGyro[1] || f.inputMatrix[1][2] != expectedGyro[2] {
-					t.Fatalf("%s gyroscope: got [%f,%f,%f], want %v", tc.name, f.inputMatrix[1][0], f.inputMatrix[1][1], f.inputMatrix[1][2], expectedGyro)
-				}
-				if f.inputMatrix[2][0] != expectedMag[0] || f.inputMatrix[2][1] != expectedMag[1] || f.inputMatrix[2][2] != expectedMag[2] {
-					t.Fatalf("%s magnetometer: got [%f,%f,%f], want %v", tc.name, f.inputMatrix[2][0], f.inputMatrix[2][1], f.inputMatrix[2][2], expectedMag)
-				}
 			case *MadgwickAHRS:
 				// Extract expected values from input matrix
 				inputMat := asMatrix3x3Test(tc.input, "TestCalculatePreservesInputVectors")
@@ -278,14 +164,6 @@ func TestCalculatePanicsWithoutSensors(t *testing.T) {
 		init func() interface{}
 	}{
 		{
-			name: "mahony without accelerometer",
-			init: func() interface{} { return NewMahony(WithAccelerator(false)) },
-		},
-		{
-			name: "mahony without gyroscope",
-			init: func() interface{} { return NewMahony(WithGyroscope(false)) },
-		},
-		{
 			name: "madgwick without accelerometer",
 			init: func() interface{} { return NewMadgwick(WithAccelerator(false)) },
 		},
@@ -299,8 +177,6 @@ func TestCalculatePanicsWithoutSensors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			filter := tc.init()
 			switch f := filter.(type) {
-			case *MahonyAHRS:
-				mustPanic(t, func() { f.Update(0.01, input) })
 			case *MadgwickAHRS:
 				mustPanic(t, func() { f.Update(0.01, input) })
 			default:
@@ -308,76 +184,6 @@ func TestCalculatePanicsWithoutSensors(t *testing.T) {
 			}
 		})
 	}
-}
-
-// mahonyRefStruct is used for reference calculations (has old field structure)
-type mahonyRefStruct struct {
-	Options
-	accel, gyro, mag vec.Vector3D
-	q                vec.Quaternion
-	eInt             vec.Vector3D
-	SamplePeriod     float32
-}
-
-func mahonyReferenceStep(m mahonyRefStruct) (vec.Quaternion, vec.Vector3D) {
-	q1, q2, q3, q4 := m.q[0], m.q[1], m.q[2], m.q[3]
-
-	accel := m.accel.NormalFast().(vec.Vector3D)
-
-	var e vec.Vector3D
-	if m.HasMagnetometer {
-		mag := m.mag.NormalFast().(vec.Vector3D)
-
-		hx := 2*mag[0]*(0.5-q3*q3-q4*q4) + 2*mag[1]*(q2*q3-q1*q4) + 2*mag[2]*(q2*q4+q1*q3)
-		hy := 2*mag[0]*(q2*q3+q1*q4) + 2*mag[1]*(0.5-q2*q2-q4*q4) + 2*mag[2]*(q3*q4-q1*q2)
-		bx := math32.Sqrt(hx*hx + hy*hy)
-		bz := 2*mag[0]*(q2*q4-q1*q3) + 2*mag[1]*(q3*q4+q1*q2) + 2*mag[2]*(0.5-q2*q2-q3*q3)
-
-		v := vec.Vector3D{
-			2 * (q2*q4 - q1*q3),
-			2 * (q1*q2 + q3*q4),
-			q1*q1 - q2*q2 - q3*q3 + q4*q4,
-		}
-		w := vec.Vector3D{
-			2*bx*(0.5-q3*q3-q4*q4) + 2*bz*(q2*q4-q1*q3),
-			2*bx*(q2*q3-q1*q4) + 2*bz*(q1*q2+q3*q4),
-			2*bx*(q1*q3+q2*q4) + 2*bz*(0.5-q2*q2-q3*q3),
-		}
-
-		e = vec.Vector3D{
-			(accel[1]*v[2] - accel[2]*v[1]) + (mag[1]*w[2] - mag[2]*w[1]),
-			(accel[2]*v[0] - accel[0]*v[2]) + (mag[2]*w[0] - mag[0]*w[2]),
-			(accel[0]*v[1] - accel[1]*v[0]) + (mag[0]*w[1] - mag[1]*w[0]),
-		}
-	} else {
-		reference := vec.Vector3D{
-			2 * (q2*q4 - q1*q3),
-			2 * (q1*q2 + q3*q4),
-			q1*q1 - q2*q2 - q3*q3 + q4*q4,
-		}
-		e = accel.Cross(reference).(vec.Vector3D) // a × v (x-io MahonyAHRS)
-	}
-
-	var eInt vec.Vector3D
-	if m.GainI > 0 {
-		eInt = m.eInt.Add(e).(vec.Vector3D)
-	}
-
-	g := vec.Vector3D{m.gyro[0], m.gyro[1], m.gyro[2]}
-	g = g.MulCAdd(m.GainP, e).(vec.Vector3D)
-	if m.GainI > 0 {
-		g = g.MulCAdd(m.GainI, eInt).(vec.Vector3D)
-	}
-
-	qNew := vec.Quaternion{
-		q1 + (-q2*g[0]-q3*g[1]-q4*g[2])*(0.5*m.SamplePeriod),
-		q2 + (q1*g[0]+q3*g[2]-q4*g[1])*(0.5*m.SamplePeriod),
-		q3 + (q1*g[1]-q2*g[2]+q4*g[0])*(0.5*m.SamplePeriod),
-		q4 + (q1*g[2]+q2*g[1]-q3*g[0])*(0.5*m.SamplePeriod),
-	}
-	qNew = qNew.NormalFast().(vec.Quaternion)
-
-	return qNew, eInt
 }
 
 // madgwickRefStruct is used for reference calculations (has old field structure)
@@ -520,6 +326,5 @@ func asMatrix3x3Test(arg matTypes.Matrix, op string) mat.Matrix3x3 {
 }
 
 func TestAHRSFilterInterface(t *testing.T) {
-	var _ filter.Filter[matTypes.Matrix, vec.Quaternion] = (*MahonyAHRS)(nil)
 	var _ filter.Filter[matTypes.Matrix, vec.Quaternion] = (*MadgwickAHRS)(nil)
 }

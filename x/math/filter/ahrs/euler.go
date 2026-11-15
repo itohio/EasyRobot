@@ -13,7 +13,7 @@ import (
 // from above; it is relative to the start without a magnetometer, and drifts
 // with the gyro's z bias.
 //
-// The Mahony and Madgwick outputs put w first; vec.Quaternion's own
+// Madgwick's and the Mahony brick's (x/math/nav/mahony) outputs put w first; vec.Quaternion's own
 // Roll/Pitch/Yaw read w from index 3, so they do not apply to them.
 func Euler(q vec.Quaternion) (roll, pitch, yaw float32) {
 	w, x, y, z := q[0], q[1], q[2], q[3]

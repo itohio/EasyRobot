@@ -1,6 +1,6 @@
 //go:build fixedmotion
 
-package ahrs
+package mahony
 
 import (
 	"math"
@@ -12,23 +12,21 @@ import (
 // operation is a software routine (the RP2040's Cortex-M0+), integer
 // arithmetic is several times cheaper. It is never selected automatically;
 // the float32 path is the default and the reference. The attitude follows
-// the float32 path within 1e-4 rad (TestFixedMahonyFollowsFloat).
+// the float32 path within 1e-4 rad (TestFixedFollowsFloat).
 const fixedPath = true
 
 // fixed6 is the 6-axis filter's state in fixed point: the attitude in Q30
-// (2³⁰ = 1) and the integral of the error in Q30, summed. The gains are
-// kept in Q28 (0.005 to 1e-6 relative: in Q16 its 0.1 % error, carried by a
-// large integral, moved the attitude 2.5e-4 rad), converted again only when
-// the float gains change.
+// (2³⁰ = 1) and the integral ∫e dt in Q30. The gains are kept in Q28,
+// converted again only when the float gains change.
 type fixed6 struct {
 	q        [4]int32  // Q30
 	eInt     [3]int64  // Q30
-	wq       [4]uint32 // the bits last written to m.q,
-	we       [3]uint32 // and to m.eInt: anything else there was set from outside
+	wq       [4]uint32 // the bits last written to f.q,
+	we       [3]uint32 // and to f.eInt: anything else there was set from outside
 	kpF, kiF float32   // the gains kp and ki were made from
 	kp, ki   int64     // Q28
 	dtF      float32   // the sample period hdt was made from
-	hdt      int64     // dt/2 in Q30
+	hdt      int64     // dt in Q29 (dt/2 in Q30)
 }
 
 // rsh is x / 2^s rounded to nearest (halves up), so that repeated
@@ -102,36 +100,35 @@ func fix(x float32, frac uint) int64 {
 	return m
 }
 
-// update6 is calculateWOMag in fixed point: accelerometer in Q22 m/s² (±512),
-// gyro in Q24 rad/s (±128 rad/s), unit vectors and the attitude in Q30,
-// products in int64. It reads the same inputs and leaves the attitude in
-// m.q as float32.
-func (m *MahonyAHRS) update6() {
-	f := &m.fx
+// step is the 6-axis update in fixed point: accelerometer in Q22 m/s²
+// (±512), gyro in Q24 rad/s (±128 rad/s), unit vectors and the attitude in
+// Q30, products in int64. It reads the same inputs as the float path (the
+// rate over the step the mean of the two samples', as stepFloat) and leaves
+// the attitude in f.q as float32.
+func (f *Filter) step(acc, gyro [3]float32, dt float32) {
+	x := &f.fx
 	// the float state is the filter's state: take it up whenever it is not
-	// what this path last wrote (a new filter, Reset, a state set directly)
-	if f.changed(m) {
+	// what this path last wrote (a new filter, Init, the first sample's level)
+	if x.changed(f) {
 		for i := range 4 {
-			f.q[i] = int32(fix(m.q[i], 30))
+			x.q[i] = int32(fix(f.q[i], 30))
 		}
 		for i := range 3 {
-			f.eInt[i] = fix(m.eInt[i], 30)
+			x.eInt[i] = fix(f.eInt[i], 30)
 		}
 	}
-	if m.GainP != f.kpF || f.kp == 0 && m.GainP != 0 {
-		f.kpF, f.kp = m.GainP, fix(m.GainP, 28)
+	if f.cfg.Kp != x.kpF || x.kp == 0 && f.cfg.Kp != 0 {
+		x.kpF, x.kp = f.cfg.Kp, fix(f.cfg.Kp, 28)
 	}
-	if m.GainI != f.kiF || f.ki == 0 && m.GainI != 0 {
-		f.kiF, f.ki = m.GainI, fix(m.GainI, 28)
+	if f.cfg.Ki != x.kiF || x.ki == 0 && f.cfg.Ki != 0 {
+		x.kiF, x.ki = f.cfg.Ki, fix(f.cfg.Ki, 28)
 	}
-	if m.SamplePeriod != f.dtF || f.hdt == 0 {
-		f.dtF, f.hdt = m.SamplePeriod, fix(m.SamplePeriod, 29)
+	if dt != x.dtF || x.hdt == 0 {
+		x.dtF, x.hdt = dt, fix(dt, 29)
 	}
 
 	// the measured direction of gravity, a unit vector in Q30
-	ax := fix(m.inputMatrix[0][0], 22)
-	ay := fix(m.inputMatrix[0][1], 22)
-	az := fix(m.inputMatrix[0][2], 22)
+	ax, ay, az := fix(acc[0], 22), fix(acc[1], 22), fix(acc[2], 22)
 	var ux, uy, uz int64
 	if n2 := ax*ax + ay*ay + az*az; n2 > 0 {
 		n := isqrt(n2) // |a| in Q22 (the squares fit while each axis stays under 724 m/s² and |a| under 418·√3)
@@ -144,7 +141,7 @@ func (m *MahonyAHRS) update6() {
 	}
 
 	// the estimated direction of gravity, Q30
-	q1, q2, q3, q4 := int64(f.q[0]), int64(f.q[1]), int64(f.q[2]), int64(f.q[3])
+	q1, q2, q3, q4 := int64(x.q[0]), int64(x.q[1]), int64(x.q[2]), int64(x.q[3])
 	v0 := rsh(q2*q4-q1*q3, 29)
 	v1 := rsh(q1*q2+q3*q4, 29)
 	v2 := rsh(q1*q1-q2*q2-q3*q3+q4*q4, 30)
@@ -153,32 +150,43 @@ func (m *MahonyAHRS) update6() {
 	e0 := rsh(uy*v2-uz*v1, 30)
 	e1 := rsh(uz*v0-ux*v2, 30)
 	e2 := rsh(ux*v1-uy*v0, 30)
-	if f.ki > 0 {
-		f.eInt[0] += e0
-		f.eInt[1] += e1
-		f.eInt[2] += e2
-	} else {
-		f.eInt = [3]int64{}
+	if x.ki > 0 { // ∫e dt: e (Q30) · dt (Q29) / 2²⁹
+		x.eInt[0] += rsh(e0*x.hdt, 29)
+		x.eInt[1] += rsh(e1*x.hdt, 29)
+		x.eInt[2] += rsh(e2*x.hdt, 29)
 	}
 
-	// the corrected rate, Q24 rad/s
-	gx := fix(m.inputMatrix[1][0], 24) + mulQ(f.kp, e0, 34)
-	gy := fix(m.inputMatrix[1][1], 24) + mulQ(f.kp, e1, 34)
-	gz := fix(m.inputMatrix[1][2], 24) + mulQ(f.kp, e2, 34)
-	if f.ki > 0 {
-		gx += mulQ(f.ki, f.eInt[0], 34)
-		gy += mulQ(f.ki, f.eInt[1], 34)
-		gz += mulQ(f.ki, f.eInt[2], 34)
+	// the corrected rate over the step, Q24 rad/s: the mean of the two
+	// samples' rates (halves up, as rsh), plus the feedback
+	gx := rsh(fix(gyro[0], 24)+fix(f.gPrev[0], 24), 1) + mulQ(x.kp, e0, 34)
+	gy := rsh(fix(gyro[1], 24)+fix(f.gPrev[1], 24), 1) + mulQ(x.kp, e1, 34)
+	gz := rsh(fix(gyro[2], 24)+fix(f.gPrev[2], 24), 1) + mulQ(x.kp, e2, 34)
+	if x.ki > 0 {
+		gx += mulQ(x.ki, x.eInt[0], 34)
+		gy += mulQ(x.ki, x.eInt[1], 34)
+		gz += mulQ(x.ki, x.eInt[2], 34)
 	}
 
 	// half the step's rotation, Q30 rad
-	hx, hy, hz := rsh(gx*f.hdt, 24), rsh(gy*f.hdt, 24), rsh(gz*f.hdt, 24)
+	hx, hy, hz := rsh(gx*x.hdt, 24), rsh(gy*x.hdt, 24), rsh(gz*x.hdt, 24)
 
-	// integrate the rate of change of the quaternion
-	n0 := q1 + rsh(-q2*hx-q3*hy-q4*hz, 30)
-	n1 := q2 + rsh(q1*hx+q3*hz-q4*hy, 30)
-	n2 := q3 + rsh(q1*hy-q2*hz+q4*hx, 30)
-	n3 := q4 + rsh(q1*hz+q2*hy-q3*hx, 30)
+	// the exact rotation by it, as the float path: cos a and sin(a)/a of the
+	// half-angle a = |h| by their series to a⁶, exact to rounding while
+	// a = |ω|·dt/2 ≤ 0.65 rad (the rate's magnitude, not each axis: |ω| up to
+	// 130 rad/s at 100 Hz; a ±2000 °/s gyro reaches 34.9 rad/s per axis,
+	// 60.5 on a diagonal). Above it the series falls short as a⁸: a 1 s
+	// turn at 173 rad/s ends 1.1e-3 rad off, at 222 rad/s (±128 rad/s on
+	// every axis at once) 9.5e-3 rad
+	a2 := rsh(hx*hx+hy*hy+hz*hz, 30) // a², Q30
+	a4 := rsh(a2*a2, 30)
+	a6 := rsh(a4*a2, 30)
+	c := 1<<30 - rsh(a2, 1) + a4/24 - a6/720
+	k := 1<<30 - a2/6 + a4/120 - a6/5040
+	hx, hy, hz = rsh(hx*k, 30), rsh(hy*k, 30), rsh(hz*k, 30)
+	n0 := rsh(q1*c, 30) + rsh(-q2*hx-q3*hy-q4*hz, 30)
+	n1 := rsh(q2*c, 30) + rsh(q1*hx+q3*hz-q4*hy, 30)
+	n2 := rsh(q3*c, 30) + rsh(q1*hy-q2*hz+q4*hx, 30)
+	n3 := rsh(q4*c, 30) + rsh(q1*hz+q2*hy-q3*hx, 30)
 
 	// normalise: |q| stays near 1, so three Newton steps of 1/√s from 1
 	// (s = |q|², y ← y(3 − s·y²)/2) reach Q30's resolution
@@ -188,38 +196,34 @@ func (m *MahonyAHRS) update6() {
 			y2 := rsh(y*y, 30)
 			y = rsh(y*(3<<30-rsh(s*y2, 30)), 31)
 		}
-		f.q = [4]int32{int32(rsh(n0*y, 30)), int32(rsh(n1*y, 30)), int32(rsh(n2*y, 30)), int32(rsh(n3*y, 30))}
+		x.q = [4]int32{int32(rsh(n0*y, 30)), int32(rsh(n1*y, 30)), int32(rsh(n2*y, 30)), int32(rsh(n3*y, 30))}
 	}
 	for i := range 4 {
-		m.q[i] = float32(f.q[i]) * (1.0 / (1 << 30))
-	}
-	// the integral as the float path keeps it (zero without an integral gain)
-	if f.ki > 0 {
-		for i := range 3 {
-			m.eInt[i] = float32(f.eInt[i]) * (1.0 / (1 << 30))
-		}
-	} else {
-		m.eInt = [3]float32{}
-	}
-	for i := range 4 {
-		f.wq[i] = math.Float32bits(m.q[i])
+		f.q[i] = float32(x.q[i]) * (1.0 / (1 << 30))
 	}
 	for i := range 3 {
-		f.we[i] = math.Float32bits(m.eInt[i])
+		f.eInt[i] = float32(x.eInt[i]) * (1.0 / (1 << 30))
 	}
+	for i := range 4 {
+		x.wq[i] = math.Float32bits(f.q[i])
+	}
+	for i := range 3 {
+		x.we[i] = math.Float32bits(f.eInt[i])
+	}
+	f.gPrev = gyro
 }
 
-// changed reports whether m's float state differs, bit for bit, from what
-// update6 last wrote (always for a new or Reset filter: wq is all zero bits,
+// changed reports whether f's float state differs, bit for bit, from what
+// step last wrote (always for a new or Init'ed filter: wq is all zero bits,
 // which no unit quaternion has).
-func (f *fixed6) changed(m *MahonyAHRS) bool {
+func (x *fixed6) changed(f *Filter) bool {
 	for i := range 4 {
-		if math.Float32bits(m.q[i]) != f.wq[i] {
+		if math.Float32bits(f.q[i]) != x.wq[i] {
 			return true
 		}
 	}
 	for i := range 3 {
-		if math.Float32bits(m.eInt[i]) != f.we[i] {
+		if math.Float32bits(f.eInt[i]) != x.we[i] {
 			return true
 		}
 	}

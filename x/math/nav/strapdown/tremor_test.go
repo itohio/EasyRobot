@@ -4,7 +4,6 @@ import (
 	"math"
 	"testing"
 
-	"github.com/itohio/EasyRobot/x/math/filter/ahrs"
 	"github.com/itohio/EasyRobot/x/math/mat"
 )
 
@@ -86,15 +85,15 @@ func TestFirstRestInAShakyHand(t *testing.T) {
 	up := axisAngle([3]float64{1, 0, 0}, math.Pi/2)
 	for seed := range 8 {
 		n := newNav(t, DefaultConfig())
-		flt := ahrs.NewMahony(ahrs.WithKP(2), ahrs.WithKI(0))
+		flt := newMahony(2, 0)
 		var in mat.Matrix3x3
 		h := newShakyHand(seed)
 		at := -1.0
 		for i := range int(10 * rate) {
 			f, w, _ := h.sample(up)
 			in[0], in[1] = f, w
-			flt.Update(1/rate, &in)
-			n.Update(1/rate, [4]float32(flt.Output()), f, w)
+			_ = flt.Update(1/rate, in[0], in[1])
+			n.Update(1/rate, flt.Attitude(), f, w)
 			if n.calibrated {
 				at = float64(i) / rate
 				break
