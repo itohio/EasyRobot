@@ -647,6 +647,133 @@ func TestGuardKeepsTheCovarianceUsable(t *testing.T) {
 	}
 }
 
+// Update takes only finite samples with a positive dt. A NaN or an infinity
+// in any input, or a dt not above zero, is counted in Rejected and changes
+// nothing else, before the first rest or after it (a NaN used to make the
+// state NaN for good).
+func TestNonFiniteSampleIsRejected(t *testing.T) {
+	nan, inf := float32(math.NaN()), float32(math.Inf(1))
+	up := [3]float32{0, 9.8, 0}
+	for _, ready := range []bool{false, true} {
+		for _, s := range []struct {
+			name      string
+			dt        float32
+			acc, gyro [3]float32
+		}{
+			{"NaN accelerometer", 0.01, [3]float32{nan, 9.8, 0}, [3]float32{}},
+			{"NaN gyro", 0.01, up, [3]float32{0, nan, 0}},
+			{"infinite accelerometer", 0.01, [3]float32{0, inf, 0}, [3]float32{}},
+			{"infinite gyro", 0.01, up, [3]float32{0, 0, -inf}},
+			{"NaN dt", nan, up, [3]float32{}},
+			{"infinite dt", inf, up, [3]float32{}},
+			{"zero dt", 0, up, [3]float32{}},
+			{"negative dt", -0.01, up, [3]float32{}},
+		} {
+			h := stillHand(5)
+			f := newFilter(t)
+			if ready {
+				hold(h, &f, upright, 5)
+			} else {
+				hold(h, &f, upright, 0.1)
+			}
+			before := f
+			f.Update(s.dt, s.acc, s.gyro)
+			if f.Rejected != before.Rejected+1 {
+				t.Errorf("%s, ready %v: Rejected %d (want %d)", s.name, ready, f.Rejected, before.Rejected+1)
+			}
+			f.Rejected = before.Rejected
+			if f != before {
+				t.Errorf("%s, ready %v: the state changed", s.name, ready)
+			}
+		}
+	}
+}
+
+// A reading at the sensor's full scale is clipped (its true value is
+// unknown): the sample is counted in Clipped and skipped. At the badge's
+// ±2000 °/s a full-scale gyro sample used to leave a 20–35° tilt error for
+// minutes; skipped, the filter carries on: calibrated and still, the tilt
+// a minute later is what it would have been.
+func TestClippedSampleIsSkipped(t *testing.T) {
+	c := DefaultConfig()
+	gr, ar := float64(c.GyroRange), float64(c.AccelRange)
+	for _, s := range []struct {
+		name      string
+		acc, gyro [3]float64 // replaced readings (0: the hand's)
+	}{
+		{"gyro at +full scale", [3]float64{}, [3]float64{gr, 0, 0}},
+		{"gyro at −full scale", [3]float64{}, [3]float64{0, 0, -gr}},
+		{"accelerometer at +full scale", [3]float64{0, ar, 0}, [3]float64{}},
+		{"accelerometer at −full scale", [3]float64{-ar, 0, 0}, [3]float64{}},
+	} {
+		h := stillHand(5)
+		f := newFilter(t)
+		calibrated(h, &f)
+		hold(h, &f, upright, 10)
+		a, g, _ := h.sample(upright, [3]float64{}, [3]float64{})
+		for i := range 3 {
+			if s.acc[i] != 0 {
+				a[i] = float32(s.acc[i])
+			}
+			if s.gyro[i] != 0 {
+				g[i] = float32(s.gyro[i])
+			}
+		}
+		before := f
+		f.Update(1/rate, a, g)
+		if f.Clipped != before.Clipped+1 {
+			t.Errorf("%s: Clipped %d (want %d)", s.name, f.Clipped, before.Clipped+1)
+		}
+		f.Clipped = before.Clipped
+		if f != before {
+			t.Errorf("%s: the state changed", s.name)
+		}
+		var qt quat
+		for range int(60 * rate) {
+			a, g, qt = h.sample(upright, [3]float64{}, [3]float64{})
+			f.Update(1/rate, a, g)
+		}
+		if e := tiltErr(&f, qt); e > 0.5 {
+			t.Errorf("%s: tilt %.2f° off a minute later (want ≤ 0.5°)", s.name, e)
+		}
+	}
+}
+
+// Reset forgets the motion and returns the biases to the prior, so it
+// recovers from what the range check can't see: a 34 rad/s glitch is
+// inside ±2000 °/s, is integrated, and corrupts the gyro bias (0.06–0.08
+// rad/s), against which the gyro never looked quiet again. After Reset and
+// 5 s held the filter is Ready, its tilt within 0.5° and its gyro bias
+// within 5 mrad/s.
+func TestResetMakesTheFilterReadyAgain(t *testing.T) {
+	h := stillHand(5)
+	f := newFilter(t)
+	calibrated(h, &f)
+	hold(h, &f, upright, 10)
+	a, _, _ := h.sample(upright, [3]float64{}, [3]float64{})
+	f.Update(1/rate, a, [3]float32{34, 34, 34})
+	hold(h, &f, upright, 60)
+	f.Reset()
+	var qt quat
+	for range int(5 * rate) {
+		var g [3]float32
+		a, g, qt = h.sample(upright, [3]float64{}, [3]float64{})
+		f.Update(1/rate, a, g)
+	}
+	if !f.Ready {
+		t.Fatalf("not Ready 5 s after Reset (gyro bias %v)", f.GyroBias)
+	}
+	if e := tiltErr(&f, qt); e > 0.5 {
+		t.Errorf("tilt %.2f° off 5 s after Reset (want ≤ 0.5°)", e)
+	}
+	for i := range 3 {
+		if e := math.Abs(float64(f.GyroBias[i]) - h.gb[i]); e > 0.005 {
+			t.Errorf("gyro bias %v 5 s after Reset (true %v)", f.GyroBias, h.gb)
+			break
+		}
+	}
+}
+
 func TestUpdateDoesNotAllocate(t *testing.T) {
 	h := stillHand(1)
 	f := newFilter(t)

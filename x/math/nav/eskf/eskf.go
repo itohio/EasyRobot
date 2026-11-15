@@ -88,11 +88,13 @@ type Config struct {
 	StillSpeed    float32 // m/s: at rest, a shadow velocity over this is motion; gliding, a speed under it for StillTime is rest
 	MoveSpeed     float32 // m/s: moving faster than this, looking still is a stroke's middle, not rest (a pause's velocity error stays under it)
 	MaxGlide      float32 // s: moving while looking still this long is rest whatever the speed
+	AccelRange    float32 // m/s²: the accelerometer's full scale; a sample with a reading at it is clipped and skipped (0: no check)
+	GyroRange     float32 // rad/s: the gyro's full scale, likewise
 }
 
 // DefaultConfig is the badge's MPU6050 at 100 Hz (white noise 0.016 m/s²
 // and 0.0006 rad/s per sample; gyro bias wander 0.0007 rad/s between still
-// stretches in a hand-held capture).
+// stretches in a hand-held capture), at ±2 g and ±2000 °/s.
 func DefaultConfig() Config {
 	return Config{
 		G: StandardGravity, AccelNoise: 0.0016, GyroNoise: 0.00006,
@@ -100,23 +102,27 @@ func DefaultConfig() Config {
 		TiltNoise: 0.01, ZUPTNoise: 0.02, Gate: 9, TiltEvery: 4,
 		StillGyro: 0.05, StillForce: 0.1, StillAccel: 0.05, StillTime: 0.3, CalmTime: 0.15, RestTime: 1, AvgTime: 0.5,
 		StillSpeed: 0.02, MoveSpeed: 0.05, MaxGlide: 2.5,
+		AccelRange: 2 * StandardGravity, GyroRange: 2000 * math32.Pi / 180,
 	}
 }
 
 func (c *Config) valid() bool {
 	pos := c.G > 0 && c.AccelNoise > 0 && c.GyroNoise > 0 && c.AccelBiasWalk > 0 && c.GyroBiasWalk > 0 &&
 		c.TiltNoise > 0 && c.ZUPTNoise > 0 && c.Gate > 0 && c.StillGyro > 0 && c.StillForce > 0 && c.StillAccel > 0 &&
-		c.StillTime > 0 && c.CalmTime > 0 && c.RestTime > 0 && c.AvgTime > 0 && c.StillSpeed > 0 && c.MoveSpeed > 0 && c.MaxGlide > 0
+		c.StillTime > 0 && c.CalmTime > 0 && c.RestTime > 0 && c.AvgTime > 0 && c.StillSpeed > 0 && c.MoveSpeed > 0 && c.MaxGlide > 0 &&
+		c.AccelRange >= 0 && c.GyroRange >= 0
 	sum := c.G + c.AccelNoise + c.GyroNoise + c.AccelBiasWalk + c.GyroBiasWalk + c.TiltNoise + c.ZUPTNoise +
 		c.Gate + c.StillGyro + c.StillForce + c.StillAccel + c.StillTime + c.CalmTime + c.RestTime + c.AvgTime +
-		c.StillSpeed + c.MoveSpeed + c.MaxGlide
+		c.StillSpeed + c.MoveSpeed + c.MaxGlide + c.AccelRange + c.GyroRange
 	return pos && c.TiltEvery >= 1 && !math32.IsInf(sum, 0) && !math32.IsNaN(sum)
 }
 
 // Filter is the estimate after each Update: Q the attitude [w,x,y,z]
 // (sensor to world, z up), V and P the world velocity (m/s) and position
 // (m), GyroBias and AccelBias in the sensor frame, Still the rest test,
-// Ready once the first rest has set the tilt.
+// Ready once the first rest has set the tilt; Rejected and Clipped count
+// the samples Update refused (not finite, or dt not above zero) and
+// skipped (a reading at a full scale).
 type Filter struct {
 	cfg       Config
 	Q         [4]float32
@@ -125,6 +131,8 @@ type Filter struct {
 	AccelBias [3]float32
 	Still     bool
 	Ready     bool
+	Rejected  uint32
+	Clipped   uint32
 
 	r        [3][3]float32 // Q as a matrix
 	aw       [3]float32    // the last world acceleration, gravity removed
@@ -167,6 +175,7 @@ type Filter struct {
 	sq       [10]float32    // the shadow's square at each slot of the last second
 	gRef     [3]float32     // the force at rest seen from the body (gravity and the accelerometer's offset), turned with the gyro
 	gbSlow   [3]float32     // the gyro bias over 10 s, which turns gRef (the estimate wanders ±0.001 rad/s a second as a hand's tremor passes into it)
+	gb0      [3]float32     // the gyro bias's prior (Prior; zero without one), to which Reset returns
 	gbP      [3]float32     // the gyro bias's prior variance (Prior), applied at the first rest
 	baP      float32        // the accelerometer bias's prior variance: 0.1 m/s² without a multi-pose calibration (an MPU6050's zero-g offset reaches 0.3; a wider prior lets the first rest's tilt wander), or that calibration's residual
 }
@@ -187,7 +196,7 @@ func New(c Config) (Filter, error) {
 // zero, known to the fit's RMS (at least 0.01 m/s²). Call it before the
 // first rest.
 func (f *Filter) Prior(fit *calib.Fit) {
-	f.GyroBias = fit.GyroBias
+	f.GyroBias, f.gb0 = fit.GyroBias, fit.GyroBias
 	for i := range 3 {
 		f.gbP[i] = 4e-6
 	}
@@ -196,10 +205,14 @@ func (f *Filter) Prior(fit *calib.Fit) {
 	f.AccelBias = [3]float32{}
 }
 
-// Reset forgets the motion (attitude, velocity, position) and waits for a
-// rest again; the biases are kept.
+// Reset forgets the motion (attitude, velocity, position) and returns the
+// biases to the prior (Prior's, or zero), then waits for a rest again: the
+// first rest learns them anew. Keeping them would keep a bias corrupted by
+// a glitch (a gyro spike inside its range), against which the gyro never
+// looks quiet again and no rest comes.
 func (f *Filter) Reset() {
 	f.Q, f.V, f.P = [4]float32{1, 0, 0, 0}, [3]float32{}, [3]float32{}
+	f.GyroBias, f.AccelBias = f.gb0, [3]float32{}
 	f.Ready, f.Still, f.primed = false, false, false
 	f.fSum, f.fN, f.stillT, f.tilts = [3]float32{}, 0, 0, 0
 	f.dx = [n]float32{}
@@ -207,8 +220,19 @@ func (f *Filter) Reset() {
 }
 
 // Update takes one sample: dt (s), acc (m/s²) and gyro (rad/s) in the
-// sensor frame.
+// sensor frame. A sample with a NaN or an infinity, or a dt not above zero,
+// is refused (Rejected) and one with a reading at a full scale skipped
+// (Clipped); neither touches the state. A real rotation during a clipped
+// sample is lost: the tilt corrects it at its gain.
 func (f *Filter) Update(dt float32, acc, gyro [3]float32) {
+	if !(dt > 0) || math32.IsInf(dt, 0) || !allFinite(acc) || !allFinite(gyro) {
+		f.Rejected++
+		return
+	}
+	if f.clipped(acc, gyro) {
+		f.Clipped++
+		return
+	}
 	f.rest(dt, acc, gyro)
 	if !f.Ready {
 		if f.Still {
@@ -290,6 +314,28 @@ func (f *Filter) Update(dt float32, acc, gyro [3]float32) {
 	} else {
 		f.wSum, f.wSq, f.wN = [3]float32{}, [3]float32{}, 0
 	}
+}
+
+// allFinite: no NaN or infinity in v.
+func allFinite(v [3]float32) bool {
+	for _, x := range v {
+		if math32.IsNaN(x) || math32.IsInf(x, 0) {
+			return false
+		}
+	}
+	return true
+}
+
+// clipped: a reading at a full scale (the sensor's counts saturate there,
+// +range·32767/32768 and −range), whose true value is unknown.
+func (f *Filter) clipped(acc, gyro [3]float32) bool {
+	a, g := 0.999*f.cfg.AccelRange, 0.999*f.cfg.GyroRange
+	for i := range 3 {
+		if a > 0 && (acc[i] >= a || acc[i] <= -a) || g > 0 && (gyro[i] >= g || gyro[i] <= -g) {
+			return true
+		}
+	}
+	return false
 }
 
 // calm: the body isn't translating while the world acceleration (gravity
