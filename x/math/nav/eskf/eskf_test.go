@@ -933,6 +933,152 @@ func TestGyroBiasHeldUntilTheRestAfterAClip(t *testing.T) {
 	}
 }
 
+// minEigCorr: the smallest eigenvalue of P's correlation matrix (Jacobi
+// rotations in float64).
+func minEigCorr(f *Filter) float64 {
+	var a [n][n]float64
+	for i := range n {
+		for j := range n {
+			a[i][j] = float64(f.cov[i][j]) / math.Sqrt(float64(f.cov[i][i])*float64(f.cov[j][j]))
+		}
+	}
+	for range 100 {
+		off := 0.0
+		for i := range n {
+			for j := i + 1; j < n; j++ {
+				off += a[i][j] * a[i][j]
+			}
+		}
+		if off < 1e-20 {
+			break
+		}
+		for p := range n {
+			for q := p + 1; q < n; q++ {
+				if math.Abs(a[p][q]) < 1e-300 {
+					continue
+				}
+				th := (a[q][q] - a[p][p]) / (2 * a[p][q])
+				t := math.Copysign(1, th) / (math.Abs(th) + math.Sqrt(th*th+1))
+				c := 1 / math.Sqrt(t*t+1)
+				s := t * c
+				for k := range n {
+					akp, akq := a[k][p], a[k][q]
+					a[k][p], a[k][q] = c*akp-s*akq, s*akp+c*akq
+				}
+				for k := range n {
+					apk, aqk := a[p][k], a[q][k]
+					a[p][k], a[q][k] = c*apk-s*aqk, s*apk+c*aqk
+				}
+			}
+		}
+	}
+	m := math.Inf(1)
+	for i := range n {
+		m = min(m, a[i][i])
+	}
+	return m
+}
+
+func TestMinEigCorrIsRight(t *testing.T) {
+	var f Filter
+	for i := range n {
+		f.cov[i][i] = float32(i + 1)
+	}
+	f.cov[0][1], f.cov[1][0] = 1.2, 1.2                               // correlation 1.2/√2 ≈ 0.849: eigenvalues 1 ± 0.849
+	if m := minEigCorr(&f); math.Abs(m-(1-1.2/math.Sqrt(2))) > 1e-6 { // float32(1.2) is not 1.2
+		t.Fatalf("smallest eigenvalue %g, want %g", m, 1-1.2/math.Sqrt(2))
+	}
+}
+
+// The covariance stays positive semidefinite: over ten minutes of a hand
+// moving (turns, strokes, rests), calibrated and not, five seeds, the
+// smallest eigenvalue of its correlation matrix, checked every second,
+// stays above −0.001. (Propagated to first order, P += dt(AP + PAᵀ),
+// it dropped the term dt²·A·P·Aᵀ and reached −0.2, and −2.6 in some
+// uncalibrated runs.)
+func TestCovarianceStaysPositiveSemidefinite(t *testing.T) {
+	for _, cal := range []bool{true, false} {
+		for seed := uint64(11); seed <= 15; seed++ {
+			h := stillHand(seed)
+			f := newFilter(t)
+			if cal {
+				calibrated(h, &f)
+			}
+			hold(h, &f, upright, 5)
+			r := rng(seed)
+			q := upright
+			worst := math.Inf(1)
+			for s := range 120 {
+				ax := [3]float64{r.gauss(), r.gauss(), r.gauss()}
+				A := 0.5 * r.gauss()
+				d := [3]float64{r.gauss(), r.gauss(), r.gauss()}
+				for i := range 500 {
+					tt := float64(i) / rate
+					var a [3]float64
+					w := [3]float64{}
+					if s%2 == 0 {
+						_, v := quintic(tt, A, 2)
+						nn := math.Sqrt(ax[0]*ax[0] + ax[1]*ax[1] + ax[2]*ax[2])
+						for k := range 3 {
+							w[k] = ax[k] / nn * v
+						}
+						q = q.mul(axisAngle(w, math.Sqrt(w[0]*w[0]+w[1]*w[1]+w[2]*w[2])/rate))
+					} else if tt < 1.5 {
+						u := tt / 1.5
+						for k := range 3 {
+							a[k] = 0.1 * d[k] / 2.25 * (60*u - 180*u*u + 120*u*u*u)
+						}
+					}
+					acc, gyro, _ := h.sample(q, a, w)
+					f.Update(1/rate, acc, gyro)
+					if i%100 == 99 {
+						worst = min(worst, minEigCorr(&f))
+					}
+				}
+			}
+			if worst < -1e-3 {
+				t.Errorf("calibrated %v, seed %d: smallest eigenvalue of the correlation matrix %.4f (want ≥ −0.001)", cal, seed, worst)
+			}
+		}
+	}
+}
+
+// SetRange changes the full scales in place (a range switched, or a
+// calibration's scale put in use): after SetRange to ±4 g a 3 g reading is
+// integrated, not clipped; an invalid range (negative, NaN, ∞) is refused
+// with ErrConfig and changes nothing. No allocation.
+func TestSetRangeTakesEffect(t *testing.T) {
+	h := stillHand(5)
+	f := newFilter(t)
+	calibrated(h, &f)
+	hold(h, &f, upright, 10)
+	before := f
+	for _, bad := range [][2]float32{{-1, 30}, {40, float32(math.NaN())}, {float32(math.Inf(1)), 30}} {
+		if err := f.SetRange(bad[0], bad[1]); err != ErrConfig {
+			t.Errorf("SetRange(%v, %v): %v (want ErrConfig)", bad[0], bad[1], err)
+		}
+		if f != before {
+			t.Fatalf("SetRange(%v, %v) changed the filter", bad[0], bad[1])
+		}
+	}
+	a, g, _ := h.sample(upright, [3]float64{}, [3]float64{})
+	a[1] = 3 * StandardGravity
+	f.Update(1/rate, a, g)
+	if f.Clipped != 1 {
+		t.Fatalf("a 3 g reading at ±2 g: Clipped %d (want 1)", f.Clipped)
+	}
+	if err := f.SetRange(4*StandardGravity, 2000*math.Pi/180); err != nil {
+		t.Fatal(err)
+	}
+	f.Update(1/rate, a, g)
+	if f.Clipped != 1 {
+		t.Errorf("a 3 g reading at ±4 g: Clipped %d (want 1: integrated)", f.Clipped)
+	}
+	if n := testing.AllocsPerRun(100, func() { _ = f.SetRange(4*StandardGravity, 2000*math.Pi/180) }); n != 0 {
+		t.Errorf("SetRange allocates %v per call", n)
+	}
+}
+
 func TestUpdateDoesNotAllocate(t *testing.T) {
 	h := stillHand(1)
 	f := newFilter(t)

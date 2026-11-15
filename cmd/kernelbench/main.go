@@ -150,6 +150,11 @@ func benchESKF(calls int, moving bool) {
 		println(err.Error())
 		return
 	}
+	c := eskf.DefaultConfig()
+	if err := f.SetRange(c.AccelRange, c.GyroRange); err != nil { // the in-place setter, in the allocation audit
+		println(err.Error())
+		return
+	}
 	for c := range 200 { // the first rest: ready
 		f.Update(0.01, stillAcc[c%samples], stillGyro[c%samples])
 	}

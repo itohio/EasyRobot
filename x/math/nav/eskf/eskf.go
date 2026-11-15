@@ -94,7 +94,8 @@ type Config struct {
 
 // DefaultConfig is the badge's MPU6050 at 100 Hz (white noise 0.016 m/s²
 // and 0.0006 rad/s per sample; gyro bias wander 0.0007 rad/s between still
-// stretches in a hand-held capture), at ±2 g and ±2000 °/s.
+// stretches in a hand-held capture), at the MPU6050's power-on ±2 g and
+// ±2000 °/s; a sensor set to another range sets its own (SetRange).
 func DefaultConfig() Config {
 	return Config{
 		G: StandardGravity, AccelNoise: 0.0016, GyroNoise: 0.00006,
@@ -137,8 +138,9 @@ type Filter struct {
 	r        [3][3]float32 // Q as a matrix
 	aw       [3]float32    // the last world acceleration, gravity removed
 	cov      [n][n]float32
-	ap       [n][n]float32 // scratch: the nonzero rows of A·P
-	dx       [n]float32    // error accumulated by the updates, injected after
+	ap       [n][n]float32     // scratch: the nonzero rows of A·P
+	apa      [iBg][iBg]float32 // scratch: A·P·Aᵀ's rows and columns θ, v, p
+	dx       [n]float32        // error accumulated by the updates, injected after
 	tilts    int
 	wLow     [3]float32 // the rate low-passed (0.1 s)
 	fHeld    [3]float32 // the force low-passed over AvgTime/8
@@ -209,6 +211,19 @@ func (f *Filter) Prior(fit *calib.Fit) {
 	f.AccelBias = [3]float32{}
 }
 
+// SetRange changes the full scales (Config.AccelRange, GyroRange) in place,
+// for a sensor whose range is switched or whose samples a calibration
+// rescales: a reading at the new full scale is clipped from the next
+// sample on. A negative, NaN or infinite range is refused (ErrConfig) and
+// changes nothing; 0 turns the check off.
+func (f *Filter) SetRange(accel, gyro float32) error {
+	if !(accel >= 0) || !(gyro >= 0) || math32.IsInf(accel, 0) || math32.IsInf(gyro, 0) {
+		return ErrConfig
+	}
+	f.cfg.AccelRange, f.cfg.GyroRange = accel, gyro
+	return nil
+}
+
 // Reset forgets the motion (attitude, velocity, position) and returns the
 // biases to the prior (Prior's, or zero), then waits for a rest again: the
 // first rest learns them anew. Keeping them would keep a bias corrupted by
@@ -228,8 +243,10 @@ func (f *Filter) Reset() {
 // sensor frame. A sample with a NaN or an infinity, or a dt not above zero,
 // is refused (Rejected) without touching the state. One with a reading at a
 // full scale is skipped (Clipped) and flagged: until the next rest
-// re-levels the attitude, the tilt holds the gyro bias. A real rotation
-// during a clipped sample is lost; the re-level corrects it.
+// re-levels the attitude, the motion counts as violent, and the tilt
+// holds the gyro bias while the body isn't calm (calm, the tilt is
+// ungated and may teach it). A real rotation during a clipped sample is
+// lost; the re-level corrects it.
 func (f *Filter) Update(dt float32, acc, gyro [3]float32) {
 	if !(dt > 0) || math32.IsInf(dt, 0) || !allFinite(acc) || !allFinite(gyro) {
 		f.Rejected++
@@ -696,7 +713,8 @@ func (f *Filter) predict(dt float32, acc, gyro [3]float32) {
 	f.normalise()
 }
 
-// propagate: P += dt(AP + PAᵀ) + Q dt, A's nonzero blocks A[θ,bg] = −R,
+// propagate: P ← Φ·P·Φᵀ + Q dt, Φ = I + A·dt, i.e. P += dt(AP + PAᵀ) +
+// dt²·APAᵀ + Q dt, A's nonzero blocks A[θ,bg] = −R,
 // A[v,θ] = −[a_w + g ẑ]×, A[v,ba] = −R, A[p,v] = I.
 func (f *Filter) propagate(dt float32) {
 	r := &f.r
@@ -721,6 +739,33 @@ func (f *Filter) propagate(dt float32) {
 			d := dt * ap[i][j]
 			c[i][j] += d
 			c[j][i] += d
+		}
+	}
+	// and dt²·A·P·Aᵀ, so the step is Φ·P·Φᵀ with Φ = I + A·dt: to first
+	// order alone it dropped that positive term, and P lost definiteness
+	// (the correlation matrix's smallest eigenvalue reached −2.6)
+	apa := &f.apa
+	for i := range iBg {
+		w := &ap[i]
+		b0, b1, b2 := w[iBg], w[iBg+1], w[iBg+2]
+		t0, t1, t2 := w[iTh], w[iTh+1], w[iTh+2]
+		e0, e1, e2 := w[iBa], w[iBa+1], w[iBa+2]
+		for k := range 3 {
+			apa[i][iTh+k] = -(r[k][0]*b0 + r[k][1]*b1 + r[k][2]*b2)
+		}
+		apa[i][iV] = az*t1 - ay*t2 - (r[0][0]*e0 + r[0][1]*e1 + r[0][2]*e2)
+		apa[i][iV+1] = -az*t0 + ax*t2 - (r[1][0]*e0 + r[1][1]*e1 + r[1][2]*e2)
+		apa[i][iV+2] = ay*t0 - ax*t1 - (r[2][0]*e0 + r[2][1]*e1 + r[2][2]*e2)
+		apa[i][iP], apa[i][iP+1], apa[i][iP+2] = w[iV], w[iV+1], w[iV+2]
+	}
+	dt2 := dt * dt
+	for i := range iBg {
+		for j := i; j < iBg; j++ {
+			d := dt2 * 0.5 * (apa[i][j] + apa[j][i])
+			c[i][j] += d
+			if j != i {
+				c[j][i] += d
+			}
 		}
 	}
 	cg, ca := f.cfg.GyroNoise, f.cfg.AccelNoise
