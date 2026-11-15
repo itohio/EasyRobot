@@ -687,6 +687,39 @@ func TestNonFiniteSampleIsRejected(t *testing.T) {
 	}
 }
 
+// After Prior the samples arrive through the fit's Apply, so a reading at
+// the sensor's full scale arrives as (±range − offset)/scale: each axis and
+// sign, it is counted in Clipped, at ±2 g and after SetRange to ±4 g, and
+// one 0.5 % inside the full scale is not. (Against ±range itself, with a
+// badge's fit only +x registered: −x arrived at −19.14 m/s², under the
+// threshold.)
+func TestClippedThroughTheCalibration(t *testing.T) {
+	fit := calib.Fit{Model: calib.OffsetScale, Offset: [3]float32{-0.43, -0.17, -0.17}, Scale: [3]float32{1.002, 1.009, 1.031}}
+	for _, ar := range []float32{2 * StandardGravity, 4 * StandardGravity} {
+		for i := range 3 {
+			for _, sign := range []float32{1, -1} {
+				for _, k := range []float32{1, 0.995} {
+					f := newFilter(t)
+					f.Prior(&fit)
+					if err := f.SetRange(ar, f.cfg.GyroRange); err != nil {
+						t.Fatal(err)
+					}
+					raw := [3]float32{0, 0, StandardGravity}
+					raw[i] = sign * k * ar
+					f.Update(1/rate, fit.Apply(raw), [3]float32{})
+					want := uint32(0)
+					if k == 1 {
+						want = 1
+					}
+					if f.Clipped != want {
+						t.Errorf("±%.0f g, axis %d, sign %+.0f, %.1f %% of the full scale through the fit: Clipped %d (want %d)", ar/StandardGravity, i, sign, 100*k, f.Clipped, want)
+					}
+				}
+			}
+		}
+	}
+}
+
 // A reading at the sensor's full scale is clipped (its true value is
 // unknown): the sample is counted in Clipped and skipped. At the badge's
 // ±2000 °/s a full-scale gyro sample used to leave a 20–35° tilt error for

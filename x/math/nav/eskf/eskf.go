@@ -185,6 +185,10 @@ type Filter struct {
 	gb0      [3]float32 // the gyro bias's prior (Prior; zero without one), to which Reset returns
 	gbP      [3]float32 // the gyro bias's prior variance (Prior), applied at the first rest
 	baP      float32    // the accelerometer bias's prior variance: 0.1 m/s² without a multi-pose calibration (an MPU6050's zero-g offset reaches 0.3; a wider prior lets the first rest's tilt wander), or that calibration's residual
+	accOff   [3]float32 // the fit the samples are corrected by (Prior): its offset, zero without one
+	accScale [3]float32 // and its scale, 1 without one
+	accLo    [3]float32 // the accelerometer's clip limits in the samples' units: ±0.999·AccelRange through that fit
+	accHi    [3]float32
 }
 
 // New checks c and returns a filter that waits for its first rest.
@@ -192,7 +196,8 @@ func New(c Config) (Filter, error) {
 	if !c.valid() {
 		return Filter{}, ErrConfig
 	}
-	f := Filter{cfg: c, Q: [4]float32{1, 0, 0, 0}, gbP: [3]float32{4e-4, 4e-4, 4e-4}, baP: 0.01, wildT: 1}
+	f := Filter{cfg: c, Q: [4]float32{1, 0, 0, 0}, gbP: [3]float32{4e-4, 4e-4, 4e-4}, baP: 0.01, wildT: 1, accScale: [3]float32{1, 1, 1}}
+	f.limits()
 	f.matrix()
 	return f, nil
 }
@@ -200,28 +205,49 @@ func New(c Config) (Filter, error) {
 // Prior seeds the biases from a multi-pose calibration (calib.Solver) whose
 // Apply the caller runs on the accelerometer's samples: the gyro bias from
 // its still poses, known to 2 mrad/s; the accelerometer's residual bias at
-// zero, known to the fit's RMS (at least 0.01 m/s²). Call it before the
-// first rest.
+// zero, known to the fit's RMS (at least 0.01 m/s²). The accelerometer's
+// full scale is then taken through the fit too: a reading at the sensor's
+// full scale arrives as (±AccelRange − offset)/scale, which differs per
+// axis and sign. Call it before the first rest.
 func (f *Filter) Prior(fit *calib.Fit) {
 	f.GyroBias, f.gb0 = fit.GyroBias, fit.GyroBias
 	for i := range 3 {
 		f.gbP[i] = 4e-6
+		s := fit.Scale[i]
+		if !(s > 0) || math32.IsInf(s, 0) { // no scale fitted (a gyro-only or offset-only fit)
+			s = 1
+		}
+		f.accOff[i], f.accScale[i] = fit.Offset[i], s
 	}
 	s := max(fit.RMS, 0.01)
 	f.baP = s * s
 	f.AccelBias = [3]float32{}
+	f.limits()
+}
+
+// limits: the accelerometer's clip limits in the samples' units, the
+// sensor's ±0.999·AccelRange through the fit (Prior) the samples arrive by.
+func (f *Filter) limits() {
+	r := 0.999 * f.cfg.AccelRange
+	for i := range 3 {
+		f.accLo[i] = (-r - f.accOff[i]) / f.accScale[i]
+		f.accHi[i] = (r - f.accOff[i]) / f.accScale[i]
+	}
 }
 
 // SetRange changes the full scales (Config.AccelRange, GyroRange) in place,
-// for a sensor whose range is switched or whose samples a calibration
-// rescales: a reading at the new full scale is clipped from the next
-// sample on. A negative, NaN or infinite range is refused (ErrConfig) and
-// changes nothing; 0 turns the check off.
+// for a sensor whose range is switched: a reading at the new full scale
+// (through the Prior's fit, if any) is clipped from the next sample on.
+// The ranges are the sensor's own, as for New, in either order with Prior:
+// a range already taken through the fit would be taken through it twice.
+// A negative, NaN or infinite range is refused (ErrConfig) and changes
+// nothing; 0 turns the check off.
 func (f *Filter) SetRange(accel, gyro float32) error {
 	if !(accel >= 0) || !(gyro >= 0) || math32.IsInf(accel, 0) || math32.IsInf(gyro, 0) {
 		return ErrConfig
 	}
 	f.cfg.AccelRange, f.cfg.GyroRange = accel, gyro
+	f.limits()
 	return nil
 }
 
@@ -428,11 +454,12 @@ func allFinite(v [3]float32) bool {
 }
 
 // clipped: a reading at a full scale (the sensor's counts saturate there,
-// +range·32767/32768 and −range), whose true value is unknown.
+// +range·32767/32768 and −range), whose true value is unknown; the
+// accelerometer's through the Prior's fit (limits).
 func (f *Filter) clipped(acc, gyro [3]float32) bool {
-	a, g := 0.999*f.cfg.AccelRange, 0.999*f.cfg.GyroRange
+	g := 0.999 * f.cfg.GyroRange
 	for i := range 3 {
-		if a > 0 && (acc[i] >= a || acc[i] <= -a) || g > 0 && (gyro[i] >= g || gyro[i] <= -g) {
+		if f.cfg.AccelRange > 0 && (acc[i] >= f.accHi[i] || acc[i] <= f.accLo[i]) || g > 0 && (gyro[i] >= g || gyro[i] <= -g) {
 			return true
 		}
 	}
