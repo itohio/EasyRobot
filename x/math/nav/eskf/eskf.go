@@ -149,6 +149,9 @@ type Filter struct {
 	fTurn    [3]float32 // the force turned with the gyro, followed over 0.15 s (no lag in a turn, little memory of a stroke)
 	wSum     [3]float32 // the rate summed over the zero-rate window
 	wSq      [3]float32 // and its square
+	gPrev    [3]float32 // the last accepted sample's rate
+	gMid     [3]float32 // the rate over the step: the mean of that and this sample's (a gyro reads the rate at the sample)
+	gHave    bool       // gPrev holds a sample
 	wN       int
 	refusedT float32    // rest time with every zero-rate update refused
 	awLow    [3]float32 // the world acceleration low-passed over 0.15 s
@@ -262,6 +265,7 @@ func (f *Filter) Reset() {
 	f.shocked, f.sSum, f.sN, f.wildT = false, [3]float32{}, 0, 1
 	f.Ready, f.Still, f.primed = false, false, false
 	f.fSum, f.fN, f.stillT, f.tilts = [3]float32{}, 0, 0, 0
+	f.gHave = false
 	f.dx = [n]float32{}
 	f.matrix()
 }
@@ -284,6 +288,13 @@ func (f *Filter) Update(dt float32, acc, gyro [3]float32) {
 		f.shocked = true
 		return
 	}
+	if !f.gHave {
+		f.gPrev, f.gHave = gyro, true
+	}
+	for i := range 3 {
+		f.gMid[i] = 0.5 * (gyro[i] + f.gPrev[i])
+	}
+	f.gPrev = gyro
 	f.rest(dt, acc, gyro)
 	if !f.Ready {
 		if f.Still {
@@ -527,15 +538,9 @@ func (f *Filter) rest(dt float32, acc, gyro [3]float32) {
 	// −ω×v; followed towards the force over RestTime. A rotation in place
 	// keeps the force on it; a translation pulls the force off it (a
 	// smooth stroke passes the steadiness above, not this)
-	wx, wy, wz := gyro[0]-f.GyroBias[0], gyro[1]-f.GyroBias[1], gyro[2]-f.GyroBias[2]
-	r0, r1, r2 := f.fRef[0], f.fRef[1], f.fRef[2]
-	f.fRef[0] -= (wy*r2 - wz*r1) * dt
-	f.fRef[1] -= (wz*r0 - wx*r2) * dt
-	f.fRef[2] -= (wx*r1 - wy*r0) * dt
-	t0, t1, t2 := f.fTurn[0], f.fTurn[1], f.fTurn[2]
-	f.fTurn[0] -= (wy*t2 - wz*t1) * dt
-	f.fTurn[1] -= (wz*t0 - wx*t2) * dt
-	f.fTurn[2] -= (wx*t1 - wy*t0) * dt
+	wx, wy, wz := f.gMid[0]-f.GyroBias[0], f.gMid[1]-f.GyroBias[1], f.gMid[2]-f.GyroBias[2]
+	turnBy(&f.fRef, wx, wy, wz, dt)
+	turnBy(&f.fTurn, wx, wy, wz, dt)
 	kr := min(dt/c.RestTime, 1)
 	var d2 float32
 	for i := range 3 {
@@ -577,11 +582,8 @@ func (f *Filter) shadow(dt float32, acc, gyro [3]float32) {
 			f.gbSlow[i] += k10 * e
 		}
 	}
-	wx, wy, wz := gyro[0]-f.gbSlow[0], gyro[1]-f.gbSlow[1], gyro[2]-f.gbSlow[2]
-	r0, r1, r2 := f.gRef[0], f.gRef[1], f.gRef[2]
-	f.gRef[0] -= (wy*r2 - wz*r1) * dt
-	f.gRef[1] -= (wz*r0 - wx*r2) * dt
-	f.gRef[2] -= (wx*r1 - wy*r0) * dt
+	wx, wy, wz := f.gMid[0]-f.gbSlow[0], f.gMid[1]-f.gbSlow[1], f.gMid[2]-f.gbSlow[2]
+	turnBy(&f.gRef, wx, wy, wz, dt)
 	var d [3]float32
 	k := min(dt/2, 1)
 	for i := range 3 {
@@ -618,6 +620,22 @@ func (f *Filter) shadow(dt float32, acc, gyro [3]float32) {
 		f.pS[i] = f.shP[i] + (f.shV[i]+0.5*f.shCur[i])*f.shT
 		f.vS[i] = f.shV[i] + f.shCur[i]
 	}
+}
+
+// turnBy turns v, a fixed world vector seen from the body, through one
+// sample of the body's rate w (v' = −w×v): by the half-angle (Cayley)
+// rotation, which keeps its length. One Euler step, v −= (w×v)·dt, grows it
+// by √(1 + (|w|·dt)²) a sample: 3.5 % of g through a 180° turn in 2 s, an
+// acceleration the shadow integrated and gave back as speed at the next
+// wake.
+func turnBy(v *[3]float32, wx, wy, wz, dt float32) {
+	px, py, pz := -0.5*wx*dt, -0.5*wy*dt, -0.5*wz*dt
+	cx, cy, cz := py*v[2]-pz*v[1], pz*v[0]-px*v[2], px*v[1]-py*v[0]
+	dx, dy, dz := py*cz-pz*cy, pz*cx-px*cz, px*cy-py*cx
+	k := 2 / (1 + px*px + py*py + pz*pz)
+	v[0] += k * (cx + dx)
+	v[1] += k * (cy + dy)
+	v[2] += k * (cz + dz)
 }
 
 // clearShadow starts the shadow at a rest.
@@ -718,17 +736,14 @@ func (f *Filter) normalise() {
 func (f *Filter) predict(dt float32, acc, gyro [3]float32) {
 	var w, a [3]float32
 	for i := range 3 {
-		w[i] = gyro[i] - f.GyroBias[i]
+		w[i] = f.gMid[i] - f.GyroBias[i]
 		a[i] = acc[i] - f.AccelBias[i]
 	}
-	for i := range 3 {
-		f.aw[i] = f.r[i][0]*a[0] + f.r[i][1]*a[1] + f.r[i][2]*a[2]
-	}
-	f.aw[2] -= f.cfg.G
-	for i := range 3 {
-		f.P[i] += f.V[i]*dt + 0.5*f.aw[i]*dt*dt
-		f.V[i] += f.aw[i] * dt
-	}
+	// the attitude first, by the rate over the step (gMid: the mean of the
+	// last two samples' rates); the sample's force is the body's at the
+	// sample, the step's end (rotated with the attitude at the step's start,
+	// a turn leaked g·ω·dt of gravity into the world acceleration: a turn in
+	// place with exact samples moved 2–17 cm)
 	h := 0.5 * dt
 	q := f.Q
 	f.Q = [4]float32{
@@ -737,8 +752,16 @@ func (f *Filter) predict(dt float32, acc, gyro [3]float32) {
 		q[2] + h*(q[0]*w[1]-q[1]*w[2]+q[3]*w[0]),
 		q[3] + h*(q[0]*w[2]+q[1]*w[1]-q[2]*w[0]),
 	}
-	f.propagate(dt) // with the attitude at the step's start (r)
 	f.normalise()
+	for i := range 3 {
+		f.aw[i] = f.r[i][0]*a[0] + f.r[i][1]*a[1] + f.r[i][2]*a[2]
+	}
+	f.aw[2] -= f.cfg.G
+	for i := range 3 {
+		f.P[i] += f.V[i]*dt + 0.5*f.aw[i]*dt*dt
+		f.V[i] += f.aw[i] * dt
+	}
+	f.propagate(dt) // with the attitude at the step's end (r), as the force
 }
 
 // propagate: P ← Φ·P·Φᵀ + Q dt, Φ = I + A·dt, i.e. P += dt(AP + PAᵀ) +

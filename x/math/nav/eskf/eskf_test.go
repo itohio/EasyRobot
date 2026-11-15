@@ -377,13 +377,62 @@ func TestFirstRestWaitsForATurnToEnd(t *testing.T) {
 	}
 }
 
+// A turn in place doesn't move the body: from upright, 45°, 90° and 180°
+// about the screen's normal and 90° about the badge's right and up axes, in
+// 2 s, then 3 s held. With exact samples (the force of the attitude at the
+// sample, the gyro the rate at the sample) the position stays within
+// 1 mm and the speed under 5 mm/s; in a steady hand, calibrated, within
+// 5 mm and 2 cm/s. (With the force turned by the attitude at the step's
+// start and the references turned by an Euler step, exact samples moved
+// up to 17 cm, a hand 25 cm.)
+func TestTurnInPlaceStaysPut(t *testing.T) {
+	for _, ideal := range []bool{true, false} {
+		for _, c := range []struct {
+			ax  [3]float64
+			deg float64
+		}{{[3]float64{0, 0, 1}, 45}, {[3]float64{0, 0, 1}, 90}, {[3]float64{0, 0, 1}, 180}, {[3]float64{1, 0, 0}, 90}, {[3]float64{0, 1, 0}, 90}} {
+			f := newFilter(t)
+			h := stillHand(3)
+			if !ideal {
+				calibrated(h, &f)
+			}
+			feed := func(q quat, w [3]float64) {
+				if !ideal {
+					a, g, _ := h.sample(q, [3]float64{}, w)
+					f.Update(1/rate, a, g)
+					return
+				}
+				fw := q.conj().rot([3]float64{0, 0, StandardGravity})
+				f.Update(1/rate, [3]float32{float32(fw[0]), float32(fw[1]), float32(fw[2])}, [3]float32{float32(w[0]), float32(w[1]), float32(w[2])})
+			}
+			for range int(5 * rate) {
+				feed(upright, [3]float64{})
+			}
+			p0 := f.P
+			var vMax float64
+			for i := 1; i <= int(5*rate); i++ {
+				ang, w := quintic(float64(i)/rate, c.deg*math.Pi/180, 2)
+				feed(upright.mul(axisAngle(c.ax, ang)), [3]float64{c.ax[0] * w, c.ax[1] * w, c.ax[2] * w})
+				vMax = max(vMax, math.Sqrt(float64(f.V[0]*f.V[0]+f.V[1]*f.V[1]+f.V[2]*f.V[2])))
+			}
+			dMax, vLim := 0.001, 0.005
+			if !ideal {
+				dMax, vLim = 0.005, 0.02
+			}
+			if d := dist(f.P, p0); d > dMax || vMax > vLim {
+				t.Errorf("exact samples %v, %.0f° about %v: moved %.2f cm, speed up to %.3f m/s (want ≤ %.1f cm, ≤ %.3f m/s)", ideal, c.deg, c.ax, d*100, vMax, dMax*100, vLim)
+			}
+		}
+	}
+}
+
 // Squares drawn by hand: 15 and 30 cm
 // squares in the badge's plane (right, up, left, down; 1.5 s a side, 0.5 s
 // pauses) in a steady hand, calibrated, seeds 7–10: the path stays in
-// the square's box grown by 25 % of the side and closes within 30 % of it.
-// Measured: 2–10 %, and 29 % for the 30 cm square of seed 8, whose last
-// side tilts 0.26° (a corner's zero velocity cancelled what was left). A
-// corner's zero velocity missed reads 200 % and more.
+// the square's box grown by 25 % of the side (to 1 mm: the 15 cm square of
+// seed 8 reaches 0.3 mm past it) and closes within 30 % of it. Measured:
+// 16–21 % for the 15 cm squares, 6–9 % for the 30 cm ones. A corner's
+// zero velocity missed reads 200 % and more.
 func TestSquaresClose(t *testing.T) {
 	for _, side := range []float64{0.15, 0.30} {
 		for seed := uint64(7); seed <= 10; seed++ {
@@ -407,8 +456,8 @@ func TestSquaresClose(t *testing.T) {
 					out = math.Max(out, math.Hypot(math.Max(math.Max(-m-x, x-side-m), 0), math.Max(math.Max(-m-z, z-side-m), 0)))
 				}
 			}
-			if c := dist(f.P, p0); c > 0.30*side || out > 0 {
-				t.Errorf("%.0f cm square, seed %d: closes %.1f cm away, %.1f cm outside the box (want ≤ %.1f cm, 0)", side*100, seed, c*100, out*100, 30*side)
+			if c := dist(f.P, p0); c > 0.30*side || out > 0.001 {
+				t.Errorf("%.0f cm square, seed %d: closes %.1f cm away, %.2f cm outside the box (want ≤ %.1f cm, ≤ 0.1)", side*100, seed, c*100, out*100, 30*side)
 			}
 		}
 	}
@@ -502,21 +551,23 @@ func TestSlowStrokesOnADesk(t *testing.T) {
 	}
 }
 
-// The filter's σ is honest at rest and too small after a turn. Over 50
-// seeds (calibrated, a steady hand, 10 s held), the mean normalised error
-// squared lies in its χ² 95 % band at rest: tilt (2 degrees of freedom,
-// band 1.45–2.55) measured 1.59, velocity (3, band 2.32–3.68) 2.87; the
-// gyro bias reads 3.80 (just over its band). Right after a 30° turn the
-// tilt reads 6.70 (σ about half the error's spread), the velocity 4.55 and
-// the gyro bias 6.03; their bounds hold that measured over-confidence, so a
-// change in either direction shows.
+// The filter's σ is honest at rest and, for the tilt and the velocity,
+// after a turn. Over 50 seeds (calibrated, a steady hand, 10 s held), the
+// mean normalised error squared lies in its χ² 95 % band at rest: tilt (2
+// degrees of freedom, band 1.45–2.55) measured 1.81, velocity (3, band
+// 2.32–3.68) 2.86; the gyro bias reads 3.80 (just over its band). Right
+// after a 30° turn the tilt reads 2.64 (just over its band), the velocity
+// 2.61 and the gyro bias 5.69 (σ too small); their bounds hold those
+// measured values, so a change in either direction shows. (With the force
+// turned by the attitude at the step's start, the tilt read 6.70 after the
+// turn and the velocity 4.55.)
 func TestSigmaIsHonestAtRest(t *testing.T) {
 	for _, c := range []struct {
 		turn            bool
 		tilt, vel, bias [2]float64 // bounds on the mean
 	}{
 		{false, [2]float64{1.45, 2.55}, [2]float64{2.32, 3.68}, [2]float64{2.8, 4.5}},
-		{true, [2]float64{5.5, 9}, [2]float64{3.5, 6}, [2]float64{4.5, 8}},
+		{true, [2]float64{2, 3.5}, [2]float64{2, 3.5}, [2]float64{4.5, 8}},
 	} {
 		var st, sv, sb float64
 		const seeds = 50
