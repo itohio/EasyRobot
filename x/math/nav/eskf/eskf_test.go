@@ -415,10 +415,10 @@ func TestSquaresClose(t *testing.T) {
 }
 
 // A stroke from rest in a steady hand, calibrated, over 40 seeds and two
-// directions (80 strokes each): 10 cm in 1 s reads within 10 % in 61 of 80
-// (0.50–1.24×). Slow strokes mostly don't register in a hand: their middle
+// directions (80 strokes each): 10 cm in 1 s reads within 10 % in 62 of 80
+// (0.62–1.25×). Slow strokes mostly don't register in a hand: their middle
 // is as slow as the tremor, so zero velocity takes them (5 cm over 2 s
-// within 0.5–1.5× in 16 of 80, 3 cm in 9 of 80; under 5 of 80 each with
+// within 0.5–1.5× in 18 of 80, 3 cm in 11 of 80; under 5 of 80 each with
 // StillSpeed at 0.016). The floors keep those rates from falling.
 func TestStrokeRegisters(t *testing.T) {
 	// A slow stroke's middle has almost no acceleration while its speed is
@@ -505,10 +505,10 @@ func TestSlowStrokesOnADesk(t *testing.T) {
 // The filter's σ is honest at rest and too small after a turn. Over 50
 // seeds (calibrated, a steady hand, 10 s held), the mean normalised error
 // squared lies in its χ² 95 % band at rest: tilt (2 degrees of freedom,
-// band 1.45–2.55) measured 1.68, velocity (3, band 2.32–3.68) 2.94; the
-// gyro bias reads 3.82 (just over its band). Right after a 30° turn the
-// tilt reads 7.26 (σ about half the error's spread), the velocity 4.65 and
-// the gyro bias 6.16; their bounds hold that measured over-confidence, so a
+// band 1.45–2.55) measured 1.59, velocity (3, band 2.32–3.68) 2.87; the
+// gyro bias reads 3.80 (just over its band). Right after a 30° turn the
+// tilt reads 6.70 (σ about half the error's spread), the velocity 4.55 and
+// the gyro bias 6.03; their bounds hold that measured over-confidence, so a
 // change in either direction shows.
 func TestSigmaIsHonestAtRest(t *testing.T) {
 	for _, c := range []struct {
@@ -561,10 +561,8 @@ func TestSigmaIsHonestAtRest(t *testing.T) {
 // Ten minutes of a hand moving (turns, strokes, rests) in float32 leave the
 // covariance usable: finite, a positive diagonal and correlations within ±1
 // (what guard holds, pair by pair), and the estimate finite and bounded.
-// Not positive semidefinite: the smallest eigenvalue of the correlation
-// matrix reaches −0.2 in such runs and −2.6 in some uncalibrated ones, in
-// directions no measurement touches (the innovation variance stays above
-// the measurement noise).
+// Definiteness is TestCovarianceStaysPositiveSemidefinite's and
+// TestCovarianceStaysPositiveDefiniteInShaking's.
 func TestTenMinutesStayAFilter(t *testing.T) {
 	h := stillHand(11)
 	f := newFilter(t)
@@ -777,7 +775,8 @@ func TestResetMakesTheFilterReadyAgain(t *testing.T) {
 // shake feeds s seconds of vigorous shaking: the hand swings the body
 // through 3–8 Hz in changing directions, up to ~3 g and ~10 rad/s, and
 // the accelerometer clips at its full scale (±2 g) as a real one does.
-func shake(h *hand, f *Filter, q quat, s float64, seed uint64) quat {
+// each, if not nil, runs after every sample.
+func shake(h *hand, f *Filter, q quat, s float64, seed uint64, each func()) quat {
 	r := rng(seed)
 	c := f.cfg
 	var amp, w [3]float64
@@ -798,6 +797,9 @@ func shake(h *hand, f *Filter, q quat, s float64, seed uint64) quat {
 			acc[k] = min(max(acc[k], -c.AccelRange), c.AccelRange)
 		}
 		f.Update(1/rate, acc, gyro)
+		if each != nil {
+			each()
+		}
 	}
 	return q
 }
@@ -819,7 +821,7 @@ func TestRestAfterShaking(t *testing.T) {
 				calibrated(h, &f)
 			}
 			hold(h, &f, upright, 5)
-			shake(h, &f, upright, 10, seed)
+			shake(h, &f, upright, 10, seed, nil)
 			desk := newHand(seed+100, 0, 0)
 			desk.off, desk.gb = h.off, h.gb
 			still, rested := 0, -1.0
@@ -1038,6 +1040,74 @@ func TestCovarianceStaysPositiveSemidefinite(t *testing.T) {
 			}
 			if worst < -1e-3 {
 				t.Errorf("calibrated %v, seed %d: smallest eigenvalue of the correlation matrix %.4f (want ≥ −0.001)", cal, seed, worst)
+			}
+		}
+	}
+}
+
+// minPivotCorr: the smallest Cholesky pivot of P's correlation matrix (in
+// float64); at or below zero, P is not positive definite.
+func minPivotCorr(f *Filter) float64 {
+	var a [n][n]float64
+	for i := range n {
+		for j := range n {
+			a[i][j] = float64(f.cov[i][j]) / math.Sqrt(float64(f.cov[i][i])*float64(f.cov[j][j]))
+		}
+	}
+	m := math.Inf(1)
+	for k := range n {
+		d := a[k][k]
+		for j := range k {
+			d -= a[k][j] * a[k][j]
+		}
+		if !(d > 0) {
+			return d
+		}
+		m = min(m, d)
+		s := math.Sqrt(d)
+		for i := k + 1; i < n; i++ {
+			v := a[i][k]
+			for j := range k {
+				v -= a[i][j] * a[k][j]
+			}
+			a[i][k] = v / s
+		}
+		a[k][k] = s
+	}
+	return m
+}
+
+// The covariance stays positive definite through vigorous shaking and the
+// rest after it: 10 s of shaking (the accelerometer clipping), then 20 s
+// held, calibrated and not, five shakes each; checked every sample.
+// (Without a rest the yaw, velocity and position errors grew nearly
+// collinear, correlations past 0.9998, and float32 rounded that block
+// indefinite in three of the ten, first non-positive pivots down to −410.)
+func TestCovarianceStaysPositiveDefiniteInShaking(t *testing.T) {
+	for _, cal := range []bool{true, false} {
+		for seed := uint64(1); seed <= 5; seed++ {
+			h := stillHand(seed)
+			f := newFilter(t)
+			if cal {
+				calibrated(h, &f)
+			}
+			hold(h, &f, upright, 5)
+			bad, worst := 0, math.Inf(1)
+			check := func() {
+				p := minPivotCorr(&f)
+				if !(p > 0) {
+					bad++
+				}
+				worst = min(worst, p)
+			}
+			shake(h, &f, upright, 10, seed, check)
+			for range int(20 * rate) {
+				a, g, _ := h.sample(upright, [3]float64{}, [3]float64{})
+				f.Update(1/rate, a, g)
+				check()
+			}
+			if bad > 0 {
+				t.Errorf("calibrated %v, shake %d: not positive definite in %d samples, first non-positive pivot down to %.4f (want > 0)", cal, seed, bad, worst)
 			}
 		}
 	}

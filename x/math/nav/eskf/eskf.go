@@ -94,8 +94,9 @@ type Config struct {
 
 // DefaultConfig is the badge's MPU6050 at 100 Hz (white noise 0.016 m/s²
 // and 0.0006 rad/s per sample; gyro bias wander 0.0007 rad/s between still
-// stretches in a hand-held capture), at the MPU6050's power-on ±2 g and
-// ±2000 °/s; a sensor set to another range sets its own (SetRange).
+// stretches in a hand-held capture), at ±2 g and ±2000 °/s, the ranges
+// of the recorded shaking capture (the MPU6050 powers up at ±2 g and
+// ±250 °/s); a sensor set to another range sets its own (SetRange).
 func DefaultConfig() Config {
 	return Config{
 		G: StandardGravity, AccelNoise: 0.0016, GyroNoise: 0.00006,
@@ -715,7 +716,12 @@ func (f *Filter) predict(dt float32, acc, gyro [3]float32) {
 
 // propagate: P ← Φ·P·Φᵀ + Q dt, Φ = I + A·dt, i.e. P += dt(AP + PAᵀ) +
 // dt²·APAᵀ + Q dt, A's nonzero blocks A[θ,bg] = −R,
-// A[v,θ] = −[a_w + g ẑ]×, A[v,ba] = −R, A[p,v] = I.
+// A[v,θ] = −[a_w + g ẑ]×, A[v,ba] = −R, A[p,v] = I. The velocity and
+// position variances are then inflated by a hair (×(1 + 1e-5) a sample,
+// 0.1 %/s at 100 Hz): in long motion without a rest the yaw, velocity and
+// position errors grow nearly collinear (the yaw error times the
+// acceleration feeds the velocity, which the position integrates;
+// correlations past 0.9998), a block float32 rounds to indefinite.
 func (f *Filter) propagate(dt float32) {
 	r := &f.r
 	c := &f.cov
@@ -775,6 +781,9 @@ func (f *Filter) propagate(dt float32) {
 		c[iV+i][iV+i] += ca * ca * dt
 		c[iBg+i][iBg+i] += wg * wg * dt
 		c[iBa+i][iBa+i] += wa * wa * dt
+	}
+	for i := iV; i < iP+3; i++ {
+		c[i][i] *= 1 + 1e-5
 	}
 }
 
