@@ -95,7 +95,7 @@ func stillHand(seed uint64) *hand { return newHand(seed, 0.031, 0.016) }
 func calibrated(h *hand, f *Filter) {
 	h.off = [3]float64{}
 	fit := calib.Fit{GyroBias: [3]float32{float32(h.gb[0]), float32(h.gb[1]), float32(h.gb[2])}, RMS: 0.01, Scale: [3]float32{1, 1, 1}}
-	f.Prior(&fit)
+	f.Prior(&fit, 0)
 }
 
 // sample: the body's attitude q (sensor to world), world acceleration a
@@ -738,6 +738,34 @@ func TestNonFiniteSampleIsRejected(t *testing.T) {
 	}
 }
 
+// Prior's accelerometer-bias σ is the largest of the caller's
+// accelBiasSigma, the fit's RMS and 0.01 m/s²: the first rest seeds the
+// covariance with it. An exactly determined fit (RMS 0) with the caller's
+// 0.05 gives 0.05; a fit's RMS above the caller's wins; a negative, NaN or
+// infinite σ adds nothing.
+func TestPriorTakesTheLargestSigma(t *testing.T) {
+	nan := float32(math.NaN())
+	for _, c := range []struct {
+		rms, sigma, want float32
+	}{{0, 0, 0.01}, {0, 0.05, 0.05}, {0.08, 0.05, 0.08}, {0.02, 0, 0.02}, {0, -1, 0.01}, {0, nan, 0.01}, {0, float32(math.Inf(1)), 0.01}} {
+		h := stillHand(4)
+		f := newFilter(t)
+		fit := calib.Fit{GyroBias: [3]float32{float32(h.gb[0]), float32(h.gb[1]), float32(h.gb[2])}, RMS: c.rms, Scale: [3]float32{1, 1, 1}}
+		h.off = [3]float64{}
+		f.Prior(&fit, c.sigma)
+		for !f.Ready {
+			a, g, _ := h.sample(upright, [3]float64{}, [3]float64{})
+			f.Update(1/rate, a, g)
+		}
+		for i := range 3 {
+			if got := math.Sqrt(float64(f.cov[iBa+i][iBa+i])); math.Abs(got-float64(c.want)) > 1e-6 {
+				t.Errorf("RMS %g, σ %g: the first rest's accelerometer-bias σ %.5f (want %.5f)", c.rms, c.sigma, got, c.want)
+				break
+			}
+		}
+	}
+}
+
 // After Prior the samples arrive through the fit's Apply, so a reading at
 // the sensor's full scale arrives as (±range − offset)/scale: each axis and
 // sign, it is counted in Clipped, at ±2 g and after SetRange to ±4 g, and
@@ -751,7 +779,7 @@ func TestClippedThroughTheCalibration(t *testing.T) {
 			for _, sign := range []float32{1, -1} {
 				for _, k := range []float32{1, 0.995} {
 					f := newFilter(t)
-					f.Prior(&fit)
+					f.Prior(&fit, 0)
 					if err := f.SetRange(ar, f.cfg.GyroRange); err != nil {
 						t.Fatal(err)
 					}
@@ -767,6 +795,23 @@ func TestClippedThroughTheCalibration(t *testing.T) {
 					}
 				}
 			}
+		}
+	}
+}
+
+// A fit whose offset isn't finite (NaN, ∞) can't break the clip check:
+// its offset counts as 0, so a reading at the full scale is counted and
+// one at rest is not (through a NaN offset nothing clipped, through an
+// infinite one everything did).
+func TestClippedWithANonFiniteOffset(t *testing.T) {
+	for _, o := range []float32{float32(math.NaN()), float32(math.Inf(1))} {
+		f := newFilter(t)
+		fit := calib.Fit{Offset: [3]float32{o, 0, 0}, Scale: [3]float32{1, 1, 1}}
+		f.Prior(&fit, 0)
+		f.Update(1/rate, [3]float32{0, 0, StandardGravity}, [3]float32{})
+		f.Update(1/rate, [3]float32{-2 * StandardGravity, 0, StandardGravity}, [3]float32{})
+		if f.Clipped != 1 {
+			t.Errorf("offset %v: a reading at rest and one at the full scale, Clipped %d (want 1)", o, f.Clipped)
 		}
 	}
 }

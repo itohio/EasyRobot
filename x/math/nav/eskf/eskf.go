@@ -208,11 +208,17 @@ func New(c Config) (Filter, error) {
 // Prior seeds the biases from a multi-pose calibration (calib.Solver) whose
 // Apply the caller runs on the accelerometer's samples: the gyro bias from
 // its still poses, known to 2 mrad/s; the accelerometer's residual bias at
-// zero, known to the fit's RMS (at least 0.01 m/s²). The accelerometer's
-// full scale is then taken through the fit too: a reading at the sensor's
-// full scale arrives as (±AccelRange − offset)/scale, which differs per
-// axis and sign. Call it before the first rest.
-func (f *Filter) Prior(fit *calib.Fit) {
+// zero, known to σ, the largest of accelBiasSigma, the fit's RMS and
+// 0.01 m/s². accelBiasSigma (m/s²) is how far the caller expects the bias
+// to have moved since the fit (between sessions, with temperature): an
+// exactly determined fit (six poses, six unknowns) has an RMS of 0 and
+// says nothing of that; 0, a negative, NaN or infinite value adds nothing.
+// A non-finite offset in the fit counts as 0 for the clip limits.
+// The accelerometer's full scale is then taken through the fit too: a
+// reading at the sensor's full scale arrives as (±AccelRange −
+// offset)/scale, which differs per axis and sign. Call it before the first
+// rest.
+func (f *Filter) Prior(fit *calib.Fit, accelBiasSigma float32) {
 	f.GyroBias, f.gb0 = fit.GyroBias, fit.GyroBias
 	for i := range 3 {
 		f.gbP[i] = 4e-6
@@ -220,9 +226,16 @@ func (f *Filter) Prior(fit *calib.Fit) {
 		if !(s > 0) || math32.IsInf(s, 0) { // no scale fitted (a gyro-only or offset-only fit)
 			s = 1
 		}
-		f.accOff[i], f.accScale[i] = fit.Offset[i], s
+		o := fit.Offset[i]
+		if !(o-o == 0) { // NaN or ∞: through it nothing would clip, or everything
+			o = 0
+		}
+		f.accOff[i], f.accScale[i] = o, s
 	}
 	s := max(fit.RMS, 0.01)
+	if accelBiasSigma > s && !math32.IsInf(accelBiasSigma, 0) {
+		s = accelBiasSigma
+	}
 	f.baP = s * s
 	f.AccelBias = [3]float32{}
 	f.limits()
