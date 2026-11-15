@@ -1,7 +1,7 @@
 //go:build unitv
 
 // Command controls exercises the camera's exposure/gain/white-balance
-// controls (ER-CAM-steps C1): auto first, then a manual exposure sweep at the
+// controls: auto first, then a manual exposure sweep at the
 // auto gain (1 line as black reference, then E_auto × ½, 1, 2, 4), printing
 // read-backs and flat-patch statistics and sending one QQVGA Y8 frame per
 // setting in frame format v1, at 115200.

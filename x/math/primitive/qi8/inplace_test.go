@@ -102,7 +102,7 @@ func TestInPlaceW(t *testing.T) {
 // TestInPlaceRePrepare: after an in-place pack, Prepare again — with the same
 // parameters, after changing a requantisation parameter, and after a
 // failed Prepare — still computes what the free function computes with the
-// original weights (review R-NN-R3-N2 F1: a second pack used to re-read
+// original weights (a second pack used to re-read
 // rows already moved to the padded stride).
 func TestInPlaceRePrepare(t *testing.T) {
 	g := newGen(49)
@@ -144,7 +144,7 @@ func TestInPlaceRePrepare(t *testing.T) {
 
 // TestInPlaceReload: new weights are loaded into an in-place layer with
 // Reset, then a copy into InPlaceW and Prepare; the layer then computes what
-// the free function computes with the new weights (verify V-NN-R3N2-FIXES:
+// the free function computes with the new weights (
 // copying into InPlaceW of a prepared layer and calling Prepare used to
 // unpack the fresh bytes and corrupt them). Reset also leaves W in its
 // original layout and the layer unprepared.

@@ -10,7 +10,7 @@ tests: [x/math/physics/rigid2d/rigid2d_test.go]
 test_result: pass
 complete: yes
 correct: yes
-evidence: "go test -race ./x/math/physics/rigid2d pass (25 tests, 2026-11-12, after fpv-gate ER-SIMALGO-E and review R-ER-SIMALGO-EF); 24 mutants all fail (ER-SIMALGO-logs/rigid2d-mutants-r2.txt); squeeze and exact-hit fix (review E2, E5): red first (ER-SIMALGO-logs/e2-fail-before.txt), 6 mutants of the fix and 4 earlier segment mutants fail (e2-mutants.txt); review E3/E4 test gaps: surface normal velocity, first-ball-only and both InertiaK guards now fail a test (e3e4-mutants.txt); host step with contacts: 0.58 % contact steps 197–323 ns, every step in contact 78–207 ns (busy shared host), 0 allocs; allocation guard (review E1): 0 mallocs in 1,000 steps with an impulse on a segment and a box every step and a changing dt, and one injected allocation per impulse, cache refresh, box or segment contact fails it (ER-SIMALGO-logs/e1-alloc-mutants.txt); tinygo 0.43 tufty2040 build, no allocation in the package; RP2040 step time not measured (no board run)"
+evidence: "go test -race ./x/math/physics/rigid2d pass (25 tests, 2026-11-12, after two reviews); 24 mutants all fail; squeeze and exact-hit fix: red first, 6 mutants of the fix and 4 earlier segment mutants fail; test gaps: surface normal velocity, first-ball-only and both InertiaK guards now fail a test; host step with contacts: 0.58 % contact steps 197–323 ns, every step in contact 78–207 ns (busy shared host), 0 allocs; allocation guard: 0 mallocs in 1,000 steps with an impulse on a segment and a box every step and a changing dt, and one injected allocation per impulse, cache refresh, box or segment contact fails it; tinygo 0.43 tufty2040 build, no allocation in the package; RP2040 step time not measured (no board run)"
 ---
 # 2D ball contact with spin (rigid2d)
 
@@ -22,11 +22,11 @@ evidence: "go test -race ./x/math/physics/rigid2d pass (25 tests, 2026-11-12, af
 
 **Method (per ball, per step):**
 - **Magnus:** the velocity is turned by 2·atan(θ/2), θ = Magnus·ω·dt (acceleration Magnus·ω·perp(v), ∝ ω × v), in the Cayley form.
-  - That rotation keeps |v| in exact arithmetic, so lift does no work; in float32 |v| drifts about 0.5 % per 100k steps (fpv-gate's probe).
+  - That rotation keeps |v| in exact arithmetic, so lift does no work; in float32 |v| drifts about 0.5 % per 100k steps (probe).
   - Then gravity, then damping by e^(−c·dt); the exponentials are computed once per dt and coefficients.
 - **Contact:**
-  - The closest point gives the normal. Segments are two-sided; for a segment's interior the normal is the line's own and points to the side the ball was on at the start of the step (against the segment where it was then), so a ball pushed onto or across the line in this step is pushed back, not through. A ball centred exactly on a segment's end is pushed back the way it came. A ball on its side and at least R from a segment's line is rejected without a square root, so walls the ball merely runs alongside cost a few multiplies (review E7). A box with the centre inside pushes out through the nearest face. The overlap is pushed out.
-  - Boxes are resolved before segments, so walls win: a ball squeezed between a paddle and a wall stays on its side of the wall and may be left overlapping the paddle (review E2: with segments first, the paddle's push-out carried the ball through the wall).
+  - The closest point gives the normal. Segments are two-sided; for a segment's interior the normal is the line's own and points to the side the ball was on at the start of the step (against the segment where it was then), so a ball pushed onto or across the line in this step is pushed back, not through. A ball centred exactly on a segment's end is pushed back the way it came. A ball on its side and at least R from a segment's line is rejected without a square root, so walls the ball merely runs alongside cost a few multiplies. A box with the centre inside pushes out through the nearest face. The overlap is pushed out.
+  - Boxes are resolved before segments, so walls win: a ball squeezed between a paddle and a wall stays on its side of the wall and may be left overlapping the paddle (with segments first, the paddle's push-out carried the ball through the wall).
   - If the contact point (v + ω × r, r = −R·n) approaches the surface (moving at its velocity), the normal impulse is (1 + e)·(−vn)·m.
   - The tangential impulse that would stop the slip is −vt·m/(1 + 1/k), with I = k·m·R², clamped to μ times the normal impulse (Coulomb). In the slip regime that takes exactly μ·(1+e)·|vn| off the tangential speed. The spin changes by −jt/(k·R).
   - `InertiaK ≤ 0`: contacts never change the spin, but a `W` set by the caller is kept and still drives Magnus and the slip.
@@ -34,11 +34,11 @@ evidence: "go test -race ./x/math/physics/rigid2d pass (25 tests, 2026-11-12, af
 
 **Limits:** no ball–ball contacts; discrete contacts (keep speed·dt under about the radius, or substep); restitution and friction belong to the surface, not the ball; a ball squeezed between a paddle and a wall overlaps the paddle.
 
-**Determinism:** bit-identical on a given target (architecture and build), not across targets (review E6). Go may fuse a·b+c into one rounding: `go build -gcflags=-S` shows 33 fused multiply-adds in the package on arm64, 0 on amd64 by default and 22 with `GOAMD64=v3`. The Pong scene after 5,000 steps differs between arm64 and amd64 in the last bits of every ball field (`ER-SIMALGO-logs/e6-fma-arch.txt`). Whether the RP2040's soft float matches the host is not known. A replay or lockstep game must run every peer on the same target.
+**Determinism:** bit-identical on a given target (architecture and build), not across targets. Go may fuse a·b+c into one rounding: `go build -gcflags=-S` shows 33 fused multiply-adds in the package on arm64, 0 on amd64 by default and 22 with `GOAMD64=v3`. The Pong scene after 5,000 steps differs between arm64 and amd64 in the last bits of every ball field. Whether the RP2040's soft float matches the host is not known. A replay or lockstep game must run every peer on the same target.
 
 ## Completeness review
 
-- Complete: yes for the brief (ER-SIMALGO §Pong): impulse solver with restitution and Coulomb friction per surface, spin, Magnus, linear and angular damping, fixed step, zero allocation, tufty2040 build, step benchmark.
+- Complete: yes for the badge's Pong: impulse solver with restitution and Coulomb friction per surface, spin, Magnus, linear and angular damping, fixed step, zero allocation, tufty2040 build, step benchmark.
 - Tested (`rigid2d_test.go`, a 20 mm, 2.7 g thin-shell ball at 240 Hz):
   - **Spin from walls and paddles:**
     - `TestStillWallSpinDependsOnFriction`: 45° onto a still wall; μ 0.02 gives a rim speed < 0.1 m/s, μ 0.8 makes it roll off within 1 %.
@@ -50,9 +50,9 @@ evidence: "go test -race ./x/math/physics/rigid2d pass (25 tests, 2026-11-12, af
     - `TestSlidingFrictionIsCoulombsLimit`: a sliding hit loses exactly μ(1+e)|vn|.
     - `TestCoulombAndEnergyAtAStillWall`: 2,000 random hits; the tangential impulse stays ≤ μ·normal, sliding never reverses, a still wall never adds energy.
     - `TestSeparatingContactKeepsVelocity`.
-    - `TestPaddleStrikesARestingBall`: a paddle at 2 m/s into a resting ball gives vx = (1+e)·2 for e = 0 and 0.8 (review E3).
-    - `TestEveryBallGetsContacts`: two balls hitting different walls both bounce (review E4).
-    - `TestInfiniteInertiaHit`: `InertiaK` 0 and −1 keep the spin as set, stay finite, and take the point-mass tangential impulse (vy → ω·R) (review E4).
+    - `TestPaddleStrikesARestingBall`: a paddle at 2 m/s into a resting ball gives vx = (1+e)·2 for e = 0 and 0.8.
+    - `TestEveryBallGetsContacts`: two balls hitting different walls both bounce.
+    - `TestInfiniteInertiaHit`: `InertiaK` 0 and −1 keep the spin as set, stay finite, and take the point-mass tangential impulse (vy → ω·R).
   - **Magnus and damping:**
     - `TestMagnusCurvesAndCanComeBack`: weak spin keeps going, curving to +y; strong spin comes back ≥ 0.3 m towards the paddle; clockwise spin curves to −y.
     - `TestMagnusTurnAndGravityAxes`: the turn per step is 2·atan(θ/2); gravity (3, −4) acts on both axes.
@@ -67,13 +67,13 @@ evidence: "go test -race ./x/math/physics/rigid2d pass (25 tests, 2026-11-12, af
     - `TestSegmentExactHits`: a centre landing exactly on the line from below, exactly on end A along the segment, exactly on end B diagonally, and a ball starting on the line, each pushed out the way it came or is going.
     - `TestFastWallSweepsTheBall`: a wall passing the ball's centre in one step sweeps it along.
     - `TestKinematicShapesMove`.
-  - **Determinism and allocation:** `TestDeterministic` (5,000 steps, bit-identical on one target). `TestStepDoesNotAllocate`: two balls resting under gravity, one on a segment and one on a box, so both contact paths apply an impulse every step (checked), and a dt that changes every step, so the damping cache refreshes every step. It asserts a raw `MemStats.Mallocs` delta of 0 over 1,000 steps; `AllocsPerRun`'s integer division hid fewer than one allocation per step (review E1).
+  - **Determinism and allocation:** `TestDeterministic` (5,000 steps, bit-identical on one target). `TestStepDoesNotAllocate`: two balls resting under gravity, one on a segment and one on a box, so both contact paths apply an impulse every step (checked), and a dt that changes every step, so the damping cache refreshes every step. It asserts a raw `MemStats.Mallocs` delta of 0 over 1,000 steps; `AllocsPerRun`'s integer division hid fewer than one allocation per step.
   - Run: `go test -race -count=1 ./x/math/physics/rigid2d/`, pass, 2026-11-12.
-- Correct: yes on these properties: 24 mutants of the solver, the Magnus rotation, gravity, damping, the damping cache and geometry each fail a test (`ER-SIMALGO-logs/rigid2d-mutants-r2.txt`).
-- Speed (host, Apple M5, a busy shared machine, so wide spreads; `ER-SIMALGO-logs/rigid2d-bench-host.txt`):
+- Correct: yes on these properties: 24 mutants of the solver, the Magnus rotation, gravity, damping, the damping cache and geometry each fail a test.
+- Speed (host, Apple M5, a busy shared machine, so wide spreads):
   - `BenchmarkStepPong` (a walled table, 4 segments, 2 moving paddles, replaying its first 10 s; 0.58 % of steps resolve a contact): 197–323 ns per step.
   - `BenchmarkStepInContact` (a contact every step): 78–207 ns.
-  - The RP2040 has no FPU, so float32 is soft-float there; the step time on the badge is not measured yet. `tmp/easyrobot/simalgo/pongtufty` (the same table) prints µs per 1,000 steps when flashed.
+  - The RP2040 has no FPU, so float32 is soft-float there; the step time on the badge is not measured yet. A badge timer program (the same table) prints µs per 1,000 steps when flashed.
 
 ## TODOs
 

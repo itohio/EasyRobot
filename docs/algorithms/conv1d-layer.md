@@ -10,7 +10,7 @@ tests: [x/math/nn/layers/conv1d_test.go, x/math/nn/layers/conv1d_weight_bias_tes
 test_result: pass
 complete: yes
 correct: no
-evidence: "go test -count=1 ./x/... (2026-11-09) → all 13 TestConv1D_* pass; probes tmp/easyrobot/tensor/layernotes/{gradcheck,micro} (2026-11-09): kernel grad wrong whenever outChannels>1"
+evidence: "go test -count=1 ./x/... (2026-11-09) → all 13 TestConv1D_* pass; probes (2026-11-09): kernel grad wrong whenever outChannels>1"
 ---
 # Conv1D layer (NCL)
 

@@ -2,7 +2,7 @@ package scheduler
 
 import "testing"
 
-// Review R-ER-017-018 G9 (S1): offsets are rounded to the nearest 2⁻²⁰ grid
+// Offsets are rounded to the nearest 2⁻²⁰ grid
 // point, not truncated: an offset within 0.4 grid units of k·2⁻²⁰ touches
 // down exactly at phase k·2⁻²⁰ and is still in swing one progress quantum
 // (2⁻²⁴) earlier.

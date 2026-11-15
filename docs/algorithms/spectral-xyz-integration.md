@@ -39,7 +39,7 @@ At construction the CMF and illuminant are put on one grid: whichever has more s
   - `TestComputeXYZ` → **FAIL** "XYZ values should not be NaN" (`colorscience_test.go:123`). The implementation/data are at fault (10° CSV NaN), not the test.
   - `TestComputeXYZMismatchedLengths` → **FAIL by panic**. The test builds its input with `NewSPD(wl[3], vals[2])`, and `NewSPD` panics on the length mismatch (`spd.go:41`) before `ComputeXYZ` is ever called. **Test bug**: it should build a ragged raw `mat.Matrix` literal. The check at `colorscience.go:192-194` is reachable only through such ragged literals; `mat.New` rows are always equal length. The panic aborts the test binary, so **the 20 tests after it in `colorscience_test.go` never run** in a full-package run. The recorded "28 pass / 3 fail" covers only 31 of 51 tests. Run separately (`go test -count=1 -v -run 'TestCalibrate|TestXYZToLAB$|…|TestSPDInterpolate' ./x/math/colorscience/`), all 20 → PASS.
   - `TestNewWithCustomIlluminant` → **FAIL**. It asserts that the stored illuminant matrix equals the 5-point input. By design `New` resamples it onto the 471-point CMF grid (`colorscience.go:110-113`), so the actual matrix is 2×471. **Test is stale/wrong.** Design caveat: values outside 400–600 nm are flat-extrapolated to 1.0, which is physically dubious.
-- Correct: partial. Probe (`tmp/easyrobot/filters/colorsci/main.go`) integrates a flat reflector:
+- Correct: partial. A probe integrates a flat reflector:
 
 | config | got | CIE reference |
 |---|---|---|

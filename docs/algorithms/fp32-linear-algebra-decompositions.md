@@ -10,7 +10,7 @@ tests: [x/math/primitive/fp32/la_test.go, x/math/primitive/fp32/householder_test
 test_result: pass
 complete: no
 correct: no
-evidence: "go test -count=1 ./x/... (2026-11-09) → TestGetrf_IP/Getri/Geqrf/Orgqr/Gesvd/Gepseu/Gnnls/H1-3/G1/G2 pass; probe tmp/easyrobot/tensor/kernelnotes (2026-11-09): Geqrf+Orgqr do not reconstruct A (err 2.3–3.1), Gesvd returns V not Vᵀ and unsorted s, Gepseu fails for M<N"
+evidence: "go test -count=1 ./x/... (2026-11-09) → TestGetrf_IP/Getri/Geqrf/Orgqr/Gesvd/Gepseu/Gnnls/H1-3/G1/G2 pass; probe (2026-11-09): Geqrf+Orgqr do not reconstruct A (err 2.3–3.1), Gesvd returns V not Vᵀ and unsorted s, Gepseu fails for M<N"
 ---
 # fp32 dense linear algebra: LU, inverse, QR, SVD, pseudo-inverse, NNLS
 

@@ -10,7 +10,7 @@ tests: [x/math/dsp/modulation/dsss/roundtrip_test.go]
 test_result: fail
 complete: no
 correct: no
-evidence: "go test -count=1 -v ./x/math/dsp/modulation/dsss → FAIL 3 (NoiseScenarios, PacketSizes, ModulationOrders), 1 pass (Basics) (2026-11-09); probes tmp/easyrobot/audio/{berprobe,dsssdrift}"
+evidence: "go test -count=1 -v ./x/math/dsp/modulation/dsss → FAIL 3 (NoiseScenarios, PacketSizes, ModulationOrders), 1 pass (Basics) (2026-11-09); BER and drift probes"
 ---
 # DSSS / M-ary Walsh code-shift modem
 

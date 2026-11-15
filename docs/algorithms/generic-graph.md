@@ -26,7 +26,7 @@ evidence: "used by search tests (pass); probes: AddNode copies node (returned ha
 - Tested: indirectly by the search/tree/decision tests. Run: go test -count=1 -json ./x/math/graph/... (2026-11-09) → ok except TestRRTStar_Simple2DGrid (flaky).
 - Correct: unknown overall; defects found:
   - `AddNode` appends a *copy* of a passed `*GenericNode` (generic.go:343); the caller's pointer is not the stored node and never sees its edges. This is why [[expression-graph]] handles returned by `AddNode` evaluate to 0 (probe `exprprobe`).
-  - `GenericNode.Cost` returns the cost of the *first* edge to the neighbour (generic.go:107-110), and neighbours are de-duplicated, so with parallel edges searches use an arbitrary edge. probe tmp/easyrobot/filters/searchprobe: 31/300 random digraphs (12 nodes, 30 edges with duplicates) gave A*/Dijkstra paths costlier than Bellman-Ford; 0/300 after removing duplicate edges.
+  - `GenericNode.Cost` returns the cost of the *first* edge to the neighbour (generic.go:107-110), and neighbours are de-duplicated, so with parallel edges searches use an arbitrary edge. probe: 31/300 random digraphs (12 nodes, 30 edges with duplicates) gave A*/Dijkstra paths costlier than Bellman-Ford; 0/300 after removing duplicate edges.
   - `DeleteNode` re-indexes every edge/neighbour list (nested loops, generic.go:476-548) — O(V·E).
   - Edge-cost conversion uses a runtime type switch on `any(e.data)` per call (generic.go:213-224).
 

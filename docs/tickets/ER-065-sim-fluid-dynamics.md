@@ -13,19 +13,19 @@ updated: 2026-11-12
 ---
 # ER-065 — Fluid dynamics: Stam stable fluids, 2D first — x/math/fluid
 
-[[tickets/index|Ticket index]] · [[simulation-algorithms]] · Brief: `~/src/docs/tasks/ER-SIMALGO.md` (owner 2026-11-12: "liquid engine belongs in easyrobot …"; paths and RNG per Leader's decisions there)
+[[tickets/index|Ticket index]] · [[simulation-algorithms]] · Scope (2026-11-12): the liquid engine belongs in EasyRobot
 
 **Brick:** a grid fluid solver (velocity + density): semi-Lagrangian advection, diffusion, a pressure projection; 2D first, then 3D.
 
 ## Goal and evidence
 
-Owner (ER-SIMALGO): "full fluid dynamics later". Stam's stable fluids are unconditionally stable at any step, which suits a fixed frame rate.
+Request: "full fluid dynamics later". Stam's stable fluids are unconditionally stable at any step, which suits a fixed frame rate.
 
 ## Dependencies and scope
 
 Package `x/math/fluid`: fixed-size grids, Jacobi or Gauss–Seidel pressure solve with a set iteration count, boundaries as solid cells. float32 vs fixed point decided by the RP2040 measurement. Not in scope: free surfaces (liquids are `x/math/fluid/flip`, [[ER-061-sim-liquid-2d|ER-061]]).
 
-Every piece: check written first (red), tests, host benchmark, `tinygo build -target=tufty2040` with no allocation in the package, verify, then commit. No hardware or flashing is authorised by this ticket; tinygui runs it on the badge.
+Every piece: check written first (red), tests, host benchmark, `tinygo build -target=tufty2040` with no allocation in the package, check, then commit. No hardware or flashing is authorised by this ticket; it is run on the badge separately.
 
 ## Acceptance evidence required later
 
@@ -35,7 +35,7 @@ Every piece: check written first (red), tests, host benchmark, `tinygo build -ta
 
 ## Effort uncertainty and revision trigger
 
-easyrobot's guess: **L**. Revisit when the badge's frame budget or the owner's scope changes.
+Size guess: **L**. Revisit when the badge's frame budget or the scope changes.
 
 ## Implementation evidence
 

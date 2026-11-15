@@ -23,8 +23,8 @@ evidence: "test passes but asserts the wrong value (t=0 → 3, expected p2=1); p
 ## Completeness review
 
 - Complete: yes (signature/body present).
-- Tested: TestCubicHermiteSpline1D — **endpoint subtest expects 3 at t=0 for p=(0,1,2,10)**, i.e. it codifies the bug (correct value is p2=1); tension/bias subtests only compare ordering. Run: go test -count=1 -json ./x/math/{colorscience,learn,grid,interpolation}/... (2026-11-09, slice lead; raw: tmp/easyrobot/filters/test-2026-11-09.json) → pass.
-- Correct: **no**. `spline.go:50` `a3 := 1 - a1` should be `a3 := -2*mu3 + 3*mu2` (= 1 − a0; the inline comment even says so). Result: at t=0 returns p2+p3. Probe (probe tmp/easyrobot/filters/gridinterp/main.go, GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=mod go run . (2026-11-09)): (0,1,2,10,t=0) → 3 (want 1); flat (5,5,5,5,t=0) → 10 (want 5); flat t=0.5 → 6.875 (want 5). Tension parameterisation differs from Bourke: tangent factor `(1±bias)·tension` (`:39-40`) vs Bourke `(1±bias)(1−tension)/2`; consistent with the comment only.
+- Tested: TestCubicHermiteSpline1D — **endpoint subtest expects 3 at t=0 for p=(0,1,2,10)**, i.e. it codifies the bug (correct value is p2=1); tension/bias subtests only compare ordering. Run: go test -count=1 -json ./x/math/{colorscience,learn,grid,interpolation}/... (2026-11-09, slice lead;) → pass.
+- Correct: **no**. `spline.go:50` `a3 := 1 - a1` should be `a3 := -2*mu3 + 3*mu2` (= 1 − a0; the inline comment even says so). Result: at t=0 returns p2+p3. Probe (GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=mod go run . (2026-11-09)): (0,1,2,10,t=0) → 3 (want 1); flat (5,5,5,5,t=0) → 10 (want 5); flat t=0.5 → 6.875 (want 5). Tension parameterisation differs from Bourke: tangent factor `(1±bias)·tension` (`:39-40`) vs Bourke `(1±bias)(1−tension)/2`; consistent with the comment only.
 
 ## TODOs
 

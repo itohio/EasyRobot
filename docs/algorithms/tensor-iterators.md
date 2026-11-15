@@ -33,7 +33,7 @@ evidence: "go test -count=1 ./x/... (2026-11-09): x/iter 57/57 pass; x/iter/st, 
   - `use_mt` cannot build: `x/iter/mt` imports `x/iter/st` → `x/types` → `x/iter/mt` (cycle via `x/types/cast_mt.go`); `x/workers/execute_mt.go:6-29` references undefined `mt`. With default tags `mt` is unreachable (and `workers.ShouldParallelize` is hard-wired `false`, `x/workers/execute_st.go`).
   - `ElementsWindows` returns `func(func([]int, []int, bool) bool)` — **cannot be used with `range`** (Go allows at most 2 yield params); the doc-comment usage `for outIdx, inIdx, isValid := range ElementsWindows(...)` (`st/iterators.go:252`) does not compile (probe compile error). Callable only as a plain function.
 - Tested: 57 tests pass, table-driven with expected values (`TestElemApply*`, `TestElemMatApply*`, `TestElemVecApply*`, comparisons, `TestElements*` incl. early-exit and equivalence tests). Strided apply tests use `nil` strides or row-padded `ld` only (e.g. `apply_test.go:22-41`), never a non-unit inner stride, so the defect is not caught.
-- Correct: **no** — probe (`tmp/easyrobot/tensor/InfraNotes/iterprobe`):
+- Correct: **no** — probe:
   - `ElemApplyUnaryStrided` identity, shape [2,2], src strides [1,2] (transpose of `[1 2;3 4]`): got `[1 2 2 3]`, want `[1 3 2 4]`.
   - rank-3 reversed strides: got `[0 1 2 3 1 2 3 4]`, want `[0 4 2 6 1 5 3 7]`.
   - `ElemGreaterThanStrided` with the same transposed strides: correct `[0 1 0 1]` (uses `AdvanceOffsets3`).

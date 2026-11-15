@@ -10,7 +10,7 @@ tests: [x/math/dsp/windows_test.go]
 test_result: pass
 complete: yes
 correct: no
-evidence: "go test -count=1 -v ./x/math/dsp/ → ok (9 window tests PASS, 2026-11-09); probe tmp/easyrobot/audio/dspcore/main.go: 13 tapers match textbook formula ≤2.2e-7, Rectangular apply overwrites signal (2026-11-09)"
+evidence: "go test -count=1 -v ./x/math/dsp/ → ok (9 window tests PASS, 2026-11-09); probe: 13 tapers match textbook formula ≤2.2e-7, Rectangular apply overwrites signal (2026-11-09)"
 ---
 # Window functions (14 symmetric windows)
 

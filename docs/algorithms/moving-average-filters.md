@@ -23,7 +23,7 @@ evidence: "ma 8/8 pass (value checks)"
 ## Completeness review
 
 - Complete: yes.
-- Tested: `TestMovingAverage` (partial-window and full-window values), resets, EMA values, alpha helpers, processor interface (`ma_test.go:11-151`). Run: go test -count=1 -json ./x/math/filter/ma (2026-11-09, raw tmp/easyrobot/filters/test-2026-11-09.json) → ok, 8 pass.
+- Tested: `TestMovingAverage` (partial-window and full-window values), resets, EMA values, alpha helpers, processor interface (`ma_test.go:11-151`). Run: go test -count=1 -json ./x/math/filter/ma (2026-11-09) → ok, 8 pass.
 - Correct: yes for tested values; formulas for α helpers are the standard ones. Running float32 sum (:43-47) accumulates rounding drift on long streams (never re-summed) — negligible for short runs, visible after ~10⁷ samples of large-magnitude data [INFERENCE].
 
 ## TODOs

@@ -10,7 +10,7 @@ tests: []
 test_result: none
 complete: no
 correct: no
-evidence: "no GPTEncoding test (go test -count=1 ./x/... 2026-11-09); probe tmp/easyrobot/tensor/layernotes/gradcheck (2026-11-09): panics for seqLen≥2, zeroes its input, sinusoid frequencies non-standard"
+evidence: "no GPTEncoding test (go test -count=1 ./x/... 2026-11-09); probe (2026-11-09): panics for seqLen≥2, zeroes its input, sinusoid frequencies non-standard"
 ---
 # GPT positional encoding layer (absolute: sinusoidal or learned)
 

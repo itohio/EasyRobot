@@ -13,15 +13,15 @@ updated: 2026-11-12
 ---
 # ER-060 — Sim S1: wheel odometry — encoder ticks → 2D pose from the robot description
 
-[[tickets/index|Ticket index]] · [[roadmap]] · Design: [[2026-11-10-simulation]] (ideation `abc52ed`, corrections `c61b697`; verify accepted) · Brief: `~/src/docs/tasks/SIM-tickets.md`
+[[tickets/index|Ticket index]] · [[roadmap]] · Design: [[2026-11-10-simulation]] (ideation `abc52ed`, corrections `c61b697`)
 
 **Brick:** dead-reckoning from wheel encoders. It is a robot brick, used by the sim base and the hardware base alike.
 
 ## Goal and evidence
 
-ux's UX-27 S7 (minor; `docs/ux/UX-27-sim.md`, Leader accepted): odometry was inside the sim adapter, but it is exactly what the real robot needs too. It moves here, next to the kinematics, so it reads only encoder ticks and the robot's geometry.
+Design review (accepted): odometry was inside the sim adapter, but it is exactly what the real robot needs too. It moves here, next to the kinematics, so it reads only encoder ticks and the robot's geometry.
 
-Owner's answers (roster `decisions.md`, 2026-11-10): SIM decisions 1–4 approved. MuJoCo 4.x (Apache-2.0) runs as a sidecar driven from Go over protobuf, in lockstep (a `purego` binding later). MuJoCo is downloaded at the start of S1, not before. The contract is a `types/sim` proto plus a Go `Sim` interface. Robot descriptions are Go structs with mass and actuator torque and speed, plus an MJCF exporter. **First slice: wheeled.** Design rule (verbatim): "i want primitives like other primitives(gait, matrix ops, filters, etc.) - interface based where possible for performance reasons, using graphs, sets and other primitives. kiss and solid. single responsibility principle is very important to me. building bricks and then the hous is important to me unless we know good bricks and good doors and good windows."
+Decisions (2026-11-10): SIM decisions 1–4 approved. MuJoCo 4.x (Apache-2.0) runs as a sidecar driven from Go over protobuf, in lockstep (a `purego` binding later). MuJoCo is downloaded at the start of S1, not before. The contract is a `types/sim` proto plus a Go `Sim` interface. Robot descriptions are Go structs with mass and actuator torque and speed, plus an MJCF exporter. **First slice: wheeled.** Design rule: primitives like the others (gait, matrix ops, filters), interface-based where performance allows, built on graphs, sets and other primitives; simple, solid, single responsibility; bricks first, then the house.
 
 ## Interface sketch
 
@@ -43,7 +43,7 @@ Dependencies: ER-052, ER-055 and ER-057 (the over-the-fake acceptance case), ER-
 
 Not in scope: fusion with the IMU (a filter brick, later); ground truth (the sim's, used only to measure drift).
 
-Source/test edits follow the owner's autonomy instruction once Leader schedules this ticket. No download, hardware or flashing is authorised by this ticket unless it says so.
+Source/test edits are approved once this ticket is scheduled. No download, hardware or flashing is authorised by this ticket unless it says so.
 
 ## Acceptance evidence required later
 
@@ -58,12 +58,12 @@ None.
 
 ## Effort uncertainty and revision trigger
 
-Product's guess: **S** (inferred). Revisit when a kill criterion fires or an open question changes the scope.
+Size guess: **S** (inferred). Revisit when a kill criterion fires or an open question changes the scope.
 
 ## Log
 
-- 2026-11-12: verify's fixes (`docs/verification/SIM-tickets.md`, accepted with 11 fixes; Leader msg m-40a81d6669b0): depends on ER-055 and ER-057 for its over-the-fake case and on ER-059 for `Pose2D`; the description comes from `x/robot/model`; created date corrected to the 2026-11-12 fold.
+- 2026-11-12: review fixes: depends on ER-055 and ER-057 for its over-the-fake case and on ER-059 for `Pose2D`; the description comes from `x/robot/model`; created date corrected to the 2026-11-12 fold.
 
 ## Implementation evidence
 
-None. Proposed ticket; becomes `ready` after ux's UX-27 second rating and verify.
+None. Proposed ticket; becomes `ready` after review.

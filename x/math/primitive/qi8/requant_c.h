@@ -14,7 +14,7 @@ typedef struct {
 
 // qi8_mulhi returns the high 32 bits of a·b (and bit 31 of the low word in
 // *lo31) from four 16×16-bit products, which on the chip is faster than the
-// toolchain's 64-bit multiply (measured, ER-NN-PIPELINE step 3).
+// toolchain's 64-bit multiply (measured).
 static inline uint32_t qi8_mulhi(uint32_t a, uint32_t b, uint32_t *lo31) {
     uint32_t al = a & 0xFFFF, ah = a >> 16, bl = b & 0xFFFF, bh = b >> 16;
     uint32_t lh = al * bh, hl = ah * bl;
@@ -92,8 +92,8 @@ static inline int32_t qi8_apply_tflite(int32_t acc, const qi8_requant_t *r) {
 
 // qi8_requantize_mode is requantizeMode: round 1 = RoundTFLite. The TFLite
 // result can be any int32 (e.g. acc = 2^31−1 at a multiplier near 1), so
-// the zero point is added without overflow (review R-NN-P3 P1: an int32
-// add wrapped to the opposite clamp, −128 where Go gives 127).
+// the zero point is added without overflow (an int32 add
+// wrapped to the opposite clamp, −128 where Go gives 127).
 static inline int8_t qi8_requantize_mode(int32_t acc, const qi8_requant_t *r, int32_t zp, int32_t lo, int32_t hi, int round) {
     if (!round) {
         return qi8_requantize(acc, r, zp, lo, hi);

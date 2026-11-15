@@ -232,7 +232,7 @@ func TestSegmentFromBelow(t *testing.T) {
 }
 
 // A paddle rising into the top wall squeezes the ball against it: the ball
-// must never be pushed through the wall (review E2: the paddle's push-out
+// must never be pushed through the wall (the paddle's push-out
 // carried it past the wall's line, and the wall then pushed it out on the
 // far side). The ball's centre stays at least R below the wall while the
 // paddle keeps rising into and through the wall.
@@ -254,7 +254,7 @@ func TestSqueezedBallDoesNotTunnel(t *testing.T) {
 }
 
 // A ball whose centre lands exactly on a segment's line, or exactly on its
-// end, is still pushed back to the side it came from (review E5: on the
+// end, is still pushed back to the side it came from (on the
 // line it was always pushed to the left normal's side, i.e. through when
 // coming from the right; on the end it got no contact).
 func TestSegmentExactHits(t *testing.T) {
@@ -401,8 +401,7 @@ func TestSeparatingContactKeepsVelocity(t *testing.T) {
 }
 
 // A paddle moving into a resting ball along the contact normal knocks it
-// away at (1+e)·U: the surface's own normal velocity enters the impulse
-// (review E3).
+// away at (1+e)·U: the surface's own normal velocity enters the impulse.
 func TestPaddleStrikesARestingBall(t *testing.T) {
 	for _, e := range []float32{0, 0.8} {
 		w := World{
@@ -417,7 +416,7 @@ func TestPaddleStrikesARestingBall(t *testing.T) {
 }
 
 // Every ball gets its contacts: two balls hitting different walls in the
-// same step both bounce (review E4).
+// same step both bounce.
 func TestEveryBallGetsContacts(t *testing.T) {
 	m := Material{Restitution: 1}
 	w := World{
@@ -435,7 +434,7 @@ func TestEveryBallGetsContacts(t *testing.T) {
 // InertiaK ≤ 0 (infinite inertia): a grippy hit leaves the spin exactly as
 // set and everything finite, and the tangential impulse acts as on a point
 // mass: it stops the contact point's slip (vy − ω·R = 0 here, within
-// μ·jn), so vy goes from −1 to ω·R = 0.06 (review E4: without the guards
+// μ·jn), so vy goes from −1 to ω·R = 0.06 (without the guards
 // the spin became NaN, or the tangential impulse vanished).
 func TestInfiniteInertiaHit(t *testing.T) {
 	for _, k := range []float32{0, -1} {

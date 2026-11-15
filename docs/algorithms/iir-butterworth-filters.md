@@ -23,7 +23,7 @@ evidence: "probe dspprobe: LP coefficients a=[1,0.363,5.805] (unstable, NaN outp
 ## Completeness review
 
 - Complete: no. `order` is ignored — LP is always 2nd order, HP always 1st order (:143, :182). No cascaded second-order sections, so higher orders cannot be built safely.
-- Tested: `iir_test.go:55-75` runs the LP 100 samples and only checks for NaN/Inf; HP/BP/BS check the first sample. Run: go test -count=1 -json ./x/math/filter/iir (2026-11-09, raw tmp/easyrobot/filters/test-2026-11-09.json) → ok, 13 pass.
+- Tested: `iir_test.go:55-75` runs the LP 100 samples and only checks for NaN/Inf; HP/BP/BS check the first sample. Run: go test -count=1 -json ./x/math/filter/iir (2026-11-09) → ok, 13 pass.
 - Correct: **no**.
   - Low-pass: poles are scaled by `k = wc/tan(wc/2fs)` (≈2fs, :148-152) and then bilinear-transformed with constant `T=2fs` (:155) — mixing two prewarping conventions puts the analog poles near 2fs regardless of cutoff. Probe: fc=1 kHz @ 8 kHz → `a=[1, 0.363, 5.805]` (|pole|≈2.4, unstable; output NaN), reference `scipy.signal.butter(2,0.25)` is b=[0.0976,0.1953,0.0976], a=[1,−0.9428,0.3333]. The unit test passes only because 2.4¹⁰⁰ ≈ 1e38 is still below float32 max.
   - High-pass: with α=(K−1)/(K+1), K=tan(πfc/fs), the code uses b=(1+α)/2·[1,−1], a=[1,−α] (:187-188); correct is b=(1−α)/2·[1,−1]… i.e. b=[0.7071,−0.7071], a=[1,−0.4142] for fc=fs/8. Probe response: −15.4 dB at the 1 kHz "cutoff", 0 dB only near Nyquist.

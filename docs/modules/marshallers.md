@@ -6,7 +6,7 @@ tags: [easyrobot, marshaller, serialization, storage]
 workstream: [W1, W4, W6, W9]
 packages: [x/marshaller, x/marshaller/types, x/marshaller/gob, x/marshaller/json, x/marshaller/yaml, x/marshaller/proto, x/marshaller/csv, x/marshaller/text, x/marshaller/graph, x/marshaller/storage]
 test_result: pass
-evidence: "go test -count=1 per package → all ok: root 6, csv 48, gob 4, graph 11, json 8, proto 4, storage 18, text 2, types 5, yaml 8 PASS (2026-11-09); probes in ~/src/tmp/easyrobot/io/ show dtype and graph defects"
+evidence: "go test -count=1 per package → all ok: root 6, csv 48, gob 4, graph 11, json 8, proto 4, storage 18, text 2, types 5, yaml 8 PASS (2026-11-09); probes show dtype and graph defects"
 ---
 # marshallers — `x/marshaller/**` (value formats and storage)
 
@@ -76,7 +76,7 @@ Dtype round-trip matrix from probes (`graphprobe`, `fmtprobe`, 2×2 tensors, 202
 
 ## Tests and evidence
 
-`GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=readonly go test -count=1 -v <pkg>` from `.`, 2026-11-09: `x/marshaller` 6 PASS, `csv` 48, `gob` 4, `graph` 11, `json` 8, `proto` 4, `storage` 18, `text` 2, `types` 5, `yaml` 8 — 0 failures (matches baseline-2026-11-08 §5). Probes (outside repo, `GOFLAGS=-mod=mod` in the probe module only): `~/src/tmp/easyrobot/io/graphprobe` (graph node data, memory map, proto dtypes), `fmtprobe` (gob/json/yaml/csv dtypes).
+`GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=readonly go test -count=1 -v <pkg>` from `.`, 2026-11-09: `x/marshaller` 6 PASS, `csv` 48, `gob` 4, `graph` 11, `json` 8, `proto` 4, `storage` 18, `text` 2, `types` 5, `yaml` 8 — 0 failures (matches baseline-2026-11-08 §5). Probes (outside repo, `GOFLAGS=-mod=mod` in the probe module only): `graphprobe` (graph node data, memory map, proto dtypes), `fmtprobe` (gob/json/yaml/csv dtypes).
 
 ## API notes (ease of use, composability)
 

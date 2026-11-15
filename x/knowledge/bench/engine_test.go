@@ -31,16 +31,16 @@ type engineFloor struct {
 	recall1, recallK, mrr float64
 }
 
-// Engine floors measured on the committed fixture (2026-11-09, memory and
-// sqlite identical). R@1 and R@k sit at the measured fraction (one lost
+// Engine floors measured on the committed fixture (memory and sqlite
+// identical). R@1 and R@k sit at the measured fraction (one lost
 // question is a regression); MRR sits 0.03 below the measured value, less
 // than one rank step for any of these questions. They make the tuning
 // (recency prior, supersede demotion, score-relative fusion, graph
-// expansion) fail this test when removed; see the mutation notes in KE-1.
+// expansion) fail this test when removed; each was checked by mutation.
 var engineFloors = map[Type]engineFloor{
 	TypeIdentifier: {recall1: 7.0 / 7, recallK: 7.0 / 7, mrr: 0.97},  // measured 1.000 / 1.000 / 1.000
 	TypeParaphrase: {recall1: 4.0 / 6, recallK: 5.0 / 6, mrr: 0.72},  // measured 0.667 / 0.833 / 0.750
-	TypeCrossLink:  {recall1: 0.0 / 5, recallK: 5.0 / 5, mrr: 0.265}, // measured 0.000 / 1.000 / 0.295
+	TypeCrossLink:  {recall1: 0.0 / 5, recallK: 5.0 / 5, mrr: 0.278}, // measured 0.000 / 1.000 / 0.308
 	TypeRecency:    {recall1: 3.0 / 4, recallK: 4.0 / 4, mrr: 0.845}, // measured 0.750 / 1.000 / 0.875
 	TypeCode:       {recall1: 6.0 / 6, recallK: 6.0 / 6, mrr: 0.97},  // measured 1.000 / 1.000 / 1.000
 }

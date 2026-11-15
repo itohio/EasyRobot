@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// TestRunRejectsFlags (review R-K210-K9same S5): a negative -cut other
+// TestRunRejectsFlags: a negative -cut other
 // than -1 (no cut) and -list combined with -cut or -input are refused
 // before the model is read, instead of being ignored.
 func TestRunRejectsFlags(t *testing.T) {
@@ -32,7 +32,7 @@ func TestRunRejectsFlags(t *testing.T) {
 	}
 }
 
-// TestWriteFileAtomic (review S4): the output appears whole under its name
+// TestWriteFileAtomic: the output appears whole under its name
 // (mode 0644) or not at all; a failed write leaves an existing file as it
 // was and no temporary file behind.
 func TestWriteFileAtomic(t *testing.T) {

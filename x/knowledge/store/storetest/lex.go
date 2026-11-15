@@ -80,19 +80,19 @@ func testSearchLex(t *testing.T, open Opener) {
 	t.Run("Identifiers", func(t *testing.T) {
 		s := open(t)
 		fillers(t, s, 10)
-		textDoc(t, s, "ids/ticket.md", "Ticket ABU-061 calls abg.svc.find to check PeerPermissions.")
-		textDoc(t, s, "ids/split.md", "abu 061 abg svc find peer permissions")
-		for _, term := range []string{"abu-061", "abg.svc.find", "peerpermissions"} {
+		textDoc(t, s, "ids/ticket.md", "Ticket DEV-061 calls rpc.svc.find to check ClientPermissions.")
+		textDoc(t, s, "ids/split.md", "dev 061 rpc svc find client permissions")
+		for _, term := range []string{"dev-061", "rpc.svc.find", "clientpermissions"} {
 			hits := search(t, s, []string{term}, 10, none)
 			wantDocs(t, hits, "ids/ticket.md")
 			if !slices.Equal(hits[0].Matched, []string{term}) {
 				t.Fatalf("%s: Matched = %q", term, hits[0].Matched)
 			}
 		}
-		q := token.Query("abg.svc.find")
+		q := token.Query("rpc.svc.find")
 		hits := search(t, s, q, 10, none)
 		wantDocs(t, hits, "ids/ticket.md", "ids/split.md")
-		if !slices.Equal(hits[0].Matched, q) || !slices.Equal(hits[1].Matched, []string{"abg", "svc", "find"}) {
+		if !slices.Equal(hits[0].Matched, q) || !slices.Equal(hits[1].Matched, []string{"rpc", "svc", "find"}) {
 			t.Fatalf("Matched = %q / %q", hits[0].Matched, hits[1].Matched)
 		}
 	})

@@ -45,7 +45,7 @@ evidence: "no test files; build/vet/linux-arm64 cross ok (2026-11-09); fake-I2C 
 ## Completeness review
 
 - Complete: no — SPAD management, timing budget and reference calibration absent; no `SetAddress` (I2CSlaveDeviceAddress 0x8A constant unused, :37) so several sensors on one bus require a mux; `ioTimeout` unused (:94); range-status (0x14 bits 6:3) never checked, so out-of-range readings (≈8190/8191 mm [INFERENCE]) are returned as distances.
-- Tested: no test files. Fake-I²C probe (`tmp/easyrobot/devices/sensors`, 2026-11-09): `Configure(true)` → nil, 98 register writes; `ReadRangeSingle` with RESULT_INTERRUPT_STATUS never ready → returns 300 mm (stale register content), `err=nil`, after 120 ms; `StartContinuous(50)` last write `00=02`.
+- Tested: no test files. Fake-I²C probe (2026-11-09): `Configure(true)` → nil, 98 register writes; `ReadRangeSingle` with RESULT_INTERRUPT_STATUS never ready → returns 300 mm (stale register content), `err=nil`, after 120 ms; `StartContinuous(50)` last write `00=02`.
 - Correct: unknown on hardware; ranging without SPAD init and calibration typically gives degraded/offset results [INFERENCE].
 
 **Defects**

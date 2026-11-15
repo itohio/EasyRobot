@@ -21,7 +21,7 @@ import (
 )
 
 // DocID identifies a document: scope-relative slash path, e.g.
-// "abugaga/internal/keys/keys.go". It is the key for catalog, chunks and
+// "x/math/nn/layers/gpt_attention.go". It is the key for catalog, chunks and
 // edges asserted by the document.
 type DocID string
 
@@ -43,7 +43,7 @@ func NewChunkID(doc DocID, ord int, text string) ChunkID {
 
 func (c ChunkID) String() string { return hex.EncodeToString(c[:]) }
 
-// NodeID names a graph node: "doc:<DocID>", "id:<ABU-061>", "sym:<pkg.Name>",
+// NodeID names a graph node: "doc:<DocID>", "id:<ER-017>", "sym:<pkg.Name>",
 // "tag:<tag>", "pkg:<importpath>" or "missing:<target>".
 type NodeID string
 
@@ -62,11 +62,11 @@ func node(kind, value string) NodeID { return NodeID(kind + ":" + value) }
 // DocNode is the graph node of a document.
 func DocNode(id DocID) NodeID { return node(NodeDoc, string(id)) }
 
-// IDNode is the node of a frontmatter/ticket id such as ABU-061; ids are
+// IDNode is the node of a frontmatter/ticket id such as ER-017; ids are
 // case-insensitive and stored upper-case.
 func IDNode(id string) NodeID { return node(NodeIdent, strings.ToUpper(id)) }
 
-// SymNode is the node of a code symbol such as "keys.PeerPermissions".
+// SymNode is the node of a code symbol such as "keys.ClientPermissions".
 func SymNode(sym string) NodeID { return node(NodeSym, sym) }
 
 // TagNode is the node of a tag; tags are case-insensitive.
@@ -162,7 +162,7 @@ const (
 
 // Filter restricts results before ranking (never after top-k).
 type Filter struct {
-	In     []string // DocID prefixes ("abugaga/docs", "docs/tasks")
+	In     []string // DocID prefixes ("docs/modules", "docs/tickets")
 	Kinds  []string // md | go | text
 	Scopes []string
 	Not    []DocID // exact documents to exclude

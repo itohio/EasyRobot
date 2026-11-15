@@ -163,7 +163,7 @@ func (c *Camera) Reconfigure(cfg Config) error {
 		return err
 	}
 	if err := c.drv.Init(cfg.Mode); err != nil {
-		c.cfg = Config{} // review R-K210-REC-R4 R1: Capture refuses it
+		c.cfg = Config{} // Capture refuses it
 		return err
 	}
 	c.cfg = cfg
@@ -257,7 +257,7 @@ func (c *Camera) Capture(buf []byte) (Frame, error) {
 	}
 	if c.cfg.Format == sensor.RGB565 {
 		// The DVP display output stores each pixel pair with the two 16-bit
-		// pixels swapped within the 32-bit word (observed, ER-K210-M4).
+		// pixels swapped within the 32-bit word (observed on the UnitV).
 		words := unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(data))), n/4)
 		for i, w := range words {
 			words[i] = w>>16 | w<<16

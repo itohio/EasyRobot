@@ -6,13 +6,13 @@ tags: [easyrobot, dsp, coding, fec, line-code]
 workstream: W7
 packages: [x/math/dsp/coding/biphase_i, x/math/dsp/coding/biphase_m, x/math/dsp/coding/crc, x/math/dsp/coding/eight10b, x/math/dsp/coding/four5b, x/math/dsp/coding/gray, x/math/dsp/coding/hamming, x/math/dsp/coding/lfsr, x/math/dsp/coding/manchester, x/math/dsp/coding/miller, x/math/dsp/coding/nrzi, x/math/dsp/coding/rs]
 test_result: fail
-evidence: "go test -count=1 ./x/math/dsp/coding/... → crc FAIL (5), four5b FAIL (1), gray/hamming/manchester/nrzi/rs ok, 6 packages without tests; go vet clean (2026-11-09); probe tmp/easyrobot/coding/probe → probe_out.txt; AMI/B8ZS/HDB3/RLL/PPM placeholders deleted in ER-cleanup"
+evidence: "go test -count=1 ./x/math/dsp/coding/... → crc FAIL (5), four5b FAIL (1), gray/hamming/manchester/nrzi/rs ok, 6 packages without tests; go vet clean (2026-11-09); probe → probe_out.txt; AMI/B8ZS/HDB3/RLL/PPM placeholders deleted in ER-cleanup"
 ---
 # line-coding-and-fec — `x/math/dsp/coding/*`
 
 **Purpose:** byte-stream line codes, scramblers, error detection and error correction meant to sit between data and a modulator ([[modulation]]) in the audio modem ([[audio-modem-cli]]) and other links. Every coder is a `chain.Processor[byte,byte]` so it can be chained with modulators via `x/chain` ([[pipeline-and-chain]]). Design docs: `x/math/dsp/coding/SPEC.md` (describes the old `ecc.NewXxxEncoder` API — stale), `PLAN.md` (rename to `Encoder/Decoder`, done; mentions a `diff_manchester` package that does not exist).
 
-**Packages:** 12 packages; no build tags, no cgo, no reflection, no goroutines; only `rs/rs_utils.go` uses floats. The wireline and storage placeholders AMI, B8ZS, HDB3, RLL and PPM (1 231 LOC, no tests; probe: identity, lossy, panic, lossy, identity) were deleted in ER-cleanup (evidence: `~/src/docs/evidence/ER-cleanup.md`, outside the repo) (owner-approved, no importers).
+**Packages:** 12 packages; no build tags, no cgo, no reflection, no goroutines; only `rs/rs_utils.go` uses floats. The wireline and storage placeholders AMI, B8ZS, HDB3, RLL and PPM (1 231 LOC, no tests; probe: identity, lossy, panic, lossy, identity) were deleted in ER-cleanup (approved, no importers).
 
 | Package | LOC src/test | Algorithm note | Probe result (2026-11-09) |
 |---|---|---|---|
@@ -86,9 +86,9 @@ Counts: 2 tested · 2 implemented · 6 partial · 1 stub · 0 unverified (11 alg
 
 ## Tests and evidence
 
-- `GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=readonly go test -count=1 ./x/math/dsp/coding/...` (2026-11-09): `crc` FAIL (16 pass / 5 fail — all 5 stale after `NewEncoder()` became CRC-32), `four5b` FAIL (`TestFourB5B_Roundtrip`: decoder nibble swap — implementation bug), `gray` ok (5), `hamming` ok (20), `manchester` ok (15), `nrzi` ok (2), `rs` ok (36); biphase_i, biphase_m, eight10b, lfsr, miller: no test files. Matches baseline-2026-11-08 §4–5. Log: `tmp/easyrobot/coding/go_test_out.txt`.
+- `GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=readonly go test -count=1 ./x/math/dsp/coding/...` (2026-11-09): `crc` FAIL (16 pass / 5 fail — all 5 stale after `NewEncoder` became CRC-32), `four5b` FAIL (`TestFourB5B_Roundtrip`: decoder nibble swap — implementation bug), `gray` ok (5), `hamming` ok (20), `manchester` ok (15), `nrzi` ok (2), `rs` ok (36); biphase_i, biphase_m, eight10b, lfsr, miller: no test files. Matches baseline-2026-11-08 §4–5. Log: .
 - `go vet ./x/math/dsp/coding/...` clean.
-- Probe `~/src/tmp/easyrobot/coding/probe/main.go` (output `probe_out.txt`): roundtrip, byte-wise streaming, polarity inversion, run length/ones density, CRC catalog check values and random-error detection, Hamming exhaustive single/double errors, RS error trials, LFSR periods, Manchester bit offsets, Gray widths, 8b/10b disparity (the probe also covered the now-deleted B8ZS/HDB3).
+- Probe (output `probe_out.txt`): roundtrip, byte-wise streaming, polarity inversion, run length/ones density, CRC catalog check values and random-error detection, Hamming exhaustive single/double errors, RS error trials, LFSR periods, Manchester bit offsets, Gray widths, 8b/10b disparity (the probe also covered the now-deleted B8ZS/HDB3).
 
 ## API notes (ease of use, composability)
 
@@ -113,7 +113,7 @@ Algorithm defects are tracked in the algorithm notes (table above) and rolled up
 - [ ] Remove per-chunk `make` in `Process` loops — e.g. x/math/dsp/coding/four5b/fourb5b_encoder.go:98 #p3
 - [ ] Merge biphase_i/biphase_m, rename to FM0 — x/math/dsp/coding/biphase_i/ #p3
 - [ ] Rewrite SPEC.md for the current API and real statuses; drop `diff_manchester` from PLAN.md — x/math/dsp/coding/SPEC.md, PLAN.md #p3
-- [x] Decide fate of AMI/B8ZS/HDB3/RLL/PPM stubs — deleted in ER-cleanup (evidence: `~/src/docs/evidence/ER-cleanup.md`, outside the repo) #p3
+- [x] Decide fate of AMI/B8ZS/HDB3/RLL/PPM stubs — deleted in ER-cleanup #p3
 
 ## Inferred objectives (proposals)
 

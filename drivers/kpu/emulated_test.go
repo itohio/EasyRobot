@@ -7,7 +7,7 @@ import (
 	"github.com/itohio/EasyRobot/drivers/kpu/kmodel"
 )
 
-// TestEmulatedSharedWeights (review R-K210-K9de D6): two convs that share
+// TestEmulatedSharedWeights: two convs that share
 // one weight blob but have their own BN and activation tables (legal in a
 // kmodel; kmodel.Builder never writes it) each run with their own tables.
 func TestEmulatedSharedWeights(t *testing.T) {

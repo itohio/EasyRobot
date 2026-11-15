@@ -10,7 +10,7 @@ tests: [x/buffer/ring_buffer_test.go, x/buffer/ring_bench_test.go]
 test_result: pass
 complete: yes
 correct: yes
-evidence: "go test -count=1 ./x/buffer → ok, 89/89 PASS (2026-11-09); probe tmp/easyrobot/coding/bufprobe/ring → views, commits and Grow correct across wraparound"
+evidence: "go test -count=1 ./x/buffer → ok, 89/89 PASS (2026-11-09); probe → views, commits and Grow correct across wraparound"
 ---
 # Generic ring buffer `buffer.Ring[T]`
 

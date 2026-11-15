@@ -28,7 +28,7 @@
 // are; they are for display, not for correcting samples. The gyro bias, a
 // rate at rest, has no such ambiguity; strapdown.Nav.Seed takes it, and
 // the Nav learns the accelerometer's offsets across turns by itself. (The
-// badge does not seed yet: fpv-gate found seeding widens strokes made
+// badge does not seed yet: seeding was found to widen strokes made
 // right after a turn; strapdown r11 looks into it.) The sensor's hardware
 // offset registers are not used: the result applies to any IMU, needs no
 // bus writes, is testable on the host, and the registers would hold the
@@ -59,7 +59,7 @@
 //     (strapdown averages over up to 4·0.5 s), which builds ½·e·T² of
 //     position; these are taken as adding up over the motions:
 //     PosDrift = M·½·(σa/√n)·T². Both in cm/min.
-//   - The acceptable lines: 2 °/min of heading (tinygui's scale runs to 6)
+//   - The acceptable lines: 2 °/min of heading (the page's scale runs to 6)
 //     and 5 cm/min of position (to 10): four and 1.5 times what an MPU6050
 //     at 100 Hz gives (0.48 °/min and 3.3 cm/min).
 //

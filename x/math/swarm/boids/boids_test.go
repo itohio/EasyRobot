@@ -37,7 +37,7 @@ func checkInside(t *testing.T, f *Flock, step int) {
 	}
 }
 
-// tinygui's test: over many steps with the largest flock, while the box
+// Over many steps with the largest flock, while the box
 // turns, spins and shakes and the flock scatters, every boid stays inside
 // the box and flies between the speed limits.
 func TestStayInTheBoxWithinSpeed(t *testing.T) {
@@ -77,7 +77,7 @@ func TestTurnPerPressFor10000Steps(t *testing.T) {
 	}
 }
 
-// tinygui's test: turning the box doesn't turn the flock. At any box
+// Turning the box doesn't turn the flock. At any box
 // angle, a boid no wall reaches keeps its world position and velocity, so
 // on screen it appears to turn the other way.
 func TestKeepWorldHeadingWhenTheBoxTurns(t *testing.T) {
@@ -97,7 +97,7 @@ func TestKeepWorldHeadingWhenTheBoxTurns(t *testing.T) {
 	}
 }
 
-// tinygui's test: a wall that moves pushes the boids it reaches. Shaking
+// A wall that moves pushes the boids it reaches. Shaking
 // the box drags its walls through boids resting near one; they end up
 // inside, moved along.
 func TestPushedByAMovingWall(t *testing.T) {
@@ -122,7 +122,7 @@ func TestPushedByAMovingWall(t *testing.T) {
 	}
 }
 
-// tinygui's test: the heading octant, 0 east, counting clockwise on a
+// The heading octant, 0 east, counting clockwise on a
 // screen with y down.
 func TestOctantFollowsHeading(t *testing.T) {
 	for _, c := range []struct {
@@ -141,7 +141,7 @@ func TestOctantFollowsHeading(t *testing.T) {
 // flock and its mirror image (x → W−1−x, vx → −vx in a straight, centred
 // box) stay exact mirrors step after step. A shift instead of a division
 // on a negative offset or steering term rounds towards −∞ and breaks this
-// (tinygui: >>4 pushed the whole flock into the top-left corner).
+// (>>4 pushed the whole flock into the top-left corner).
 func TestMirrorSymmetry(t *testing.T) {
 	a, b := badge(t, 128), badge(t, 128)
 	hx, hy := a.Box.W-1, a.Box.H-1
@@ -222,7 +222,7 @@ func TestRules(t *testing.T) {
 	}
 	// cohesion in both axes: equal velocities (no alignment), the neighbour
 	// 3 cells right and 3 down (no separation): exactly ±768/64 = ±12 each
-	// way, within the speed limits (fpv-gate F1: the y term was unpinned)
+	// way, within the speed limits (the y term was unpinned once)
 	f.X[0], f.Y[0], f.VX[0], f.VY[0] = cx, cy, 70, 0
 	f.X[1], f.Y[1], f.VX[1], f.VY[1] = cx+3*Fix, cy+3*Fix, 70, 0
 	f.Step()
@@ -320,7 +320,7 @@ func TestCell(t *testing.T) {
 	}
 }
 
-// Step allocates nothing (owner's rule): a raw MemStats.Mallocs delta over
+// Step allocates nothing (the embedded rule): a raw MemStats.Mallocs delta over
 // 1,000 steps of the full flock while the box spins and shakes.
 func TestStepDoesNotAllocate(t *testing.T) {
 	f := badge(t, 128)

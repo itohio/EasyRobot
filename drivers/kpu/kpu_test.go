@@ -229,7 +229,7 @@ func (q *quiet) conv(a *kmodel.Args) error {
 }
 
 // TestRunAllocatesNothing pins Run's zero-allocation promise on the host
-// compiler too (review R-K210-K8b K5: the layer argument escaped through
+// compiler too (the layer argument escaped through
 // the engine interface once per conv).
 func TestRunAllocatesNothing(t *testing.T) {
 	m := model(t)

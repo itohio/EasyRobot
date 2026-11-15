@@ -3,8 +3,7 @@
 // Command colorbar captures one QQVGA RGB565 frame of the OV2640's colour-bar
 // test pattern through the DVP and prints rows 10, 60 and 110 as hex at
 // 115200: per 20-pixel bar the centre pixel and the min/max of R, G, B
-// (5/6/5-bit levels) over the bar's 12 interior pixels. It repeats every 3 s
-// (ER-CAM-steps K1).
+// (5/6/5-bit levels) over the bar's 12 interior pixels. It repeats every 3 s.
 package main
 
 import (

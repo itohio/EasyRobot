@@ -10,7 +10,7 @@ tests: [x/devices/tca9548a/router_example_test.go]
 test_result: none
 complete: yes
 correct: unknown
-evidence: "probe tmp/easyrobot/devices/actprobe (fake I2C, 2026-11-09): ch3 write ×2 → one mux select 0x08 then two writes; ch5 → select 0x20 then Tx. Example test is tinygo-only (not built)."
+evidence: "probe (fake I2C, 2026-11-09): ch3 write ×2 → one mux select 0x08 then two writes; ch5 → select 0x20 then Tx. Example test is tinygo-only (not built)."
 ---
 # TCA9548A I2C multiplexer router
 

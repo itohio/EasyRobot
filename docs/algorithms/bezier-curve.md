@@ -23,7 +23,7 @@ evidence: "TestBezier1d, TestBezierVector pass"
 ## Completeness review
 
 - Complete: yes for evaluation. Missing: derivative/velocity, de Casteljau split, arc-length reparametrisation, `dst` variant of `Bezier` (allocates per call).
-- Tested: TestBezier1d, TestBezierVector — endpoint and midpoint values. Run: go test -count=1 -json ./x/math/{colorscience,learn,grid,interpolation}/... (2026-11-09, slice lead; raw: tmp/easyrobot/filters/test-2026-11-09.json) → pass.
+- Tested: TestBezier1d, TestBezierVector — endpoint and midpoint values. Run: go test -count=1 -json ./x/math/{colorscience,learn,grid,interpolation}/... (2026-11-09) → pass.
 - Correct: yes for tested values (Bernstein formula matches).
 
 ## TODOs

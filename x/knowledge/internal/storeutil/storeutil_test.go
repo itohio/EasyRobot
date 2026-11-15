@@ -52,8 +52,8 @@ func TestNormalize(t *testing.T) {
 }
 
 func TestQueryTerms(t *testing.T) {
-	got := QueryTerms([]string{"BETA", "alpha", "alpha", "", " ", "a b", "abu-061", "-x", "Ünïcode"})
-	want := []string{"beta", "alpha", "abu-061", "-x", "ünïcode"}
+	got := QueryTerms([]string{"BETA", "alpha", "alpha", "", " ", "a b", "dev-061", "-x", "Ünïcode"})
+	want := []string{"beta", "alpha", "dev-061", "-x", "ünïcode"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("QueryTerms = %q, want %q", got, want)
 	}

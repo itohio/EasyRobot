@@ -39,7 +39,7 @@ Pure Go, stdlib only (`strings`, `strconv`, `time`). Allocates per sentence and 
 ## Tests and evidence
 
 - `GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=readonly go test -count=1 ./x/devices/nmea` (2026-11-09): FAIL — 5 pass, `TestParseRMC` fails "nmea: invalid sentence" (same as baseline §5).
-- Probe `~/src/tmp/easyrobot/devices/nmeaprobe` (synthetic sentences): see algorithm notes.
+- Probe (synthetic sentences): see algorithm notes.
 
 ## API notes (ease of use, composability)
 

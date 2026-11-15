@@ -10,7 +10,7 @@ tests: [x/vision/extract/features/processor_test.go]
 test_result: build-fail
 complete: no
 correct: unknown
-evidence: "go/types check with FakeImportC against gocv v0.42.0 (tmp/easyrobot/io/typecheck, 2026-11-09): imports broken x/vision/types; OpenCV missing"
+evidence: "go/types check with FakeImportC against gocv v0.42.0 (2026-11-09): imports broken x/vision/types; OpenCV missing"
 ---
 # Feature descriptor extraction (ORB, SIFT, KAZE, AKAZE, BRISK)
 

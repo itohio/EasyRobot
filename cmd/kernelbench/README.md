@@ -1,7 +1,7 @@
 # kernelbench
 
 Times the EasyRobot kernels the tufty2040 badge demo runs per IMU sample or
-per frame, on the badge or the host (KERNELS-1):
+per frame, on the badge or the host:
 
 | Kernel | Calls per pass | Input |
 |---|---:|---|
@@ -29,4 +29,4 @@ tinygo flash -target=tufty2040 ./cmd/kernelbench           # badge: passes for e
 Host numbers from this loop swing with machine load; the packages'
 `Benchmark*` functions (minimum of several `-count` runs) are the host
 reference. Flip's per-phase split on the badge comes from a phase-timed copy
-of the engine (see `docs/evidence/ER-061-liquid/flip-perf-task1.md`).
+of the engine.

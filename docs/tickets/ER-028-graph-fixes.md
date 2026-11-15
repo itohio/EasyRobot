@@ -14,7 +14,7 @@ source_revision: abb5c9cca7f756c632548d9c7be2436b46dc2e4d
 ---
 # ER-028 — Graph: cycle checks, detached handles, RRT*, decision-tree Balance
 
-[[tickets/index|Ticket index]] · [[roadmap]] · ER-R2 (evidence: `~/src/docs/evidence/ER-R2.md`, outside the repo) · [[todo]]
+[[tickets/index|Ticket index]] · [[roadmap]] · [[todo]]
 
 ## Goal and evidence
 
@@ -32,7 +32,7 @@ Dependencies: With [[ER-002-cpu-graph-semantics|ER-002]] (its fixture items 1–
 
 Not in scope: Tree/forest/kd-tree defects (`forest.go`, `tree.go:262,415,443`, `kd_tree.go:244`) stay backlog.
 
-Source/test edits are approved by the owner's autonomy instruction (roster `decisions.md`); scheduling is Leader's call. Every fix starts with a failing test. No hardware, flashing, TinyGo or download is authorised by this ticket.
+Source/test edits are approved; scheduling is separate. Every fix starts with a failing test. No hardware, flashing, TinyGo or download is authorised by this ticket.
 
 ## Acceptance evidence required later
 
@@ -44,7 +44,7 @@ Source/test edits are approved by the owner's autonomy instruction (roster `deci
 
 ## Effort uncertainty and revision trigger
 
-Product's guess: part of the trusted-reference step; ≈ **M**. Sizes are product's guesses ([[roadmap#1. Milestones at a glance|roadmap §1]]), not estimates from velocity. Revisit when a dependency or owner input changes the scope.
+Size guess: part of the trusted-reference step; ≈ **M**. Sizes are rough guesses ([[roadmap#1. Milestones at a glance|roadmap §1]]), not estimates from velocity. Revisit when a dependency or owner input changes the scope.
 
 ## Implementation evidence
 

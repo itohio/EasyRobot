@@ -55,7 +55,7 @@ Counts: 0 tested · 1 implemented · 3 partial · 0 stub · 0 unverified (4 algo
 ## Tests and evidence
 
 - `go test -count=1 -json ./x/iter/... ./x/workers/...` (2026-11-09): `x/iter` 57 pass; `x/workers` 19 pass; `x/iter/st`, `x/iter/mt`, `x/workers/mt` no test files; `x/iter/loop_experiments` build failed (darwin/arm64).
-- InfraNotes ran `loop_experiments` under `GOARCH=amd64` (Rosetta): builds, no tests; probe sources `~/src/tmp/easyrobot/tensor/InfraNotes/{loopexp,matmulprobe,iterprobe}`.
+- InfraNotes ran `loop_experiments` under `GOARCH=amd64` (Rosetta): builds, no tests.
 - `go build -tags use_mt` not attempted by the lead; breakage is from source reading + InfraNotes notes.
 
 ## API notes (ease of use, composability)

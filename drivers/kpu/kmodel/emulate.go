@@ -108,7 +108,7 @@ func carryShift(v int64, shift uint) int64 {
 // the layer's input shape) into out (CHW uint8, its output shape). It is a
 // port of nncase v0.1.0-rc5's K210Conv2d.Forward (the arithmetic its
 // simulator uses), for checking the KPU layer by layer; the silicon agrees
-// with it to about 1 LSB (ER-K210-K8 evidence).
+// with it to about 1 LSB (observed on the K210).
 func (p *ConvParams) Emulate(in, out []byte) error {
 	return p.EmulateInto(in, out, nil)
 }

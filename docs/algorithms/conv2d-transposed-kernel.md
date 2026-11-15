@@ -10,7 +10,7 @@ tests: [x/math/primitive/fp32/tensor_test.go, x/math/tensor/eager/conv_test.go]
 test_result: pass
 complete: yes
 correct: yes
-evidence: "go test -count=1 ./x/... (2026-11-09) → fp32 TestConv2DTransposed (InDeltaSlice) pass; probe tmp/easyrobot/tensor/kernelnotes (2026-11-09): adjoint <Cx,y>=-2.449117 vs <x,Cᵀy>=-2.449115"
+evidence: "go test -count=1 ./x/... (2026-11-09) → fp32 TestConv2DTransposed (InDeltaSlice) pass; probe: adjoint <Cx,y>=-2.449117 vs <x,Cᵀy>=-2.449115"
 ---
 # Conv2DTransposed (deconvolution)
 

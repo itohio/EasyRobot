@@ -5,7 +5,7 @@ import (
 	"math"
 )
 
-// Multi-pose calibration (CAL-1): one pose cannot tell the accelerometer's
+// Multi-pose calibration: one pose cannot tell the accelerometer's
 // offset from the surface's tilt (see the package doc), but several can. At
 // rest the true specific force has length g whatever the pose, so the
 // readings a of a sensor with per-axis offset o and scale s (a = s∘f + o)
@@ -33,8 +33,8 @@ import (
 // 10⁴ and more for poses in one plane. Above MaxCond (10) the fit is refused
 // (ErrIllPosed): below it the offsets came within 0.006 m/s² and the scales
 // 0.12 % at an MPU6050's noise over 3 s, where up to 20 let 0.021 m/s²
-// through (four faces seeing z only through the table's tilt; verify's
-// probes and this package's tests, CAL-1). The gyro bias is the mean of the
+// through (four faces seeing z only through the table's tilt; probes and
+// this package's tests). The gyro bias is the mean of the
 // poses' gyro means.
 //
 // A Solver keeps up to MaxPoses poses in itself: AddPose, Solve and Reset

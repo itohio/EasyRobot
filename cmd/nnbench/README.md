@@ -85,6 +85,5 @@ any TinyGo 0.43 install.
 
 Measured numbers are not kept in the repository (they change with the
 code). The first measurement — both builds on a XIAO ESP32-S3 at 240 MHz,
-with identical checksums — is in
-`evidence: ~/src/docs/evidence/ER-NN-N2.md` (outside the
-repo). Re-run the firmware to get current numbers.
+with identical checksums — was recorded outside the
+repository. Re-run the firmware to get current numbers.

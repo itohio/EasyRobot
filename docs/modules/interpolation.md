@@ -46,8 +46,8 @@ Counts: 5 tested · 0 implemented · 3 partial · 0 stub · 0 unverified (8 algo
 
 ## Tests and evidence
 
-- go test -count=1 -json ./x/math/{colorscience,learn,grid,interpolation}/... (2026-11-09, slice lead; raw: tmp/easyrobot/filters/test-2026-11-09.json) → `x/math/interpolation` 27 pass, 0 fail.
-- Probe probe tmp/easyrobot/filters/gridinterp/main.go, GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=mod go run . (2026-11-09): Hermite (0,1,2,10,t=0) → 3 (want 1), flat 5s → 10; Linear/CubicUpsample 3→1 → NaN; TPS on linear field → −1.0 (want 1); Gaussian RBF ε=0.05 → singular error; kriging 3-point → 0.651 (no reference).
+- go test -count=1 -json ./x/math/{colorscience,learn,grid,interpolation}/... (2026-11-09) → `x/math/interpolation` 27 pass, 0 fail.
+- Probe probe GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=mod go run . (2026-11-09): Hermite (0,1,2,10,t=0) → 3 (want 1), flat 5s → 10; Linear/CubicUpsample 3→1 → NaN; TPS on linear field → −1.0 (want 1); Gaussian RBF ε=0.05 → singular error; kriging 3-point → 0.651 (no reference).
 - grep TODO/FIXME/panic("not implemented") in non-test files: none.
 
 ## API notes (ease of use, composability)

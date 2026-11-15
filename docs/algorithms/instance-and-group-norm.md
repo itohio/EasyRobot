@@ -10,7 +10,7 @@ tests: [x/math/tensor/eager/normalizations_test.go]
 test_result: pass
 complete: yes
 correct: no
-evidence: "go test -count=1 ./x/... (2026-11-09) → TestInstanceNorm2D/TestGroupNormForward pass (shape/fallback only); probe tmp/easyrobot/tensor/kernelnotes (2026-11-09): IN forward 2.4e-7 vs ref, GN(groups=C)==IN; IN grad dx maxAbsErr 4.18 and GN grad dx 2.15 for gamma≠1; GN dgamma/dbeta wrong"
+evidence: "go test -count=1 ./x/... (2026-11-09) → TestInstanceNorm2D/TestGroupNormForward pass (shape/fallback only); probe (2026-11-09): IN forward 2.4e-7 vs ref, GN(groups=C)==IN; IN grad dx maxAbsErr 4.18 and GN grad dx 2.15 for gamma≠1; GN dgamma/dbeta wrong"
 ---
 # Instance normalization and group normalization (forward + grad)
 

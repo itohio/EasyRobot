@@ -10,7 +10,7 @@ tests: [x/math/primitive/fp32/dsp_convolution_test.go, x/math/primitive/fp32/dsp
 test_result: pass
 complete: no
 correct: no
-evidence: "go test -count=1 ./x/... (2026-11-09) → fp32/c64 TestConvolve*/TestCrossCorrelate* pass; probe tmp/easyrobot/tensor/kernelnotes (2026-11-09): xcorr has only non-negative lags; c64 xcorr unconjugated (i⋆i = -1); Convolve2D truncates columns"
+evidence: "go test -count=1 ./x/... (2026-11-09) → fp32/c64 TestConvolve*/TestCrossCorrelate* pass; probe (2026-11-09): xcorr has only non-negative lags; c64 xcorr unconjugated (i⋆i = -1); Convolve2D truncates columns"
 ---
 # Primitive 1D/2D convolution and cross-correlation (fp32, complex64)
 

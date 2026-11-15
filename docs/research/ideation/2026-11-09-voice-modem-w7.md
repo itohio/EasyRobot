@@ -10,7 +10,7 @@ updated: 2026-11-09
 
 # W7: data over a "voice" channel: waveform, preamble, FEC, soft bits, channel model
 
-**Brief:** `~/src/docs/tasks/ER-research-2.md`. **Questions:** EasyRobot `~/src/docs/evidence/ER-R2.md` §9 (W7) and [[W7-filters-codecs-voice]], whose measured noise figures this note relies on: decisions are near theory, while acquisition and synchronisation lose 25–30 dB.
+**Questions:** EasyRobot W7 and [[W7-filters-codecs-voice]], whose measured noise figures this note relies on: decisions are near theory, while acquisition and synchronisation lose 25–30 dB.
 
 **The channel is the owner's open question** (pending in `docs/decisions.md`), so this note designs for the likely options.
 
@@ -56,7 +56,7 @@ updated: 2026-11-09
 | **M-FSK (non-coherent), symbol ≥ 20 ms + guard** | good if the symbol ≫ delay spread | good (tone bins ≥ 2× Doppler) | poor on CELP codecs (steady tones get modelled away; noise suppression attacks stationary tones) | 8-FSK at 50 Bd = 150 b/s; multi-tone (ggwave-like) higher | Goertzel: ~2 MAC/sample/tone → 8 tones × 8 kS/s = 128 kMAC/s: negligible |
 | **OFDM + cyclic prefix + pilots** | excellent with CP > delay spread | needs CFO estimation (pilots/preamble); Doppler limits the symbol length | poor | 1–3 kb/s (QPSK on ~16–30 carriers) | one 256-point FFT per ~20–40 ms symbol: < 1 % of a core |
 | **Chirp spread spectrum (LoRa-style)** | very good (processing gain, dechirp resolves paths) | good: an offset becomes a bin shift, resolved with up/down chirps | moderate (chirps are less "stationary" than tones `#verify`) | low: SF7 over 3 kHz ≈ 160 b/s raw (inferred: 7 bits per 128/3000 s) | dechirp + 128-pt FFT per symbol: negligible |
-| **DBPSK/DQPSK passband, RRC** (easyrobot's rate tier) | needs equalisation beyond mild multipath | differential tolerates slow CFO | poor | 1–2.4 kb/s | negligible; equaliser adds a little |
+| **DBPSK/DQPSK passband, RRC** (EasyRobot's rate tier) | needs equalisation beyond mild multipath | differential tolerates slow CFO | poor | 1–2.4 kb/s | negligible; equaliser adds a little |
 
 **Recommendation:** M-FSK (8-FSK, 50 Bd, 400 Hz spacing in 600–3400 Hz) as the **robust baseline**. It already decodes at theory in the repo (W7: 4-FSK and 16-FSK at theory once acquired). OFDM is the **rate tier** for channels A and C-SSB, after the synchroniser exists.
 
@@ -85,7 +85,7 @@ updated: 2026-11-09
 ## 5. Rates through speech codecs (Q5)
 
 - **D (cellular/VoIP):** plan on **~100 b/s** with robust speech-shaped modulation, a conservative planning figure.
-  - eCall's in-band modem is the standardised precedent (TS 26.267/26.268 with reference C code). One MSD data frame (1,120 bits) takes 1,320 ms with the fast modulator or 2,320 ms with the robust one, ≈ 850 / 480 b/s before sync and HARQ (reported by verify from TS 26.267 excerpts).
+  - eCall's in-band modem is the standardised precedent (TS 26.267/26.268 with reference C code). One MSD data frame (1,120 bits) takes 1,320 ms with the fast modulator or 2,320 ms with the robust one, ≈ 850 / 480 b/s before sync and HARQ (reported from TS 26.267 excerpts).
   - The learned speech-shaped modem's 76–3,196 b/s Pareto range is a claim to test, not to build on (reported).
 - **Tones and OFDM through Opus at high bitrates** (music mode/CELT) pass much better than through AMR-NB or noise-suppressed VoIP apps (inferred). Design profile D for the worst case.
 - **Practical test:** record the modem through the actual phone path once and replay it offline (§6).
@@ -101,7 +101,7 @@ updated: 2026-11-09
 6. clipping;
 7. optionally **replay of recorded real-channel captures** (phone, radio, room) instead of emulating codecs. No codec libraries are needed in the repo.
 
-**"Noise figure" reporting:** Eb/N0 at BER 1e-3 and 1e-5, plus the acquisition threshold (detection probability ≥ 0.99 at the stated false-alarm rate). This is easyrobot's process proposal, adopted.
+**"Noise figure" reporting:** Eb/N0 at BER 1e-3 and 1e-5, plus the acquisition threshold (detection probability ≥ 0.99 at the stated false-alarm rate). This reporting format is adopted.
 
 ## 7. Fixed-point budget on ESP32 (Q7)
 
@@ -122,7 +122,7 @@ func HardToSoft(bits []byte) SoftBits   // adapter: ±127, so every hard demodul
 - Erasures (a lost symbol or collision) are LLR 0, never deletions. W7 found that MFSK erasures become deletions today.
 - This answers W7 Q8 without converting the whole coding layer to packed bits. Packed `buffer.Bits` can stay for the hard path.
 
-## Smallest offline experiment (easyrobot, no hardware)
+## Smallest offline experiment (no hardware)
 
 **`berharness_test` for the voice-band 8-FSK profile** (8 kS/s, 50 Bd, 600–3400 Hz):
 - an up+down chirp preamble with CFAR detection;

@@ -9,7 +9,7 @@ import (
 
 // Every bound of Parse/Check, one case each: a valid model with exactly one
 // field changed must be rejected, and the boundary value (the region ending
-// exactly at the limit) must still be accepted. Review R-K210-K8b K1, K2, K6.
+// exactly at the limit) must still be accepted.
 
 const (
 	fxW, fxH, fxC, fxOC = 16, 16, 3, 4
@@ -278,7 +278,7 @@ func TestCheckBoundariesAccepted(t *testing.T) {
 func FuzzCheckedModelRuns(f *testing.F) {
 	f.Add(newFixture().data)
 	f.Add(tinyModel(f))
-	k1 := newFixture() // review R-K210-K8b K1: 16×2³⁰×2³⁰ upload
+	k1 := newFixture() // 16×2³⁰×2³⁰ upload
 	k1.setBody(5, 4, 1<<30)
 	k1.setBody(5, 5, 1<<30)
 	f.Add(k1.data)
@@ -331,7 +331,7 @@ func FuzzCheckedModelRuns(f *testing.F) {
 }
 
 // TestCheckOutputs: a Model assembled without Parse (as a compiler may)
-// must have its outputs checked too (review R-K210-K8b K4).
+// must have its outputs checked too.
 func TestCheckOutputs(t *testing.T) {
 	m, err := Parse(newFixture().data)
 	if err != nil {

@@ -11,14 +11,14 @@ func TestTokensIdentifiers(t *testing.T) {
 		want []string // must all be present
 		not  []string // must be absent
 	}{
-		{"PeerPermissions", []string{"peerpermissions", "peer", "permission"}, nil},
+		{"ClientPermissions", []string{"clientpermissions", "client", "permission"}, nil},
 		{"HTTPServer", []string{"httpserver", "http", "server"}, nil},
-		{"abg.svc.find", []string{"abg.svc.find", "abg", "svc", "find"}, nil},
+		{"rpc.svc.find", []string{"rpc.svc.find", "rpc", "svc", "find"}, nil},
 		{"snake_case_name", []string{"snake_case_name", "snake", "case", "name"}, nil},
 		{"kebab-case-name", []string{"kebab-case-name", "kebab", "case", "name"}, nil},
-		{"ABU-061", []string{"abu-061"}, []string{"abu", "061"}},
-		{"see O-005 and KE-1.", []string{"o-005", "ke-1", "see"}, []string{"and"}},
-		{"abugaga/internal/keys/keys.go", []string{"abugaga", "internal", "keys.go", "key", "go"}, nil},
+		{"DEV-061", []string{"dev-061"}, []string{"dev", "061"}},
+		{"see G-005 and DOC-1.", []string{"g-005", "doc-1", "see"}, []string{"and"}},
+		{"relay/internal/keys/keys.go", []string{"relay", "internal", "keys.go", "key", "go"}, nil},
 		{"permissions running indexed queries", []string{"permission", "run", "index", "query"}, nil},
 		{"`Teststore_Name` (foo)", []string{"teststore_name", "teststore", "name", "foo"}, nil},
 	}
@@ -38,8 +38,8 @@ func TestTokensIdentifiers(t *testing.T) {
 }
 
 func TestQueryUniqueAndStable(t *testing.T) {
-	got := Query("peer peer Peer permissions")
-	want := []string{"peer", "permission"}
+	got := Query("client client Client permissions")
+	want := []string{"client", "permission"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("Query = %v, want %v", got, want)
 	}
@@ -47,7 +47,7 @@ func TestQueryUniqueAndStable(t *testing.T) {
 
 func TestIndexAndQueryAgree(t *testing.T) {
 	// Whatever the query produces for a word must be produced by indexing it.
-	for _, w := range []string{"Permissions", "keys.go", "ABU-061", "GPTAttention", "data_bytes", "running"} {
+	for _, w := range []string{"Permissions", "keys.go", "DEV-061", "GPTAttention", "data_bytes", "running"} {
 		idx := Tokens(w)
 		for _, q := range Query(w) {
 			if !slices.Contains(idx, q) {
@@ -58,10 +58,10 @@ func TestIndexAndQueryAgree(t *testing.T) {
 }
 
 func TestLowercaseQueryMatchesCamelCaseIndex(t *testing.T) {
-	// People type identifiers in lower case; "peerpermissions" must hit
-	// a chunk that contains "PeerPermissions".
-	idx := Tokens("PeerPermissions GPTAttention")
-	for _, q := range []string{"peerpermissions", "PeerPermissions", "gptattention"} {
+	// People type identifiers in lower case; "clientpermissions" must hit
+	// a chunk that contains "ClientPermissions".
+	idx := Tokens("ClientPermissions GPTAttention")
+	for _, q := range []string{"clientpermissions", "ClientPermissions", "gptattention"} {
 		for _, term := range Query(q) {
 			if !slices.Contains(idx, term) {
 				t.Errorf("query %q term %q not in index tokens %v", q, term, idx)
@@ -71,8 +71,8 @@ func TestLowercaseQueryMatchesCamelCaseIndex(t *testing.T) {
 }
 
 func TestIDs(t *testing.T) {
-	got := IDs("Fixes ABU-061, see o-005 and KE-1; not 2026-11-09 or v1.2-3 or x-y")
-	want := []string{"ABU-061", "O-005", "KE-1"}
+	got := IDs("Fixes DEV-061, see g-005 and DOC-1; not 2026-11-09 or v1.2-3 or x-y")
+	want := []string{"DEV-061", "G-005", "DOC-1"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("IDs = %v, want %v", got, want)
 	}

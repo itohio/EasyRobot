@@ -35,7 +35,7 @@ evidence: "no test files; build/vet/linux-arm64 cross ok (2026-11-09); probe on 
 ## Completeness review
 
 - Complete: no — no power-down/close, no ASTATUS (0x94) latch read before data [INFERENCE: datasheet recommends reading ASTATUS to latch a consistent data set], AS7341 saturation ignores analog flag, no wait-time/SP_EN interrupt use, calibration/reconstruction API in `calib.md`/`SPD_GUIDE.md` (e.g. `MeasureDarkCurrent`, `ReconstructSpectrum`) is documentation only — no such Go symbols exist.
-- Tested: no test files (`go test ./x/devices/as734x` → `[no test files]`, 2026-11-09). Probe on a verbatim copy of `integrationTimeUs` (`tmp/easyrobot/devices/sensors/ascopy`): (29,599) → 50040 µs (correct); (255,65535) → 3 690 987 µs, true value 46 640 250 µs → overflow.
+- Tested: no test files (`go test ./x/devices/as734x` → `[no test files]`, 2026-11-09). Probe on a verbatim copy of `integrationTimeUs`: (29,599) → 50040 µs (correct); (255,65535) → 3 690 987 µs, true value 46 640 250 µs → overflow.
 - Correct: unknown (no hardware); one confirmed arithmetic defect.
 
 **Defects / risks**

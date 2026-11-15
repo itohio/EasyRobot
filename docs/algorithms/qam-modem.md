@@ -10,7 +10,7 @@ tests: [x/math/dsp/modulation/qam/roundtrip_test.go, x/math/dsp/modulation/qam/l
 test_result: fail
 complete: no
 correct: no
-evidence: "go test -count=1 -v ./x/math/dsp/modulation/qam → FAIL 4 (TestLongPackets, TestRoundtrip_Basics, TestRoundtrip_NoiseScenarios, TestSNRLimits), 9 pass (2026-11-09); BER probe tmp/easyrobot/audio/berprobe (2026-11-09)"
+evidence: "go test -count=1 -v ./x/math/dsp/modulation/qam → FAIL 4 (TestLongPackets, TestRoundtrip_Basics, TestRoundtrip_NoiseScenarios, TestSNRLimits), 9 pass (2026-11-09); BER probe (2026-11-09)"
 ---
 # Square M-QAM modem (4/16/64/256-QAM)
 

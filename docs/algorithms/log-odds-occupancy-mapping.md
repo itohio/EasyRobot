@@ -23,7 +23,7 @@ evidence: "no direct tests; probe slamprobe: 1.23 m hit not marked occupied; 1.0
 ## Completeness review
 
 - Complete: no — max-range (no-return) beams are clamped to maxRange and then marked occupied (:86-88 + :131); no beam-width/obstacle thickness model.
-- Tested: no direct test; slam tests construct with mapping off. Run: go test -count=1 -json ./x/math/filter/slam (2026-11-09, raw tmp/easyrobot/filters/test-2026-11-09.json) → ok.
+- Tested: no direct test; slam tests construct with mapping off. Run: go test -count=1 -json ./x/math/filter/slam (2026-11-09) → ok.
 - Correct: **no** (probe `slamprobe`, res 0.05 m, map initialised to 0.5):
   - Occupied marking requires `distanceGrid ≤ measurementGrid + 0.05` with `distanceGrid` an integer step count (:131, `defaultBeta`=0.05 cells): a 1.23 m return (24.6 cells) never satisfies it, so no cell is marked occupied (cells 42–44 = 0.30 free, 45–46 untouched).
   - Range counted as one unit per Bresenham step (:173) — diagonal steps are √2 long. A 1.0 m beam at 45° marked the hit at cell (40,40), i.e. 1.41 m, instead of ≈(34,34).

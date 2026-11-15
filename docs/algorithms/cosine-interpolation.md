@@ -23,7 +23,7 @@ evidence: "TestCosine1D pass"
 ## Completeness review
 
 - Complete: yes.
-- Tested: TestCosine1D (`interpolation_helpers_test.go`) checks endpoint/midpoint values. Run: go test -count=1 -json ./x/math/{colorscience,learn,grid,interpolation}/... (2026-11-09, slice lead; raw: tmp/easyrobot/filters/test-2026-11-09.json) → pass.
+- Tested: TestCosine1D (`interpolation_helpers_test.go`) checks endpoint/midpoint values. Run: go test -count=1 -json ./x/math/{colorscience,learn,grid,interpolation}/... (2026-11-09, slice lead) → pass.
 - Correct: yes for tested values. Note: uses `math.Cos` in **float64** (`cosine.go:6`) while the rest of the package uses `math32` — costs a float64 software path on FPU-less/single-precision MCUs (ESP32 Xtensa LX6 has single-precision FPU only).
 
 ## TODOs

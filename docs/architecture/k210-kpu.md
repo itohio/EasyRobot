@@ -4,7 +4,7 @@ status: active
 tags: [easyrobot, architecture, k210, kpu, nn]
 workstream: [K210-nn]
 source: [drivers/kpu/, drivers/kpu/kmodel/]
-evidence: "~/src/docs/evidence/ER-K210-K8.md (outside the repo): tiny1/2/3 on the UnitV vs nncase v0.1.0-rc5's simulator; field values below decoded from those kmodels"
+evidence: "tiny1/2/3 on the UnitV vs nncase v0.1.0-rc5's simulator; field values below decoded from those kmodels"
 ---
 # K210 KPU: layer format and arithmetic
 
@@ -57,7 +57,7 @@ Bit positions from `kpu.h`; "nncase" is what rc5 writes; tiny3 values are given 
 | 10 | `conv_value2` | arg_add 0–39 | zero-point product term |
 | 11 | `dma_parameter` | send_data_out 0, channel_byte_num 16–31, dma_total_byte 32–63 | send_data_out streams the output to `FIFO_DATA_OUT` (for DMA); byte counts − 1 (W·H, W·H·C). `drivers/kpu` leaves it off and reads the output from KPU RAM. `Check` requires the byte counts to match the output shape. Above 65,536 pixels per channel send_data_out must be off and channel_byte_num is ignored by the KPU: `SetOutShape` saturates it at 65,535, ncc truncates it to 16 bits, and `Check` accepts either. |
 
-**pool_type** (nncase emulator; stride = kernel). **Silicon: regular convs only.** In depthwise mode a non-zero pool_type gives wrong output on the UnitV (ER-K210-K9 evidence, K9e). `kmodel.Check` refuses such a layer (ErrUnsupported). nncase never pools a depthwise layer: it lowers a stride-2 depthwise at full resolution and puts the left-top sampler on the following 1×1 conv.
+**pool_type** (nncase emulator; stride = kernel). **Silicon: regular convs only.** In depthwise mode a non-zero pool_type gives wrong output on the UnitV. `kmodel.Check` refuses such a layer (ErrUnsupported). nncase never pools a depthwise layer: it lowers a stride-2 depthwise at full resolution and puts the left-top sampler on the following 1×1 conv.
 
 | Value | Pool |
 |---|---|
@@ -67,7 +67,7 @@ Bit positions from `kpu.h`; "nncase" is what rc5 writes; tiny3 values are given 
 | 3 | 4×4 max |
 | 4 | 4×4 average |
 | 5 | 2×2 "left-top": keep the top-left pixel (even rows and columns), which is how nncase does stride 2 |
-| 6 | 2×2 "right-top": keep the top-right pixel (even rows, odd columns). Runs on silicon like 1 and 5 (ER-K210-K9 evidence, `kpupool`). With the input read from one row down it samples odd rows and columns: TF SAME stride 2 |
+| 6 | 2×2 "right-top": keep the top-right pixel (even rows, odd columns). Runs on silicon like 1 and 5 (`kpupool` probe). With the input read from one row down it samples odd rows and columns: TF SAME stride 2 |
 
 nncase v0.2's enum continues with 7 left-top 4×4, 8 2×2 mean stride 1 and 9 2×2 max stride 1; they are not used here and not checked on silicon.
 
@@ -75,9 +75,9 @@ The conv itself is always stride 1, with SAME padding filled with `pad_value`. O
 
 ## Arithmetic (nncase's emulator)
 
-`kmodel.ConvParams.Emulate` is a Go port of this arithmetic, and `kpu.NewEmulated` runs a whole kmodel on any host with it. Both are bit-identical to nncase rc5's simulator on tiny1/2/3 and on the 27-layer MobileNetV1-0.25 feature extractor. On the UnitV, each layer's output, computed from that layer's own KPU input, agrees with the port to within 1 LSB: 503,605 of 503,808 outputs equal, 203 at 1 LSB, none above (ER-K210-K8 evidence, K8c-2). The 1-LSB cases compound across layers, so a 27-layer output can differ from the simulator by up to about 25 LSB.
+`kmodel.ConvParams.Emulate` is a Go port of this arithmetic, and `kpu.NewEmulated` runs a whole kmodel on any host with it. Both are bit-identical to nncase rc5's simulator on tiny1/2/3 and on the 27-layer MobileNetV1-0.25 feature extractor. On the UnitV, each layer's output, computed from that layer's own KPU input, agrees with the port to within 1 LSB: 503,605 of 503,808 outputs equal, 203 at 1 LSB, none above. The 1-LSB cases compound across layers, so a 27-layer output can differ from the simulator by up to about 25 LSB.
 
-**Quantisation.** For a range [min, max]: scale s = 255/(max − min), bias b = round(min·s), and real = (q + b)/s. Weights use the same with 8 bits. The rc5 release is built `CHANNEL_WISE`: it first scales each output channel's float weights by s = min(total max / channel max, total min / channel min) (the larger of the two if either is negative), stretching them to the tensor's range, then quantises the whole tensor with one scale and bias. This reproduces all 61 weight blobs of the K8 models byte for byte (ER-K210-K9 evidence, K9b); the per-tensor rule alone reproduces none.
+**Quantisation.** For a range [min, max]: scale s = 255/(max − min), bias b = round(min·s), and real = (q + b)/s. Weights use the same with 8 bits. The rc5 release is built `CHANNEL_WISE`: it first scales each output channel's float weights by s = min(total max / channel max, total min / channel min) (the larger of the two if either is negative), stretching them to the tensor's range, then quantises the whole tensor with one scale and bias. This reproduces all 61 weight blobs of the K8 models byte for byte; the per-tensor rule alone reproduces none.
 
 **Conv.** Inputs x and weights w are uint8.
 - For each output pixel, with Σ over the kernel window (3×3·IC, or IC for 1×1; 3×3 per channel for depthwise):
@@ -128,7 +128,7 @@ With more than one load, each load holds `o_ch_num_coef + 1` output channels. Th
 | batch norm | 8 B per output channel | 128 |
 | activation | 16 × u64 + 16 result_bias bytes = 144 B | 256 |
 
-`kmodel.EncodeBN` and `kmodel.EncodeAct` write the last two; `kmodel.Builder` lays a model out exactly as ncc does. Rebuilt from their parsed parts, all five ncc kmodels of the K8 evidence (tiny1/2/3, mbnet025fe, mbnet025) are byte-identical (ER-K210-K9 evidence, K9a).
+`kmodel.EncodeBN` and `kmodel.EncodeAct` write the last two; `kmodel.Builder` lays a model out exactly as ncc does. Rebuilt from their parsed parts, all five ncc kmodels of the K8 evidence (tiny1/2/3, mbnet025fe, mbnet025) are byte-identical.
 
 ## kmodel v3 container
 
@@ -157,9 +157,9 @@ Layout is in the `kmodel` package doc. Layer types are listed in `kpu.h` `kpu_mo
 
 - Only 3×3 and 1×1 kernels, stride 1. Stride 2 is the conv followed by left-top 2×2 pooling, so windows centre on even pixels (for a depthwise conv, the pooling goes on the next 1×1 conv, see pool_type). That equals TF `PAD [[1,1],[1,1]]` + VALID, not TF SAME (which centres on odd pixels for even sizes). `drivers/kpu/compile` also runs TF SAME stride 2 exactly: the conv at full resolution, then the next layer reads from one row down with the right-top sampler ([[kpu-compiler]]).
   - nncase rc5 accepts a stride-2 3×3 depthwise only as PAD(1,1) → depthwise VALID stride 2 → 1×1 conv, and PAD only with exactly that padding. The official MobileNetV1 TFLite therefore fails with "DepthwiseConv2d is not supported".
-- Max 1024 channels (10-bit fields), width ≤ 1024 (512 measured), and the tensor must fit 2 MiB together with the other live tensors. **Input height ≤ 256 on silicon**, although the field is 9 bits: a 257- or 258-row input never raises the done interrupt (64×258, 256×257, 256×258 time out; 256×256, 512×128 and 300×220 run; ER-K210-K9 evidence, `kpushape`). `kmodel.Check` refuses a taller input (ErrUnsupported, `kmodel.MaxInputRows`), so such a kmodel fails at load rather than timing out on every run.
+- Max 1024 channels (10-bit fields), width ≤ 1024 (512 measured), and the tensor must fit 2 MiB together with the other live tensors. **Input height ≤ 256 on silicon**, although the field is 9 bits: a 257- or 258-row input never raises the done interrupt (64×258, 256×257, 256×258 time out; 256×256, 512×128 and 300×220 run; `kpushape` probe). `kmodel.Check` refuses a taller input (ErrUnsupported, `kmodel.MaxInputRows`), so such a kmodel fails at load rather than timing out on every run.
 - Activations: anything a 16-segment piecewise-linear function of the BN output can express.
 - **Fully connected layers:**
   - on the KPU as a 1×1 conv on a 4×4 zero-padded map (AddPadding/RemovePadding), which is how nncase runs a classifier on the KPU and what `drivers/kpu` runs. The KPU's minimum useful width is 4.
   - The kmodel format also has a float CPU layer (`KL_FULLY_CONNECTED`, `kpu_kmodel_fully_connected`), but `drivers/kpu` does not implement it, and `Check` rejects it as unsupported. The K9 compiler runs FC on qnet's CPU kernels outside the kmodel instead ([[kpu-compiler]]).
-- **rc5's simulator** has no Quantize layer and is not bit-exact with the silicon. Differences grow about 1 LSB per layer (evidence ER-K210-K8).
+- **rc5's simulator** has no Quantize layer and is not bit-exact with the silicon. Differences grow about 1 LSB per layer.

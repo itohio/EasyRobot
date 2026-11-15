@@ -12,7 +12,7 @@ const (
 
 // graphFixture stores three documents asserting:
 //
-//	a: a→b links 1, a→c links 2, a→tag:x tagged 0.5, a→id:ABU-1 defines 1
+//	a: a→b links 1, a→c links 2, a→tag:x tagged 0.5, a→id:DEV-1 defines 1
 //	b: b→a links 1, b→c links 1, b→sym:pkg.F defines 1
 //	c: c→a mentions 0.7, c→sym:pkg.F defines 1, c→tag:x tagged 0.5
 func graphFixture(t *testing.T, s knowledge.Store) {
@@ -21,7 +21,7 @@ func graphFixture(t *testing.T, s knowledge.Store) {
 		mkEdge(dn(ga), dn(gb), knowledge.LinksTo, 1, ga),
 		mkEdge(dn(ga), dn(gc), knowledge.LinksTo, 2, ga),
 		mkEdge(dn(ga), knowledge.TagNode("x"), knowledge.Tagged, 0.5, ga),
-		mkEdge(dn(ga), knowledge.IDNode("ABU-1"), knowledge.Defines, 1, ga))
+		mkEdge(dn(ga), knowledge.IDNode("DEV-1"), knowledge.Defines, 1, ga))
 	put(t, s, mkDoc(gb, "md", "g"), nil,
 		mkEdge(dn(gb), dn(ga), knowledge.LinksTo, 1, gb),
 		mkEdge(dn(gb), dn(gc), knowledge.LinksTo, 1, gb),
@@ -38,7 +38,7 @@ func testNeighbors(t *testing.T, s knowledge.Store) {
 		ab   = mkEdge(dn(ga), dn(gb), knowledge.LinksTo, 1, ga)
 		ac   = mkEdge(dn(ga), dn(gc), knowledge.LinksTo, 2, ga)
 		ax   = mkEdge(dn(ga), knowledge.TagNode("x"), knowledge.Tagged, 0.5, ga)
-		aid  = mkEdge(dn(ga), knowledge.IDNode("ABU-1"), knowledge.Defines, 1, ga)
+		aid  = mkEdge(dn(ga), knowledge.IDNode("DEV-1"), knowledge.Defines, 1, ga)
 		ba   = mkEdge(dn(gb), dn(ga), knowledge.LinksTo, 1, gb)
 		bc   = mkEdge(dn(gb), dn(gc), knowledge.LinksTo, 1, gb)
 		ca   = mkEdge(dn(gc), dn(ga), knowledge.Mentions, 0.7, gc)
@@ -47,7 +47,7 @@ func testNeighbors(t *testing.T, s knowledge.Store) {
 		link = []knowledge.EdgeKind{knowledge.LinksTo}
 	)
 
-	// Weight desc, then the other endpoint asc ("doc:g/b.md" < "id:ABU-1").
+	// Weight desc, then the other endpoint asc ("doc:g/b.md" < "id:DEV-1").
 	wantEdges(t, neighbors(t, s, seed(dn(ga)), nil, knowledge.Out, 0), ac, ab, aid, ax)
 	wantEdges(t, neighbors(t, s, seed(dn(ga)), link, knowledge.Out, 0), ac, ab)
 	wantEdges(t, neighbors(t, s, seed(dn(ga)), nil, knowledge.Out, 2), ac, ab)
@@ -120,7 +120,7 @@ func testResolve(t *testing.T, s knowledge.Store) {
 	}
 	check(dn(ga), ga, true)
 	check(dn("g/unknown.md"), "", false) // linked to by nobody, not indexed
-	check(knowledge.IDNode("abu-1"), ga, true)
+	check(knowledge.IDNode("dev-1"), ga, true)
 	check(knowledge.SymNode("pkg.F"), gb, true) // b and c define it: smallest DocID
 	check(knowledge.IDNode("NONE-1"), "", false)
 	check(knowledge.TagNode("x"), "", false)

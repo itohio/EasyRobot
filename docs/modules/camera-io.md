@@ -52,7 +52,7 @@ Counts: 0 tested · 0 implemented · 0 partial · 0 stub · 4 unverified (4 algo
 
 ## Tests and evidence
 
-- `x/marshaller/gocv`: not built — OpenCV missing. Go-level type check (custom `go/types` checker with `FakeImportC`, `~/src/tmp/easyrobot/io/typecheck/main.go`, run `./tc . github.com/itohio/EasyRobot/x/marshaller/gocv`) → `0 type errors` (2026-11-09). Tests: `manifest_test.go` (4), `streams_test.go` (4, repo images), `device_enumeration_test.go` (camera — skipped by roster rules), `stream_display_manual_test.go` (GUI, tag).
+- `x/marshaller/gocv`: not built — OpenCV missing. Go-level type check (custom `go/types` checker with `FakeImportC`, run `./tc . github.com/itohio/EasyRobot/x/marshaller/gocv`) → `0 type errors` (2026-11-09). Tests: `manifest_test.go` (4), `streams_test.go` (4, repo images), `device_enumeration_test.go` (needs a camera), `stream_display_manual_test.go` (GUI, tag).
 - `x/marshaller/v4l`: `GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=readonly GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build ./x/marshaller/v4l` → `go4vl/v4l2/types.go: undefined: Capability, IOType, BufType` (cgo-only types). `example_test.go` needs `/dev/video*`.
 
 ## API notes (ease of use, composability)

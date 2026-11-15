@@ -23,7 +23,7 @@ evidence: "probe dspprobe: BP 500-1500 Hz gives +20 dB at 50 Hz; BS gives +33 dB
 ## Completeness review
 
 - Complete: no — `Weight` is ignored (no least-squares/Remez), comment admits approximation (:192-194).
-- Tested: `TestFIRBandPass`/`TestFIRBandStop` assert only non-NaN first output. Run: go test -count=1 -json ./x/math/filter/fir (2026-11-09, raw tmp/easyrobot/filters/test-2026-11-09.json) → ok.
+- Tested: `TestFIRBandPass`/`TestFIRBandStop` assert only non-NaN first output. Run: go test -count=1 -json ./x/math/filter/fir (2026-11-09, raw ) → ok.
 - Correct: **no**. The ideal band response is `h[n] = G·(2f₂·sinc(2f₂n) − 2f₁·sinc(2f₁n))`; `fir.go:216` uses `G·2·(sinc(2f₂n) − sinc(2f₁n))` (missing the `f₂`, `f₁` factors) while the n=0 term (:213) is right. Probe (`dspprobe`, fs 8 kHz, order 64): band-pass 500–1500 Hz → +20.3 dB at 50 Hz, +14.9 dB at 1 kHz, −12 dB above 2 kHz; band-stop → +33.5 dB at 50 Hz. Neither behaves as specified.
 
 ## TODOs

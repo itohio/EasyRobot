@@ -10,7 +10,7 @@ tests: [x/math/tensor/eager/normalizations_test.go]
 test_result: pass
 complete: no
 correct: no
-evidence: "go test -count=1 ./x/... (2026-11-09) → TestBatchNormForward pass (no value checks); probe tmp/easyrobot/tensor/kernelnotes (2026-11-09): BatchNormGrad dx wrong for gamma≠1 (maxAbsErr 5.6); per-feature not per-channel stats on NCHW; batch=1 → all zeros"
+evidence: "go test -count=1 ./x/... (2026-11-09) → TestBatchNormForward pass (no value checks); probe (2026-11-09): BatchNormGrad dx wrong for gamma≠1 (maxAbsErr 5.6); per-feature not per-channel stats on NCHW; batch=1 → all zeros"
 ---
 # Batch normalization (forward + grad)
 

@@ -84,7 +84,7 @@ func decodeGain(v uint8) float32 {
 }
 
 // SetControls applies c. Manual exposure needs Options.LineNS and a raw CIF
-// mode (the setup LineNS describes; review R-K210-REC-R3 F3), else
+// mode (the setup LineNS describes), else
 // ErrNoLineTime. It does not allocate.
 func (s *Sensor) SetControls(c sensor.Controls) error {
 	com8v, err := s.read(bankSensor, com8)

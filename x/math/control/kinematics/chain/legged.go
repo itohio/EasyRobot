@@ -23,7 +23,7 @@ type LegGeometry struct {
 // 300°/s, a hobby servo at 0.2 s/60° without load.
 const DefaultJointMaxVel = 300 * math32.Pi / 180
 
-// DefaultLegLimits returns the joint limits Hexapod and Quadruped use (ER-R2
+// DefaultLegLimits returns the joint limits Hexapod and Quadruped use (IK
 // probe R, knee down only): coxa ±60°, femur −60…72°, tibia −149…−20°.
 func DefaultLegLimits() [3][2]float32 {
 	return [3][2]float32{{Deg(-60), Deg(60)}, {Deg(-60), Deg(72)}, {Deg(-149), Deg(-20)}}

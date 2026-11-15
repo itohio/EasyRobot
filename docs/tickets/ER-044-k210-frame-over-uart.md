@@ -24,16 +24,16 @@ Smallest useful frame: 160×120 Y (19.2 KB). DVP writes memory itself; no DMA.
 
 - OV2640 tables in `drivers/camera/sensor/ov2640` (from esp32-camera v2.1.9, Apache-2.0).
 - DVP frame capture (polled frame start/finish) in `drivers/camera/camera_k210.go`.
-- Camera frame format v1 (ER-K210-M3 (evidence: `~/src/docs/evidence/ER-K210-M3.md`, outside the repo) §4: "ERIM" chunks with CRC-32, shared with esp32cam) via `drivers/camera/frame`; the shared host tool `cmd/camframe` writes PNGs.
+- Camera frame format v1 ("ERIM" chunks with CRC-32, shared with the ESP32 camera) via `drivers/camera/frame`; the shared host tool `cmd/camframe` writes PNGs.
 
 ## Acceptance
 
-Owner's acceptance (2026-11-09, via Leader): capture a valid image and fetch it over UART to the Mac, with the camera pointed at a ceiling/wall with some objects around; the PNG is saved in `~/src/docs/evidence/ER-K210-M4.md` and recognisably shows the scene. Engineering targets: 160×120 Y, then QVGA RGB565, sent framed and CRC-clean (≥ 921600 baud if the app UART holds it); fps logged.
+Acceptance (2026-11-09): capture a valid image and fetch it over UART to the Mac, with the camera pointed at a ceiling/wall with some objects around; the PNG is saved and recognisably shows the scene. Engineering targets: 160×120 Y, then QVGA RGB565, sent framed and CRC-clean (≥ 921600 baud if the app UART holds it); fps logged.
 
 ## Dependencies
 
-ER-043 ✓. Roster task ER-K210; evidence `~/src/docs/evidence/ER-K210-M4.md`.
+ER-043 ✓.
 
 ## Evidence
 
-Verify accepted (roster verification ER-CAM-BATCH-2); code review pending: ER-K210-M4 (evidence: `~/src/docs/evidence/ER-K210-M4.md`, outside the repo) — QVGA RGB565 and Y8 room images fetched over UART at 1.5 Mbaud; link loss ~1% of chunks with pacing (FT232BM). Lossless delivery with chunk resend: ER-K210-K5 §K5c.
+Verified; code review pending: QVGA RGB565 and Y8 room images fetched over UART at 1.5 Mbaud; link loss ~1% of chunks with pacing (FT232BM). Lossless delivery with chunk resend: see `cmd/camframe` resend.

@@ -24,7 +24,7 @@ evidence: "6 tests pass; probe cycleprobe: directed 2-cycle A->B->A reported as 
 
 - Complete: partial — only the part of the graph reachable from `start` is checked; no cycle path returned.
 - Tested: `TestLoopDetection_NoCycle/WithCycle/SelfLoop` (3-cycle and self-loop on `MatrixGraph`), components single/multiple (multiple only asserts ≥1 component, `cycles_test.go:108`). Run: go test -count=1 -json ./x/math/graph/... (2026-11-09) → ok except TestRRTStar_Simple2DGrid (flaky).
-- Correct: **no** for directed graphs. The parent-skip (`cycles.go:29-31`) is an *undirected* rule mixed into *directed* colouring: a directed 2-cycle A→B→A is ignored. Probe `tmp/easyrobot/filters/cycleprobe`: `MatrixGraph` with A→B, B→A → `false`. Conversely, on an undirected graph stored as symmetric edges the colouring is the right tool only with parent-skip — so the function is correct for neither model in general. `ConnectedComponents` follows directed edges, so it returns reachability sets (order-dependent), not weakly connected components. Recursion depth = path length (stack growth on embedded).
+- Correct: **no** for directed graphs. The parent-skip (`cycles.go:29-31`) is an *undirected* rule mixed into *directed* colouring: a directed 2-cycle A→B→A is ignored. Probe: `MatrixGraph` with A→B, B→A → `false`. Conversely, on an undirected graph stored as symmetric edges the colouring is the right tool only with parent-skip — so the function is correct for neither model in general. `ConnectedComponents` follows directed edges, so it returns reachability sets (order-dependent), not weakly connected components. Recursion depth = path length (stack growth on embedded).
 - Not used by [[expression-graph]], which has its own (incomplete) ordering.
 
 ## TODOs

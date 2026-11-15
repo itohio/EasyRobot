@@ -24,7 +24,7 @@ evidence: "go test -count=1 ./x/... (2026-11-09): x/types/st build-fail darwin/a
 
 - Complete: **no** — placeholder. Loop body `convert_asm_amd64.s:43-100` loads `src` into AX/X0 and then executes `MOVSS X7, (DI)` (`:95`, comment "Placeholder: proper implementation needs CGO"). The scale constant `0x38000000` (`:7`) is `2^-15 = 3.0517578e-05`, not `1/32767 = 3.0518509e-05` as the comment says. The comment's premise that Go's assembler lacks int→float conversion is false (Go asm has `CVTSL2SS`, `CVTPL2PS`, and AVX2 `VCVTDQ2PS`; arm64 has `SCVTF` / NEON `SCVTF Vd.4S`).
 - Tested: no correctness test; benchmark only. On darwin/arm64 the whole `x/types/st` test binary fails to build (`convert_bench_test.go:583: missing function body`) because the declaration is in an untagged `_test.go` file. Under `GOARCH=amd64` (Rosetta) `go test ./x/types/st` passes (the benchmark is not run).
-- Correct: **no** — probe copying the `.s` into `tmp/easyrobot/tensor/InfraNotes/asmprobe`: input `[0 100 -32767 32767]` → output `[3.0517578e-05 ×4]`.
+- Correct: **no** — probe copying the `.s` into: input `[0 100 -32767 32767]` → output `[3.0517578e-05 ×4]`.
 
 **Declared (repo docs, claims only):** `CONVERT_PLAN.md` plans per-type kernels + SIMD; `dispatch_overhead_analysis.md` / `dispatch_optimization_issue.md` discuss type-switch dispatch cost in `Convert` (declared, not verified here).
 

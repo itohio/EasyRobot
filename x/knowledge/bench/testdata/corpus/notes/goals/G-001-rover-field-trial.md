@@ -1,13 +1,13 @@
 ---
-id: O-001
+id: G-001
 title: Rover field trial
-type: objective
+type: goal
 status: active
-tags: [objective, rover]
+tags: [goal, rover]
 updated: 2026-09-01
 ---
 
-# O-001 — Rover field trial
+# G-001 — Rover field trial
 
 Drive the rover for one hour outdoors on mixed terrain without a manual rescue.
 

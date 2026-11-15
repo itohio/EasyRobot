@@ -82,7 +82,7 @@ func TestLowerConvYBound(t *testing.T) {
 	}
 }
 
-// TestLowerConvSpreadMultipliers (review R-K210-K9b L1): a 3×3×1024 conv
+// TestLowerConvSpreadMultipliers: a 3×3×1024 conv
 // with M = 1 on one channel and M = 2⁻²² on another. The first forces a
 // small P, which would round the second channel's BN multiplier to 0 (its
 // output stuck at zp + bias·M, 71 LSB off): the layer is refused.
@@ -96,7 +96,7 @@ func TestLowerConvSpreadMultipliers(t *testing.T) {
 	}
 }
 
-// TestLowerConvYBoundBias (review R-K210-K9b L2): the bias counts in the
+// TestLowerConvYBoundBias: the bias counts in the
 // y bound. IC 1024, extreme weights and inputs, M chosen so the
 // accumulator alone fits at P = 20 but accumulator + bias does not: P must
 // drop, keeping the BN output for the largest accumulator plus the bias
@@ -116,7 +116,7 @@ func TestLowerConvYBoundBias(t *testing.T) {
 	}
 }
 
-// TestUnclampedWindow (review R-K210-K9b recheck): the precision floor
+// TestUnclampedWindow: the precision floor
 // only counts accumulators whose output (acc + b)·m lies within 256 LSB
 // of zero; the window follows the bias and is empty when every output
 // clamps.
@@ -191,7 +191,7 @@ func TestLowerConvClampedChannel(t *testing.T) {
 	}
 }
 
-// TestLowerConvAsymmetricSpread (review R-K210-QU8 Q1/Q5): a weight zero
+// TestLowerConvAsymmetricSpread: a weight zero
 // point of −128 doubles the accumulator bound, so the post-shift P drops
 // by one (13 → 12) and the small channel's BN multiplier loses a bit. A 3×3
 // conv over 256 channels with multipliers 1/64 and 2⁻²⁰ lowers exactly
@@ -240,7 +240,7 @@ func TestLowerConvAsymmetricSpread(t *testing.T) {
 	}
 }
 
-// TestNegativeTieRoundTFLite (review R-K210-K9b L3, RoundTFLite only): a
+// TestNegativeTieRoundTFLite (RoundTFLite only): a
 // layer whose output is exactly −0.5 LSB (accumulator 0, bias −2, M = ¼)
 // gives TFLite's −1 (ties away from zero) on the KPU when it is a
 // RoundTFLite layer; a RoundExact layer keeps the half-up table (0, within

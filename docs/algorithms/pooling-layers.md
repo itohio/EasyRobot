@@ -10,7 +10,7 @@ tests: [x/math/nn/layers/pooling_test.go, x/math/nn/layers/pooling_grad_test.go]
 test_result: pass
 complete: no
 correct: no
-evidence: "go test -count=1 ./x/... (2026-11-09) → TestMaxPool2D, TestAvgPool2D, TestGlobalAvgPool2D, Test{Avg,Max}PoolLayerBackwardMatchesExpected pass; probe tmp/easyrobot/tensor/layernotes/gradcheck (2026-11-09): Max/Avg backward ✓, GlobalAvgPool2D backward wrong shape"
+evidence: "go test -count=1 ./x/... (2026-11-09) → TestMaxPool2D, TestAvgPool2D, TestGlobalAvgPool2D, Test{Avg,Max}PoolLayerBackwardMatchesExpected pass; probe: Max/Avg backward ✓, GlobalAvgPool2D backward wrong shape"
 ---
 # Pooling layers: MaxPool2D, AvgPool2D, GlobalAvgPool2D
 

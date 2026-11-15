@@ -10,7 +10,7 @@ tests: []
 test_result: none
 complete: no
 correct: no
-evidence: "probe tmp/easyrobot/devices/actprobe (recording fake I2C, 2026-11-09): SetPWMRaw(0,1000) writes 06 e8 03 00 00 (OFF value into ON registers); SetFrequency(50) prescale 0x79 = 121 correct"
+evidence: "probe (recording fake I2C, 2026-11-09): SetPWMRaw(0,1000) writes 06 e8 03 00 00 (OFF value into ON registers); SetFrequency(50) prescale 0x79 = 121 correct"
 ---
 # PCA9685 16-channel PWM driver
 

@@ -10,7 +10,7 @@ tests: [x/marshaller/proto/marshaller_test.go, x/marshaller/proto/xor_test.go]
 test_result: pass
 complete: no
 correct: no
-evidence: "go test -count=1 -v ./x/marshaller/proto → ok, 4 PASS (2026-11-09); probe tmp/easyrobot/io/graphprobe: INT16/INT8 round-trip to zeros, UINT8 panics on unmarshal (2026-11-09)"
+evidence: "go test -count=1 -v ./x/marshaller/proto → ok, 4 PASS (2026-11-09); probe INT16/INT8 round-trip to zeros, UINT8 panics on unmarshal (2026-11-09)"
 ---
 # Tensor / model ↔ protobuf conversion (`x/marshaller/proto`)
 

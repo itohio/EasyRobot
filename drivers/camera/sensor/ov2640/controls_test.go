@@ -142,7 +142,7 @@ func TestManualExposureNeedsLineTime(t *testing.T) {
 	}
 }
 
-// TestExposureOnlyWhereLineTimeHolds (review R-K210-REC-R3 F3): LineNS is
+// TestExposureOnlyWhereLineTimeHolds: LineNS is
 // the raw CIF line period, so µs exposure is refused, and read back as 0,
 // in SVGA, UXGA and JPEG modes; raw CIF keeps converting.
 func TestExposureOnlyWhereLineTimeHolds(t *testing.T) {

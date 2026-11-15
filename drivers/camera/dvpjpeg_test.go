@@ -47,7 +47,7 @@ func TestDVPJPEG(t *testing.T) {
 			t.Errorf("%s: err %v, want ErrIncomplete", name, err)
 		}
 	}
-	// Review R-K210-REC-R3 mutant survivors: the frame ends at the first
+	// The frame ends at the first
 	// FF D9, and an EOI in the buffer's last word is found.
 	for name, c := range map[string]struct {
 		stream []byte

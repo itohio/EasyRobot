@@ -10,7 +10,7 @@ tests: [x/math/dsp/modulation/mfsk/roundtrip_test.go, x/math/dsp/modulation/mfsk
 test_result: flaky
 complete: no
 correct: unknown
-evidence: "go test -count=1 -v ./x/math/dsp/modulation/mfsk → FAIL 1 (Test16FSK_Noise/SNR_25dB: SignalStrength −11.99 vs −1.94 dB, tol 10), 6 pass (2026-11-09); baseline 2026-11-08 failed the 22 dB case in 1 of 3 runs; BER probe tmp/easyrobot/audio/berprobe"
+evidence: "go test -count=1 -v ./x/math/dsp/modulation/mfsk → FAIL 1 (Test16FSK_Noise/SNR_25dB: SignalStrength −11.99 vs −1.94 dB, tol 10), 6 pass (2026-11-09); baseline 2026-11-08 failed the 22 dB case in 1 of 3 runs; BER probe"
 ---
 # M-FSK modem (non-coherent Goertzel tone bank)
 

@@ -7,7 +7,7 @@ workstream: W7
 source: [x/marshaller/audio/]
 tests: [x/marshaller/audio/marshaller_test.go, x/marshaller/audio/unmarshaller_test.go]
 test_result: pass
-evidence: "go test -count=1 -v ./x/marshaller/audio/ → ok, 21 PASS, 0 SKIP (2026-11-09, ~/src/tmp/easyrobot/audio/dsp_v.txt)"
+evidence: "go test -count=1 -v ./x/marshaller/audio/ → ok, 21 PASS, 0 SKIP (2026-11-09)"
 ---
 # audio-io — `x/marshaller/audio`
 

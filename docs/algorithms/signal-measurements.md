@@ -10,7 +10,7 @@ tests: [x/math/dsp/measure_test.go]
 test_result: pass
 complete: no
 correct: no
-evidence: "go test -count=1 -v ./x/math/dsp/ → ok, 8 measure tests PASS (2026-11-09); probe tmp/easyrobot/audio/dspcore/main.go: SNR = 20.00 dB for any input, THD always 0 (2026-11-09)"
+evidence: "go test -count=1 -v ./x/math/dsp/ → ok, 8 measure tests PASS (2026-11-09); probe: SNR = 20.00 dB for any input, THD always 0 (2026-11-09)"
 ---
 # Signal measurements: RMS, peak, mean, variance, "SNR", THD, windowed RMS statistics
 

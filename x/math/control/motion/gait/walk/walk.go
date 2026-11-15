@@ -3,7 +3,7 @@
 // body→hip transforms → analytic leg IK → ServoMap degrees. Step does not
 // allocate.
 //
-// Footholds (Raibert-style, ER-R2 gaits note §2): leg i with neutral foot nᵢ
+// Footholds (Raibert-style): leg i with neutral foot nᵢ
 // (body frame) touches down at pᵢ* = nᵢ + ½·T_st·(v + ω×nᵢ), so its stance
 // sweeps symmetrically through the neutral point. Stance feet stay fixed in
 // the world while the body moves.

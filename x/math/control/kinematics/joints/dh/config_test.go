@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// T-IK-06: a zero-value Config (Min == Max == 0) silently pinned every joint
+// A zero-value Config (Min == Max == 0) silently pinned every joint
 // at 0; it and other malformed configs must be rejected.
 func TestConfig_Validate(t *testing.T) {
 	nan, inf := math32.NaN(), math32.Inf(1)

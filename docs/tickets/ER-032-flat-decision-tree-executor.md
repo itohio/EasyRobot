@@ -14,7 +14,7 @@ source_revision: abb5c9cca7f756c632548d9c7be2436b46dc2e4d
 ---
 # ER-032 — Plain-data decision tree and flat executor
 
-[[tickets/index|Ticket index]] · [[roadmap]] · ER-R2 (evidence: `~/src/docs/evidence/ER-R2.md`, outside the repo) · [[todo]]
+[[tickets/index|Ticket index]] · [[roadmap]] · [[todo]]
 
 ## Goal and evidence
 
@@ -30,7 +30,7 @@ Dependencies: After [[ER-028-graph-fixes|ER-028]]'s `Balance` fix. Consumed by [
 
 Not in scope: No trainer (ER-033), no on-device learning (Hoeffding, stage 3).
 
-Source/test edits are approved by the owner's autonomy instruction (roster `decisions.md`); scheduling is Leader's call. Every fix starts with a failing test. No hardware, flashing, TinyGo or download is authorised by this ticket.
+Source/test edits are approved; scheduling is decided separately. Every fix starts with a failing test. No hardware, flashing, TinyGo or download is authorised by this ticket.
 
 ## Acceptance evidence required later
 
@@ -40,7 +40,7 @@ Source/test edits are approved by the owner's autonomy instruction (roster `deci
 
 ## Effort uncertainty and revision trigger
 
-Product's guess: part of M-d stage 1 (**M** for the stage); this ticket ≈ **S**. Sizes are product's guesses ([[roadmap#1. Milestones at a glance|roadmap §1]]), not estimates from velocity. Revisit when a dependency or owner input changes the scope.
+Size guess: part of M-d stage 1 (**M** for the stage); this ticket ≈ **S**. Sizes are rough guesses ([[roadmap#1. Milestones at a glance|roadmap §1]]), not estimates from velocity. Revisit when a dependency or owner input changes the scope.
 
 ## Implementation evidence
 

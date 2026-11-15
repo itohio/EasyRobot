@@ -108,7 +108,7 @@ func swingCount(st State, legs ...int) int {
 	return n
 }
 
-// T-IK-09: tripod — offsets {0, ½}, β = 0.5, always exactly three stance legs, and
+// Tripod — offsets {0, ½}, β = 0.5, always exactly three stance legs, and
 // the groups {L1 R2 L3} / {R1 L2 R3} alternate.
 func TestTripod(t *testing.T) {
 	p := Tripod()
@@ -147,7 +147,7 @@ func TestTripod(t *testing.T) {
 	})
 }
 
-// T-IK-09: wave — β ≥ 5/6, at least five stance legs at all times, swings run back
+// Wave — β ≥ 5/6, at least five stance legs at all times, swings run back
 // to front on the left side, then back to front on the right side.
 func TestWave(t *testing.T) {
 	p := Wave()
@@ -189,7 +189,7 @@ func TestRipple(t *testing.T) {
 	}
 }
 
-// T-IK-09: trot — diagonal pairs LF+RH and RF+LH share phase, pairs alternate,
+// Trot — diagonal pairs LF+RH and RF+LH share phase, pairs alternate,
 // exactly two stance legs.
 func TestTrot(t *testing.T) {
 	p := Trot()
@@ -211,7 +211,7 @@ func TestTrot(t *testing.T) {
 	})
 }
 
-// T-IK-09: walk — β = 0.75, exactly one leg in swing at a time, lateral sequence
+// Walk — β = 0.75, exactly one leg in swing at a time, lateral sequence
 // LH → LF → RH → RF.
 func TestWalk(t *testing.T) {
 	p := Walk()

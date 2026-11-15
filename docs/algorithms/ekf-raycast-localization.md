@@ -23,8 +23,8 @@ evidence: "slam 12/12 pass (shape checks); probe slamprobe: estimate stays at (1
 ## Completeness review
 
 - Complete: no. No prediction/odometry input (`f` is identity, `Predict` never called in `UpdateMeasurement`); measurement angles passed at runtime are ignored by the EKF (uses construction-time `rayDirs`, :214) and not checked against them; no data association/outlier rejection; no loop closure.
-- Tested: 12 tests — ray-cast helpers (`TestRayCast_*`), construction, set-pose, update (asserts pose within ±10 m and 2 expected distances, `slam_test.go:202-235`), reset, residuals length. Run: go test -count=1 -json ./x/math/filter/slam (2026-11-09, raw tmp/easyrobot/filters/test-2026-11-09.json) → ok, 12 pass.
-- Correct: **no** (probe `tmp/easyrobot/filters/slamprobe/main.go`: 4×4 m walled room, res 0.05 m, 6 beams, exact distances from truth (2.03, 2.03, 0), start (1.83, 2.13)): estimate unchanged at (1.830, 2.130) after 20 updates. Causes: (1) ray-cast distance is piecewise constant in pose, so central differences with ε=1e-5 (:229 → `ekalman` default) give a zero Jacobian → zero gain; (2) inherited covariance collapse of [[extended-kalman-filter]] (`ekalman.go:459`).
+- Tested: 12 tests — ray-cast helpers (`TestRayCast_*`), construction, set-pose, update (asserts pose within ±10 m and 2 expected distances, `slam_test.go:202-235`), reset, residuals length. Run: go test -count=1 -json ./x/math/filter/slam (2026-11-09) → ok, 12 pass.
+- Correct: **no** (probe: 4×4 m walled room, res 0.05 m, 6 beams, exact distances from truth (2.03, 2.03, 0), start (1.83, 2.13)): estimate unchanged at (1.830, 2.130) after 20 updates. Causes: (1) ray-cast distance is piecewise constant in pose, so central differences with ε=1e-5 (:229 → `ekalman` default) give a zero Jacobian → zero gain; (2) inherited covariance collapse of [[extended-kalman-filter]] (`ekalman.go:459`).
 - Embedded: `h` allocates a distance vector per call (:212) and is called 2n+1 times per update; `getMapMatrix` clones non-`mat.Matrix` maps on every call (:243-261); `GetResiduals` allocates (:498).
 
 ## TODOs

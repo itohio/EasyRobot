@@ -10,7 +10,7 @@ tests: [x/math/dsp/modulation/tc/timecode_test.go, x/math/dsp/modulation/tc/ltc_
 test_result: build-fail
 complete: no
 correct: unknown
-evidence: "go test ./x/math/dsp/modulation/tc → build failed (stale mpsk API, undefined tc.NewModulator) (2026-11-09); copy minus 3 stale test files in tmp/easyrobot/audio/tccopy → ok, 18 pass"
+evidence: "go test ./x/math/dsp/modulation/tc → build failed (stale mpsk API, undefined tc.NewModulator) (2026-11-09); copy minus 3 stale test files in  → ok, 18 pass"
 ---
 # SMPTE LTC timecode (BCD frame + bi-phase mark audio)
 
@@ -23,7 +23,7 @@ evidence: "go test ./x/math/dsp/modulation/tc → build failed (stale mpsk API, 
 ## Completeness review
 
 - **Complete: no.** `DecodeBiPhase` assumes the frame starts at sample 0 and uses the nominal bit period (`ltc.go:72-91`). There is no sync-word search, no clock recovery (despite the comment at `:66`) and no speed tolerance (real LTC runs at ±10%+ speed). Zero-crossing detection without hysteresis (`:126-147`) means noise adds spurious transitions.
-- **Tested:** the in-repo package **does not build its tests**. `demodulator_test.go:19-24,67-68`, `e2e_test.go:62-67,157-158` and `modulator_test.go:17` call the old `mpsk.NewModulator(float32…)` and a removed `tc.NewModulator`/`NewDemodulator` (a PSK-based timecode path that no longer exists). A copy without those three files passes 18 tests: BCD, marshal/unmarshal, validate, parse, add frames, drop-frame counts, `FromTime`/`ToTime`, `EncodeBiPhase_DecodeBiPhase` clean roundtrip, sample count, and invalid inputs (`GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=mod go test -count=1 -v ./tc/` in `tmp/easyrobot/audio/tccopy`, 2026-11-09). The audio subagent's offline CLI run `gen_tc`→`recv_tc` decoded 01:02:03:04 ([[audio-modem-cli]]).
+- **Tested:** the in-repo package **does not build its tests**. `demodulator_test.go:19-24,67-68`, `e2e_test.go:62-67,157-158` and `modulator_test.go:17` call the old `mpsk.NewModulator(float32…)` and a removed `tc.NewModulator`/`NewDemodulator` (a PSK-based timecode path that no longer exists). A copy without those three files passes 18 tests: BCD, marshal/unmarshal, validate, parse, add frames, drop-frame counts, `FromTime`/`ToTime`, `EncodeBiPhase_DecodeBiPhase` clean roundtrip, sample count, and invalid inputs (`GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=mod go test -count=1 -v ./tc/` in ``, 2026-11-09). The audio subagent's offline CLI run `gen_tc`→`recv_tc` decoded 01:02:03:04 ([[audio-modem-cli]]).
 - **Correct: unknown** under noise, offset or speed change (untested); clean roundtrip yes.
 
 ## TODOs

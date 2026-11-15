@@ -13,25 +13,25 @@ updated: 2026-11-14
 ---
 # ER-064 — 3D liquid automaton driven by the IMU's continuous gravity vector
 
-[[tickets/index|Ticket index]] · [[simulation-algorithms]] · Brief: `~/src/docs/tasks/ER-SIMALGO.md` (owner 2026-11-12: "liquid engine belongs in easyrobot …"; paths and RNG per Leader's decisions there)
+[[tickets/index|Ticket index]] · [[simulation-algorithms]] · Scope (2026-11-12): the liquid engine belongs in EasyRobot
 
 **Brick:** the 2D liquid's rules (ER-061) on a w×h×d grid, driven by the IMU's gravity vector as a continuous direction, not snapped to 26 directions. Small tilts move the liquid proportionally.
 
 ## Goal and evidence
 
-Owner (ER-SIMALGO): the liquid engine is 2D now, 3D next. The badge's MPU6050 gives a gravity vector ([[mpu6050-imu-driver]], tilt via [[mahony-ahrs]]). Owner, 2026-11-12: a slight tilt left the snapped 2D water frozen, so the engine must follow continuous gravity in 3D too.
+Request: the liquid engine is 2D now, 3D next. The badge's MPU6050 gives a gravity vector ([[mpu6050-imu-driver]], tilt via [[mahony-ahrs]]). Owner, 2026-11-12: a slight tilt left the snapped 2D water frozen, so the engine must follow continuous gravity in 3D too.
 
 ## Dependencies and scope
 
 Same package as ER-061 or `liquid3`, decided when ER-061 lands. Memory budget on the RP2040 (264 KB RAM): e.g. 32×32×16 = 16 KB at one byte per cell. Rendering a 3D grid on the 2D screen is the demo's.
 
-Every piece: check written first (red), tests, host benchmark, `tinygo build -target=tufty2040` with no allocation in the package, verify, then commit. No hardware or flashing is authorised by this ticket; tinygui runs it on the badge.
+Every piece: check written first (red), tests, host benchmark, `tinygo build -target=tufty2040` with no allocation in the package, check, then commit. No hardware or flashing is authorised by this ticket; it is run on the badge separately.
 
 ## Acceptance evidence required later
 
 - [ ] Count conserved for gravity directions sampled over the sphere; a basin levels perpendicular to an oblique gravity within a bounded number of steps.
 - [ ] Proportional tilt: net sideways transport grows monotonically with tilts of 2°, 5°, 10° and 20° about either horizontal axis. Tilt 0 gives no drift.
-- [ ] Step time on the RP2040 within the badge's frame budget (measured by tinygui); 0 allocations.
+- [ ] Step time on the RP2040 within the badge's frame budget (measured on the badge); 0 allocations.
 
 ## Plan: 3-D with several liquids
 
@@ -55,7 +55,7 @@ They enter the step in the separation pass (`Spacing`, `Push`, `Pull` and `Drag`
 | 12×10×8 | 600 | 3,176 | ≈ 33.5 KB | too big; fits only with 16-bit face storage between steps (about 6 KB less) |
 | 10×8×6 | 300 | 1,628 | ≈ 17 KB | fits (8×6×4 cells of liquid space) |
 
-**Cost**, an estimate: stencils 4 → 8 corners, solve neighbours 4 → 6, and the pair neighbourhood 9 → 27 cells, so pair checks per particle may roughly triple at equal packing. The 2-D badge step at 24×18/400 measured 25.3 ms before the optimisation and 18.23 ms after it (separation change, `053cae1`; tinygui's per-phase timing). The 3-D size on the badge is to be set by timing the 3-D engine there, not by extrapolation.
+**Cost**, an estimate: stencils 4 → 8 corners, solve neighbours 4 → 6, and the pair neighbourhood 9 → 27 cells, so pair checks per particle may roughly triple at equal packing. The 2-D badge step at 24×18/400 measured 25.3 ms before the optimisation and 18.23 ms after it (separation change, `053cae1`; per-phase timing). The 3-D size on the badge is to be set by timing the 3-D engine there, not by extrapolation.
 
 **Tiers**, one engine and API; the tier sets box, particle count and sweeps:
 
@@ -72,17 +72,17 @@ They enter the step in the separation pass (`Spacing`, `Push`, `Pull` and `Drag`
 1. S1, several liquids in 2-D (new ticket): one species reproduces the committed engine's golden hashes; two immiscible kinds of different density layer heavy below within N steps at any gravity direction and stay layered when still (the stillness sweep, 72 directions × 5 gravity strengths, per species); a miscible pair mixes; cohesion holds a drop together; an asymmetric matrix is rejected; 0 allocations; the badge step time with two species.
 2. S2, 3-D with one liquid (this ticket's acceptance plus the 2-D checks lifted to 3-D; memory and badge time at 10×8×6).
 3. S3, 3-D with several liquids (S1's tests in 3-D).
-4. S4, the badge: tinygui's drawing and the owner's hand check.
+4. S4, the badge: drawing and a hand check.
 
 **Decisions for the owner:** at most 4 kinds (recommended: 4×4 matrix, 2-bit tag) or 8; whether densities matter (oil floats on water) or only interaction strengths; 2-D first (recommended) or straight to 3-D; 10×8×6 now or wait for 16-bit face storage for 12×10×8.
 
 **Risks:** cohesion against stillness (a pull makes particles creep at rest; every species pair must pass the stillness sweep, and the pull may need the rest bar); the buoyancy approximation holds for modest density ratios (oil to water) but not air to water; the pair table adds one load per pair check (13,786 per step at 32×24/700 in 2-D), small next to the check.
 
-Verified: `docs/verification/ER-064-plan.md` (and its recheck); working evidence `docs/evidence/ER-064-multiliquid-plan.md`.
+Verified and rechecked.
 
 ## Effort uncertainty and revision trigger
 
-easyrobot's guess: **M**. Revisit when the badge's frame budget or the owner's scope changes.
+Estimate: **M**. Revisit when the badge's frame budget or the scope changes.
 
 ## Implementation evidence
 

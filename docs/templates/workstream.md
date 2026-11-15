@@ -6,7 +6,7 @@ workstream: W0
 ---
 # {{title}}
 
-**Owner's goal (O-005, verbatim excerpt):** "…"
+**Goal:** …
 
 ## What exists
 

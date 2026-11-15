@@ -220,7 +220,7 @@ func TestActivationTable(t *testing.T) {
 }
 
 // TestLoadPlanMatchesNcc: the weight load plan equals ncc's on MobileNet's
-// layers (ER-K210-K8 evidence: layer 24 1×1 128→256: 30,720 B × 2 loads,
+// layers (measured: layer 24 1×1 128→256: 30,720 B × 2 loads,
 // 240 channels per load; layer 26 1×1 256→256: 30,720 B × 3, 120; layer 25
 // depthwise 3×3 ×256: 2,304 B × 1, 256).
 func TestLoadPlanMatchesNcc(t *testing.T) {

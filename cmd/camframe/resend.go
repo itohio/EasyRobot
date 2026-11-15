@@ -21,7 +21,7 @@ const (
 // its missing chunks are Nak'ed again: three airtimes of a full chunk at
 // baud (8N1 = 10 bits per byte) plus 100 ms, at least minResendIdle. A
 // fixed 200 ms fired in the middle of a chunk below ~200 kbaud and gave
-// clean images up (review R-ER-K210-camera M2).
+// clean images up.
 func resendIdle(baud int) time.Duration {
 	if baud <= 0 {
 		return minResendIdle

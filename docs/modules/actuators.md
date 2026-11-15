@@ -59,7 +59,7 @@ Counts: 0 tested · 1 implemented · 4 partial · 0 stub · 1 unverified (6 algo
 ## Tests and evidence
 
 - `go test -count=1 ./x/devices/...` (darwin, 2026-11-09): `encoder`, `motor` FAIL [build failed]; `servo`, `pca9685`, `pcf8574`, `tca9548a`, `xiao` no test files. `GOOS=windows` build: encoder fails (F1 also on windows). `GOOS=linux` build OK; vet flags `encoder/example_test.go:11`.
-- Probe `~/src/tmp/easyrobot/devices/actprobe` (fake I2C): PCA9685 bytes `06 e8 03 00 00` for value 1000 (swapped), prescale 121 @50 Hz OK; TCA9548A select 0x08/0x20 + caching OK; servo 0/90/180/200° → 1000/1500/2000/2000 µs; `ServoArray.Stop` deadlock. Probe `encprobe`: quadrature table ∓99 for 100 Gray states; RPM gate needs 100 s.
+- Probe (fake I2C): PCA9685 bytes `06 e8 03 00 00` for value 1000 (swapped), prescale 121 @50 Hz OK; TCA9548A select 0x08/0x20 + caching OK; servo 0/90/180/200° → 1000/1500/2000/2000 µs; `ServoArray.Stop` deadlock. Probe `encprobe`: quadrature table ∓99 for 100 Gray states; RPM gate needs 100 s.
 
 ## API notes (ease of use, composability)
 

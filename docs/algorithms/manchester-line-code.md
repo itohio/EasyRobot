@@ -10,7 +10,7 @@ tests: [x/math/dsp/coding/manchester/manchester_test.go]
 test_result: pass
 complete: no
 correct: no
-evidence: "go test -count=1 ./x/math/dsp/coding/manchester → ok, 15/15 top-level PASS (2026-11-09); probe tmp/easyrobot/coding/probe → aligned roundtrip OK, SetBitOffset odd offsets wrong"
+evidence: "go test -count=1 ./x/math/dsp/coding/manchester → ok, 15/15 top-level PASS (2026-11-09); probe → aligned roundtrip OK, SetBitOffset odd offsets wrong"
 ---
 # Manchester line code (G.E. Thomas and IEEE 802.3)
 

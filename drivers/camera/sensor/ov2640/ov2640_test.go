@@ -224,7 +224,7 @@ func TestCropInLargerModes(t *testing.T) {
 	}
 }
 
-// TestQualitySurvivesInit (review R-K210-REC-R3 F5): Init starts with a
+// TestQualitySurvivesInit: Init starts with a
 // soft reset, which drops QS; a quality set before is written again by a
 // JPEG Init (and not by a raw one).
 func TestQualitySurvivesInit(t *testing.T) {
@@ -256,7 +256,7 @@ func TestQualitySurvivesInit(t *testing.T) {
 	}
 }
 
-// TestLargerModeDetails (review R-K210-REC-R3 mutant survivors): 320×480
+// TestLargerModeDetails: 320×480
 // needs SVGA (CIF is only 296 high); crop offsets of 256 and more reach
 // VHYX's high bits; colour bars keep each mode's COM7; the JPEG HREF option
 // leaves RGB565's IMAGE_MODE alone.

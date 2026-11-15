@@ -10,7 +10,7 @@ tests: []
 test_result: none
 complete: no
 correct: no
-evidence: "go/types check with FakeImportC against gocv v0.42.0 (tmp/easyrobot/io/typecheck, 2026-11-09): 0 errors; code read — matches are computed and discarded"
+evidence: "go/types check with FakeImportC against gocv v0.42.0 (2026-11-09): 0 errors; code read — matches are computed and discarded"
 ---
 # Feature matching (FLANN kNN) and corner matching
 

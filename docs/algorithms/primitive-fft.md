@@ -10,7 +10,7 @@ tests: [x/math/primitive/fp32/dsp_fft_test.go, x/math/primitive/c64/dsp_fft_test
 test_result: pass
 complete: yes
 correct: yes
-evidence: "go test -count=1 ./x/... (2026-11-09) → fp32/c64 TestFFT_MatchesNumpyReference, *_Roundtrip, *WithLUT pass; probe tmp/easyrobot/tensor/kernelnotes (2026-11-09): vs float64 DFT n=16384 maxErr 0.016 (recurrence) / 1.96e-4 (LUT), max|X|=414"
+evidence: "go test -count=1 ./x/... (2026-11-09) → fp32/c64 TestFFT_MatchesNumpyReference, *_Roundtrip, *WithLUT pass; probe (2026-11-09): vs float64 DFT n=16384 maxErr 0.016 (recurrence) / 1.96e-4 (LUT), max|X|=414"
 ---
 # Primitive FFT (fp32 planar and complex64)
 

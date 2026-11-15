@@ -10,7 +10,7 @@ tests: [x/math/dsp/fft1d_test.go, x/math/dsp/fft1dc_test.go]
 test_result: pass
 complete: no
 correct: no
-evidence: "go test -count=1 -v ./x/math/dsp/ → ok, 71 PASS (2026-11-09); probe tmp/easyrobot/audio/dspcore/main.go shows wrong 2D/complex results (2026-11-09)"
+evidence: "go test -count=1 -v ./x/math/dsp/ → ok, 71 PASS (2026-11-09); probe shows wrong 2D/complex results (2026-11-09)"
 ---
 # FFT fast convolution and cross-correlation (1D/2D, real/complex)
 

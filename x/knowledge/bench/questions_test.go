@@ -81,7 +81,6 @@ func TestLoadCommittedQuestionFiles(t *testing.T) {
 		min, max int
 	}{
 		{"testdata/fixture-questions.json", 24, 30},
-		{"testdata/live-questions.json", 28, 30},
 	} {
 		qs, err := LoadQuestions(tc.path)
 		if err != nil {

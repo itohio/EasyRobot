@@ -14,7 +14,7 @@ source_revision: abb5c9cca7f756c632548d9c7be2436b46dc2e4d
 ---
 # ER-019 — Filter correctness
 
-[[tickets/index|Ticket index]] · [[roadmap]] · ER-R2 (evidence: `~/src/docs/evidence/ER-R2.md`, outside the repo) · [[todo]]
+[[tickets/index|Ticket index]] · [[roadmap]] · [[todo]]
 
 ## Goal and evidence
 
@@ -33,7 +33,7 @@ Dependencies: None blocking. Stage A (PLL, AGC) before ER-022 (O7); stage B (the
 
 Not in scope: SLAM measurement Jacobian / motion model / occupancy mapping (`slam.go:203-229`, `mapping.go:131,173`) stay with W8 unless a lidar stage pulls them in.
 
-Source/test edits are approved by the owner's autonomy instruction (roster `decisions.md`); scheduling is Leader's call. Every fix starts with a failing test. No hardware, flashing, TinyGo or download is authorised by this ticket.
+Source/test edits are approved under the standing autonomy decision; scheduling is decided separately. Every fix starts with a failing test. No hardware, flashing, TinyGo or download is authorised by this ticket.
 
 ## Acceptance evidence required later
 
@@ -46,8 +46,8 @@ Source/test edits are approved by the owner's autonomy instruction (roster `deci
 
 ## Effort uncertainty and revision trigger
 
-Product's guess: **M**. Sizes are product's guesses ([[roadmap#1. Milestones at a glance|roadmap §1]]), not estimates from velocity. Revisit when a dependency or owner input changes the scope.
+Size guess: **M**. Sizes are rough guesses ([[roadmap#1. Milestones at a glance|roadmap §1]]), not estimates from velocity. Revisit when a dependency or owner input changes the scope.
 
 ## Implementation evidence
 
-- **Mahony (2026-11-12, ER-SIMALGO, for the badge's 6-axis MPU6050):** `TestMahonyConvergesToAStaticTilt` failed first (6-DOF settled at the mirror tilt), then passes with the 6-DOF error `a × v` (`mahony.go:224-231`); plus bias, yaw-rate, `Euler` and no-allocation tests in `convergence_test.go`, and the 6-DOF reference step in `ahrs_test.go` corrected to `a × v`. `go test -race -count=1 ./x/math/filter/ahrs/` pass. Details: [[mahony-ahrs]]. The other items are open.
+- **Mahony (2026-11-12, for the badge's 6-axis MPU6050):** `TestMahonyConvergesToAStaticTilt` failed first (6-DOF settled at the mirror tilt), then passes with the 6-DOF error `a × v` (`mahony.go:224-231`); plus bias, yaw-rate, `Euler` and no-allocation tests in `convergence_test.go`, and the 6-DOF reference step in `ahrs_test.go` corrected to `a × v`. `go test -race -count=1 ./x/math/filter/ahrs/` pass. Details: [[mahony-ahrs]]. The other items are open.

@@ -13,7 +13,7 @@ updated: 2026-11-12
 ---
 # ER-050 — Sim S1: lockstep client — `Sim` over length-prefixed protobuf on a Unix socket or TCP
 
-[[tickets/index|Ticket index]] · [[roadmap]] · Design: [[2026-11-10-simulation]] (ideation `abc52ed`, corrections `c61b697`; verify accepted) · Brief: `~/src/docs/tasks/SIM-tickets.md`
+[[tickets/index|Ticket index]] · [[roadmap]] · Design: [[2026-11-10-simulation]] (ideation `abc52ed`, corrections `c61b697`; reviewed)
 
 **Brick:** the Go side of the transport. It implements `Sim` by sending one request and reading one reply per step. It knows no physics.
 
@@ -21,7 +21,7 @@ updated: 2026-11-12
 
 Note §3 transport: length-prefixed protobuf over TCP or a Unix socket first; dndm once its route defects are fixed (`docs/architecture/dndm-and-protobuf.md`).
 
-Owner's answers (roster `decisions.md`, 2026-11-10): SIM decisions 1–4 approved. MuJoCo 4.x (Apache-2.0) runs as a sidecar driven from Go over protobuf, in lockstep (a `purego` binding later). MuJoCo is downloaded at the start of S1, not before. The contract is a `types/sim` proto plus a Go `Sim` interface. Robot descriptions are Go structs with mass and actuator torque and speed, plus an MJCF exporter. **First slice: wheeled.** Design rule (verbatim): "i want primitives like other primitives(gait, matrix ops, filters, etc.) - interface based where possible for performance reasons, using graphs, sets and other primitives. kiss and solid. single responsibility principle is very important to me. building bricks and then the hous is important to me unless we know good bricks and good doors and good windows."
+Decisions (2026-11-10): SIM decisions 1–4 approved. MuJoCo 4.x (Apache-2.0) runs as a sidecar driven from Go over protobuf, in lockstep (a `purego` binding later). MuJoCo is downloaded at the start of S1, not before. The contract is a `types/sim` proto plus a Go `Sim` interface. Robot descriptions are Go structs with mass and actuator torque and speed, plus an MJCF exporter. **First slice: wheeled.** Design rule: primitives like the others (gait, matrix ops, filters), interface-based where performance allows, built on graphs, sets and other primitives; simple, solid, single responsibility; bricks first, then the house.
 
 ## Interface sketch
 
@@ -45,13 +45,13 @@ Dependencies: ER-048, ER-049.
 
 Not in scope: the sidecar (ER-051); dndm transport (later).
 
-Source/test edits follow the owner's autonomy instruction once Leader schedules this ticket. No download, hardware or flashing is authorised by this ticket unless it says so.
+Source/test edits follow the standing autonomy instruction once this ticket is scheduled. No download, hardware or flashing is authorised by this ticket unless it says so.
 
 ## Acceptance evidence required later
 
 - [ ] The client, against the in-process test server over a Unix socket, passes ER-049's conformance suite.
 - [ ] Round trip for a 2-wheel `Command`/`State` over a Unix socket: median ≤ 100 µs, p99 ≤ 500 µs on the Mac (`simtest.NewStub` behind the test server; transport cost only).
-- [ ] After 1,000 warm-up steps, 0 allocations per `Step` (`testing.AllocsPerRun`) with a 2-wheel, 2-contact, 3-sensor `State`. Encoding uses `MarshalAppend` into a reused buffer (0 allocations, verify measured); **decoding is a hand-written `protowire` decoder into reused structs**, matching sensor names against the names from the previous `State` without allocating strings (`ModelLoad` carries only the MJCF) (verify's SIM-tickets fix 1).
+- [ ] After 1,000 warm-up steps, 0 allocations per `Step` (`testing.AllocsPerRun`) with a 2-wheel, 2-contact, 3-sensor `State`. Encoding uses `MarshalAppend` into a reused buffer (0 allocations, measured); **decoding is a hand-written `protowire` decoder into reused structs**, matching sensor names against the names from the previous `State` without allocating strings (`ModelLoad` carries only the MJCF).
 - [ ] A server that dies mid-run gives a typed error naming the address within the timeout, not a hang.
 
 ## Open questions
@@ -60,13 +60,13 @@ Source/test edits follow the owner's autonomy instruction once Leader schedules 
 
 ## Effort uncertainty and revision trigger
 
-Product's guess: **S** (inferred). Revisit when a kill criterion fires or an open question changes the scope.
+Size guess: **S** (inferred). Revisit when a kill criterion fires or an open question changes the scope.
 
 ## Log
 
-- 2026-11-12: verify's fixes (`docs/verification/SIM-tickets.md`, accepted with 11 fixes; Leader msg m-40a81d6669b0): 0 allocations per `Step` through a hand-written `protowire` decoder (stock `proto.Unmarshal` allocates 21); the conformance run uses ER-049's in-test stub server, not ER-055, so no new dependency.
+- 2026-11-12: review fixes: 0 allocations per `Step` through a hand-written `protowire` decoder (stock `proto.Unmarshal` allocates 21); the conformance run uses ER-049's in-test stub server, not ER-055, so no new dependency.
 
 ## Implementation evidence
 
-None. Proposed ticket; becomes `ready` after ux's UX-27 and verify.
-- 2026-11-12: verify's SIM-tickets addendum (Leader msg m-55f54b6de686): the test server wraps `simtest.NewStub` (2 wheels, 2 contacts, 3 sensors); sensor names match the previous `State`.
+None. Proposed ticket; becomes `ready` after review.
+- 2026-11-12: SIM-tickets review addendum: the test server wraps `simtest.NewStub` (2 wheels, 2 contacts, 3 sensors); sensor names match the previous `State`.

@@ -30,7 +30,7 @@ evidence: "no test files; build/vet/linux-arm64 cross ok (2026-11-09); probe wit
 ## Completeness review
 
 - Complete: no — single mux only; >8 angles accepted (limit 64, :63) but channel `i%8` aliases sensors with identical address (:77); scan period fixed (:204) and `StartContinuous(50)` period ignored by the driver; no per-point validity/range-status.
-- Tested: no test files. Probe (`tmp/easyrobot/devices/sensors/main.go`, fake I²C emulating register memory, real `tca9548a.NewRouter`): `Configure(true)` → nil; after 180 ms `Read` into 2×4 → n=4, distances 500 mm, angles echo config, `GetMinAngle/GetMaxAngle` −25/25, `GetPointCount` 4; `New` with 9 angles → nil error (aliasing accepted). `go run -race` → no report (single short run; not proof).
+- Tested: no test files. Probe (fake I²C emulating register memory, real `tca9548a.NewRouter`): `Configure(true)` → nil; after 180 ms `Read` into 2×4 → n=4, distances 500 mm, angles echo config, `GetMinAngle/GetMaxAngle` −25/25, `GetPointCount` 4; `New` with 9 angles → nil error (aliasing accepted). `go run -race` → no report (single short run; not proof).
 - Correct: 2×N layout and angle assignment correct per probe; distances inherit [[vl53l0x-ranging-driver]] defects (no calibration, stale reads).
 
 **Defects / risks**

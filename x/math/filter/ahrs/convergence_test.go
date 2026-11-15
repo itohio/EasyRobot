@@ -158,7 +158,7 @@ func TestEulerOfKnownOrientations(t *testing.T) {
 
 // At and near pitch ±90° roll and yaw are not separable (only roll ∓ yaw
 // is), but the angles Euler returns must still describe q: rebuilt into a
-// quaternion they are within 0.1° of it (review S2: up to 179.5° off, e.g.
+// quaternion they are within 0.1° of it (up to 179.5° off, e.g.
 // roll 60°, pitch 90° came back as roll −90°, yaw 90°).
 func TestEulerAtThePitchPoles(t *testing.T) {
 	s := uint32(2463534242)

@@ -10,7 +10,7 @@ tests: [x/math/tensor/eager/activations_test.go]
 test_result: pass
 complete: yes
 correct: yes
-evidence: "go test -count=1 ./x/... (2026-11-09) → TestDropoutForward pass (values); probe tmp/easyrobot/tensor/kernelnotes/p2 (2026-11-09): mask p=0.3 → zero fraction 0.3008, mean 0.9989"
+evidence: "go test -count=1 ./x/... (2026-11-09) → TestDropoutForward pass (values); probe (2026-11-09): mask p=0.3 → zero fraction 0.3008, mean 0.9989"
 ---
 # Dropout (mask, forward, backward)
 

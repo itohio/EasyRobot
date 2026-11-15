@@ -1,5 +1,5 @@
 // Package token is the identifier-aware tokenizer shared by indexing and
-// querying: it keeps ids (ABU-061) and dotted/snake/kebab identifiers whole,
+// querying: it keeps ids (ER-017) and dotted/snake/kebab identifiers whole,
 // also emits their parts, splits camelCase, and lightly stems prose words.
 // Indexing and querying must use the same functions so terms agree.
 package token
@@ -32,7 +32,7 @@ func Query(s string) []string {
 	return out
 }
 
-// IDs returns id-like words (ABU-061, O-005, KE-1) in s, upper-cased,
+// IDs returns id-like words (ER-017, G-005, DOC-1) in s, upper-cased,
 // unique, in first-seen order.
 func IDs(s string) []string {
 	seen := map[string]bool{}
@@ -109,7 +109,7 @@ func appendSimple(out []string, p string) []string {
 	sub := camelSplit(p)
 	if len(sub) > 1 {
 		// Keep the whole identifier, plus its stemmed form so a lower-case
-		// query ("peerpermissions", stemmed as a prose word) still matches.
+		// query ("clientpermissions", stemmed as a prose word) still matches.
 		whole := strings.ToLower(p)
 		out = append(out, whole)
 		if s := stem(whole); s != whole {

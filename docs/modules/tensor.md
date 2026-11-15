@@ -72,7 +72,7 @@ Counts: 6 tested · 1 implemented · 11 partial · 0 stub · 1 unverified (19 al
 ## Tests and evidence
 
 - `GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=readonly go test -count=1 -json ./x/math/tensor/...` (2026-11-09): `tensor/eager` 112 pass; `tensor/types` 8 pass; `tensor/gorgonia` 30 pass, `TestGraphConv2D` skipped (`graph_test.go:144-146`); `gorgonia_xor_test` 1 pass; `tensor` builds, no Test funcs (benchmarks only); `tensor/gocv` build failed (OpenCV missing).
-- **Green suite, wrong results:** no test feeds a view (`Slice`, `Transpose`) into a compute op, and normalisation/conv-variant tests check shapes only. Value probes by the kernel and infra slices (`~/src/tmp/easyrobot/tensor/{kernelnotes,InfraNotes}/`) found the defects listed above.
+- **Green suite, wrong results:** no test feeds a view (`Slice`, `Transpose`) into a compute op, and normalisation/conv-variant tests check shapes only. Value probes by the kernel and infra slices found the defects listed above.
 - Benchmarks (`go test -run '^$' -bench 'BenchmarkMatMul_(Eager|GorgoniaGraph)_(Medium|Large)' -benchtime 2s ./x/math/tensor/`, shared host): eager 512×512 209 ms (1.3 GFLOP/s) vs Gorgonia 15.8 ms (17 GFLOP/s). Details: [[W2-code-optimisation]].
 
 ## API notes (ease of use, composability)

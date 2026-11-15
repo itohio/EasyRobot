@@ -10,7 +10,7 @@ tests: []
 test_result: none
 complete: no
 correct: no
-evidence: "no LSTM test anywhere (go test -count=1 ./x/... 2026-11-09); probes tmp/easyrobot/tensor/layernotes/{gradcheck,micro} (2026-11-09): forward ≠ manual LSTM (maxAbs 1.39e-1), matches 'all gates read gates[0:h]' hypothesis exactly"
+evidence: "no LSTM test anywhere (go test -count=1 ./x/... 2026-11-09); probes (2026-11-09): forward ≠ manual LSTM (maxAbs 1.39e-1), matches 'all gates read gates[0:h]' hypothesis exactly"
 ---
 # LSTM layer (single step, stateful)
 

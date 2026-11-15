@@ -10,7 +10,7 @@ updated: 2026-11-10
 
 # A 3D robot simulator for EasyRobot: what Go offers, architectures, and a first slice
 
-**Brief:** `~/src/docs/tasks/SIM-research.md` (objective O-005). Related: [[W3-legged-ik]], [[2026-11-09-gaits-w3]], [[2026-11-10-vision-nav]] (the topological map), [[2026-11-09-on-device-learning]].
+Related: [[W3-legged-ik]], [[2026-11-09-gaits-w3]], [[2026-11-10-vision-nav]] (the topological map), [[2026-11-09-on-device-learning]].
 
 **Status:** investigation only. Nothing was downloaded, installed or built.
 
@@ -24,7 +24,7 @@ updated: 2026-11-10
   - `cogentcore.org/lab/physics`.
 - About 18 `api.github.com` metadata requests: repository activity, licences and directory listings for g3n, cubez, cogentcore core and lab, cp, solid, ode, jolt-go, jolt-purego, MuJoCo (including the latest release), bullet3, JoltPhysics, gz-transport and webots.
 
-**Owner (verbatim, 2026-11-10):** "do we need a robot environment simulation program developed in easyrobot? I guess we do need it - to simulate hexapods, bipeds, robots in general. 3d simulation environment with physics and so on. is there anythig for go that has most of what i need? don't build it yet, just investigate."
+**Requirement (2026-11-10):** EasyRobot likely needs a robot environment simulator for hexapods, bipeds and robots in general: a 3D environment with physics. Investigate whether existing Go software covers most of it; do not build it yet.
 
 ## Verdict
 
@@ -54,7 +54,7 @@ updated: 2026-11-10
 | **Contacts with friction**, stable under many simultaneous foot contacts | legged gaits; slip; falls | yes |
 | Terrain: plane, steps, slopes, rough heightfield | gait robustness; `TerrainProvider` exists but is unused (observed) | plane now; heightfield soon |
 | IMU (accel, gyro), joint encoders, foot contact/force | feedback for gait and balance; AHRS (`filter/ahrs`) | yes |
-| **Camera rendering** (QVGA-class, body-mounted, known intrinsics) | the vision stack (O-007): frontend features, VO, place codes | soon |
+| **Camera rendering** (QVGA-class, body-mounted, known intrinsics) | the vision stack: frontend features, VO, place codes | soon |
 | Lidar rays | the lidar driver and 2D SLAM (`filter/slam`) | later |
 | Determinism and repeatability | regression tests; comparing controllers | yes |
 | Faster than real time, headless | CI; parameter sweeps; later learning | yes |
@@ -156,7 +156,7 @@ The owner will build these on EasyRobot's existing graph, traversal and search p
 
 | Provide | Why |
 |---|---|
-| **Body-camera frames** at QVGA/QQVGA with the real cameras' intrinsics and exposure-like noise | the frontend + heads (O-007) run on sim frames first |
+| **Body-camera frames** at QVGA/QQVGA with the real cameras' intrinsics and exposure-like noise | the frontend + heads run on sim frames first |
 | **Ground-truth poses** per frame (and per node) | measure VO error (RPE/ATE), label place revisits for place-code training, check loop closures |
 | **Place layouts:** a few rooms and corridors with distinct textures and objects; doors; repeated-looking places to test false matches; **lighting and texture randomisation** | place recognition, kidnapped-robot tests, map building |
 | Scripted trajectories and teleop in sim | dataset generation that matches the owner's recording procedure |
@@ -174,7 +174,7 @@ MuJoCo provides textured geometry, lights and offscreen cameras (reported, its d
 | Known unknowns | MuJoCo lockstep round-trip cost from Go over a socket; bit-determinism on our builds | S1b/S1e |
 | Known unknowns | Cogent Lab `physics` stability for a hexapod (its README lists collision and multi-link issues) | Spike A |
 | Known unknowns | Servo models: stall torque and no-load speed of the owner's servos | owner (part numbers) |
-| Unknown knowns | Which robot is first in sim (hexapod per the roadmap, or the wheeled avoider for O-007) | owner |
+| Unknown knowns | Which robot is first in sim (hexapod per the roadmap, or the wheeled avoider for vision navigation) | owner |
 | Unknown unknowns | Sim-to-real gap of gait parameters on the real hexapod | after S1 and the first hardware walk |
 
 ## Decisions for the owner
@@ -182,9 +182,9 @@ MuJoCo provides textured geometry, lights and offscreen cameras (reported, its d
 | # | Decision | Recommendation |
 |---|---|---|
 | 1 | Architecture: MuJoCo as the reference simulator, driven from Go over protobuf (sidecar first, purego binding later); a pure-Go engine only as an optional CI spike | Yes |
-| 2 | Approve downloads when S1 starts: MuJoCo 4.x (release binary, or the Python package in a uv venv under `_scratch`) | Yes |
+| 2 | Approve downloads when S1 starts: MuJoCo 4.x (release binary, or the Python package in a local uv venv) | Yes |
 | 3 | A `types/sim` protobuf contract (`Command`, `State`, camera `Frame`) and a Go `Sim` interface; length-prefixed TCP first, dndm when its route defects are fixed | Yes |
 | 4 | Robot descriptions stay Go structs; add link mass and servo torque/speed fields; generate MJCF (URDF export later if needed) | Yes |
-| 5 | First slice S1 (hexapod tripod gait in lockstep, kill criteria above), then camera (S3) for the vision stack | Yes; or the wheeled avoider first if O-007 leads |
+| 5 | First slice S1 (hexapod tripod gait in lockstep, kill criteria above), then camera (S3) for the vision stack | Yes; or the wheeled avoider first if vision navigation leads |
 | 6 | Spike A: Cogent Lab `physics` with the same hexapod (needs approval to fetch the module) | Optional, after S1 |
 | 7 | Servo part numbers (stall torque, speed) for the actuator model | Owner to supply |

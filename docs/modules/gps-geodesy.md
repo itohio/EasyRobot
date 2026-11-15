@@ -40,7 +40,7 @@ Counts: 0 tested · 1 implemented · 3 partial · 0 stub · 0 unverified (4 algo
 ## Tests and evidence
 
 - `GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=readonly go test -count=1 -json ./x/math/gps/...` (2026-11-09) → FAIL, 16 pass / 5 fail: `TestToECEF_NorthPole`, `TestToECEF_RoundTrip` (North/South pole) — test expects Z = a, correct is b (gps_test.go:72,166); `TestTrilateration_GeneralCase`, `TestTrilateration_TableDriven/3D_offset` — implementation omits z; `TestMultilateration_4Points` — wrong linear model. Same 5 as baseline 2026-11-08.
-- Probe `~/src/tmp/easyrobot/filters/gpsprobe/main.go` (float64 WGS-84 reference): ECEF errors 0–0.67 m at 6 reference points; trilateration (600,800,400) → (600,800,0); multilateration → (−547.6, −623.0, −452.4); haversine +0.09% vs mean radius.
+- Probe (float64 WGS-84 reference): ECEF errors 0–0.67 m at 6 reference points; trilateration (600,800,400) → (600,800,0); multilateration → (−547.6, −623.0, −452.4); haversine +0.09% vs mean radius.
 
 ## API notes (ease of use, composability)
 

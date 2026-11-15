@@ -4,7 +4,7 @@ status: active
 tags: [easyrobot, architecture, packages]
 workstream: W1
 source: [go.mod]
-evidence: "GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=readonly go list -e -f '{{.ImportPath}}|{{join .Imports \" \"}}' ./... → 197 packages (2026-11-09); status column from baseline-2026-11-08 (evidence: `~/src/docs/evidence/baseline-2026-11-08.md`, outside the repo) §3–5"
+evidence: "GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=readonly go list -e -f '{{.ImportPath}}|{{join .Imports \" \"}}' ./... → 197 packages (2026-11-09); status column from baseline-2026-11-08 §3–5"
 ---
 # Packages
 
@@ -12,7 +12,7 @@ Every Go directory in `github.com/itohio/EasyRobot` at `abb5c9c`, mapped to a fa
 
 **Counts.** 200 directories hold `.go` files; `go list ./...` on darwin/arm64 returns 197 (command in frontmatter). The 3 others are excluded by build tags: `drivers/manipulator` (`sam && xiao`, TinyGo), `x/marshaller/tflite` and `x/marshaller/v4l` (`linux`). Non-test Go: 175,182 lines, of which 15,571 are generated protobuf (`types/**`); test Go: 89,853 lines (`wc -l` over `*.go` per directory, `/docs/` excluded).
 
-**Since the snapshot.** ER-cleanup (evidence: `~/src/docs/evidence/ER-cleanup.md`, outside the repo) deleted `x/math/dsp/coding/{ami,b8zs,hdb3,rll,ppm}`, `x/pipeline` (with `steps`, `steps/fps` and the three examples), `x/plugin`, `x/store`, `x/options`, `x/logger` and `internal/concurrency`; their rows below are kept as the `abb5c9c` record. [[ER-018-leg-helpers-gait-scheduler|ER-018]] added `x/math/control/kinematics/chain`, `x/math/control/motion/gait/scheduler` and `x/math/control/motion/gait/walk` ([[kinematics]], [[motion-and-gait]]).
+**Since the snapshot.** ER-cleanup deleted `x/math/dsp/coding/{ami,b8zs,hdb3,rll,ppm}`, `x/pipeline` (with `steps`, `steps/fps` and the three examples), `x/plugin`, `x/store`, `x/options`, `x/logger` and `internal/concurrency`; their rows below are kept as the `abb5c9c` record. [[ER-018-leg-helpers-gait-scheduler|ER-018]] added `x/math/control/kinematics/chain`, `x/math/control/motion/gait/scheduler` and `x/math/control/motion/gait/walk` ([[kinematics]], [[motion-and-gait]]).
 
 **Status legend** (all from the 2026-11-08 baseline, same HEAD; not rerun here): `build ok` = `go build -o /dev/null <pkg>` passed on darwin/arm64; `not built (OpenCV missing)` = depends on GoCV, OpenCV not installed, compile status **unknown** (not proof that it compiles); `FAIL darwin gap` = missing darwin platform file; `FAIL arm64 asm gap` = Go declarations backed only by `*_amd64.s`; `test-only pkg` = only `_test.go` files. Test counts are top-level tests.
 

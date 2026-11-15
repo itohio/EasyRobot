@@ -85,7 +85,7 @@ var swingProfiles = []struct {
 	{"touchdown clearance above lift", gaittypes.SupportProfile{LiftHeight: 0.01, SwingHeight: 0.04, TouchdownClearance: 0.02, SupportBlend: 1}, vec.Vector3D{0.1, 0, -0.06}},
 }
 
-// T-IK-08: the swing apex is SwingHeight above the lift-off (stance) height, ±1 mm.
+// The swing apex is SwingHeight above the lift-off (stance) height, ±1 mm.
 func TestSwingApexEqualsSwingHeight(t *testing.T) {
 	for _, tc := range swingProfiles {
 		t.Run(tc.name, func(t *testing.T) {
@@ -102,7 +102,7 @@ func TestSwingApexEqualsSwingHeight(t *testing.T) {
 	}
 }
 
-// T-IK-08: touchdown z never rises; it descends monotonically onto the foothold
+// Touchdown z never rises; it descends monotonically onto the foothold
 // (+ the normalized TouchdownClearance).
 func TestTouchdownMonotonicDescent(t *testing.T) {
 	for _, tc := range swingProfiles {
@@ -128,7 +128,7 @@ func TestTouchdownMonotonicDescent(t *testing.T) {
 	}
 }
 
-// T-IK-08: lift starts at the stance height (no jump) and rises monotonically to
+// Lift starts at the stance height (no jump) and rises monotonically to
 // stance + LiftHeight without overshoot.
 func TestLiftStartsAtStanceHeight(t *testing.T) {
 	for _, tc := range swingProfiles {

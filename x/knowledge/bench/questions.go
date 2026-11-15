@@ -1,7 +1,7 @@
 // Package bench measures retrievers against questions with known answers:
 // question loading, a scoring harness (recall@1, recall@k, MRR, latency
 // percentiles per question type) and Grep, a ripgrep-style baseline that
-// models how peers search the workspace today.
+// models plain keyword search over a notes tree.
 //
 // Tables rendered by this package carry scores and question ids only, never
 // question text, paths or snippets, because live corpora hold private notes.

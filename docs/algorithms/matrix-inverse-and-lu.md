@@ -30,7 +30,7 @@ source_revision: 1bf6234e676daa87d3e9eb191bb1dc2420f05ff9
 
 - Complete: yes for square inputs.
 - Tested: dense inverse checked via `M·M⁻¹ ≈ I` (identity, known 2×2, rotation, singular, non-square); 2×2/3×3 likewise; `TestMatrix4x4_Inverse` (identity) and `TestMatrix4x4_InverseNeedsPivoting` (homogeneous 90° pose vs the known inverse; matches `HomogenousInverse` to 6e-8, no allocations — review probe); `TestMatrix4x4_LUProducesFactors` checks L·U = A on a diagonally dominant matrix (no pivot needed). `TestMatrix_LU`, `TestMatrix_Det` are empty tables (pass vacuously).
-- Correct: **no** (probe `tmp/easyrobot/tensor/InfraNotes/matprobe`):
+- Correct: **no**:
   - `Matrix4x4.Inverse` of homogeneous `[RotZ(90°) | t=(1,2,3)]` (zero at [0][0]) gave row0 `[0 1 0 −2.727]` before ER-018; now `[0 1 0 −2]` ✔.
   - Dense `Matrix.Inverse` of the same → row0 `[−4e-8 1 0 −2]` ✔ (pivoted).
   - `Matrix.LU([[0 1][1 0]])` → L = I, U = I (L·U ≠ A; permutation lost).

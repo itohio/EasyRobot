@@ -4,7 +4,7 @@
 // and no divide instruction) or the host. Per kernel it prints µs per
 // call, the heap allocated during the timed loop (must be 0) and an FNV of
 // the kernel's outputs, so that an optimisation can be checked for
-// bit-identical results on the chip as well as the host (KERNELS-1). See
+// bit-identical results on the chip as well as the host. See
 // README.md.
 package main
 
@@ -160,7 +160,7 @@ func benchDetector(calls int) {
 	report("pdr.Detector.Update", calls, t1-t0, a1-a0, h)
 }
 
-// tilt: gravity 0.02 cell/step² at −40°, 0°, +40° (Q16), as fliptufty.
+// tilt: gravity 0.02 cell/step² at −40°, 0°, +40° (Q16), as the badge demo.
 var tilt = [3][2]int32{{-843, 1004}, {0, 1311}, {843, 1004}}
 
 func benchFlip(steps int) {

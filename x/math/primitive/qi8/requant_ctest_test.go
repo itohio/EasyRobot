@@ -14,7 +14,7 @@ import (
 // `go test -tags qi8ctest` (cgo; the C is built with UBSan, so a signed
 // overflow aborts the test).
 func TestCRequantizeMatchesGo(t *testing.T) {
-	// Review R-NN-P3 P1: the TFLite path added zp in int32 and wrapped.
+	// The TFLite path added zp in int32 and wrapped.
 	big := Requant{Mult: math.MaxInt32, Shift: 0}
 	if got := cRequantizeMode(math.MaxInt32, big, 127, -128, 127, RoundTFLite); got != 127 {
 		t.Fatalf("acc 2^31-1, M≈1, zp 127: C gives %d, Go %d", got, requantizeMode(math.MaxInt32, big, 127, -128, 127, RoundTFLite))

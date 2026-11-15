@@ -10,7 +10,7 @@ tests: [x/math/learn/training_test.go]
 test_result: none
 complete: yes
 correct: yes
-evidence: "x/math/nn has no test files (go test -count=1 ./x/... 2026-11-09 → [no test files]); used by passing learn tests (go test -count=1 -short ./x/math/learn/, 2026-11-09); probe tmp/easyrobot/tensor/layernotes/gradcheck (2026-11-09) gradients vs central diff ≤2.7e-4, CE value exact"
+evidence: "x/math/nn has no test files (go test -count=1 ./x/... 2026-11-09 → [no test files]); used by passing learn tests (go test -count=1 -short ./x/math/learn/, 2026-11-09); probe (2026-11-09) gradients vs central diff ≤2.7e-4, CE value exact"
 ---
 # NN loss functions: MSE, CrossEntropy, CategoricalCrossEntropy
 

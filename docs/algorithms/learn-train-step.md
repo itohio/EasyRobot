@@ -10,7 +10,7 @@ tests: [x/math/learn/training_test.go, x/math/learn/dense_layer_test.go, x/math/
 test_result: pass
 complete: yes
 correct: unknown
-evidence: "go test -count=1 -json ./x/math/learn/... (slice lead, 2026-11-09) → 26 pass / 1 skip; probe tmp/easyrobot/filters/learnnotes (2026-11-09)"
+evidence: "go test -count=1 -json ./x/math/learn/... (slice lead, 2026-11-09) → 26 pass / 1 skip; probe (2026-11-09)"
 ---
 # learn single-sample training step
 

@@ -40,7 +40,7 @@ func TestFitsKPUMemory(t *testing.T) {
 	}
 }
 
-// TestReaderExtraRowFits (review R-K210-K9same S3): the 1×1 conv that
+// TestReaderExtraRowFits: the 1×1 conv that
 // samples a TF SAME stride-2 depthwise conv's odd pixels reads one row past
 // its input, so that row counts in its memory fit. 256×256×15 depthwise
 // (15,360 lines in and out, plus the 4-line row) and 128×128 outputs of 256

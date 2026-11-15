@@ -10,7 +10,7 @@ tests: [x/math/nn/layers/conv2d_test.go, x/math/nn/layers/conv2d_weight_bias_tes
 test_result: pass
 complete: no
 correct: no
-evidence: "go test -count=1 ./x/... (2026-11-09) → all 13 TestConv2D_* pass; probe tmp/easyrobot/tensor/layernotes/gradcheck (2026-11-09): dInput wrong (maxAbs 1.52) when (H+2p-k)%s≠0"
+evidence: "go test -count=1 ./x/... (2026-11-09) → all 13 TestConv2D_* pass; probe (2026-11-09): dInput wrong (maxAbs 1.52) when (H+2p-k)%s≠0"
 ---
 # Conv2D layer (NCHW)
 

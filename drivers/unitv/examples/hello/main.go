@@ -5,7 +5,7 @@
 //
 // The loop sleeps until a deadline checked against time.Now: on TinyGo 0.43
 // (K210) a bare `write; time.Sleep(time.Second)` loop returns from every
-// second Sleep at once (ER-K210-M1 evidence, outside the repo).
+// second Sleep at once (observed on the UnitV).
 package main
 
 import (

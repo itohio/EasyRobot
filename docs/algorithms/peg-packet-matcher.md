@@ -10,7 +10,7 @@ tests: [x/math/protocol/peg/parser_test.go, x/math/protocol/peg/program_test.go,
 test_result: fail
 complete: no
 correct: no
-evidence: "go test -count=1 ./x/math/protocol/peg → FAIL, 58 PASS / 5 FAIL top-level (2026-11-09); probes tmp/easyrobot/coding/pegprobe (+ -race): wildcard count mutation leaks across Decide calls, 29 data races, fields duplicated per call"
+evidence: "go test -count=1 ./x/math/protocol/peg → FAIL, 58 PASS / 5 FAIL top-level (2026-11-09); probes (+ -race): wildcard count mutation leaks across Decide calls, 29 data races, fields duplicated per call"
 ---
 # PEG-style binary packet matcher
 

@@ -6,7 +6,7 @@ tags: [easyrobot, vision, gocv, opencv, odometry, stereo]
 workstream: [W5, W4, W6]
 packages: [x/vision/types, x/vision/detect/blobs, x/vision/detect/corners, x/vision/detect/features, x/vision/extract/blobs, x/vision/extract/features, x/vision/match/corners, x/vision/match/features, x/vision/odometry/phase, x/vision/odometry/pose, x/vision/stereo/depth, x/vision/stereo/matching, x/vision/transform/affine, x/vision/transform/background, x/vision/transform/color, x/vision/transform/crop, x/vision/transform/format, x/vision/transform/histogram, x/vision/transform/rectify, x/vision/transform/undistort]
 test_result: build-fail
-evidence: "OpenCV not installed → no build/run (baseline-2026-11-08 §5). Go-level type check against gocv v0.42.0 with go/types FakeImportC (tmp/easyrobot/io/typecheck, 2026-11-09): 6 of 20 packages have type errors, 8 more import the broken x/vision/types; phase-correlation math mirror shows wrong results"
+evidence: "OpenCV not installed → no build/run (baseline-2026-11-08 §5). Go-level type check against gocv v0.42.0 with go/types FakeImportC (2026-11-09): 6 of 20 packages have type errors, 8 more import the broken x/vision/types; phase-correlation math mirror shows wrong results"
 ---
 # vision — `x/vision/**` (GoCV processors)
 
@@ -50,9 +50,9 @@ Counts: 0 tested · 0 implemented · 8 partial · 2 stub · 3 unverified (13 alg
 ## Tests and evidence
 
 - Not run: OpenCV missing (baseline-2026-11-08 §5 excludes all `x/vision/*`).
-- Type check: `~/src/tmp/easyrobot/io/typecheck` (go/types with `FakeImportC`, package files from `go list -deps -json` run in the repo with `GOFLAGS=-mod=readonly`; command `./tc . <pkgs…>`), 2026-11-09: errors per package — types 14, extract/blobs 2, stereo/depth 5, stereo/matching 3, transform/background 4, transform/histogram 4; all others 0 own errors. Caveat: C-side errors cannot be seen this way; dependents of a broken package show 0 own errors but cannot compile.
+- Type check: (go/types with `FakeImportC`, package files from `go list -deps -json` run in the repo with `GOFLAGS=-mod=readonly`; command `./tc . <pkgs…>`), 2026-11-09: errors per package — types 14, extract/blobs 2, stereo/depth 5, stereo/matching 3, transform/background 4, transform/histogram 4; all others 0 own errors. Caveat: C-side errors cannot be seen this way; dependents of a broken package show 0 own errors but cannot compile.
 - Fixtures: of the images the tests reference under `x/marshaller/testdata/`, only `img1/000001.png` exists; `detect_blob.png`, `stereo_calib/left04.jpg`, `stereo_calib/left11.jpg` are missing (only `left01.jpg` present), so blob, corner and phase tests would skip even on an OpenCV host.
-- Mirror probe `~/src/tmp/easyrobot/io/phasemirror` (pure Go, `go run .`): repo phase-correlation arithmetic returns wrong shifts; see [[phase-correlation-odometry]].
+- Mirror probe (pure Go, `go run .`): repo phase-correlation arithmetic returns wrong shifts; see [[phase-correlation-odometry]].
 - gocv API lookups: `go doc gocv.io/x/gocv.<Symbol>` from the module cache (no network).
 
 ## API notes (ease of use, composability)

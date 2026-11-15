@@ -76,7 +76,7 @@ Counts: 5 tested · 0 implemented · 2 partial · 1 stub · 0 unverified (8 algo
 - `go test -count=1 -json ./x/math/control/...` (2026-11-09):
   - `motion/rigidbody` ok, 10 tests (including the closed-loop `TestTriangularChassisFollowsSinusoid`).
   - `motion`, `gait/types`, `gait/support`, `gait/rigidbody`: no test files.
-- Probe `tmp/easyrobot/ik` sections J (VAJ1D), K (gait support), M (Backward signs); numbers in ER-R2-ik-review (evidence: `~/src/docs/evidence/ER-R2-ik-review.md`, outside the repo) §3.6.
+- Probe sections J (VAJ1D), K (gait support), M (Backward signs).
 
 ## API notes (ease of use, composability)
 

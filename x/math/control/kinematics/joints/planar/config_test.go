@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// T-IK-06 (planar): Config{} has Min == Max == 0 and silently pinned joints.
+// Config{} has Min == Max == 0 and silently pinned joints.
 func TestConfig_Validate(t *testing.T) {
 	nan, inf := math32.NaN(), math32.Inf(1)
 	tests := []struct {

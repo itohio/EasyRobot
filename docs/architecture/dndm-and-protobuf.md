@@ -4,7 +4,7 @@ status: active
 tags: [easyrobot, architecture, dndm, protobuf]
 workstream: [W1, W4]
 source: [go.mod, proto/buf.yaml, proto/buf.gen.yaml, proto/buf.lock, cmd/manipulator/main.go, cmd/display/destination/intent.go, cmd/display/source/interest.go, drivers/lidar/main.go, drivers/lidar/main_rp2040.go, drivers/manipulator/main.go, x/marshaller/proto/convert.go, x/marshaller/gocv/sink.go]
-evidence: "grep -rn itohio/dndm --include=*.go (2026-11-09); probes ~/src/tmp/easyrobot/arch/{protoprobe,regprobe} run with GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=mod go run . (2026-11-09)"
+evidence: "grep -rn itohio/dndm --include=*.go (2026-11-09); probes run with GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=mod go run . (2026-11-09)"
 ---
 # dndm and protobuf
 
@@ -12,7 +12,7 @@ How EasyRobot uses [dndm](../../../dndm) (Decentralised Named Data Mesh) and its
 
 ## dndm dependency
 
-- `go.mod`: `require github.com/itohio/dndm v0.0.0` + `replace github.com/itohio/dndm => ../dndm`. The build uses whatever is checked out in `../dndm`: HEAD `c7b5b61` at baseline time, and on 2026-11-09 that tree had uncommitted edits in 25 files (`git -C ../dndm status --short`, `git diff --stat`), so EasyRobot's dndm-dependent build follows in-flight dndm work. Pinning is an open owner decision (`~/src/docs/decisions.md`, "EasyRobot: pin dndm to a fixed revision").
+- `go.mod`: `require github.com/itohio/dndm v0.0.0` + `replace github.com/itohio/dndm => ../dndm`. The build uses whatever is checked out in `../dndm`: HEAD `c7b5b61` at baseline time, and on 2026-11-09 that tree had uncommitted edits in 25 files (`git -C ../dndm status --short`, `git diff --stat`), so EasyRobot's dndm-dependent build follows in-flight dndm work. Pinning dndm to a fixed revision is an open decision.
 - The CPU core does not import dndm (baseline §1). Importers (`grep -rn itohio/dndm --include=*.go`):
 
 | Importer | Build | dndm packages | Endpoint wiring |
@@ -74,18 +74,18 @@ Generated code: 27 `.proto` files → 28 `types/**/*.pb.go`. 27 headers say `pro
 ### Findings on the schemas (with evidence)
 
 - **Two tensor wire formats.** `x/marshaller/proto` (`convert.go:6`, `pb "…/types/core"`) encodes tensors with the orphan `easyrobot.core.types.Tensor`, not `types.math.Tensor`; `types.core.Frame` embeds `types.math.Tensor`. A consumer must know which one it is reading.
-- **Quantised tensors are lost by `x/marshaller/proto`.** `tensorToProto` has cases only for FP32, FP64, INT32, INT64, INT, C64 (`convert.go:88–122`). Probe (`tmp/easyrobot/arch/protoprobe`, 4×4 tensors, values −3…3): FP32 round-trips (0/16 mismatches); INT8 and INT16 keep dtype but lose data (14/16 mismatches, only zeros survive); UINT8 **panics** on unmarshal (`unsupported dtype: 0`, `eager/tensor.go:36` via `convert.go:144`).
+- **Quantised tensors are lost by `x/marshaller/proto`.** `tensorToProto` has cases only for FP32, FP64, INT32, INT64, INT, C64 (`convert.go:88–122`). Probe (4×4 tensors, values −3…3): FP32 round-trips (0/16 mismatches); INT8 and INT16 keep dtype but lose data (14/16 mismatches, only zeros survive); UINT8 **panics** on unmarshal (`unsupported dtype: 0`, `eager/tensor.go:36` via `convert.go:144`).
 - **`types.math.Tensor` int8 encoding is 5.5× the raw size.** `data_i8` is `repeated int32` (varint; negative values take 10 bytes). Probe: a 7×7×1280 int8 map is 344,972 B via `data_i8` vs 62,732 B via `data_bytes` (raw 62,720 B). Use `data_bytes` (or `sint32`) for int8 feature tensors — relevant to [[W4-k230-feature-stream]].
 - **Enum numbering differs from memory.** In-memory `DataType` is `DT_UNKNOWN, INT64, C128, C64, FP64, INT32, FP32, …, UINT8` (`x/math/tensor/types/dtype.go:18–32`); the proto enum is `UNSPECIFIED, INT64, FP64, INT32, FP32, INT, INT16, FP16, INT8, INT48, UINT8` (`tensor.proto`) — no C64/C128; conversion must map by name, not by value.
 - **`core.Frame` sink drops pixel data by policy:** `frameToProto` writes index/timestamp/metadata and `Tensors: nil` (`x/marshaller/gocv/sink.go:185–210`, "GoCV-first policy").
-- **Shared proto package name.** dndm's `header.proto`/`intents.proto`/`interests.proto` and EasyRobot's `frame.proto`/`arbitrary.proto` are all proto package `types.core` with file paths `types/core/*.proto`. Probe `tmp/easyrobot/arch/regprobe` links both into one binary: no registration conflict today (5 distinct files listed under `types.core`), but any future same-named message or file in either repo would panic at init.
+- **Shared proto package name.** dndm's `header.proto`/`intents.proto`/`interests.proto` and EasyRobot's `frame.proto`/`arbitrary.proto` are all proto package `types.core` with file paths `types/core/*.proto`. Probe links both into one binary: no registration conflict today (5 distinct files listed under `types.core`), but any future same-named message or file in either repo would panic at init.
 
-## Owner decisions about protobuf as the wire contract (facts from `~/src/docs/decisions.md`)
+## Decisions about protobuf as the wire contract
 
-- Owner (verbatim, dndm section): "dndm uses protobufs for wire layer. why the fuck do you need a separate spec for c++?! what if we wanted to add typescript client/server? invent new wire ? or did you misderstood the protobuf schemas? (btw, probably must update buf versions and so on)". Recorded consequence: protobuf schemas are the language-neutral wire contract, no hand-written binary spec; the link-context model is expressed in proto; C++/embedded use generated code (nanopb / protobuf-c / EmbeddedProto), TinyGo uses protobuf-go-lite, TypeScript protobuf-es; buf and protobuf tooling versions to be updated.
-- Peer decision taken on the owner's behalf (reversible): plain protobuf data frames everywhere (4 B + payload), route id in the CAN identifier on CAN links; legacy v1 fallback only via `Insecure("legacy v1 peer")`.
+- Requirement: dndm already uses protobuf as its wire layer, so there is no separate wire specification per language (C++ now, a TypeScript client later); the protobuf schemas are the contract. Recorded consequence: protobuf schemas are the language-neutral wire contract, no hand-written binary spec; the link-context model is expressed in proto; C++/embedded use generated code (nanopb / protobuf-c / EmbeddedProto), TinyGo uses protobuf-go-lite, TypeScript protobuf-es; buf and protobuf tooling versions to be updated.
+- Decision (reversible): plain protobuf data frames everywhere (4 B + payload), route id in the CAN identifier on CAN links; legacy v1 fallback only via `Insecure("legacy v1 peer")`.
 - Tooling download (buf/protoc-gen-go pins): **not approved, pending**.
-- Overhead requirement (verbatim excerpt): "on esp32 or rp2040 memory and i2c/spi/can/elrs bandwidth is at premium!" — zones must not add bytes to every name/message.
+- Overhead requirement: on an ESP32 or RP2040, memory and I2C/SPI/CAN/ELRS bandwidth are at a premium — zones must not add bytes to every name/message.
 - C++ reference core wanted "when we must use nncase" (K230 toolchain) — ties dndm's wire to [[W4-k230-feature-stream]].
 
 ## TODOs

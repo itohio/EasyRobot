@@ -11,12 +11,12 @@ import (
 )
 
 func testRoundTrip(t *testing.T, s knowledge.Store) {
-	d := mkDoc("abugaga/docs/auth.md", "md", "abugaga")
-	d.Props = map[string]string{"id": "ABU-061", "tags": "auth,keys", "status": "done"}
+	d := mkDoc("relay/docs/auth.md", "md", "relay")
+	d.Props = map[string]string{"id": "DEV-061", "tags": "auth,keys", "status": "done"}
 	d.Weight = 0.5
 	d.Size = 4321
-	c0 := mkChunk(d.ID, 0, []string{"Authority model", "8. Teams"}, "", "Team leaders restart peers.")
-	c1 := mkChunk(d.ID, 1, []string{"Authority model", "9. Keys"}, "keys.PeerPermissions", "PeerPermissions grants rights.")
+	c0 := mkChunk(d.ID, 0, []string{"Authority model", "8. Teams"}, "", "Team leads restart clients.")
+	c1 := mkChunk(d.ID, 1, []string{"Authority model", "9. Keys"}, "keys.ClientPermissions", "ClientPermissions grants rights.")
 	put(t, s, d, []knowledge.Chunk{c1, c0}) // out of order on purpose
 
 	got, ok := getDoc(t, s, d.ID)

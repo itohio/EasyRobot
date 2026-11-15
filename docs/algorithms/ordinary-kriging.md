@@ -24,8 +24,8 @@ evidence: "TestKriging_* + TestVariogramModels pass; probe 3-point spherical →
 
 - Complete: yes for basic OK. Missing: nugget/sill parameters, variogram fitting from data, kriging variance output, anisotropy.
 - Performance: `Fit` doesn't factorise; **every `Interpolate` re-solves the full (n+1)×(n+1) system** (`:139`) — O(n³) per query plus allocations of rhs, weights and augmented matrix (`:123`, `:138`, `solveLinear :192-197`). Precomputing an LU (or Γ⁻¹) once in `Fit` makes queries O(n²)/O(n). Duplicate sample locations → singular → error. float32 elimination; abs pivot threshold not scale-aware.
-- Tested: TestKriging_SingleSample (42), TestKriging_LinearData (approx expected value), TestKriging_ExactReproduction (returns sample values at sample points), TestKriging_NoSamples (error), TestVariogramModels (γ(0)=0, monotone), TestKrigingSamples (shared backing slice). Run: go test -count=1 -json ./x/math/{colorscience,learn,grid,interpolation}/... (2026-11-09, slice lead; raw: tmp/easyrobot/filters/test-2026-11-09.json) → pass.
-- Correct: unknown beyond exactness at samples (value assertions pass); probe 3-point spherical(10) query → 0.651, no error (probe tmp/easyrobot/filters/gridinterp/main.go, GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=mod go run . (2026-11-09)) — not cross-checked against a reference.
+- Tested: TestKriging_SingleSample (42), TestKriging_LinearData (approx expected value), TestKriging_ExactReproduction (returns sample values at sample points), TestKriging_NoSamples (error), TestVariogramModels (γ(0)=0, monotone), TestKrigingSamples (shared backing slice). Run: go test -count=1 -json ./x/math/{colorscience,learn,grid,interpolation}/... (2026-11-09, slice lead) → pass.
+- Correct: unknown beyond exactness at samples (value assertions pass); probe 3-point spherical(10) query → 0.651, no error (2026-11-09) — not cross-checked against a reference.
 
 ## TODOs
 

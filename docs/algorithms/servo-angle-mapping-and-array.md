@@ -10,7 +10,7 @@ tests: []
 test_result: none
 complete: no
 correct: no
-evidence: "probe tmp/easyrobot/devices/actprobe (2026-11-09): AngleToMicroseconds 0/90/180/200° → 1000/1500/2000/2000 µs (1000–2000 µs config); NewServoArray on !tinygo → 'not implemented for this platform'; ServoArray.Stop → deadlock"
+evidence: "probe (2026-11-09): AngleToMicroseconds 0/90/180/200° → 1000/1500/2000/2000 µs (1000–2000 µs config); NewServoArray on !tinygo → 'not implemented for this platform'; ServoArray.Stop → deadlock"
 ---
 # Servo angle mapping and servo array
 

@@ -10,7 +10,7 @@ tests: [x/math/nn/layers/base_test.go, x/math/nn/types/parameter_test.go, x/math
 test_result: pass
 complete: no
 correct: no
-evidence: "go test -count=1 ./x/... (2026-11-09) → 25 TestBase_* + 4 types tests pass; go test -count=1 -short ./x/math/learn/ (2026-11-09) → 26 pass / 1 skip; probe tmp/easyrobot/tensor/layernotes/gradcheck (2026-11-09): Sequential(Dense,Dense).Parameters() returns 2 of 4 tensors"
+evidence: "go test -count=1 ./x/... (2026-11-09) → 25 TestBase_* + 4 types tests pass; go test -count=1 -short ./x/math/learn/ (2026-11-09) → 26 pass / 1 skip; probe (2026-11-09): Sequential(Dense,Dense).Parameters() returns 2 of 4 tensors"
 ---
 # Sequential model, layer lifecycle and backprop
 

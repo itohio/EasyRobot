@@ -10,7 +10,7 @@ tests: []
 test_result: none
 complete: no
 correct: no
-evidence: "probe tmp/easyrobot/coding/probe (2026-11-09) → keystream period: 7-bit preset 21 (claims 127), 15-bit 32767 (ok), 23-bit 1 (constant 1s: plain bit inversion); roundtrip OK for all three"
+evidence: "probe (2026-11-09) → keystream period: 7-bit preset 21 (claims 127), 15-bit 32767 (ok), 23-bit 1 (constant 1s: plain bit inversion); roundtrip OK for all three"
 ---
 # LFSR additive (synchronous) scrambler
 

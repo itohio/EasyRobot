@@ -45,7 +45,7 @@ type Fuse struct {
 	Act *qnet.Layer
 	// Pool is a MaxPool2D or AvgPool2D with kernel = stride ∈ {2, 4},
 	// VALID, directly after a stride-1 regular conv (or after Act). The
-	// KPU does not pool in depthwise mode (ER-K210-K9 evidence, K9e), so a
+	// KPU does not pool in depthwise mode (observed on the K210), so a
 	// depthwise conv takes no pool. An AvgPool2D with TiesUp (TFLite uint8,
 	// which rounds the mean half up) is declined: the KPU floors the mean.
 	Pool *qnet.Layer
@@ -109,7 +109,7 @@ func LowerConv(l *qnet.Layer, src, dst uint32) (Conv, error) { return Lower(l, F
 // round-half-up mean: the KPU's mean floors, so that pool stays on the CPU);
 // a fused ReLU or ReLU6. Weights may carry a zero point (Layer.WZP). The
 // KPU layer's input and output are at most 256 rows (a 258-row input never
-// finishes on silicon, ER-K210-K9 evidence).
+// finishes on silicon).
 //
 // The integers are exact up to requantisation (design note, "Integer
 // mapping"): KPU tensors are uint8 x′ = q + 128 and weights w′ = q_w + 128;

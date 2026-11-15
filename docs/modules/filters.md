@@ -71,8 +71,8 @@ Counts: 3 tested · 2 implemented · 11 partial · 1 stub · 0 unverified (17 al
 
 ## Tests and evidence
 
-- `GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=readonly go test -count=1 -json ./x/math/filter/...` (2026-11-09; raw `tmp/easyrobot/filters/test-2026-11-09.json`): ahrs 9 pass, ekalman 6, fir 8, iir 13, kalman 6, ma 8, slam 12 — ok; **pll FAIL 9 pass / 2 fail** (`TestLoop_FrequencyTracking` impl defect, `TestLoop_Rotate` test defect; `TestLoop_NoiseLowSNR/5dB_Medium` flaky — unseeded global rand); agc, gaussian, median, savgol have no tests. Same as baseline 2026-11-08 §4.
-- Probes (all under `~/src/tmp/easyrobot/filters/`): `kfprobe` (KF/EKF vs scalar reference), `ahrsprobe` (convergence), `dspprobe` (FIR/IIR magnitude responses, Gaussian impulse, median spikes), `sgprobe`, `pllprobe`, `slamprobe`. Results in the algorithm notes.
+- `GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=readonly go test -count=1 -json ./x/math/filter/...` (2026-11-09;): ahrs 9 pass, ekalman 6, fir 8, iir 13, kalman 6, ma 8, slam 12 — ok; **pll FAIL 9 pass / 2 fail** (`TestLoop_FrequencyTracking` impl defect, `TestLoop_Rotate` test defect; `TestLoop_NoiseLowSNR/5dB_Medium` flaky — unseeded global rand); agc, gaussian, median, savgol have no tests. Same as baseline 2026-11-08 §4.
+- Probes: `kfprobe` (KF/EKF vs scalar reference), `ahrsprobe` (convergence), `dspprobe` (FIR/IIR magnitude responses, Gaussian impulse, median spikes), `sgprobe`, `pllprobe`, `slamprobe`. Results in the algorithm notes.
 - Test quality: most filter tests only assert "not NaN" or loose bounds after one step; none would have caught the KF/EKF covariance collapse or the unstable Butterworth LP. The Mahony sign error is now caught by `ahrs/convergence_test.go` (2026-11-12, [[mahony-ahrs]]).
 
 ## API notes (ease of use, composability)

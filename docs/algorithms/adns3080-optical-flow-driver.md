@@ -25,7 +25,7 @@ evidence: "no test files; build/vet/linux-arm64 cross ok (2026-11-09); fake-SPI 
 ## Completeness review
 
 - Complete: no — every read discards the byte returned by `Transfer`: `Read8` returns a zero `value` never assigned (:250-260), `ReadMotion` stores an unassigned `b` (:159-166), `FrameCapture` tests an unassigned `pix` (:212-217). Comments acknowledge it ("simplified version", :164-165).
-- Tested: no test files. Fake-SPI probe (`tmp/easyrobot/devices/sensors`, 2026-11-09): with a bus that always returns 0x17, `Read8(ProductID)` = 0x00, `Configure(true)` → `ErrInvalidResponse`, `ReadMotion` → `ErrInvalidState`. By reading, `FrameCapture` would always time out after 100 transfers (:224-228).
+- Tested: no test files. Fake-SPI probe (2026-11-09): with a bus that always returns 0x17, `Read8(ProductID)` = 0x00, `Configure(true)` → `ErrInvalidResponse`, `ReadMotion` → `ErrInvalidState`. By reading, `FrameCapture` would always time out after 100 transfers (:224-228).
 - Correct: no — the driver cannot return sensor data on any bus.
 
 **Defects**

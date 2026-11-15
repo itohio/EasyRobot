@@ -159,7 +159,7 @@ func (r *Runner) conv(l kmodel.Layer, first bool, input, ram []byte, t *LayerTim
 	c, _ := l.Conv()
 	// The argument lives in the Runner, not on the stack: passed by pointer
 	// through the engine interface, a local escapes and the host compiler
-	// allocates it once per conv (review R-K210-K8b K5).
+	// allocates it once per conv.
 	a := &r.args
 	*a = r.m.Args(c)
 	if first {

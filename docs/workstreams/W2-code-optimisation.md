@@ -6,9 +6,9 @@ workstream: W2
 ---
 # W2 — Code-optimisation skills (Go/TinyGo hot paths, tensor kernels, Xtensa/RISC-V asm)
 
-**Owner's goal (O-005, verbatim excerpt):** "easyrobot needs to build obsidian style docs and claude skills for optimising code and things like that." … "i wish it worked on esp32 with xtensa with optimised code..."
+**Goal:** Obsidian-style docs and Claude skills for optimising EasyRobot code, with optimised code running on the ESP32 (Xtensa).
 
-This note records what optimisation work already exists in the repo, what was measured on 2026-11-09, and what a code-optimisation skill should capture (input to roster task ER-R3). Host for all numbers: Apple M5, darwin/arm64, go1.27.2, `GOTOOLCHAIN=local`.
+This note records what optimisation work already exists in the repo, what was measured on 2026-11-09, and what a code-optimisation skill should capture. Host for all numbers: Apple M5, darwin/arm64, go1.27.2, `GOTOOLCHAIN=local`.
 
 ## What exists
 
@@ -38,7 +38,7 @@ The host is shared (load average 9–30 during these runs, other agents testing)
    eager 128×128 1.56 ms (2.7 GFLOP/s, 6 allocs/65 KB); 512×512 209 ms (**1.3 GFLOP/s**, 6 allocs/1 MB).
    Gorgonia 128×128 0.52 ms (8.0 GFLOP/s, 50 allocs); 512×512 15.8 ms (**17 GFLOP/s**, 173 allocs) — 13× faster than eager at 512 despite graph overhead.
    An earlier, more contended run (`-benchtime 5x`, 01:30) gave eager 32×32 40 µs, 128 1.70 ms, 512 416 ms; Gorgonia 512 42 ms — same ordering.
-2. **Loop-order probe** (`~/src/tmp/easyrobot/tensor/gemmprobe/gemm_test.go`: verbatim copies of `Gemm_NN`'s loop `level3.go:38-65` and `MatMulExp7` `matmul.go:278-321`; `TestSame` checks equal results for n = 5, 33, 128 → pass). Calibration: in the same session the copied ijk loop and the repo benchmark agree (32×32: 11.5 µs vs `BenchmarkMatMul_Eager_Small_32x32` 11.7 µs; 128×128: 1.187 ms vs 1.194 ms). `go test -bench . -benchtime 300ms` (01:45):
+2. **Loop-order probe** (verbatim copies of `Gemm_NN`'s loop `level3.go:38-65` and `MatMulExp7` `matmul.go:278-321`; `TestSame` checks equal results for n = 5, 33, 128 → pass). Calibration: in the same session the copied ijk loop and the repo benchmark agree (32×32: 11.5 µs vs `BenchmarkMatMul_Eager_Small_32x32` 11.7 µs; 128×128: 1.187 ms vs 1.194 ms). `go test -bench . -benchtime 300ms` (01:45):
 
    | n | Gemm_NN ijk | Exp7 ikj | speed-up |
    |---|---|---|---|
@@ -58,7 +58,7 @@ The host is shared (load average 9–30 during these runs, other agents testing)
 - No allocation budget per op in tests (`testing.AllocsPerRun`), although TinyGo needs zero-alloc hot paths.
 - Nothing measured on Xtensa or RISC-V.
 
-## What a code-optimisation skill should capture (for ER-R3)
+## What a code-optimisation skill should capture
 
 1. **Measure first, on the target.** `go test -run '^$' -bench X -benchmem -count 5` + `benchstat`; report GFLOP/s or ns/element, not only ns/op; record CPU, Go version, GOARCH, tags; no concurrent load (this run shows how contention distorts numbers).
 2. **Loop order and memory access before asm.** ikj / contiguous inner loop, register-blocked micro-kernel (e.g. 4×4 or 8×4 accumulators), cache blocking only for operands larger than L2 (and prove it at sizes ≥ 256, not 100).
@@ -75,7 +75,7 @@ Algorithm defects are tracked in the algorithm and module notes and rolled up by
 
 - [ ] Add GFLOP/s metric + `AllocsPerRun` checks to the matmul/conv benchmarks — x/math/tensor/bench_test.go #p3
 - [ ] GEMV fast path for M=1 (LLM decode, Dense with batch 1) — fp32/level2.go, eager/linalg.go #p2
-- [ ] Rerun the gemmprobe on an idle machine and on the ESP32-S3/K230 once available — ~/src/tmp/easyrobot/tensor/gemmprobe #p3
+- [ ] Rerun the gemmprobe on an idle machine and on the ESP32-S3/K230 once available #p3
 
 ## Inferred objectives (proposals)
 

@@ -25,7 +25,7 @@ evidence: "no tests; probe sgprobe: coefficients match textbook (-3,12,17,12,-3)
 - Complete: smoothing only; no derivative coefficients, no edge (start/end) handling.
 - Tested: no test file.
 - Correct: coefficients **yes**, streaming **no**.
-  - Coefficients: the code takes column `halfWindow` of the pseudo-inverse and multiplies by A (:181-197), which equals the centre row of the hat matrix = textbook SG weights. Probe (`tmp/easyrobot/filters/sgprobe`): impulse response contains −0.0857, 0.343 (=−3/35, 12/35) → values right.
+  - Coefficients: the code takes column `halfWindow` of the pseudo-inverse and multiplies by A (:181-197), which equals the centre row of the hat matrix = textbook SG weights. Probe: impulse response contains −0.0857, 0.343 (=−3/35, 12/35) → values right.
   - Application: same ring-index warm-up gate (:72) and rotated window start (:79, `index − halfWindow + i`) as [[gaussian-smoothing-filter]]. Probe on ramp 0..14 (SG preserves polynomials ≤ order 2, so output should equal input delayed by 2): `0 0.34 0.60 0.77 4 5 3.29 4.29 5.29 9 10 8.29 …` — wrong.
   - Uses `PseudoInverse` of the small normal matrix in float32; ill-conditioned for larger windows/orders (Vandermonde powers) [INFERENCE].
 

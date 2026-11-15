@@ -10,7 +10,7 @@ tests: []
 test_result: none
 complete: no
 correct: no
-evidence: "no GPTAttention test (go test -count=1 ./x/... 2026-11-09); probe tmp/easyrobot/tensor/layernotes/gradcheck (2026-11-09): Forward panics for [3,4], [1,3,4], [2,3,4]; Backward zeroes gradOutput"
+evidence: "no GPTAttention test (go test -count=1 ./x/... 2026-11-09); probe (2026-11-09): Forward panics for [3,4], [1,3,4], [2,3,4]; Backward zeroes gradOutput"
 ---
 # GPT multi-head causal self-attention layer
 

@@ -96,7 +96,7 @@ func roundTrip(t *testing.T, cfg [3]Config, lo, hi [3]float32, n int, seed uint6
 	return exact, behind
 }
 
-// T-IK-05: review probe R (coxa ±60°, femur −60…72°, tibia −149…−20°) must be
+// Review probe R (coxa ±60°, femur −60…72°, tibia −149…−20°) must be
 // solved exactly, including feet behind the coxa yaw axis.
 func TestPlanar3DOF_ProbeRWorkspace(t *testing.T) {
 	const n = 500
@@ -105,7 +105,7 @@ func TestPlanar3DOF_ProbeRWorkspace(t *testing.T) {
 	assert.Equal(t, n, exact)
 }
 
-// T-IK-05: with ±π limits every knee-down pose is reachable; feet behind the yaw
+// With ±π limits every knee-down pose is reachable; feet behind the yaw
 // axis and femur angles beyond π (before wrapping) must round-trip exactly.
 func TestPlanar3DOF_FullRangeExact(t *testing.T) {
 	k := newP3(t, fullLimits)
@@ -121,7 +121,7 @@ func TestPlanar3DOF_FullRangeExact(t *testing.T) {
 	assert.Equal(t, n, exact)
 }
 
-// T-IK-05: unreachable targets and limit violations are typed errors with a
+// Unreachable targets and limit violations are typed errors with a
 // best-effort (in-limit) solution written to controls.
 func TestPlanar3DOF_TypedErrors(t *testing.T) {
 	tibiaLimited := legCfg([2]float32{-pi / 2, pi / 2}, [2]float32{-pi / 2, pi / 2}, [2]float32{-pi / 2, 0})

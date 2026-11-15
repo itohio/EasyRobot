@@ -24,7 +24,7 @@ evidence: "go test -count=1 ./x/... (2026-11-09): x/math/vec 61/61 pass, 33 vacu
 
 - Complete: yes (API); Quaternion `Cross/Refract*` intentionally panic (`quaternion.go:336-346`).
 - Tested: 28 value-checking tests (`TestVector_Add/AddC/Clone/Sum/SumSqr/Magnitude/XY…`, `TestVector2D_*`, `TestVector3D_CrossDoesNotMutatePointerReceiver`, `…NormalProducesUnitVector`, `TestQuaternion_ProductIdentity`, `TestQuaternion_NormalProducesUnitQuaternion`); **33 vacuous** incl. every Slerp/Product/Roll/Pitch/Yaw/Cross/Dot table.
-- Correct: **mostly yes, with defects** (probe `tmp/easyrobot/tensor/InfraNotes/vecprobe`):
+- Correct: **mostly yes, with defects** (probe):
   - `Slerp(id, z90, 0.5)` = `[0 0 0.3827 0.9239]` ✔; shortest path with `−z90` ✔; `Vector` Slerp same ✔.
   - z90 Roll/Pitch/Yaw = `0, 0, 1.5708` ✔; `z90·z90` = `[0 0 1 0]` ✔; `Vector3D`/`Vector` Cross ✔.
   - `Vector.Product(Quaternion)` **panics**: `b.View().(Quaternion)` but `Quaternion.View()` returns `Vector` (`vec.go:261`, `quaternion.go:21-23`).

@@ -10,7 +10,7 @@ tests: [x/marshaller/gob/marshaller_test.go, x/marshaller/gob/xor_test.go, x/mar
 test_result: pass
 complete: yes
 correct: yes
-evidence: "go test -count=1 -v ./x/marshaller/gob ./x/marshaller → ok, 4+6 PASS (2026-11-09); probe tmp/easyrobot/io/fmtprobe: all 8 dtypes round-trip exactly (2026-11-09)"
+evidence: "go test -count=1 -v ./x/marshaller/gob ./x/marshaller → ok, 4+6 PASS (2026-11-09); probe all 8 dtypes round-trip exactly (2026-11-09)"
 ---
 # Tensor / model ↔ Go gob
 

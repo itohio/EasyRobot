@@ -23,7 +23,7 @@ evidence: "TestCubicSpline1DProperties, TestCubicCatmulRomSpline1D pass"
 ## Completeness review
 
 - Complete: yes for 1-D segment evaluation. No multi-point spline object, no derivatives, no non-uniform/centripetal Catmull-Rom.
-- Tested: TestCubicSpline1DProperties (endpoints = p2/p3, constant input stays constant, ascending/descending), TestCubicCatmulRomSpline1D (t=0 → p2, t=1 → p3, t=0.5 → 0.5 on linear data). Run: go test -count=1 -json ./x/math/{colorscience,learn,grid,interpolation}/... (2026-11-09, slice lead; raw: tmp/easyrobot/filters/test-2026-11-09.json) → pass.
+- Tested: TestCubicSpline1DProperties (endpoints = p2/p3, constant input stays constant, ascending/descending), TestCubicCatmulRomSpline1D (t=0 → p2, t=1 → p3, t=0.5 → 0.5 on linear data). Run: go test -count=1 -json ./x/math/{colorscience,learn,grid,interpolation}/... (2026-11-09, slice lead;) → pass.
 - Correct: yes for tested values; coefficients match Bourke's formulas.
 
 ## TODOs

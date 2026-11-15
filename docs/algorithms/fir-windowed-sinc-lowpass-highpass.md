@@ -23,8 +23,8 @@ evidence: "fir 8/8 pass (NaN checks only); probe dspprobe: LP/HP 1 kHz @8 kHz or
 ## Completeness review
 
 - Complete: yes for LP/HP. DC gain of the low-pass is not normalised to exactly 1 (:134-140; probe shows 0.0 dB anyway at order 64); odd `order` gives an asymmetric kernel (`halfOrder = order/2`, :132) — a non-linear-phase filter, and an odd-length high-pass is not possible as type II.
-- Tested: `TestFIRBasic`, `TestFIRLowPass`, `TestFIRHighPass`… only assert the first output is not NaN/Inf (`fir_test.go:33-59`). Run: go test -count=1 -json ./x/math/filter/fir (2026-11-09, raw tmp/easyrobot/filters/test-2026-11-09.json) → ok, 8 pass.
-- Correct: yes (probe). `tmp/easyrobot/filters/dspprobe/main.go`, fs=8 kHz, order 64, cutoff 1 kHz: LP 0.0 dB at 50–500 Hz, −6.0 dB at 1 kHz, −60 dB at 1.5 kHz; HP −65 dB at 50 Hz, −6.0 dB at 1 kHz, 0.0 dB above 1.5 kHz (standard windowed-sinc behaviour: −6 dB at fc).
+- Tested: `TestFIRBasic`, `TestFIRLowPass`, `TestFIRHighPass`… only assert the first output is not NaN/Inf (`fir_test.go:33-59`). Run: go test -count=1 -json ./x/math/filter/fir (2026-11-09) → ok, 8 pass.
+- Correct: yes (probe). fs=8 kHz, order 64, cutoff 1 kHz: LP 0.0 dB at 50–500 Hz, −6.0 dB at 1 kHz, −60 dB at 1.5 kHz; HP −65 dB at 50 Hz, −6.0 dB at 1 kHz, 0.0 dB above 1.5 kHz (standard windowed-sinc behaviour: −6 dB at fc).
 - Performance: O(taps) per sample with a modulo-free branch; `GetCoeffs` allocates. No SIMD/fixed-point path.
 
 ## TODOs

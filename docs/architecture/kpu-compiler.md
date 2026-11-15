@@ -4,7 +4,7 @@ status: draft
 tags: [easyrobot, architecture, k210, kpu, nn, compiler]
 workstream: [K210-nn]
 source: [drivers/kpu/, drivers/kpu/kmodel/, x/math/nn/qnet/, x/math/nn/qnet/tfl/, x/math/primitive/qi8/]
-evidence: "~/src/docs/evidence/ER-K210-K8.md (outside the repo): KPU format, Go arithmetic model bit-exact with nncase's simulator, silicon within ~1 LSB per layer"
+evidence: "KPU format, Go arithmetic model bit-exact with nncase's simulator, silicon within ~1 LSB per layer"
 ---
 # KPU compiler: TFLite / qnet graphs → K210 KPU layers (design)
 
@@ -50,7 +50,7 @@ Owner decision (2026-11-10): models come as int8 TFLite files or as our own `qne
 The activation and weight mapping is exact:
 - **KPU tensors are uint8:** x′ = q + 128. Weights: w′ = q_w + 128.
 - **The KPU accumulates** Σ w′x′ + (arg_x·Σx′ >> shr_x) + (arg_w·Σw′ >> shr_w) + arg_add·n (n = taps × IC, or taps for depthwise).
-- **TFLite needs** Σ (q_w − zp_w)·(q_x − zp_x) = Σ (w′ − 128 − zp_w)(x′ − 128 − zp_x), with zp_w = 0 for symmetric int8 weights and zp_w = uint8 zero point − 128 for TF's uint8 "quant" models (ER-QU8). So:
+- **TFLite needs** Σ (q_w − zp_w)·(q_x − zp_x) = Σ (w′ − 128 − zp_w)(x′ − 128 − zp_x), with zp_w = 0 for symmetric int8 weights and zp_w = uint8 zero point − 128 for TF's uint8 "quant" models. So:
 
   | Field | Value |
   |---|---|
@@ -67,7 +67,7 @@ Requantisation is approximate:
 - **Batch norm then activation:** BN computes (acc·mul >> s) + add per channel (mul 24-bit signed, s ≤ 15). The activation then (y − start)·y_mul carry-shifted by up to 20 bits.
 - **Per-channel scale:** TFLite's per-channel multiplier M_c = s_w,c·s_x/s_out goes into BN mul_c. The int32 bias goes into BN add_c (bias·mul_c, shifted). The remaining 2^k scale goes into the activation's y_mul/shift (nncase's "postMul" upshift, which keeps precision when M_c is small).
   - So per-channel weight scales are supported. nncase rc5 instead folds them into the weights (each channel stretched to the tensor's range before one per-tensor quantisation, see [[k210-kpu]]). TFLite int8 weights already carry per-channel scales, so the compiler keeps the weights as they are and puts the scales in BN.
-- **Rounding:** BN shifts with a floor; the activation's `carry_shift` rounds a positive value half up, and gives a negative value whose dropped bit is set floor − 1 (rule in [[k210-kpu]]). TFLite rounds once (rounding doubling high multiply plus a rounding shift). So results can differ by 1 LSB from qnet's CPU output. The bar is ≤ 1 LSB per layer, not bit-exactness. Exact negative halves: the carry shift rounds them up (toward zero), TFLite and qnet away from zero. For layers imported from TFLite (`qi8.RoundTFLite`) the table splits at zero, so a negative tie rounds away from zero as TFLite's does; RoundExact layers keep the single half-up segment, where the split measured worse because BN floors first (review R-K210-K9b L3, verify: RoundExact right 1×, wrong 14×; RoundTFLite right 12×, wrong 6×). The split needs a representable negative output (clamp below the output zero point): the official uint8 MobileNet's ReLU6 layers have none, its logits layer does.
+- **Rounding:** BN shifts with a floor; the activation's `carry_shift` rounds a positive value half up, and gives a negative value whose dropped bit is set floor − 1 (rule in [[k210-kpu]]). TFLite rounds once (rounding doubling high multiply plus a rounding shift). So results can differ by 1 LSB from qnet's CPU output. The bar is ≤ 1 LSB per layer, not bit-exactness. Exact negative halves: the carry shift rounds them up (toward zero), TFLite and qnet away from zero. For layers imported from TFLite (`qi8.RoundTFLite`) the table splits at zero, so a negative tie rounds away from zero as TFLite's does; RoundExact layers keep the single half-up segment, where the split measured worse because BN floors first (measured: RoundExact right 1×, wrong 14×; RoundTFLite right 12×, wrong 6×). The split needs a representable negative output (clamp below the output zero point): the official uint8 MobileNet's ReLU6 layers have none, its logits layer does.
 - **Output zero point and clamps:**
   - zp_out + 128 goes into the active segment's result_bias byte.
   - ActMin/ActMax (ReLU, ReLU6, other fused clamps) become flat segments (mul 0, bias = the clamp in uint8).
@@ -89,7 +89,7 @@ Requantisation is approximate:
   - Intermediate tensors stay in AI SRAM.
 - **Conversion at boundaries:** the CHW↔NHWC transpose and the ±128 shift happen only there, on the CPU. [INFERENCE: cost similar to K8c-1's upload and read-back, a few hundred µs at QVGA; measured in K9e.]
 - **AI-SRAM plan:** 2 MiB = 32,768 lines. A tensor takes `row_length·H·⌈C/group⌉` lines. Live tensors in a chain are only the current input and output, so a two-region ping-pong (nncase's top/bottom allocation) suffices. The plan is computed at compile time and checked: every layer's input + output ≤ 2 MiB.
-- **Row-band tiling** applies when input + output > 2 MiB. Example: MobileNetV2's first expanded depthwise at QVGA (verify O-007 Q4).
+- **Row-band tiling** applies when input + output > 2 MiB. Example: MobileNetV2's first expanded depthwise at QVGA.
   - The layer is split into horizontal bands with a 1-row halo for 3×3, each band a separate layer argument with its own image size and addresses, run in turn.
   - Band outputs are read back to main memory and re-uploaded as the next layer's input, or written into a tensor whose layout the next layer reads.
   - This is the most complex part and gets its own milestone.
@@ -112,7 +112,7 @@ Requantisation is approximate:
 
 ## Milestones (each with its check)
 
-**First end-to-end target** (owner, 2026-11-10, for the recorder firmware ER-K210-REC):
+**First end-to-end target** (owner, 2026-11-10, for the recorder firmware):
 - MobileNetV1 int8 TFLite at **256×256**, cut at a stated layer: by default the last pointwise conv `conv_pw_13`, 8×8×(1024·α).
 - α = 0.25 at first, until the owner's own model exists: an official int8 MobileNetV1-0.25 export (TF SAME; `vww_96_int8.tflite`, resized to 256×256 by `kmodelc -input`) or a local Pad(1,1)+VALID one.
 - Its feature tensor, with its quantisation, is what the recorder stores.
@@ -120,13 +120,13 @@ Requantisation is approximate:
 
 | Step | Scope | Check |
 |---|---|---|
-| K9a | `kmodel.Builder`, BN/activation encoders and `Args` setters (the compiler's output seam); `Check` validates `Outputs`; doc fixes (review R-K210-K8b K4) | ncc's kmodels rebuilt byte-identical; round-trip tests; mutation-checked |
+| K9a | `kmodel.Builder`, BN/activation encoders and `Args` setters (the compiler's output seam); `Check` validates `Outputs`; doc fixes | ncc's kmodels rebuilt byte-identical; round-trip tests; mutation-checked |
 | K9b | Lower one Conv2D/Depthwise (1×1, 3×3, stride 1, SAME) from `qnet.Layer` to Args + blobs | host: `Emulate(lowered)` vs `qnet.RunLayer` ≤ 1 LSB on ≥ 1,000 random layers; mutation-checked tests |
 | K9c | `compile.Lower` with `Fuse{Pad, Act, Pool}`: stride 2 via Pad(1,1)+VALID (or 1×1 VALID) + left-top, fused 2×2/4×4 max/average pools, fused ReLU/ReLU6 clamps | as K9b on random chains (≤ 1 LSB, ≤ 2 with average pool, which floors where qnet rounds), plus TF SAME stride 2 rejected |
 | K9d | `compile.Compile(g, kpu.New \| kpu.NewEmulated)` → `qnet.Backend`: segments, AI-SRAM plan, int8 NHWC ↔ uint8 CHW at boundaries | host: MobileNetV1-0.25 256×256 built with Pad(1,1)+VALID from `qnet.Layer` values (qnet's own builder uses TF SAME) + `SyntheticParams`, cut at `conv_pw_13`, one KPU segment, per layer ≤ 1 LSB vs qnet; `Run` allocates nothing |
 | K9e | The same graph on the UnitV | board vs host emulation per layer ≤ 1 LSB; ms/frame vs the K210 CPU at 256×256 |
 | K9 SAME | TF SAME stride 2 (`Fuse.Full` + `Fuse.OddSample`, `compile.Sampler`); `compile.Kmodel`/`Cut`/`Resize`; `x/marshaller/kmodel` and `cmd/kmodelc` (TFLite → kmodel) | host: qnet's MobileNetV1-0.25 (TF SAME) one segment, per layer ≤ 1 LSB, Samplers exact; board: per layer equal to `Emulate`, final equal to the CPU runner |
-| K9f | **End-to-end target:** the official uint8 TFLite MobileNetV1-0.25 (224 export, resized to 256×256; asymmetric weights through `Layer.WZP`) through `tfl.Load` → KPU, cut at `conv_pw_13` | done on still images (ER-K210-K9 evidence): per layer ≤ 1 LSB vs qnet, which equals LiteRT; final features vs LiteRT cosine 0.992–0.997 on the host, 0.9925 on the board. Open: camera frames, and class agreement (needs the uncut model's classifier; K8c-3's deferred check) |
+| K9f | **End-to-end target:** the official uint8 TFLite MobileNetV1-0.25 (224 export, resized to 256×256; asymmetric weights through `Layer.WZP`) through `tfl.Load` → KPU, cut at `conv_pw_13` | done on still images: per layer ≤ 1 LSB vs qnet, which equals LiteRT; final features vs LiteRT cosine 0.992–0.997 on the host, 0.9925 on the board. Open: camera frames, and class agreement (needs the uncut model's classifier; K8c-3's deferred check) |
 | K9g | Row-band tiling; CPU Add/Concat between segments; FC-on-KPU option; LeakyReLU tables (two sloped segments); MobileNetV2 at QVGA | per layer ≤ 1 LSB vs CPU; fits 2 MiB |
 
 ## Open questions (resolved by measurement in the milestones)

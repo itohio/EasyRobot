@@ -10,7 +10,7 @@ tests: [x/vision/odometry/phase/processor_test.go]
 test_result: build-fail
 complete: no
 correct: no
-evidence: "go/types check with FakeImportC against gocv v0.42.0 (tmp/easyrobot/io/typecheck, 2026-11-09): imports broken x/vision/types; pure-Go mirror tmp/easyrobot/io/phasemirror (go run .) → repo math returns (4,16)/(1,-11)/(5,14) for true shifts (3,0)/(0,5)/(4,-2); textbook returns exact shifts"
+evidence: "go/types check with FakeImportC against gocv v0.42.0 (2026-11-09): imports broken x/vision/types; pure-Go mirror (go run .) → repo math returns (4,16)/(1,-11)/(5,14) for true shifts (3,0)/(0,5)/(4,-2); textbook returns exact shifts"
 ---
 # Phase-correlation frame-to-frame displacement
 
@@ -27,7 +27,7 @@ evidence: "go/types check with FakeImportC against gocv v0.42.0 (tmp/easyrobot/i
   - No windowing (Hanning), no sub-pixel peak, no rotation/scale (log-polar). gocv already provides `PhaseCorrelate(src1, src2, window)` with sub-pixel output (`imgproc.go:2016`).
   - Imports `x/vision/types`; `x/vision/types` itself fails type-check (14 errors, `stereo_camera.go:35/181` field+method `Q`, `:84` `*Camera` passed as `Camera`, `:108/:190/:193` struct compared with nil, `:135` `gocv.ReprojectImageTo3D` undefined), so this package cannot compile even with OpenCV installed.
 - Tested: 3 tests (shifted image within ±1 px, no-shift, warm-up). They need `testdata/stereo_calib/left11.jpg`, **which is missing** → would skip. Not run.
-- Correct: **no.** Mirror probe `~/src/tmp/easyrobot/io/phasemirror/main.go` reimplements the same arithmetic in pure Go (32×32 random image, circular shifts): repo-style product gives (4,16), (1,−11), (5,14) for true shifts (3,0), (0,5), (4,−2); the textbook normalised conj product gives the exact shifts. The mirror omits OpenCV padding [INFERENCE: padding does not fix the missing conjugate].
+- Correct: **no.** Mirror probe reimplements the same arithmetic in pure Go (32×32 random image, circular shifts): repo-style product gives (4,16), (1,−11), (5,14) for true shifts (3,0), (0,5), (4,−2); the textbook normalised conj product gives the exact shifts. The mirror omits OpenCV padding [INFERENCE: padding does not fix the missing conjugate].
 
 ## TODOs
 

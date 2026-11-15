@@ -9,7 +9,7 @@ import (
 	"github.com/itohio/EasyRobot/x/math/primitive/qi8"
 )
 
-// The segment planner's rules (review R-K210-K9de D3), each checked on a
+// The segment planner's rules, each checked on a
 // small graph through Compile and the KPU-backed runner against qnet's CPU
 // runner.
 

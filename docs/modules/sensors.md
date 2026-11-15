@@ -63,7 +63,7 @@ All with `GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=readonly`, 2026-11-09, pack
 - `go build` → ok; `go vet` → ok; `GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build` → ok.
 - `go test -count=1` → `[no test files]` for all seven (2026-11-09; `mpu6050` has tests since 2026-11-12, see [[mpu6050-imu-driver]]).
 - `go build -o /dev/null ./cmd/cr30` → fail (gocv: opencv4 not found).
-- Probe `~/src/tmp/easyrobot/devices/sensors/` (own go.mod, `go run .`; `ascopy/` holds verbatim copies of unexported as734x functions): results quoted in each algorithm note (its MPU6050 results describe the driver before the 2026-11-12 rewrite). `go run -race .` → no race reported (array scan; single run).
+- Probe (own go.mod, `go run .`; `ascopy/` holds verbatim copies of unexported as734x functions): results quoted in each algorithm note (its MPU6050 results describe the driver before the 2026-11-12 rewrite). `go run -race .` → no race reported (array scan; single run).
 - Hardware/serial not touched; all runtime behaviour on real sensors is unverified.
 
 ## API notes (ease of use, composability)

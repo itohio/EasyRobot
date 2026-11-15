@@ -10,7 +10,7 @@ tests: [x/math/dsp/fft1dc_test.go]
 test_result: pass
 complete: yes
 correct: yes
-evidence: "go test -count=1 -v ./x/math/dsp/ → ok, 71 PASS (2026-11-09, tmp/easyrobot/audio/dsp_v.txt); probe tmp/easyrobot/audio/dspcore/main.go vs float64 naive DFT (2026-11-09)"
+evidence: "go test -count=1 -v ./x/math/dsp/ → ok, 71 PASS (2026-11-09); probe vs float64 naive DFT (2026-11-09)"
 ---
 # Complex 1D FFT (radix-2, complex64)
 

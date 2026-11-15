@@ -6,7 +6,7 @@ workstream: W7
 ---
 # W7 — Filters, encoders/decoders, voice/audio pipeline robustness and noise figures
 
-**Owner's goal (O-005, verbatim excerpt):** "ux should review module apis for ease of use and composability - i did some clever things there with filters , decoders(need more robust encoders/decoderes, especially ones over voice! i have some tests, but real audio pipeline not fully satisfy me with noise figures...)"
+**Goal:** module APIs for filters and decoders reviewed for ease of use and composability, and more robust encoders and decoders, especially over voice, with real-audio noise figures that hold up.
 
 ## What exists
 
@@ -34,7 +34,7 @@ bytes ─▶ [line code / FEC: x/math/dsp/coding]* ─▶ buffer.Bits(k) ─▶ 
 
 ## Measured vs claimed noise figures
 
-Definitions: *test SNR* = what the repo tests call SNR. That is wideband (noise over fs/2), and nominal: the harness uses uniform noise, so the true SNR is +4.77 dB. *Eb/N0* = SNR + 10·log10(SPS/k) (I/Q) or 10·log10(SPS/2k) (real). Probe = `tmp/easyrobot/audio/berprobe` (Gaussian noise, 3×1000 symbols, 2026-11-09). Theory = coherent Gray PSK/QAM, non-coherent orthogonal FSK, coherent unipolar ASK.
+Definitions: *test SNR* = what the repo tests call SNR. That is wideband (noise over fs/2), and nominal: the harness uses uniform noise, so the true SNR is +4.77 dB. *Eb/N0* = SNR + 10·log10(SPS/k) (I/Q) or 10·log10(SPS/2k) (real). Probe = BER probe (Gaussian noise, 3×1000 symbols, 2026-11-09). Theory = coherent Gray PSK/QAM, non-coherent orthogonal FSK, coherent unipolar ASK.
 
 | Scheme (defaults) | Claim in code/tests | What the tests actually run and check | Probe: decision path (noise on signal only) | Probe: full pipeline (noise on padding too) | Offline CLI (`gen`→`recv`, [[audio-modem-cli]]) |
 |---|---|---|---|---|---|

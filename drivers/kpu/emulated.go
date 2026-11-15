@@ -64,7 +64,7 @@ func (e *emulated) conv(a *kmodel.Args) error {
 // NewEmulated prepares m to run on any host without a KPU: each conv is
 // computed by kmodel's integer model of the KPU, which is bit-identical to
 // nncase v0.1.0-rc5's simulator and within about 1 LSB per layer of the
-// silicon (ER-K210-K8 evidence). The CPU layers are the same code as on the
+// silicon (observed on the K210). The CPU layers are the same code as on the
 // K210. The first Run decodes each conv's parameters; later runs allocate
 // nothing. It is for checking models and compilers on the host, not for
 // speed. Times reports zeros.

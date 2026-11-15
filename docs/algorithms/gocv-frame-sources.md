@@ -10,7 +10,7 @@ tests: [x/marshaller/gocv/streams_test.go, x/marshaller/gocv/device_enumeration_
 test_result: not-run
 complete: yes
 correct: unknown
-evidence: "OpenCV not installed: package cannot build (baseline-2026-11-08 §4); go/types check with FakeImportC (tmp/easyrobot/io/typecheck) → 0 type errors (2026-11-09)"
+evidence: "OpenCV not installed: package cannot build (baseline-2026-11-08 §4); go/types check with FakeImportC → 0 type errors (2026-11-09)"
 ---
 # GoCV frame sources: camera (`VideoCapture`), video file, image list, custom `.mat`
 
@@ -23,7 +23,7 @@ evidence: "OpenCV not installed: package cannot build (baseline-2026-11-08 §4);
 ## Completeness review
 
 - Complete: yes for desktop capture. Gaps: `matToTensor` ignores the requested dtype (`codec.go:100`, "reserved"); timestamp is host `time.Now()` after `Read` (`loader_device.go:259`), not the driver timestamp; `buildStreams` leaks already-opened captures when a later source fails (`streams.go:13-33`); `Read` failure without best-effort silently ends the stream (`loader_device.go:233-241`).
-- Tested: not run — OpenCV missing. `streams_test.go` (glob streams, multi-glob, marshal frame stream to images, generated stream) uses repo images; `TestCameraController` opens a real camera (skips without one) — would be skipped by the roster rules anyway.
+- Tested: not run — OpenCV missing. `streams_test.go` (glob streams, multi-glob, marshal frame stream to images, generated stream) uses repo images; `TestCameraController` opens a real camera (skips without one).
 - Correct: unknown. Go-level type check passes (`typecheck` probe: `x/marshaller/gocv: 0 type errors`).
 - W4 relevance: this is the desktop/PC capture path (USB webcams via OpenCV). It is not usable on K230/ESP32 (CGO + OpenCV); the K230 side needs its own capture and only the wire format can be shared.
 

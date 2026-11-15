@@ -10,7 +10,7 @@ tests: []
 test_result: none
 complete: no
 correct: no
-evidence: "go/types check with FakeImportC against gocv v0.42.0 (tmp/easyrobot/io/typecheck, 2026-11-09): imports broken x/vision/types; code read: Process always returns 0"
+evidence: "go/types check with FakeImportC against gocv v0.42.0 (2026-11-09): imports broken x/vision/types; code read: Process always returns 0"
 ---
 # Relative pose from matched features (essential matrix)
 

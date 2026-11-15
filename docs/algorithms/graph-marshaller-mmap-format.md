@@ -10,7 +10,7 @@ tests: [x/marshaller/graph/format_test.go, x/marshaller/graph/marshaller_e2e_tes
 test_result: pass
 complete: no
 correct: no
-evidence: "go test -count=1 -v ./x/marshaller/graph → ok, 11 PASS (2026-11-09); probe tmp/easyrobot/io/graphprobe: node data comes back nil, in-memory factory cannot round-trip (2026-11-09)"
+evidence: "go test -count=1 -v ./x/marshaller/graph → ok, 11 PASS (2026-11-09); probe: node data comes back nil, in-memory factory cannot round-trip (2026-11-09)"
 ---
 # Graph marshaller: memory-mapped node/edge/data file format
 
@@ -35,7 +35,7 @@ evidence: "go test -count=1 -v ./x/marshaller/graph → ok, 11 PASS (2026-11-09)
   - `EdgeRecord.DataOffset` is `uint32` (`format.go:69`, truncating cast `writer.go:401`) while node offsets are `uint64`: a data file over 4 GiB corrupts edge links.
   - Spec'd defragmentation/deleted-flag handling (`FILE_FORMAT.md` §Defragmentation) is not implemented: the writer always rewrites everything.
 - Tested: 11 tests pass. `format_test.go` round-trips headers/records field by field and rejects bad magic/version; `TestGraphMarshallerMatrixRoundTrip` writes a 10×10 `MatrixGraph` and compares every edge cost after `ToMatrix` (tol 1e-5) — edge data only; `TestGraphMarshallerComplex64ArrayRoundTrip` checks the data codec; decision/expression round trips are covered in [[graph-marshaller-op-registry]]. No test reads node data back.
-- Correct: **no** for node payloads. Probe `~/src/tmp/easyrobot/io/graphprobe/main.go` (`GOFLAGS=-mod=mod go run .`): `GenericBinaryTree[string,float32]("root")` + left child "left" + edge cost 2.5 → after file round trip `node id=1 data=<nil>`, `node id=2 data=<nil>`, `edge data=2.5`. Edge payloads are correct in the probe and the matrix test.
+- Correct: **no** for node payloads. Probe (`GOFLAGS=-mod=mod go run .`): `GenericBinaryTree[string,float32]("root")` + left child "left" + edge cost 2.5 → after file round trip `node id=1 data=<nil>`, `node id=2 data=<nil>`, `edge data=2.5`. Edge payloads are correct in the probe and the matrix test.
 - `NewMemoryMap()` cannot be used for a round trip: the factory ignores the path and returns a fresh empty storage per call (`storage/memory.go:224-230`), and `Marshal` closes storages (which nils memory buffers). Probe: unmarshal fails with `region extends beyond storage (offset: 0, length: 64, size: 0)`.
 
 ## TODOs

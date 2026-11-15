@@ -10,7 +10,7 @@ tests: []
 test_result: none
 complete: yes
 correct: yes
-evidence: "no repo tests; probe tmp/easyrobot/coding/probe (2026-11-09) → both packages round-trip random payloads, byte-by-byte streaming OK, and decode correctly after full polarity inversion"
+evidence: "no repo tests; probe (2026-11-09) → both packages round-trip random payloads, byte-by-byte streaming OK, and decode correctly after full polarity inversion"
 ---
 # Biphase-space (FM0) — packages `biphase_m` and `biphase_i`
 

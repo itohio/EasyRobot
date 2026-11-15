@@ -10,7 +10,7 @@ tests: [x/math/dsp/generators_test.go, x/math/dsp/generators_bench_test.go]
 test_result: pass
 complete: yes
 correct: no
-evidence: "go test -count=1 -v ./x/math/dsp/ → ok (2026-11-09); probe tmp/easyrobot/audio/dspcore/main.go (sine phase drift); DSPAudio probe tmp/easyrobot/audio/cosprobe/main.go (cosine block-size dependence) (2026-11-09)"
+evidence: "go test -count=1 -v ./x/math/dsp/ → ok (2026-11-09); probe (sine phase drift); DSPAudio probe (cosine block-size dependence) (2026-11-09)"
 ---
 # Periodic oscillators: sine, cosine, square, triangle (+ constant, ramp)
 

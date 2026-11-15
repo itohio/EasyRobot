@@ -14,7 +14,7 @@ source_revision: abb5c9cca7f756c632548d9c7be2436b46dc2e4d
 ---
 # ER-031 — SPI slave interface and feature-frame SPI framing
 
-[[tickets/index|Ticket index]] · [[roadmap]] · ER-R2 (evidence: `~/src/docs/evidence/ER-R2.md`, outside the repo) · [[todo]]
+[[tickets/index|Ticket index]] · [[roadmap]] · [[todo]]
 
 ## Goal and evidence
 
@@ -30,7 +30,7 @@ Dependencies: [[ER-027-marshaller-fixes|ER-027]] first (O7); CRC-32 from [[ER-02
 
 Not in scope: No ESP32 or K230 run, no protobuf decode on the MCU.
 
-Source/test edits are approved by the owner's autonomy instruction (roster `decisions.md`); scheduling is Leader's call. Every fix starts with a failing test. No hardware, flashing, TinyGo or download is authorised by this ticket.
+Source/test edits are approved; scheduling is decided separately. Every fix starts with a failing test. No hardware, flashing, TinyGo or download is authorised by this ticket.
 
 ## Acceptance evidence required later
 
@@ -41,7 +41,7 @@ Source/test edits are approved by the owner's autonomy instruction (roster `deci
 
 ## Effort uncertainty and revision trigger
 
-Product's guess: M-b stage 1 **M** (with ER-027 and the wire contract). Sizes are product's guesses ([[roadmap#1. Milestones at a glance|roadmap §1]]), not estimates from velocity. Revisit when a dependency or owner input changes the scope.
+Size guess: M-b stage 1 **M** (with ER-027 and the wire contract). Sizes are rough guesses ([[roadmap#1. Milestones at a glance|roadmap §1]]), not estimates from velocity. Revisit when a dependency or owner input changes the scope.
 
 ## Implementation evidence
 

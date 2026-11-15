@@ -8,7 +8,7 @@ import (
 
 // BenchmarkMahony6 is the badge demo's call: the 6-axis path (no
 // magnetometer, KI 0), one Update per 100 Hz IMU sample with the
-// accelerometer and gyro in a Matrix3x3 (KERNELS-1).
+// accelerometer and gyro in a Matrix3x3.
 func BenchmarkMahony6(b *testing.B) {
 	m := NewMahony(WithKP(1), WithKI(0), WithMagnetometer(false))
 	var acc, gyro [64][3]float32

@@ -23,7 +23,7 @@ Source: x/math/graph/expression_graph.go; x/math/tensor/types/graph.go; eager/ a
 
 ## Dependencies and scope
 
-Dependencies: [[ER-001-reference-environment|ER-001]] — done 2026-11-08; the packages below build CGO-free on darwin/arm64 and their existing tests pass (baseline (evidence: `~/src/docs/evidence/baseline-2026-11-08.md`, outside the repo)). `ready` = dependencies met and acceptance defined. Source/test edits approved 2026-11-09 by the owner's autonomy instruction (roster `decisions.md`); scheduling is Leader's call.
+Dependencies: [[ER-001-reference-environment|ER-001]] — done 2026-11-08; the packages below build CGO-free on darwin/arm64 and their existing tests pass (baseline). `ready` = dependencies met and acceptance defined. Source/test edits approved 2026-11-09; scheduling is decided separately.
 
 Not in scope: No new universal executor, distributed scheduling or model decoder.
 
@@ -45,7 +45,7 @@ Test files only, in `x/math/graph`, `x/math/tensor/eager` and `x/math/tensor/gor
 4. **Aliasing and lifetime (eager):** `FromFloat32` adopts the caller's slice (caller mutation visible); a `Slice`/`Reshape` view shares backing; `Clone` is independent; writing to `dst` versus in place is tested for `Add`; behaviour of `Release` on a base with a live view is recorded as observed.
 5. **Command:** `GOTOOLCHAIN=local GOPROXY=off go test -count=3 -race -run 'Semantics' ./x/math/graph ./x/math/tensor/eager ./x/math/tensor/gorgonia` passes, or each failure is recorded here as a finding with its failing test. `-run` keeps out the pre-existing flaky `TestRRTStar_Simple2DGrid` (its sampler uses the global `rand.Float32()`, `rrtstar_test.go:24–25`; 14/30 and 16/30 failures at `-count=30`).
 
-### Expected outcomes from ER-R2 probes (2026-11-09)
+### Expected outcomes from review probes (2026-11-09)
 
 The fixture should fail on these, then drive the fixes (see [[graph-and-planning]], [[tensor]]):
 

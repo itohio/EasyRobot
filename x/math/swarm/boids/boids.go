@@ -11,8 +11,8 @@
 // values towards −∞ and drifts the whole flock up and left.
 //
 // Integer only, deterministic on every target, no allocation after New.
-// Ported from the Tufty 2040 demo (tinytufty2040 cfbd1b0, app/boids.go and
-// app/boidsbox.go); the drawing stays in the demo.
+// Ported from a Tufty 2040 badge demo (its boids and boids-box apps); the
+// drawing stays in the demo.
 package boids
 
 import "errors"

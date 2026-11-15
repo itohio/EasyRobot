@@ -33,7 +33,7 @@ No build tags. Declared docs: `nn/SPEC.md`, `nn/REQ_OPS.md`, `layers/SPEC.md` (l
 
 ## Algorithms
 
-Status and evidence per note (value probes by the layer slice in `~/src/tmp/easyrobot/tensor/layernotes/{densegrad,embed1d,gradcheck,micro,xavier,utilcheck}`):
+Status and evidence per note (value probes by the layer slice `densegrad`, `embed1d`, `gradcheck`, `micro`, `xavier`, `utilcheck`):
 
 <!-- vault:algorithms h=e8911f50ae2b -->
 

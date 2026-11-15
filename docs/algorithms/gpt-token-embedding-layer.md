@@ -10,7 +10,7 @@ tests: [x/math/nn/layers/gpt_embed_test.go, x/math/learn/gpt_embedding_test.go]
 test_result: fail
 complete: yes
 correct: no
-evidence: "go test -count=1 ./x/... (2026-11-09) → TestGPTEmbedding_BasicFunctionality pass, TestGPTEmbedding_ErrorCases FAIL (stale assertion); learn TestGPTEmbeddingLearning pass (go test -count=1 -short ./x/math/learn/, 2026-11-09); probe tmp/easyrobot/tensor/layernotes/embed1d (2026-11-09): 1D path panics or corrupts the table"
+evidence: "go test -count=1 ./x/... (2026-11-09) → TestGPTEmbedding_BasicFunctionality pass, TestGPTEmbedding_ErrorCases FAIL (stale assertion); learn TestGPTEmbeddingLearning pass (go test -count=1 -short ./x/math/learn/, 2026-11-09); probe (2026-11-09): 1D path panics or corrupts the table"
 ---
 # GPT token embedding layer
 

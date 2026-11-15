@@ -10,7 +10,7 @@ tests: [x/math/tensor/eager/activations_test.go]
 test_result: pass
 complete: no
 correct: yes
-evidence: "go test -count=1 ./x/... (2026-11-09) → TestSoftmax pass (values); probe tmp/easyrobot/tensor/kernelnotes (2026-11-09): Softmax1DGrad vs numeric 3.5e-6; rank-3 input panics"
+evidence: "go test -count=1 ./x/... (2026-11-09) → TestSoftmax pass (values); probe (2026-11-09): Softmax1DGrad vs numeric 3.5e-6; rank-3 input panics"
 ---
 # Softmax and SoftmaxGrad
 

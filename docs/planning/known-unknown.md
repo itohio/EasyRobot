@@ -26,7 +26,7 @@ All runtime claims are **UNVERIFIED**. The owner's accelerator-gap ideas are hyp
 
 | ID | Unknown | Hypothesis/status | How it is resolved later | Ticket |
 |---|---|---|---|---|
-| KU-01 | Which source/dependency/native-runtime setup works on the reference host? | **Resolved for darwin/arm64 (2026-11-08):** CPU core builds CGO-free and passes its tests; OpenCV absent; darwin port gaps recorded (baseline (evidence: `~/src/docs/evidence/baseline-2026-11-08.md`, outside the repo)) | Linux/TinyGo/vision hosts only if the owner asks. | ER-001 |
+| KU-01 | Which source/dependency/native-runtime setup works on the reference host? | **Resolved for darwin/arm64 (2026-11-08):** CPU core builds CGO-free and passes its tests; OpenCV absent; darwin port gaps recorded (baseline 2026-11-08) | Linux/TinyGo/vision hosts only if requested. | ER-001 |
 | KU-02 | Graph cycles/error propagation, tensor-view lifetime and repeat execution correctness | Static risks and unexecuted tests, not observed failures | Small deterministic scalar/tensor fixtures and alias/release/reuse checks. | ER-002, ER-016 |
 | KU-03 | Backend operator/dtype/layout support and actual fallback | Interface wider than backend coverage | Per-operation supported/rejected/copy/fallback matrix and numerical fixtures. | ER-003 |
 | KU-04 | Quantisation/device memory/allocator/transfer contract | Dtype tags insufficient by themselves | Document scales, packed layouts, alignment, buffers, synchronization and ownership. | ER-004 |

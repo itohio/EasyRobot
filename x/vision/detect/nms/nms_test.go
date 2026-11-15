@@ -83,7 +83,7 @@ func TestGreedyNoAlloc(t *testing.T) {
 	}
 }
 
-// A crowded scene (verify note): many overlapping candidates of a few
+// A crowded scene: many overlapping candidates of a few
 // classes, random but seeded. Greedy must equal a plain reference that,
 // for each candidate in score order, scans every box kept so far.
 func TestGreedyCrowded(t *testing.T) {

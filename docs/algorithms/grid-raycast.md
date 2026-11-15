@@ -30,7 +30,7 @@ evidence: "no tests in x/math/grid; probe: RayCast 4.5 (exact 4.5), RayCastOptim
 
 - Complete: yes for stated scope. Used by `x/math/filter/slam/slam.go:187,214,422,424` (`NewRayDirections`, `RayCastAllOptimized`, `RayCastAll`).
 - Tested: **no tests** in `x/math/grid` for any raycast function (grep `func Test` in grid: astar/draw/fast only). SLAM tests exercise it indirectly (not inspected here).
-- Correct: unknown/approximate. Probe (probe tmp/easyrobot/filters/gridinterp/main.go, GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=mod go run . (2026-11-09)), 10×10 map, wall at col 5, pose (0.5,0.5,0), res 1:
+- Correct: unknown/approximate. Probe (2026-11-09), 10×10 map, wall at col 5, pose (0.5,0.5,0), res 1:
   - beam 0: `RayCast` 4.5 (exact 4.5), `RayCastOptimized` 5.0 (cell-centre quantisation, error up to ~1 cell).
   - beam π/4: `RayCast` 6.5, `RayCastOptimized` 7.07; exact first-wall-entry ≈ 6.36. `RayCast` step 0.5 cell can skip corner-clipped cells (not a DDA/Amanatides-Woo traversal).
   - beam π leaving map: both return maxRange — rays exiting the map return maxRange, not distance to border (`:89`, `:185`); arguably fine for "unknown".

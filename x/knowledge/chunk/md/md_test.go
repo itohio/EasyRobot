@@ -126,14 +126,14 @@ func TestFrontmatterAndTitle(t *testing.T) {
 	}{
 		{
 			name:  "frontmatter title wins",
-			id:    "docs/tasks/ABU-061.md",
-			src:   "---\nid: ABU-061\ntitle: \"Key Leases\"\ntype: task\ntags: [security, 'nats', \"#Lease\"]\nowner: 'mb'\n---\n# Heading One\n\nBody " + body + ".\n",
+			id:    "docs/tasks/DEV-061.md",
+			src:   "---\nid: DEV-061\ntitle: \"Key Leases\"\ntype: task\ntags: [security, 'nats', \"#Lease\"]\nowner: 'ops'\n---\n# Heading One\n\nBody " + body + ".\n",
 			title: "Key Leases",
 			props: map[string]string{
-				"id": "ABU-061", "title": "Key Leases", "type": "task",
-				"tags": "security,nats,#Lease", "owner": "mb",
+				"id": "DEV-061", "title": "Key Leases", "type": "task",
+				"tags": "security,nats,#Lease", "owner": "ops",
 			},
-			defines:   []knowledge.NodeID{"id:ABU-061"},
+			defines:   []knowledge.NodeID{"id:DEV-061"},
 			tags:      []knowledge.NodeID{"tag:security", "tag:nats", "tag:lease"},
 			firstLine: 8,
 		},
@@ -156,10 +156,10 @@ func TestFrontmatterAndTitle(t *testing.T) {
 		{
 			name:      "block list tags and lowercase id",
 			id:        "a.md",
-			src:       "---\nid: ke-1\ntags:\n  - alpha\n  - \"beta\"\n---\n# T\n\nBody " + body + ".\n",
+			src:       "---\nid: doc-1\ntags:\n  - alpha\n  - \"beta\"\n---\n# T\n\nBody " + body + ".\n",
 			title:     "T",
-			props:     map[string]string{"id": "ke-1", "tags": "alpha,beta"},
-			defines:   []knowledge.NodeID{"id:KE-1"},
+			props:     map[string]string{"id": "doc-1", "tags": "alpha,beta"},
+			defines:   []knowledge.NodeID{"id:DOC-1"},
 			tags:      []knowledge.NodeID{"tag:alpha", "tag:beta"},
 			firstLine: 7,
 		},
@@ -203,30 +203,30 @@ func TestFrontmatterAndTitle(t *testing.T) {
 }
 
 const fixture = `---
-id: ABU-061
+id: DEV-061
 title: Key Leases
 tags: [security]
 ---
 
-Intro mentions ABU-061 and KE-1 and #intro-tag ` + body + `.
+Intro mentions DEV-061 and DOC-1 and #intro-tag ` + body + `.
 
 # Leases
 
-Leases are granted by the broker to peers for a bounded time; see [[ABU-060|parent]] and [design](../docs/design%20notes.md#leases).
+Leases are granted by the broker to clients for a bounded time; see [[DEV-060|parent]] and [design](../docs/design%20notes.md#leases).
 
 ## Expiry #wip
 
-When a lease expires the peer must re-request it. Not tags: issue #123, http://x.io/a#frag, a#b, (#x).
+When a lease expires the client must re-request it. Not tags: issue #123, http://x.io/a#frag, a#b, (#x).
 
 ` + "```go" + `
 # not a heading
-[[NotALink]] and [x](not/a/link.md) #notatag O-999
+[[NotALink]] and [x](not/a/link.md) #notatag G-999
 ` + "```" + `
 
 ### Renewal
 
 Renewal happens automatically ![[diagram.png]] and ![alt](img/a.png) and [[Note#Section]] and [[ Spaced ]].
-External [ext](https://example.com/x.md), [mail](mailto:a@b.c), [self](#local), ` + "`[[InCode]]` and `[c](code.md)` and `#codetag`" + ` mention o-5 and ABU-060 again.
+External [ext](https://example.com/x.md), [mail](mailto:a@b.c), [self](#local), ` + "`[[InCode]]` and `[c](code.md)` and `#codetag`" + ` mention g-5 and DEV-060 again.
 
 ~~~
 ## fenced tilde heading
@@ -275,7 +275,7 @@ func TestLinks(t *testing.T) {
 	l2 := lineOf(t, src, "Renewal happens")
 	l3 := lineOf(t, src, "Back at top level")
 	want := []knowledge.Link{
-		{Target: "ABU-060", Kind: knowledge.WikiLink, Line: l1},
+		{Target: "DEV-060", Kind: knowledge.WikiLink, Line: l1},
 		{Target: "../docs/design notes.md", Kind: knowledge.MarkdownLink, Line: l1},
 		{Target: "diagram.png", Kind: knowledge.WikiLink, Line: l2},
 		{Target: "img/a.png", Kind: knowledge.MarkdownLink, Line: l2},
@@ -328,11 +328,11 @@ func TestTagsAndMentions(t *testing.T) {
 	if got := edgesOf(res, knowledge.Tagged); !slices.Equal(got, wantTags) {
 		t.Errorf("Tagged = %v, want %v", got, wantTags)
 	}
-	wantIDs := []knowledge.NodeID{"id:KE-1", "id:ABU-060", "id:O-5"}
+	wantIDs := []knowledge.NodeID{"id:DOC-1", "id:DEV-060", "id:G-5"}
 	if got := edgesOf(res, knowledge.Mentions); !slices.Equal(got, wantIDs) {
 		t.Errorf("Mentions = %v, want %v", got, wantIDs)
 	}
-	if got := edgesOf(res, knowledge.Defines); !slices.Equal(got, []knowledge.NodeID{"id:ABU-061"}) {
+	if got := edgesOf(res, knowledge.Defines); !slices.Equal(got, []knowledge.NodeID{"id:DEV-061"}) {
 		t.Errorf("Defines = %v", got)
 	}
 }

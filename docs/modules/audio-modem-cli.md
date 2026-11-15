@@ -7,7 +7,7 @@ workstream: W7
 source: [cmd/audio/]
 tests: []
 test_result: none
-evidence: "go build -o <scratch>/audiobin ./cmd/audio (GOFLAGS=-mod=readonly) → ok; offline gen→recv runs 2026-11-09 under ~/src/tmp/easyrobot/audio/AudioIONotes/ (table below)"
+evidence: "go build -o <scratch>/audiobin ./cmd/audio (GOFLAGS=-mod=readonly) → ok; offline gen→recv runs 2026-11-09 under  (table below)"
 ---
 # audio-modem-cli — `cmd/audio`
 

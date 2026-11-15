@@ -10,7 +10,7 @@ tests: [x/math/nn/layers/dense_test.go, x/math/nn/layers/dense_comprehensive_tes
 test_result: fail
 complete: yes
 correct: yes
-evidence: "go test -count=1 ./x/... (2026-11-09) → 20/21 Dense tests pass, TestDense_NumericalGradientCheck fails (test defect); probe tmp/easyrobot/tensor/layernotes/{densegrad,gradcheck} (2026-11-09) central diff matches ≤2e-6"
+evidence: "go test -count=1 ./x/... (2026-11-09) → 20/21 Dense tests pass, TestDense_NumericalGradientCheck fails (test defect); probe (2026-11-09) central diff matches ≤2e-6"
 ---
 # Dense (fully connected) layer
 
@@ -24,7 +24,7 @@ evidence: "go test -count=1 ./x/... (2026-11-09) → 20/21 Dense tests pass, Tes
 
 - Complete: yes. Forward and backward exist for 1D and 2D input. Only rank 1 and rank 2 inputs are accepted (:78-88), so a `[B,T,D]` sequence has to be reshaped first.
 - Tested: `TestDense_Forward/ForwardAccuracy/ForwardBatch/ComputeOutput` compare outputs with hand-computed values. `TestDense_Backward*` (incl. `_Comprehensive`, `_BackwardBatch`, `_BackwardGradientComputation`) compare dW/db/dX with expected values. `TestDense_SetCanLearn_DisablesWeightBiasGradients` and `TestDense_WeightBiasInitializationAndCloning` cover flags and init. In `go test -count=1 ./x/... (2026-11-09)` all pass except **`TestDense_NumericalGradientCheck` (dense_comprehensive_test.go:253) FAIL**: numerical=1.049042 vs analytical=1.0 for dW[0], dW[1], db; 3.051758 vs 3.0 for dW[4], dW[5].
-- Correct: yes. The failure is a **test defect**. The test uses a one-sided forward difference with `epsilon=1e-5` (:297, :325) on an FP32 output sum ≈ 6.1. The FP32 ULP near 6 is 4.77e-7, so `1e-5` is quantised to 22 ULP = 1.049e-5, which gives 1.049. Probe `tmp/easyrobot/tensor/layernotes/densegrad` (same weights and input) gives analytical dW=[1 1 2 2 3 3], which is exact for d(sum(xW+b))/dW = x:
+- Correct: yes. The failure is a **test defect**. The test uses a one-sided forward difference with `epsilon=1e-5` (:297, :325) on an FP32 output sum ≈ 6.1. The FP32 ULP near 6 is 4.77e-7, so `1e-5` is quantised to 22 ULP = 1.049e-5, which gives 1.049. Probe (same weights and input) gives analytical dW=[1 1 2 2 3 3], which is exact for d(sum(xW+b))/dW = x:
   - eps=1e-5 forward diff = [1.049 1.049 2.003 2.003 3.052 3.052] (reproduces the failure)
   - eps=1e-3 central diff = [0.99993 0.99993 2.00009 1.99986 3.00002 2.99978]
   - eps=1e-2 central diff = [0.999999 0.999975 1.999998 1.999998 2.999997 3.000021]

@@ -10,7 +10,7 @@ tests: [x/math/tensor/eager/views_test.go, x/math/tensor/eager/views_zk_test.go,
 test_result: pass
 complete: no
 correct: no
-evidence: "go test -count=1 ./x/... (2026-11-09) → view tests pass; probe tmp/easyrobot/tensor/kernelnotes (2026-11-09): Copy/Reshape/Elements/Clone wrong or wasteful on views; SetAt/At panic for INT32/INT64/INT/UINT8"
+evidence: "go test -count=1 ./x/... (2026-11-09) → view tests pass; probe (2026-11-09): Copy/Reshape/Elements/Clone wrong or wasteful on views; SetAt/At panic for INT32/INT64/INT/UINT8"
 ---
 # Tensor strides, offset views, Slice/Reshape/Transpose/Permute/Pad, Copy/Clone, element access
 
@@ -38,7 +38,7 @@ Elsewhere: `Transpose` 280-309 and `Permute` 314-434 in linalg.go; `Unpad` 1928-
 ## Completeness review
 
 - Complete: no.
-  - Element access supports only FP32/FP64/INT16/INT8. `getElementAtIndex` and `setElementAtIndex` hit `default: panic("unsupported data type")` for INT32, INT64, INT and UINT8 (tensor.go:367-369, 403-405). The probe reproduced the panic for all four on both `SetAt` and the getter. This confirms the IOVision report (`tmp/easyrobot/io/graphprobe`).
+  - Element access supports only FP32/FP64/INT16/INT8. `getElementAtIndex` and `setElementAtIndex` hit `default: panic("unsupported data type")` for INT32, INT64, INT and UINT8 (tensor.go:367-369, 403-405). The probe reproduced the panic for all four on both `SetAt` and the getter. This confirms the IOVision report.
   - `Slice` with a dst handles only 4 dtypes (tensor.go:660-669).
   - There is no contiguous-ify op (`Contiguous()`), no stride-0 broadcast view, and no `Squeeze`/`Unsqueeze`/`Concat`/`Split`/`Gather` in eager.
 - Tested: the views, slice, strides and tensor tests (`TestSlice_ZeroCopyView*`, `TestPermute_ZeroCopyView*`, `TestReshape_ZeroCopyView`, `TestNestedViews`, `Test3D*`, `TestAt_WithOffset`, `TestSetAt_WithOffset`, `TestClone_StridesAndOffset`, `TestViewMemorySharing`, `TestDataWithOffset*`, `TestTensorReleaseReturnsBuffer`, …) check values through `At`/`SetAt`, which do honour offset and strides. All pass (2026-11-09). No test feeds a view into a compute op.

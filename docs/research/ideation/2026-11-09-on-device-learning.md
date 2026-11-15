@@ -10,11 +10,10 @@ updated: 2026-11-09
 
 # On-device learning and native Go inference (W9, W5, W6)
 
-**Brief:** `~/src/docs/tasks/ER-research-1.md` (objective O-005).
 
-**Builds on easyrobot's catalog:** [[W9-go-nn-framework]], [[W4-k230-feature-stream]], [[W5-feature-tensor-experiments]] and [[W6-decision-trees]]. Their arithmetic and repo findings are **not repeated**: Qwen2.5-0.5B ≈ 494 M parameters, ≈ 0.99 GFLOP per token, the feature-map bandwidth table, and the tree code state. This note adds outside evidence, answers their research questions where it can, and recommends.
+**Builds on the EasyRobot catalog:** [[W9-go-nn-framework]], [[W4-k230-feature-stream]], [[W5-feature-tensor-experiments]] and [[W6-decision-trees]]. Their arithmetic and repo findings are **not repeated**: Qwen2.5-0.5B ≈ 494 M parameters, ≈ 0.99 GFLOP per token, the feature-map bandwidth table, and the tree code state. This note adds outside evidence, answers their research questions where it can, and recommends.
 
-> **Revision 2 (2026-11-09): the target is a K210, not a K230.** The owner corrected his brief: every "K230" was a typo for **K210** (relayed by Leader, objective K210-correction). The board is an **M5Stack UnitV**, with board facts, TinyGo state, camera path and KPU route in [[2026-11-09-k210-camera-nn]].
+> **Revision 2 (2026-11-09): the target is a K210, not a K230.** The brief was corrected: every "K230" was a typo for **K210**. The board is an **M5Stack UnitV**, with board facts, TinyGo state, camera path and KPU route in [[2026-11-09-k210-camera-nn]].
 > - The K210 has **8 MiB SRAM in total**: 6 MiB general plus 2 MiB that only the KPU uses while it runs.
 > - It has **no DRAM and no Linux**. Its two cores are RV64GC at 400 MHz with no vector unit.
 > - This revision makes the **K210 the current target** in Parts 1–3. UnitV exposes only a 2-signal Grove port, so the SPI budget is replaced with a UART + TF-card design.
@@ -40,15 +39,15 @@ updated: 2026-11-09
 
 No downloads. The K210 facts used in revision 2 come from the K210 note's own reads: `docs.m5stack.com`, the K210 datasheet on `raw.githubusercontent.com`, `wiki.sipeed.com` and `github.com` loboris/ktool. I made no new network contact for this revision.
 
-**Owner (verbatim, O-005):**
-- "i wish my nn framework would run a simple llm - e.g. loaded from qwen .5B 🙂 not just tflight, but really in go natively - would be a huge deal for an article! especially if it would run on esp32 and do some face recognition for example in tinygo! albeit asm optimised but purely in tinygo without nncase or smth like that!"
-- "teach a small network to do visual odometry … unsupervised odometry learning. also not only odometry, but one can learn depth map too - given certain constraints to the depth map the network can learn it just from images. and the odometry one can learn by itself if we use feature extraction to provide loss function as an arbitrer or teacher."
-- "would be awesome to train decsion trees on something practical and run it on esp32! plug some wheels to it, add a camera and it would avoid obstacles via camera!"
+**Goals:**
+- A small language model (for example Qwen 0.5B) running natively in the Go NN framework rather than through TFLite, ideally on an ESP32 under TinyGo with assembly-optimised kernels and without nncase; face recognition is one example.
+- Learn visual odometry without supervision, and depth maps from images under constraints, with feature extraction providing the loss.
+- Train decision trees on a practical task and run them on an ESP32: a wheeled robot with a camera that avoids obstacles.
 - "maybe decision trees could be used for legged robot gaits?"
 
 ## Verdict
 
-1. **W9:** Qwen-0.5B can't run on any board the owner has today. Its shipped GGUFs are **353–676 MB**: Q4_0 353 MB (bartowski) / 429 MB (Qwen official); Q8_0 531 / 676 MB (verify `docs/verification/ER-research-1.md`). The K210 has **6 MiB** of general SRAM and 16 MB flash; the ESP32-S3 maps at most 32 MB. **Qwen moves to the host** as a correctness reference now, and to the larger Kendryte chip later (Part 4). Pure-Go LLMs on a laptop already exist (§1.2).
+1. **W9:** Qwen-0.5B can't run on any board the owner has today. Its shipped GGUFs are **353–676 MB**: Q4_0 353 MB (bartowski) / 429 MB (Qwen official); Q8_0 531 / 676 MB. The K210 has **6 MiB** of general SRAM and 16 MB flash; the ESP32-S3 maps at most 32 MB. **Qwen moves to the host** as a correctness reference now, and to the larger Kendryte chip later (Part 4). Pure-Go LLMs on a laptop already exist (§1.2).
    - The **realistic article demo** is **"camera to recognition on a $30 RISC-V AI camera, all in TinyGo"**. A UnitV does face (or person) detection and recognition.
      - The **KPU** is driven register by register from Go, starting with nncase-compiled kmodel v3 files.
      - The stretch goal is EasyRobot generating the KPU layer programs itself, so **no nncase at all**: the owner's "purely in tinygo without nncase".
@@ -72,7 +71,7 @@ No downloads. The K210 facts used in revision 2 come from the K210 note's own re
 
 | Target | Fact | Evidence |
 |---|---|---|
-| ESP32-S3 | ~512 KB internal SRAM; external PSRAM mapped through "up to 32 MB of virtual addresses" in current ESP-IDF docs (v6.1, v5.4); older pages (v4.4, v5.1.1) say 16 MB; the first version with 32 MB isn't pinned | reported, ESP-IDF external RAM guide (search excerpts; versions per verify); SRAM per slvDev/esp32-ai README ("512KB SRAM") via verify |
+| ESP32-S3 | ~512 KB internal SRAM; external PSRAM mapped through "up to 32 MB of virtual addresses" in current ESP-IDF docs (v6.1, v5.4); older pages (v4.4, v5.1.1) say 16 MB; the first version with 32 MB isn't pinned | reported, ESP-IDF external RAM guide (search excerpts); SRAM per slvDev/esp32-ai README ("512KB SRAM") |
 | ESP32-S3 SIMD (PIE) | 8 × 128-bit QR registers; ALU with **16 × 8-bit** and 8 × 16-bit multipliers; QACC accumulators; aligned loads (`EE.VLD.128.IP`) plus an unaligned path (`UA_STATE`, `EE.LD.128.USAR.*`) | reported, Espressif esp-dl `pie_instruction_set.md` |
 | ESP32-S3 peak int8 | 16 MAC/cycle × 240 MHz = **3.84 GMAC/s per core**, before load and accumulator overhead | inferred from the line above |
 | K210 CPUs | 2 × RV64IMAFDC (RV64GC) at **400 MHz** nominal (TinyGo assumes 390 MHz), double-precision FPU per core, 32 KiB I$ + 32 KiB D$ per core; **no vector unit**; bare metal or FreeRTOS, **no MMU-backed Linux distribution in practice** `#verify` | reported, K210 datasheet; TinyGo `machine_k210.go` (observed, K210 note §2) |
@@ -96,7 +95,7 @@ No downloads. The K210 facts used in revision 2 come from the K210 note's own re
 
 The KPU can't help with transformers: it only runs convolutional nets, and its outputs must be at least 4×4. LLM decoding on the K210 is CPU-only.
 
-**Shipped sizes vs theory** (verify): 494 M × 4.5 bit (Q4_0: 32 × 4 bit + an fp16 scale) = 277.9 MB is a lower bound. Shipped Q4 files keep the embeddings and output at higher precision. Qwen's official repo also stores an **untied** output matrix (its fp16 file is 1,266 MB ≈ 630 M params × 2 B), which is why its files are larger. Even the lower bound is about 44× the K210's 6 MiB of general SRAM.
+**Shipped sizes vs theory**: 494 M × 4.5 bit (Q4_0: 32 × 4 bit + an fp16 scale) = 277.9 MB is a lower bound. Shipped Q4 files keep the embeddings and output at higher precision. Qwen's official repo also stores an **untied** output matrix (its fp16 file is 1,266 MB ≈ 630 M params × 2 B), which is why its files are larger. Even the lower bound is about 44× the K210's 6 MiB of general SRAM.
 
 **Why tiny models are compute-bound here** (inferred): on the K210 the weights sit in on-chip SRAM, so reading them is cheap compared with the 7 scalar instructions per int8 MAC (observed codegen, K210 note §4a). Unrolling and using both harts are the levers; the K210 has no SIMD.
 
@@ -107,7 +106,7 @@ The KPU can't help with transformers: it only runs convolutional nets, and its o
 
 **Prior art on ESP32-S3** (reported):
 - `DaveBben/esp32-llm` (llama2.c, 260 K-parameter `stories260K`, ~1 MB RAM, ESP32-S3FH4R2 with 2 MB PSRAM): **19.13 tok/s** using both cores, ESP-DSP float dot products (`dsps_dotprod_f32_aes3`), 240 MHz CPU and 80 MHz PSRAM.
-- `slvDev/esp32-ai`: **28.9 M parameters, 4-bit (14.9 MB), 9.88 tok/s end to end, 94.9 ms/token** on ESP32-S3 with 512 KB SRAM, 8 MB PSRAM and 16 MB flash. Gemma-3n-style per-layer embeddings (a 25 M-parameter table) stay in flash, and about 6 rows (~450 B) are read per token (reported, project README, read by verify; I first saw it in a secondary article on iiot.esp32.tec.br).
+- `slvDev/esp32-ai`: **28.9 M parameters, 4-bit (14.9 MB), 9.88 tok/s end to end, 94.9 ms/token** on ESP32-S3 with 512 KB SRAM, 8 MB PSRAM and 16 MB flash. Gemma-3n-style per-layer embeddings (a 25 M-parameter table) stay in flash, and about 6 rows (~450 B) are read per token (reported, project README; I first saw it in a secondary article on iiot.esp32.tec.br).
 
 ### 1.3 Demo options, ranked
 
@@ -278,7 +277,7 @@ flowchart LR
   2. corrections where the robot was about to fail (DAgger, Ross et al. 2011; known, not re-read);
   3. self-supervised: "bump or stall within 1 s" as negative for the action taken, "progress without event for N s" as positive. Self-supervised collision data for navigation has precedent (e.g. "learning to fly by crashing", Gandhi et al. 2017; known, not re-read `#verify`).
 - **Metrics:** collision-free laps per 10 minutes, mean distance between interventions, tree size and latency.
-- **Safety:** a speed cap; the bumper/ToF stop overrides the tree in firmware. **Driving the robot is actuation: each session needs the owner's approval of that scope** (roster rule 3).
+- **Safety:** a speed cap; the bumper/ToF stop overrides the tree in firmware. **Driving the robot is actuation: each session needs approval of that scope**.
 
 ### 3.4 Answers to W6's research questions
 
@@ -341,7 +340,7 @@ flowchart LR
 
 - At **10 fps:** 4.30 Mbit/s, 22 % of a 20 MHz single-lane SPI link. At **30 fps:** 12.9 Mbit/s, still within 20 MHz.
 - With the 7×7×1280 map (after the final 1×1 conv) instead: 100,736 B → 8.06 Mbit/s at 10 fps, 24.2 Mbit/s at 30 fps, which exceeds 20 MHz.
-- **Alternative backbone, YOLOv8n @320** (P5 10×10×256 + P4 20×20×128 + gray): 96,000 B → 7.68 Mbit/s at 10 fps, 23.0 Mbit/s at 30 fps (exceeds 20 MHz) (verify arithmetic).
+- **Alternative backbone, YOLOv8n @320** (P5 10×10×256 + P4 20×20×128 + gray): 96,000 B → 7.68 Mbit/s at 10 fps, 23.0 Mbit/s at 30 fps (exceeds 20 MHz).
 - **Recommendation for that board:** stream MobileNetV2 @224 (7×7×320 + 14×14×96 + gray). Run YOLOv8n detection and DepthNet as **separate kmodels on the K230** and stream only boxes or a depth summary. The KPU has the headroom (MobileNetV2 ≥ 670 fps, YOLOv5s ≥ 38 fps, product brief).
 - Board-specific details for the link (CanMV SPI API, ESP32-S3 slave limits, framing, SD recording) are in [[2026-11-09-k230-spi-w4]].
 
@@ -352,16 +351,16 @@ flowchart LR
 | Quadrant | Item | Next step, owner |
 |---|---|---|
 | Known knowns | Qwen-0.5B ≈ 494 M params (W9) and ≥ 278 MB in any shipped form; K210: 2 × RV64GC at 400 MHz, no vector unit, 6 + 2 MiB SRAM, conv-only KPU programmed through a register FIFO, no Linux; UnitV: Grove 2-signal port, TF slot, 16 MB flash; TinyGo builds for K210 with FPU codegen, one hart; C ports reach 19 tok/s (260 K) on ESP32-S3; pure-Go LLM engines exist | — |
-| Known unknowns | Real MAC/s per K210 hart; KPU ms per layer | easyrobot, K210 note M5/M6 |
-| Known unknowns | SPI3 flash streaming rate (decides `stories15M` on the K210) | easyrobot, a board probe under the K210 approval |
-| Known unknowns | Max reliable UART baud over Grove to an ESP32 or USB adapter; TF card write rate under TinyGo | easyrobot, after M4 |
-| Known unknowns | KPU argument-word semantics for a nncase-free generator (SDK sources + community docs) | easyrobot, after the M6 runner works |
+| Known unknowns | Real MAC/s per K210 hart; KPU ms per layer | K210 note M5/M6 |
+| Known unknowns | SPI3 flash streaming rate (decides `stories15M` on the K210) | a board probe under the K210 approval |
+| Known unknowns | Max reliable UART baud over Grove to an ESP32 or USB adapter; TF card write rate under TinyGo | after M4 |
+| Known unknowns | KPU argument-word semantics for a nncase-free generator (SDK sources + community docs) | after the M6 runner works |
 | Unknown knowns | The owner's notebooks: §2.1 is a reconstruction; the owner may have used a specific loss or teacher (e.g. VGG features, or the backbone itself) | owner: upload the notebooks, or confirm §2.1 |
 | Unknown knowns | Which robot carries the UnitV for W5/W6 (wheeled ESP32-S3 + UnitV over Grove, or the UnitV alone) | owner |
 | Unknown unknowns | TinyGo GC and stack behaviour with multi-MB weight slices in 6 MiB SRAM | D2: weights in one static byte array, a custom linker script |
 | Unknown unknowns | Whether face-recognition accuracy survives KPU quantisation of a MobileFaceNet-class net | D1, against host float |
 | Known unknowns | Which larger Kendryte chip the owner means by "k530" (K230 or K510), and its board RAM (512 MB / 1 GB / 2 GB) | owner (decision 8) |
-| Known unknowns | Effective DRAM bandwidth and Go-asm RVV GEMV rate on the larger chip | easyrobot, when a board exists |
+| Known unknowns | Effective DRAM bandwidth and Go-asm RVV GEMV rate on the larger chip | when a board exists |
 
 ## Owner decisions
 

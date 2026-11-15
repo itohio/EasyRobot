@@ -118,7 +118,7 @@ func convergence(t *testing.T, cfg []Config, seedFn func(qTrue []float32) []floa
 	return ok
 }
 
-// T-IK-02: chains with more than three joints (J is 3×n, n > 3) must solve
+// Chains with more than three joints (J is 3×n, n > 3) must solve
 // reachable targets (review probes G1/G2).
 func TestBackward_RedundantChains(t *testing.T) {
 	planar4 := []Config{rev(0, 0, 1, 0, -pi, pi), rev(0, 0, 1, 0, -pi, pi), rev(0, 0, 1, 0, -pi, pi), rev(0, 0, 1, 0, -pi, pi)}
@@ -173,7 +173,7 @@ func TestBackward_AlphaAndLengthJoints(t *testing.T) {
 	assert.GreaterOrEqual(t, float32(ok)/n, float32(0.9))
 }
 
-// T-IK-03: realistic hexapod foot workspace (review probe R): coxa ±60°,
+// Realistic hexapod foot workspace (review probe R): coxa ±60°,
 // femur −60…72°, tibia −149…−20°; nominal seed must converge ≥ 95 % within
 // 100 iterations.
 func TestBackward_HexlegRealisticWorkspace(t *testing.T) {
@@ -195,7 +195,7 @@ func TestBackward_HexlegRealisticWorkspace(t *testing.T) {
 	assert.GreaterOrEqual(t, warm, 495, "warm seed")
 }
 
-// T-IK-03: failures are typed and still write a best-effort q to controls.
+// Failures are typed and still write a best-effort q to controls.
 func TestBackward_TypedFailures(t *testing.T) {
 	ref := newChain(t, 1e-4, 100, hexleg()...)
 	reach := float32(0.039 + 0.045 + 0.100)
@@ -346,7 +346,7 @@ func TestBackward_BestEffortIsMinimumResidual(t *testing.T) {
 	}
 }
 
-// T-IK-03: the solve path must not allocate (embedded targets).
+// The solve path must not allocate (embedded targets).
 func TestBackward_NoAllocations(t *testing.T) {
 	k := newChain(t, 1e-4, 100, hexleg()...)
 	target := fkPos(t, k, []float32{0.2, 0.5, -1.2})

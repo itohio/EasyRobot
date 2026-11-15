@@ -82,10 +82,9 @@ func TestEncodeWeightsRejects(t *testing.T) {
 	}
 }
 
-// Golden blobs from nncase rc5 (ncc compiled tiny1/tiny2, ER-K210-K8/K9b
-// evidence): the 8-bit weights in TFLite order, as ncc quantised them, and
+// Golden blobs from nncase rc5 (ncc compiled tiny1/tiny2): the 8-bit weights in TFLite order, as ncc quantised them, and
 // ncc's weight blob for the same layer. EncodeWeights must reproduce ncc's
-// bytes exactly (review R-K210-K9b: byte identity checked in-repo).
+// bytes exactly (byte identity checked in-repo).
 var goldenWeights = []struct {
 	name      string
 	k, ic, oc int

@@ -10,7 +10,7 @@ tests: [x/math/nn/layers/dense_comprehensive_test.go, x/math/nn/layers/conv2d_we
 test_result: pass
 complete: yes
 correct: yes
-evidence: "go test -count=1 ./x/... (2026-11-09) → Test{Dense,Conv1D,Conv2D}_WeightBiasInitializationAndCloning pass (check presence/override, not distribution); probe tmp/easyrobot/tensor/layernotes/xavier (2026-11-09): uniform ±0.0866 std 0.0499 (expect 0.0500), normal std 0.0501 (expect 0.0500), same seed reproducible"
+evidence: "go test -count=1 ./x/... (2026-11-09) → Test{Dense,Conv1D,Conv2D}_WeightBiasInitializationAndCloning pass (check presence/override, not distribution); Xavier probe (2026-11-09): uniform ±0.0866 std 0.0499 (expect 0.0500), normal std 0.0501 (expect 0.0500), same seed reproducible"
 ---
 # NN parameter initialisation (Xavier/Glorot, RNG)
 

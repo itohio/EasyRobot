@@ -10,7 +10,7 @@ tests: [x/math/tensor/eager/linalg_test.go]
 test_result: pass
 complete: no
 correct: no
-evidence: "go test -count=1 ./x/... (2026-11-09) → TestMatMul2D/Batched/To, TestDot, TestNorm, TestNormalize pass; probe tmp/easyrobot/tensor/kernelnotes (2026-11-09): wrong results on Slice/Transpose views"
+evidence: "go test -count=1 ./x/... (2026-11-09) → TestMatMul2D/Batched/To, TestDot, TestNorm, TestNormalize pass; probe (2026-11-09): wrong results on Slice/Transpose views"
 ---
 # Eager MatMul, MatMulTransposed, MatVecMulTransposed, Dot, Norm
 

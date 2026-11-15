@@ -8,9 +8,9 @@ evidence: "source reading + grep (2026-11-09); find . -name '*.ipynb' → none; 
 ---
 # W5 — Experiments on the feature tensor
 
-**Owner's goal:** the O-005 brief's verbatim text is cut off before W5 ("…then streams it to esp32 board via spi and…"); the Leader's breakdown (O-005 table, not verbatim owner text) reads: "Experiments on the feature tensor: YOLO head, BoW place recognition, unsupervised visual odometry and depth with a feature-metric teacher" → "trained small networks"; first owner "ideation research, then easyrobot". Input = the K230 backbone's last feature tensor from [[W4-k230-feature-stream]].
+**Goal:** experiments on the feature tensor (streamed on to an ESP32 board over SPI): YOLO head, BoW place recognition, unsupervised visual odometry and depth with a feature-metric teacher → trained small networks; ideation research first, then EasyRobot. Input = the K230 backbone's last feature tensor from [[W4-k230-feature-stream]].
 
-**Notebooks:** the owner said he will upload notebooks; none are in the repo (`find . -name '*.ipynb' -not -path './.git/*'` → none; also none under `~/src` to depth 3).
+**Notebooks:** notebooks are expected to be uploaded; none are in the repo (`find . -name '*.ipynb' -not -path './.git/*'` → none).
 
 ## What exists
 

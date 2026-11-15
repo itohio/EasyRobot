@@ -83,7 +83,7 @@ func align8(n int) []byte {
 
 // paced writes to w and idles gap after every burst bytes, so UnitV's FTDI
 // FT232BM (384-byte buffer) and the host can drain: unpaced 1.5 Mbaud loses
-// bytes in ~6% of chunks, 256 B / 2 ms in ~1% (ER-K210-M4 evidence, outside the repo).
+// bytes in ~6% of chunks, 256 B / 2 ms in ~1% (observed on the UnitV).
 type paced struct {
 	w     *machine.UART
 	burst int

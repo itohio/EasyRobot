@@ -10,7 +10,7 @@ tests: []
 test_result: none
 complete: no
 correct: no
-evidence: "no tests in repo; probe on a copy (tmp/easyrobot/audio/internalcopy/internal/probe_test.go, 2026-11-09): 1600 input samples (200 symbols, SPS 8) → 0 outputs"
+evidence: "no tests in repo; probe on a copy (2026-11-09): 1600 input samples (200 symbols, SPS 8) → 0 outputs"
 ---
 # Gardner symbol timing recovery (internal, unused)
 

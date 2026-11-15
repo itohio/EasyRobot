@@ -7,7 +7,6 @@ kind: implementation
 owner: easyrobot
 workstream: [W3, W6]
 milestone: M-d
-maps: [T-IK-12, T-IK-13]
 tags: [easyrobot, ticket, w3, w6, kinematics]
 created: 2026-11-09
 updated: 2026-11-09
@@ -15,7 +14,7 @@ source_revision: abb5c9cca7f756c632548d9c7be2436b46dc2e4d
 ---
 # ER-038 — Wheeled motion fixes: path-tracking signs and steer4 geometry
 
-[[tickets/index|Ticket index]] · [[roadmap]] · ER-R2 (evidence: `~/src/docs/evidence/ER-R2.md`, outside the repo) · [[todo]]
+[[tickets/index|Ticket index]] · [[roadmap]] · [[todo]]
 
 ## Goal and evidence
 
@@ -31,17 +30,17 @@ Dependencies: None blocking. Needed before M-d stage 2 driving.
 
 Not in scope: No new controllers.
 
-Source/test edits are approved by the owner's autonomy instruction (roster `decisions.md`); scheduling is Leader's call. Every fix starts with a failing test. No hardware, flashing, TinyGo or download is authorised by this ticket.
+Source/test edits are approved; scheduling is decided separately. Every fix starts with a failing test. No hardware, flashing, TinyGo or download is authorised by this ticket.
 
 ## Acceptance evidence required later
 
-- [ ] **T-IK-12** — failing test first: probe M cases: path on the left ⇒ ω > 0; across the ±π seam ⇒ ω > 0. Fix: `motion.go:364-371`.
-- [ ] **T-IK-13** — failing test first: wheel heading equals the rigid-body velocity direction at each wheel (< 1e-4 rad). Fix: one reference point.
+- [ ] **Path-tracking signs** — failing test first: probe M cases: path on the left ⇒ ω > 0; across the ±π seam ⇒ ω > 0. Fix: `motion.go:364-371`.
+- [ ] **steer4 geometry** — failing test first: wheel heading equals the rigid-body velocity direction at each wheel (< 1e-4 rad). Fix: one reference point.
 - [ ] Differential: wheel rates in rad/s from a given radius, tested against v/r.
 
 ## Effort uncertainty and revision trigger
 
-Product's guess: none given; **S** (inferred). Sizes are product's guesses ([[roadmap#1. Milestones at a glance|roadmap §1]]), not estimates from velocity. Revisit when a dependency or owner input changes the scope.
+Size guess: none given; **S** (inferred). Sizes are rough guesses ([[roadmap#1. Milestones at a glance|roadmap §1]]), not estimates from velocity. Revisit when a dependency or owner input changes the scope.
 
 ## Implementation evidence
 

@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// probeR is the ER-R2 probe R hexapod leg: 39/45/100 mm, coxa ±60°, femur
+// probeR is the IK probe R hexapod leg: 39/45/100 mm, coxa ±60°, femur
 // −60…72°, tibia −149…−20° (knee down only).
 var (
 	probeRGeometry = LegGeometry{Coxa: 0.039, Femur: 0.045, Tibia: 0.100}
@@ -77,7 +77,7 @@ func TestDeg(t *testing.T) {
 	assert.InDelta(t, -math32.Pi/3, Deg(-60), 1e-6)
 }
 
-// T-IK-07: the DH table and the planar configuration of the same hexleg chain
+// The DH table and the planar configuration of the same hexleg chain
 // describe the same mechanism.
 func TestHexlegDHMatchesPlanar3(t *testing.T) {
 	c := hexleg(1)
@@ -205,7 +205,7 @@ func TestServoMapping(t *testing.T) {
 	assert.ErrorIs(t, c.FromServo(deg, back[:2]), kintypes.ErrInvalidDimensions)
 }
 
-// T-IK-07: radians → servo degrees → radians round trip, including mirrored
+// Radians → servo degrees → radians round trip, including mirrored
 // (Sign −1) legs, without allocation.
 func TestServoRoundTrip(t *testing.T) {
 	r := rand.New(rand.NewPCG(5, 6))
@@ -237,7 +237,7 @@ func TestServoRoundTrip(t *testing.T) {
 	}
 }
 
-// T-IK-07: Validate catches bad limits, a zero Sign and a servo range that does
+// Validate catches bad limits, a zero Sign and a servo range that does
 // not cover the joint limits.
 func TestValidate(t *testing.T) {
 	cases := []struct {

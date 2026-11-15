@@ -10,7 +10,7 @@ tests: [x/devices/nmea/parser_test.go]
 test_result: pass
 complete: yes
 correct: yes
-evidence: "go test -count=1 ./x/devices/nmea → TestParseSentence (4 subtests), TestParser_ParseBytes, TestParser_ParseBytes_Incomplete pass (2026-11-09); probe tmp/easyrobot/devices/nmeaprobe"
+evidence: "go test -count=1 ./x/devices/nmea → TestParseSentence (4 subtests), TestParser_ParseBytes, TestParser_ParseBytes_Incomplete pass (2026-11-09); probe"
 ---
 # NMEA 0183 sentence framing and checksum
 

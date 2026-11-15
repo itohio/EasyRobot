@@ -10,7 +10,7 @@ tests: [x/devices/lidar/xwpftb/decoder_test.go]
 test_result: fail
 complete: no
 correct: unknown
-evidence: "go test -count=1 ./x/devices/lidar/xwpftb → FAIL TestParseAndAssembleFullRotation (timeout), TestCRC16Cumulative pass (2026-11-09); probe tmp/easyrobot/devices/lidarprobe: test stream + Configure → 0 scans; 55AA-format frames → 240-point scan, angles > 245.75° wrong"
+evidence: "go test -count=1 ./x/devices/lidar/xwpftb → FAIL TestParseAndAssembleFullRotation (timeout), TestCRC16Cumulative pass (2026-11-09); probe: test stream + Configure → 0 scans; 55AA-format frames → 240-point scan, angles > 245.75° wrong"
 ---
 # XWPFTB frame decoder and scan assembly
 

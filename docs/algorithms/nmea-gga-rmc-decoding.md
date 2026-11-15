@@ -10,7 +10,7 @@ tests: [x/devices/nmea/parser_test.go]
 test_result: fail
 complete: no
 correct: no
-evidence: "go test -count=1 ./x/devices/nmea → TestParseGGA, TestMergeData pass; TestParseRMC FAIL 'nmea: invalid sentence' (2026-11-09); probe tmp/easyrobot/devices/nmeaprobe confirms year, panic and altitude defects"
+evidence: "go test -count=1 ./x/devices/nmea → TestParseGGA, TestMergeData pass; TestParseRMC FAIL 'nmea: invalid sentence' (2026-11-09); probe confirms year, panic and altitude defects"
 ---
 # NMEA GGA/RMC field decoding and merge
 

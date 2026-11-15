@@ -10,7 +10,7 @@ tests: [x/math/learn/mnist_convnet_test.go]
 test_result: none
 complete: no
 correct: no
-evidence: "no test in x/math/nn/layers (go test -count=1 ./x/... 2026-11-09); mnist_convnet_test.go is behind build tag mnist_test (not run); probe tmp/easyrobot/tensor/layernotes/gradcheck (2026-11-09): forward is per-instance normalisation, dX consistent with that forward (maxAbs 2.6e-5)"
+evidence: "no test in x/math/nn/layers (go test -count=1 ./x/... 2026-11-09); mnist_convnet_test.go is behind build tag mnist_test (not run); probe (2026-11-09): forward is per-instance normalisation, dX consistent with that forward (maxAbs 2.6e-5)"
 ---
 # BatchNorm2D layer (actually InstanceNorm)
 

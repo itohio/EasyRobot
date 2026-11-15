@@ -25,8 +25,8 @@ evidence: "tests pass; probe: LinearUpsample/CubicUpsample 3→1 return NaN"
 ## Completeness review
 
 - Complete: yes for stated scope (no area-averaging/anti-aliased downsampling).
-- Tested: TestLinearUpsample (exact expected arrays + endpoints), TestLinearUpsample_Invalid, TestCubicUpsample (endpoints, constant input, monotone data endpoints), TestLinearMatrixUpsample (corners, constant, centre near max), TestBicubicMatrixUpsample (corners, monotone diagonal), TestMatrixUpsample_Invalid. Run: go test -count=1 -json ./x/math/{colorscience,learn,grid,interpolation}/... (2026-11-09, slice lead; raw: tmp/easyrobot/filters/test-2026-11-09.json) → pass.
-- Correct: **no** for target size 1: scale=(N−1)/0 → +Inf, pos=0·Inf=NaN (`upsample.go:32,85`; `matrix_upsample.go:116-117`). Probe (probe tmp/easyrobot/filters/gridinterp/main.go, GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=mod go run . (2026-11-09)): `LinearUpsample([1,2,3], len 1)` → `[NaN]`, `CubicUpsample` → `[NaN]`. Catmull-Rom/bicubic overshoot possible (not monotone-preserving) [INFERENCE from kernel]. Doc mismatches above.
+- Tested: TestLinearUpsample (exact expected arrays + endpoints), TestLinearUpsample_Invalid, TestCubicUpsample (endpoints, constant input, monotone data endpoints), TestLinearMatrixUpsample (corners, constant, centre near max), TestBicubicMatrixUpsample (corners, monotone diagonal), TestMatrixUpsample_Invalid. Run: go test -count=1 -json ./x/math/{colorscience,learn,grid,interpolation}/... (2026-11-09) → pass.
+- Correct: **no** for target size 1: scale=(N−1)/0 → +Inf, pos=0·Inf=NaN (`upsample.go:32,85`; `matrix_upsample.go:116-117`). Probe (probe, GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=mod go run . (2026-11-09)): `LinearUpsample([1,2,3], len 1)` → `[NaN]`, `CubicUpsample` → `[NaN]`. Catmull-Rom/bicubic overshoot possible (not monotone-preserving) [INFERENCE from kernel]. Doc mismatches above.
 
 ## TODOs
 

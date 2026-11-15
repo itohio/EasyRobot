@@ -24,7 +24,7 @@ evidence: "probe: [1,1]-0.1*[1,-2] → [0.9,1.2] exact; dense/sequential tests p
 
 - Complete: yes for vanilla SGD. Momentum/Nesterov/weight decay absent (not claimed).
 - Tested: indirectly. `TestDenseLayer_SimpleLinearRegression` (dense_layer_test.go:16) fits y=2x+1 and asserts loss decreases, w≈2±0.5, b≈1±0.5, predictions ±0.5 (:132-153). `TestTrainStep_MultipleSteps` asserts final loss < 0.1·initial (training_test.go:213). Sequential single/two-layer regression same tolerances; classification tests assert loss decreases and accuracy ≥50% (sequential_classification_test.go:172). All pass (lead run 2026-11-09). No direct unit test of `Update`.
-- Correct: yes — probe (`tmp/easyrobot/filters/learnnotes/main.go`, `go run .`) `[1,1] − 0.1·[1,−2]` → `[0.9000 1.2000]`.
+- Correct: yes — probe `[1,1] − 0.1·[1,−2]` → `[0.9000 1.2000]`.
 
 ## TODOs
 

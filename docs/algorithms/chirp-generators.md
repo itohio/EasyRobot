@@ -10,7 +10,7 @@ tests: [x/math/dsp/generators_test.go]
 test_result: pass
 complete: no
 correct: no
-evidence: "go test -count=1 -v ./x/math/dsp/ → ok (chirp tests assert 'has variation' / peak > 10 only, 2026-11-09); probe tmp/easyrobot/audio/dspcore/main.go: Correlate not a matched filter, chunked sweep overshoots, pink variants not pink (2026-11-09)"
+evidence: "go test -count=1 -v ./x/math/dsp/ → ok (chirp tests assert 'has variation' / peak > 10 only, 2026-11-09); probe: Correlate not a matched filter, chunked sweep overshoots, pink variants not pink (2026-11-09)"
 ---
 # Chirp generators: linear, logarithmic, "pink" linear, "pink" logarithmic
 

@@ -10,7 +10,7 @@ tests: [x/math/control/motion/gait/support/path_planner_test.go]
 test_result: pass
 complete: no
 correct: yes
-evidence: "go test -race -count=1 ./x/math/control/motion/gait/support → ok (2026-11-09); before the fix TestSwingApexEqualsSwingHeight: apex 0.1633 m vs 0.0800, TestTouchdownMonotonicDescent: z rises 0.0800→0.0840, TestLiftStartsAtStanceHeight: overshoot 0.0504 > 0.0500 (tmp/easyrobot/er017/gait/support-before.txt, support-p3-before.txt) [[ER-018-leg-helpers-gait-scheduler|ER-018]]"
+evidence: "go test -race -count=1 ./x/math/control/motion/gait/support → ok (2026-11-09); before the fix TestSwingApexEqualsSwingHeight: apex 0.1633 m vs 0.0800, TestTouchdownMonotonicDescent: z rises 0.0800→0.0840, TestLiftStartsAtStanceHeight: overshoot 0.0504 > 0.0500, support-p3-before.txt) [[ER-018-leg-helpers-gait-scheduler|ER-018]]"
 source_revision: 1bf6234e676daa87d3e9eb191bb1dc2420f05ff9
 ---
 # Gait support endpoint planner (foot trajectory per phase)

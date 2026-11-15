@@ -24,7 +24,7 @@ evidence: "TestToECEF_NorthPole and TestToECEF_RoundTrip/{North,South}_Pole fail
 
 - Complete: forward only — no ECEF→geodetic, no ENU/NED local frames (the "round trip" test only checks forward values).
 - Tested: `TestToECEF`, `TestToECEF_NorthPole`, `TestToECEF_RoundTrip`, `TestToECEF_WithAltitude`. Run: go test -count=1 -json ./x/math/gps/... (2026-11-09) → FAIL 16 pass / 5 fail. **Three failures are test defects:** `gps_test.go:72` and `:166` expect Z = a = 6 378 137 m at the poles; correct is Z = (1−e²)·N = a·√(1−e²) = b = 6 356 752.3 m (got 6 356 752).
-- Correct: yes within float32 precision. Probe (`tmp/easyrobot/filters/gpsprobe`, float64 reference with e²=0.00669437999014): (0,0,0) exact; poles Z=±6 356 752.0 vs 6 356 752.3, X=−0.3 m; (45,45,0) 0.35 m; Vilnius (54.687157, 25.279652, 112) 0.67 m; Sydney 0.52 m. Error is float32 rounding (ulp at 6.4e6 m = 0.5 m). `WGS84Ecc` differs from the WGS-84 e² in the 9th digit (3.9e-10) — negligible.
+- Correct: yes within float32 precision. Probe (float64 reference with e²=0.00669437999014): (0,0,0) exact; poles Z=±6 356 752.0 vs 6 356 752.3, X=−0.3 m; (45,45,0) 0.35 m; Vilnius (54.687157, 25.279652, 112) 0.67 m; Sydney 0.52 m. Error is float32 rounding (ulp at 6.4e6 m = 0.5 m). `WGS84Ecc` differs from the WGS-84 e² in the 9th digit (3.9e-10) — negligible.
 - Embedded: float32 is insufficient for sub-metre ECEF work (differences of large coordinates); fine for ~1 m.
 
 ## TODOs

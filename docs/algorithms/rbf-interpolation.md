@@ -23,8 +23,8 @@ evidence: "tests pass; probe: TPS on linear field returns -1.0 (want 1); Gaussia
 ## Completeness review
 
 - Complete: **no**. Conditionally positive-definite kernels (TPS, biharmonic r, triharmonic r³, multiquadric) need an appended low-degree polynomial term + side conditions; none is implemented, so the system can be singular/indefinite and linear fields are not reproduced. No smoothing (λI) option.
-- Tested: TestRBF_SingleSample, TestRBF_ExactReproduction (reproduces sample values), TestRBF_Interpolation (approx mid value), TestRBFKernels (finite values), TestRBF_NoSamples, TestRBF_ImplicitFit. Run: go test -count=1 -json ./x/math/{colorscience,learn,grid,interpolation}/... (2026-11-09, slice lead; raw: tmp/easyrobot/filters/test-2026-11-09.json) → pass.
-- Correct: **no** for polyharmonic kernels. Probe (probe tmp/easyrobot/filters/gridinterp/main.go, GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=mod go run . (2026-11-09)): TPS ε=1 on unit square with v=x+y → value at (0.5,0.5) = **−1.0** (want 1). Gaussian ε=0.05 with 6 collinear points spacing 1 → `singular or ill-conditioned matrix` (float32 + abs pivot 1e-6 at `kriging.go:211`; Gaussian A becomes near-rank-1 for small ε). `log` returns −1e10 for x≤0 (`:174-178`).
+- Tested: TestRBF_SingleSample, TestRBF_ExactReproduction (reproduces sample values), TestRBF_Interpolation (approx mid value), TestRBFKernels (finite values), TestRBF_NoSamples, TestRBF_ImplicitFit. Run: go test -count=1 -json ./x/math/{colorscience,learn,grid,interpolation}/... (2026-11-09) → pass.
+- Correct: **no** for polyharmonic kernels. Probe (GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=mod go run . (2026-11-09)): TPS ε=1 on unit square with v=x+y → value at (0.5,0.5) = **−1.0** (want 1). Gaussian ε=0.05 with 6 collinear points spacing 1 → `singular or ill-conditioned matrix` (float32 + abs pivot 1e-6 at `kriging.go:211`; Gaussian A becomes near-rank-1 for small ε). `log` returns −1e10 for x≤0 (`:174-178`).
 
 ## TODOs
 

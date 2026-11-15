@@ -22,7 +22,7 @@ TinyGo 0.43 knows the K210 only through the MAix Bit board (`maixbit`), whose LE
 
 ## Scope
 
-- `drivers/unitv/target/unitv.json` (inherits `maixbit`, tag `unitv`) and `drivers/unitv/target/unitv.ld` (16 KiB stack) — moved from the first-draft `targets/` in M3 after Leader accepted the `drivers/` layout.
+- `drivers/unitv/target/unitv.json` (inherits `maixbit`, tag `unitv`) and `drivers/unitv/target/unitv.ld` (16 KiB stack) — moved from the first-draft `targets/` in M3 after acceptance of the `drivers/` layout.
 - `drivers/unitv/`: pin map (WS2812 G8, buttons G19/G18, Grove G34/G35, UARTHS G4/G5, camera IO40–47); examples `blink`, `hello`.
 
 ## Acceptance
@@ -31,8 +31,8 @@ TinyGo 0.43 knows the K210 only through the MAix Bit board (`maixbit`), whose LE
 
 ## Dependencies
 
-none. Roster task ER-K210; one milestone per round, each with `~/src/docs/evidence/ER-K210-M0.md`.
+none. One milestone per round, each with its evidence record.
 
 ## Evidence
 
-Verify accepted (roster verification ER-CAM-BATCH-1), review approved with fixes applied (R-ER-K210-M01): ER-K210-M0 (evidence: `~/src/docs/evidence/ER-K210-M0.md`, outside the repo).
+Verified; review fixes applied.

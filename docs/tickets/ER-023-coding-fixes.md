@@ -14,11 +14,11 @@ source_revision: abb5c9cca7f756c632548d9c7be2436b46dc2e4d
 ---
 # ER-023 — Coding: GF(256) RS, CRC catalogue, line codes, LFSR, Gray, PEG
 
-[[tickets/index|Ticket index]] · [[roadmap]] · ER-R2 (evidence: `~/src/docs/evidence/ER-R2.md`, outside the repo) · [[todo]]
+[[tickets/index|Ticket index]] · [[roadmap]] · [[todo]]
 
 ## Goal and evidence
 
-Correct the coding layer M-e (and M-b's SPI CRC) rely on ([[line-coding-and-fec]], [[peg-protocol-parser]]). Accepted ER-R2 decision 5: in-repo GF(256) Reed–Solomon with erasures.
+Correct the coding layer M-e (and M-b's SPI CRC) rely on ([[line-coding-and-fec]], [[peg-protocol-parser]]). Accepted decision: in-repo GF(256) Reed–Solomon with erasures.
 
 - **RS** is not RS: implement generator, syndromes, Berlekamp–Massey, Chien, Forney, erasures — `x/math/dsp/coding/rs/rs_library.go:21-123`; final partial block — `rs_encoder.go:164-176` ([[reed-solomon-code]]).
 - **CRC** polynomial/reflection mismatch — `crc/crc_encoder.go:23-44`, `:86-153` ([[crc-frame-check]]).
@@ -29,11 +29,11 @@ Correct the coding layer M-e (and M-b's SPI CRC) rely on ([[line-coding-and-fec]
 
 ## Dependencies and scope
 
-Dependencies: After roster task ER-AUDIO-1 (O4; same files and tests). Feeds [[ER-022-audio-modem-acquisition|ER-022]] and [[ER-031-spi-slave-feature-framing|ER-031]] (CRC-32).
+Dependencies: After the audio composition fixes (O4; same files and tests). Feeds [[ER-022-audio-modem-acquisition|ER-022]] and [[ER-031-spi-slave-feature-framing|ER-031]] (CRC-32).
 
-Not in scope: the wireline placeholders (AMI, B8ZS, HDB3, RLL, PPM) were deleted in ER-cleanup (evidence: `~/src/docs/evidence/ER-cleanup.md`, outside the repo) (owner decision #5b: delete).
+Not in scope: the wireline placeholders (AMI, B8ZS, HDB3, RLL, PPM) were deleted in ER-cleanup (owner decision #5b: delete).
 
-Source/test edits are approved by the owner's autonomy instruction (roster `decisions.md`); scheduling is Leader's call. Every fix starts with a failing test. No hardware, flashing, TinyGo or download is authorised by this ticket.
+Source/test edits are approved; scheduling is decided separately. Every fix starts with a failing test. No hardware, flashing, TinyGo or download is authorised by this ticket.
 
 ## Acceptance evidence required later
 
@@ -46,7 +46,7 @@ Source/test edits are approved by the owner's autonomy instruction (roster `deci
 
 ## Effort uncertainty and revision trigger
 
-Product's guess: part of M-e stage 2 (**L** with ER-022); this ticket ≈ **M**. Sizes are product's guesses ([[roadmap#1. Milestones at a glance|roadmap §1]]), not estimates from velocity. Revisit when a dependency or owner input changes the scope.
+Size guess: part of M-e stage 2 (**L** with ER-022); this ticket ≈ **M**. Sizes are rough guesses ([[roadmap#1. Milestones at a glance|roadmap §1]]), not estimates from velocity. Revisit when a dependency or owner input changes the scope.
 
 ## Implementation evidence
 

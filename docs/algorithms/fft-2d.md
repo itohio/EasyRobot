@@ -10,7 +10,7 @@ tests: [x/math/dsp/fft2d_test.go, x/math/dsp/fft2dc_test.go, x/math/dsp/fft2d_de
 test_result: pass
 complete: no
 correct: unknown
-evidence: "go test -count=1 -v ./x/math/dsp/ → ok, 71 PASS (2026-11-09, tmp/easyrobot/audio/dsp_v.txt); probe tmp/easyrobot/audio/dspcore/main.go (2026-11-09)"
+evidence: "go test -count=1 -v ./x/math/dsp/ → ok, 71 PASS (2026-11-09, ); probe (2026-11-09)"
 ---
 # 2D FFT (row–column, real packed and complex64)
 

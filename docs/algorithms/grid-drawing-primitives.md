@@ -23,7 +23,7 @@ evidence: "41 draw tests pass (value-checking cell assertions)"
 ## Completeness review
 
 - Complete: yes. No filled polygon other than triangle; `ShadedTriangle` allocates a 3-element slice of structs (`:470`), otherwise allocation-free.
-- Tested: `draw_test.go` 41 tests (Line/HLine/VLine/GradientLine/Path/Rectangle/Circle/Ellipse/Triangle/ShadedTriangle incl. out-of-bounds, nil, degenerate, reversed) asserting specific cell values. Run: go test -count=1 -json ./x/math/{colorscience,learn,grid,interpolation}/... (2026-11-09, slice lead; raw: tmp/easyrobot/filters/test-2026-11-09.json) → pass.
+- Tested: `draw_test.go` 41 tests (Line/HLine/VLine/GradientLine/Path/Rectangle/Circle/Ellipse/Triangle/ShadedTriangle incl. out-of-bounds, nil, degenerate, reversed) asserting specific cell values. Run: go test -count=1 -json ./x/math/{colorscience,learn,grid,interpolation}/... (2026-11-09, slice lead) → pass.
 - Correct: yes for tested cases (value assertions pass). Sub-pixel/anti-aliasing not provided.
 
 ## TODOs

@@ -10,7 +10,7 @@ tests: []
 test_result: build-fail
 complete: no
 correct: no
-evidence: "go/types check with FakeImportC against gocv v0.42.0 (tmp/easyrobot/io/typecheck, 2026-11-09): 4 type errors (interface method Apply returns Mat, gocv returns error; impossible type switch; unused learningRate)"
+evidence: "go/types check with FakeImportC against gocv v0.42.0 (2026-11-09): 4 type errors (interface method Apply returns Mat, gocv returns error; impossible type switch; unused learningRate)"
 ---
 # Background subtraction (MOG2) → foreground mask
 

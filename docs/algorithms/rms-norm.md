@@ -10,7 +10,7 @@ tests: [x/math/tensor/eager/normalizations_test.go]
 test_result: pass
 complete: yes
 correct: no
-evidence: "go test -count=1 ./x/... (2026-11-09) → TestRMSNormForward pass (shape only); probe tmp/easyrobot/tensor/kernelnotes (2026-11-09): forward maxAbsErr 1.2e-7 vs float64 ref; RMSNormGrad dx maxAbsErr 6.64 for gamma≠1 (2.4e-5 for gamma=nil)"
+evidence: "go test -count=1 ./x/... (2026-11-09) → TestRMSNormForward pass (shape only); probe (2026-11-09): forward maxAbsErr 1.2e-7 vs float64 ref; RMSNormGrad dx maxAbsErr 6.64 for gamma≠1 (2.4e-5 for gamma=nil)"
 ---
 # RMS normalization (forward + grad)
 

@@ -4,11 +4,11 @@ status: proposed
 tags: [easyrobot, workstream, k230, esp32, spi, camera]
 workstream: W4
 source: [x/devices/spi.go, x/devices/spi_linux.go, x/devices/spi_stub.go, x/devices/spi_tinygo.go, cmd/elrs-rx/platform_esp32.go, proto/types/math/tensor.proto, proto/types/core/frame.proto, x/marshaller/proto/convert.go, x/marshaller/storage/flash.go, x/marshaller/gocv/, x/marshaller/v4l/]
-evidence: "source reading + probes ~/src/tmp/easyrobot/arch/protoprobe (2026-11-09); K230 search grep -rli 'k230|kendryte|canmv|nncase|k210|k510' → no code"
+evidence: "source reading + probes (2026-11-09); K230 search grep -rli 'k230|kendryte|canmv|nncase|k210|k510' → no code"
 ---
 # W4 — K230 feature stream to an ESP32 recorder
 
-**Owner's goal (O-005, verbatim excerpt):** "another workstream - k230 chip that has a camera(m5stack kamera module) does modern embedded model feature extraction(no fully connected network - just the last feature tensor) then streams it to esp32 board via spi and…" — and later: "I'd give you all the stuff you'd need to develop tinygo camera, tinygo k230 neural net compute". The brief is cut off after "via spi and…"; the Leader's breakdown reads "feature-tensor stream and recordings" (O-005 table, W4), i.e. the ESP32 records the stream. Hardware work needs the owner's approval of exact scope (roster rule 3).
+**Goal:** a K230 chip with a camera (M5Stack Kamera module) runs modern embedded-model feature extraction (no fully connected head, just the last feature tensor) and streams the tensor to an ESP32 board over SPI; the hardware needed for TinyGo camera and TinyGo K230 neural-net compute work is to be provided. The W4 breakdown reads "feature-tensor stream and recordings", i.e. the ESP32 records the stream. Hardware work needs approval of its exact scope.
 
 Target pipeline, as stated: camera → K230 backbone (no classifier head) → last feature tensor → SPI → ESP32 → recording.
 

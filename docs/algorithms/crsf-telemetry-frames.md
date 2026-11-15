@@ -36,7 +36,7 @@ evidence: "go test → Battery/GPS/Attitude/LinkStats(RX,TX)/FlightMode/Heartbea
 
 - Complete: no. `TypeVario` 0x07 and `TypeGPSTime` 0x03 are declared (frame.go:36-37) with no codec although SPEC.md:39 lists a Variometer payload; no clamping on any encode path.
 - Tested: `TestBatteryRoundTrip` (±0.15 V/A), `TestGPSRoundTrip` (lat/lon 1e-6, speed/heading 0.02, alt 1 m), `TestAttitudeRoundTrip` (1e-3 rad), `TestLinkStatsRoundTrip`, `TestLinkStatsRXRoundTrip`, `TestLinkStatsTXRoundTrip`, `TestFlightModeRoundTrip`, `TestHeartbeatRoundTrip`, `TestBaroAltitudeRoundTrip` (zero, 50 m/2 m/s, −100 m/−5 m/s, 2500 m/10 m/s), `TestTypeMismatch`. Round-trip only (encoder and decoder share the same scale assumptions); no fixed wire vectors. All pass (2026-11-09).
-- Correct: no — confirmed out-of-range defects (probe `tmp/easyrobot/devices/crsf`, darwin/arm64):
+- Correct: no — confirmed out-of-range defects (probe, darwin/arm64):
   - Vario encode overflows int8 above ≈26 m/s: 30 m/s → raw −124 → decodes −24.1 m/s; 50 m/s → −14.3 m/s (telemetry.go:315; float→int8 out-of-range conversion is implementation-specific in Go).
   - RSSI below −127 dBm wraps: raw 130 → +126 dBm (telemetry.go:34-35,41; same in :81,:119). Raw 128 → −128 by luck.
   - Negative `Speed`/`Heading`/`Voltage`/`Current` or `Altitude < −1000` convert negative float to uint16 (telemetry.go:165-166,206-208) — implementation-specific value.

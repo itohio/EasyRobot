@@ -10,7 +10,7 @@ tests: []
 test_result: none
 complete: no
 correct: no
-evidence: "probe on a copy (tmp/easyrobot/audio/internalcopy/internal/probe_test.go, 2026-11-09): pure 100 Hz complex tone, fs 8 kHz → estimated offset 9277.5 Hz"
+evidence: "probe on a copy (2026-11-09): pure 100 Hz complex tone, fs 8 kHz → estimated offset 9277.5 Hz"
 ---
 # AFC frequency tracker (internal, unused)
 

@@ -10,7 +10,7 @@ tests: [x/math/dsp/generators_test.go]
 test_result: pass
 complete: no
 correct: no
-evidence: "go test -count=1 -v ./x/math/dsp/ → ok (noise tests assert range / non-empty only, 2026-11-09); probe tmp/easyrobot/audio/dspcore/main.go: white=uniform var 1/3, pink diverges at sample 13, brown has Nyquist peak (2026-11-09)"
+evidence: "go test -count=1 -v ./x/math/dsp/ → ok (noise tests assert range / non-empty only, 2026-11-09); probe white=uniform var 1/3, pink diverges at sample 13, brown has Nyquist peak (2026-11-09)"
 ---
 # Noise generators: white, pink, brown
 

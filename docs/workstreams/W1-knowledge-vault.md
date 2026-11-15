@@ -6,7 +6,7 @@ workstream: W1
 ---
 # W1 — Knowledge vault
 
-**Owner's goal (O-005, verbatim excerpt):** "easyrobot needs to build obsidian style docs … it needs to build architecture and catalog things, algorithms and son on. it should review algorithms for completion, build todos and infer objectives."
+**Goal:** Obsidian-style docs for EasyRobot: architecture, a catalogue of modules and algorithms, each algorithm reviewed for completeness, with TODOs and objectives inferred from them.
 
 ## What exists
 

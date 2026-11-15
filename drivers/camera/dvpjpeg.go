@@ -12,9 +12,9 @@ var ErrIncomplete = errors.New("camera: incomplete JPEG frame")
 // dvpJPEG turns a K210 DVP JPEG capture in b (4-byte aligned, a multiple of
 // 4 long) in place into the JPEG byte stream and returns its length up to
 // and including FF D9. The DVP stores four sensor bytes per 32-bit word in
-// reverse order (ER-K210-K6 evidence). With the OV2640's sensor-timed HREF
+// reverse order (observed on the K210). With the OV2640's sensor-timed HREF
 // every line is one full 256-byte chunk, so the lines are contiguous and
-// need no reassembly (ER-K210-REC evidence, R3). Words are reversed only up
+// need no reassembly (observed). Words are reversed only up
 // to the end marker.
 func dvpJPEG(b []byte) (int, error) {
 	words := unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(b))), len(b)/4)
@@ -24,7 +24,7 @@ func dvpJPEG(b []byte) (int, error) {
 		words[i] = w
 		for k := range 4 {
 			// The byte just stored, from the register: b is uncached on the
-			// K210, so reading it back costs a bus load (review R3 F6).
+			// K210, so reading it back costs a bus load.
 			c := byte(w >> (8 * k))
 			if prev == 0xFF && c == 0xD9 {
 				if b[0] != 0xFF || b[1] != 0xD8 {

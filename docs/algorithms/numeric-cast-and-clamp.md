@@ -10,7 +10,7 @@ tests: [x/types/cast_test.go, x/types/clamp_test.go, x/types/copy_test.go, x/typ
 test_result: pass
 complete: no
 correct: no
-evidence: "go test -count=1 ./x/... (2026-11-09): x/types 27/27 pass; x/types/st build-fail on darwin/arm64 (convert_bench_test.go:583), GOARCH=amd64 go test ./x/types/st (Rosetta, 2026-11-09) ok 18/18; probe tmp/easyrobot/tensor/InfraNotes/conv"
+evidence: "go test -count=1 ./x/... (2026-11-09): x/types 27/27 pass; x/types/st build-fail on darwin/arm64 (convert_bench_test.go:583), GOARCH=amd64 go test ./x/types/st (Rosetta, 2026-11-09) ok 18/18; probe"
 ---
 # Numeric cast, clamp and strided copy (x/types)
 

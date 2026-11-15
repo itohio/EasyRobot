@@ -78,7 +78,7 @@ func (a *Args) SetAct(addr uint32) { a[7] = a[7]&0xffff_ffff | uint64(addr)<<32 
 // load_coor 1 (kernel_load_cfg), load_act 1 (kernel_calc_type_cfg). The
 // setters below fill the rest. Each checks its values against the field
 // widths and the KPU's limits and returns an error, leaving the argument
-// unchanged, for any value that does not fit (review R-K210-K8b B1): a
+// unchanged, for any value that does not fit: a
 // masked value can read back as a different valid one (width 1025 as 1).
 func NewArgs() Args {
 	var a Args
@@ -142,7 +142,7 @@ func (a *Args) SetInShape(w, h, c int) error {
 // send_data_out: above 65,536 pixels per channel it is refused with
 // send_data_out on, and saturated at 65,535 with it off, where the KPU
 // ignores it (a 300×220 output, 66,000 pixels, runs and matches the Go
-// model on the UnitV: ER-K210-K9 evidence, kpushape).
+// model on the UnitV).
 func (a *Args) SetOutShape(w, h, c int) error {
 	if err := checkShape(w, h, c); err != nil {
 		return err
@@ -211,7 +211,7 @@ func (a *Args) SetKernel(k int, depthwise bool) error {
 // 5 left-top and 6 right-top 2×2 samplers (the types modelled by Emulate;
 // nncase v0.2's K210 runtime also lists 7 left-top 4×4 and 8/9 2×2
 // stride-1 mean/max). Pools work on regular convs only: the KPU does not
-// pool in depthwise mode (ER-K210-K9 evidence, K9e).
+// pool in depthwise mode (observed on the K210).
 func (a *Args) SetPool(t int) error {
 	if t < 0 || t > 6 {
 		return rangeErr("pool type", t)
@@ -303,7 +303,7 @@ func (l Layout) offset(addr uint32, c, y, x int) int {
 
 // check reports whether a w×h×c tensor at addr fits the KPU's limits, the
 // layout and KPU memory. The extent is computed in uint64, so it cannot
-// wrap on any host (review R-K210-K8b K1).
+// wrap on any host.
 func (l Layout) check(addr uint32, w, h, c int) error {
 	if w <= 0 || w > maxWidth || h <= 0 || h > maxHeight || c <= 0 || c > maxChannels {
 		return ErrFormat
@@ -364,7 +364,7 @@ func (l Layout) DownloadFrom(ram []byte, addr uint32, w, h, c int, dst []byte) e
 // uncached alias, where every access is a bus transaction: one 64-bit
 // access instead of eight byte accesses is the C runtime's aligned upload
 // path (kpu_upload_core) and makes upload and read-back about 8× cheaper
-// (ER-K210-K8 evidence, K8c-1).
+// (observed on the K210).
 func copyRow(dst, src []byte) {
 	n := min(len(dst), len(src))
 	i := 0

@@ -24,7 +24,7 @@ evidence: "go test -count=1 ./x/... (2026-11-09): x/math/mat 145/145 pass, of wh
 
 - Complete: **no** — `Matrix2x2.Quaternion` and `Matrix3x3.Quaternion` panic "unsupported operation" (`mat2x2.go:296`, `mat3x3.go:334`); `Matrix4x4.Quaternion` (`mat4x4.go:395`) delegates to the 3×3 one [INFERENCE: panics too].
 - Tested: 145 pass; **59 vacuous** (zero subtests): all 24 Matrix3x4 and 24 Matrix4x3 tests (`mat3x4_test.go`, `mat4x3_test.go`, incl. `_Mul`, `_MulVec`, `_Orientation`, `_Quaternion`, `_Transpose`), and 11 in `mat_full_test.go`: `TestMatrix_Rotation2D/X/Y/Z`, `_Orientation`, `_SetRow`, `_SetCol`, `_SetDiagonal`, `_Det`, `_LU`, `_Quaternion`. 86 tests check values (Mat2x2/3x3/4x4 suites, `TestMatrix_Mul/Add/Transpose/…`).
-- Correct: **no** (probe `tmp/easyrobot/tensor/InfraNotes/matprobe`, q = 90° about Z):
+- Correct: **no** (probe, q = 90° about Z):
   - `Matrix3x3.Orientation(q)` → `[[0 −1 0][1 0 0][0 0 1]]` ✔; `Matrix4x3.Orientation` ✔ (delegates).
   - dense `Matrix.Orientation(q)` → `[[0.880 0.459 0][0.459 0.880 0][0 0 1]]` ✘ — treats `q[3]` as an angle (`Theta()` returns w) and uses symmetric off-diagonals (`mat.go:281-289`), not a rotation matrix.
   - `Matrix.Quaternion(RotZ(90°))` → `*vec.Quaternion{0 0 0.707 −0.707}` ✘ (−90°, sign of vector part flipped, `mat.go:632-643`); returns a pointer, and `Matrix.Orientation` type-asserts a value (`mat.go:262`) → round-trip **panics** (interface conversion).

@@ -30,7 +30,7 @@ func (k210) now() uint64 { return uint64(riscv.CYCLE.Get()) }
 // calc_done, with a barrier on both sides: everything the CPU wrote to KPU
 // memory (the input upload, AddPadding) and to the model's tables is
 // complete before the first FIFO write, and no read of KPU memory (the
-// output read-back) starts before calc_done (review R-K210-K8b K3).
+// output read-back) starts before calc_done.
 func (k210) conv(a *kmodel.Args) error {
 	k := kendryte.KPU
 	k.INTERRUPT_CLEAR.Set(7)

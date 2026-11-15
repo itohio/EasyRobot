@@ -58,7 +58,7 @@ Counts: 7 tested · 1 implemented · 9 partial · 0 stub · 0 unverified (17 alg
 
 - `GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=readonly go test -count=1 -json ./x/math/graph/...` (2026-11-09) → 86 pass, 1 fail (`TestRRTStar_Simple2DGrid`); `-count=20 -run 'TestRRTStar_Simple2DGrid$'` → 7/20 and 6/20 fail, always "Path nodes should be connected" (baseline 2026-11-08: 14/30, 16/30).
 - `go test -count=1 -json ./x/marshaller/graph/...` → 11 pass (incl. `TestDecisionTreeRoundTrip`, `TestExpressionGraphRoundTrip`).
-- Probes (`~/src/tmp/easyrobot/filters/`): `searchprobe` (A*/Dijkstra vs Bellman-Ford: 0/300 mismatches on simple digraphs, 31/300 with parallel edges), `exprprobe` (cycle and handle behaviour), `cycleprobe` (directed 2-cycle missed); data-structure probes by the sub-task (deleted after use, results in notes).
+- Probes: `searchprobe` (A*/Dijkstra vs Bellman-Ford: 0/300 mismatches on simple digraphs, 31/300 with parallel edges), `exprprobe` (cycle and handle behaviour), `cycleprobe` (directed 2-cycle missed); data-structure probes by the sub-task (deleted after use, results in notes).
 
 ## API notes (ease of use, composability)
 

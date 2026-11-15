@@ -9,7 +9,7 @@ tests: []
 test_result: none
 complete: no
 correct: no
-evidence: "probe tmp/easyrobot/coding/probe (2026-11-09) → data byte 0xFF is dropped (300-byte payload decodes to 299 bytes); max |symbol disparity| 4; max run 10 chips"
+evidence: "probe (2026-11-09) → data byte 0xFF is dropped (300-byte payload decodes to 299 bytes); max |symbol disparity| 4; max run 10 chips"
 ---
 # 8B/10B (simplified, RD−-only)
 

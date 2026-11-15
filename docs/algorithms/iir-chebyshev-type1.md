@@ -23,7 +23,7 @@ evidence: "iir.go:259-283 return Butterworth designs; TODO comments at :260,267,
 ## Completeness review
 
 - Complete: no (stub).
-- Tested: Chebyshev tests in `iir_test.go` only check non-NaN; pass because they exercise the fallbacks. Run: go test -count=1 -json ./x/math/filter/iir (2026-11-09, raw tmp/easyrobot/filters/test-2026-11-09.json) → ok.
+- Tested: Chebyshev tests in `iir_test.go` only check non-NaN; pass because they exercise the fallbacks. Run: go test -count=1 -json ./x/math/filter/iir (2026-11-09) → ok.
 - Correct: no — LP/HP fallbacks inherit [[iir-butterworth-filters]] defects.
 
 ## TODOs

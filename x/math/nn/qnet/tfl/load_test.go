@@ -302,7 +302,7 @@ func TestLoadZeroMultiplier(t *testing.T) {
 // (GetQuantizedConvolutionMultipler). The scales are those of operator 4 of
 // TF's mobilenet_v1_0.25_224_quant, where the float32 and float64 products
 // give different multipliers (and the float64 one gives 3 wrong outputs
-// against LiteRT, ER-QU8 §3).
+// against LiteRT).
 func TestLoadUint8Multiplier(t *testing.T) {
 	sIn := math.Float32frombits(0x3cc0becb) // also the output scale
 	sW := math.Float32frombits(0x3ca90ce2)

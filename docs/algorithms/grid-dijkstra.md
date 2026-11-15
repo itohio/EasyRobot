@@ -23,9 +23,9 @@ evidence: "TestDijkstra_* pass; probe optimal cost 0.6 where A* gave 3.1; 52483 
 ## Completeness review
 
 - Complete: yes (4/8-conn, diag ×√2, corner cutting allowed — inherited from `graph/grid_graph.go`).
-- Tested: TestDijkstra_SimplePath/WithObstacles/DiagonalMovement (`astar_test.go`) — non-nil, endpoints/length bounds; no cost assertion. Run: go test -count=1 -json ./x/math/{colorscience,learn,grid,interpolation}/... (2026-11-09, slice lead; raw: tmp/easyrobot/filters/test-2026-11-09.json) → pass.
-- Correct: unknown (no value-checking test); probe found the optimal 0.6-cost path on the 0.1-cost grid where A* failed (probe tmp/easyrobot/filters/gridinterp/main.go, GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=mod go run . (2026-11-09)).
-- Embedded: heavy — 52 483 allocs per 50×50 8-conn search (probe tmp/easyrobot/filters/gridinterp/allocs/main.go (testing.AllocsPerRun, 50x50 all-1 grid, 8-conn, corner to corner)), interface/generic graph layer.
+- Tested: TestDijkstra_SimplePath/WithObstacles/DiagonalMovement (`astar_test.go`) — non-nil, endpoints/length bounds; no cost assertion. Run: go test -count=1 -json ./x/math/{colorscience,learn,grid,interpolation}/... (2026-11-09, slice lead) → pass.
+- Correct: unknown (no value-checking test); probe found the optimal 0.6-cost path on the 0.1-cost grid where A* failed (2026-11-09).
+- Embedded: heavy — 52 483 allocs per 50×50 8-conn search (probe with testing.AllocsPerRun, 50x50 all-1 grid, 8-conn, corner to corner), interface/generic graph layer.
 
 ## TODOs
 

@@ -29,10 +29,10 @@ Obsidian vault rooted at `EasyRobot/docs/`. Open the folder in Obsidian; the hom
 | `architecture/` | layers, packages, data flow, dndm/protobuf use, build targets, source inventory | `architecture` |
 | `modules/` | one note per module or package family (map of content for its algorithms) | `module` |
 | `algorithms/` | one note per algorithm | `algorithm` |
-| `workstreams/` | W1–W10 from objective O-005 | `workstream` |
+| `workstreams/` | W1–W10 workstreams | `workstream` |
 | `tickets/` | ER-xxx tickets, one file each, plus [[tickets/index\|the ticket index]] | `ticket` |
 | `planning/` | roadmap, known/unknown map | `planning` |
-| — | evidence (run records, task reports, images) is **not committed**: it lives in `~/src/docs/evidence/`, outside the repo; `docs/evidence/` is gitignored. Cite it as plain text (`evidence: ~/src/docs/evidence/<file>`), never as a wikilink | — |
+| — | evidence (run records, task reports, images) is **not committed**: it lives outside the repo, and the in-repo evidence folder is gitignored. Cite it as plain text (`evidence: <file>`), never as a wikilink | — |
 | `research/` | ideation research notes (owned by ideation) | `research` |
 | `templates/` | Obsidian note templates | `meta` |
 
@@ -56,7 +56,7 @@ correct: unknown           # yes | no | unknown (yes only with a run that checks
 evidence: "go test -count=1 ./x/math/... → ok (2026-11-09)"
 ```
 
-Module notes add `group:` (the index section). Ticket notes add `id`, `kind`, `owner`, `workstream`, `milestone` and, where they absorb older ids, `maps: [T-IK-02]`.
+Module notes add `group:` (the index section). Ticket notes add `id`, `kind`, `owner`, `workstream` and `milestone`.
 
 ## Status vocabulary (algorithms)
 

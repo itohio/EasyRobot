@@ -10,7 +10,7 @@ updated: 2026-11-10
 
 # Vision navigation on the UnitV (K210) + XIAO ESP32-S3: shared frozen frontend, heads, topological map, split inference
 
-Brief: `~/src/docs/tasks/O-007-vision-nav-research.md`, objective O-007 (`docs/objectives/O-007-vision-navigation.md`, the owner's words verbatim). Refines [[W4-k230-feature-stream]] and [[W5-feature-tensor-experiments]]. Builds on [[2026-11-09-k210-camera-nn]] and [[2026-11-09-on-device-learning]].
+Vision navigation. Refines [[W4-k230-feature-stream]] and [[W5-feature-tensor-experiments]]. Builds on [[2026-11-09-k210-camera-nn]] and [[2026-11-09-on-device-learning]].
 
 **Scope:** research, not redesign. The owner has working notebooks for P1 (odometry) and P2 (depth) with "great results", so this note doesn't redesign them. It asks what the literature and existing systems offer for **his** architecture on **his** hardware, and where the risks are.
 
@@ -54,7 +54,7 @@ Brief: `~/src/docs/tasks/O-007-vision-nav-research.md`, objective O-007 (`docs/o
 |---|---|---|
 | Camera | **OV2640** (SCCB 0x30, PID 0x26) via DVP, 63 ms/frame | **OV3660** via LCD_CAM, 11.1 fps sensor, 5.4 fps QVGA YUYV over USB with 0 errors in 5 min; high-res JPEG up to 2048×1536 in 0.2–0.3 s |
 | NN compute | KPU (1×1/3×3 conv + BN + act + pool, input ≤ 320×240, feature maps in the 2 MiB AI SRAM) — tiny kmodels run bit-close (32,749/32,768 within 1 LSB), **no MobileNet timing**; CPU one hart 24–30 MMAC/s int8 | qi8 + PIE: conv 3×3 1.77 cyc/MAC, pointwise 3.8, depthwise 26.6 (≈ 135 / 63 / 9 MMAC/s at 240 MHz, inferred); MobileNetV1-0.25 96² 208 ms |
-| Memory | 6 MiB + 2 MiB AI SRAM | 512 KB SRAM; 8 MB PSRAM **not yet working in TinyGo** (driver built, two bugs found by verify, board test pending) |
+| Memory | 6 MiB + 2 MiB AI SRAM | 512 KB SRAM; 8 MB PSRAM **not yet working in TinyGo** (driver built, two bugs found in review, board test pending) |
 
 **Candidates:**
 
@@ -80,7 +80,7 @@ Brief: `~/src/docs/tasks/O-007-vision-nav-research.md`, objective O-007 (`docs/o
 
 ## 1a. Frontend revisit: no nncase; TFLite or the owner's own graphs (amended 2026-11-10)
 
-**Owner (verbatim, via Leader):** "About mobilenet... i won't run nncase models, I'll run/load tflite models or even my own marshalled model graphs. so, for me it matters which model is more efficient and suitable for my final layers. i might want to experiment with depthwise conv layers as final output layers as well as dense layers - whichever turns out to be more efficient and more accurate."
+**Requirement:** nncase models are not used; models are loaded as TFLite or as EasyRobot's own marshalled model graphs. What matters is which backbone is more efficient and suits the final layers; both depthwise-conv and dense final output layers are candidates, chosen by efficiency and accuracy.
 
 **Consequence:** nncase is out as a runtime and toolchain for the owner's models. The models run through our TFLite loader / `qnet` on the S3 and the K210 CPU, and on the KPU only through a Go KPU compiler we'd write ourselves.
 
@@ -108,7 +108,7 @@ Brief: `~/src/docs/tasks/O-007-vision-nav-research.md`, objective O-007 (`docs/o
 **Reading the table:**
 - **Per MAC, V1 is faster on our kernels.** V2 spends more of its MACs in depthwise (15–19 % vs 3–12 %), our slowest kernel, and adds 0.12–0.31 M element Adds per frame.
 - **Per unit of accuracy, V2 wins at width 0.5.** V2 0.5 is faster than V1 0.5 (3.4 s vs 4.6 s) and more accurate (65.4 vs 63.7 %). **V2 0.35 costs ≈ 54 % more time than V1 0.25 on the S3** (2.45 vs 1.59 s at QVGA) for about 10 points more ImageNet accuracy.
-- **Correction (verify, `docs/verification/O-007-vision-nav.md` addendum):** my first V2 0.35 row (49 MMAC, 73 k) used plain 8-rounding instead of Keras's `_make_divisible` rule, whose "never more than 10 % below" clause makes the stem 16 channels. Verify's recomputation, calibrated against TF-Slim's published 59 / 97 / 300 M for the full V2 at 224², gives 64.7 MMAC and 82 k params; the row above uses it. For our int8 path, TF-Slim's **quantized** V1 checkpoints score 48.0 / 60.7 / 70.1 % (0.25 / 0.5 / 1.0), a better accuracy proxy than the float column.
+- **Correction:** my first V2 0.35 row (49 MMAC, 73 k) used plain 8-rounding instead of Keras's `_make_divisible` rule, whose "never more than 10 % below" clause makes the stem 16 channels. A recomputation, calibrated against TF-Slim's published 59 / 97 / 300 M for the full V2 at 224², gives 64.7 MMAC and 82 k params; the row above uses it. For our int8 path, TF-Slim's **quantized** V1 checkpoints score 48.0 / 60.7 / 70.1 % (0.25 / 0.5 / 1.0), a better accuracy proxy than the float column.
 - **Memory:** no QVGA frontend fits the S3's 512 KB SRAM with an arena: V1 0.25 peaks at 461 KB and V2 at 1.15 MB, its first expanded layer of 160×120×48. QVGA on the S3 needs PSRAM, which isn't working yet. At **QQVGA**, V1 0.25 (115 KB) and V2 0.35 (288 KB) fit in SRAM.
 - **Speed on the CPUs:** no MobileNet frontend reaches the 5 fps of §7 on either CPU. The best is about **2.4 fps** (V1 0.25 at QQVGA on the S3). The K210's second hart (untested) could roughly halve its time.
 - **An S3-only option now exists** (no K210, no link): the XIAO's own OV3660 → V1 0.25 (≈ 2.4 fps) or V2 0.35 (≈ 1.7 fps) at QQVGA → heads. It is slow but needs no link and no KPU compiler. That makes it a good way to run the owner's experiments first.
@@ -128,7 +128,7 @@ Brief: `~/src/docs/tasks/O-007-vision-nav-research.md`, objective O-007 (`docs/o
 |---|---|
 | depthwise | 26.6 (measured) |
 | pointwise (1×1) | 3.80 (measured) |
-| FC (PIE dot) | **≈ 0.6 estimate, not measured.** Our closest numbers are dot-row microbenchmarks: 0.60 (older loop, `ER-NN-R3.md:44`) and 0.19 (shipped fused loop, data in SRAM, `ER-NN-N2.md:63`). nnbench has no FC layer of head size |
+| FC (PIE dot) | **≈ 0.6 estimate, not measured.** Our closest numbers are dot-row microbenchmarks: 0.60 (older loop) and 0.19 (shipped fused loop, data in SRAM). nnbench has no FC layer of head size |
 | conv 3×3 | 1.77 (measured) |
 
 **Depthwise is cheap in MACs and parameters but the most expensive kernel per MAC.** Dense and pointwise work is cheap per MAC but heavy in parameters. **For large dense layers, the weight bytes, not the MACs, likely set the time** (inferred): the 4800→64 FC below has 307 KB of weights that stream from flash or PSRAM, not SRAM.
@@ -153,7 +153,7 @@ Brief: `~/src/docs/tasks/O-007-vision-nav-research.md`, objective O-007 (`docs/o
 - **Today:** `drivers/kpu` replays layer arguments taken from nncase-built kmodel files. `kmodel.Args` copies the 12 u64 words and patches the weight, BN and activation addresses. It is **not** a compiler.
 - **Without nncase,** we need a **Go KPU compiler**: TFLite or the owner's marshalled graph → per-layer 12-word arguments, weights, BN and activation tables, and the KPU memory layout (`Layout`: group, row lines, channel lines). The per-layer argument format is the one the runner already decodes.
 
-**Verified layer model** (verify's reframed Q4, `docs/verification/O-007-vision-nav.md`, from the SDK's `kpu_layer_argument_t` and the rc5 converter sources; this replaces my earlier summary).
+**Verified layer model** (from the SDK's `kpu_layer_argument_t` and the rc5 converter sources; this replaces my earlier summary).
 
 **What one KPU layer can be:**
 
@@ -170,7 +170,7 @@ Brief: `~/src/docs/tasks/O-007-vision-nav-research.md`, objective O-007 (`docs/o
 | Memory | 2 MiB AI SRAM in 64-byte lines; a layer's input **and** output must both be resident; a row wider than 32 takes ⌈W/64⌉ lines |
 | Not available | elementwise Add/Mul, concat as an op, 5×5 or dilated kernels, native stride 2, transposed conv / upsampling, global pool, FC (nncase runs FC as a 1×1 conv on a padded 4×4 map, or on the CPU) |
 
-**MobileNet blocks against it** (verify):
+**MobileNet blocks against it**:
 
 | Block | KPU mapping | Fits? |
 |---|---|---|
@@ -179,7 +179,7 @@ Brief: `~/src/docs/tasks/O-007-vision-nav-research.md`, objective O-007 (`docs/o
 | V1 block /2 | depthwise 3×3 at stride 1 (full resolution), then the 1×1 with the left-top pool (1×1 commutes with subsampling) | **yes**: 4× the depthwise compute, cheap on the KPU |
 | V1 α 0.5 at QVGA | largest input + output ≈ 1.1 MB | **yes** |
 | V2 expand, depthwise, linear project | regular 1×1; depthwise as V1; 1×1 with an identity table | **yes** |
-| **V2 residual Add** | no KPU op. CPU round trip: read both tensors out of KPU RAM, requantised Add, upload back. **~15–20 ms per Add** for a 60×80×16 tensor (verify's inference, scaled from K8b's ~700 µs per 3 KB). An untested alternative folds the Add into the projection conv via a channel-contiguous layout, limited by the one weight scale per layer | **CPU per block** |
+| **V2 residual Add** | no KPU op. CPU round trip: read both tensors out of KPU RAM, requantised Add, upload back. **~15–20 ms per Add** for a 60×80×16 tensor (inferred, scaled from K8b's ~700 µs per 3 KB). An untested alternative folds the Add into the projection conv via a channel-contiguous layout, limited by the one weight scale per layer | **CPU per block** |
 | **V2 at QVGA**, the first expanded depthwise (120×160×48) | input + output ≈ 2.21 MB > 2 MiB | **only with row-band tiling** (horizontal bands, 1-row halo, edge rows discarded); without tiling V2 fits up to about **256×256 / 224×288** |
 | V3 h-swish / squeeze-excite; EfficientNet-Lite 5×5 | approximate activation / CPU-only SE / no exact 5×5 | no |
 
@@ -187,7 +187,7 @@ Brief: `~/src/docs/tasks/O-007-vision-nav-research.md`, objective O-007 (`docs/o
 - **V1 is the KPU-native choice:** every block maps, with no CPU round trips and no tiling at QVGA.
 - V2 costs about 0.25 M element Adds per frame at QVGA as CPU round trips, plus row tiling of its first expansion. Prefer V2 only on the CPU path, or on the KPU at ≤ 256×256 (e.g. 224×288 or QQVGA).
 
-**Training rules for bit-exact KPU runs** (from verify; also in §6):
+**Training rules for bit-exact KPU runs** (also in §6):
 1. **Stride-2 layers as explicit PAD(1,1) + VALID, not TF/Keras SAME.**
    - The KPU's left-top pool keeps pixel (2i, 2j) of the stride-1 SAME output: windows centred on even pixels. TF SAME at stride 2 on even sizes centres on odd pixels.
    - A SAME-trained model runs shifted by one pixel on the KPU: a small accuracy change, and not bit-exact with the owner's TFLite.
@@ -381,9 +381,9 @@ K210 ↔ ESP32 directly is **untested**. Without the FTDI chip, and with the S3'
 
 ## 7. First win: basic obstacle avoidance and mapping
 
-**Platform:** the wheeled avoider (owner question in O-007; the EasyRobot roadmap's first wheeled robot). Both camera boards are mounted on it.
+**Platform:** the wheeled avoider (owner question; the EasyRobot roadmap's first wheeled robot). Both camera boards are mounted on it.
 
-**Revised 2026-11-10 with ux's UX-17** (`docs/ux/UX-17-vision-nav.md`; Leader accepted all): the stop path, the robot↔PC telemetry, calibration, the recording jobs, the baseline ladder, feature versions, run tracking and map persistence are now steps. W0 follows §1a (no nncase). The cross-cutting rules and the radio choice are in §7a.
+**Revised 2026-11-10 after a usability review**: the stop path, the robot↔PC telemetry, calibration, the recording jobs, the baseline ladder, feature versions, run tracking and map persistence are now steps. W0 follows §1a (no nncase). The cross-cutting rules and the radio choice are in §7a.
 
 | Step | Done when | Kill / rethink if |
 |---|---|---|
@@ -401,7 +401,7 @@ K210 ↔ ESP32 directly is **untested**. Without the FTDI chip, and with the S3'
 
 This slice still uses none of the unbuilt pieces (no depth decoder, no PSRAM). It proves the frontend, the split (or the S3-only path), the link and one head end to end, now with a way to stop, watch, record and compare.
 
-## 7a. Cross-cutting rules for the plan (UX-17)
+## 7a. Cross-cutting rules for the plan
 
 **Feature version id** (G8):
 - **What it is:** a short hash of frontend + bottleneck weights (and input size). It appears in:
@@ -417,9 +417,9 @@ This slice still uses none of the unbuilt pieces (no depth decoder, no PSRAM). I
 **Matched releases** (G15): one make target per board takes a **release**: the feature version plus the head versions (and the K210 firmware/kmodel or KPU program). The last good pair is recorded so it can be re-flashed in one command.
 
 **Recording sessions** (G5):
-- **Location:** `~/src/_data/vision-nav/<date>-<room>/`, outside every repo, under the owner's rule. Home recordings contain people's faces, so they are never committed and never sent to a remote model.
+- **Location:** `_data/vision-nav/<date>-<room>/`, outside every repo. Home recordings contain people's faces, so they are never committed and never sent to a remote model.
 - **Manifest** `session.yaml`: room, date, lighting, platform, rig, firmware ids, feature version, calibration id, sync method, measured drift, operator, duration, file list with sizes.
-- **Storage rate:** the XIAO's SD card over SPI measured **65–75 KB/s** (observed, esp32cam M3), about 250 MB per hour. 1 h of high-res JPEG at 3–5 fps is several GB (UX-17's estimate), so **SD alone can't hold the high-res stream**. Options:
+- **Storage rate:** the XIAO's SD card over SPI measured **65–75 KB/s** (observed, M3), about 250 MB per hour. 1 h of high-res JPEG at 3–5 fps is several GB (an estimate), so **SD alone can't hold the high-res stream**. Options:
   - high-res at ~0.3 fps on SD (enough for sparse ORB pose anchors), QVGA at full rate;
   - a faster SD path (4-bit SDMMC or a higher SPI clock, `#verify`);
   - **tethered recording to the PC over USB-CDC** (observed bursts ~0.9 MB/s, 114 KB/s end to end in E3) on a cart or slow drive.
@@ -428,7 +428,7 @@ This slice still uses none of the unbuilt pieces (no depth decoder, no PSRAM). I
 
 **Run tracking** (G9):
 - one **fixed held-out set per room**, chosen before training and never trained on;
-- a **run record** per training run: frontend/bottleneck/head versions, data sessions, metrics, who ran it (the owner in Colab, or a peer on the Mac), and the artifact location under `~/src/_data/vision-nav/runs/`;
+- a **run record** per training run: frontend/bottleneck/head versions, data sessions, metrics, who ran it (Colab or the Mac), and the artifact location under `_data/vision-nav/runs/`;
 - a results table per head, so going *up* the frontend ladder (V1 → V2, QQVGA → QVGA) has a number, e.g. RPE on the same held-out set within the time budget.
 
 **Who decides the frontend** (G14): after ladder rung **W2b(c)**, the owner picks the frontend from the table (his notebook's frontend vs the §1a shortlist). VGA stays a training-time option, because of the KPU input limit and the CPU times in §1a.
@@ -471,14 +471,14 @@ This slice still uses none of the unbuilt pieces (no depth decoder, no PSRAM). I
 |---|---|---|
 | Known knowns | KPU limits (≤ 320×240, 1×1/3×3), our nncase path (PAD+VALID rebuild compiles), K210 CPU 24–30 MMAC/s, S3 PIE rates and 208 ms for MobileNetV1-0.25 96², link ~64 KB/s at 1.5 Mbaud paced, loader op set, OV2640/OV3660 sensors | — |
 | Known unknowns | KPU MobileNet fps on camera frames | k210, K8c |
-| Known unknowns | K210 ↔ ESP32 UART rate without FTDI | k210 + esp32cam, a link test (W1) |
-| Known unknowns | XIAO PSRAM on silicon | esp32cam, E6 board test |
+| Known unknowns | K210 ↔ ESP32 UART rate without FTDI | a link test (W1) |
+| Known unknowns | XIAO PSRAM on silicon | E6 board test |
 | Known unknowns | Feature domain gap OV2640 vs OV3660 | W2 paired recordings |
-| Unknown knowns | The owner's notebooks: frontend, cut layer, losses, label scale | owner shares them (`~/src/docs/research/vision-nav/`) |
+| Unknown knowns | The user's notebooks: frontend, cut layer, losses, label scale | the user shares them |
 | Unknown knowns | The robot platform and whether it has wheel encoders (scale for VO) | owner |
 | Unknown unknowns | Whether learned VO from a frozen classification frontend holds up indoors on our robot | W6 with the owner's notebook |
 
-## Decisions for Leader
+## Decisions
 
 | # | Decision | Recommendation |
 |---|---|---|
@@ -495,7 +495,7 @@ This slice still uses none of the unbuilt pieces (no depth decoder, no PSRAM). I
 | 9 | Radio for untethered runs (§7a): USB on the bench now, plus ELRS for drive, e-stop and status; Wi-Fi or ESP-NOW later only if the owner lifts "no Wi-Fi" for this robot | **Owner's call**; I'd start with USB + ELRS |
 | 10 | Stop path W3s is a hard prerequisite of W4 (300 ms stale-data stop, e-stop button + PC key + RC failsafe, bumper, speed cap, floor only); done when pulling the K210 UART lead stops the wheels within 300 ms | Yes |
 | 11 | Telemetry and overlay (W1b) before any autonomous run; LED codes as defined | Yes |
-| 12 | Recording: sessions under `~/src/_data/vision-nav/` with a manifest, LED-flash sync with a drift check, calibration id from `cmd/calibrate` (W2a); SD rate limits high-res to sparse anchors unless tethered | Yes |
+| 12 | Recording: sessions under `_data/vision-nav/` with a manifest, LED-flash sync with a drift check, calibration id from `cmd/calibrate` (W2a); SD rate limits high-res to sparse anchors unless tethered | Yes |
 | 13 | Baseline ladder W2b (the owner's notebook → our recordings → our features → bottleneck) and run tracking with fixed held-out sets; the owner picks the frontend after rung (c) | Yes |
 | 14 | Feature version id in link headers, head files, manifests and map nodes; mismatches refused; matched-release flashing with a recorded last-good pair | Yes |
 | 15 | Robot hardware prerequisites for W2–W4 (bumper/ToF, cliff sensor or floor-only, encoders, e-stop button, battery for one session) | Owner's call, with the platform choice |

@@ -3,7 +3,7 @@ package camera
 import "github.com/itohio/EasyRobot/drivers/camera/sensor"
 
 // dvpMaxLines is the most lines the K210 DVP captures per frame: its
-// LINE_NUM field is 10 bits (review R-K210-REC-R3 F2: 1024–1200-line raw
+// LINE_NUM field is 10 bits (1024–1200-line raw
 // frames were truncated silently).
 const dvpMaxLines = 1023
 

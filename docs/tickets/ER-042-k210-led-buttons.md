@@ -31,7 +31,7 @@ LED cycles red→green→blue (observed); button A/B presses print over UART; ho
 
 ## Dependencies
 
-ER-041 ✓. Backlog: owner, 2026-11-09, "i care about camera and kpu work only." Roster task ER-K210; evidence would go to `~/src/docs/evidence/ER-K210-M2.md`.
+ER-041 ✓. Backlog (2026-11-09): K210 priority is camera and KPU work only.
 
 ## Evidence
 

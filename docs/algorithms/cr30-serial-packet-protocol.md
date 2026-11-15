@@ -10,7 +10,7 @@ tests: []
 test_result: none
 complete: no
 correct: unknown
-evidence: "no test files; probe tmp/easyrobot/devices/sensors (go run ., 2026-11-09): checksums AA0A0000→0xB4, BB010000→0xBB; fake-device Measure → wl 400..700, SPD 31/31 values match; silent device Connect → nil after 11.1 s; bad-checksum packet accepted; VerifyChecksum false then true. Real CR30 not available."
+evidence: "no test files; probe (go run ., 2026-11-09): checksums AA0A0000→0xB4, BB010000→0xBB; fake-device Measure → wl 400..700, SPD 31/31 values match; silent device Connect → nil after 11.1 s; bad-checksum packet accepted; VerifyChecksum false then true. Real CR30 not available."
 ---
 # CR30 colorimeter serial packet protocol
 
@@ -31,7 +31,7 @@ evidence: "no test files; probe tmp/easyrobot/devices/sensors (go run ., 2026-11
 ## Completeness review
 
 - Complete: no. Receive path never checks the checksum (`ParsePacket` packet.go:262-274, `recv` device.go:429); responses are not matched to the request cmd/subcmd (device.go:474-487); chunk 0x13 is ignored (packet.go:335-337); handshake errors are swallowed and `Handshake` always returns nil (device.go:168-201); `verbose` logging is empty (device.go:171-173, 397-399); no calibration command (DESIGN.md open question 4; `cmd/cr30/main.go:219 performCalibration` exists in the app).
-- Tested: no test files (`go test ./x/devices/cr30` → `[no test files]`, 2026-11-09). Probe `tmp/easyrobot/devices/sensors/main.go` with a fake serial device that answers with packets built by the same `PacketBuilder`:
+- Tested: no test files (`go test ./x/devices/cr30` → `[no test files]`, 2026-11-09). Probe with a fake serial device that answers with packets built by the same `PacketBuilder`:
   - `BuildHandshakePacket(0x0A,0,0,nil)` → marker 0xFF, checksum 0xB4 (= 0xAA+0x0A); `BuildCommandPacket(0x01,0,0,nil)` → marker 0xFF, checksum 0xBB (= 0xBB+0x01−1). Payload of 53 B → `ErrPayloadTooLarge`.
   - `Connect` on fake → info `{Name:CR30-FAKE Model:MODELX Serial:SN123 Firmware:FW1.0 Build:BUILD1}`; `Measure` into 2×31 → wavelengths 400…700, SPD values equal to the 31 encoded floats (31/31).
   - Silent device (writes swallowed, reads return 0): `Connect` → `err=nil`, `Connected()=true` after 11.1 s.

@@ -10,7 +10,7 @@ tests: [x/math/primitive/fp32/tensor_test.go, x/math/tensor/eager/conv_test.go]
 test_result: pass
 complete: yes
 correct: yes
-evidence: "go test -count=1 ./x/... (2026-11-09) → fp32 TestIm2Col/TestCol2Im/TestCol2ImClearsDestination (InDeltaSlice) pass; probe tmp/easyrobot/tensor/kernelnotes/p2: im2col+Gemm_NT vs Conv2D 9.5e-7, col2im adjoint exact"
+evidence: "go test -count=1 ./x/... (2026-11-09) → fp32 TestIm2Col/TestCol2Im/TestCol2ImClearsDestination (InDeltaSlice) pass; probe: im2col+Gemm_NT vs Conv2D 9.5e-7, col2im adjoint exact"
 ---
 # Im2Col / Col2Im
 

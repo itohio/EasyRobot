@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Review R-ER-017-018 G1: a huge finite yaw command without slew limit used
+// A huge finite yaw command without slew limit used
 // to turn the pose NaN (the NaN plan margin passed the feasibility check), so
 // every later Step failed, stop commands included. The walker must recover
 // as soon as it is told to stop: no error, finite pose, servos moving.

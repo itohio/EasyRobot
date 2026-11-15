@@ -225,7 +225,7 @@ func (c *converter) failT(t *tensor, reason string) error {
 }
 
 // uint8Ops are the operators whose uint8 TFLite kernels are verified equal
-// to qnet on the value − 128 int8 form (ER-QU8: official uint8 MobileNetV1
+// to qnet on the value − 128 int8 form (official uint8 MobileNetV1
 // models and one-operator models against the LiteRT interpreter).
 var uint8Ops = map[int32]bool{
 	opConv2D: true, opDepthwiseConv2D: true, opFullyConnected: true,

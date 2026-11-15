@@ -5,7 +5,7 @@
 // qi8generic or on the host). It prints cycles (CCOUNT on the S3,
 // nanoseconds on the host) per call, per MAC and per output, and an FNV of
 // each kernel's output so that a change can be checked for bit-exactness
-// against the previous run (ER-NN-PIPELINE step 3, §A0). See README.md.
+// against the previous run. See README.md.
 package main
 
 import (

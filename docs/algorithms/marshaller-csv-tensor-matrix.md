@@ -10,7 +10,7 @@ tests: [x/marshaller/csv/marshaller_test.go]
 test_result: pass
 complete: no
 correct: unknown
-evidence: "go test -count=1 -v ./x/marshaller/csv → ok, 48 PASS (2026-11-09); probe tmp/easyrobot/io/fmtprobe: every tensor dtype except FP32 rejected on marshal (2026-11-09)"
+evidence: "go test -count=1 -v ./x/marshaller/csv → ok, 48 PASS (2026-11-09); probe every tensor dtype except FP32 rejected on marshal (2026-11-09)"
 ---
 # CSV ↔ vector / matrix / tensor / slice
 

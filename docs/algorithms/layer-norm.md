@@ -10,7 +10,7 @@ tests: [x/math/tensor/eager/normalizations_test.go]
 test_result: pass
 complete: yes
 correct: no
-evidence: "go test -count=1 ./x/... (2026-11-09) → TestLayerNormForward pass (shape only); probe tmp/easyrobot/tensor/kernelnotes (2026-11-09): forward maxAbsErr 2.4e-7 vs float64 ref; LayerNormGrad dx maxAbsErr 3.43 for gamma≠1 (1.1e-4 for gamma=1)"
+evidence: "go test -count=1 ./x/... (2026-11-09) → TestLayerNormForward pass (shape only); probe (2026-11-09): forward maxAbsErr 2.4e-7 vs float64 ref; LayerNormGrad dx maxAbsErr 3.43 for gamma≠1 (1.1e-4 for gamma=1)"
 ---
 # Layer normalization (forward + grad)
 

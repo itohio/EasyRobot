@@ -23,7 +23,7 @@ evidence: "ekalman tests 6/6 pass; probe kfprobe: P collapses to 0 after first u
 ## Completeness review
 
 - Complete: yes for the standard EKF loop; no iterated EKF, no UKF, no outlier gating.
-- Tested: 6 tests — pendulum and numerical-Jacobian cases assert only that the state stays within ±1 or ±10 (`ekalman_test.go:85,95,137,146`); `TestEKF_WithControl` checks velocity after one control prediction to 1e-3 (:207). Run: go test -count=1 -json ./x/math/filter/... (2026-11-09, raw tmp/easyrobot/filters/test-2026-11-09.json) → ok, 6 pass.
+- Tested: 6 tests — pendulum and numerical-Jacobian cases assert only that the state stays within ±1 or ±10 (`ekalman_test.go:85,95,137,146`); `TestEKF_WithControl` checks velocity after one control prediction to 1e-3 (:207). Run: go test -count=1 -json ./x/math/filter/... (2026-11-09) → ok, 6 pass.
 - Correct: **no**.
   - Same covariance aliasing as [[linear-kalman-filter]]: `ekalman.go:459` `copy(e.P, e.tempM)` copies row headers → `P` becomes 0 at the next predict. Probe (`kfprobe`, identity f/h, numerical Jacobians): P=0.5025 after step 0, then 0.0000; x creeps 0.509→0.536 vs reference 0.90.
   - State Jacobian evaluated at the *predicted* state: `:336-340` (`copy(e.x, xPred)` then `computeStateJacobian(e.x, …)`), same at :368-372. Standard EKF linearises at the prior estimate x̂ₖ₋₁. Matters for strongly nonlinear f.

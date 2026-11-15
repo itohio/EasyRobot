@@ -6,7 +6,7 @@ workstream: W9
 ---
 # W9 — Go NN framework on ESP32-Xtensa, K230, native LLM, TinyGo face recognition
 
-**Owner's goal (O-005, verbatim excerpt):** "Oh, I have neural network framework too with golang implementations for tensor math. i wish it worked on esp32 with xtensa with optimised code... and i would give you the chip to do the work on it and test it. I'd give you all the stuff you'd need to develop tinygo camera, tinygo k230 neural net compute... i wish my nn framework would run a simple llm - e.g. loaded from qwen .5B …"
+**Goal:** the Go NN framework (tensor math implemented in Go) should run on the ESP32 (Xtensa) with optimised kernels, support TinyGo camera and K230 neural compute work, and run a small language model (for example Qwen 0.5B).
 
 Related tickets (planning, keep using them): ER-003 operator capabilities, ER-004 quantisation contract, ER-005/006 Xtensa, ER-007/008 K230, ER-011…014 small-LLM path, ER-015 measurement. Graph semantics and backend limits: [[source-inventory]] §3–5 (not repeated here).
 
@@ -24,7 +24,7 @@ Related tickets (planning, keep using them): ER-003 operator capabilities, ER-00
 | Small fixed matrices / vectors / decompositions | [[mat-vec]] | mat 145, vec 61 pass (many vacuous: empty `//TODO: Add test cases` tables) |
 | TFLite import (linux, CGO) | [[tflite]] | not built/run on this host |
 
-Command: `GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=readonly go test -count=1 -json ./x/math/tensor/... ./x/math/nn/... ./x/math/primitive/... ./x/math/mat/... ./x/math/vec/... ./x/math/shape/... ./x/math ./x/iter/... ./x/workers/... ./x/types/...` → exit 1; failures only as listed (raw JSON: `~/src/tmp/easyrobot/tensor/test.json`).
+Command: `GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=readonly go test -count=1 -json ./x/math/tensor/... ./x/math/nn/... ./x/math/primitive/... ./x/math/mat/... ./x/math/vec/... ./x/math/shape/... ./x/math ./x/iter/... ./x/workers/... ./x/types/...` → exit 1; failures only as listed.
 
 ### The two baseline failures (investigated)
 

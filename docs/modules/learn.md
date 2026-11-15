@@ -58,14 +58,14 @@ Counts: 2 tested · 2 implemented · 1 partial · 0 stub · 0 unverified (5 algo
 
 ## Tests and evidence
 
-- `GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=readonly go test -count=1 -json ./x/math/learn/...` (slice lead, 2026-11-09, `tmp/easyrobot/filters/test-2026-11-09.json`) → **26 pass, 1 skip**. `datasets/mnist` has no tests.
+- `GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=readonly go test -count=1 -json ./x/math/learn/...` (2026-11-09) → **26 pass, 1 skip**. `datasets/mnist` has no tests.
 - Skip: `TestQuantizeModel` — `t.Skip("Requires actual model implementation to test fully")`, quantization_test.go:145; test body is a placeholder.
 - What tests assert:
   - Loss decrease: dense/sequential regression assert `final < initial` and w≈2±0.5, b≈1±0.5, predictions ±0.5 (dense_layer_test.go:132-153); `TestTrainStep_MultipleSteps` final < 0.1·initial (training_test.go:213).
   - Accuracy thresholds: sequential classification ≥50% (sequential_classification_test.go:172 — weak, coin-flip level); conv1d/conv2d ≥75% (conv1d_layer_test.go:179,342; conv2d_layer_test.go:230,444); GPT embedding: within-cluster similarity > between (gpt_embedding_test.go:294).
   - Tagged (read, not run): MNIST test accuracy >15% (mnist_test.go:247-249); XOR configs ≥ expectedMinAcc and "all configs 90%+" (xor_test.go:459,469). Require `datasets/mnist/*.csv.gz`.
   - Input immutability through forward/backward/TrainStep (input_modification_test.go).
-- Probe `tmp/easyrobot/filters/learnnotes/main.go` (`GOFLAGS=-mod=mod go run .`, 2026-11-09): Adam 3 steps vs float64 reference diff ≤1e-7; SGD exact; asymmetric [-1.003,2] → scale 0.011776 zp 85; `QuantPerChannel` → `unsupported scheme 2`; quantized tensor dtype FP32.
+- Probe (`GOFLAGS=-mod=mod go run .`, 2026-11-09): Adam 3 steps vs float64 reference diff ≤1e-7; SGD exact; asymmetric [-1.003,2] → scale 0.011776 zp 85; `QuantPerChannel` → `unsupported scheme 2`; quantized tensor dtype FP32.
 - grep TODO/FIXME/`not implemented`: none in package; only placeholder skip above.
 
 ## API notes (ease of use, composability)

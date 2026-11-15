@@ -6,7 +6,7 @@ workstream: W6
 ---
 # W6 — Decision-tree self-learning behaviours (incl. gaits?) on ESP32
 
-**Owner's goal (O-005, verbatim excerpt):** "Decision-tree self-learning behaviours (incl. gaits?) on ESP32" — end goal "camera obstacle avoidance on a wheeled ESP32" (Leader's breakdown table, `~/src/docs/objectives/O-005-easyrobot.md`). The owner's brief also mentions "i did some clever things there with filters, decoders" and wants module APIs reviewed for composability.
+**Goal:** decision-tree self-learning behaviours (possibly gaits) on ESP32 — end goal: camera obstacle avoidance on a wheeled ESP32. The brief also points to the existing filters and decoders and wants module APIs reviewed for composability.
 
 ## What exists
 

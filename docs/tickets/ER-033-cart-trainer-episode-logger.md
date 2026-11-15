@@ -14,11 +14,11 @@ source_revision: abb5c9cca7f756c632548d9c7be2436b46dc2e4d
 ---
 # ER-033 — CART trainer and episode logger
 
-[[tickets/index|Ticket index]] · [[roadmap]] · ER-R2 (evidence: `~/src/docs/evidence/ER-R2.md`, outside the repo) · [[todo]]
+[[tickets/index|Ticket index]] · [[roadmap]] · [[todo]]
 
 ## Goal and evidence
 
-M-d stage 1–2 learning path (accepted ER-R2 decision 10: data-driven trees learned offline from driving logs; [[2026-11-09-on-device-learning]] §3.2–3.3):
+M-d stage 1–2 learning path (accepted decision: data-driven trees learned offline from driving logs; [[2026-11-09-on-device-learning]] §3.2–3.3):
 
 - Host CART trainer (Gini/entropy, depth ≤ 8–10, min-samples, cost-complexity pruning) emitting [[ER-032-flat-decision-tree-executor|ER-032]]'s plain-data tree.
 - Episode logger format and host reader: features (16–32 per frame), operator action, outcome, at 10–20 Hz; append-only, length-prefixed.
@@ -29,7 +29,7 @@ Dependencies: [[ER-032-flat-decision-tree-executor|ER-032]]. The ESP32 logger ru
 
 Not in scope: No ESP32 camera capture driver, no Hoeffding tree.
 
-Source/test edits are approved by the owner's autonomy instruction (roster `decisions.md`); scheduling is Leader's call. Every fix starts with a failing test. No hardware, flashing, TinyGo or download is authorised by this ticket.
+Source/test edits are approved by the standing autonomy instruction; scheduling is decided separately. Every fix starts with a failing test. No hardware, flashing, TinyGo or download is authorised by this ticket.
 
 ## Acceptance evidence required later
 
@@ -39,7 +39,7 @@ Source/test edits are approved by the owner's autonomy instruction (roster `deci
 
 ## Effort uncertainty and revision trigger
 
-Product's guess: part of M-d stage 1 (**M**). Sizes are product's guesses ([[roadmap#1. Milestones at a glance|roadmap §1]]), not estimates from velocity. Revisit when a dependency or owner input changes the scope.
+Size guess: part of M-d stage 1 (**M**). Sizes are rough guesses ([[roadmap#1. Milestones at a glance|roadmap §1]]), not estimates from velocity. Revisit when a dependency or owner input changes the scope.
 
 ## Implementation evidence
 

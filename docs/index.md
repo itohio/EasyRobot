@@ -16,9 +16,9 @@ From the roadmap's no-hardware demo checkpoints ([[roadmap#8. Next|roadmap §8]]
 
 | # | Step | Tickets | Demo checkpoint |
 |---|---|---|---|
-| 1 | ~~Knowledge engine v1 committed after verify, with the `go.mod` tidy as its own commit~~ — committed | KE-1 (report (evidence: `~/src/docs/evidence/KE-1.md`, outside the repo)) | M-g: KE-1 bench table vs the ripgrep baseline |
-| 2 | ~~Leg IK and gait scheduling with strides, body→leg transforms, gait→IK→servo glue~~ — done, see report (evidence: `~/src/docs/evidence/ER-017-018.md`, outside the repo) | [[ER-017-dh-planar-ik-robustness\|ER-017]], [[ER-018-leg-helpers-gait-scheduler\|ER-018]] | M-a: host tripod simulation, stance feet fixed in the world — passes |
-| 3 | Voice-modem composition fixes (stale `tc` test port first), then BER harness, synchroniser, framer, FEC | ER-AUDIO-1, then [[ER-022-audio-modem-acquisition\|ER-022]], [[ER-023-coding-fixes\|ER-023]] (with [[ER-019-filter-correctness\|ER-019]]'s PLL/AGC) | M-e: BER-vs-Eb/N0 curve on a channel model |
+| 1 | ~~Knowledge engine v1 committed after verification, with the `go.mod` tidy as its own commit~~ — committed | — | M-g: knowledge-engine bench table vs the ripgrep baseline |
+| 2 | ~~Leg IK and gait scheduling with strides, body→leg transforms, gait→IK→servo glue~~ — done | [[ER-017-dh-planar-ik-robustness\|ER-017]], [[ER-018-leg-helpers-gait-scheduler\|ER-018]] | M-a: host tripod simulation, stance feet fixed in the world — passes |
+| 3 | Voice-modem composition fixes (stale `tc` test port first), then BER harness, synchroniser, framer, FEC | voice-modem composition fixes, then [[ER-022-audio-modem-acquisition\|ER-022]], [[ER-023-coding-fixes\|ER-023]] (with [[ER-019-filter-correctness\|ER-019]]'s PLL/AGC) | M-e: BER-vs-Eb/N0 curve on a channel model |
 | 4 | Trusted reference: eager views and aliasing, graph fixes, existing-layer fixes and the reference-fixture harness | [[ER-002-cpu-graph-semantics\|ER-002]], [[ER-020-eager-views-newas-norm-gradients\|ER-020]], [[ER-028-graph-fixes\|ER-028]], then [[ER-029-nn-layers-fixture-harness\|ER-029]] | M-f: eager fixtures pass |
 | 5 | Decision trees on the host: plain-data tree, flat executor, CART trainer, episode logger | [[ER-032-flat-decision-tree-executor\|ER-032]], [[ER-033-cart-trainer-episode-logger\|ER-033]] | M-d: host-trained tree classifies a recorded or synthetic obstacle set |
 
@@ -34,7 +34,7 @@ State: 74 tested · 29 implemented · 137 partial · 10 stub · 13 unverified (2
 
 - Architecture: [[overview]] (layers, dependency diagram) · [[packages]] (all 200 package dirs) · [[data-flow]] · [[dndm-and-protobuf]] · [[build-targets]] · [[source-inventory|tensor/graph source inventory]]
 - Work: [[todo]] (generated, by ticket) · [[tickets/index|ticket index]] · [[roadmap]] · [[known-unknown|known/unknown map]]
-- Reviews: IK and Jacobian review (evidence: `~/src/docs/evidence/ER-R2-ik-review.md`, outside the repo) · ER-R2 report (evidence: `~/src/docs/evidence/ER-R2.md`, outside the repo) · KE-1 knowledge engine (evidence: `~/src/docs/evidence/KE-1.md`, outside the repo) · vault maintenance (ER-docs-fix) (evidence: `~/src/docs/evidence/ER-docs-fix.md`, outside the repo) · host baseline 2026-11-08 (evidence: `~/src/docs/evidence/baseline-2026-11-08.md`, outside the repo)
+- Reviews: IK and Jacobian review · catalog review · knowledge engine v1 · vault maintenance · host baseline 2026-11-08
 
 ## Workstreams
 
@@ -49,7 +49,7 @@ State: 74 tested · 29 implemented · 137 partial · 10 stub · 13 unverified (2
 | W7 | [[W7-filters-codecs-voice]] | Noise figures come from modem acquisition/sync and test design, not symbol detection; RS is a placeholder; CLI coding path crashes. |
 | W8 | [[W8-lidar]] | LD06 and XWPFTB drivers never emit a correct scan; RP2040 firmware does not compile; lidar model unidentified. |
 | W9 | [[W9-go-nn-framework]] | Eager tensors pass tests but views, norm gradients and GPT layers are wrong; Qwen 0.5B is 31× ESP32-S3 PSRAM even at int4. |
-| W10 | [[knowledge-engine]] | `x/knowledge` (own module): ingest + hybrid lexical/graph retrieval for Abugaga (KE-1). |
+| W10 | [[knowledge-engine]] | `x/knowledge` (own module): ingest + hybrid lexical/graph retrieval for a consuming service (v1). |
 
 ## Modules
 
@@ -115,7 +115,7 @@ The knowledge engine is its own Go module and is catalogued in [[knowledge-engin
 
 Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs tagged with the ticket. The defects themselves are in the linked notes and in [[todo]].
 
-<!-- vault:tickets h=20a89ea3bdf9 -->
+<!-- vault:tickets h=b700a4189d17 -->
 
 | Ticket | Title | Status | Workstream | Open p1 |
 |---|---|---|---|---|
@@ -149,9 +149,9 @@ Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs 
 | [[ER-031-spi-slave-feature-framing\|ER-031]] | SPI slave interface and feature-frame SPI framing | backlog | W4 | 0 |
 | [[ER-032-flat-decision-tree-executor\|ER-032]] | Plain-data decision tree and flat executor | backlog | W6 | 0 |
 | [[ER-033-cart-trainer-episode-logger\|ER-033]] | CART trainer and episode logger | backlog | W6 | 0 |
-| [[ER-034-ke2-watcher-crash-test\|ER-034]] | KE-2: fsnotify watcher, crash-mid-ingest test, missing-target index | backlog | W10 | 0 |
-| [[ER-035-ke3-chunkers\|ER-035]] | KE-3: py/c/ts/proto chunkers | backlog | W10 | 0 |
-| [[ER-036-ke4-abugaga-find\|ER-036]] | KE-4: Abugaga find (abg.svc.find, roster_find, abu find) | backlog | W10 | 0 |
+| [[ER-034-watcher-crash-test\|ER-034]] | Knowledge engine: fsnotify watcher, crash-mid-ingest test, missing-target index | backlog | W10 | 0 |
+| [[ER-035-chunkers\|ER-035]] | Knowledge engine: py/c/ts/proto chunkers | backlog | W10 | 0 |
+| [[ER-036-find-service\|ER-036]] | Knowledge engine: expose find to a consuming service | backlog | W10 | 0 |
 | [[ER-037-body-pose-static-stability\|ER-037]] | Body pose integration and static stability | backlog | W3 | 0 |
 | [[ER-038-wheeled-motion-fixes\|ER-038]] | Wheeled motion fixes: path-tracking signs and steer4 geometry | backlog | W3, W6 | 3 |
 | [[ER-039-manipulator-integration\|ER-039]] | Manipulator integration: units and helpers in drivers/cmd manipulator | backlog | W3 | 1 |
@@ -175,7 +175,7 @@ Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs 
 | [[ER-059-sim-robot-base-and-clock\|ER-059]] | Sim S1: robot-facing `wheeled.Base` interface and `Clock` — the seam between sim and real robot | proposed | W3, W6 | 0 |
 | [[ER-060-sim-wheel-odometry\|ER-060]] | Sim S1: wheel odometry — encoder ticks → 2D pose from the robot description | proposed | W3, W6 | 0 |
 | [[ER-061-sim-liquid-2d\|ER-061]] | 2D liquid engine: PIC/FLIP particles on a grid, fixed point — x/math/fluid/flip | in-progress |  | 1 |
-| [[ER-062-sim-game-of-life\|ER-062]] | Game of Life, bit-packed (port from tinytufty2040) — x/math/automata/life | blocked |  | 0 |
+| [[ER-062-sim-game-of-life\|ER-062]] | Game of Life, bit-packed (port from a badge demo) — x/math/automata/life | blocked |  | 0 |
 | [[ER-064-sim-liquid-3d\|ER-064]] | 3D liquid automaton driven by the IMU's continuous gravity vector | proposed |  | 0 |
 | [[ER-065-sim-fluid-dynamics\|ER-065]] | Fluid dynamics: Stam stable fluids, 2D first — x/math/fluid | proposed |  | 0 |
 | [[ER-066-ray-casting-dda\|ER-066]] | Ray casting: grid DDA traversal and a 2.5D column helper — x/math/grid | proposed |  | 0 |
@@ -186,6 +186,6 @@ Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs 
 
 ## Ownership and limits
 
-The `easyrobot` peer of the personal mp roster owns `docs/**`. Algorithm notes were written from reading, tests and throwaway probes under `~/src/tmp/easyrobot/`; vision, TFLite, V4L2 and all firmware paths are judged by reading and type-checking only (no OpenCV, no TinyGo, no hardware).
+Algorithm notes were written from reading, tests and throwaway probes outside the repo; vision, TFLite, V4L2 and all firmware paths are judged by reading and type-checking only (no OpenCV, no TinyGo, no hardware).
 
-**Optional reference, not integration proof:** `experience-learning-agent` is a separate local-model experiment in the personal workspace; its `docs/idea.md` and `docs/abstraction.md` can inform memory-conditioned control later. Nothing here couples it to EasyRobot.
+**Optional reference, not integration proof:** a separate local-model experiment outside this repo can inform memory-conditioned control later. Nothing here couples it to EasyRobot.

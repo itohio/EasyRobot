@@ -130,7 +130,7 @@ func randomPose(r *rand.Rand) Pose {
 	return Pose{X: u(2), Y: u(2), Z: 0.05 + r.Float32()*0.1, Roll: u(0.3), Pitch: u(0.3), Yaw: u(math32.Pi)}
 }
 
-// T-IK-10: FootInLeg is the inverse of the forward body→hip→world transform.
+// FootInLeg is the inverse of the forward body→hip→world transform.
 func TestFootInLegInvertsForwardTransform(t *testing.T) {
 	b := Hexapod(0.10, 0, -0.10, 0.06, probeRGeometry)
 	r := rand.New(rand.NewPCG(7, 8))
@@ -170,7 +170,7 @@ func legFK(c Chain, q []float32) vec.Vector3D {
 	return vec.Vector3D{x * math32.Cos(q[0]), x * math32.Sin(q[0]), z}
 }
 
-// T-IK-10: SolveLegs reproduces known joint angles from world foot targets.
+// SolveLegs reproduces known joint angles from world foot targets.
 func TestSolveLegsReproducesJointAngles(t *testing.T) {
 	b := Hexapod(0.10, 0, -0.10, 0.06, probeRGeometry)
 	s, err := b.NewLegSolver()

@@ -95,7 +95,7 @@ func (b *Backend) Run(layers []qnet.Layer, dst, src []int8) error {
 // toCHW converts int8 NHWC (hw pixels × c channels) to the KPU's uint8 CHW
 // (q + 128), one channel plane at a time: the plane is a hoisted slice, so
 // the inner loop is a strided load and a sequential store with no index
-// arithmetic beyond the stride (review R-K210-K9de D1).
+// arithmetic beyond the stride.
 func toCHW(chw []byte, src []int8, hw, c int) {
 	for ch := range c {
 		d := chw[ch*hw : (ch+1)*hw]
@@ -319,7 +319,7 @@ func (gi graphInfo) segment(i int) *Segment {
 
 // fits reports whether a lowered layer's input and output fit KPU memory
 // together (else it needs row-band tiling, K9g). An OddSample reader reads
-// one row past its input, which counts too (review R-K210-K9same S3);
+// one row past its input, which counts too;
 // readPast reserves that row after the output, for the layer such a reader
 // follows.
 func fits(gr Group, readPast bool) bool {

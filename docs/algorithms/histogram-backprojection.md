@@ -10,7 +10,7 @@ tests: []
 test_result: build-fail
 complete: no
 correct: unknown
-evidence: "go/types check with FakeImportC against gocv v0.42.0 (tmp/easyrobot/io/typecheck, 2026-11-09): 4 type errors in CalculateHistogram (NewScalar arity, InRange Mat vs Scalar)"
+evidence: "go/types check with FakeImportC against gocv v0.42.0 (2026-11-09): 4 type errors in CalculateHistogram (NewScalar arity, InRange Mat vs Scalar)"
 ---
 # Histogram back-projection (HSV colour model → mask)
 

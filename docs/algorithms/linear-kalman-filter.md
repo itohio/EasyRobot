@@ -10,7 +10,7 @@ tests: [x/math/filter/kalman/kalman_test.go]
 test_result: pass
 complete: yes
 correct: no
-evidence: "kalman tests 6/6 pass; probe tmp/easyrobot/filters/kfprobe: P collapses to 0 after first update, estimate freezes"
+evidence: "kalman tests 6/6 pass; probe P collapses to 0 after first update, estimate freezes"
 ---
 # Linear Kalman filter
 
@@ -23,8 +23,8 @@ evidence: "kalman tests 6/6 pass; probe tmp/easyrobot/filters/kfprobe: P collaps
 ## Completeness review
 
 - Complete: yes for textbook scope (predict/update/control). No Joseph-form update, no square-root/UD form, no gating, no handling of missing measurements other than "all-zero vector = no measurement" (:353-364).
-- Tested: 6 tests (`kalman_test.go`) — single predict/update steps with loose bounds (e.g. position in [0.8,1.2], :58-72), reset, interface shape. None checks covariance or more than one update. Run: go test -count=1 -json ./x/math/filter/... (2026-11-09, raw tmp/easyrobot/filters/test-2026-11-09.json) → ok, 6 pass.
-- Correct: **no**. `kalman.go:338` `copy(k.P, k.tempM)` copies *row slice headers* (`mat.Matrix` is `[][]float32`), so after the first update `P` aliases `tempM`; the next `zeroMatrix(k.tempM)` (:208, :307) zeroes `P`. Probe (scalar random-walk, q=0.01, r=1, 8 measurements; `tmp/easyrobot/filters/kfprobe/main.go`): step 0 matches reference (x=0.5025, P=0.5025); from step 1 `P=0.0000` and `x` stays 0.5025 while reference converges to 0.90 (P=0.13). The filter is effectively dead after one update.
+- Tested: 6 tests (`kalman_test.go`) — single predict/update steps with loose bounds (e.g. position in [0.8,1.2], :58-72), reset, interface shape. None checks covariance or more than one update. Run: go test -count=1 -json ./x/math/filter/... (2026-11-09) → ok, 6 pass.
+- Correct: **no**. `kalman.go:338` `copy(k.P, k.tempM)` copies *row slice headers* (`mat.Matrix` is `[][]float32`), so after the first update `P` aliases `tempM`; the next `zeroMatrix(k.tempM)` (:208, :307) zeroes `P`. Probe (scalar random-walk, q=0.01, r=1, 8 measurements): step 0 matches reference (x=0.5025, P=0.5025); from step 1 `P=0.0000` and `x` stays 0.5025 while reference converges to 0.90 (P=0.13). The filter is effectively dead after one update.
 - Other defects: `:287` allocates the innovation vector every update; `:308` writes the n×m product `P·Hᵀ` into the n×n `tempM` (works only because `Gemm` packs with stride m and the following `K.Mul` reads with the same stride — fragile); `:312-315` silently substitutes identity when `S` is singular; `:353-364` treats a legitimate all-zero measurement as missing.
 
 ## TODOs

@@ -6,11 +6,11 @@ tags: [easyrobot, chain, streaming]
 workstream: [W1, W5, W7]
 packages: [x/chain]
 test_result: none
-evidence: "x/chain: no tests, probe tmp/easyrobot/io/chainprobe (2026-11-09); x/pipeline, x/pipeline/steps and internal/concurrency deleted in ER-cleanup"
+evidence: "x/chain: no tests, probe (2026-11-09); x/pipeline, x/pipeline/steps and internal/concurrency deleted in ER-cleanup"
 ---
 # pipeline-and-chain — `x/chain`
 
-**Purpose:** synchronous, allocation-aware, generic processor composition, used by the DSP line codes/FEC, the audio modem CLI and all vision processors. The older goroutine-and-channel step graph `x/pipeline` (with `x/pipeline/steps` and `internal/concurrency`) was deprecated ("Pipeline, Plugin, Store will be replaced by dndm") and imported by nothing outside itself. It was deleted in ER-cleanup (evidence: `~/src/docs/evidence/ER-cleanup.md`, outside the repo) (owner-approved), along with its broken timestamp sync and its stale or malformed tests.
+**Purpose:** synchronous, allocation-aware, generic processor composition, used by the DSP line codes/FEC, the audio modem CLI and all vision processors. The older goroutine-and-channel step graph `x/pipeline` (with `x/pipeline/steps` and `internal/concurrency`) was deprecated ("Pipeline, Plugin, Store will be replaced by dndm") and imported by nothing outside itself. It was deleted in ER-cleanup (approved), along with its broken timestamp sync and its stale or malformed tests.
 
 **Packages:**
 
@@ -40,7 +40,7 @@ Counts: 0 tested · 0 implemented · 1 partial · 0 stub · 0 unverified (1 algo
 
 ## Tests and evidence
 
-- `x/chain`: no tests. Probe `~/src/tmp/easyrobot/io/chainprobe/main.go` (`GOFLAGS=-mod=mod go run .`, 2026-11-09): 3× "doubler" chain on 4 bytes → processing 32 (correct), `Process(nil, src)` → 16 (wrong); `Adapter` with `*buffer.Values[byte]` → nil-pointer panic on `Process` and on `Reset`.
+- `x/chain`: no tests. Probe (`GOFLAGS=-mod=mod go run .`, 2026-11-09): 3× "doubler" chain on 4 bytes → processing 32 (correct), `Process(nil, src)` → 16 (wrong); `Adapter` with `*buffer.Values[byte]` → nil-pointer panic on `Process` and on `Reset`.
 
 ## API notes (ease of use, composability)
 

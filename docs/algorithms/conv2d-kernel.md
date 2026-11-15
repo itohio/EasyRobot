@@ -10,7 +10,7 @@ tests: [x/math/primitive/fp32/tensor_test.go, x/math/tensor/eager/conv_test.go]
 test_result: pass
 complete: yes
 correct: yes
-evidence: "go test -count=1 ./x/... (2026-11-09) → fp32 TestConv2D (InDeltaSlice) pass; probe tmp/easyrobot/tensor/kernelnotes (2026-11-09): Conv2D vs naive ref 1.9e-6, KernelGrad vs ref 0; bench darwin/arm64 M5"
+evidence: "go test -count=1 ./x/... (2026-11-09) → fp32 TestConv2D (InDeltaSlice) pass; probe (2026-11-09): Conv2D vs naive ref 1.9e-6, KernelGrad vs ref 0; bench darwin/arm64 M5"
 ---
 # Conv2D forward and Conv2DKernelGrad
 

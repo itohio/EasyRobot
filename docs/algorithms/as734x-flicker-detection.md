@@ -10,7 +10,7 @@ tests: []
 test_result: none
 complete: no
 correct: no
-evidence: "probe on verbatim copies (tmp/easyrobot/devices/sensors, 2026-11-09): calculateFrequency(sine 100 Hz @1 kHz)=200.00, 120 Hz→239.58, 50 Hz→0.00; AS7341 decodeFlicker(0x2C 'valid, no flicker')=100, (0x01 unvalidated)=100; AS7343 decode 0x2C→0, 0x2D→100, 0x2E→120."
+evidence: "probe on verbatim copies (2026-11-09): calculateFrequency(sine 100 Hz @1 kHz)=200.00, 120 Hz→239.58, 50 Hz→0.00; AS7341 decodeFlicker(0x2C 'valid, no flicker')=100, (0x01 unvalidated)=100; AS7343 decode 0x2C→0, 0x2D→100, 0x2E→120."
 ---
 # AS734x flicker detection (hardware FD + software zero-crossing)
 
@@ -28,7 +28,7 @@ FD_STATUS bit map used for review [INFERENCE: AS7341 datasheet/Adafruit from mem
 ## Completeness review
 
 - Complete: no — no FD_TIME/FD_GAIN configuration on either variant; AS7343 path never waits for an FD measurement; software path cannot reach the requested sample rate.
-- Tested: no test files. Probe (`tmp/easyrobot/devices/sensors/ascopy`, verbatim copies of the three pure functions; `go run .` 2026-11-09):
+- Tested: no test files. Probe (verbatim copies of the three pure functions; `go run .` 2026-11-09):
   - `calculateFrequency`, 200 samples of `1000+500·sin(2πft+0.3)` at 1 ms: 100 Hz → **200.00**, 120 Hz → **239.58**, 50 Hz → **0.00**.
   - `decodeFlickerFrequency` (AS7341): 0x00→0, **0x2C→100** (expected 0), 0x2D→100, 0x2E→120, 0x20→0, **0x01→100** (not validated), 0x30→0.
   - `decodeAS7343Flicker`: 0x2C→0, 0x2D→100, 0x2E→120, 0x01→0 — matches the bit map above.

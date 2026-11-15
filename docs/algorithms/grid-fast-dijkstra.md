@@ -22,8 +22,8 @@ evidence: "TestFastDijkstra_* pass; ~7989 allocs/search 50x50"
 
 ## Completeness review
 
-- Complete: yes. Same allocation profile issues as [[grid-fast-astar]]: per-expansion neighbour slice (`:132`) and direction table (`:164`), pointer heap nodes (`:95`), map-based state. 7989 allocs/search vs 52 483 for wrapper `Dijkstra` (probe tmp/easyrobot/filters/gridinterp/allocs/main.go (testing.AllocsPerRun, 50x50 all-1 grid, 8-conn, corner to corner)).
-- Tested: `fast_test.go` TestFastDijkstra_SimplePath/ReuseInstance/WithObstacles/DiagonalMovement/NoPath — existence/endpoints/nil; no cost check. Run: go test -count=1 -json ./x/math/{colorscience,learn,grid,interpolation}/... (2026-11-09, slice lead; raw: tmp/easyrobot/filters/test-2026-11-09.json) → pass.
+- Complete: yes. Same allocation profile issues as [[grid-fast-astar]]: per-expansion neighbour slice (`:132`) and direction table (`:164`), pointer heap nodes (`:95`), map-based state. 7989 allocs/search vs 52 483 for wrapper `Dijkstra` (probe: testing.AllocsPerRun, 50x50 all-1 grid, 8-conn, corner to corner).
+- Tested: `fast_test.go` TestFastDijkstra_SimplePath/ReuseInstance/WithObstacles/DiagonalMovement/NoPath — existence/endpoints/nil; no cost check. Run: go test -count=1 -json ./x/math/{colorscience,learn,grid,interpolation}/... (2026-11-09) → pass.
 - Correct: unknown (algorithm is textbook lazy Dijkstra; no value-checking test or probe of cost).
 
 ## TODOs

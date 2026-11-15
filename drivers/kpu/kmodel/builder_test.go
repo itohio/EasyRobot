@@ -247,7 +247,7 @@ func TestBuilderTableAlignment(t *testing.T) {
 
 // TestSettersRejectOutOfRange: every setter refuses a value that its field
 // cannot hold, returns ErrFormat and leaves the argument unchanged, and
-// accepts the extreme values that fit (review R-K210-K8b B1: masking made
+// accepts the extreme values that fit (masking made
 // width 1025 read back as 1).
 func TestSettersRejectOutOfRange(t *testing.T) {
 	bad := map[string]func(a *Args) error{
@@ -346,7 +346,7 @@ func TestChannelByteNum(t *testing.T) {
 	}
 }
 
-// TestCheckLargeOutputChannelBytes (review R-K210-K9a K9a-2/K9a-3): with
+// TestCheckLargeOutputChannelBytes: with
 // send_data_out off and more than 65,536 output pixels per channel the KPU
 // ignores channel_byte_num, and ncc writes it truncated to 16 bits
 // (K210Conv2d.cs) where SetOutShape saturates: Check accepts both, refuses

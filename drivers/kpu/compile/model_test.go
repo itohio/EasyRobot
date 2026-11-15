@@ -106,7 +106,7 @@ func nhwc2chw(in []int8, s qi8.Shape) []byte {
 	return chw
 }
 
-// TestResizeResidualOnInput (review R-K210-K9same S1): Resize re-derives an
+// TestResizeResidualOnInput: Resize re-derives an
 // Add or Mul from its first input (qnet's In; only the second may
 // broadcast), including the graph input (From −1), which used to index
 // layer −1 and panic, and a layer whose output differs from the input size.
@@ -169,7 +169,7 @@ func TestResizeResidualOnInput(t *testing.T) {
 	}
 }
 
-// TestKmodelRefusalReasons (review R-K210-K9same S2): refusals name the
+// TestKmodelRefusalReasons: refusals name the
 // actual limit. A Pad(1,1)+VALID net too tall for the KPU is refused for
 // its 256-row input limit (the Pad's conv), not because a Pad is not a
 // convolution; a global pool is refused as a non-convolution, a TiesUp
@@ -188,7 +188,7 @@ func TestKmodelRefusalReasons(t *testing.T) {
 				KH: last.Out.H, KW: last.Out.W, StrideH: 1, StrideW: 1, Padding: qi8.PaddingValid}
 			return &qnet.Graph{Layers: append(append([]qnet.Layer(nil), g.Layers...), pool)}
 		}(), "runs convolutions"},
-		// Review R-K210-QU8 Q6: a TFLite uint8 average pool after the last
+		// A TFLite uint8 average pool after the last
 		// conv is not fused (the KPU floors the mean); the refusal says so.
 		{"SAME with a TiesUp average pool", func() *qnet.Graph {
 			g := mobileNetSAME(t, 0.25, 64)

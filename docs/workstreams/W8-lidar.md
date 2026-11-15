@@ -6,7 +6,7 @@ workstream: W8
 ---
 # W8 — LiDAR module integration
 
-**Owner's goal (O-005, verbatim excerpt):** "I want to integrate lidar too - have the module, but haven't analysed it yet."
+**Goal:** integrate the lidar module, which exists but hasn't been analysed yet.
 
 Evidence date 2026-11-09, HEAD abb5c9cc, darwin/arm64, no hardware. Details: [[lidar]], [[ld06-packet-decoder-and-scan-assembly]], [[xwpftb-frame-decoder-and-scan-assembly]], [[lidar-motor-point-count-pid]], [[vl53l0x-tof-array-scan]].
 

@@ -24,7 +24,7 @@ evidence: "7 tests pass incl. TestDijkstra_ShortestPath; searchprobe 0/300 misma
 
 - Complete: yes for single-pair; no single-source distance map API.
 - Tested: `TestDijkstra_ShortestPath` (cheaper direct edge chosen), grid graph with/without obstacles, no-path, reuse. Run: go test -count=1 -json ./x/math/graph/... (2026-11-09) → ok except TestRRTStar_Simple2DGrid (flaky) (7 pass).
-- Correct: yes on simple graphs (probe tmp/easyrobot/filters/searchprobe, 0/300 mismatches vs Bellman-Ford). Keys are interface values: works for pointer nodes that are stable (`GenericNode`) and comparable value nodes (`GridNode`, `MatrixNode`); node types that re-wrap on every `Neighbors()` call or contain non-comparable fields would break visited tracking or panic — inconsistent with A*, which keys by `ID()`.
+- Correct: yes on simple graphs (probe, 0/300 mismatches vs Bellman-Ford). Keys are interface values: works for pointer nodes that are stable (`GenericNode`) and comparable value nodes (`GridNode`, `MatrixNode`); node types that re-wrap on every `Neighbors()` call or contain non-comparable fields would break visited tracking or panic — inconsistent with A*, which keys by `ID()`.
 
 ## TODOs
 

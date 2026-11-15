@@ -10,7 +10,7 @@ tests: [x/vision/detect/features/processor_test.go]
 test_result: build-fail
 complete: yes
 correct: unknown
-evidence: "go/types check with FakeImportC against gocv v0.42.0 (tmp/easyrobot/io/typecheck, 2026-11-09): package 0 own errors but imports broken x/vision/types; OpenCV missing"
+evidence: "go/types check with FakeImportC against gocv v0.42.0 (2026-11-09): package 0 own errors but imports broken x/vision/types; OpenCV missing"
 ---
 # Keypoint detection (ORB, SIFT, FAST, GFTT, KAZE, AKAZE, BRISK)
 

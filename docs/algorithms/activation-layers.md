@@ -10,7 +10,7 @@ tests: [x/math/nn/layers/activations_test.go]
 test_result: pass
 complete: yes
 correct: yes
-evidence: "go test -count=1 ./x/... (2026-11-09) → TestReLU, TestSigmoid, TestTanh, TestSoftmax (+_EdgeCases) pass; probe tmp/easyrobot/tensor/layernotes/gradcheck (2026-11-09) dInput vs central diff ≤2.2e-5"
+evidence: "go test -count=1 ./x/... (2026-11-09) → TestReLU, TestSigmoid, TestTanh, TestSoftmax (+_EdgeCases) pass; probe (2026-11-09) dInput vs central diff ≤2.2e-5"
 ---
 # Activation layers: ReLU, Sigmoid, Tanh, Softmax
 

@@ -17,10 +17,10 @@
   },
   {
     "id": "f03",
-    "q": "O-002",
+    "q": "G-002",
     "type": "identifier",
     "expect_any": [
-      "_roster/objectives/O-002-atlas-public-beta.md"
+      "notes/goals/G-002-atlas-public-beta.md"
     ]
   },
   {
@@ -28,7 +28,7 @@
     "q": "T-004 token rotation",
     "type": "identifier",
     "expect_any": [
-      "_roster/tasks/T-004-token-rotation.md"
+      "notes/tasks/T-004-token-rotation.md"
     ]
   },
   {
@@ -84,10 +84,10 @@
   },
   {
     "id": "f11",
-    "q": "may a peer edit files outside its assignment",
+    "q": "may a contributor edit files outside their assignment",
     "type": "paraphrase",
     "expect_any": [
-      "_roster/README.md"
+      "notes/README.md"
     ]
   },
   {
@@ -127,10 +127,10 @@
   },
   {
     "id": "f16",
-    "q": "which objective does the lidar bring-up task serve",
+    "q": "which goal does the lidar bring-up task serve",
     "type": "cross-link",
     "expect_any": [
-      "_roster/objectives/O-001-rover-field-trial.md"
+      "notes/goals/G-001-rover-field-trial.md"
     ]
   },
   {
@@ -178,7 +178,7 @@
     "q": "latest decision on the telemetry radio",
     "type": "recency",
     "expect_any": [
-      "_roster/meetings/2026-11-01-sync.md"
+      "notes/meetings/2026-11-01-sync.md"
     ]
   },
   {

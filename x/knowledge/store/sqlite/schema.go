@@ -11,8 +11,8 @@ const schemaVersion = 1
 
 // schema creates version 1. FTS rows are contentless (the text lives in
 // chunks) and hold pre-tokenized text: package token's terms joined by
-// spaces. tokenchars keeps the connectors of identifiers (ABU-061,
-// abg.svc.find, snake_case) inside one FTS token, so FTS5 terms equal
+// spaces. tokenchars keeps the connectors of identifiers (ER-017,
+// rpc.svc.find, snake_case) inside one FTS token, so FTS5 terms equal
 // token terms. chunks_fts.rowid = chunks.rid.
 var schema = []string{
 	`CREATE TABLE IF NOT EXISTS meta (

@@ -66,7 +66,7 @@ All tests read first: pure in-memory (`bytes.Buffer`/`bytes.Reader`), no devices
 
 - `GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=readonly go test -count=1 -json ./x/devices/crsf/...` → `crsf` ok 0.22 s, 38 top-level pass (+4 BaroAltitude subtests); `crsf/rx` ok 0.41 s, 4 pass (TestSchedulerEmpty/RoundRobin/AllNil/Len); `crsf/tx` no test files. Matches baseline (38/4).
 - `go vet ./x/devices/crsf/...` → ok.
-- Probe `tmp/easyrobot/devices/crsf/main.go` (`GOFLAGS=-mod=mod go run .` in scratch module): CRC tables vs bitwise, `CRC8("123456789")=0xBC`, all-992 frame `c81816e0031ff8…7cad`, pack vs reference (0 mismatches), scaling table, decoder resync, telemetry/param/MSP/baud/timing wire dumps. Findings in the algorithm notes.
+- Probe (`GOFLAGS=-mod=mod go run .` in scratch module): CRC tables vs bitwise, `CRC8("123456789")=0xBC`, all-992 frame `c81816e0031ff8…7cad`, pack vs reference (0 mismatches), scaling table, decoder resync, telemetry/param/MSP/baud/timing wire dumps. Findings in the algorithm notes.
 - Most tests are encode→decode round trips: they cannot catch wire-format errors shared by both directions (param layout, MSP status, endianness, GPS speed scale).
 
 ## API notes (ease of use, composability)

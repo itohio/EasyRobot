@@ -10,7 +10,7 @@ tests: [x/devices/crsf/crsf_test.go, x/devices/crsf/advanced_test.go]
 test_result: pass
 complete: yes
 correct: yes
-evidence: "go test -count=1 -json ./x/devices/crsf/... → 38 top-level pass (2026-11-09); probe tmp/easyrobot/devices/crsf: CRC8 table == bitwise poly 0xD5 256/256, CRC8(\"123456789\")=0xBC, CommandCRC8 == bitwise 0xBA 256/256, resync over 0x00 noise + bad-CRC false sync ok"
+evidence: "go test -count=1 -json ./x/devices/crsf/... → 38 top-level pass (2026-11-09); probe CRC8 table == bitwise poly 0xD5 256/256, CRC8(\"123456789\")=0xBC, CommandCRC8 == bitwise 0xBA 256/256, resync over 0x00 noise + bad-CRC false sync ok"
 ---
 # CRSF frame codec, CRC8 and stream decoder
 
@@ -29,7 +29,7 @@ evidence: "go test -count=1 -json ./x/devices/crsf/... → 38 top-level pass (20
 
 - Complete: yes for framing. Extended-frame dest/origin are exposed as payload prefix accessors only; routing by address is left to callers (`LOW-LEVEL.md:162`). `ErrFrameTooLong` (frame.go:69) is declared but never returned.
 - Tested: `TestCRC8Empty`, `TestCRC8SingleByte` (CRC8(0x01)=0xD5 — the only independent CRC value), `TestCRC8KnownVector` (tautological: compares `Marshal` against `CRC8` itself, crsf_test.go:9-26), `TestFrameMarshalUnmarshal`, `TestFrameCRCReject`, `TestFrameInvalidSync`, `TestFrameInvalidLength`, `TestDecoderStream` (3 garbage bytes then two frames), `TestEncoderDecoder`, `TestCommandCRC8` (only nil→0 and determinism, advanced_test.go:5-14), `TestCommandCRCValidation`. All pass (2026-11-09).
-- Correct: yes. Probe (`tmp/easyrobot/devices/crsf/main.go`, `go run .`): table CRC8 equals an independent bitwise poly-0xD5 CRC for all 256 single bytes and a 61-byte buffer; `CRC8("123456789")=0xBC`, the published CRC-8/DVB-S2 check value [INFERENCE: catalogue value recalled, not fetched]; CommandCRC8 equals bitwise poly 0xBA (256/256). All-992 channels frame encodes to `c8 18 16 e0 03 1f f8 … 7c ad`, CRC 0xAD [INFERENCE: matches the commonly cited CRSF example frame from memory]. Decoder recovers a frame after `00 00 00` noise and a bad-CRC false sync starting with 0xEC; accepts a frame whose first byte is 0xEE; truncated stream → `io.EOF`.
+- Correct: yes. Probe: table CRC8 equals an independent bitwise poly-0xD5 CRC for all 256 single bytes and a 61-byte buffer; `CRC8("123456789")=0xBC`, the published CRC-8/DVB-S2 check value [INFERENCE: catalogue value recalled, not fetched]; CommandCRC8 equals bitwise poly 0xBA (256/256). All-992 channels frame encodes to `c8 18 16 e0 03 1f f8 … 7c ad`, CRC 0xAD [INFERENCE: matches the commonly cited CRSF example frame from memory]. Decoder recovers a frame after `00 00 00` noise and a bad-CRC false sync starting with 0xEC; accepts a frame whose first byte is 0xEE; truncated stream → `io.EOF`.
 
 **Defects / risks**
 - `Decoder.ensureBytes` loops forever when the reader returns `(0, nil)` (decoder.go:60-70); the Linux serial `Read` returns exactly that on `EAGAIN` (x/devices/serial_linux.go:178-180) and Windows sets immediate-return timeouts (serial_windows.go:82-88) → busy spin, and the caller never sees an error (breaks rx failsafe, see [[crsf-rx-failsafe-detection]]).

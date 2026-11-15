@@ -10,12 +10,12 @@ tests: [x/math/control/kinematics/chain/chain_test.go, x/math/control/kinematics
 test_result: pass
 complete: no
 correct: yes
-evidence: "go test -race -count=1 ./x/math/control/kinematics/chain → ok (2026-11-09); tests failed first against stub signatures (tmp/easyrobot/er018/chain-failing.txt) [[ER-018-leg-helpers-gait-scheduler|ER-018]]"
+evidence: "go test -race -count=1 ./x/math/control/kinematics/chain → ok (2026-11-09); tests failed first against stub signatures [[ER-018-leg-helpers-gait-scheduler|ER-018]]"
 source_revision: 1bf6234e676daa87d3e9eb191bb1dc2420f05ff9
 ---
 # Leg/chain configuration, servo mapping and body→hip transforms
 
-**What it does:** one declaration of a joint chain (DH parameters, limits, speed limits, servo mapping) produces the solver configs, validates them, converts joint angles to servo degrees and back, and for legged bodies places each leg's hip on the body and solves all legs per tick. Implements IK review §5 (evidence: `~/src/docs/evidence/ER-R2-ik-review.md#5. Joint-configuration helpers (proposed API sketch)`, outside the repo). Radians and metres everywhere; degrees only inside `ServoMap`.
+**What it does:** one declaration of a joint chain (DH parameters, limits, speed limits, servo mapping) produces the solver configs, validates them, converts joint angles to servo degrees and back, and for legged bodies places each leg's hip on the body and solves all legs per tick. Implements IK review §5. Radians and metres everywhere; degrees only inside `ServoMap`.
 
 **Where:** `x/math/control/kinematics/chain/chain.go`, `legged.go`.
 - `Joint{Name, Kind, A, Alpha, D, Offset, Min, Max, MaxVel, MaxAcc, Servo}`; `ServoMap{Channel, ZeroDeg, Sign, Ratio, MinDeg, MaxDeg}`: servoDeg = ZeroDeg + Sign·Ratio·deg(q); MinDeg = MaxDeg = 0 means a 0…180° servo.
@@ -26,7 +26,7 @@ source_revision: 1bf6234e676daa87d3e9eb191bb1dc2420f05ff9
 ## Completeness review
 
 - Complete: no — `FromProto`/`Proto` (send the declaration over `JointsConfig` with units) and bent-link `LegGeometry` offsets from the §5 sketch are not implemented.
-- Tested: `TestHexlegDHMatchesPlanar3` (DH and analytic FK agree < 1e-6 m over 2000 random poses); `TestServoRoundTrip` (incl. Sign −1, 0 allocations); `TestValidate` (19 cases); `TestFootInLegInvertsForwardTransform` (vs an independent float64 transform, < 2e-6); `TestSolveLegsReproducesJointAngles` (0 allocations); `TestSolveLegsDHFallback`, `TestModelPicksSolver`, `TestCheckZeroPose`, layout tests; roster-review tests `TestLegGeometryValidated` (6 cases, failed first), `TestLegSolverCopiesBody`, `TestBodyClone`, `TestToServoNaNJoint` (mutant C1 killed).
+- Tested: `TestHexlegDHMatchesPlanar3` (DH and analytic FK agree < 1e-6 m over 2000 random poses); `TestServoRoundTrip` (incl. Sign −1, 0 allocations); `TestValidate` (19 cases); `TestFootInLegInvertsForwardTransform` (vs an independent float64 transform, < 2e-6); `TestSolveLegsReproducesJointAngles` (0 allocations); `TestSolveLegsDHFallback`, `TestModelPicksSolver`, `TestCheckZeroPose`, layout tests; review tests `TestLegGeometryValidated` (6 cases, failed first), `TestLegSolverCopiesBody`, `TestBodyClone`, `TestToServoNaNJoint` (mutant C1 killed).
 - Correct: yes on these tests.
 
 ## TODOs

@@ -99,14 +99,14 @@
 // and noise, 41 of 42 horizontal and 36 of 42 vertical strokes (3–30 cm,
 // 0.3–2 s) end within 10 % and at rest.
 //
-// Tilting a badge in place, fpv-gate's 60 cases (15–90°, over 1, 0.5 and
+// Tilting a badge in place, 60 cases (15–90°, over 1, 0.5 and
 // 0.2 s, upright and flat, about four axes) with an MPU6050's noise
 // (accelerometer 0.03 m/s², gyro 0.002 rad/s) and offsets of 0.09 m/s²,
 // an uncalibrated MPU6050's 0.7 m/s² and 1.05 m/s² (past the datasheet's
 // 1.04): the path and the paddle stray 0.0 mm in all 37,800 runs (30
 // seeds, six ranges, gyro bias 0.005 and 0.02 rad/s) and the badge rests
 // after. Strokes of 5 cm or more, and 3 cm strokes of 1 s or less,
-// register (fpv-gate ER-067 §r10, 144 runs). Strokes made while the wrist
+// register (ER-067, 144 runs). Strokes made while the wrist
 // wobbles (3–20 cm over 0.5–1.5 s at 0.3 and 1 rad/s) are tracked within
 // 15 and 30 % and on average 1 % short; with an MPU6050's noise and offsets
 // they read 72–140 % of their length (240 runs, ten seeds). A stroke right
@@ -118,19 +118,19 @@
 // move (3–5 cm over 1–1.5 s while turning, 3–10 cm over 1.5–2 s right
 // after a turn) jump into place at the rest after them.
 //
-// Known failures (fpv-gate ER-067 §r10; the next revision's targets):
-//   - 3 cm over 1.5 s: of fpv-gate's 144 stroke runs, 5 do not register
+// Known failures (ER-067; the next revision's targets):
+//   - 3 cm over 1.5 s: of 144 stroke runs, 5 do not register
 //     (one while the wrist wobbles at 0.1 rad/s, three at 1 rad/s, one
 //     right after a 45° turn) and 3
 //     read the wrong way (−109 % wobbling at 0.1 rad/s; −736 % and −781 %
-//     right after a 45° turn). fpv-gate measured these as mostly design
+//     right after a 45° turn). Measured, these are mostly design
 //     (the registration threshold and how a turn's offset error is
 //     attributed), not the sensor: the physical part is about 23 %
 //     (standard deviation) at an MPU6050's noise. What a misread rest after
 //     such a stroke leaves drifts up to 20 cm over the next 10 s before it
 //     rests for good.
 //   - 3 cm in 2 s with no turn: one draw reads −67 % at the stroke's end,
-//     −204 % a second later and −39 % at rest; fpv-gate's noisy horizontal
+//     −204 % a second later and −39 % at rest; the noisy horizontal
 //     grid reads −302 % 1.5 s after, still gliding (an MPU6050's noise
 //     leaves up to 2 cm/s, which holds rest off until MaxGlide).
 //   - Slow 2 s strokes can jump back at their late rest, about 1 s after

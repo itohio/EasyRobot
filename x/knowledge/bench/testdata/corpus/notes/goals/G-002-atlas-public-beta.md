@@ -1,13 +1,13 @@
 ---
-id: O-002
+id: G-002
 title: Atlas public beta
-type: objective
+type: goal
 status: active
-tags: [objective, atlas]
+tags: [goal, atlas]
 updated: 2026-08-15
 ---
 
-# O-002 — Atlas public beta
+# G-002 — Atlas public beta
 
 Open Atlas to the first fifty external customers with per-tenant quotas and rotating credentials.
 

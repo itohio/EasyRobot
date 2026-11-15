@@ -43,13 +43,13 @@ Counts: 3 tested · 2 implemented · 2 partial · 0 stub · 0 unverified (7 algo
 ## Build targets and dependencies
 
 - Pure Go, no CGO, no reflection, no goroutines; float32 throughout (math32) — suitable for TinyGo in principle [INFERENCE: not built with TinyGo here].
-- Allocations (measured, probe tmp/easyrobot/filters/gridinterp/allocs/main.go (testing.AllocsPerRun, 50x50 all-1 grid, 8-conn, corner to corner)): `AStar` 1288, `FastAStar` 1079, `FastDijkstra` 7989, `Dijkstra` 52 483 allocs per 50×50 8-conn search; `RayCastAllOptimized` 0 allocs (360 beams, caller-provided dst). FastAStar ~470 µs vs AStar ~692 µs per search on host. "Fast" variants use `map[cell]…` state + pointer heap nodes + per-expansion slices — poor for ESP32 heap/GC. `mat.Matrix` is `[][]float32` (row slices), not a flat buffer.
+- Allocations (measured, probe (testing.AllocsPerRun, 50x50 all-1 grid, 8-conn, corner to corner)): `AStar` 1288, `FastAStar` 1079, `FastDijkstra` 7989, `Dijkstra` 52 483 allocs per 50×50 8-conn search; `RayCastAllOptimized` 0 allocs (360 beams, caller-provided dst). FastAStar ~470 µs vs AStar ~692 µs per search on host. "Fast" variants use `map[cell]…` state + pointer heap nodes + per-expansion slices — poor for ESP32 heap/GC. `mat.Matrix` is `[][]float32` (row slices), not a flat buffer.
 - `Dijkstra`/`AStar` go through generic interfaces (`graph.Node[...]`), increasing code size under TinyGo [INFERENCE].
 
 ## Tests and evidence
 
-- go test -count=1 -json ./x/math/{colorscience,learn,grid,interpolation}/... (2026-11-09, slice lead; raw: tmp/easyrobot/filters/test-2026-11-09.json) → `x/math/grid` 64 pass, 0 fail.
-- Probes: probe tmp/easyrobot/filters/gridinterp/main.go, GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=mod go run . (2026-11-09); probe tmp/easyrobot/filters/gridinterp/allocs/main.go (testing.AllocsPerRun, 50x50 all-1 grid, 8-conn, corner to corner). Findings: A* suboptimal on 0.1-cost grid (3.1 vs 0.6); A*/FastAStar accept start on obstacle, Dijkstra rejects; diagonal corner cutting; RayCast vs RayCastOptimized differ (4.5 vs 5.0 for exact 4.5; π/4: 6.5 vs 7.07 for exact ≈6.36).
+- go test -count=1 -json ./x/math/{colorscience,learn,grid,interpolation}/... (2026-11-09, slice lead; raw: ) → `x/math/grid` 64 pass, 0 fail.
+- Probes: probe, GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=mod go run . (2026-11-09); probe (testing.AllocsPerRun, 50x50 all-1 grid, 8-conn, corner to corner). Findings: A* suboptimal on 0.1-cost grid (3.1 vs 0.6); A*/FastAStar accept start on obstacle, Dijkstra rejects; diagonal corner cutting; RayCast vs RayCastOptimized differ (4.5 vs 5.0 for exact 4.5; π/4: 6.5 vs 7.07 for exact ≈6.36).
 - Untested: all of raycast.go and extract.go.
 
 ## API notes (ease of use, composability)

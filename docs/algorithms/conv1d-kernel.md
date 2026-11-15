@@ -10,7 +10,7 @@ tests: [x/math/tensor/eager/conv_test.go]
 test_result: pass
 complete: yes
 correct: no
-evidence: "go test -count=1 ./x/... (2026-11-09) → TestConv1D (shape-only) pass; probe tmp/easyrobot/tensor/kernelnotes (2026-11-09): Conv1DKernelGrad maxAbsErr 4.45 vs reference (Cout=3,B=2)"
+evidence: "go test -count=1 ./x/... (2026-11-09) → TestConv1D (shape-only) pass; probe (2026-11-09): Conv1DKernelGrad maxAbsErr 4.45 vs reference (Cout=3,B=2)"
 ---
 # Conv1D, Conv1DKernelGrad, Conv1DTransposed
 

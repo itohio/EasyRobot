@@ -67,7 +67,7 @@ func benchDepthwise(b *testing.B, in Shape, stride int) {
 func BenchmarkDepthwise3x3_S1_32x32x32(b *testing.B) { benchDepthwise(b, Shape{32, 32, 32}, 1) }
 func BenchmarkDepthwise3x3_S2_32x32x32(b *testing.B) { benchDepthwise(b, Shape{32, 32, 32}, 2) }
 
-// MobileNetV1-0.25 at 96×96 layer shapes (ER-NN-PIPELINE §A0; the same
+// MobileNetV1-0.25 at 96×96 layer shapes (the same
 // shapes nnbench runs on the S3).
 func BenchmarkMobileNet_Conv3x3_S2_96x96x3_8(b *testing.B) { benchConv(b, Shape{96, 96, 3}, 8, 3, 2) }
 func BenchmarkMobileNet_DW3x3_S1_48x48x8(b *testing.B)     { benchDepthwise(b, Shape{48, 48, 8}, 1) }

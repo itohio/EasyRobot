@@ -256,7 +256,7 @@ func gridTilt(t testing.TB, o tiltNoise, q0 quat, axis [3]float64, ang, T float6
 	return worstP, worstPB, n.Still
 }
 
-// tiltCases are fpv-gate's 60 (ER-067 §r5: 15°–90°, over 1 s, 0.5 s and
+// tiltCases are 60 tilts (15°–90°, over 1 s, 0.5 s and
 // 0.2 s, four axes): 15°, 30°, 45°, 60° and 90° (90° in 0.2 s peaks at
 // 15 rad/s), about the screen normal and the screen's x held upright,
 // about x and y lying flat.
@@ -272,13 +272,13 @@ func tiltCases(each func(name string, q0 quat, axis [3]float64, ang, T float64))
 	}
 }
 
-// Acceptance (the owner: "i tilt the badge and it shows motion when there
-// should be no motion"; tinygui: under 1 cm at 100 Hz): in fpv-gate's 60
+// Acceptance (tilting the badge in place must show no motion: under 1 cm
+// at 100 Hz): in the 60
 // tilt cases with an MPU6050's noise (accelerometer 0.03 m/s² Gaussian,
 // gyro 0.002 rad/s, gyro bias 0.005 rad/s), thirty seeds each, with offsets
 // up to 0.06 m/s², an uncalibrated MPU6050's (0.32, −0.48, 0.40 m/s²) and
 // half as much again (past the datasheet's 1.04 m/s²), the path |P| and the
-// paddle's |ΔPB[1]| stay under 1 mm (the owner's bar is 1 cm) and the
+// paddle's |ΔPB[1]| stay under 1 mm (the bar is 1 cm) and the
 // badge ends at rest (measured: 0.0 mm in all 5400). r8 strayed up to 3 cm
 // here, r5 58 cm: a tilt in place integrates nothing, and nothing it
 // leaves is taken for a translation (with no 1 cm floor on that, 6 mm was).
@@ -607,7 +607,7 @@ func upStroke(t *testing.T, d, T, sd float64, ab, gb [3]float64, rnd lcg) (float
 // stroke of 3–30 cm over 0.3–2 s (ideal sensor, the Mahony attitude) ends
 // within 10 % of its length, at rest. A stroke that slow stays under
 // StillAccel for most or all of its length (3 cm in 2 s peaks at 0.043
-// m/s²), so only its speed tells it from rest: fpv-gate found the Nav
+// m/s²), so only its speed tells it from rest: a review found the Nav
 // declaring rest mid-stroke at up to 372 mm/s, and these strokes tracked
 // 0 % to −24 %.
 func TestGentleAndSlowStrokesTrack(t *testing.T) {
@@ -645,7 +645,7 @@ func TestGentleStrokesTrackWithNoise(t *testing.T) {
 // attitude: a 45° tilt in place and back, started 2, 3 or 5 s after
 // power-on, strays at most 6 cm and ends within 5 cm, at rest. Learning
 // the first rest from a steady force alone, the tilt at 3 s moved the
-// path 1.6 m (tinygui's report: a bias of 0.24 m/s² learned mid-turn,
+// path 1.6 m (a bias of 0.24 m/s² learned mid-turn,
 // above StillAccel, so never learned again).
 func TestPowerOnWhileTheFilterSettles(t *testing.T) {
 	up := axisAngle([3]float64{1, 0, 0}, math.Pi/2)
@@ -695,7 +695,7 @@ func TestPowerOnWhileTheFilterSettles(t *testing.T) {
 
 // A rotation's rest takes a steady force and asks no speed; a motion after
 // that rest needs the speed check again (without it the Nav rests
-// mid-stroke, as fpv-gate found). Turned 30° about the screen normal and
+// mid-stroke, as a review found). Turned 30° about the screen normal and
 // back (1 s each, exact attitude) and rested 1 s, the gentlest strokes of
 // the grid (3 and 5 cm over 1.5 and 2 s) still end within 10 % of their
 // length, at rest.
@@ -792,7 +792,7 @@ func TestStrokeRightAfterATurn(t *testing.T) {
 	}
 }
 
-// noisy is the badge held upright as fpv-gate models it: an MPU6050's
+// noisy is the badge held upright, modelled as: an MPU6050's
 // noise and offsets (tiltNoise), the badge's Mahony filter (KP 2, its
 // integral term 0.005 from 5 s), 10 s at rest first. step turns the badge
 // by the body rate w and moves it by the world acceleration a.
@@ -861,7 +861,7 @@ func (r *noisy) up(d, T float64) {
 	}
 }
 
-// fpv-gate's runaway (ER-067 §r9): turned 45° about the screen normal in
+// The runaway: turned 45° about the screen normal in
 // 0.5 s (0.09 m/s² of offsets) and at once stroked 10 cm up in 1 s, then
 // held. The turned offsets put 0.07 m/s² into the stroke; the rest after
 // it takes that error out of the motion, so the stroke reads 50–150 % of
@@ -888,13 +888,13 @@ func TestTurnThenStrokeComesToRest(t *testing.T) {
 	}
 }
 
-// fpv-gate's after-turn set (ER-067 §r9), strokes of 5–20 cm: a 45° turn
+// The after-turn set, strokes of 5–20 cm: a 45° turn
 // in 0.5 s, a pause of 0 or 0.25 s, a stroke up over 0.5–1.5 s, 3 s held.
 // Every 5–20 cm stroke is registered, 40–160 % of its length (59–153 %
 // over 180 runs, ten seeds; r9: 149–405 %, or nothing), and the badge
 // rests; PB holds the motion as the turned badge sees it, within 5 mm.
 // 3 cm strokes are left out: over 1.5 s right after a turn they can read
-// the wrong way (fpv-gate §r10: −736 % and −781 %; see the package doc).
+// the wrong way (−736 % and −781 %; see the package doc).
 func TestStrokesAfterATurnWithNoise(t *testing.T) {
 	o := tiltNoise{0.03, 0.002, 0.005, [3]float64{0.04, -0.06, 0.05}}
 	for _, pause := range []float64{0, 0.25} {
@@ -922,13 +922,13 @@ func TestStrokesAfterATurnWithNoise(t *testing.T) {
 	}
 }
 
-// fpv-gate's wobble set (ER-067 §r9) on the noisy badge: strokes of 3–20 cm
+// The wobble set on the noisy badge: strokes of 3–20 cm
 // over 0.5–1.5 s while the wrist wobbles about the screen normal at 1.5 Hz
 // (0.3 and 1 rad/s), ten seeds. On these seeds every stroke is registered,
 // 50–160 % of its length 1.5 s after (measured 72–140 % over 240 runs; r9
-// left up to 7 of 36 unmoved), at rest; fpv-gate's own seeds found 3 cm
+// left up to 7 of 36 unmoved), at rest; other seeds found 3 cm
 // over 1.5 s unregistered at 1 rad/s (3 of 36) and read the wrong way
-// once at 0.1 rad/s (§r10; see the package doc).
+// once at 0.1 rad/s (see the package doc).
 func TestStrokesWhileTheWristTurnsWithNoise(t *testing.T) {
 	o := tiltNoise{0.03, 0.002, 0.005, [3]float64{0.04, -0.06, 0.05}}
 	for _, amp := range []float64{0.3, 1} {
@@ -977,8 +977,8 @@ func TestBiasStepAtRestIsRelearned(t *testing.T) {
 
 // The weakest case: a 3 cm stroke (over 0.5–1.5 s) right after a 45° turn
 // (pause 0 or 0.25 s), ten seeds, then 3 s and 10 s more held still. Its
-// rest may read part of it as the turn's leftover offset error (fpv-gate
-// §r10: mostly that attribution, not the sensor, whose noise accounts for
+// rest may read part of it as the turn's leftover offset error (ER-067
+// Mostly that attribution, not the sensor, whose noise accounts for
 // about 23 %); what that leaves stays bounded: under 30 cm of drift over
 // the 10 s (measured 20 cm, with 24 wakes over the 60 runs). A rest that
 // took a stroke's spread for noise let it run 1.8 m.
@@ -1418,7 +1418,7 @@ func TestBadSamplesAreIgnored(t *testing.T) {
 	}
 }
 
-// Seeding with a calibration (TG-3): a Nav whose first rest is short (1.5 s
+// Seeding with a calibration: a Nav whose first rest is short (1.5 s
 // from power-on) on a noisy gyro (0.01 rad/s of noise, 0.01 rad/s of bias)
 // learns the bias from about 100 samples, and, held in motion afterwards
 // with no rest to relearn it, its attitude turns by what it got wrong.

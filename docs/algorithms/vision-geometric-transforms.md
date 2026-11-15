@@ -10,7 +10,7 @@ tests: []
 test_result: none
 complete: yes
 correct: unknown
-evidence: "go/types check with FakeImportC against gocv v0.42.0 (tmp/easyrobot/io/typecheck, 2026-11-09): affine, crop, undistort, rectify, color, format → 0 type errors; no tests"
+evidence: "go/types check with FakeImportC against gocv v0.42.0 (2026-11-09): affine, crop, undistort, rectify, color, format → 0 type errors; no tests"
 ---
 # Image transforms: affine warp, crop, undistort, rectify (remap), colour and format conversion
 

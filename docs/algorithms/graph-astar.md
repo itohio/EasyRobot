@@ -24,7 +24,7 @@ evidence: "5 tests pass; searchprobe: 0/300 cost mismatches vs Bellman-Ford on s
 
 - Complete: yes. Popped stale heap entries are not skipped (closed check only for neighbours, :76), so a node can be expanded more than once — extra work, not wrong results with a consistent heuristic. With an admissible but inconsistent heuristic the closed set prevents reopening, so optimality is not guaranteed (standard graph-search caveat).
 - Tested: `TestAStar_SimplePath` (path length 4, endpoints), `ReuseInstance`, `GridGraph`, `NoPath`, interface. Run: go test -count=1 -json ./x/math/graph/... (2026-11-09) → ok except TestRRTStar_Simple2DGrid (flaky) (5 pass).
-- Correct: yes for simple graphs — probe tmp/easyrobot/filters/searchprobe: 300 random 12-node digraphs, path cost equal to Bellman-Ford in all cases once parallel edges are excluded (with parallel edges see [[generic-graph]] `Cost` defect).
+- Correct: yes for simple graphs — probe: 300 random 12-node digraphs, path cost equal to Bellman-Ford in all cases once parallel edges are excluded (with parallel edges see [[generic-graph]] `Cost` defect).
 - Embedded: allocates a `nodeWrapper` per push and uses 4 maps; float32 costs; generic interfaces (code size under TinyGo [INFERENCE]).
 
 ## TODOs

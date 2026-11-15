@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// probeR is the ER-R2 probe-R leg (39/45/100 mm); chain.Hexapod applies the
+// probeR is the IK probe-R leg (39/45/100 mm); chain.Hexapod applies the
 // probe-R limits (coxa ±60°, femur −60…72°, tibia −149…−20°).
 var probeR = chain.LegGeometry{Coxa: 0.039, Femur: 0.045, Tibia: 0.100}
 
@@ -218,7 +218,7 @@ func checkRun(t *testing.T, cfg Config, seconds float32, twist func(float32) Twi
 	return w, st
 }
 
-// T-IK-10: straight walk at constant v keeps stance feet fixed in the world
+// Straight walk at constant v keeps stance feet fixed in the world
 // and moves the body by v·t.
 func TestStraightWalk(t *testing.T) {
 	w, st := checkWalk(t, Twist{VX: 0.1}, 6)
@@ -230,7 +230,7 @@ func TestStraightWalk(t *testing.T) {
 	assert.InDelta(t, 0.03, st.maxApex, 1e-3, "swing apex = SwingHeight")
 }
 
-// T-IK-10: turning in place.
+// Turning in place.
 func TestTurnInPlace(t *testing.T) {
 	w, _ := checkWalk(t, Twist{W: 0.5}, 6)
 	// Ramp 0 → 0.5 rad/s at 1.5 rad/s² takes 1/3 s.
@@ -239,7 +239,7 @@ func TestTurnInPlace(t *testing.T) {
 	assert.InDelta(t, 0, w.Pose().Y, 1e-5)
 }
 
-// T-IK-10: crab walking (v_y only) and a combined twist.
+// Crab walking (v_y only) and a combined twist.
 func TestCrabWalk(t *testing.T) {
 	w, _ := checkWalk(t, Twist{VY: 0.08}, 6)
 	assert.InDelta(t, 0, w.Pose().X, 1e-5)
@@ -247,7 +247,7 @@ func TestCrabWalk(t *testing.T) {
 	checkWalk(t, Twist{VX: 0.06, VY: -0.05, W: 0.2}, 6)
 }
 
-// T-IK-10: a twist beyond the legs' reach is scaled uniformly for all legs;
+// A twist beyond the legs' reach is scaled uniformly for all legs;
 // no leg breaks, every foot keeps the margin, the direction is kept.
 func TestClipScalesTwist(t *testing.T) {
 	cmd := Twist{VX: 1.0, VY: 0.5, W: 0.5}

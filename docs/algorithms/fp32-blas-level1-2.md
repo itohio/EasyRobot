@@ -10,7 +10,7 @@ tests: [x/math/primitive/fp32/level1_test.go, x/math/primitive/fp32/level2_test.
 test_result: pass
 complete: yes
 correct: no
-evidence: "go test -count=1 ./x/... (2026-11-09) → fp32 304/304 pass; probe tmp/easyrobot/tensor/kernelnotes (2026-11-09): Trmv transpose paths wrong"
+evidence: "go test -count=1 ./x/... (2026-11-09) → fp32 304/304 pass; probe: Trmv transpose paths wrong"
 ---
 # fp32 BLAS level 1 and 2
 

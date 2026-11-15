@@ -23,7 +23,7 @@ evidence: "TestLerpD pass"
 ## Completeness review
 
 - Complete: yes (scalar only; vector lerp lives in `vec`/elsewhere).
-- Tested: TestLerpD (`interpolation_helpers_test.go`) checks values; `Lerp` exercised through `LinearUpsample` tests (`upsample_test.go` TestLinearUpsample expected arrays). Run: go test -count=1 -json ./x/math/{colorscience,learn,grid,interpolation}/... (2026-11-09, slice lead; raw: tmp/easyrobot/filters/test-2026-11-09.json) → pass.
+- Tested: TestLerpD (`interpolation_helpers_test.go`) checks values; `Lerp` exercised through `LinearUpsample` tests (`upsample_test.go` TestLinearUpsample expected arrays). Run: go test -count=1 -json ./x/math/{colorscience,learn,grid,interpolation}/... (2026-11-09, slice lead; raw: ) → pass.
 - Correct: yes (value-checking tests pass; trivially exact formula).
 
 ## TODOs

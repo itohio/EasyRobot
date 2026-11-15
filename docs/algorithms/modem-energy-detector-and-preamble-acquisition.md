@@ -10,7 +10,7 @@ tests: [x/math/dsp/modulation/mpsk/roundtrip_test.go, x/math/dsp/modulation/dsss
 test_result: fail
 complete: no
 correct: no
-evidence: "BER probe tmp/easyrobot/audio/berprobe sections A–D (2026-11-09); dsss TransmissionStart failures in go test (2026-11-09)"
+evidence: "BER probe sections A–D (2026-11-09); dsss TransmissionStart failures in go test (2026-11-09)"
 ---
 # Modem energy detector, symbol framing and preamble acquisition (shared pattern)
 

@@ -10,7 +10,7 @@ tests: [x/vision/detect/blobs/processor_test.go]
 test_result: build-fail
 complete: no
 correct: unknown
-evidence: "go/types check with FakeImportC against gocv v0.42.0 (tmp/easyrobot/io/typecheck, 2026-11-09): extract/blobs 2 type errors; both packages import broken x/vision/types; OpenCV missing so no run"
+evidence: "go/types check with FakeImportC against gocv v0.42.0 (2026-11-09): extract/blobs 2 type errors; both packages import broken x/vision/types; OpenCV missing so no run"
 ---
 # Blob detection (SimpleBlobDetector on inverted, blurred, thresholded image/mask)
 

@@ -6,7 +6,7 @@ tags: [easyrobot, protocol, parser]
 workstream: [W1, W4, W8]
 packages: [x/math/protocol/peg]
 test_result: fail
-evidence: "go test -count=1 ./x/math/protocol/peg → FAIL 58 pass / 5 fail top-level (2026-11-09); go vet clean; probes tmp/easyrobot/coding/pegprobe (pegprobe_out.txt, pegdup_out.txt, -race)"
+evidence: "go test -count=1 ./x/math/protocol/peg → FAIL 58 pass / 5 fail top-level (2026-11-09); go vet clean; probes (pegprobe_out.txt, pegdup_out.txt, -race)"
 ---
 # peg-protocol-parser — `x/math/protocol/peg`
 
@@ -48,7 +48,7 @@ Trivial helpers kept here: `decodeField`/varint decoders (`ops.go:332-407`), `De
 
 - `GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=readonly go test -count=1 ./x/math/protocol/peg` (2026-11-09): FAIL — 58 pass / 5 fail: `TestLengthDrivenEmit` (impl: AST mutation leak), `TestLengthDrivenEmitWildcard` (test data inconsistent + multi-`*` semantics undefined), `TestOffsetJumpEdgeCases/offset jump beyond MaxLength` (test asserts Continue; impl Drop is right and `program_test.go:313-331` asserts Drop), `TestBitwiseOperations/bitwise XOR invert` and `TestExpressionRangeCondition/within range` (impl: base-type detection). Same five as baseline-2026-11-08.
 - `go vet` clean.
-- Probes (`tmp/easyrobot/coding/pegprobe`): reuse of one `Program` changes results (`^AA*2BB`: Emit then Drop), streaming leak (`^55AA*ll$` byte-wise → Continue at complete packet), 29 data races with 8 goroutines, fields triple on byte-wise feeding, un-anchored patterns never search, `#(expr)` unimplemented.
+- Probes: reuse of one `Program` changes results (`^AA*2BB`: Emit then Drop), streaming leak (`^55AA*ll$` byte-wise → Continue at complete packet), 29 data races with 8 goroutines, fields triple on byte-wise feeding, un-anchored patterns never search, `#(expr)` unimplemented.
 
 ## API notes (ease of use, composability)
 

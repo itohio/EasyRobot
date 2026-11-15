@@ -10,7 +10,7 @@ tests: [x/math/tensor/eager/activations_test.go]
 test_result: pass
 complete: no
 correct: no
-evidence: "go test -count=1 ./x/... (2026-11-09) → TestReLU/TestSigmoid/TestTanh pass (values); probe tmp/easyrobot/tensor/kernelnotes (2026-11-09): Softplus(100)=+Inf; GELU/Swish/ELU/ReLU6/LeakyReLU values OK"
+evidence: "go test -count=1 ./x/... (2026-11-09) → TestReLU/TestSigmoid/TestTanh pass (values); probe (2026-11-09): Softplus(100)=+Inf; GELU/Swish/ELU/ReLU6/LeakyReLU values OK"
 ---
 # Activation kernels and gradients
 

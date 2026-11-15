@@ -5,8 +5,8 @@ import (
 	"fmt"
 )
 
-// EncodeWeights writes conv weights as the KPU's weight blob (review
-// R-K210-K8b B2). w holds the quantised weights, as unsigned values, in
+// EncodeWeights writes conv weights as the KPU's weight blob. w holds the
+// quantised weights, as unsigned values, in
 // TFLite/qnet order: Conv2D [OC][KH][KW][IC], depthwise [KH][KW][C] (with
 // C = IC = OC). The blob is OIHW, (oc, ic, ky, kx), or for depthwise
 // (c, ky, kx): one byte per weight in 8-bit mode (values ≤ 255), otherwise
@@ -15,7 +15,7 @@ import (
 //
 // Reproduces ncc's weight blobs byte for byte: the weights of all 61 convs
 // of the K8 evidence's five kmodels, quantised from the float TFLite models
-// as ncc rc5 does (ER-K210-K9 evidence, K9b).
+// as ncc rc5 does (observed on the K210).
 func EncodeWeights(w []uint16, k, ic, oc int, depthwise, eightBit bool) ([]byte, error) {
 	if k != 1 && k != 3 {
 		return nil, rangeErr("kernel size", k)

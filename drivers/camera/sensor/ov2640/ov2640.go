@@ -233,13 +233,13 @@ type Options struct {
 	ClockDiv uint8
 	// YUVLowByteFirst sets IMAGE_MODE's LBYTE_FIRST bit for YUV422/Y8, which
 	// swaps the byte order on the bus. The K210 DVP's Y mode needs it
-	// (observed, ER-K210-M4 evidence, outside the repo).
+	// (observed on the UnitV).
 	YUVLowByteFirst bool
 	// JPEGSensorHREF keeps HREF as the sensor's line timing in JPEG mode
 	// (IMAGE_MODE bit 1 clear) instead of esp32-camera's HREF = VSYNC.
 	// The K210 DVP needs it: each line then carries one 256-byte chunk and
 	// every frame arrives whole; with HREF = VSYNC about half the frames
-	// lose their tail (ER-K210-REC evidence, R3).
+	// lose their tail (observed on the K210).
 	JPEGSensorHREF bool
 	// LineNS is the sensor's raw CIF line period in ns for this clock setup;
 	// it converts exposure between µs and AEC line periods. The backend
@@ -299,8 +299,7 @@ func (s *Sensor) Init(m sensor.Mode) error {
 		return err
 	}
 	if s.quality != 0 && m.Format == sensor.JPEG {
-		// The soft reset at the start of Init drops QS (review
-		// R-K210-REC-R3 F5).
+		// The soft reset at the start of Init drops QS.
 		if err := s.write([]reg{{bankSel, bankDSP}, {qs, s.quality}}); err != nil {
 			return err
 		}
@@ -412,7 +411,7 @@ func (s *Sensor) setWindow(m sensor.Mode, sm sensorMode) error {
 }
 
 // sleep waits at least d, checking a deadline (a bare time.Sleep can return
-// early on TinyGo 0.43/K210, ER-K210-M1 evidence §4, outside the repo).
+// early on TinyGo 0.43/K210, observed on the UnitV).
 func sleep(d time.Duration) {
 	end := time.Now().Add(d)
 	for left := time.Until(end); left > 0; left = time.Until(end) {

@@ -23,7 +23,7 @@ evidence: "no tests; probe dspprobe: impulse response 1.000 0.054 0.054 0.244 0 
 ## Completeness review
 
 - Complete: API yes; coefficient design correct (:118-139).
-- Tested: no test file (`[no test files]` in go test -count=1 -json ./x/math/filter/... (2026-11-09, raw tmp/easyrobot/filters/test-2026-11-09.json)).
+- Tested: no test file (`[no test files]` in go test -count=1 -json ./x/math/filter/... (2026-11-09)).
 - Correct: **no**.
   - Same warm-up gate bug as [[median-filter]]: `gaussian.go:65` uses ring index instead of sample count → periodic raw passthrough.
   - Kernel/buffer misalignment: `:74` starts at `index − halfWindow`, which is *not* the oldest sample (oldest is `index`), so the symmetric kernel is rotated around the ring. Probe (σ=1, w=5, unit impulse): output `1.000, 0.054, 0.054, 0.244, 0, …` (expected 0.054, 0.244, 0.403, 0.244, 0.054 delayed by 2); magnitude response non-monotonic (−3.1 dB @1 kHz, −2.0 dB @2 kHz, −3.8 dB @3 kHz at fs 8 kHz).

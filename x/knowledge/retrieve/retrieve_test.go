@@ -15,20 +15,20 @@ import (
 func TestIDQueryReturnsDefiningDocFirst(t *testing.T) {
 	forEachStore(t, func(t *testing.T, s knowledge.Store) {
 		load(t, s,
-			doc("notes/authority.md", sec{text: "Peer authority model decision record. " + filler(30)}).definesID("ABU-061"),
-			doc("misc/chatter.md", sec{text: repeat("ABU-061", 10)}).mentionsID("ABU-061"),
+			doc("notes/authority.md", sec{text: "Client authority model decision record. " + filler(30)}).definesID("DEV-061"),
+			doc("misc/chatter.md", sec{text: repeat("DEV-061", 10)}).mentionsID("DEV-061"),
 			doc("misc/other.md", sec{text: filler(30)}),
 		)
-		res := find(t, newRetriever(s), knowledge.Query{Text: "ABU-061"})
+		res := find(t, newRetriever(s), knowledge.Query{Text: "DEV-061"})
 		wantFirst(t, res, "notes/authority.md")
-		wantWhy(t, res.Hits[0], "exact id ABU-061")
+		wantWhy(t, res.Hits[0], "exact id DEV-061")
 		if res.Confidence != "high" {
 			t.Fatalf("confidence %q, want high", res.Confidence)
 		}
 		// The chatter doc is found lexically and also via the id graph.
-		wantWhy(t, hitOf(t, res, "misc/chatter.md"), "mentions ABU-061 defined in notes/authority.md")
+		wantWhy(t, hitOf(t, res, "misc/chatter.md"), "mentions DEV-061 defined in notes/authority.md")
 		// Lower-case ids resolve too.
-		wantFirst(t, find(t, newRetriever(s), knowledge.Query{Text: "what is abu-061 about"}), "notes/authority.md")
+		wantFirst(t, find(t, newRetriever(s), knowledge.Query{Text: "what is dev-061 about"}), "notes/authority.md")
 	})
 }
 
@@ -37,13 +37,13 @@ func TestSymbolQuery(t *testing.T) {
 		load(t, s,
 			doc("code/keys/keys.go",
 				sec{heading: "package keys", text: "package keys " + filler(20)},
-				sec{heading: "PeerPermissions", symbol: "keys.PeerPermissions", text: "func PeerPermissions(p Peer) Permissions { return build(p) }"},
-			).definesSym("keys.PeerPermissions"),
-			doc("docs/perm.md", sec{heading: "PeerPermissions", text: repeat("keys.PeerPermissions PeerPermissions peer permissions", 8)}),
+				sec{heading: "ClientPermissions", symbol: "keys.ClientPermissions", text: "func ClientPermissions(p Client) Permissions { return build(p) }"},
+			).definesSym("keys.ClientPermissions"),
+			doc("docs/perm.md", sec{heading: "ClientPermissions", text: repeat("keys.ClientPermissions ClientPermissions client permissions", 8)}),
 		)
-		res := find(t, newRetriever(s), knowledge.Query{Text: "where is keys.PeerPermissions built"})
+		res := find(t, newRetriever(s), knowledge.Query{Text: "where is keys.ClientPermissions built"})
 		wantFirst(t, res, "code/keys/keys.go")
-		wantWhy(t, res.Hits[0], "defines keys.PeerPermissions")
+		wantWhy(t, res.Hits[0], "defines keys.ClientPermissions")
 		if res.Confidence != "high" {
 			t.Fatalf("confidence %q, want high", res.Confidence)
 		}
@@ -160,15 +160,15 @@ func TestHubDamping(t *testing.T) {
 func TestTwoHopThroughIDs(t *testing.T) {
 	forEachStore(t, func(t *testing.T, s knowledge.Store) {
 		load(t, s,
-			doc("a/a.md", sec{text: "zebra stripes " + filler(20)}).mentionsID("KE-7"),
-			doc("b/b.md", sec{text: filler(21)}).definesID("KE-7"),
-			doc("c/c.md", sec{text: "zebra herd " + filler(20)}).definesID("KE-9"),
-			doc("d/d.md", sec{text: filler(22)}).mentionsID("KE-9"),
-			doc("e/e.md", sec{text: filler(23)}).mentionsID("KE-7"),
+			doc("a/a.md", sec{text: "zebra stripes " + filler(20)}).mentionsID("DOC-7"),
+			doc("b/b.md", sec{text: filler(21)}).definesID("DOC-7"),
+			doc("c/c.md", sec{text: "zebra herd " + filler(20)}).definesID("DOC-9"),
+			doc("d/d.md", sec{text: filler(22)}).mentionsID("DOC-9"),
+			doc("e/e.md", sec{text: filler(23)}).mentionsID("DOC-7"),
 		)
 		res := find(t, newRetriever(s), knowledge.Query{Text: "zebra"})
-		wantWhy(t, hitOf(t, res, "b/b.md"), "defines KE-7 mentioned in a/a.md")
-		wantWhy(t, hitOf(t, res, "d/d.md"), "mentions KE-9 defined in c/c.md")
+		wantWhy(t, hitOf(t, res, "b/b.md"), "defines DOC-7 mentioned in a/a.md")
+		wantWhy(t, hitOf(t, res, "d/d.md"), "mentions DOC-9 defined in c/c.md")
 		if rankOf(res, "e/e.md") >= 0 {
 			t.Fatalf("co-mentioning doc returned: %v", hitIDs(res))
 		}
@@ -408,14 +408,14 @@ func TestBareSymbolResolvesThroughPackage(t *testing.T) {
 	forEachStore(t, func(t *testing.T, s knowledge.Store) {
 		keys := doc("code/keys/keys.go",
 			sec{heading: "package keys", text: "package keys " + filler(20)},
-			sec{heading: "PeerPermissions", symbol: "keys.PeerPermissions", text: "func PeerPermissions(p Peer) Permissions { return build(p) }"},
-		).definesSym("keys.PeerPermissions").prop("package", "keys")
+			sec{heading: "ClientPermissions", symbol: "keys.ClientPermissions", text: "func ClientPermissions(p Client) Permissions { return build(p) }"},
+		).definesSym("keys.ClientPermissions").prop("package", "keys")
 		load(t, s, keys,
-			doc("docs/perm.md", sec{heading: "PeerPermissions", text: repeat("PeerPermissions peer permissions", 8)}),
+			doc("docs/perm.md", sec{heading: "ClientPermissions", text: repeat("ClientPermissions client permissions", 8)}),
 		)
-		res := find(t, newRetriever(s), knowledge.Query{Text: "PeerPermissions"})
+		res := find(t, newRetriever(s), knowledge.Query{Text: "ClientPermissions"})
 		wantFirst(t, res, "code/keys/keys.go")
-		wantWhy(t, res.Hits[0], "defines keys.PeerPermissions")
+		wantWhy(t, res.Hits[0], "defines keys.ClientPermissions")
 		if res.Confidence != "high" || res.Hits[0].Sections[0].Lines != [2]int{11, 19} {
 			t.Fatalf("confidence %q sections %+v", res.Confidence, res.Hits[0].Sections)
 		}
@@ -760,15 +760,15 @@ func TestHubSeedCostsNeighborsLookups(t *testing.T) {
 func TestAcronymIsNotPackageQualified(t *testing.T) {
 	forEachStore(t, func(t *testing.T, s knowledge.Store) {
 		load(t, s,
-			doc("abugaga/internal/keys/keys.go", sec{heading: "PeerPermissions", symbol: "keys.PeerPermissions",
-				text: "PeerPermissions builds the NATS permission set for a peer: publish and subscribe allow lists are built from the roster"}).
-				definesSym("keys.PeerPermissions").prop("package", "keys"),
+			doc("relay/internal/keys/keys.go", sec{heading: "ClientPermissions", symbol: "keys.ClientPermissions",
+				text: "ClientPermissions builds the NATS permission set for a client: publish and subscribe allow lists are built from the registry"}).
+				definesSym("keys.ClientPermissions").prop("package", "keys"),
 			doc("pkg/config/config.go", sec{heading: "NATS", symbol: "config.NATS", text: "NATS holds the NATS server url and credentials file"}).
 				definesSym("config.NATS").prop("package", "config"),
 		)
 		r := newRetriever(s)
-		res := find(t, r, knowledge.Query{Text: "how is a peer's NATS permission set built"})
-		wantFirst(t, res, "abugaga/internal/keys/keys.go")
+		res := find(t, r, knowledge.Query{Text: "how is a client's NATS permission set built"})
+		wantFirst(t, res, "relay/internal/keys/keys.go")
 		if h := hitOf(t, res, "pkg/config/config.go"); hasWhy(h.Why, "defines config.NATS") {
 			t.Fatalf("acronym NATS qualified as config.NATS: %q", h.Why)
 		}

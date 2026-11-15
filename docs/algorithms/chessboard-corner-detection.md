@@ -10,7 +10,7 @@ tests: [x/vision/detect/corners/processor_test.go]
 test_result: not-run
 complete: yes
 correct: unknown
-evidence: "go/types check with FakeImportC against gocv v0.42.0 (tmp/easyrobot/io/typecheck, 2026-11-09): 0 errors; OpenCV missing, test fixture left04.jpg absent"
+evidence: "go/types check with FakeImportC against gocv v0.42.0 (2026-11-09): 0 errors; OpenCV missing, test fixture left04.jpg absent"
 ---
 # Chessboard corner detection (calibration)
 

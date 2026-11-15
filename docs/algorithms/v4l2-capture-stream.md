@@ -25,7 +25,7 @@ evidence: "GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build ./x/marshaller/v4l →
   - Channel count is guessed from FOURCC (`stream.go:243-258`): **MJPEG frames are wrapped undecoded as 3-channel `[H,W,3]`** although the buffer is compressed JPEG (:252-255); NV12 is declared 1 channel but the buffer is 1.5·W·H bytes (:248-249); YUYV `[H,W,2]`. Shape and byte length disagree for MJPEG/NV12.
   - `defaultTensorFactory` wraps the driver frame slice and `Release()` returns it to the uint8 pool (`tensor.go:35-44, 167-174`), mixing foreign buffers into the pool [INFERENCE: depends on go4vl buffer ownership].
   - Dropped frames release the tensor silently (`stream.go:230-232`); no drop counter.
-- Tested: `example_test.go` needs `/dev/video*`; not built on darwin and excluded by roster rules.
+- Tested: `example_test.go` needs `/dev/video*`; not built on darwin and needs a camera.
 - Correct: unknown (no build). Cross-compile with `CGO_ENABLED=0` fails inside go4vl (cgo-only types), so even a type check needs a linux cgo toolchain.
 - W4 relevance: the only OpenCV-free capture path; closest model for a K230/Linux-side capture, but MJPEG decode and YUV→RGB conversion are missing.
 

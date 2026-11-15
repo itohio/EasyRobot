@@ -82,7 +82,7 @@ var (
 
 // MaxInputRows is the most input rows a KPU layer runs on silicon: the
 // field holds 512, but a 257- or 258-row input never raises the done
-// interrupt (ER-K210-K9 evidence, kpushape).
+// interrupt (observed on the K210).
 const MaxInputRows = 256
 
 // Output is one model output: Size bytes at Address in main memory.
@@ -194,7 +194,7 @@ func (m *Model) checkLayer(l Layer) error {
 		}
 		a := m.Args(c)
 		if a[0]>>3&1 != 0 && a[4]>>4&0xf != 0 {
-			// The silicon computes a wrong output (ER-K210-K9 evidence, K9e).
+			// The silicon computes a wrong output (observed on the K210).
 			return fmt.Errorf("%w: pool_type %d on a depthwise conv (the KPU does not pool in depthwise mode)", ErrUnsupported, a[4]>>4&0xf)
 		}
 		if err := m.checkTables(c, &a); err != nil {
@@ -202,7 +202,7 @@ func (m *Model) checkLayer(l Layer) error {
 		}
 		w, h, ch := a.InShape()
 		if h > MaxInputRows {
-			// Each Run would time out (review R-K210-K9same S6).
+			// Each Run would time out.
 			return fmt.Errorf("%w: a %d-row input (the KPU runs at most %d)", ErrUnsupported, h, MaxInputRows)
 		}
 		if err := a.InLayout().check(a.SrcAddr(), w, h, ch); err != nil {
@@ -213,7 +213,7 @@ func (m *Model) checkLayer(l Layer) error {
 			return err
 		}
 		// dma_parameter's byte counts follow the output shape (as SetOutShape
-		// writes them; review R-K210-K9a K9a-1). Above 65,536 pixels per
+		// writes them). Above 65,536 pixels per
 		// channel the KPU ignores channel_byte_num (send_data_out must be
 		// off): SetOutShape saturates it and ncc truncates it to 16 bits, so
 		// both are accepted (K9a-2).
@@ -284,7 +284,7 @@ func (m *Model) checkLayer(l Layer) error {
 			return err
 		}
 		// The layout check first: it bounds the shape by the KPU limits, so
-		// the product below cannot wrap (review R-K210-K8b K1). Values above
+		// the product below cannot wrap. Values above
 		// the int range on 32-bit hosts convert to negative and fail it too.
 		if err := UploadLayout(int(u.Width), int(u.Height)).check(u.Out, int(u.Width), int(u.Height), int(u.Channels)); err != nil {
 			return err
@@ -298,7 +298,7 @@ func (m *Model) checkLayer(l Layer) error {
 
 // checkTables checks that conv c's weight, batch-norm and activation
 // tables lie inside the file over their whole size, since the KPU fetches
-// them by DMA (review R-K210-K8b K2). The weight extent is the size the
+// them by DMA. The weight extent is the size the
 // layer shape implies (8- or 16-bit weights by the header's mode). It is
 // not para_size × (load_time + 1): nncase's last load is partial (MobileNet
 // layer 26: 3 loads of 30,720 B for 65,536 B of weights, the file ending

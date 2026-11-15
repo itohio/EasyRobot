@@ -524,7 +524,7 @@ func TestDepthwiseConv2DReference(t *testing.T) {
 }
 
 // TestWeightZeroPointReference: asymmetric weights (a per-tensor weight zero
-// point, as in TFLite's uint8 models; ER-QU8) for Conv2D, DepthwiseConv2D
+// point, as in TFLite's uint8 models) for Conv2D, DepthwiseConv2D
 // and FullyConnected against the exact reference.
 func TestWeightZeroPointReference(t *testing.T) {
 	g := newGen(5)
@@ -622,7 +622,7 @@ func TestPool2DReference(t *testing.T) {
 }
 
 // TestAvgPoolTiesUpReference: with TiesUp, AvgPool2D rounds the exact mean
-// half up (TFLite's uint8 AVERAGE_POOL_2D on the value − 128 form, ER-QU8);
+// half up (TFLite's uint8 AVERAGE_POOL_2D on the value − 128 form);
 // it differs from the default only on negative .5 ties.
 func TestAvgPoolTiesUpReference(t *testing.T) {
 	g := newGen(6)

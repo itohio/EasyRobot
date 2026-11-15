@@ -64,7 +64,7 @@ func scenes() []imuScene {
 		out = append(out, imuScene{"hand", kp, 0, 6000, hand}, imuScene{"zero-accel", kp, 0, 1000, freefall})
 	}
 	out = append(out, imuScene{"hand-ki", 2, 0.1, 6000, hand}, imuScene{"tilt-ki", 0.5, 0.05, 6000, tilt(45)})
-	// Ki 0.005 (the strapdown tests' and fpv-gate's harness's setting) from
+	// Ki 0.005 (the strapdown tests' setting) from
 	// the start, with a large initial error: the integral grows large, so a
 	// gain off by a fraction of a percent shows (in Q16 it did, by 2.5e-4 rad)
 	for _, kp := range []float32{2, 10} {

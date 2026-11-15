@@ -77,7 +77,7 @@ Counts: 0 tested · 4 implemented · 14 partial · 2 stub · 0 unverified (20 al
 
 ## Tests and evidence
 
-Command: `GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=readonly go test -count=1 -v ./x/math/dsp/modulation/...` (2026-11-09; log `tmp/easyrobot/audio/mod_v.txt`).
+Command: `GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=readonly go test -count=1 -v ./x/math/dsp/modulation/...` (2026-11-09).
 
 | Package | Result | Failing tests and what actually failed |
 |---|---|---|
@@ -92,7 +92,7 @@ Command: `GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=readonly go test -count=1 -
 
 **Test harness noise model** (`test_utils/transmit.go:225-281`): the noise is `dsp.NewNoiseWhiteGenerator(sqrt(P/10^(S/10)))`, which is **uniform** in ±amp (variance amp²/3; see [[noise-generators]]). The real wideband SNR is therefore nominal + 4.77 dB, with bounded tails, which is much kinder than AWGN at low BER. SNR is wideband (noise over fs/2), so Eb/N0 = SNR + 10·log10(SPS/k) (complex) or SNR + 10·log10(SPS/2k) (real). That is +22.8 dB for QPSK and +19.8 dB for 4-FSK and 16-QAM at SPS 384. A test labelled "10 dB" runs QPSK at about **37.6 dB Eb/N0** (theory needs 9.6 dB for 1e-5). `snrDb <= 0` adds no noise at all (`:226`). Packets always start on a symbol boundary after 0.5 s of padding.
 
-**BER probe** (`tmp/easyrobot/audio/berprobe/main.go`, output `ber.txt`, run 2026-11-09 with `GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=mod go run .`). Gaussian noise; 1000 random symbols ×3 trials; alignment search ±16 symbols. Section A: noise only over the signal (decision path). B: noise over padding too, by wideband SNR. C: offsets, level, clock ppm. D: I/Q phase/CFO. Per-scheme tables are in the algorithm notes, and the W7 summary is in [[W7-filters-codecs-voice]].
+**BER probe** (output `ber.txt`, run 2026-11-09 with `GOTOOLCHAIN=local GOPROXY=off GOFLAGS=-mod=mod go run .`). Gaussian noise; 1000 random symbols ×3 trials; alignment search ±16 symbols. Section A: noise only over the signal (decision path). B: noise over padding too, by wideband SNR. C: offsets, level, clock ppm. D: I/Q phase/CFO. Per-scheme tables are in the algorithm notes, and the W7 summary is in [[W7-filters-codecs-voice]].
 
 ## API notes (ease of use, composability)
 

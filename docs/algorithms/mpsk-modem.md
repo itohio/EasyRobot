@@ -10,7 +10,7 @@ tests: [x/math/dsp/modulation/mpsk/roundtrip_test.go, x/math/dsp/modulation/mpsk
 test_result: fail
 complete: no
 correct: no
-evidence: "go test -count=1 -v ./x/math/dsp/modulation/mpsk → FAIL 3 (TestRoundtrip_NoiseScenarios, TestRoundtrip_SingleSymbol_NoPreamble, TestSNRLimits), 9 pass (2026-11-09); BER probe tmp/easyrobot/audio/berprobe (2026-11-09)"
+evidence: "go test -count=1 -v ./x/math/dsp/modulation/mpsk → FAIL 3 (TestRoundtrip_NoiseScenarios, TestRoundtrip_SingleSymbol_NoPreamble, TestSNRLimits), 9 pass (2026-11-09); BER probe (2026-11-09)"
 ---
 # M-PSK modem (BPSK/QPSK/8-PSK…)
 

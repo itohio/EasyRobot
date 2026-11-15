@@ -6,7 +6,7 @@ tags: [easyrobot, buffer, streaming, bits]
 workstream: [W2, W7]
 packages: [x/buffer]
 test_result: pass
-evidence: "go test -count=1 ./x/buffer → ok, 89/89 PASS (2026-11-09); go vet ./x/buffer → FAIL stdmethods (bit_buffer.go:144 WriteByte, :210 ReadByte); probes tmp/easyrobot/coding/bufprobe (bufprobe_out.txt, adapter_out.txt, ring/)"
+evidence: "go test -count=1 ./x/buffer → ok, 89/89 PASS (2026-11-09); go vet ./x/buffer → FAIL stdmethods (bit_buffer.go:144 WriteByte, :210 ReadByte); probed bit buffer, adapter and ring"
 ---
 # bit-buffer — `x/buffer`
 

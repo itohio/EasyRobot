@@ -345,7 +345,7 @@ func inCone(r *lcg, half float64) [3]float64 {
 // that is accepted is accurate: of 500 sets of 8 random poses at an
 // MPU6050's noise, those accepted (about two thirds; the rest leave some
 // direction under-seen) have their offsets within 0.006 m/s² and scales
-// within 0.12 % (verify's CAL-1 finding: a condition scaled to a unit
+// within 0.12 % (a condition scaled to a unit
 // diagonal let coplanar sets through, 0.16 m/s² off).
 func TestDegeneratePoseSetsAreRefusedAndAcceptedFitsAreAccurate(t *testing.T) {
 	r := seeded(13014)
@@ -497,7 +497,7 @@ func TestNewSolverRefusesABadConfig(t *testing.T) {
 }
 
 // Six poses (offset-only fit) on which Gauss-Newton does not settle in 200
-// iterations (verify's T4, CAL-1 v4): without the convergence check it returned a fit of condition 8.9 whose offsets are
+// iterations: without the convergence check it returned a fit of condition 8.9 whose offsets are
 // off by 6 m/s²; the convergence check refuses it.
 func TestANonConvergedFitIsRefused(t *testing.T) {
 	s, _ := NewSolver(DefaultConfig())

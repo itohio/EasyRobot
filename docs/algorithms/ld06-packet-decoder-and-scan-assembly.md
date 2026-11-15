@@ -10,7 +10,7 @@ tests: [x/devices/lidar/ld06/decoder_test.go]
 test_result: fail
 complete: no
 correct: no
-evidence: "go test -count=1 ./x/devices/lidar/ld06 → FAIL TestParseAndAssembleFullRotation (timeout waiting for scan), TestCRC8 pass (2026-11-09); probe tmp/easyrobot/devices/lidarprobe → 0 scans for every synthetic stream incl. datasheet-format packets"
+evidence: "go test -count=1 ./x/devices/lidar/ld06 → FAIL TestParseAndAssembleFullRotation (timeout waiting for scan), TestCRC8 pass (2026-11-09); probe → 0 scans for every synthetic stream incl. datasheet-format packets"
 ---
 # LD06 packet decoder and scan assembly
 

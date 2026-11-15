@@ -6,9 +6,9 @@ workstream: W3
 ---
 # W3 — Legged IK: joint configuration helpers, Jacobian check, strides, gaits, timing
 
-**Owner's goal (O-005, verbatim excerpt):** "inverse kinematics model(not sure fully if it works, need some helpers to configure joints properly. not sure if i solve jacobian properly). The end goal - a hexapod robot or a quadruper robot inverse kinematics with strides, gaits and timing."
+**Goal:** an inverse kinematics model with helpers to configure joints and a checked Jacobian, ending in hexapod or quadruped inverse kinematics with strides, gaits and timing.
 
-The full review, with the derivation, probe numbers, error list, helper API and tickets, is in ER-R2-ik-review (evidence: `~/src/docs/evidence/ER-R2-ik-review.md`, outside the repo) (2026-11-09, HEAD abb5c9c).
+The full review, with the derivation, probe numbers, error list, helper API and tickets, was in the IK review (2026-11-09, HEAD abb5c9c).
 
 ## Answers to the owner's questions
 
@@ -30,7 +30,7 @@ Helpers to configure joints exist only as raw `dh.Config` / `planar.Config` stru
 - There is no zero offset, sign or servo map.
 - The host CLI already mixes degrees/mm with radians.
 
-An API sketch is in ER-R2-ik-review (evidence: `~/src/docs/evidence/ER-R2-ik-review.md`, outside the repo) §5.
+An API sketch was part of the IK review.
 
 ## What exists
 
@@ -52,7 +52,7 @@ An API sketch is in ER-R2-ik-review (evidence: `~/src/docs/evidence/ER-R2-ik-rev
 
 ## Gaps
 
-Each line is a capability needed for a walking hexapod or quadruped, verified against code (details in ER-R2-ik-review (evidence: `~/src/docs/evidence/ER-R2-ik-review.md`, outside the repo) §6):
+Each line is a capability needed for a walking hexapod or quadruped, verified against code:
 1. Joint/leg configuration, validation and servo mapping (offsets, sign, ratio, channel, units).
 2. Body → hip transforms and body pose (height, roll, pitch, yaw); neutral stance; reach check.
 3. Stride/foothold generation from the body twist (stance feet fixed in the world).
@@ -77,7 +77,7 @@ Algorithm defects are tracked in the algorithm and module notes and rolled up by
 
 - **Proposal — milestone 1 (host only, no hardware):**
   - Do [[ER-017-dh-planar-ik-robustness|ER-017]] (analytic leg IK errors, config validation) and [[ER-018-leg-helpers-gait-scheduler|ER-018]] (VAJ1D, joint/leg helpers, scheduler, strides).
-  - Build a host simulation of a hexapod tripod gait with ER-R2 probe-style checks: stance feet fixed in the world, every foot reachable, every joint inside its limits, static margin above zero.
+  - Build a host simulation of a hexapod tripod gait with IK-review probe-style checks: stance feet fixed in the world, every foot reachable, every joint inside its limits, static margin above zero.
 - **Proposal — milestone 2 (ESP32):**
   - Allocation-free 50 Hz loop for 18 joints: scheduler → footholds → curves → analytic IK → servo map → PCA9685.
   - Measure the cost per tick on the device. Flashing needs the owner's approval of the exact scope.

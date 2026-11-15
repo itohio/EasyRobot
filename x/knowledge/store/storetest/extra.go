@@ -158,7 +158,7 @@ func Agree(t *testing.T, a, b Opener) {
 	}
 	queries := [][]string{
 		{"alpha"}, {"alpha", "beta"}, {"common"}, {"common", "zeta"}, {"server"},
-		{"peerpermissions", "peer", "permission"}, {"lorem", "alpha"}, {"guide"},
+		{"clientpermissions", "client", "permission"}, {"lorem", "alpha"}, {"guide"},
 		{"ąžuolas"}, {"handler", "request", "common"},
 	}
 	for _, q := range queries {
@@ -192,12 +192,12 @@ func agreeCorpus(t *testing.T, s knowledge.Store) {
 	h := mkDoc("docs/server.md", "md", "ws")
 	put(t, s, h, []knowledge.Chunk{
 		mkChunk(h.ID, 0, []string{"Server", "Guide"}, "", "the HTTPServer handles request routing"),
-		mkChunk(h.ID, 1, []string{"Server", "Peers"}, "", "PeerPermissions gate every request common"),
+		mkChunk(h.ID, 1, []string{"Server", "Clients"}, "", "ClientPermissions gate every request common"),
 	})
 	g := mkDoc("code/handler.go", "go", "code")
 	put(t, s, g, []knowledge.Chunk{
 		mkChunk(g.ID, 0, nil, "Handler", "func Handler(w ResponseWriter, r *Request) { alpha() }"),
-		mkChunk(g.ID, 1, nil, "PeerPermissions", "type PeerPermissions struct{ peer string }"),
+		mkChunk(g.ID, 1, nil, "ClientPermissions", "type ClientPermissions struct{ client string }"),
 	})
 	textDoc(t, s, "u/ąžuolas.md", "Ąžuolas auga giraitėje alpha alpha")
 	// Delete and replace to exercise length bookkeeping.

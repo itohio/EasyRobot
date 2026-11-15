@@ -10,7 +10,7 @@ tests: []
 test_result: build-fail
 complete: no
 correct: unknown
-evidence: "go/types check with FakeImportC against gocv v0.42.0 (tmp/easyrobot/io/typecheck, 2026-11-09): x/vision/types 14 type errors"
+evidence: "go/types check with FakeImportC against gocv v0.42.0 (2026-11-09): x/vision/types 14 type errors"
 ---
 # Camera model and stereo rig types (`x/vision/types`)
 

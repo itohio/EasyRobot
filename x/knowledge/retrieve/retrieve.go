@@ -368,8 +368,8 @@ type exactHit struct {
 }
 
 // exact resolves ids (Resolve(IDNode)), identifier-looking words
-// (Resolve(SymNode); a bare name such as "PeerPermissions" is also tried as
-// "<pkg>.PeerPermissions" for the packages of the top lexical Go hits) and
+// (Resolve(SymNode); a bare name such as "ClientPermissions" is also tried as
+// "<pkg>.ClientPermissions" for the packages of the top lexical Go hits) and
 // words equal to a document's base file name. Docs failing the filter or
 // listed in Near are dropped.
 func (x *run) exact() error {
@@ -399,7 +399,7 @@ func (x *run) exact() error {
 		if err != nil {
 			return err
 		}
-		// Only mixed-case names (PeerPermissions) are package-qualified:
+		// Only mixed-case names (ClientPermissions) are package-qualified:
 		// acronyms (NATS, LD06) are usually prose, and qualifying them with
 		// whatever packages matched lexically invents exact hits.
 		if ok || strings.Contains(w, ".") || !mixedCase(w) {
@@ -744,7 +744,7 @@ func identLike(w string) bool {
 }
 
 // mixedCase reports whether w has a lower-case letter followed later by an
-// upper-case one (PeerPermissions, newConn), unlike acronyms (NATS, LD06).
+// upper-case one (ClientPermissions, newConn), unlike acronyms (NATS, LD06).
 func mixedCase(w string) bool {
 	lower := false
 	for _, r := range w {

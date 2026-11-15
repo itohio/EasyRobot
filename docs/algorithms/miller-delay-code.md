@@ -10,7 +10,7 @@ tests: []
 test_result: none
 complete: yes
 correct: yes
-evidence: "no repo tests; probe tmp/easyrobot/coding/probe (2026-11-09) → roundtrip OK, streaming OK, survives polarity inversion, max run 4 chips"
+evidence: "no repo tests; probe (2026-11-09) → roundtrip OK, streaming OK, survives polarity inversion, max run 4 chips"
 ---
 # Miller (delay) code
 

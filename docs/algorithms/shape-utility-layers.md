@@ -10,7 +10,7 @@ tests: [x/math/nn/layers/utility_test.go, x/math/nn/layers/activations_test.go]
 test_result: pass
 complete: no
 correct: no
-evidence: "go test -count=1 ./x/... (2026-11-09) → TestFlatten, TestReshape, TestSqueeze, TestUnsqueeze, TestTranspose, TestDropout(+_EdgeCases) pass; probes tmp/easyrobot/tensor/layernotes/{gradcheck,utilcheck} (2026-11-09): Squeeze/Unsqueeze Backward panic, PadReflect wrong"
+evidence: "go test -count=1 ./x/... (2026-11-09) → TestFlatten, TestReshape, TestSqueeze, TestUnsqueeze, TestTranspose, TestDropout(+_EdgeCases) pass; probes (2026-11-09): Squeeze/Unsqueeze Backward panic, PadReflect wrong"
 ---
 # Shape and utility layers: Flatten, Reshape, Squeeze, Unsqueeze, Transpose, Pad, Concatenate, Dropout
 

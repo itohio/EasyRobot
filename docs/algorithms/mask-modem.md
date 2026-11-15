@@ -10,7 +10,7 @@ tests: [x/math/dsp/modulation/mask/roundtrip_test.go]
 test_result: fail
 complete: no
 correct: no
-evidence: "go test -count=1 -v ./x/math/dsp/modulation/mask → FAIL 2 (TestRoundtrip_NoiseScenarios, TestRoundtrip_Baseband), 4 pass (2026-11-09); BER probe tmp/easyrobot/audio/berprobe"
+evidence: "go test -count=1 -v ./x/math/dsp/modulation/mask → FAIL 2 (TestRoundtrip_NoiseScenarios, TestRoundtrip_Baseband), 4 pass (2026-11-09); BER probe"
 ---
 # M-ASK modem (OOK / multi-level amplitude keying)
 

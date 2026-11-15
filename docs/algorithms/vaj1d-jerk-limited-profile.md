@@ -10,7 +10,7 @@ tests: [x/math/control/motion/vaj1d_test.go]
 test_result: pass
 complete: yes
 correct: yes
-evidence: "go test -race -count=1 ./x/math/control/... → ok (2026-11-09). Before: probe J (0→100 ends 99.319, 0→0.5 never moves, |a| 4403 vs 100); review round 1: first-order lag and float32 stalls → TestVAJ1D_StepProfile; round 2: chatter and NaN dt → TestVAJ1D_ShortMoveSweep, TestVAJ1D_InvalidSamplePeriodIsNoOp; round 3: large-J teleport and long-brake overshoot → TestVAJ1D_SettleRespectsLimits, LongBrakeNoOvershoot, RandomRestToRest; roster review (R-ER-017-018): jittered dt reversals 26/27/18/21 of 200 → TestVAJ1D_JitteredSamplePeriod 0/200, NaN target runaway → NonFiniteTargetBrakes, invalid limits → InvalidLimits; all fail first, pass now; 20/20 mutants killed [[ER-018-leg-helpers-gait-scheduler|ER-018]]"
+evidence: "go test -race -count=1 ./x/math/control/... → ok (2026-11-09). Before: probe J (0→100 ends 99.319, 0→0.5 never moves, |a| 4403 vs 100); review round 1: first-order lag and float32 stalls → TestVAJ1D_StepProfile; round 2: chatter and NaN dt → TestVAJ1D_ShortMoveSweep, TestVAJ1D_InvalidSamplePeriodIsNoOp; round 3: large-J teleport and long-brake overshoot → TestVAJ1D_SettleRespectsLimits, LongBrakeNoOvershoot, RandomRestToRest; review of ER-017/ER-018: jittered dt reversals 26/27/18/21 of 200 → TestVAJ1D_JitteredSamplePeriod 0/200, NaN target runaway → NonFiniteTargetBrakes, invalid limits → InvalidLimits; all fail first, pass now; 20/20 mutants killed [[ER-018-leg-helpers-gait-scheduler|ER-018]]"
 source_revision: 1bf6234e676daa87d3e9eb191bb1dc2420f05ff9
 ---
 # VAJ1D jerk-limited 1-D profile
@@ -39,4 +39,4 @@ source_revision: 1bf6234e676daa87d3e9eb191bb1dc2420f05ff9
 
 ## Links
 
-- Module: [[motion-and-gait]] · [[rigidbody-path-follower]] · ER-R2-ik-review (evidence: `~/src/docs/evidence/ER-R2-ik-review.md`, outside the repo) · [[W3-legged-ik]]
+- Module: [[motion-and-gait]] · [[rigidbody-path-follower]] · [[W3-legged-ik]]

@@ -10,7 +10,7 @@ tests: []
 test_result: none
 complete: no
 correct: no
-evidence: "probe on a copy (tmp/easyrobot/audio/internalcopy/internal/probe_test.go, 2026-11-09): CFOCorrector(100 Hz) on a 100 Hz complex tone → max |y−1| = 2.000 (ideal ≈0)"
+evidence: "probe on a copy (2026-11-09): CFOCorrector(100 Hz) on a 100 Hz complex tone → max |y−1| = 2.000 (ideal ≈0)"
 ---
 # Complex-signal primitives: FIR, DC blocker, phase rotator, CFO corrector (internal, unused)
 

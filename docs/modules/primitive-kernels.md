@@ -17,7 +17,7 @@ test_result: pass
 |---|---|---|---|
 | `x/math/primitive/fp32` | 18 | 7694 | `level1.go`, `level2.go`, `level3.go` (Gemm_NN/NT/TN/TT, Syrk, Trmm), `batched.go`, `la.go` (1452: LU/Getri, Geqrf/Orgqr, Gesvd, Gepseu, Gnnls), `tensor.go` (2038: Conv1D/2D, transposed, kernel grads, pooling, im2col), `tensor_elementwise/broadcast/reduction.go`, `activations.go`, `normalization.go` (774), `dsp_fft.go`, `dsp_convolution.go`, `dsp_correlation.go`, `array.go`, `vector.go`; `Pool = buffer.Pool[float32]` |
 | `x/math/primitive/c64` | 5 | 767 | complex64 FFT (+LUT), Convolve1D/2D, CrossCorrelate1D/2D |
-| `x/math/primitive/qi8` | 7 + 3 tests | 651 | int8 NHWC kernels since ER-NN-KERNELS N1: Dot, FullyConnected, Conv2D, DepthwiseConv2D, Max/AvgPool2D, ReLU/ReLU6, exact per-channel requantisation ([[int8-nn-kernels]]); plus the old `Pool` |
+| `x/math/primitive/qi8` | 7 + 3 tests | 651 | int8 NHWC kernels: Dot, FullyConnected, Conv2D, DepthwiseConv2D, Max/AvgPool2D, ReLU/ReLU6, exact per-channel requantisation ([[int8-nn-kernels]]); plus the old `Pool` |
 | `qi`, `qi16`, `qi32`, `qi64`, `qu8`, `bytes` | 1 each | 7 each | only `var Pool = buffer.Pool[T]{}`; `bytes/bytes.go` declares `package qi8` |
 
 No assembly, no build tags. Declared docs: `primitive/SPEC.md` (811), `primitive/PLAN.md`, `fp32/{BLAS,LA,OPS}.md`, `fp32/BENCHMARK_REPORT.md`, `fp32/PERFORMANCE_REPORT.md` (stale: describes an assembly default path and files that do not exist, see [[W2-code-optimisation]]), `c64/OPS.md`.
@@ -55,12 +55,12 @@ Kernels also documented from the tensor side (they live in `fp32/tensor.go` / `n
 - Pure Go, float32 math via `chewxy/math32` — but several activation/softmax paths call float64 `math.Exp`/`math.Tanh` (`fp32/activations.go:57,83,121,157,196`), soft-float on ESP32.
 - No goroutines; deps `x/iter` (st), `x/types`, `x/buffer`, `x/math/shape`. Builds for linux/riscv64/arm/386; wasm fails via `x/types/st`.
 - Allocation: BLAS routines allocate nothing; conv/pool/LA paths use `fp32.Pool` or `make` for workspaces (per call); `Gesvd`/QR allocate.
-- **Int8 kernels** exist only in `qi8` (NHWC, generic Go, [[int8-nn-kernels]]); no int16 kernels; no SIMD/asm yet (ESP32-S3 PIE is ER-NN-KERNELS N2).
+- **Int8 kernels** exist only in `qi8` (NHWC, generic Go, [[int8-nn-kernels]]); no int16 kernels; no SIMD/asm in the generic path (ESP32-S3 PIE is a separate backend).
 
 ## Tests and evidence
 
 - `go test -count=1 -json ./x/math/primitive/...` (2026-11-09): fp32 97 top-level pass (304 incl. subtests), c64 30 pass (76 incl. subtests); qi*/qu8/bytes no test files.
-- Several tests are weak or wrong: `TestTrmv` asserts the implementation's wrong outputs; QR/SVD tests check identity or orthogonality only; correlation tests encode zero negative lags. Probe sources: `~/src/tmp/easyrobot/tensor/kernelnotes/{,qr,p2,p3}`.
+- Several tests are weak or wrong: `TestTrmv` asserts the implementation's wrong outputs; QR/SVD tests check identity or orthogonality only; correlation tests encode zero negative lags. Probes covered kernels, QR and correlation.
 - Benchmarks: `fp32/dsp_fft_bench_test.go`, `tensor_bench_test.go`, `c64/dsp_fft_bench_test.go`; GEMM numbers in [[fp32-gemm]] and [[W2-code-optimisation]].
 
 ## API notes (ease of use, composability)

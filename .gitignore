@@ -39,5 +39,5 @@ docs/.obsidian/workspace*.json
 /qi8bench-*.bin
 # Python bytecode from the testdata generators
 __pycache__/
-# Evidence reports live outside the repo (~/src/docs/evidence/)
+# Local evidence reports are not part of the repo
 /docs/evidence/

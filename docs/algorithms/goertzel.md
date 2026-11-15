@@ -10,7 +10,7 @@ tests: [x/math/dsp/measure_test.go]
 test_result: pass
 complete: yes
 correct: yes
-evidence: "go test -count=1 -v ./x/math/dsp/ → ok, TestMeasurements_Goertzel/_GoertzelC PASS (2026-11-09); probe tmp/easyrobot/audio/dspcore/main.go: amplitude and phase equal naive DFT bin (2026-11-09)"
+evidence: "go test -count=1 -v ./x/math/dsp/ → ok, TestMeasurements_Goertzel/_GoertzelC PASS (2026-11-09); probe: amplitude and phase equal naive DFT bin (2026-11-09)"
 ---
 # Goertzel single-bin DFT (real and complex)
 

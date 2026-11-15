@@ -23,7 +23,7 @@ evidence: "3 tests pass; probe exprprobe: cycle → 'start node 1 not evaluated'
 ## Completeness review
 
 - Complete: no.
-  - **No full cycle check:** `buildEvaluationOrder` never compares `len(result)` with `len(nodeSet)` (:162-177) and always returns `nil` error. Nodes on or above a cycle are silently dropped from the order; the failure surfaces later as `"start node %d not evaluated"` (:262). Probe (`tmp/easyrobot/filters/exprprobe`): r→p, p↔q → `err=start node 1 not evaluated`; self-loop below root → same message. If the cycle is in a branch not needed by the start node it cannot occur (all reachable nodes are ancestors of start) — so every cycle yields this misleading error, never a cycle error.
+  - **No full cycle check:** `buildEvaluationOrder` never compares `len(result)` with `len(nodeSet)` (:162-177) and always returns `nil` error. Nodes on or above a cycle are silently dropped from the order; the failure surfaces later as `"start node %d not evaluated"` (:262). Probe: r→p, p↔q → `err=start node 1 not evaluated`; self-loop below root → same message. If the cycle is in a branch not needed by the start node it cannot occur (all reachable nodes are ancestors of start) — so every cycle yields this misleading error, never a cycle error.
   - Child outputs are passed as `map[int64]Output` — operand order is lost (non-commutative ops must look up child IDs), and a fresh map is allocated per node per input (:206) plus a values map per input (:250).
   - `AddEdge` silently returns nil for nodes it cannot resolve (:54-56).
 - Tested: `TestExpressionGraph_Compute`, `SimpleAdd`, interfaces — small trees evaluated via `Compute(nil, …)`. Run: go test -count=1 -json ./x/math/graph/... (2026-11-09) → ok except TestRRTStar_Simple2DGrid (flaky).

@@ -11,7 +11,7 @@ test_result: pass
 
 **Purpose:** generic simulation bricks for demos and games, first for the owner's Tufty badge (RP2040, TinyGo): small fixed-step models with no allocation per step. The robot simulator (MuJoCo lockstep, `x/sim`, ER-048…060) is a different thing and lives elsewhere.
 
-**Packages:** `x/math/physics/rigid2d` (rigid2d.go 266, rigid2d_test.go 569), `x/math/swarm/boids` (boids.go 380, boids_test.go 351) and `x/math/fluid/flip` (flip.go 722, flip_test.go 681); no build tags. Planned here, by Leader's path decision (ER-SIMALGO): `x/math/automata/life`, `x/math/fluid` (ER-065, stable fluids); ray casting goes to `x/math/grid` ([[grid-maps]]). The liquid is `x/math/fluid/flip` (ER-061, easyrobot's call after the owner dropped the cellular automaton, 2026-11-13).
+**Packages:** `x/math/physics/rigid2d` (rigid2d.go 266, rigid2d_test.go 569), `x/math/swarm/boids` (boids.go 380, boids_test.go 351) and `x/math/fluid/flip` (flip.go 722, flip_test.go 681); no build tags. Planned here: `x/math/automata/life`, `x/math/fluid` (ER-065, stable fluids); ray casting goes to `x/math/grid` ([[grid-maps]]). The liquid is `x/math/fluid/flip` (ER-061, chosen when the cellular automaton was dropped, 2026-11-13).
 
 ## Public API
 
@@ -36,7 +36,7 @@ Counts: 3 tested · 0 implemented · 0 partial · 0 stub · 0 unverified (3 algo
 
 ## Build targets and dependencies
 
-Pure Go, no allocation per step. `rigid2d` is float32 (`chewxy/math32`); TinyGo 0.43 `-target=tufty2040`: 17,996 B flash for a Pong world (`pongtufty`, walled table), no allocation in `rigid2d` (2026-11-12). `boids` is integer only; 16,092 B flash for 128 boids (`boidstufty`), allocations only in `New` (2026-11-12). `flip` is integer only; about 20 KB flash in `fliptufty` (which times five box sizes), allocations only in `New` (2026-11-13).
+Pure Go, no allocation per step. `rigid2d` is float32 (`chewxy/math32`); TinyGo 0.43 `-target=tufty2040`: 17,996 B flash for a Pong world (a walled table), no allocation in `rigid2d` (2026-11-12). `boids` is integer only; 16,092 B flash for 128 boids (`boidstufty`), allocations only in `New` (2026-11-12). `flip` is integer only; about 20 KB flash in the badge timer (which times five box sizes), allocations only in `New` (2026-11-13).
 
 ## Tests and evidence
 

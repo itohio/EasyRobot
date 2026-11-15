@@ -10,7 +10,7 @@ tests: [x/math/tensor/eager/math_test.go, x/math/primitive/fp32/tensor_test.go]
 test_result: pass
 complete: no
 correct: no
-evidence: "go test -count=1 ./x/... (2026-11-09) → eager 305/305 pass; probe tmp/easyrobot/tensor/kernelnotes (2026-11-09): ops on offset views read wrong elements"
+evidence: "go test -count=1 ./x/... (2026-11-09) → eager 305/305 pass; probe (2026-11-09): ops on offset views read wrong elements"
 ---
 # Eager element-wise ops, broadcasting, reductions, comparisons, Where
 

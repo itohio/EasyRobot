@@ -10,7 +10,7 @@ tests: [x/marshaller/json/marshaller_test.go, x/marshaller/json/xor_test.go, x/m
 test_result: pass
 complete: no
 correct: no
-evidence: "go test -count=1 -v ./x/marshaller/json ./x/marshaller/yaml → ok, 8+8 PASS (2026-11-09); probe tmp/easyrobot/io/fmtprobe: INT32/INT64/INT panic, UINT8 panic (2026-11-09)"
+evidence: "go test -count=1 -v ./x/marshaller/json ./x/marshaller/yaml → ok, 8+8 PASS (2026-11-09); probe INT32/INT64/INT panic, UINT8 panic (2026-11-09)"
 ---
 # Tensor / model / graph ↔ JSON and YAML
 
@@ -24,7 +24,7 @@ evidence: "go test -count=1 -v ./x/marshaller/json ./x/marshaller/yaml → ok, 8
 
 - Complete: no — decoding writes every element through `Tensor.SetAt(float64, i)` (`json/unmarshaller.go:162`), which panics for INT32/INT64/INT tensors in the eager backend ([[tensor]] defect, `x/math/tensor/eager/tensor.go:383-405`); dtype map has no `uint8` (`json/internal.go:101-153`) so UINT8 tensors decode to `DT_UNKNOWN` and panic. Graph capture has hard-coded type branches (`GenericGraph[string,float32]`), so other N/E instantiations fall back to slower reflection paths. JSON/YAML duplication doubles maintenance.
 - Tested: 8 tests each pass — FP32 tensor round trip, arrays, `TestGraphRoundTrip`, `TestTreeRoundTrip`, decision tree and expression graph round trips *with computation* (outputs compared), embedded document decode, XOR model parameters.
-- Correct: no for integer dtypes. Probe `~/src/tmp/easyrobot/io/fmtprobe/main.go` (2×2 tensors): FP32/FP64/INT16/INT8 exact; INT32, INT64, INT → panic `tensor.setElementAtIndex: unsupported data type`; UINT8 → panic `unsupported dtype: 0`. Same results for YAML.
+- Correct: no for integer dtypes. Probe (2×2 tensors): FP32/FP64/INT16/INT8 exact; INT32, INT64, INT → panic `tensor.setElementAtIndex: unsupported data type`; UINT8 → panic `unsupported dtype: 0`. Same results for YAML.
 
 ## TODOs
 

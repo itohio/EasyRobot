@@ -7,7 +7,6 @@ kind: implementation
 owner: easyrobot
 workstream: [W3, W9]
 milestone: M-a
-maps: [T-IK-04]
 tags: [easyrobot, ticket, w3, w9, mat-vec]
 created: 2026-11-09
 updated: 2026-11-09
@@ -15,7 +14,7 @@ source_revision: abb5c9cca7f756c632548d9c7be2436b46dc2e4d
 ---
 # ER-021 — mat/vec: quaternion from matrix, QR and inverse tolerance
 
-[[tickets/index|Ticket index]] · [[roadmap]] · ER-R2 (evidence: `~/src/docs/evidence/ER-R2.md`, outside the repo) · [[todo]]
+[[tickets/index|Ticket index]] · [[roadmap]] · [[todo]]
 
 ## Goal and evidence
 
@@ -32,19 +31,19 @@ Dependencies: None blocking. Not on the M-a stage 1 path after O2; the DH orient
 
 Not in scope: Homogeneous helpers and `Matrix4x4.Inverse` (now ER-018); wide pseudo-inverse is ER-017's DLS.
 
-Source/test edits are approved by the owner's autonomy instruction (roster `decisions.md`); scheduling is Leader's call. Every fix starts with a failing test. No hardware, flashing, TinyGo or download is authorised by this ticket.
+Source/test edits are approved by the standing autonomy instruction; scheduling is decided separately. Every fix starts with a failing test. No hardware, flashing, TinyGo or download is authorised by this ticket.
 
 ## Acceptance evidence required later
 
-- [ ] **T-IK-04** — failing test first: Rz(90°) → `[0 0 √½ √½]`; `Orientation(Quaternion(R)) == R`. Fix: `mat.go:626-648`; pick one layout repo-wide.
+- [ ] **Quaternion fix** — failing test first: Rz(90°) → `[0 0 √½ √½]`; `Orientation(Quaternion(R)) == R`. Fix: `mat.go:626-648`; pick one layout repo-wide.
 - [ ] QR: failing test Q·R ≈ A and QᵀQ ≈ I in `verifyQRDecomposition` (`qr_test.go`), then the fix.
-- [ ] Inverse: failing test that `rigidbody.NewModel` accepts a 1 kg, 0.2 m box (probe `tmp/easyrobot/ik/inertia`); relative tolerance.
+- [ ] Inverse: failing test that `rigidbody.NewModel` accepts a 1 kg, 0.2 m box (probe); relative tolerance.
 - [ ] LU/Det: `TestMatrix_Det`/`TestMatrix_LU` (`mat_full_test.go:1309`, `:1336`) filled with matrices needing pivoting.
 - [ ] `go test -count=1 ./x/math/mat/... ./x/math/vec/...` passes.
 
 ## Effort uncertainty and revision trigger
 
-Product's guess: none given; **S–M** (inferred). Sizes are product's guesses ([[roadmap#1. Milestones at a glance|roadmap §1]]), not estimates from velocity. Revisit when a dependency or owner input changes the scope.
+Size guess: none given; **S–M** (inferred). Sizes are rough guesses ([[roadmap#1. Milestones at a glance|roadmap §1]]), not estimates from velocity. Revisit when a dependency or owner input changes the scope.
 
 ## Implementation evidence
 

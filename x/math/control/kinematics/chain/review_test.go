@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Review R-ER-017-018 G9 (C1): a NaN joint value must not reach the servo: it
+// A NaN joint value must not reach the servo: it
 // is clamped to Min, written finite, and reported as ErrJointLimit.
 func TestToServoNaNJoint(t *testing.T) {
 	c := hexleg(-1)

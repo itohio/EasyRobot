@@ -10,7 +10,7 @@ tests: [x/devices/encoder/example_test.go]
 test_result: build-fail
 complete: no
 correct: no
-evidence: "go test ./x/devices/encoder (darwin) → build failed 'configurePins(...) (no value) used as value' (2026-11-09); GOOS=windows build → same; GOOS=linux build ok, vet: 'ExampleEncoder refers to unknown identifier: Encoder'; probe tmp/easyrobot/devices/encprobe (copied table) → 100-state Gray sequence = ∓99 counts, RPM gate needs 100 s instead of 100 ms"
+evidence: "go test ./x/devices/encoder (darwin) → build failed 'configurePins(...) (no value) used as value' (2026-11-09); GOOS=windows build → same; GOOS=linux build ok, vet: 'ExampleEncoder refers to unknown identifier: Encoder'; probe (copied table) → 100-state Gray sequence = ∓99 counts, RPM gate needs 100 s instead of 100 ms"
 ---
 # Quadrature encoder decoding (4× interrupt, lookup table)
 

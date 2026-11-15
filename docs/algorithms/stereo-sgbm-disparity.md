@@ -10,7 +10,7 @@ tests: []
 test_result: build-fail
 complete: no
 correct: unknown
-evidence: "go/types check with FakeImportC against gocv v0.42.0 (tmp/easyrobot/io/typecheck, 2026-11-09): stereo/matching 3 errors (gocv.StereoSGBM, NewStereoSGBM, StereoSGBMModeSGBM3Way undefined); gocv ROADMAP lists stereo as not bound"
+evidence: "go/types check with FakeImportC against gocv v0.42.0 (2026-11-09): stereo/matching 3 errors (gocv.StereoSGBM, NewStereoSGBM, StereoSGBMModeSGBM3Way undefined); gocv ROADMAP lists stereo as not bound"
 ---
 # Stereo disparity (semi-global block matching)
 

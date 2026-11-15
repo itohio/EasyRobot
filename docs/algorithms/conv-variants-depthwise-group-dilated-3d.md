@@ -10,7 +10,7 @@ tests: [x/math/tensor/eager/conv_test.go]
 test_result: pass
 complete: yes
 correct: yes
-evidence: "go test -count=1 ./x/... (2026-11-09) → TestDepthwiseConv2D/TestGroupConv2D/TestDilatedConv2D/TestConv3D pass (shape-only); probe tmp/easyrobot/tensor/kernelnotes/p2 (2026-11-09): all equivalences ≤1.9e-6"
+evidence: "go test -count=1 ./x/... (2026-11-09) → TestDepthwiseConv2D/TestGroupConv2D/TestDilatedConv2D/TestConv3D pass (shape-only); probe (2026-11-09): all equivalences ≤1.9e-6"
 ---
 # DepthwiseConv2D, GroupConv2D, DilatedConv2D, Conv3D
 

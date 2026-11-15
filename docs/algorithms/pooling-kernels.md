@@ -10,7 +10,7 @@ tests: [x/math/tensor/eager/conv_test.go, x/math/tensor/eager/pooling_test.go, x
 test_result: pass
 complete: yes
 correct: no
-evidence: "go test -count=1 ./x/... (2026-11-09) → pooling tests pass; probe tmp/easyrobot/tensor/kernelnotes (2026-11-09): AdaptiveAvgPool2D wrong for non-divisible/upsampling sizes; MaxPool backward splits ties"
+evidence: "go test -count=1 ./x/... (2026-11-09) → pooling tests pass; probe (2026-11-09): AdaptiveAvgPool2D wrong for non-divisible/upsampling sizes; MaxPool backward splits ties"
 ---
 # Pooling: MaxPool2D (+indices, backward), AvgPool2D (+backward), GlobalAvgPool2D, AdaptiveAvgPool2D, ScatterAdd
 

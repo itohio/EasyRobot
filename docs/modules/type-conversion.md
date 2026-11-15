@@ -49,7 +49,7 @@ Counts: 0 tested · 0 implemented · 1 partial · 1 stub · 0 unverified (2 algo
 ## Tests and evidence
 
 - `go test -count=1 -json ./x/types/...` (2026-11-09, darwin/arm64): `x/types` 27 pass; `x/types/st` **build failed** (test file declares the amd64 asm symbol `convertInt16ToFloat32Assembly`, `convert_bench_test.go:583`); `x/types/internal` no tests.
-- InfraNotes ran `x/types/st` with `GOARCH=amd64` under Rosetta: 18/18 pass (the asm placeholder is benchmarked, not value-checked). Probes: `~/src/tmp/easyrobot/tensor/InfraNotes/{conv,asmprobe}`.
+- InfraNotes ran `x/types/st` with `GOARCH=amd64` under Rosetta: 18/18 pass (the asm placeholder is benchmarked, not value-checked).
 - Cross-build (lead, compile only): linux/riscv64, linux/arm, linux/386 build `x/types/...`; js/wasm fails.
 
 ## API notes (ease of use, composability)
