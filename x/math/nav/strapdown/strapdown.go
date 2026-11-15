@@ -247,6 +247,7 @@ type Nav struct {
 	quietSq    float32    // ∫ |r − Bias|² dt over the quietFor stretch
 	lateFor    float32    // s of its part after half the rest's wait
 	avg        [3]float32 // low-pass of the specific force, sensor frame
+	fHeld      [3]float32 // the force low-passed over AvgTime/8: a hand's tremor averaged out
 	rFast      [3]float32 // low-passes of the world acceleration over AvgTime/2
 	rSlow      [3]float32 // and AvgTime: they part while the attitude still turns
 	primed     bool       // avg, rFast and rSlow hold a sample
@@ -365,31 +366,41 @@ func (n *Nav) update(dt float32, q [4]float32, f, w [3]float32) {
 	// moves it while the force stays steady; two averages of it then part
 	// by about half the error left, which would otherwise be learned as
 	// bias. They restart together after motion, so only an ongoing drift
-	// parts them.
+	// parts them. The first rest judges the force steady with a hand's
+	// tremor averaged out (held: the force over AvgTime/8 against its
+	// average): the tremor's 8 Hz part took a single sample out of
+	// StillAccel on about 30 % of samples in a shaky hand, and with it the
+	// unbroken StillTime+AvgTime the first rest needs; a stroke's
+	// acceleration passes the short average.
 	if !n.primed {
-		n.avg, n.rFast, n.rSlow, n.primed = f, r, r, true
+		n.avg, n.fHeld, n.rFast, n.rSlow, n.primed = f, f, r, r, true
 	}
 	if spin2 >= c.StillGyro*c.StillGyro {
 		// turning: the force follows the attitude, and steadiness counts
 		// from when the gyro goes quiet (a 40° turn moves it 6.7 m/s²,
 		// which the average would take 1.75 s to forget)
-		n.avg = f
+		n.avg, n.fHeld = f, f
 	}
 	k := min(dt/c.AvgTime, 1)
 	k2 := min(2*dt/c.AvgTime, 1)
-	var steady2, left2 float32
+	kh := min(8*dt/c.AvgTime, 1)
+	var steady2, held2, left2 float32
 	for i := range 3 {
 		d := f[i] - n.avg[i]
 		n.avg[i] += k * d
 		steady2 += d * d
+		n.fHeld[i] += kh * (f[i] - n.fHeld[i])
+		h := n.fHeld[i] - n.avg[i]
+		held2 += h * h
 		e := r[i] - n.Bias[i]
 		left2 += e * e
 	}
 	lim2 := c.StillAccel * c.StillAccel
 	quiet := spin2 < c.StillGyro*c.StillGyro
 	steady, calm := steady2 < lim2, left2 < lim2
+	held := held2 < lim2
 	var trend2 float32
-	if !quiet || !steady {
+	if !quiet || !held {
 		n.rFast, n.rSlow = r, r
 	} else {
 		for i := range 3 {
@@ -405,7 +416,7 @@ func (n *Nav) update(dt float32, q [4]float32, f, w [3]float32) {
 		// first rest: no bias to judge acceleration by, so a steady force
 		// and a settled attitude; the bias is the plain mean of the rest's
 		// samples
-		if quiet && steady && settled {
+		if quiet && held && settled {
 			n.stillFor += dt
 		} else {
 			n.stillFor = 0
