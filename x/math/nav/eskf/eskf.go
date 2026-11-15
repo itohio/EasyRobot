@@ -175,9 +175,13 @@ type Filter struct {
 	sq       [10]float32    // the shadow's square at each slot of the last second
 	gRef     [3]float32     // the force at rest seen from the body (gravity and the accelerometer's offset), turned with the gyro
 	gbSlow   [3]float32     // the gyro bias over 10 s, which turns gRef (the estimate wanders ±0.001 rad/s a second as a hand's tremor passes into it)
-	gb0      [3]float32     // the gyro bias's prior (Prior; zero without one), to which Reset returns
-	gbP      [3]float32     // the gyro bias's prior variance (Prior), applied at the first rest
-	baP      float32        // the accelerometer bias's prior variance: 0.1 m/s² without a multi-pose calibration (an MPU6050's zero-g offset reaches 0.3; a wider prior lets the first rest's tilt wander), or that calibration's residual
+	shocked  bool           // a sample was clipped: the next rest re-levels
+	wildT    float32        // time since the force was last off gravity by over 0.5 g (violent motion)
+	sSum     [3]float32     // the force summed over that rest
+	sN       int
+	gb0      [3]float32 // the gyro bias's prior (Prior; zero without one), to which Reset returns
+	gbP      [3]float32 // the gyro bias's prior variance (Prior), applied at the first rest
+	baP      float32    // the accelerometer bias's prior variance: 0.1 m/s² without a multi-pose calibration (an MPU6050's zero-g offset reaches 0.3; a wider prior lets the first rest's tilt wander), or that calibration's residual
 }
 
 // New checks c and returns a filter that waits for its first rest.
@@ -185,7 +189,7 @@ func New(c Config) (Filter, error) {
 	if !c.valid() {
 		return Filter{}, ErrConfig
 	}
-	f := Filter{cfg: c, Q: [4]float32{1, 0, 0, 0}, gbP: [3]float32{4e-4, 4e-4, 4e-4}, baP: 0.01}
+	f := Filter{cfg: c, Q: [4]float32{1, 0, 0, 0}, gbP: [3]float32{4e-4, 4e-4, 4e-4}, baP: 0.01, wildT: 1}
 	f.matrix()
 	return f, nil
 }
@@ -213,6 +217,7 @@ func (f *Filter) Prior(fit *calib.Fit) {
 func (f *Filter) Reset() {
 	f.Q, f.V, f.P = [4]float32{1, 0, 0, 0}, [3]float32{}, [3]float32{}
 	f.GyroBias, f.AccelBias = f.gb0, [3]float32{}
+	f.shocked, f.sSum, f.sN, f.wildT = false, [3]float32{}, 0, 1
 	f.Ready, f.Still, f.primed = false, false, false
 	f.fSum, f.fN, f.stillT, f.tilts = [3]float32{}, 0, 0, 0
 	f.dx = [n]float32{}
@@ -221,9 +226,10 @@ func (f *Filter) Reset() {
 
 // Update takes one sample: dt (s), acc (m/s²) and gyro (rad/s) in the
 // sensor frame. A sample with a NaN or an infinity, or a dt not above zero,
-// is refused (Rejected) and one with a reading at a full scale skipped
-// (Clipped); neither touches the state. A real rotation during a clipped
-// sample is lost: the tilt corrects it at its gain.
+// is refused (Rejected) without touching the state. One with a reading at a
+// full scale is skipped (Clipped) and flagged: until the next rest
+// re-levels the attitude, the tilt holds the gyro bias. A real rotation
+// during a clipped sample is lost; the re-level corrects it.
 func (f *Filter) Update(dt float32, acc, gyro [3]float32) {
 	if !(dt > 0) || math32.IsInf(dt, 0) || !allFinite(acc) || !allFinite(gyro) {
 		f.Rejected++
@@ -231,6 +237,7 @@ func (f *Filter) Update(dt float32, acc, gyro [3]float32) {
 	}
 	if f.clipped(acc, gyro) {
 		f.Clipped++
+		f.shocked = true
 		return
 	}
 	f.rest(dt, acc, gyro)
@@ -247,6 +254,24 @@ func (f *Filter) Update(dt float32, acc, gyro [3]float32) {
 			f.fSum, f.fN = [3]float32{}, 0
 		}
 		return
+	}
+	if f.shocked {
+		if f.Still {
+			for i := range 3 {
+				f.sSum[i] += acc[i]
+			}
+			f.sN++
+			if float32(f.sN)*dt >= f.cfg.AvgTime {
+				f.relevel()
+			}
+		} else {
+			f.sSum, f.sN = [3]float32{}, 0
+		}
+	}
+	if fm := math32.Sqrt(acc[0]*acc[0] + acc[1]*acc[1] + acc[2]*acc[2]); fm > 1.5*f.cfg.G || fm < 0.5*f.cfg.G {
+		f.wildT = 0
+	} else {
+		f.wildT += dt
 	}
 	f.predict(dt, acc, gyro)
 	f.calm(dt)
@@ -314,6 +339,64 @@ func (f *Filter) Update(dt float32, acc, gyro [3]float32) {
 	} else {
 		f.wSum, f.wSq, f.wN = [3]float32{}, [3]float32{}, 0
 	}
+}
+
+// relevel: the first rest after a clipped sample sets roll and pitch again
+// from the force averaged over AvgTime, as the first rest does, keeping the
+// yaw and the biases. A clipped sample's rotation is lost and its motion
+// was outside the model, so the attitude can be off by any amount and the
+// velocity is meaningless: the velocity is set to zero, known to zero
+// velocity's noise, the tilt to the first rest's variance, and attitude,
+// velocity and position forget their correlations with the rest of the
+// state, which a violated model built up.
+func (f *Filter) relevel() {
+	var m [3]float32
+	k := 1 / float32(f.sN)
+	for i := range 3 {
+		m[i] = f.sSum[i]*k - f.AccelBias[i]
+	}
+	g := math32.Sqrt(m[0]*m[0] + m[1]*m[1] + m[2]*m[2])
+	if !(g > 0) {
+		return
+	}
+	var up [3]float32 // the measured up, turned into the world by the current attitude
+	for i := range 3 {
+		up[i] = (f.r[i][0]*m[0] + f.r[i][1]*m[1] + f.r[i][2]*m[2]) / g
+	}
+	// the smallest world rotation taking up to ẑ: axis up×ẑ = (up_y, −up_x, 0)
+	w := 1 + up[2]
+	var dq [4]float32
+	if w < 1e-6 {
+		dq = [4]float32{0, 1, 0, 0}
+	} else {
+		s := 1 / math32.Sqrt(2*w)
+		dq = [4]float32{w * s, up[1] * s, -up[0] * s, 0}
+	}
+	q := f.Q
+	f.Q = [4]float32{
+		dq[0]*q[0] - dq[1]*q[1] - dq[2]*q[2] - dq[3]*q[3],
+		dq[0]*q[1] + dq[1]*q[0] + dq[2]*q[3] - dq[3]*q[2],
+		dq[0]*q[2] - dq[1]*q[3] + dq[2]*q[0] + dq[3]*q[1],
+		dq[0]*q[3] + dq[1]*q[2] - dq[2]*q[1] + dq[3]*q[0],
+	}
+	f.normalise()
+	f.matrix()
+	f.V = [3]float32{}
+	c := &f.cov
+	for i := iTh; i < iP+3; i++ {
+		for j := range n {
+			if j != i {
+				c[i][j], c[j][i] = 0, 0
+			}
+		}
+	}
+	c[iTh][iTh], c[iTh+1][iTh+1] = 1e-4, 1e-4
+	for i := iV; i < iV+3; i++ {
+		c[i][i] = f.cfg.ZUPTNoise * f.cfg.ZUPTNoise
+	}
+	f.clearShadow()
+	f.seedRef()
+	f.shocked, f.sSum, f.sN = false, [3]float32{}, 0
 }
 
 // allFinite: no NaN or infinity in v.
@@ -563,6 +646,7 @@ func (f *Filter) start() {
 	f.seedRef()
 	f.gbSlow = f.GyroBias
 	f.vSq = f.cfg.StillSpeed * f.cfg.StillSpeed
+	f.shocked, f.sSum, f.sN = false, [3]float32{}, 0
 	f.Ready = true
 }
 
@@ -651,8 +735,11 @@ func (f *Filter) propagate(dt float32) {
 
 // scalar is one measurement y = h·δx + noise of variance rv, h with m ≤ 4
 // nonzeros at idx: it accumulates into dx and downdates the covariance,
-// unless gated and the innovation's χ² is above the gate (false).
-func (f *Filter) scalar(idx *[4]int, val *[4]float32, m int, y, rv float32, gated bool) bool {
+// unless gated and the innovation's χ² is above the gate (false). With
+// hold, the gyro bias is a consider state: its gain is zero and its
+// variance stays, and the covariance takes the general (Schmidt) update
+// P − k·phᵀ − ph·kᵀ + k·s·kᵀ, consistent with that gain.
+func (f *Filter) scalar(idx *[4]int, val *[4]float32, m int, y, rv float32, gated, hold bool) bool {
 	c := &f.cov
 	var ph [n]float32
 	for i := range n {
@@ -673,6 +760,24 @@ func (f *Filter) scalar(idx *[4]int, val *[4]float32, m int, y, rv float32, gate
 		return false
 	}
 	inv := 1 / s
+	if hold {
+		var k [n]float32
+		for i := range n {
+			if i >= iBg && i < iBg+3 {
+				continue
+			}
+			k[i] = ph[i] * inv
+			f.dx[i] += k[i] * e
+		}
+		for i := range n {
+			for j := i; j < n; j++ {
+				v := c[i][j] - k[i]*ph[j] - k[j]*ph[i] + k[i]*k[j]*s
+				c[i][j] = v
+				c[j][i] = v
+			}
+		}
+		return true
+	}
 	for i := range n {
 		k := ph[i] * inv
 		f.dx[i] += k * e
@@ -728,11 +833,16 @@ func (f *Filter) inject() {
 	f.normalise()
 }
 
-// tilt: the force turned into the world, u = R(f − b_a)/|·|, against ẑ;
-// gated unless calm (an acceleration is an outlier). Calm, the body isn't
-// translating, turning or not, so the force is gravity (a hand's turn
-// adds no centripetal force to speak of); a gate there could lock a grown
-// error out for good.
+// tilt: the force turned into the world, u = R(f − b_a)/|·|, against ẑ.
+// Calm, the body isn't translating, turning or not, so the force is
+// gravity (a hand's turn adds no centripetal force to speak of): ungated,
+// since a gate there could lock a grown error out for good. Not calm, it is
+// gated (an acceleration is an outlier), and in violent motion (a clipped
+// sample since the last rest, or the force off gravity by over 0.5 g
+// within a second) it holds the gyro bias, a consider state. In vigorous shaking a few samples a
+// second pass the gate, and through the attitude–bias correlation they
+// used to drag the gyro bias by ~0.08 rad/s, against which the gyro then
+// never looked quiet at rest.
 // To first order u_x = −δθ_y and u_y = δθ_x, and the bias error adds
 // −R δb_a/g.
 func (f *Filter) tilt(acc [3]float32) {
@@ -749,12 +859,13 @@ func (f *Filter) tilt(acc [3]float32) {
 	}
 	ig := 1 / g
 	rv := f.cfg.TiltNoise * f.cfg.TiltNoise
+	hold := !f.Calm && (f.shocked || f.wildT < 1)
 	idx := [4]int{iTh + 1, iBa, iBa + 1, iBa + 2}
 	val := [4]float32{-1, -f.r[0][0] * ig, -f.r[0][1] * ig, -f.r[0][2] * ig}
-	f.scalar(&idx, &val, 4, u[0]*ig, rv, !f.Calm)
+	f.scalar(&idx, &val, 4, u[0]*ig, rv, !f.Calm, hold)
 	idx = [4]int{iTh, iBa, iBa + 1, iBa + 2}
 	val = [4]float32{1, -f.r[1][0] * ig, -f.r[1][1] * ig, -f.r[1][2] * ig}
-	f.scalar(&idx, &val, 4, u[1]*ig, rv, !f.Calm)
+	f.scalar(&idx, &val, 4, u[1]*ig, rv, !f.Calm, hold)
 	f.inject()
 }
 
@@ -779,7 +890,7 @@ func (f *Filter) zupt(dt float32) {
 	for i := range 3 {
 		idx := [4]int{iV + i}
 		val := [4]float32{1}
-		if !f.scalar(&idx, &val, 1, -f.V[i], rv, !force && !f.Still) {
+		if !f.scalar(&idx, &val, 1, -f.V[i], rv, !force && !f.Still, false) {
 			refused = true
 		}
 	}
@@ -817,7 +928,7 @@ func (f *Filter) zaru(dt float32, gyro [3]float32) {
 		v := max(f.wSq[i]*k-m*m, 0)
 		idx := [4]int{iBg + i}
 		val := [4]float32{1}
-		if e := m - f.GyroBias[i]; !f.scalar(&idx, &val, 1, e, max(v, white), true) {
+		if e := m - f.GyroBias[i]; !f.scalar(&idx, &val, 1, e, max(v, white), true, false) {
 			refused, miss[i] = true, e
 		}
 	}

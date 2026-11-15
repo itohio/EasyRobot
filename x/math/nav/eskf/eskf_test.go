@@ -724,7 +724,7 @@ func TestClippedSampleIsSkipped(t *testing.T) {
 		if f.Clipped != before.Clipped+1 {
 			t.Errorf("%s: Clipped %d (want %d)", s.name, f.Clipped, before.Clipped+1)
 		}
-		f.Clipped = before.Clipped
+		f.Clipped, f.shocked = before.Clipped, before.shocked // the estimate is untouched; the sample is counted and flagged
 		if f != before {
 			t.Errorf("%s: the state changed", s.name)
 		}
@@ -770,6 +770,165 @@ func TestResetMakesTheFilterReadyAgain(t *testing.T) {
 		if e := math.Abs(float64(f.GyroBias[i]) - h.gb[i]); e > 0.005 {
 			t.Errorf("gyro bias %v 5 s after Reset (true %v)", f.GyroBias, h.gb)
 			break
+		}
+	}
+}
+
+// shake feeds s seconds of vigorous shaking: the hand swings the body
+// through 3–8 Hz in changing directions, up to ~3 g and ~10 rad/s, and
+// the accelerometer clips at its full scale (±2 g) as a real one does.
+func shake(h *hand, f *Filter, q quat, s float64, seed uint64) quat {
+	r := rng(seed)
+	c := f.cfg
+	var amp, w [3]float64
+	var fr [3]float64
+	for k := range 3 {
+		amp[k], w[k], fr[k] = 12+8*r.gauss(), 4*r.gauss(), 3+5*math.Abs(r.gauss())/2
+	}
+	for i := range int(s * rate) {
+		tt := float64(i) / rate
+		var a, om [3]float64
+		for k := range 3 {
+			a[k] = amp[k] * math.Sin(2*math.Pi*fr[k]*tt+float64(k))
+			om[k] = w[k] * math.Cos(2*math.Pi*fr[(k+1)%3]*tt)
+		}
+		q = q.mul(axisAngle(om, math.Sqrt(om[0]*om[0]+om[1]*om[1]+om[2]*om[2])/rate))
+		acc, gyro, _ := h.sample(q, a, om)
+		for k := range 3 {
+			acc[k] = min(max(acc[k], -c.AccelRange), c.AccelRange)
+		}
+		f.Update(1/rate, acc, gyro)
+	}
+	return q
+}
+
+// After vigorous shaking (10 s, the accelerometer clipping at ±2 g) the
+// body is put flat on a desk: within 10 s it is at rest (Still) for 5 s,
+// and from then on its speed stays under 0.1 m/s, its tilt within 1° and
+// its gyro bias within 5 mrad/s. Calibrated and not, three shakes each.
+// (The tilt update once ran gated while the body translated; a few
+// shaking samples a second passed its gate and dragged the gyro bias by
+// ~0.08 rad/s through the attitude–bias correlation, against which the
+// gyro never looked quiet on the desk: no rest, and the speed ran to km/s.)
+func TestRestAfterShaking(t *testing.T) {
+	for _, cal := range []bool{true, false} {
+		for seed := uint64(1); seed <= 3; seed++ {
+			h := stillHand(seed)
+			f := newFilter(t)
+			if cal {
+				calibrated(h, &f)
+			}
+			hold(h, &f, upright, 5)
+			shake(h, &f, upright, 10, seed)
+			desk := newHand(seed+100, 0, 0)
+			desk.off, desk.gb = h.off, h.gb
+			still, rested := 0, -1.0
+			var vMax, tMax float64
+			var qt quat
+			for i := range int(60 * rate) {
+				var a, g [3]float32
+				a, g, qt = desk.sample(upright, [3]float64{}, [3]float64{})
+				f.Update(1/rate, a, g)
+				if f.Still {
+					still++
+				} else {
+					still = 0
+				}
+				if rested < 0 && still >= int(5*rate) {
+					rested = float64(i)/rate - 5
+				}
+				if rested >= 0 {
+					vMax = max(vMax, math.Sqrt(float64(f.V[0]*f.V[0]+f.V[1]*f.V[1]+f.V[2]*f.V[2])))
+					tMax = max(tMax, tiltErr(&f, qt))
+				}
+			}
+			bias := 0.0
+			for k := range 3 {
+				bias = max(bias, math.Abs(float64(f.GyroBias[k])-h.gb[k]))
+			}
+			if rested < 0 || rested > 10 || vMax > 0.1 || (cal && tMax > 1) || bias > 0.005 {
+				t.Errorf("calibrated %v, shake %d: rest from %.1f s after put-down (want ≤ 10; −1 never), then speed up to %.3f m/s (want ≤ 0.1), tilt %.2f°, gyro bias off by %.4f rad/s (want ≤ 0.005)", cal, seed, rested, vMax, tMax, bias)
+			}
+		}
+	}
+}
+
+// Violent motion (the force off gravity by over 0.5 g) is no evidence of
+// the gyro's bias: the tilt update there is gated and holds the bias. In
+// 8 s of unclipped shaking (±8 m/s² at 3–8 Hz, rotations of a few rad/s)
+// the gyro bias moves under 0.1 mrad/s (it moved 0.2–0.6 mrad/s before; on
+// a real badge's vigorous shaking, 80 mrad/s, enough to keep the gyro from
+// ever looking quiet again).
+func TestViolentMotionHoldsTheGyroBias(t *testing.T) {
+	for _, cal := range []bool{true, false} {
+		for seed := uint64(1); seed <= 5; seed++ {
+			h := stillHand(seed)
+			f := newFilter(t)
+			if cal {
+				calibrated(h, &f)
+			}
+			hold(h, &f, upright, 10)
+			b0 := f.GyroBias
+			r := rng(seed)
+			var w, fr [3]float64
+			for k := range 3 {
+				w[k], fr[k] = 3*r.gauss(), 3+2*math.Abs(r.gauss())
+			}
+			q := upright
+			for i := range int(8 * rate) {
+				tt := float64(i) / rate
+				var a, om [3]float64
+				for k := range 3 {
+					a[k] = 8 * math.Sin(2*math.Pi*fr[k]*tt+float64(k))
+					om[k] = w[k] * math.Cos(2*math.Pi*fr[(k+1)%3]*tt)
+				}
+				q = q.mul(axisAngle(om, math.Sqrt(om[0]*om[0]+om[1]*om[1]+om[2]*om[2])/rate))
+				acc, gyro, _ := h.sample(q, a, om)
+				f.Update(1/rate, acc, gyro)
+			}
+			for k := range 3 {
+				if d := math.Abs(float64(f.GyroBias[k] - b0[k])); d > 1e-4 {
+					t.Errorf("calibrated %v, seed %d: gyro bias moved %.5f rad/s over the shaking (want ≤ 0.0001)", cal, seed, d)
+					break
+				}
+			}
+		}
+	}
+}
+
+// After a clipped sample the motion was outside the model until the next
+// rest re-levels the attitude: until then the tilt update holds the gyro
+// bias even in gentle motion (not calm, not violent), which it otherwise
+// teaches. One clipped jolt, then 6 s of slow swinging: the gyro bias moves
+// under 0.1 mrad/s (without the hold, 0.8–0.9 mrad/s).
+func TestGyroBiasHeldUntilTheRestAfterAClip(t *testing.T) {
+	for _, cal := range []bool{true, false} {
+		for seed := uint64(1); seed <= 5; seed++ {
+			h := stillHand(seed)
+			f := newFilter(t)
+			if cal {
+				calibrated(h, &f)
+			}
+			hold(h, &f, upright, 10)
+			a, g, _ := h.sample(upright, [3]float64{}, [3]float64{})
+			a[1] = f.cfg.AccelRange
+			f.Update(1/rate, a, g)
+			b0 := f.GyroBias
+			q := upright
+			for i := range int(6 * rate) {
+				tt := float64(i) / rate
+				acc := [3]float64{1.5 * math.Sin(2*math.Pi*1.3*tt), 0, 1.2 * math.Sin(2*math.Pi*0.9*tt+1)}
+				om := [3]float64{0.6 * math.Sin(2*math.Pi*0.7*tt), 0.4 * math.Cos(2*math.Pi*0.5*tt), 0.3 * math.Sin(2*math.Pi*0.3*tt)}
+				q = q.mul(axisAngle(om, math.Sqrt(om[0]*om[0]+om[1]*om[1]+om[2]*om[2])/rate))
+				aa, gg, _ := h.sample(q, acc, om)
+				f.Update(1/rate, aa, gg)
+			}
+			for k := range 3 {
+				if d := math.Abs(float64(f.GyroBias[k] - b0[k])); d > 1e-4 {
+					t.Errorf("calibrated %v, seed %d: gyro bias moved %.5f rad/s after a clipped sample (want ≤ 0.0001)", cal, seed, d)
+					break
+				}
+			}
 		}
 	}
 }

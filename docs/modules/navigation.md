@@ -50,7 +50,7 @@ Pure Go, float32, `errors`; value types, no allocation per sample. `pdr`, `strap
 - with mpu6050 + Mahony + pdr: allocations only at construction (2026-11-12);
 - with mpu6050 + Mahony + strapdown: one allocation in `strapdown`, the 736-byte `Nav` from `New`; none per sample; 94,296 B flash (2026-11-13);
 - with mpu6050 + Mahony + calib + seeded strapdown: no allocation in `calib` (the Calibrator is 212 bytes, a stack value); strapdown's `Nav` as above; 97,512 B flash (2026-11-13);
-- eskf (`kernelbench`): one allocation, the 2516-byte `Filter` from `New`; none per sample; 119,884 B flash (2026-11-15).
+- eskf (`kernelbench`): one allocation, the 2540-byte `Filter` from `New`; none per sample; 121,148 B flash (2026-11-15).
 
 ## Tests and evidence
 
