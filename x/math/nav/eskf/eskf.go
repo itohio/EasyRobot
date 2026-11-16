@@ -61,7 +61,7 @@ type Config struct {
 	GyroNoise     float32 // gyro white noise density, rad/s/√Hz
 	AccelBiasWalk float32 // accelerometer bias random walk, m/s² per √s
 	GyroBiasWalk  float32 // gyro bias random walk, rad/s per √s
-	TiltNoise     float32 // the tilt measurement's sd when the force's magnitude is g, rad
+	TiltNoise     float32 // the tilt measurement's sd when the force's magnitude is g, rad (0.014: a slow stroke stays a translation with the bias's tilt in the covariance; at 0.01 a 5 cm stroke 3 s after the start read up to 16 mm off)
 	LinAccelTime  float32 // s: the body's own acceleration as tilt noise: its power (the force's variance over the last half second above the sensor's white noise) times this is a white-equivalent spectral density; it sets how long the tilt waits while the body moves (0: none)
 	TiltEvery     int     // samples between tilt updates
 	AccelRange    float32 // m/s²: the accelerometer's full scale; a reading at it is clipped (Update) (0: no check)
@@ -77,7 +77,7 @@ func DefaultConfig() Config {
 	return Config{
 		Gravity: StandardGravity, AccelNoise: 0.0016, GyroNoise: 0.00006,
 		AccelBiasWalk: 0.0005, GyroBiasWalk: 0.0002,
-		TiltNoise: 0.01, LinAccelTime: 96, TiltEvery: 4,
+		TiltNoise: 0.014, LinAccelTime: 96, TiltEvery: 4,
 		AccelRange: 2 * StandardGravity, GyroRange: 2000 * math32.Pi / 180,
 	}
 }

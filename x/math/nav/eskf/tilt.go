@@ -8,16 +8,19 @@ import "github.com/chewxy/math32"
 // acceleration (corrected through their correlation with the attitude, one
 // update moved the position by 9.9 m with exact samples); nor can it tell
 // the bias from a horizontal acceleration, so the bias stays the
-// calibration's (without its row in H the correlation alone still moved it).
+// calibration's: its columns are in H, the update doesn't move it.
 const tiltConsider uint16 = 0x1ff&^0x7 | 0x7<<iBa // δv, δp, δb_a
 
 // tiltModel is the tilt measurement: the force turned into the world,
 // u = R(f − b_a)/|·|, against ẑ, gravity's direction; to first order
-// u_x = −δθ_y and u_y = δθ_x. It measures the attitude only: the
-// accelerometer's bias is the calibration's (Prior), since gravity's
-// direction can't tell a bias from a horizontal acceleration (with the bias
-// in H, a hand's strokes and a shake moved it by up to 1 m/s², and the
-// attitude settled 4–7° off the force at rest). Its noise, never gated and
+// u_x = −δθ_y and u_y = δθ_x; a bias error δb tilts it by R·δb/g. The bias
+// is the calibration's (Prior) and a consider state here, since gravity's
+// direction can't tell a bias from a horizontal acceleration (estimated, a
+// hand's strokes and a shake moved it by up to 1 m/s², and the attitude
+// settled 4–7° off the force at rest); its columns in H keep the covariance
+// honest: a residual bias tilts the estimate by b/g instead of drifting the
+// velocity (without them the velocity's σ grew as σ_b·t, 30–90× its error
+// on a still sensor, and the tilt's σ left out the b/g). Its noise, never gated and
 // never switched: TiltNoise; the force's magnitude's distance from g as a
 // fraction of g (an acceleration along gravity); and the body's own
 // acceleration, lin (the force's variance over the last half second above the
@@ -47,8 +50,8 @@ func tiltModel(r *[3][3]float32, ba, acc [3]float32, c *Config, span, lin float3
 	if span > 0 {
 		rv += c.LinAccelTime * lin / (span * c.Gravity * c.Gravity) // the body's acceleration over the span, white-equivalent
 	}
-	rows[0] = row{idx: [4]int{iTh + 1}, val: [4]float32{-1}, m: 1}
-	rows[1] = row{idx: [4]int{iTh}, val: [4]float32{1}, m: 1}
+	rows[0] = row{idx: [4]int{iTh + 1, iBa, iBa + 1, iBa + 2}, val: [4]float32{-1, r[0][0] * ig, r[0][1] * ig, r[0][2] * ig}, m: 4}
+	rows[1] = row{idx: [4]int{iTh, iBa, iBa + 1, iBa + 2}, val: [4]float32{1, r[1][0] * ig, r[1][1] * ig, r[1][2] * ig}, m: 4}
 	ys = [2]float32{u[0] * ig, u[1] * ig}
 	return rows, ys, rv, true
 }

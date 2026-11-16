@@ -1179,3 +1179,64 @@ func TestTenMinutesStayAFilter(t *testing.T) {
 		}
 	}
 }
+
+// The filter's σ is honest against its own priors: with the truth drawn from
+// them (the velocity at the start 0.1 m/s, the calibration's residual 0.05
+// m/s² on the accelerometer and 2 mrad/s on the gyro, per axis) on a still,
+// level sensor with the Config's noise, the RMS over 40 draws of each error
+// over its σ is within [1/3, 3] for the tilt about world x and y and the
+// velocity along x, y and z, 10 s and 40 s after the start. (A residual bias
+// tilts the estimate by b/g; it doesn't drift the velocity.)
+func TestSigmaHonestAgainstThePriors(t *testing.T) {
+	const rate, draws = 100.0, 40
+	marks := [2]float64{10, 40}
+	var z2 [2][5]float64
+	c := DefaultConfig()
+	sa, sg := float64(c.AccelNoise)*math.Sqrt(rate), float64(c.GyroNoise)*math.Sqrt(rate)
+	for seed := range draws {
+		r := rng(seed + 1)
+		f := newFilter(t)
+		fit := calib.Fit{RMS: 0.01, Scale: [3]float32{1, 1, 1}}
+		f.Prior(&fit, 0.05)
+		var v0, ba, bg [3]float64
+		for i := range 3 {
+			v0[i], ba[i], bg[i] = 0.1*r.gauss(), 0.05*r.gauss(), 0.002*r.gauss()
+		}
+		m := 0
+		for k := 0; m < len(marks); k++ {
+			var a, w [3]float32
+			for i := range 3 {
+				a[i] = float32(ba[i] + sa*r.gauss())
+				w[i] = float32(bg[i] + sg*r.gauss())
+			}
+			a[2] += c.Gravity
+			if err := f.Update(1/rate, a, w); err != nil {
+				t.Fatal(err)
+			}
+			if float64(k)/rate < marks[m] {
+				continue
+			}
+			att, vel, _ := f.Sigma()
+			q, v := f.Q, f.Velocity()
+			// the tilt error about world x and y: the estimate's up (world ẑ
+			// in the sensor frame) against the truth's, level
+			ux := 2 * (float64(q[1])*float64(q[3]) + float64(q[0])*float64(q[2]))
+			uy := 2 * (float64(q[2])*float64(q[3]) - float64(q[0])*float64(q[1]))
+			e := [5]float64{uy, ux, float64(v[0]) - v0[0], float64(v[1]) - v0[1], float64(v[2]) - v0[2]}
+			s := [5]float64{float64(att[0]), float64(att[1]), float64(vel[0]), float64(vel[1]), float64(vel[2])}
+			for i := range 5 {
+				z2[m][i] += (e[i] / s[i]) * (e[i] / s[i])
+			}
+			m++
+		}
+	}
+	names := [5]string{"tilt about x", "tilt about y", "velocity x", "velocity y", "velocity z"}
+	for m, tm := range marks {
+		for i := range 5 {
+			rz := math.Sqrt(z2[m][i] / draws)
+			if rz < 1.0/3 || rz > 3 {
+				t.Errorf("%.0f s: %s, RMS error/σ %.3f (want within [1/3, 3])", tm, names[i], rz)
+			}
+		}
+	}
+}

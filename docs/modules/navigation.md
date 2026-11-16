@@ -16,7 +16,7 @@ test_result: pass
 - its startup calibration at rest: MPU6050 → calib → gyro bias for Mahony and strapdown, and the page's live statistics and forecast;
 - its motion from one joint estimate: MPU6050 → [[error-state-kalman-filter]] (attitude, velocity, position and both biases with their covariance, in place of Mahony + strapdown); it only estimates, nothing in it decides; an `estimator.Motion`; no application runs it yet.
 
-**Packages:** `x/math/nav/pdr` (pdr.go 163, pdr_test.go 389), `x/math/nav/strapdown` (strapdown.go 990, strapdown_test.go 1531), `x/math/nav/calib` (calib.go 373, calib_test.go 500), `x/math/nav/eskf` (eskf.go, state.go, covariance.go, tilt.go, input.go 804; eskf_test.go 1181), `x/math/nav/estimator` (estimator.go 67, estimatortest 360, estimator_test.go 73) and `x/math/nav/mahony` (mahony.go 241, float.go, fixed.go 227; mahony_test.go 346, fixed_test.go 130); build tag `fixedmotion` (mahony's fixed-point 6-axis path).
+**Packages:** `x/math/nav/pdr` (pdr.go 163, pdr_test.go 389), `x/math/nav/strapdown` (strapdown.go 990, strapdown_test.go 1531), `x/math/nav/calib` (calib.go 373, calib_test.go 500), `x/math/nav/eskf` (eskf.go, state.go, covariance.go, tilt.go, input.go 807; eskf_test.go 1242), `x/math/nav/estimator` (estimator.go 67, estimatortest 360, estimator_test.go 73) and `x/math/nav/mahony` (mahony.go 241, float.go, fixed.go 227; mahony_test.go 346, fixed_test.go 130); build tag `fixedmotion` (mahony's fixed-point 6-axis path).
 
 ## Public API
 
@@ -31,13 +31,13 @@ test_result: pass
 
 ## Algorithms
 
-<!-- vault:algorithms h=edcccf37e1db -->
+<!-- vault:algorithms h=698fc49c21a5 -->
 
 Counts: 5 tested · 0 implemented · 0 partial · 0 stub · 0 unverified (5 algorithms)
 
 | Algorithm | Status | Tests | Summary |
 |---|---|---|---|
-| [[error-state-kalman-filter]] | tested | pass | error-state Kalman filter for a body's motion from a 6-axis IMU, a motion estimator and nothing else (dead reckoning): attitude, velocity, position, gyro and accelerometer bias with their covariance (15 states, float32, sequential scalar updates); the tilt from gravity measures the attitude only, its noise the body's own acceleration (the force's recent variance above the sensor's noise), so the gyro carries the attitude through motion; the accelerometer bias is the calibration's; nothing decides; an estimator.Motion; Init in place, no alloc |
+| [[error-state-kalman-filter]] | tested | pass | error-state Kalman filter for a body's motion from a 6-axis IMU, a motion estimator and nothing else (dead reckoning): attitude, velocity, position, gyro and accelerometer bias with their covariance (15 states, float32, sequential scalar updates); the tilt from gravity corrects the attitude only (the accelerometer bias a consider state in it, so the σ stays honest), its noise the body's own acceleration (the force's recent variance above the sensor's noise), so the gyro carries the attitude through motion; the accelerometer bias is the calibration's; nothing decides; an estimator.Motion; Init in place, no alloc |
 | [[mahony-ahrs]] | tested | pass | the Mahony attitude filter, an estimator.Attitude brick: the gyro carries the attitude, the accelerometer's direction pulls the tilt towards gravity (Kp) with an optional integral that learns a gyro bias (Ki, per second); UpdateMag adds a magnetometer for the heading; the first sample levels it; Init in place, no alloc; a fixed-point 6-axis path for cores without an FPU (-tags fixedmotion) |
 | [[pedestrian-dead-reckoning]] | tested | pass | steps from \|a\| + heading of a chosen body axis + track; synthetic-signal tests, no hardware yet |
 | [[startup-calibration]] | tested | pass | startup calibration of an IMU at rest: finds the face that is down, waits for stillness, averages for 3 s, restarts when moved; gyro bias, readings at rest, noise, live per-axis statistics and a forecast of heading and position drift checked against simulation; seeds strapdown's gyro bias |
@@ -52,7 +52,7 @@ Pure Go, float32, `errors`; value types, no allocation per sample. `pdr`, `strap
 - with mpu6050 + Mahony + pdr: allocations only at construction (2026-11-12);
 - with mpu6050 + Mahony + strapdown: one allocation in `strapdown`, the 736-byte `Nav` from `New`; none per sample; 94,296 B flash (2026-11-13);
 - with mpu6050 + Mahony + calib + seeded strapdown: no allocation in `calib` (the Calibrator is 212 bytes, a stack value); strapdown's `Nav` as above; 97,512 B flash (2026-11-13);
-- eskf and the Mahony brick (`kernelbench`, `Init` into static `Filter`s): no allocation; none per sample; 57,372 B flash (59,660 with `-tags fixedmotion`).
+- eskf and the Mahony brick (`kernelbench`, `Init` into static `Filter`s): no allocation; none per sample; 57,500 B flash (59,772 with `-tags fixedmotion`).
 
 ## Tests and evidence
 
