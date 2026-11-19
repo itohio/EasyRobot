@@ -16,7 +16,7 @@ Copied from [[roadmap#8. Next|roadmap §8]], which has the critical path and sta
 
 | # | Outcome | Tickets |
 |---|---|---|
-| 1 | YOLO on the K210: the UnitV prints classes, boxes, confidences and fps for what its camera sees, fast enough to use | [[ER-069-yolo-k210-tinygo-cpu\|ER-069]] (CPU, still image then camera), then [[ER-070-yolo-k210-kpu\|ER-070]] (KPU) |
+| 1 | YOLO on the K210: the UnitV streams its camera image with detections over USB-C to a static web page that draws them, live | [[ER-069-yolo-k210-tinygo-cpu\|ER-069]] (CPU: one frame to the page, then a continuous stream), then [[ER-070-yolo-k210-kpu\|ER-070]] (speed to video) |
 | 2 | YOLO on the ESP32-S3: the same detections and log from the XIAO S3's camera, with optimised kernels | [[ER-071-yolo-esp32s3\|ER-071]] |
 | 3 | Motion estimators as bricks (eskf, Mahony) for IMU-only dead reckoning | committed; nothing open |
 | 4 | Water: a faster 2-D liquid engine, then a 3-D multi-liquid engine | [[ER-061-sim-liquid-2d\|ER-061]], then [[ER-064-sim-liquid-3d\|ER-064]] |
@@ -112,7 +112,7 @@ The knowledge engine is its own Go module and is catalogued in [[knowledge-engin
 
 Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs tagged with the ticket. The defects themselves are in the linked notes and in [[todo]].
 
-<!-- vault:tickets h=61fbafbc9907 -->
+<!-- vault:tickets h=0500b0190531 -->
 
 | Ticket | Title | Status | Workstream | Open p1 |
 |---|---|---|---|---|
@@ -178,7 +178,7 @@ Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs 
 | [[ER-066-ray-casting-dda\|ER-066]] | Ray casting: grid DDA traversal and a 2.5D column helper — x/math/grid | proposed |  | 0 |
 | [[ER-067-strapdown-motion-path\|ER-067]] | Strapdown integrator with ZUPT for the badge's 3D motion path — x/math/nav/strapdown | active |  | 1 |
 | [[ER-068-startup-calibration\|ER-068]] | Startup calibration of the motion sensor at rest — x/math/nav/calib | active |  | 0 |
-| [[ER-069-yolo-k210-tinygo-cpu\|ER-069]] | YOLOX-nano on the UnitV in TinyGo, CPU path: still image, then camera frames, detections over UART | ready | K210-nn, W5 | 0 |
+| [[ER-069-yolo-k210-tinygo-cpu\|ER-069]] | YOLOX-nano on the UnitV in TinyGo: camera frames with detections streamed over USB to a static web page (CPU path) | active | K210-nn, W5 | 0 |
 | [[ER-070-yolo-k210-kpu\|ER-070]] | YOLO on the K210's KPU: graph passes so the compiler runs long KPU segments, then fps on the UnitV | proposed | K210-nn, W5 | 0 |
 | [[ER-071-yolo-esp32s3\|ER-071]] | YOLOX-nano on the ESP32-S3 in TinyGo: first run, then optimised kernels, detections from camera frames | blocked | W2, W5, W9 | 0 |
 
