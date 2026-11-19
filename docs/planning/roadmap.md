@@ -3,7 +3,7 @@ type: planning
 title: EasyRobot roadmap — milestones toward the owner's demos
 status: draft
 created: 2026-11-08
-updated: 2026-11-09
+updated: 2026-11-19
 owner: product
 source_revision: abb5c9cca7f756c632548d9c7be2436b46dc2e4d
 tags: [easyrobot, planning]
@@ -284,14 +284,15 @@ flowchart LR
 
 ## 8. Next
 
-**Proposed — pending approval.** Ranked from the no-hardware demo checkpoints in §2.2; none needs hardware, TinyGo or a download. This list is copied to the top of the [index](../index.md).
+**Owner's order (2026-11-19).** Each line is an outcome the owner can see; the tickets are its critical path, first unfinished step first. This list is copied to the top of the [index](../index.md).
 
-| # | Step | Tickets | Checkpoint (no hardware) |
+| # | Outcome | Critical path | State |
 |---|---|---|---|
-| 1 | Knowledge engine v1, with the `go.mod` tidy committed in the first gated round | — (no number) | M-g: the v1 bench table (hybrid retrieval vs the ripgrep baseline on the synthetic fixture) |
-| 2 | Leg IK and gait scheduling, with strides, body→leg transforms and gait→IK→servo glue (O1) and the two ER-021 fixes (O2) | ER-017, ER-018 | M-a: a host tripod simulation that walks with stance feet fixed in the world |
-| 3 | Voice-modem composition fixes, starting with the `tc` test port (O3); then the BER harness, synchroniser, framer and FEC | composition fixes (no number), then ER-022, ER-023 (with ER-019's PLL/AGC) | M-e: a BER-vs-Eb/N0 curve on the channel model; tuning acquisition for a real channel waits on the owner's channel choice |
-| 4 | Trusted reference: eager views and `NewAs` aliasing, the graph fixes (cycle checks, detached handles, decision-tree `Balance`), existing-layer fixes and the reference-fixture harness; ER-026's host part alongside if gates get noisy | ER-002, ER-020, ER-028, then ER-029 (O5) | M-f: eager fixtures pass, so eager is the reference |
-| 5 | Decision trees on the host: plain-data tree, flat executor, CART trainer and episode logger (no M-b dependency, O9) | ER-032, ER-033, after ER-028's `Balance` fix | M-d: a tree trained on the host that classifies a recorded or synthetic obstacle set |
+| 1 | **YOLO on the K210:** the UnitV prints classes, boxes, confidences and fps for what its camera sees, fast enough to use | [ER-069](../tickets/ER-069-yolo-k210-tinygo-cpu.md) A (still image on the CPU, output equal to the host) → ER-069 B (camera frames) → [ER-070](../tickets/ER-070-yolo-k210-kpu.md) design note → ER-070 KPU steps (host, then board) | host int8 path, decode and NMS on main; the KPU compiler lowers 86 % of the MACs, but only layer by layer (442 segments); ER-069 A next |
+| 2 | **YOLO on the ESP32-S3:** the same detections and log from the XIAO S3's camera, with optimised kernels | `esp32cam` branch merged → [ER-071](../tickets/ER-071-yolo-esp32s3.md) A (first run) → B (kernel speed-ups) → C (camera demo) | build exists, never run; blocked on the merge and the board |
+| 3 | **Motion estimators as bricks:** AttitudeEstimator / MotionEstimator with interchangeable eskf and Mahony, used by the badge for IMU-only dead reckoning | committed (pure dead reckoning, honest sigma); the badge moves onto it in its own repository | nothing open here |
+| 4 | **Water:** a faster 2-D liquid engine, then a 3-D multi-liquid engine | [ER-061](../tickets/ER-061-sim-liquid-2d.md) speed-ups → [ER-064](../tickets/ER-064-sim-liquid-3d.md) (plan committed) | after 1 and 2 |
 
-The sixth checkpoint, M-b's synthetic recorder round trip, follows these: it needs ER-027 and ER-031.
+**Rules for every step:** one ticket step per change, each verified before it is committed; model files are never committed; boards are flashed only within the owner's approvals (no Wi-Fi).
+
+The 2026-11-08 no-hardware checkpoints (milestones in §3) are off the current path: the knowledge engine and leg IK are done; the voice modem, trusted reference and decision trees wait.

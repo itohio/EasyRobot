@@ -1,0 +1,51 @@
+---
+id: ER-070
+title: "YOLO on the K210's KPU: graph passes so the compiler runs long KPU segments, then fps on the UnitV"
+type: ticket
+status: proposed
+kind: design
+owner: EasyRobot
+workstream: [K210-nn, W5]
+milestone: YOLO-K210
+tags: [easyrobot, ticket, k210, kpu, yolo, nn, compiler]
+created: 2026-11-19
+updated: 2026-11-19
+---
+# ER-070 — YOLO on the K210's KPU
+
+[[tickets/index|Ticket index]] · [[roadmap#8. Next|roadmap §8]] · [[kpu-compiler]] · [[k210-kpu]]
+
+**Outcome:** YOLO detections on the UnitV fast enough to use (the owner's words: "K210 fast/usable"), with the KPU running the convolutions and the CPU only the rest. [[ER-069-yolo-k210-tinygo-cpu|ER-069]]'s CPU run is the on-board reference.
+
+## Measured on the host (main `c19643ce`, 2026-11-19)
+
+`compile.Compile(&g, kpu.NewEmulated)` on the YOLOX-nano int8 graph that ER-069 runs (`tfl.Load`, 1,204 layers, 522.6 MMAC):
+
+- **Every conv but the stem lowers:** 454 layers claimed (all 94 depthwise and 348 of 352 conv layers, with their pads); 448 MMAC (86 %) can run on the KPU as the compiler stands.
+- **Not claimed:** the four 6×6 stride-2 stem convs (the Focus stem folded into one conv, 74.8 MMAC).
+- **But it gives 442 segments, nearly all of one layer:** every KPU layer would pay an upload and a read-back. Two properties of this export cause it:
+  1. **SiLU is LOGISTIC + MUL** after nearly every conv (262 + 259 layers), and the compiler fuses only ReLU/ReLU6, so every conv ends its segment.
+  2. **The export is "range-split":** tensors are cut into channel slices of 1–14 channels, each conv is computed per input slice and summed with ADD layers (188), and slices are joined by CONCAT. A 16-channel conv becomes 3–4 small convs plus adds.
+- SPP max pools (5×5/9×9/13×13 stride 1), RESIZE_NEAREST, the head's TRANSPOSE/RESHAPE and the CONCATs stay on the CPU in any design (cheap at those sizes).
+
+## Design questions (answered in a design note before code)
+
+1. **SiLU on the KPU:** a 16-segment piecewise-linear table in the activation stage, fused into the conv. It is an approximation: measure its error per layer and its effect on detections against the exact CPU run.
+2. **Undoing the range split:** merge each split conv back into one conv over the concatenated input and output, re-quantising the merged tensors from calibration images (int8 in, int8 out, a requantisation pass in Go), or keep the split and chain small KPU layers through AI SRAM (the adds stay a problem).
+3. **The stem:** a 6×6 stride-2 TF SAME conv on an even input equals a space-to-depth by 2 (CPU, a copy) followed by a 3×3 stride-1 conv on 208×208×12, which the KPU runs exactly.
+4. **Model source:** whether a clean export (one tensor per layer, at 416 or smaller) beats graph passes. A new export needs tools or weights not yet approved: an owner decision, with this ticket's numbers.
+5. **Memory:** every KPU layer's input + output within 2 MiB of AI SRAM at 208×208 after the stem (else row-band tiling, which is the compiler's open K9g step).
+
+## Steps (after the design note is accepted)
+
+| Step | Scope | Check |
+|---|---|---|
+| D | Design note: the options above with host numbers (segments, uploads per frame, estimated KPU and CPU time, SiLU error) and a recommendation | reviewed and accepted before code |
+| K1… | The chosen graph passes and compiler additions, each with a host check: per layer ≤ 1 LSB against qnet's CPU run where exact, error bound stated where approximate (SiLU); detections against the CPU run on ≥ 20 images | host, emulated KPU |
+| K… | The same on the UnitV | per layer against the host emulation; detections equal ER-069's on the same image; ms per frame vs ER-069 |
+
+## Acceptance evidence required later
+
+- [ ] Design note accepted, with the owner's decision on the model source if needed.
+- [ ] Host: segment count, per-layer error, detection agreement.
+- [ ] Board: per-layer agreement, detection agreement, ms per frame.

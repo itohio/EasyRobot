@@ -10,19 +10,16 @@ source_revision: abb5c9cca7f756c632548d9c7be2436b46dc2e4d
 
 Home map of the EasyRobot Go repo ([itohio/EasyRobot](https://github.com/itohio/EasyRobot), the owner's maintained fork of the archived [foxis/EasyRobot](https://github.com/foxis/EasyRobot); MIT). Notes describe HEAD `abb5c9c` unless a note's `source_revision` says otherwise. How the vault works and how to keep it true after a fix: [[conventions]]. Regenerate with `make docs`, check with `make docs-check`.
 
-## Next (ranked) — proposed, owner to approve
+## Next — the owner's order (2026-11-19)
 
-From the roadmap's no-hardware demo checkpoints ([[roadmap#8. Next|roadmap §8]]). None of these needs hardware, TinyGo or a download.
+Copied from [[roadmap#8. Next|roadmap §8]], which has the critical path and state of each line.
 
-| # | Step | Tickets | Demo checkpoint |
-|---|---|---|---|
-| 1 | ~~Knowledge engine v1 committed after verification, with the `go.mod` tidy as its own commit~~ — committed | — | M-g: knowledge-engine bench table vs the ripgrep baseline |
-| 2 | ~~Leg IK and gait scheduling with strides, body→leg transforms, gait→IK→servo glue~~ — done | [[ER-017-dh-planar-ik-robustness\|ER-017]], [[ER-018-leg-helpers-gait-scheduler\|ER-018]] | M-a: host tripod simulation, stance feet fixed in the world — passes |
-| 3 | Voice-modem composition fixes (stale `tc` test port first), then BER harness, synchroniser, framer, FEC | voice-modem composition fixes, then [[ER-022-audio-modem-acquisition\|ER-022]], [[ER-023-coding-fixes\|ER-023]] (with [[ER-019-filter-correctness\|ER-019]]'s PLL/AGC) | M-e: BER-vs-Eb/N0 curve on a channel model |
-| 4 | Trusted reference: eager views and aliasing, graph fixes, existing-layer fixes and the reference-fixture harness | [[ER-002-cpu-graph-semantics\|ER-002]], [[ER-020-eager-views-newas-norm-gradients\|ER-020]], [[ER-028-graph-fixes\|ER-028]], then [[ER-029-nn-layers-fixture-harness\|ER-029]] | M-f: eager fixtures pass |
-| 5 | Decision trees on the host: plain-data tree, flat executor, CART trainer, episode logger | [[ER-032-flat-decision-tree-executor\|ER-032]], [[ER-033-cart-trainer-episode-logger\|ER-033]] | M-d: host-trained tree classifies a recorded or synthetic obstacle set |
-
-The sixth checkpoint, M-b's synthetic recorder round trip, follows: it needs [[ER-027-marshaller-fixes|ER-027]] and [[ER-031-spi-slave-feature-framing|ER-031]]. Full order, accepted order changes and the T-IK mapping: [[tickets/index|ticket index]].
+| # | Outcome | Tickets |
+|---|---|---|
+| 1 | YOLO on the K210: the UnitV prints classes, boxes, confidences and fps for what its camera sees, fast enough to use | [[ER-069-yolo-k210-tinygo-cpu\|ER-069]] (CPU, still image then camera), then [[ER-070-yolo-k210-kpu\|ER-070]] (KPU) |
+| 2 | YOLO on the ESP32-S3: the same detections and log from the XIAO S3's camera, with optimised kernels | [[ER-071-yolo-esp32s3\|ER-071]] |
+| 3 | Motion estimators as bricks (eskf, Mahony) for IMU-only dead reckoning | committed; nothing open |
+| 4 | Water: a faster 2-D liquid engine, then a 3-D multi-liquid engine | [[ER-061-sim-liquid-2d\|ER-061]], then [[ER-064-sim-liquid-3d\|ER-064]] |
 
 <!-- vault:status h=4820323d2099 -->
 
@@ -115,7 +112,7 @@ The knowledge engine is its own Go module and is catalogued in [[knowledge-engin
 
 Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs tagged with the ticket. The defects themselves are in the linked notes and in [[todo]].
 
-<!-- vault:tickets h=b700a4189d17 -->
+<!-- vault:tickets h=61fbafbc9907 -->
 
 | Ticket | Title | Status | Workstream | Open p1 |
 |---|---|---|---|---|
@@ -181,6 +178,9 @@ Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs 
 | [[ER-066-ray-casting-dda\|ER-066]] | Ray casting: grid DDA traversal and a 2.5D column helper — x/math/grid | proposed |  | 0 |
 | [[ER-067-strapdown-motion-path\|ER-067]] | Strapdown integrator with ZUPT for the badge's 3D motion path — x/math/nav/strapdown | active |  | 1 |
 | [[ER-068-startup-calibration\|ER-068]] | Startup calibration of the motion sensor at rest — x/math/nav/calib | active |  | 0 |
+| [[ER-069-yolo-k210-tinygo-cpu\|ER-069]] | YOLOX-nano on the UnitV in TinyGo, CPU path: still image, then camera frames, detections over UART | ready | K210-nn, W5 | 0 |
+| [[ER-070-yolo-k210-kpu\|ER-070]] | YOLO on the K210's KPU: graph passes so the compiler runs long KPU segments, then fps on the UnitV | proposed | K210-nn, W5 | 0 |
+| [[ER-071-yolo-esp32s3\|ER-071]] | YOLOX-nano on the ESP32-S3 in TinyGo: first run, then optimised kernels, detections from camera frames | blocked | W2, W5, W9 | 0 |
 
 <!-- /vault:tickets -->
 
