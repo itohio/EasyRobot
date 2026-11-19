@@ -1,5 +1,6 @@
 {
 	"inherits": ["maixbit"],
 	"build-tags": ["unitv"],
-	"linkerscript": "drivers/unitv/target/unitv.ld"
+	"linkerscript": "drivers/unitv/target/unitv.ld",
+	"gc": "precise"
 }
