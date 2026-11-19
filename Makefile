@@ -92,11 +92,15 @@ flash-manipulator:
 UNITV_PROG ?= hello
 UNITV_PORT ?=
 KTOOL ?= ktool.py
+# -opt=2 instead of TinyGo's size default (-opt=z): YOLOX-nano on the UnitV
+# runs 25.2 s instead of 32.8 s per frame with bit-identical output; every
+# example still builds and the largest image grows 2.0 % (2.30 MB).
+UNITV_OPT ?= 2
 
 .PHONY: unitv
 unitv:
 	@mkdir -p build
-	tinygo build -target=drivers/unitv/target/unitv.json -size=short -o build/unitv-$(UNITV_PROG).bin ./drivers/unitv/examples/$(UNITV_PROG)
+	tinygo build -target=drivers/unitv/target/unitv.json -opt=$(UNITV_OPT) -size=short -o build/unitv-$(UNITV_PROG).bin ./drivers/unitv/examples/$(UNITV_PROG)
 
 # qi8 ESP32-S3 PIE backend checks: the layer suite on the host emulation of
 # the PIE kernels (test-only tag qi8pieemu), then a TinyGo S3 compile gate
@@ -150,7 +154,7 @@ help:
 	@echo "  make docs-stale       List notes whose cited source files changed since their revision"
 	@echo "  make clean            Remove build artifacts"
 	@echo "  make flash-manipulator Flash drivers/manipulator to XIAO via tinygo (asks y/N)"
-	@echo "  make unitv [UNITV_PROG=hello]  Build a UnitV (K210) example with tinygo into build/"
+	@echo "  make unitv [UNITV_PROG=hello] [UNITV_OPT=2]  Build a UnitV (K210) example with tinygo into build/"
 	@echo "  make flash-unitv       Flash it with ktool (needs UNITV_PORT, KTOOL; asks y/N)"
 	@echo "  make qi8-pie          Test the qi8 PIE backend on its host emulation and compile it for the S3 (tinygo)"
 	@echo "  make qi8-ctest        Test the S3 kernels' C requantisation on the host against Go (cgo, UBSan)"
