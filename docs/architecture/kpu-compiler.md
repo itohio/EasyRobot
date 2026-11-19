@@ -97,7 +97,7 @@ Requantisation is approximate:
 
 ## Validation
 
-1. **Per layer on the host:** each lowered layer through `kmodel.ConvParams.Emulate` (bit-exact with nncase's simulator, K8c) against qnet's `RunLayer` on the same int8 input, ≤ 1 LSB, over random shapes, quantisations, zero points, clamps and pools.
+1. **Per layer on the host:** each lowered layer through `kmodel.ConvParams.Emulate` (bit-exact with nncase's simulator, K8c, except average pools, which round half up as the silicon does, K9g) against qnet's `RunLayer` on the same int8 input, ≤ 1 LSB, over random shapes, quantisations, zero points, clamps and pools.
 2. **Whole graph on the host:** `kpu.NewEmulated`-style engine plus qnet's runner, layer by layer through `OnLayer`, against qnet's CPU runner.
 3. **On the board:** the UnitV against the host emulation, layer by layer (K8c showed the silicon within about 1 LSB per layer of the emulator).
 4. **nncase as an oracle only:** for a float model, the compiler's per-layer outputs and nncase's (both on the same input) should agree in distribution. They can't match bit-for-bit, because the quantisation differs.

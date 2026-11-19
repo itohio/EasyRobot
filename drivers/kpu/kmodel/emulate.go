@@ -185,8 +185,9 @@ func (p *ConvParams) EmulateInto(in, out, scratch []byte) error {
 	return pool(p.Pool, pix, w, h, oc, out, ow, oh)
 }
 
-// pool applies pool_type t (nncase's emulator: stride = kernel, no padding;
-// type 6, the right-top sampler, from nncase v0.2's K210 kernels).
+// pool applies pool_type t (stride = kernel, no padding, as nncase's
+// emulator, except that the average rounds half up, as observed on the
+// K210; type 6, the right-top sampler, from nncase v0.2's K210 kernels).
 func pool(t int, src []byte, w, h, c int, dst []byte, ow, oh int) error {
 	if t == 0 {
 		if ow != w || oh != h {
@@ -233,8 +234,8 @@ func pool(t int, src []byte, w, h, c int, dst []byte, ow, oh int) error {
 				switch t {
 				case 1, 3:
 					v = mx
-				case 2, 4:
-					v = sum / n
+				case 2, 4: // the K210 rounds the mean half up (nncase's emulator floors)
+					v = (sum + n/2) / n
 				case 5:
 					v = first
 				case 6: // right-top: offset (row 0, column 1); 0 off the image (nncase v0.2)

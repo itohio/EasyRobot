@@ -57,15 +57,15 @@ Bit positions from `kpu.h`; "nncase" is what rc5 writes; tiny3 values are given 
 | 10 | `conv_value2` | arg_add 0–39 | zero-point product term |
 | 11 | `dma_parameter` | send_data_out 0, channel_byte_num 16–31, dma_total_byte 32–63 | send_data_out streams the output to `FIFO_DATA_OUT` (for DMA); byte counts − 1 (W·H, W·H·C). `drivers/kpu` leaves it off and reads the output from KPU RAM. `Check` requires the byte counts to match the output shape. Above 65,536 pixels per channel send_data_out must be off and channel_byte_num is ignored by the KPU: `SetOutShape` saturates it at 65,535, ncc truncates it to 16 bits, and `Check` accepts either. |
 
-**pool_type** (nncase emulator; stride = kernel). **Silicon: regular convs only.** In depthwise mode a non-zero pool_type gives wrong output on the UnitV. `kmodel.Check` refuses such a layer (ErrUnsupported). nncase never pools a depthwise layer: it lowers a stride-2 depthwise at full resolution and puts the left-top sampler on the following 1×1 conv.
+**pool_type** (stride = kernel). The averages round half up on silicon, (Σ + n/2)/n; nncase's emulator floors, and `kmodel`'s Go model follows the silicon (on the UnitV, 132,096 of 132,096 pooled outputs equal). **Silicon: regular convs only.** In depthwise mode a non-zero pool_type gives wrong output on the UnitV. `kmodel.Check` refuses such a layer (ErrUnsupported). nncase never pools a depthwise layer: it lowers a stride-2 depthwise at full resolution and puts the left-top sampler on the following 1×1 conv.
 
 | Value | Pool |
 |---|---|
 | 0 | none |
 | 1 | 2×2 max |
-| 2 | 2×2 average |
+| 2 | 2×2 average, rounded half up |
 | 3 | 4×4 max |
-| 4 | 4×4 average |
+| 4 | 4×4 average, rounded half up |
 | 5 | 2×2 "left-top": keep the top-left pixel (even rows and columns), which is how nncase does stride 2 |
 | 6 | 2×2 "right-top": keep the top-right pixel (even rows, odd columns). Runs on silicon like 1 and 5 (`kpupool` probe). With the input read from one row down it samples odd rows and columns: TF SAME stride 2 |
 
@@ -75,7 +75,7 @@ The conv itself is always stride 1, with SAME padding filled with `pad_value`. O
 
 ## Arithmetic (nncase's emulator)
 
-`kmodel.ConvParams.Emulate` is a Go port of this arithmetic, and `kpu.NewEmulated` runs a whole kmodel on any host with it. Both are bit-identical to nncase rc5's simulator on tiny1/2/3 and on the 27-layer MobileNetV1-0.25 feature extractor. On the UnitV, each layer's output, computed from that layer's own KPU input, agrees with the port to within 1 LSB: 503,605 of 503,808 outputs equal, 203 at 1 LSB, none above. The 1-LSB cases compound across layers, so a 27-layer output can differ from the simulator by up to about 25 LSB.
+`kmodel.ConvParams.Emulate` is a Go port of this arithmetic, and `kpu.NewEmulated` runs a whole kmodel on any host with it. Both are bit-identical to nncase rc5's simulator on tiny1/2/3 and on the 27-layer MobileNetV1-0.25 feature extractor (none of which pools by average; the average pools follow the silicon, see pool_type). On the UnitV, each layer's output, computed from that layer's own KPU input, agrees with the port to within 1 LSB: 503,605 of 503,808 outputs equal, 203 at 1 LSB, none above. The 1-LSB cases compound across layers, so a 27-layer output can differ from the simulator by up to about 25 LSB.
 
 **Quantisation.** For a range [min, max]: scale s = 255/(max − min), bias b = round(min·s), and real = (q + b)/s. Weights use the same with 8 bits. The rc5 release is built `CHANNEL_WISE`: it first scales each output channel's float weights by s = min(total max / channel max, total min / channel min) (the larger of the two if either is negative), stretching them to the tensor's range, then quantises the whole tensor with one scale and bias. This reproduces all 61 weight blobs of the K8 models byte for byte; the per-tensor rule alone reproduces none.
 

@@ -122,6 +122,16 @@ func TestPool(t *testing.T) {
 			t.Errorf("pool %d: %v, want %v", c.typ, dst, c.want)
 		}
 	}
+	// The average rounds half up, as observed on the K210 (nncase's
+	// emulator floors): 18/4 = 4.5 → 5, 6/4 = 1.5 → 2, 13/4 = 3.25 → 3.
+	ties := []byte{
+		4, 5, 1, 1, 3, 3,
+		4, 5, 2, 2, 3, 4,
+	} // 6×2
+	dst := make([]byte, 3)
+	if err := pool(2, ties, 6, 2, 1, dst, 3, 1); err != nil || !bytes.Equal(dst, []byte{5, 2, 3}) {
+		t.Errorf("pool 2 ties: %v %v, want [5 2 3]", dst, err)
+	}
 	if err := pool(7, src, 4, 2, 1, make([]byte, 2), 2, 1); err == nil {
 		t.Error("pool type 7 accepted")
 	}
