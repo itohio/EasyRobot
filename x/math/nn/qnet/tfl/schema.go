@@ -37,6 +37,7 @@ const (
 	operatorOutputs     = 2
 	operatorOptionsType = 3
 	operatorOptions     = 4
+	operatorCustomOpts  = 5
 
 	bufferData   = 0
 	bufferOffset = 1

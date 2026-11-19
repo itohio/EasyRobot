@@ -177,8 +177,8 @@ MAX_POOL_2D (no fused activation, same quantisation), RESHAPE (alias),
 SOFTMAX, ADD (equal shapes), MUL (equal shapes, or the smaller operand per
 channel or scalar), LOGISTIC (output `{1/256, −128}`), MEAN (axes H and W of
 a rank-4 tensor, keep_dims either way), CONCATENATION (any non-batch axis,
-no fused activation, inputs quantised as the output — LiteRT rejects
-anything else), PAD and PADV2 (constant int32/int64 paddings, no batch
+no fused activation, int8 inputs quantised as the output — LiteRT rejects
+anything else; uint8 inputs may differ, see below), PAD and PADV2 (constant int32/int64 paddings, no batch
 padding; PAD fills with the output zero point, PADV2 with its constant,
 which must share the output's quantisation), RESIZE_NEAREST_NEIGHBOR and
 RESIZE_BILINEAR (rank 4, both flags), LEAKY_RELU, QUANTIZE (int8 → int8 → `Requantize`). A constant int8
@@ -201,9 +201,21 @@ path; a uint8 AVERAGE_POOL_2D sets `TiesUp`; CONV_2D/DEPTHWISE_CONV_2D round
 as `RoundTFLite`, FULLY_CONNECTED as `RoundExact` (as for int8, both checked
 against the interpreter). The caller feeds `x − 128` and reads `y + 128`.
 uint8 is accepted on CONV_2D, DEPTHWISE_CONV_2D, FULLY_CONNECTED,
-AVERAGE_POOL_2D, MAX_POOL_2D, RESHAPE and SOFTMAX; mixing int8 and uint8 in
-one operator, uint8 on any other operator, per-channel uint8 weights and
-QUANTIZE to a non-int8 type are refused, the reason naming the tensor.
+AVERAGE_POOL_2D, MAX_POOL_2D, RESHAPE, SOFTMAX, CONCATENATION and LOGISTIC;
+mixing int8 and uint8 in one operator, uint8 on any other operator,
+per-channel uint8 weights and QUANTIZE to a non-int8 type are refused, the
+reason naming the tensor. A uint8 CONCATENATION input quantised unlike the
+output gets a `Rescale` map (`qi8.QuantizeConcatRescale`: TFLite's
+`ConcatenationWithScaling`, `round(u·s + b)` as one fused multiply-add, as
+LiteRT's arm64 build computes it).
+
+`LoadDetection` is `Load` for SSD exports (TF Object Detection API) ending
+in the custom `TFLite_Detection_PostProcess` operator, which must be last:
+the graph stops before it, its box-encoding and class-score inputs become
+`Graph.Outputs` (in that order), and its anchors (uint8 dequantised as
+TFLite does, or float32) and FlexBuffers options come back as
+`PostProcess`; `x/vision/detect/ssd` decodes the outputs with them. `Load`
+keeps refusing every custom operator.
 
 ## Verification
 
@@ -229,4 +241,10 @@ equals the LiteRT interpreter on every operator output for 64 inputs
 `RunLayer` in both rounding modes. `testdata/u8net.tflite` (`gen_u8net.py`:
 a uint8 model with asymmetric weights and every uint8 operator, tie-heavy
 scales and inputs) equals the interpreter on every operator output for 64
-inputs (`u8net.json.gz`) with `AllocsPerRun == 0`.
+inputs (`u8net.json.gz`) with `AllocsPerRun == 0`. `testdata/ssdtail.tflite`
+(`gen_ssdtail.py`: an SSD export's tail — uint8 box and class heads,
+CONCATENATIONs of differently quantised inputs, LOGISTIC, the custom
+post-process with uint8 anchors) loads with `LoadDetection`; every layer
+equals the interpreter and `ssd.Decoder` returns the custom operator's
+detections (count, classes, scores; boxes to one float32 step) for 64 inputs
+(`ssdtail.json.gz`).

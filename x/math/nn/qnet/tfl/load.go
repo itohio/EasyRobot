@@ -24,9 +24,10 @@ import (
 // multipliers use TFLite's uint8 form (sIn·sW in float32). The caller feeds
 // the graph input as x − 128 and reads uint8 outputs as y + 128. uint8 is
 // accepted on CONV_2D, DEPTHWISE_CONV_2D, FULLY_CONNECTED, AVERAGE_POOL_2D,
-// MAX_POOL_2D, RESHAPE and SOFTMAX (each checked against the interpreter);
-// an operator mixing int8 and uint8 tensors, uint8 on any other operator
-// and per-channel uint8 weights are refused with the tensor named.
+// MAX_POOL_2D, RESHAPE, SOFTMAX, CONCATENATION and LOGISTIC (each checked
+// against the interpreter); an operator mixing int8 and uint8 tensors,
+// uint8 on any other operator and per-channel uint8 weights are refused
+// with the tensor named.
 //
 // int8 weights alias b (no copy), so b must stay alive and unchanged while
 // the graph is used; it can live in flash. uint8 weights are converted into
@@ -40,7 +41,8 @@ import (
 // RESHAPE, SOFTMAX, ADD (same shapes), MUL (same shapes, or the smaller
 // operand per channel, per pixel (H×W×1) or scalar), LOGISTIC, MEAN (over H and W of a rank-4
 // tensor), CONCATENATION (any non-batch axis, inputs quantised as the
-// output), PAD and PADV2 (constant paddings, no batch padding),
+// output; uint8 inputs quantised otherwise are rescaled as TFLite does, see
+// qnet.Layer.Rescale), PAD and PADV2 (constant paddings, no batch padding),
 // RESIZE_NEAREST_NEIGHBOR and RESIZE_BILINEAR (rank 4), LEAKY_RELU,
 // TRANSPOSE (rank 2–4, constant permutation keeping the batch axis first),
 // QUANTIZE (int8 → int8 becomes a Requantize layer) and DEQUANTIZE. A constant int8 operand of ADD, MUL or
@@ -72,6 +74,11 @@ type converter struct {
 	prod   map[int]int // tensor index → producing layer (−1: graph input)
 	op     int
 	opName string
+	// detect (LoadDetection) cuts the graph at TFLite_Detection_PostProcess:
+	// cutOuts are then its input tensors (the graph outputs), pp the rest.
+	detect  bool
+	cutOuts []int
+	pp      PostProcess
 }
 
 func (c *converter) fail(reason string) error {
@@ -93,14 +100,34 @@ func (c *converter) run() (qnet.Graph, error) {
 			return qnet.Graph{}, err
 		}
 		c.op, c.opName = i, o.name()
+		if c.detect && string(o.custom) == postProcessOp {
+			if i != m.ops.n-1 {
+				return qnet.Graph{}, c.fail("must be the last operator")
+			}
+			if err := c.postProcess(&o); err != nil {
+				return qnet.Graph{}, err
+			}
+			break
+		}
 		if err := c.convert(&o); err != nil {
 			return qnet.Graph{}, err
 		}
 	}
-	outs := make([]int, m.outputs.n)
+	outT := c.cutOuts
+	if c.detect && outT == nil {
+		c.op, c.opName = -1, "SUBGRAPH"
+		return qnet.Graph{}, c.fail("no " + postProcessOp + " operator")
+	}
+	if !c.detect {
+		outT = make([]int, m.outputs.n)
+		for k := range outT {
+			outT[k] = int(f.vecI32(m.outputs, k))
+		}
+	}
+	outs := make([]int, len(outT))
 	lastIsOut := false
 	for k := range outs {
-		p, ok := c.prod[int(f.vecI32(m.outputs, k))]
+		p, ok := c.prod[outT[k]]
 		if !ok || p < 0 {
 			c.op, c.opName = -1, "SUBGRAPH"
 			return qnet.Graph{}, c.fail("every graph output must be produced by an operator")
@@ -230,6 +257,7 @@ func (c *converter) failT(t *tensor, reason string) error {
 var uint8Ops = map[int32]bool{
 	opConv2D: true, opDepthwiseConv2D: true, opFullyConnected: true,
 	opAveragePool2D: true, opMaxPool2D: true, opReshape: true, opSoftmax: true,
+	opConcatenation: true, opLogistic: true,
 }
 
 // dtype checks that o's int8/uint8 tensors (activations, weights, constant
@@ -265,7 +293,7 @@ func (c *converter) dtype(o *operator) error {
 		}
 	}
 	if have && first.typ == typeUInt8 && !uint8Ops[o.code] {
-		return c.failT(&first, "uint8 is supported only for CONV_2D, DEPTHWISE_CONV_2D, FULLY_CONNECTED, AVERAGE_POOL_2D, MAX_POOL_2D, RESHAPE and SOFTMAX")
+		return c.failT(&first, "uint8 is supported only for CONV_2D, DEPTHWISE_CONV_2D, FULLY_CONNECTED, AVERAGE_POOL_2D, MAX_POOL_2D, RESHAPE, SOFTMAX, CONCATENATION and LOGISTIC")
 	}
 	return nil
 }
@@ -1133,20 +1161,29 @@ func (c *converter) concat(o *operator) error {
 	}
 	from := make([]int, o.inputs.n)
 	var first act
+	var rescale []*[256]int8
 	for k := range o.inputs.n {
 		x, err := c.operand(o, k)
 		if err != nil {
 			return err
 		}
 		if x.q != oq {
-			return c.fail("concatenation inputs must share the output's quantisation")
+			if t.typ != typeUInt8 {
+				return c.fail("int8 concatenation inputs must share the output's quantisation")
+			}
+			if rescale == nil {
+				rescale = make([]*[256]int8, o.inputs.n)
+			}
+			if rescale[k], err = qi8.QuantizeConcatRescale(x.q.Scale, x.q.ZP, oq.Scale, oq.ZP); err != nil {
+				return c.fail("concatenation rescale out of range")
+			}
 		}
 		if k == 0 {
 			first = x
 		}
 		from[k] = x.from
 	}
-	l := qnet.Layer{Kind: qnet.Concat, In: first.shape, InQ: first.q, Out: os, OutQ: oq, Axis: axis}
+	l := qnet.Layer{Kind: qnet.Concat, In: first.shape, InQ: first.q, Out: os, OutQ: oq, Axis: axis, Rescale: rescale}
 	return c.emit(l, outIdx, from...)
 }
 

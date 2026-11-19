@@ -2,7 +2,7 @@
 id: ER-070
 title: "Fast detection on the K210's KPU: SSD-MobileNetV1 through the Go KPU compiler (YOLOX-nano stays for the Raspberry Pi)"
 type: ticket
-status: ready
+status: in-progress
 kind: implementation
 owner: EasyRobot
 workstream: [K210-nn, W5]
@@ -26,10 +26,10 @@ Each slice records its measured numbers. This line is the headline of the K210 w
 
 - `detect.tflite` from `coco_ssd_mobilenet_v1_1.0_quant_2018_06_29.zip` (download.tensorflow.org, Apache-2.0; SHA-256 `e4b118e5…` for the `.tflite`):
   - 300×300×3 uint8 in, uint8 per-tensor asymmetric weights;
-  - 34 CONV_2D, 13 DEPTHWISE_CONV_2D, 13 RESHAPE, 2 CONCATENATION, 1 LOGISTIC;
+  - 34 CONV_2D, 13 DEPTHWISE_CONV_2D, 13 RESHAPE, 2 CONCATENATION, 1 LOGISTIC; the layer widths are MobileNetV1 at depth 0.75 (24 … 768 channels): 4,088,592 B of weights, 728 M MACs at 300;
   - then the custom op `TFLite_Detection_PostProcess` (anchor decode + NMS) on `concat` [1917×4] box encodings, `concat_1` [1917×91] class scores (after LOGISTIC) and an `anchors` constant [1917×4] (uint8); COCO labels in `labelmap.txt`.
 - Never committed; examples and tests take it from a path given at build or test time.
-- Today `tfl.Load` stops at the first uint8 CONCATENATION (`BoxPredictor_0/Reshape`). The backbone (MobileNetV1, ReLU6, 1×1/3×3, TF SAME stride 2) is the family the compiler already lowers exactly in one KPU segment.
+- `tfl.LoadDetection` loads it (S1). The backbone (MobileNetV1, ReLU6, 1×1/3×3, TF SAME stride 2) is the family the compiler already lowers exactly in one KPU segment.
 
 ## What the KPU path costs (measured, ER-069 A and the K210 speed check)
 
@@ -41,7 +41,31 @@ Each slice records its measured numbers. This line is the headline of the K210 w
 | One direct kmodel inference of MobileNetV1-0.25 at 256 (KPU + upload + read-back) | 7.42 ms |
 | The KPU's input limit | 256 rows per layer |
 
-**Estimate for SSD-MobileNetV1 at 256×256** [INFERENCE]: ~0.9 G MAC → ~45–70 ms of KPU compute, plus one input upload and the small head read-backs → **~10–15 frames/s** of detection.
+**Estimate for SSD-MobileNetV1 at 256×256** [INFERENCE]: ~506 M MAC (backbone and extra layers 445.6 M from `compile.Kmodel`, heads ~60 M) → ~27–40 ms of KPU compute, plus one input upload and the head read-backs at the six branch points → **~10–15 frames/s** of detection.
+
+## Memory budget (S1, measured on the host; the board checks it in S3)
+
+The UnitV has 6 MiB of main SRAM (6,291,456 B) for the program image, the heap and the stack. The KPU reads the weights from main memory by address. Its own 2 MiB holds the activations: the 256×256 graph's largest layer needs 1.18 MB for input and output, and `compile.Kmodel` accepted the chain.
+
+| Item | Bytes | Source |
+|---|---|---|
+| Weights in the KPU's form: backbone + extra layers (34 layers, one kmodel at 256) | 3,100,816 | `compile.Kmodel` |
+| The 12 head convolutions (sum of one-layer kmodels) | 1,071,296 | `compile.Kmodel` |
+| Last extra layer (1×1 input at 256; SAME stride 2 needs an even input, so it stays on the CPU) | ~42,000 | its int8 weights + bias |
+| Program without a model | ~173,000–211,000 | ER-069 B camera build 1,749,744 B minus its embedded YOLOX model (1,577,040 B); the image build 2,307,248 B minus model and test image (2,096,208 B) |
+| Buffers: camera frame, 256×256 input, scores (1,284 anchors × 91), decode, stream | ~700,000 | [INFERENCE] |
+| **Total** | **~5.1 MB of 6.29 MB** | about 1.2 MB spare |
+
+It fits only if the weights are held once. `kpu.New` needs the kmodel 128-byte aligned. An embedded Go string has no such alignment, and `AlignedCopy` would hold a second 4.2 MB copy (≈ 9.3 MB: does not fit). So S3 keeps the kmodel out of the program image, in its own flash region, and reads it once at boot into one aligned buffer, as MaixPy does; or it embeds it at a guaranteed 128-byte alignment.
+
+**Fallbacks if the board's budget fails** (each would need the owner's word where marked):
+
+| Fallback | Memory effect | Cost | New download / training |
+|---|---|---|---|
+| Page the weights from flash: each layer's weights read into one reused buffer before it runs | 4.2 MB → ~0.7 MB (the largest layer: 663,552 B) | reads 4.2 MB of flash a frame: ~0.1–0.2 s at SPI speeds [INFERENCE], so ~3–5 frames/s instead of ~10–15; the compiler emits per-layer weight addresses | no / no |
+| Keep part of the weights in the KPU's 2 MiB beside the activations (~0.8 MB free at 256) | −0.8 MB | that the KPU fetches weights from its own RAM is not verified; compiler work | no / no |
+| Smaller input (224 or 192) | none for the weights (they do not depend on the input); activations and KPU time shrink | more missed small objects | no / no |
+| Narrower backbone (SSD-MobileNetV1 at depth 0.5 or 0.25) | weights ÷ ~2.2 or ÷ ~9 | a different model, lower accuracy | yes: a published quantised model, if one exists, needs a download; otherwise training (owner) |
 
 **Why not YOLOX-nano on the KPU:** its export is range-split (1–14-channel slices summed by 188 ADDs) and keeps SiLU as separate LOGISTIC + MUL ops, so the compiler gives 442 one-layer segments. Each segment pays 13–17 ms of copies: ≈ 10–12 s per frame as the compiler stands, ~1–2 frames/s even after weeks of graph passes. On the K210's CPU it runs 25.2 s per frame at `-opt=2`.
 
@@ -58,7 +82,7 @@ Each slice records its measured numbers. This line is the headline of the K210 w
 ## Acceptance evidence required later
 
 - [ ] S0: the paused compiler work committed, verified.
-- [ ] S1: bit-exact layers and equal detections against LiteRT; host numbers.
+- [x] S1: `tfl.LoadDetection` + `x/vision/detect/ssd`. `detect.tflite`: 63 layers (34 conv, 13 depthwise, 13 reshape, 2 concat, 1 logistic), 728 M MACs, 4 088 592 B weights, 1 620 000 B activations, 1 917 anchors; every layer bit-exact with LiteRT's reference kernels on 4 images and the 10 detections each equal the post-process operator's; host (Apple M5) ~160 ms a frame, decode 0.3–0.6 ms, no allocation. Test: `testdata/ssdtail.tflite` (64 inputs). Two things matched only once found: LiteRT's uint8 concatenation rescale is one fused multiply-add, and its optimised kernels detect differently from its reference kernels. Memory budget above: ~5.1 MB of 6.29 MB if the weights are held once.
 - [ ] S2: KPU/CPU split, per-layer error, detection agreement at 256, memory budget.
 - [ ] S3: board equals host on one frame; memory fits; stage times.
 - [ ] S4: live stream frames/s and stage times.

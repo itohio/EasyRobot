@@ -150,6 +150,9 @@ type operator struct {
 	outputs vec
 	optType uint8
 	opts    table
+	// customOpts is a custom operator's options (FlexBuffers), aliasing
+	// the file.
+	customOpts []byte
 }
 
 func (m *Model) operator(i int) (operator, error) {
@@ -168,13 +171,14 @@ func (m *Model) operator(i int) (operator, error) {
 		code = b
 	}
 	return operator{
-		code:    code,
-		custom:  f.fieldString(c, opcodeCustom),
-		version: f.fieldI32(c, opcodeVersion, 1),
-		inputs:  f.fieldVec(o, operatorInputs, 4),
-		outputs: f.fieldVec(o, operatorOutputs, 4),
-		optType: f.fieldU8(o, operatorOptionsType, 0),
-		opts:    f.fieldTable(o, operatorOptions),
+		code:       code,
+		custom:     f.fieldString(c, opcodeCustom),
+		version:    f.fieldI32(c, opcodeVersion, 1),
+		inputs:     f.fieldVec(o, operatorInputs, 4),
+		outputs:    f.fieldVec(o, operatorOutputs, 4),
+		optType:    f.fieldU8(o, operatorOptionsType, 0),
+		opts:       f.fieldTable(o, operatorOptions),
+		customOpts: f.bytes(f.fieldVec(o, operatorCustomOpts, 1)),
 	}, f.err
 }
 

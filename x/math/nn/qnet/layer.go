@@ -153,7 +153,7 @@ var LogisticOutQuant = Quant{Scale: 1.0 / 256, ZP: -128}
 //	Reshape:                 Out (any shape of the same length)
 //	Softmax:                 SoftmaxParams
 //	Logistic:                LogisticParams
-//	Concat:                  From (one or more producers), Axis, Out
+//	Concat:                  From (one or more producers), Axis, Out, Rescale
 //	Pad:                     Pads, PadValue
 //	ResizeNearest:           Out.H, Out.W, AlignCorners, HalfPixel
 //	ResizeBilinear:          Out.H, Out.W, AlignCorners, HalfPixel
@@ -224,6 +224,10 @@ type Layer struct {
 
 	// Axis is Concat's axis: 0 = H, 1 = W, 2 = C.
 	Axis int
+	// Rescale is nil, or one entry per Concat input: nil copies an input
+	// quantised as OutQ; a map (qi8.QuantizeConcatRescale) converts an input
+	// with another quantisation (TFLite's uint8 CONCATENATION).
+	Rescale []*[256]int8
 	// Pads is Pad's top, bottom, left, right, front (C) and back (C)
 	// padding; PadValue fills it.
 	Pads     [6]int
@@ -496,6 +500,9 @@ func runStateless(l *Layer, dst []int8, srcs [][]int8) error {
 	case Requantize:
 		return qi8.Requantize(dst, srcs[0], l.RequantizeParams())
 	case Concat:
+		if l.Rescale != nil {
+			return qi8.ConcatRescale(dst, srcs, l.concatOuter(), l.Rescale)
+		}
 		return qi8.Concat(dst, srcs, l.concatOuter())
 	case Pad:
 		return qi8.Pad(dst, srcs[0], l.PadParams())

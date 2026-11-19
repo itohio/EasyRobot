@@ -22,7 +22,7 @@ var (
 	// ErrQuant reports a non-positive/non-finite scale, a layer whose InQ (or
 	// Add's/Mul's In2Q) does not equal its producer's OutQ, a pool/ReLU/
 	// Reshape/Const whose OutQ differs from InQ, a Concat input whose
-	// quantisation differs from OutQ, or a Softmax/Logistic whose OutQ is
+	// quantisation differs from OutQ without a Rescale map, or a Softmax/Logistic whose OutQ is
 	// not SoftmaxOutQuant/LogisticOutQuant.
 	ErrQuant = errors.New("qnet: invalid or mismatched quantisation")
 	// ErrActivation reports ActMin > ActMax, or a ReLU6 whose quantised 6 is
@@ -30,8 +30,8 @@ var (
 	ErrActivation = errors.New("qnet: invalid activation range")
 	// ErrParams reports missing or wrongly sized weights/bias/requant, an
 	// invalid Requant, rounding mode, Add multipliers, softmax or logistic
-	// scaling, Const data of the wrong length, or parameters on a
-	// parameter-free layer.
+	// scaling, Const data of the wrong length, a Rescale that is not one
+	// entry per Concat input, or parameters on a parameter-free layer.
 	ErrParams = errors.New("qnet: invalid layer parameters")
 	// ErrCapacity reports a caller-provided slice that is too small.
 	ErrCapacity = errors.New("qnet: capacity exceeded")
@@ -184,9 +184,12 @@ func (g *Graph) checkConcat(i int) error {
 	l := &g.Layers[i]
 	in := dims(l.In)
 	sum := 0
+	if l.Rescale != nil && len(l.Rescale) != g.inputs(i) {
+		return ErrParams
+	}
 	for k := range g.inputs(i) {
 		ps, pq := g.output(g.producer(i, k))
-		if pq != l.OutQ {
+		if pq != l.OutQ && (l.Rescale == nil || l.Rescale[k] == nil) {
 			return ErrQuant
 		}
 		d := dims(ps)
@@ -274,7 +277,7 @@ func (g *Graph) checkLayer(i int, params bool) error {
 	if !l.Kind.hasParams() && ((l.Kind != Const && len(l.Weights) != 0) || len(l.Bias) != 0 || len(l.Requant) != 0 || l.WZP != 0) {
 		return ErrParams
 	}
-	if l.TiesUp && l.Kind != AvgPool2D {
+	if (l.TiesUp && l.Kind != AvgPool2D) || (l.Rescale != nil && l.Kind != Concat) {
 		return ErrParams
 	}
 	if !params {

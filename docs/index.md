@@ -112,7 +112,7 @@ The knowledge engine is its own Go module and is catalogued in [[knowledge-engin
 
 Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs tagged with the ticket. The defects themselves are in the linked notes and in [[todo]].
 
-<!-- vault:tickets h=01b102db343d -->
+<!-- vault:tickets h=efebfb76a6e3 -->
 
 | Ticket | Title | Status | Workstream | Open p1 |
 |---|---|---|---|---|
@@ -179,7 +179,7 @@ Generated from the ticket notes; "Open p1" counts the distinct open `#p1` TODOs 
 | [[ER-067-strapdown-motion-path\|ER-067]] | Strapdown integrator with ZUPT for the badge's 3D motion path — x/math/nav/strapdown | active |  | 1 |
 | [[ER-068-startup-calibration\|ER-068]] | Startup calibration of the motion sensor at rest — x/math/nav/calib | active |  | 0 |
 | [[ER-069-yolo-k210-tinygo-cpu\|ER-069]] | YOLOX-nano on the UnitV in TinyGo: camera frames with detections streamed over USB to a static web page (CPU path) | active | K210-nn, W5 | 0 |
-| [[ER-070-yolo-k210-kpu\|ER-070]] | Fast detection on the K210's KPU: SSD-MobileNetV1 through the Go KPU compiler (YOLOX-nano stays for the Raspberry Pi) | ready | K210-nn, W5 | 0 |
+| [[ER-070-yolo-k210-kpu\|ER-070]] | Fast detection on the K210's KPU: SSD-MobileNetV1 through the Go KPU compiler (YOLOX-nano stays for the Raspberry Pi) | in-progress | K210-nn, W5 | 0 |
 | [[ER-071-yolo-esp32s3\|ER-071]] | YOLOX-nano on the ESP32-S3 in TinyGo: first run, then optimised kernels, detections from camera frames | blocked | W2, W5, W9 | 0 |
 
 <!-- /vault:tickets -->
