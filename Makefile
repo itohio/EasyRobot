@@ -36,6 +36,10 @@ vulncheck:
 test:
 	$(TEST_CMD)
 
+.PHONY: test-host
+test-host:
+	scripts/test-host.sh
+
 .PHONY: cover
 cover:
 	go test -coverprofile=.coverage.tmp ./...
@@ -137,6 +141,7 @@ help:
 	@echo "  make gen              Run go generate to generate necessary files"
 	@echo "  make mocks            Update interface mocks using mockery"
 	@echo "  make test             Run all tests"
+	@echo "  make test-host        Run all tests; skip OpenCV packages without OpenCV; fail only on failures not in scripts/known-failures.txt"
 	@echo "  make cover            Run test coverage analysis"
 	@echo "  make vulncheck        Check for known vulnerabilities"
 	@echo "  make watch            Watch for changes and rebuild (requires air)"

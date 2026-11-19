@@ -50,7 +50,7 @@ Size guess: **M** (both stages). Sizes are rough guesses ([[roadmap#1. Milestone
 
 ## Implementation evidence
 
-None. Planning ticket only.
+- `make test-host` (`scripts/test-host.sh`) implements proposals 1 and 2 of the baseline below, with the list in `scripts/known-failures.txt`: the 23 real failures, plus three flaky packages marked `may-fail`. Besides `mfsk`, those are `x/math/graph` (`TestRRTStar_Simple2DGrid`, random RRT*: failed once in a full run and in 1 of 3 runs alone) and `x/math/swarm/boids` (`TestStepDoesNotAllocate` counts process-wide mallocs: failed once in a full run, passed 3 of 3 alone). Stages 1 and 2 above are still open.
 
 ## Host test baseline (2026-11-19, `main` `9230292a`, darwin/arm64, Go 1.27.2, no OpenCV installed)
 

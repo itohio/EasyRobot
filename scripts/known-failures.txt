@@ -1,0 +1,37 @@
+# Packages whose `go test` fails today on a host without OpenCV (darwin/arm64,
+# 2026-11-19). scripts/test-host.sh fails only on a package not listed here.
+# One package per line, relative to the module; "may-fail" marks a flaky one.
+# Causes and tickets: docs/tickets/ER-026-build-green.md, "Host test baseline".
+# Remove a line when its package passes; never add one to make a run green.
+
+# Do not build on darwin/arm64
+cmd/elrs-rx
+cmd/monitor
+cmd/spectrometer/internal/acquirer
+cmd/spectrometer/ports
+x/devices/encoder
+x/devices/motor
+x/iter/loop_experiments
+x/math/dsp/modulation/tc
+x/types/st
+
+# Failing tests
+x/devices/lidar/ld06
+x/devices/lidar/xwpftb
+x/devices/nmea
+x/math/colorscience
+x/math/dsp/coding/crc
+x/math/dsp/coding/four5b
+x/math/dsp/modulation/dsss
+x/math/dsp/modulation/mask
+x/math/dsp/modulation/mpsk
+x/math/dsp/modulation/qam
+x/math/filter/pll
+x/math/gps
+x/math/nn/layers
+x/math/protocol/peg
+
+# Flaky: pass alone, fail sometimes (causes not looked at yet)
+x/math/dsp/modulation/mfsk may-fail
+x/math/graph may-fail
+x/math/swarm/boids may-fail
