@@ -1,0 +1,5 @@
+# Build inputs (README.md): the model, the test image and the generated
+# constants. Never committed.
+/model.tflite
+/input.u8
+/data_unitv.go
