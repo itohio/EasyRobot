@@ -30,18 +30,33 @@ updated: 2026-11-19
 
 ## Frame rate per speed option
 
-Measured on the UnitV (ER-069 A, 416×416, CPU at 390 MHz): **32.8 s per frame**, of which 1×1 convs 18.8 s, 3×3/stem convs 3.2 s, depthwise 2.0 s, ADD 5.1 s, MUL 3.1 s, LOGISTIC 0.3 s, the rest 0.3 s. KPU rate [INFERENCE]: MobileNetV1-0.25 at 256×256 (~53 MMAC) runs its convs in 4.2 ms on this board, about 12 GMAC/s. The link (ER-044): a QVGA RGB565 image (153.6 KB) takes 13.4 s at the loss-free 115200 baud and ~2.4 s at 1.5 Mbaud with chunk resend; a QVGA JPEG of a room is ~4.7 KB (0.4 s at 115200).
+Measured on the UnitV (ER-069 A, 416×416, CPU at 390.0 MHz, data cache on): **32.8 s per frame** at TinyGo's default `-opt=z`. That splits into 1×1 convs 18.8 s, 3×3/stem convs 3.2 s, depthwise 2.0 s, ADD 5.1 s, MUL 3.1 s, LOGISTIC 0.3 s and the rest 0.3 s. The same build at `-opt=2` takes 25.2 s, bit-exact.
+
+A tight int8 dot loop bottoms out at ≈ 7 cycles/MAC (4.3 with two products per 64-bit multiply), so the CPU's convolution floor is ≈ 5.7 s per frame.
+
+**KPU on YOLOX-shaped layers** (measured):
+
+| Layer | KPU compute | Upload | Read-back |
+|---|---|---|---|
+| 1×1 conv 104×104×32→64 | 1.14 ms (22.2 M MAC, ≈ 19 G MAC/s) | 4.30 ms | 8.93 ms |
+| depthwise 3×3 52×52×64 | 0.023 ms | 7.99 ms | 9.16 ms |
+
+So every segment boundary costs **13–17 ms of CPU copies**, against ≤ 1.1 ms of compute. MobileNetV1-0.25 at 256×256 (~53 M MAC) runs its convs in 4.2 ms on this board, ≈ 12.6 G MAC/s.
+
+The link (ER-044): a QVGA RGB565 image (153.6 KB) takes 13.4 s at the loss-free 115200 baud (measured again in ER-069 B), and ~2.4 s at 1.5 Mbaud with chunk resend. A QVGA JPEG of a room is ~4.7 KB (0.4 s at 115200).
 
 | Option | Detect per frame | Frames/s (detect only) | Basis |
 |---|---|---|---|
-| 1. CPU, 416 (today) | 32.8 s | 0.03 | measured |
-| 2. CPU, 416, range split merged (graph pass) | ~26 s | 0.04 | ADD time mostly removed [INFERENCE] |
-| 3. CPU, smaller input by a graph resize (no new download; accuracy to measure): 256 / 224 / 160 | ~12.4 / 9.5 / 4.9 s | 0.08 / 0.1 / 0.2 | time ∝ pixels [INFERENCE] |
-| 4. KPU, compiler as it stands (442 one-layer segments) | ~9–10 s | 0.1 | convs ~40 ms on the KPU; ADD + MUL + LOGISTIC stay on the CPU (8.5 s) plus ~442 upload/read-back pairs [INFERENCE] |
-| 5. KPU + graph passes (SiLU as a fused table, range split merged, stem as space-to-depth), 416 | ~0.3–1 s | 1–3 | the CPU keeps residual adds, concats, resizes, SPP pools and the head [INFERENCE; open: SiLU table accuracy, boundary count] |
-| 6. Option 5 at 224–256 | ~0.1–0.4 s | 3–8 | ×0.3–0.4 of option 5 [INFERENCE] |
+| 1. CPU, 416 (today) | 32.8 s (`-opt=z`); 25.2 s (`-opt=2`) | 0.03–0.04 | measured |
+| 2. CPU, 416, range split merged (graph pass) | ~23 s at `-opt=2` | 0.04 | most of the ADD time (2.25 s at `-opt=2`) removed [INFERENCE] |
+| 3. CPU, smaller input by a graph resize (no new download; accuracy to measure): 256 / 224 / 160 | ~9.5 / 7.3 / 3.7 s at `-opt=2` | 0.1 / 0.14 / 0.27 | time ∝ pixels [INFERENCE] |
+| 4. KPU, compiler as it stands (442 one-layer segments) | ~10–12 s | 0.09 | convs ~40 ms on the KPU; 442 boundaries × 13–17 ms of copies ≈ 6–7 s; ADD + MUL + LOGISTIC stay on the CPU (4.3 s at `-opt=2`, measured) [INFERENCE from the measured layer costs] |
+| 5. KPU + graph passes (SiLU as a fused table, range split merged, stem as space-to-depth), 416 | ~0.5–1 s | 1–2 | the CPU keeps residual adds, concats, resizes, SPP pools and the head, and each CPU boundary costs 13–17 ms [INFERENCE; open: SiLU table accuracy, boundary count] |
+| 6. Option 5 at 224–256 | ~0.15–0.4 s | 3–6 | ×0.3–0.4 of option 5 [INFERENCE] |
 
-Video needs option 5 or 6, and then the link becomes the limit: at those rates the image must travel as JPEG (~5 KB) or as a small Y8/RGB frame. That choice is made when detection gets below ~2 s per frame.
+Video needs option 5 or 6, or a detector built for the KPU. SSD-MobileNetV1 has its backbone in one KPU segment and few boundaries: ~10–15 frames/s estimated from the measured KPU rates. It is the recommendation on the table for the owner.
+
+At those rates the link becomes the limit, so the image must travel as JPEG (~5 KB) or as a small Y8/RGB frame. That choice is made when detection gets below ~2 s per frame.
 
 ## Design questions (answered in a design note before code)
 
