@@ -34,4 +34,3 @@ x/math/protocol/peg
 # Flaky: pass alone, fail sometimes (causes not looked at yet)
 x/math/dsp/modulation/mfsk may-fail
 x/math/graph may-fail
-x/math/swarm/boids may-fail

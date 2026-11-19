@@ -321,23 +321,32 @@ func TestCell(t *testing.T) {
 }
 
 // Step allocates nothing (the embedded rule): a raw MemStats.Mallocs delta over
-// 1,000 steps of the full flock while the box spins and shakes.
+// 1,000 steps of the full flock while the box spins and shakes. Step is
+// deterministic, so an allocation of its own shows in every measurement, while
+// one by another goroutine of the test process does not repeat. The delta is
+// therefore taken on one P, up to three times, and the test fails only when
+// every attempt allocated.
 func TestStepDoesNotAllocate(t *testing.T) {
 	f := badge(t, 128)
 	f.Box.Spin = true
+	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(1))
 	var before, after runtime.MemStats
-	runtime.ReadMemStats(&before)
-	for s := range 1000 {
-		if s%300 == 0 {
-			f.Box.Shake(uint8(s), 10*Fix)
+	var counts [3]uint64
+	for a := range counts {
+		runtime.ReadMemStats(&before)
+		for s := range 1000 {
+			if s%300 == 0 {
+				f.Box.Shake(uint8(s), 10*Fix)
+			}
+			f.Box.Advance()
+			f.Step()
 		}
-		f.Box.Advance()
-		f.Step()
+		runtime.ReadMemStats(&after)
+		if counts[a] = after.Mallocs - before.Mallocs; counts[a] == 0 {
+			return
+		}
 	}
-	runtime.ReadMemStats(&after)
-	if n := after.Mallocs - before.Mallocs; n != 0 {
-		t.Fatalf("%d allocations in 1000 steps", n)
-	}
+	t.Fatalf("allocations in 1000 steps, each of %d attempts: %v", len(counts), counts)
 }
 
 // BenchmarkStep128: the largest badge flock, box spinning.

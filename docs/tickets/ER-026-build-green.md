@@ -50,7 +50,8 @@ Size guess: **M** (both stages). Sizes are rough guesses ([[roadmap#1. Milestone
 
 ## Implementation evidence
 
-- `make test-host` (`scripts/test-host.sh`) implements proposals 1 and 2 of the baseline below, with the list in `scripts/known-failures.txt`: the 23 real failures, plus three flaky packages marked `may-fail`. Besides `mfsk`, those are `x/math/graph` (`TestRRTStar_Simple2DGrid`, random RRT*: failed once in a full run and in 1 of 3 runs alone) and `x/math/swarm/boids` (`TestStepDoesNotAllocate` counts process-wide mallocs: failed once in a full run, passed 3 of 3 alone). Stages 1 and 2 above are still open.
+- `make test-host` (`scripts/test-host.sh`) implements proposals 1 and 2 of the baseline below, with the list in `scripts/known-failures.txt`: the 23 real failures, plus the flaky packages marked `may-fail`, `mfsk` and `x/math/graph` (`TestRRTStar_Simple2DGrid`, random RRT*: failed once in a full run and in 1 of 3 runs alone). Stages 1 and 2 above are still open.
+- `x/math/swarm/boids` `TestStepDoesNotAllocate` failed once in a full run ("7 allocations in 1000 steps") and never alone (320 runs). It read a process-wide `MemStats.Mallocs` delta, which counts other goroutines' allocations too. It now measures on one P and fails only if each of up to three attempts allocated (`Step` is deterministic, so its own allocations repeat). Checked: a goroutine allocating beside the test made the old version fail 4 of 5 runs and the new one pass 5 of 5; a `Step` that allocates still fails (`[1000 1000 1000]`). `boids` left the `may-fail` list.
 
 ## Host test baseline (2026-11-19, `main` `9230292a`, darwin/arm64, Go 1.27.2, no OpenCV installed)
 
