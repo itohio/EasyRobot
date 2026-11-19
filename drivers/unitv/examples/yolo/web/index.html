@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UnitV YOLO viewer</title>
+<style>
+  :root { color-scheme: light dark; --bad: #d33; --ok: #2a7; --muted: #888; }
+  body { font: 14px/1.4 system-ui, sans-serif; margin: 16px; }
+  header { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  header h1 { font-size: 18px; margin: 0 12px 0 0; }
+  button, label.file { font: inherit; padding: 6px 12px; border: 1px solid #888; border-radius: 6px; background: transparent; cursor: pointer; }
+  label.file input { display: none; }
+  #status { color: var(--muted); }
+  main { display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: start; }
+  #view { border: 1px solid #8884; image-rendering: pixelated; max-width: 100%; }
+  table { border-collapse: collapse; }
+  td, th { padding: 2px 8px; text-align: left; }
+  td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  h2 { font-size: 14px; margin: 12px 0 4px; }
+  #frames { max-height: 180px; overflow: auto; }
+  #frames tr { cursor: pointer; }
+  #frames tr.sel { outline: 2px solid #48f; }
+  .bad { color: var(--bad); }
+  .ok { color: var(--ok); }
+  #log { height: 160px; overflow: auto; margin: 0; padding: 6px; border: 1px solid #8884; font: 12px/1.3 ui-monospace, monospace; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1>UnitV YOLO viewer</h1>
+  <button id="connect">Connect board</button>
+  <label class="file">Open replay<input id="replay" type="file"></label>
+  <span id="status">Not connected. "Connect board" uses the browser's serial API (Chrome or Edge); "Open replay" reads a capture file.</span>
+</header>
+<main>
+  <div>
+    <canvas id="view" width="640" height="480"></canvas>
+    <div id="caption"></div>
+  </div>
+  <div>
+    <h2>This frame</h2>
+    <table id="detections"><tbody></tbody></table>
+    <h2>Stage times (device)</h2>
+    <table id="times"><tbody></tbody></table>
+    <h2>Link (measured here)</h2>
+    <table id="link"><tbody></tbody></table>
+    <h2>Frames</h2>
+    <div id="frames"><table><tbody></tbody></table></div>
+  </div>
+</main>
+<h2>Device log</h2>
+<pre id="log"></pre>
+<script>
+"use strict";
+// Wire format: drivers/camera/frame/doc.go (frame v1 chunks "ERIM" and
+// detection records "ERID"). Everything else in the stream is log text.
+const LABELS = ["person","bicycle","car","motorcycle","airplane","bus","train","truck","boat","traffic light",
+  "fire hydrant","stop sign","parking meter","bench","bird","cat","dog","horse","sheep","cow","elephant","bear",
+  "zebra","giraffe","backpack","umbrella","handbag","tie","suitcase","frisbee","skis","snowboard","sports ball",
+  "kite","baseball bat","baseball glove","skateboard","surfboard","tennis racket","bottle","wine glass","cup","fork",
+  "knife","spoon","bowl","banana","apple","sandwich","orange","broccoli","carrot","hot dog","pizza","donut","cake",
+  "chair","couch","potted plant","bed","dining table","toilet","tv","laptop","mouse","remote","keyboard","cell phone",
+  "microwave","oven","toaster","sink","refrigerator","book","clock","vase","scissors","teddy bear","hair drier","toothbrush"];
+const CHUNK_MAGIC = 0x4D495245, REC_MAGIC = 0x44495245;
+const HDR = 24, META = 16, MAXPAY = 4096, REC_HDR = 32, DET = 12, MAXDETS = 64;
+
+const CRC_TABLE = new Uint32Array(256).map((_, n) => {
+  let c = n;
+  for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+  return c >>> 0;
+});
+function crc32(bytes, crc = 0) {
+  crc = ~crc >>> 0;
+  for (let i = 0; i < bytes.length; i++) crc = CRC_TABLE[(crc ^ bytes[i]) & 0xff] ^ (crc >>> 8);
+  return ~crc >>> 0;
+}
+
+// StreamParser turns stream bytes into events: text, image, record, drop.
+class StreamParser {
+  constructor(on) { this.on = on; this.buf = new Uint8Array(0); this.text = []; this.img = null; }
+  feed(chunk) {
+    const b = new Uint8Array(this.buf.length + chunk.length);
+    b.set(this.buf); b.set(chunk, this.buf.length);
+    this.buf = b;
+    let i = 0;
+    const dv = () => new DataView(this.buf.buffer, this.buf.byteOffset);
+    while (i + 4 <= this.buf.length) {
+      const m = dv().getUint32(i, true);
+      if (m === CHUNK_MAGIC || m === REC_MAGIC) {
+        const r = m === CHUNK_MAGIC ? this.chunk(i) : this.record(i);
+        if (r === 0) break;          // need more bytes
+        if (r > 0) { i += r; continue; }
+      }
+      this.textByte(this.buf[i]); i++;  // not a valid chunk or record here: text, rescan at +1
+    }
+    this.buf = this.buf.slice(i);
+    this.flushText(false);
+  }
+  textByte(c) {
+    if (c === 10) this.flushText(true);
+    else if (c !== 13) this.text.push(c);
+  }
+  // flushText emits a log line; a run that is mostly non-text (the bytes of
+  // a rejected chunk, rescanned as text) becomes one summary line.
+  flushText(line) {
+    if (!line && this.text.length < 200) return;
+    const bin = this.text.filter(c => c < 32 || c > 126).length;
+    if (bin * 4 > this.text.length) this.on.text(`[viewer] ${this.text.length} bytes of non-text skipped`);
+    else if (this.text.length || line) this.on.text(String.fromCharCode(...this.text.map(c => c < 32 || c > 126 ? 0xb7 : c)));
+    this.text = [];
+  }
+  // chunk returns bytes consumed, 0 for "need more", -1 for "not a chunk".
+  chunk(i) {
+    const b = this.buf;
+    if (b.length - i < HDR) return 0;
+    const v = new DataView(b.buffer, b.byteOffset + i, HDR);
+    const h = { seq: v.getUint32(4, true), idx: v.getUint16(8, true), cnt: v.getUint16(10, true),
+      len: v.getUint16(12, true), flags: v.getUint16(14, true), ts: v.getUint32(16, true), crc: v.getUint32(20, true) };
+    const first = h.idx === 0, last = h.idx === h.cnt - 1;
+    if (h.len === 0 || h.len > MAXPAY || h.cnt === 0 || h.idx >= h.cnt || !!(h.flags & 1) !== first ||
+        !!(h.flags & 2) !== last || !!(h.flags & 4) !== first || (first && h.len < META)) return -1;
+    if (b.length - i < HDR + h.len) return 0;
+    const payload = b.subarray(i + HDR, i + HDR + h.len);
+    if (crc32(payload, crc32(b.subarray(i, i + 20))) !== h.crc) {
+      this.on.crc(h.seq, h.idx);
+      if (this.img) { this.on.drop(this.img.seq, `CRC error in chunk ${h.idx}`); this.img = null; }
+      return -1;
+    }
+    this.assemble(h, payload);
+    return HDR + h.len;
+  }
+  assemble(h, p) {
+    const img = this.img;
+    if (img && (h.seq !== img.seq || h.idx !== img.next || h.cnt !== img.cnt)) {
+      this.on.drop(img.seq, h.seq !== img.seq ? "next image began before the last chunk" : `chunk ${img.next} missing`);
+      this.img = null;
+    }
+    if (h.idx === 0) {
+      const v = new DataView(p.buffer, p.byteOffset, META);
+      const meta = { w: v.getUint16(0, true), h: v.getUint16(2, true), format: v.getUint8(4), version: v.getUint8(5),
+        stride: v.getUint16(6, true), len: v.getUint32(8, true) };
+      if (meta.version !== 1 || !meta.w || !meta.h) { this.on.drop(h.seq, "bad image meta"); return; }
+      this.img = { seq: h.seq, ts: h.ts, cnt: h.cnt, next: 0, meta, data: new Uint8Array(meta.len), n: 0, t0: performance.now() };
+      p = p.subarray(META);
+    } else if (!this.img) return;   // a chunk of an image whose start we missed
+    const im = this.img;
+    if (im.n + p.length > im.data.length) { this.on.drop(im.seq, "more data than the meta says"); this.img = null; return; }
+    im.data.set(p, im.n); im.n += p.length; im.next++;
+    if (h.idx === h.cnt - 1) {
+      this.img = null;
+      if (im.n !== im.data.length) { this.on.drop(im.seq, "data length mismatch"); return; }
+      im.t1 = performance.now();
+      this.on.image(im);
+    }
+  }
+  record(i) {
+    const b = this.buf;
+    if (b.length - i < REC_HDR) return 0;
+    const v = new DataView(b.buffer, b.byteOffset + i);
+    const n = v.getUint16(8, true);
+    if (n > MAXDETS) return -1;
+    const size = REC_HDR + DET * n + 4;
+    if (b.length - i < size) return 0;
+    if (crc32(b.subarray(i, i + size - 4)) !== v.getUint32(size - 4, true)) return -1;
+    const r = { seq: v.getUint32(4, true), w: v.getUint16(10, true), h: v.getUint16(12, true),
+      times: { capture: v.getUint32(16, true), letterbox: v.getUint32(20, true), detect: v.getUint32(24, true), send: v.getUint32(28, true) },
+      dets: [] };
+    if (!r.w || !r.h) return -1;
+    for (let k = 0; k < n; k++) {
+      const o = REC_HDR + DET * k;
+      r.dets.push({ cls: v.getUint8(o), score: v.getUint16(o + 2, true) / 65535,
+        x0: v.getInt16(o + 4, true), y0: v.getInt16(o + 6, true), x1: v.getInt16(o + 8, true), y1: v.getInt16(o + 10, true) });
+    }
+    this.on.record(r, size);
+    return size;
+  }
+}
+
+// ---- view ----
+const $ = id => document.getElementById(id);
+const canvas = $("view"), ctx = canvas.getContext("2d");
+const frames = [];          // {seq, status, image, rec, bytes, linkMs}
+let selected = null, crcErrors = 0, lastImageEnd = null, live = false;
+
+function toImageData(im) {
+  const { w, h, format, stride } = im.meta;
+  const out = new ImageData(w, h), px = out.data, d = im.data;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const o = 4 * (y * w + x);
+    if (format === 1) {                       // Y8
+      const row = stride || w, g = d[y * row + x];
+      px[o] = px[o + 1] = px[o + 2] = g;
+    } else if (format === 2 || format === 3) { // RGB565 LE / BE
+      const row = stride || 2 * w, k = y * row + 2 * x;
+      const p = format === 2 ? d[k] | d[k + 1] << 8 : d[k] << 8 | d[k + 1];
+      const r = p >> 11 & 31, g = p >> 5 & 63, b = p & 31;
+      px[o] = r << 3 | r >> 2; px[o + 1] = g << 2 | g >> 4; px[o + 2] = b << 3 | b >> 2;
+    } else return null;
+    px[o + 3] = 255;
+  }
+  return out;
+}
+
+function colour(cls) { return `hsl(${(cls * 137.5) % 360} 95% 66%)`; }
+
+function draw(f) {
+  selected = f;
+  const scale = f.image ? Math.max(1, Math.floor(640 / f.image.width)) : 1;
+  if (!f.image) {
+    canvas.width = 640; canvas.height = 480;
+    ctx.fillStyle = "#444"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#f66"; ctx.font = "20px system-ui";
+    ctx.fillText(`frame ${f.seq}: ${f.status}`, 20, 40);
+    ctx.fillText("no image, so no boxes are drawn", 20, 70);
+  } else {
+    canvas.width = f.image.width * scale; canvas.height = f.image.height * scale;
+    const off = new OffscreenCanvas(f.image.width, f.image.height);
+    off.getContext("2d").putImageData(f.image, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(off, 0, 0, canvas.width, canvas.height);
+    const placed = [];   // label rectangles drawn so far, so labels don't cover each other
+    if (f.rec) for (const d of f.rec.dets) {
+      const c = colour(d.cls), x = d.x0 * scale, y = d.y0 * scale;
+      ctx.strokeStyle = c; ctx.lineWidth = 3;
+      ctx.strokeRect(x, y, (d.x1 - d.x0) * scale, (d.y1 - d.y0) * scale);
+      const label = `${LABELS[d.cls] ?? "class " + d.cls} ${(d.score * 100).toFixed(1)}%`;
+      ctx.font = "bold 16px system-ui";
+      const tw = ctx.measureText(label).width + 8, tx = Math.max(0, Math.min(x, canvas.width - tw));
+      let ty = Math.max(y, 20);
+      while (placed.some(p => tx < p.x + p.w && p.x < tx + tw && ty - 20 < p.y && p.y - 20 < ty)) ty += 20;
+      placed.push({ x: tx, y: ty, w: tw });
+      ctx.fillStyle = c; ctx.fillRect(tx, ty - 20, tw, 20);
+      ctx.fillStyle = "#000"; ctx.fillText(label, tx + 4, ty - 5);
+    }
+  }
+  $("caption").innerHTML = f.image
+    ? `frame ${f.seq}, ${f.image.width}×${f.image.height}` + (f.rec ? `, ${f.rec.dets.length} detection(s)` : ", <span class=bad>no detection record (yet)</span>")
+    : `<span class=bad>frame ${f.seq} dropped: ${f.status}</span>`;
+  const rows = (f.rec?.dets ?? []).map(d => `<tr><td style="color:${colour(d.cls)}">■</td><td>${LABELS[d.cls] ?? d.cls}</td>` +
+    `<td class=n>${d.score.toFixed(4)}</td><td class=n>(${d.x0}, ${d.y0})–(${d.x1}, ${d.y1})</td></tr>`);
+  $("detections").tBodies[0].innerHTML = rows.join("") || `<tr><td>${f.rec ? "nothing detected" : "—"}</td></tr>`;
+  const t = f.rec?.times, ms = us => (us / 1000).toFixed(1) + " ms";
+  $("times").tBodies[0].innerHTML = t ? [["capture", t.capture], ["letterbox", t.letterbox], ["detect", t.detect],
+    ["send (previous frame)", t.send]].map(([k, v]) => `<tr><td>${k}</td><td class=n>${ms(v)}</td></tr>`).join("") : "<tr><td>—</td></tr>";
+  const na = "— (replay)";
+  const link = [["bytes (image + record)", f.bytes ?? "—"],
+    ["image arrival", !live ? na : f.linkMs != null ? (f.linkMs / 1000).toFixed(1) + " s" : "—"],
+    ["throughput", !live ? na : f.linkMs ? Math.round(f.bytes / (f.linkMs / 1000)) + " B/s" : "—"],
+    ["since previous image", !live ? na : f.interval != null ? (f.interval / 1000).toFixed(1) + " s" : "—"],
+    ["CRC errors (all)", crcErrors]];
+  $("link").tBodies[0].innerHTML = link.map(([k, v]) => `<tr><td>${k}</td><td class=n>${v}</td></tr>`).join("");
+  listFrames();
+}
+
+function listFrames() {
+  $("frames").querySelector("tbody").innerHTML = frames.slice().reverse().map(f =>
+    `<tr data-seq="${f.seq}" class="${f === selected ? "sel" : ""}"><td>${f.seq}</td>` +
+    `<td class="${f.image ? "ok" : "bad"}">${f.image ? (f.rec ? f.rec.dets.length + " det" : "image") : "dropped"}</td>` +
+    `<td>${f.status}</td></tr>`).join("");
+}
+$("frames").addEventListener("click", e => {
+  const tr = e.target.closest("tr"); if (!tr) return;
+  const f = frames.find(f => String(f.seq) === tr.dataset.seq); if (f) draw(f);
+});
+
+function frameFor(seq) {
+  let f = frames.find(f => f.seq === seq);
+  if (!f) { f = { seq, status: "" }; frames.push(f); if (frames.length > 50) frames.shift(); }
+  return f;
+}
+
+function log(line) {
+  const el = $("log");
+  el.textContent += line + "\n";
+  if (el.textContent.length > 20000) el.textContent = el.textContent.slice(-15000);
+  el.scrollTop = el.scrollHeight;
+}
+
+function newParser() {
+  return new StreamParser({
+    text: log,
+    crc: (seq, idx) => { crcErrors++; log(`[viewer] CRC error: frame ${seq} chunk ${idx}`); },
+    drop: (seq, why) => {
+      const f = frameFor(seq);
+      f.image = null; f.rec = null; f.status = why;
+      log(`[viewer] frame ${seq} dropped: ${why}`);
+      draw(f);
+    },
+    image: im => {
+      const f = frameFor(im.seq);
+      f.image = toImageData(im); f.rec = null;
+      f.status = f.image ? "image ok" : `format ${im.meta.format} not drawable`;
+      f.bytes = HDR * im.cnt + META + im.data.length;
+      f.linkMs = im.t1 - im.t0;
+      f.interval = lastImageEnd != null ? im.t1 - lastImageEnd : null;
+      lastImageEnd = im.t1;
+      draw(f);
+    },
+    record: (r, size) => {
+      const f = frames.find(f => f.seq === r.seq);
+      if (!f || !f.image) {   // no image for these detections: never draw them over another frame
+        log(`[viewer] detections for frame ${r.seq} arrived without its image; not drawn`);
+        return;
+      }
+      f.rec = r; f.bytes += size; f.status = "ok";
+      if (selected === f || !selected?.image || selected.seq < f.seq) draw(f);
+    },
+  });
+}
+
+let parser = newParser();
+
+$("replay").addEventListener("change", async e => {
+  const file = e.target.files[0]; if (!file) return;
+  frames.length = 0; crcErrors = 0; lastImageEnd = null; live = false; parser = newParser(); $("log").textContent = "";
+  $("status").textContent = `Replay: ${file.name}, ${file.size} bytes.`;
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  for (let i = 0; i < bytes.length; i += 4096) parser.feed(bytes.subarray(i, i + 4096));
+  e.target.value = "";
+});
+
+$("connect").addEventListener("click", async () => {
+  if (!("serial" in navigator)) { $("status").textContent = "This browser has no serial API: use Chrome or Edge, or open a replay."; return; }
+  try {
+    const port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200, bufferSize: 65536 });
+    frames.length = 0; crcErrors = 0; lastImageEnd = null; live = true; parser = newParser();
+    $("status").textContent = "Connected at 115200 baud. A frame arrives about every 47 s (33 s detection + 13 s image).";
+    const reader = port.readable.getReader();
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      parser.feed(value);
+    }
+  } catch (err) {
+    $("status").textContent = "Serial: " + err.message;
+  }
+});
+</script>
+</body>
+</html>

@@ -43,5 +43,5 @@ Model files are never committed: the example takes the model from a file outside
 ## Acceptance evidence required later
 
 - [x] A: build size and memory map; board output hashes equal the host's; detections equal; ms per frame by layer kind; steady heap.
-- [ ] B: page screenshot with the board live, page screenshot from the replay file, protocol tests, measured bytes, throughput and stage times.
+- [x] B: camera QVGA RGB565 → letterbox → YOLOX-nano → frame v1 image + detection record at 115200 baud (image 13.4 s on the line, 0 CRC errors in 8 images); on 4 camera frames the board's detector input and outputs equal a host run bit for bit; a frame takes 46.4 s; protocol, letterbox, streamer and replay tests; the one-file page draws a replay and a capture. Boots clean with the precise collector and a cleared stack (20/20, heap ~2.37 MB after setup). Still open: a screenshot of the page connected to the live board (Web Serial needs a person to pick the port).
 - [ ] C: 10-minute run log and the end-to-end frame rate.

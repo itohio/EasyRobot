@@ -72,6 +72,41 @@
 // rebooted sender reusing frame_seq is not mistaken for a late resend.
 // Senders without resend never read the port.
 //
+// # Detection record (optional, additive)
+//
+// A device that runs a detector on an image may write one detection record
+// after that image's last chunk, in the same stream:
+//
+//	Record = Header (32 B) || count × Detection (12 B) || crc32 (u32)
+//
+//	Header:
+//	 off size field
+//	  0  u32  magic       0x44495245, bytes on the wire "ERID"
+//	  4  u32  frame_seq   the image the detections belong to
+//	  8  u16  count       0 .. 64
+//	 10  u16  width       pixels of that image (the boxes' coordinate space), ≥ 1
+//	 12  u16  height      pixels, ≥ 1
+//	 14  u16  reserved    0
+//	 16  u32  capture_us  stage times of this frame, µs: camera capture,
+//	 20  u32  letterbox_us  conversion to the detector input,
+//	 24  u32  detect_us     network and decode,
+//	 28  u32  send_us       writing the previous frame (chunks + record); 0 for the first
+//
+//	Detection:
+//	  0  u8   class       class id (COCO 0..79 for YOLOX)
+//	  1  u8   reserved    0
+//	  2  u16  score       Q0.16: score = value / 65535
+//	  4  i16  x0, y0, x1, y1  box corners in image pixels (may lie outside the image)
+//
+//	crc32: CRC-32/IEEE over every record byte before it.
+//
+// Receivers that know records find the magic, reject count > 64, a zero
+// width or height, a short record or a CRC mismatch, and rescan from
+// magic+1 (the skipped bytes count as text). A record whose frame_seq does
+// not match the image just completed belongs to no image and is not drawn.
+// Receivers that don't know records see them as text between chunks, so
+// old decoders keep working.
+//
 // # Golden vectors
 //
 // A 2×2 Y8 image, data 01 02 03 04, frame_seq 0, frame_ts 0x11223344,
@@ -86,7 +121,16 @@
 //	45 52 49 4e 07 00 00 00 03 00 01 00 23 01 53 86
 //	45 52 49 4e 07 00 00 00 00 00 02 00 0e fd cb bf
 //
+// A detection record for frame_seq 7 (320×240), stage times 1, 2, 3, 4 µs,
+// one detection: class 63, score 0x8000, box (−1, 2)–(300, 200)
+// (CRC 0xEDDAB5C0):
+//
+//	45 52 49 44 07 00 00 00 01 00 40 01 f0 00 00 00
+//	01 00 00 00 02 00 00 00 03 00 00 00 04 00 00 00
+//	3f 00 00 80 ff ff 02 00 2c 01 c8 00 c0 b5 da ed
+//
 // The package is TinyGo-friendly: it imports only encoding/binary,
-// hash/crc32, io, errors and bufio, and the [Encoder], [Encoder.Resend] and
-// [ControlParser] do not allocate.
+// hash/crc32, io, errors and bufio, and the [Encoder], [Encoder.Resend],
+// [ControlParser] and [AppendDetections] (into a buffer with room) do not
+// allocate.
 package frame
