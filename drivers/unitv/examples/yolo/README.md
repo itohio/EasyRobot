@@ -49,9 +49,14 @@ make unitv UNITV_PROG=yolo
 make flash-unitv UNITV_PROG=yolo UNITV_PORT=/dev/cu.usbserial-…
 ```
 
-The image is 2.25 MB: 129 KB of code plus the model (1.58 MB) and the input (0.52 MB). It loads into
-the 6 MiB general SRAM and leaves 4.02 MB of heap (between `_heap_start` and the 16 KiB stack) for
-the arena (1.83 MB) and qnet's graph and prepared layers (≈ 1.15 MB, measured on the host).
+The image is 2.25 MB: code plus the model (1.58 MB) and the input (0.52 MB). It loads into the 6 MiB
+general SRAM and leaves 4.0 MB of heap. That is enough for qnet's graph and prepared layers, but not
+also for the 1.83 MB activation arena in one piece: the loader's garbage is spread over the heap,
+TinyGo's collector never moves objects, and the arena runs out of memory. So the board build takes the
+arena from the KPU's 2 MiB memory, lent to the CPU with `kpu.LendMemory` (the KPU is idle in this
+example). The host build allocates it. A KPU version of this example (ER-070) can't do the same: the
+KPU needs that memory itself, so it needs its own memory plan, for example a smaller general-SRAM
+arena for the CPU layers or a lighter loader.
 
 ## TinyGo 0.43 on the K210
 

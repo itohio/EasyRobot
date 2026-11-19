@@ -7,13 +7,17 @@
 // baud). The same source runs on the host (host.go) for the reference
 // output; the board's lines must equal it except for times and heap. The
 // model and the int8 input are the constants model and input of
-// data_unitv.go, written by gen.go (README.md).
+// data_unitv.go, written by gen.go (README.md). The activation arena is the
+// KPU's 2 MiB memory, lent to the CPU (kpu.LendMemory): the heap has room
+// for the graph but not for the arena in one piece.
 package main
 
 import (
 	"os"
 	"time"
 	"unsafe"
+
+	"github.com/itohio/EasyRobot/drivers/kpu"
 )
 
 func main() {
@@ -27,9 +31,14 @@ func main() {
 
 func run() error {
 	t0 := time.Now()
+	mem, err := kpu.LendMemory()
+	if err != nil {
+		return err
+	}
+	arena := unsafe.Slice((*int8)(unsafe.Pointer(unsafe.SliceData(mem))), len(mem))
 	// The loader aliases the int8 weights and Run only reads its input:
 	// both constants are used in place, the only copies.
-	d, err := newDetector(unsafe.Slice(unsafe.StringData(model), len(model)))
+	d, err := newDetector(unsafe.Slice(unsafe.StringData(model), len(model)), arena)
 	if err != nil {
 		return err
 	}

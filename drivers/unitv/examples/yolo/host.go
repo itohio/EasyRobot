@@ -39,7 +39,7 @@ func run(modelPath, inputPath string, runs int) error {
 		return fmt.Errorf("%s: %d bytes, want %d (416×416×3)", inputPath, len(image), inputSize*inputSize*3)
 	}
 	t0 := time.Now()
-	d, err := newDetector(model)
+	d, err := newDetector(model, nil)
 	if err != nil {
 		return err
 	}

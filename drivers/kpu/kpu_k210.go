@@ -12,8 +12,12 @@ import (
 )
 
 // aiIOBase is the KPU memory's uncached alias (AI_IO_BASE_ADDR; the cached
-// one is 0x8060_0000). The C runtime writes the input there too.
-const aiIOBase = 0x4060_0000
+// one, aiBase, is what LendMemory hands to the CPU). The C runtime writes
+// the input there too.
+const (
+	aiIOBase = 0x4060_0000
+	aiBase   = 0x8060_0000
+)
 
 var aiRAM = unsafe.Slice((*byte)(unsafe.Pointer(uintptr(aiIOBase))), kmodel.RAMSize)
 
@@ -66,14 +70,23 @@ func barrier() {
 	atomic.AddUint32(&fenceWord, 1)
 }
 
+// power starts the KPU's clocks: PLL1 and the AI clock. The KPU memory
+// needs both, for the KPU and for the CPU.
+func power() error {
+	if err := enablePLL1(); err != nil {
+		return err
+	}
+	kendryte.SYSCTL.CLK_EN_PERI.SetBits(kendryte.SYSCTL_CLK_EN_PERI_AI_CLK_EN)
+	return nil
+}
+
 // open powers the KPU and sets it up like kpu_run_kmodel: interrupts
 // cleared, FIFO thresholds 10/1, 8-bit mode from the model flags. Only
 // calc_done is unmasked; the PLIC line stays disabled and conv polls.
 func open(eightBit bool) (engine, error) {
-	if err := enablePLL1(); err != nil {
+	if err := power(); err != nil {
 		return nil, err
 	}
-	kendryte.SYSCTL.CLK_EN_PERI.SetBits(kendryte.SYSCTL_CLK_EN_PERI_AI_CLK_EN)
 	k := kendryte.KPU
 	k.INTERRUPT_CLEAR.Set(7)
 	k.FIFO_THRESHOLD.Set(10 | 1<<4)
@@ -84,6 +97,15 @@ func open(eightBit bool) (engine, error) {
 	k.EIGHT_BIT_MODE.Set(m)
 	k.INTERRUPT_MASK.Set(0b110)
 	return k210{}, nil
+}
+
+// lendable powers the KPU memory and returns it through the cached alias
+// (LendMemory).
+func lendable() ([]byte, error) {
+	if err := power(); err != nil {
+		return nil, err
+	}
+	return unsafe.Slice((*byte)(unsafe.Pointer(uintptr(aiBase))), kmodel.RAMSize), nil
 }
 
 const in0Hz = 26_000_000

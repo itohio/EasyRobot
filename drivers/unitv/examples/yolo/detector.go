@@ -65,8 +65,9 @@ type detector struct {
 }
 
 // newDetector loads the TFLite model (its int8 weights alias model, which
-// must stay unchanged while the detector is used) and allocates the arena.
-func newDetector(model []byte) (*detector, error) {
+// must stay unchanged while the detector is used) and runs it in arena, or
+// in a new arena of the planned size when arena is nil.
+func newDetector(model []byte, arena []int8) (*detector, error) {
 	d := &detector{modelFNV: fnv1a(unsafe.Slice((*int8)(unsafe.Pointer(unsafe.SliceData(model))), len(model)))}
 	var err error
 	if d.g, err = tfl.Load(model); err != nil {
@@ -77,7 +78,10 @@ func newDetector(model []byte) (*detector, error) {
 		return nil, err
 	}
 	d.arena = plan.Size()
-	if d.run, err = qnet.NewRunner(&d.g, make([]int8, d.arena)); err != nil {
+	if arena == nil {
+		arena = make([]int8, d.arena)
+	}
+	if d.run, err = qnet.NewRunner(&d.g, arena); err != nil {
 		return nil, err
 	}
 	d.si, d.bi = 0, 1
