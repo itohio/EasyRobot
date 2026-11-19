@@ -83,6 +83,7 @@ It fits only if the weights are held once. `kpu.New` needs the kmodel 128-byte a
 
 - [ ] S0: the paused compiler work committed, verified.
 - [x] S1: `tfl.LoadDetection` + `x/vision/detect/ssd`. `detect.tflite`: 63 layers (34 conv, 13 depthwise, 13 reshape, 2 concat, 1 logistic), 728 M MACs, 4 088 592 B weights, 1 620 000 B activations, 1 917 anchors; every layer bit-exact with LiteRT's reference kernels on 4 images and the 10 detections each equal the post-process operator's; host (Apple M5) ~160 ms a frame, decode 0.3–0.6 ms, no allocation. Test: `testdata/ssdtail.tflite` (64 inputs). Two things matched only once found: LiteRT's uint8 concatenation rescale is one fused multiply-add, and its optimised kernels detect differently from its reference kernels. Memory budget above: ~5.1 MB of 6.29 MB if the weights are held once.
-- [ ] S2: KPU/CPU split, per-layer error, detection agreement at 256, memory budget.
+- [x] S2, anchors: `ssd.Anchors(ssd.MobileNetV1Anchors(maps))` (`x/vision/detect/ssd/anchors.go`) is TF Object Detection API's SSD anchor generator. For the head maps at 300 (19, 10, 5, 3, 2, 1) its boxes quantise to the export's uint8 anchors tensor byte for byte (1,917 rows; the test pins the tensor's SHA-256); the largest difference from the stored values is 0.0032, under half a quantisation step. At 256 the head maps are 16, 8, 4, 2, 1, 1: 1,284 anchors.
+- [ ] S2, the rest: KPU/CPU split, per-layer error, detection agreement at 256, memory budget, and the form of the model the board loads (one copy in memory).
 - [ ] S3: board equals host on one frame; memory fits; stage times.
 - [ ] S4: live stream frames/s and stage times.
