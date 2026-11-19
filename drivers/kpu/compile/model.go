@@ -72,9 +72,6 @@ func reason(g *qnet.Graph, i int) error {
 		}
 		f.Pad, l = l, &g.Layers[i+1]
 	}
-	if l.Kind == qnet.AvgPool2D && l.TiesUp {
-		return fmt.Errorf("%w: an average pool that rounds ties up (TFLite uint8, Layer.TiesUp); the KPU floors the mean", ErrUnsupported)
-	}
 	if l.Kind != qnet.Conv2D && l.Kind != qnet.DepthwiseConv2D {
 		return fmt.Errorf("%w: the KPU runs convolutions (with a fused Pad, ReLU/ReLU6 or pool)", ErrUnsupported)
 	}

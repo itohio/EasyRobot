@@ -1,7 +1,6 @@
 package compile
 
 import (
-	"errors"
 	"math"
 	"math/rand/v2"
 	"testing"
@@ -50,20 +49,16 @@ func TestLowerAsymmetricWeights(t *testing.T) {
 			t.Fatalf("layer %d (%v k%d s%d, WZP %d): %v", n, c.conv.Kind, c.conv.KH, c.conv.StrideH, c.conv.WZP, err)
 		}
 		got := emulate(t, lc, in, c.in, c.out)
-		tol := 1
-		if c.fuse.Pool != nil && c.fuse.Pool.Kind == qnet.AvgPool2D {
-			tol = 2
-		}
 		for i := range want {
 			d := int(got[i]) - int(want[i])
 			d = max(d, -d)
-			if d > tol {
+			if d > 1 {
 				t.Fatalf("layer %d (%v k%d s%d, z_x %d, WZP %d): output %d: KPU %d, qnet %d", n, c.conv.Kind, c.conv.KH, c.conv.StrideH, c.conv.InQ.ZP, c.conv.WZP, i, got[i], want[i])
 			}
 			hist[d]++
 		}
 	}
-	t.Logf("%d asymmetric layers, %d outputs: %d equal, %d at 1 LSB, %d at 2 (average pool only)", layers, hist[0]+hist[1]+hist[2], hist[0], hist[1], hist[2])
+	t.Logf("%d asymmetric layers, %d outputs: %d equal, %d at 1 LSB", layers, hist[0]+hist[1], hist[0], hist[1])
 }
 
 // TestAsymmetricExtremeAccumulator: q_w − WZP = 255 on every tap and
@@ -128,25 +123,40 @@ func TestAsymmetricExtremeAccumulator(t *testing.T) {
 	}
 }
 
-// TestTiesUpAveragePoolDeclined: TFLite's uint8 average pool rounds ties
-// up (Layer.TiesUp); the KPU's mean floors, so such a pool is not fused
-// (the conv lowers alone and the pool stays on the CPU).
-func TestTiesUpAveragePoolDeclined(t *testing.T) {
+// TestTiesUpAveragePoolFused: TFLite's uint8 average pool rounds ties up
+// (Layer.TiesUp), as the KPU's fused average does on its uint8 values
+// (observed on the K210), so it is fused. Where the conv output is exact the
+// pooled output equals qnet's; overall within 1 LSB.
+func TestTiesUpAveragePoolFused(t *testing.T) {
 	r := rand.New(rand.NewPCG(3, 9))
-	for {
+	var hist [2]int
+	for n := 0; n < 150; {
 		c := randomChain(r)
 		if c.fuse.Pool == nil || c.fuse.Pool.Kind != qnet.AvgPool2D {
 			continue
 		}
-		if _, err := Lower(&c.conv, c.fuse, 0, 16384); err != nil {
-			t.Fatalf("ties-away average pool: %v", err)
-		}
+		n++
 		c.fuse.Pool.TiesUp = true
-		if _, err := Lower(&c.conv, c.fuse, 0, 16384); !errors.Is(err, ErrUnsupported) {
-			t.Errorf("ties-up average pool: err %v, want ErrUnsupported", err)
+		in := make([]int8, c.in.Len())
+		for i := range in {
+			in[i] = int8(r.IntN(256) - 128)
 		}
-		return
+		want := c.run(t, in)
+		lc, err := Lower(&c.conv, c.fuse, 0, 16384)
+		if err != nil {
+			t.Fatalf("chain %d: ties-up average pool: %v", n, err)
+		}
+		got := emulate(t, lc, in, c.in, c.out)
+		for i := range want {
+			d := int(got[i]) - int(want[i])
+			d = max(d, -d)
+			if d > 1 {
+				t.Fatalf("chain %d output %d: KPU %d, qnet %d", n, i, got[i], want[i])
+			}
+			hist[d]++
+		}
 	}
+	t.Logf("150 ties-up average-pool chains: %d equal, %d at 1 LSB", hist[0], hist[1])
 }
 
 // TestLowerAsymmetricSAMEStride2: TF SAME stride-2 3×3 layers (regular and

@@ -107,7 +107,8 @@ func (c chain) run(t *testing.T, in []int8) []int8 {
 
 // TestLowerFusedMatchesQnet: random convs with stride 2 (Pad + VALID),
 // fused ReLU/ReLU6 and fused pools, lowered and run on the KPU model,
-// against qnet's layer-by-layer result: within 1 LSB, 2 with average pool.
+// against qnet's layer-by-layer result: within 1 LSB (the average pool
+// rounds half up, as the silicon does).
 func TestLowerFusedMatchesQnet(t *testing.T) {
 	r := rand.New(rand.NewPCG(9, 211))
 	layers := 1500
@@ -138,7 +139,7 @@ func TestLowerFusedMatchesQnet(t *testing.T) {
 		case c.conv.StrideH == 2:
 			key = "stride 2, 1×1"
 		case c.fuse.Pool != nil && c.fuse.Pool.Kind == qnet.AvgPool2D:
-			key, tol = "avg pool", 2
+			key = "avg pool"
 		case c.fuse.Pool != nil:
 			key = "max pool"
 		}
@@ -162,7 +163,7 @@ func TestLowerFusedMatchesQnet(t *testing.T) {
 	for k, h := range off {
 		t.Logf("  %-28s %8d outputs: %8d equal, %6d at 1, %d at 2", k, h[0]+h[1]+h[2], h[0], h[1], h[2])
 	}
-	t.Logf("%d chains %v, %d outputs: %d equal, %d at 1 LSB, %d at 2 LSB (average pool only)", layers, kinds, hist[0]+hist[1]+hist[2], hist[0], hist[1], hist[2])
+	t.Logf("%d chains %v, %d outputs: %d equal, %d at 1 LSB", layers, kinds, hist[0]+hist[1], hist[0], hist[1])
 }
 
 func TestLowerFusedRejects(t *testing.T) {

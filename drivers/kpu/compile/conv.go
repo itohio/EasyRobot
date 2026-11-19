@@ -46,8 +46,8 @@ type Fuse struct {
 	// Pool is a MaxPool2D or AvgPool2D with kernel = stride ∈ {2, 4},
 	// VALID, directly after a stride-1 regular conv (or after Act). The
 	// KPU does not pool in depthwise mode (observed on the K210), so a
-	// depthwise conv takes no pool. An AvgPool2D with TiesUp (TFLite uint8,
-	// which rounds the mean half up) is declined: the KPU floors the mean.
+	// depthwise conv takes no pool. The KPU's average rounds half up on the
+	// uint8 values, which is TFLite uint8's rounding (Layer.TiesUp).
 	Pool *qnet.Layer
 	// Full lowers a stride-2 depthwise conv (with its Pad), or a TF SAME
 	// stride-2 3×3 regular conv, at full resolution: stride 1, no pool,
@@ -105,11 +105,9 @@ func LowerConv(l *qnet.Layer, src, dst uint32) (Conv, error) { return Lower(l, F
 // VALID or as 1×1 VALID, on even H and W (the left-top sampler); TF SAME
 // stride 2 on even H and W, whose windows centre on odd pixels, as Full
 // followed by an OddSample reader; a fused 2×2 or 4×4 max or average pool
-// after a stride-1 conv (not an average pool with TiesUp, TFLite uint8's
-// round-half-up mean: the KPU's mean floors, so that pool stays on the CPU);
-// a fused ReLU or ReLU6. Weights may carry a zero point (Layer.WZP). The
-// KPU layer's input and output are at most 256 rows (a 258-row input never
-// finishes on silicon).
+// after a stride-1 conv; a fused ReLU or ReLU6. Weights may carry a zero
+// point (Layer.WZP). The KPU layer's input and output are at most 256 rows
+// (a 258-row input never finishes on silicon).
 //
 // The integers are exact up to requantisation (design note, "Integer
 // mapping"): KPU tensors are uint8 x′ = q + 128 and weights w′ = q_w + 128;
@@ -130,7 +128,9 @@ func LowerConv(l *qnet.Layer, src, dst uint32) (Conv, error) { return Lower(l, F
 // whose output is not clamped) is refused. The two roundings (BN floors,
 // the activation rounds half up, negative ties away from zero for
 // RoundTFLite layers) make the result differ from qnet's single rounding by
-// at most 1 LSB; a fused average pool floors where qnet rounds, one LSB more.
+// at most 1 LSB. A fused average pool rounds half up on the uint8 values:
+// TFLite uint8's rounding (TiesUp), and within 1 LSB of qnet's int8 mean,
+// which rounds negative ties away from zero.
 func Lower(l *qnet.Layer, f Fuse, src, dst uint32) (Conv, error) {
 	dw := l.Kind == qnet.DepthwiseConv2D
 	if l.Kind != qnet.Conv2D && !dw {
@@ -268,9 +268,6 @@ func geometry(l *qnet.Layer, f Fuse) (lowered, error) {
 			pk := p.KH
 			if (p.Kind != qnet.MaxPool2D && p.Kind != qnet.AvgPool2D) || p.KW != pk || p.StrideH != pk || p.StrideW != pk || (pk != 2 && pk != 4) || p.Padding != qi8.PaddingValid {
 				return lowered{}, fmt.Errorf("%w: pool %v %d×%d stride %d×%d", ErrUnsupported, p.Kind, p.KH, p.KW, p.StrideH, p.StrideW)
-			}
-			if p.Kind == qnet.AvgPool2D && p.TiesUp {
-				return lowered{}, fmt.Errorf("%w: average pool rounding ties up (TFLite uint8); the KPU's mean floors", ErrUnsupported)
 			}
 			if p.In != l.Out || l.In.H%pk != 0 || l.In.W%pk != 0 || p.Out != (qi8.Shape{H: l.In.H / pk, W: l.In.W / pk, C: l.Out.C}) || !same(p.InQ, l.OutQ) || !same(p.OutQ, l.OutQ) {
 				return lowered{}, fmt.Errorf("%w: pool does not chain with the conv (%v → %v)", ErrUnsupported, p.In, p.Out)
