@@ -23,7 +23,7 @@ Graph defects ER-002 expects to hit plus the decision-tree fix M-d needs ([[grap
 - **Expression-graph cycle check**: a cycle yields "start node not evaluated" — `x/math/graph/expression_graph.go:162-177` ([[expression-graph]]).
 - **Detached `AddNode` handles**: copies returned, `Compute(handle)` gives 0 — `expression_graph.go:26-38`, `x/math/graph/generic.go:343`.
 - **Directed 2-cycle detection** skips the parent edge — `cycles.go:29` ([[graph-cycle-detection]]).
-- **RRT\***: `Seed` unused, test sampler uses global `rand` (flaky `TestRRTStar_Simple2DGrid`), no steering/collision hook/choose-parent — `rrtstar.go:71-180`, `:268-293`, `rrtstar_test.go:24` ([[rrt-star]]).
+- **RRT\***: `Seed` builds an RNG that is never used; the test sampler uses the unseeded global `rand`; no steering (maximum step), collision hook or choose-parent: a sample joins its nearest node at any distance — `rrtstar.go:71-180`, `:268-293`, `rrtstar_test.go:24` ([[rrt-star]]). So `TestRRTStar_Simple2DGrid`'s "every hop ≤ 2.2" (`rrtstar_test.go:111`) holds only when the samples happen to fall densely: 3–5 of 8 runs fail (2026-11-19). The package is `may-fail` in `scripts/known-failures.txt` until this is fixed.
 - **Decision-tree `Balance`** swaps true/false branches; >2 children ignored — `vector_decision_tree.go:135-166`, `tree.go:188-230` ([[vector-decision-tree]]).
 
 ## Dependencies and scope

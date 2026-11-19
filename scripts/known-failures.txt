@@ -31,6 +31,12 @@ x/math/gps
 x/math/nn/layers
 x/math/protocol/peg
 
-# Flaky: pass alone, fail sometimes (causes not looked at yet)
+# Fail some of the time; real defects, not noise (fixes stay tickets):
+# mfsk: Test16FSK_Noise checks the receiver's locked SignalStrength against
+# the transmitter's with a 10 dB tolerance, and the receiver reads ~10 dB low,
+# so the unseeded noise decides pass or fail (ER-022).
 x/math/dsp/modulation/mfsk may-fail
+# graph: TestRRTStar_Simple2DGrid asserts every path hop <= 2.2, but RRTStar
+# has no maximum step (it joins a sample to its nearest node at any distance)
+# and the test samples from the unseeded global rand (ER-028).
 x/math/graph may-fail

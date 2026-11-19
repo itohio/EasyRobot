@@ -50,7 +50,7 @@ Size guess: **M** (both stages). Sizes are rough guesses ([[roadmap#1. Milestone
 
 ## Implementation evidence
 
-- `make test-host` (`scripts/test-host.sh`) implements proposals 1 and 2 of the baseline below, with the list in `scripts/known-failures.txt`: the 23 real failures, plus the flaky packages marked `may-fail`, `mfsk` and `x/math/graph` (`TestRRTStar_Simple2DGrid`, random RRT*: failed once in a full run and in 1 of 3 runs alone). Stages 1 and 2 above are still open.
+- `make test-host` (`scripts/test-host.sh`) implements proposals 1 and 2 of the baseline below, with the list in `scripts/known-failures.txt`: the 23 real failures, plus two packages marked `may-fail` that fail some of the time. Both are real defects, not flaky tests, and seeding their randomness would hide them. `x/math/graph` `TestRRTStar_Simple2DGrid` (3–5 of 8 runs fail) asserts path hops ≤ 2.2, but `RRTStar` has no maximum step ([[ER-028-graph-fixes|ER-028]]). `x/math/dsp/modulation/mfsk` `Test16FSK_Noise` (9–16 of 20–40 runs fail) allows 10 dB between transmitted and received signal strength, and the receiver reads ~10 dB low ([[ER-022-audio-modem-acquisition|ER-022]]). Stages 1 and 2 above are still open.
 - `x/math/swarm/boids` `TestStepDoesNotAllocate` failed once in a full run ("7 allocations in 1000 steps") and never alone (320 runs). It read a process-wide `MemStats.Mallocs` delta, which counts other goroutines' allocations too. It now measures on one P and fails only if each of up to three attempts allocated (`Step` is deterministic, so its own allocations repeat). Checked: a goroutine allocating beside the test made the old version fail 4 of 5 runs and the new one pass 5 of 5; a `Step` that allocates still fails (`[1000 1000 1000]`). `boids` left the `may-fail` list.
 
 ## Host test baseline (2026-11-19, `main` `9230292a`, darwin/arm64, Go 1.27.2, no OpenCV installed)
@@ -88,7 +88,7 @@ Tests fail (14):
 | `x/math/gps` | the north-pole ECEF test expects the equatorial radius (6,378,137 m) where WGS-84 gives the polar radius the code returns (6,356,752 m), so that test looks wrong; trilateration and multilateration results are off (15 m to 1 km) | none yet |
 | `x/math/colorscience` | custom illuminant, XYZ, a panic on mismatched lengths | none yet |
 
-`x/math/dsp/modulation/mfsk` is flaky: it passed in this full run, and `Test16FSK_Noise` failed when the package ran alone the same day (cause not yet looked at). The ratchet below should treat it as "may fail" until it is fixed.
+`x/math/dsp/modulation/mfsk` fails some of the time: it passed in this full run, and `Test16FSK_Noise` failed when the package ran alone the same day. The cause, found later: the receiver's locked signal strength is ~10 dB below the transmitter's, and the test's tolerance is exactly 10 dB ([[ER-022-audio-modem-acquisition|ER-022]]). The ratchet below treats it as "may fail" until that is fixed.
 
 ### Proposal: make `go test ./...` meaningful without hiding a failure
 

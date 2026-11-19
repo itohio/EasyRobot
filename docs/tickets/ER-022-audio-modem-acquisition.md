@@ -24,6 +24,7 @@ M-e stage 2 ([[roadmap#M-e — Robust voice modem (W7)|roadmap M-e]], [[W7-filte
 - **Shared synchroniser**: CFAR energy detect, chirp/preamble correlation, fractional timing, frame end ([[modem-energy-detector-and-preamble-acquisition]]); ideation recommends an up+down chirp pair for CFO ([[2026-11-09-voice-modem-w7]] §3).
 - **Oscillator drift**: phase-continuous NCO replacing float32-time oscillators — `x/math/dsp/generators_trig.go:240,258`.
 - Framer and voice-band profile (500–3000 Hz; 8-FSK baseline per ideation §2) folded in here (roadmap §4 "or fold into ER-022").
+- **Received signal strength ~10 dB low:** in `x/math/dsp/modulation/mfsk` `Test16FSK_Noise`, the receiver's locked `SignalStrength` reads ≈ −12 dB against the transmitter's −1.94 dB, and the test allows 10 dB (`roundtrip_test.go:227`). The unseeded noise decides pass or fail: 9–16 of 20–40 runs fail (2026-11-19). `qam`'s failing round trips hit the same family of level/SNR checks. `mfsk` is `may-fail` in `scripts/known-failures.txt` until the estimate is right.
 - The `chain.Adapter` nil buffer and `cmd/audio` chunk packing (`x/chain/adaper.go:111,138`; `cmd/audio/common.go:304-318,502,542`) belong to the audio composition fixes; this ticket picks them up only if those did not.
 
 ## Dependencies and scope
