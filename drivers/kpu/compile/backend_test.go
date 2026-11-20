@@ -209,7 +209,8 @@ func TestMobileNetOnKPU(t *testing.T) {
 // splits the graph into KPU, CPU and KPU segments; the KPU-backed result
 // follows the CPU runner.
 func TestMixedGraph(t *testing.T) {
-	base := mobileNetPad(t, 0.25, 64)
+	// At 128×128 the last map is 4×4, the smallest the planner gives the KPU.
+	base := mobileNetPad(t, 0.25, 128)
 	k := -1 // a pointwise conv in the middle, followed by a stride-1 depthwise
 	for i := len(base.Layers) / 3; i < len(base.Layers)-1; i++ {
 		if l, n := base.Layers[i], base.Layers[i+1]; l.Kind == qnet.Conv2D && l.KH == 1 && n.Kind == qnet.DepthwiseConv2D && n.StrideH == 1 {

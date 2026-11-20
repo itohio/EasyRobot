@@ -234,6 +234,21 @@ func lines(s qi8.Shape) int {
 
 const ramLines = kmodel.RAMSize / 64
 
+// MinSide is the smallest map side (input or output, as the KPU layer sees
+// it) the planner gives the KPU. Smaller maps were not checked on the K210,
+// and the maker's compiler never emits one (it pads a 1×1 map to 4×4), so
+// their layers stay on the CPU, where they cost little.
+const MinSide = 4
+
+// bigEnough reports whether a lowered layer's input and output maps are at
+// least MinSide on each side.
+func bigEnough(gr Group) bool {
+	a := gr.c.Args
+	iw, ih, _ := a.InShape()
+	ow, oh, _ := a.OutShape()
+	return min(iw, ih, ow, oh) >= MinSide
+}
+
 // Compile finds the graph's KPU segments, compiles each into a kmodel and
 // builds its runner with newRunner. Layers outside segments stay on qnet's
 // CPU kernels. g must be validated by qnet (shapes, parameters).
@@ -257,7 +272,8 @@ func Compile(g *qnet.Graph, newRunner RunnerFunc) (*Backend, error) {
 }
 
 // segment collects the longest chain of groups from layer i that fits KPU
-// memory layer by layer; nil if layer i starts no group. A Full layer (a
+// memory layer by layer and has no map smaller than MinSide; nil if layer i
+// starts no group. A Full layer (a
 // stride-2 depthwise, or a TF SAME stride-2 conv) joins only together with
 // its sampling reader: the 1×1 conv after it, else a Sampler.
 func (gi graphInfo) segment(i int) *Segment {
@@ -280,7 +296,7 @@ func (gi graphInfo) segment(i int) *Segment {
 			break // a graph output or a second reader ends the segment
 		}
 		if gr, f, conv, ok := gi.group(j, Mode{}); ok {
-			if !fits(gr, false) {
+			if !fits(gr, false) || !bigEnough(gr) {
 				break
 			}
 			push(gr, conv, f)
@@ -305,7 +321,7 @@ func (gi graphInfo) segment(i int) *Segment {
 			sample.Sampler = true
 			gr2, f2, conv2, ok = gi.group(next, sample)
 		}
-		if !ok || !fits(gr, odd) || !fits(gr2, false) {
+		if !ok || !fits(gr, odd) || !fits(gr2, false) || !bigEnough(gr) || !bigEnough(gr2) {
 			break
 		}
 		push(gr, conv, f)

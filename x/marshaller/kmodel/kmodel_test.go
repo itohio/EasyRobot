@@ -34,17 +34,17 @@ func mobileNet(t *testing.T, size int) *qnet.Graph {
 }
 
 // TestMarshalRoundTrip: a 32×32 MobileNet, cut before its global pool and
-// resized to 64×64, marshals to a kmodel; the Unmarshaller reads it back,
-// and drivers/kpu runs it (emulated) to qnet's CPU result for the same cut
-// and size.
+// resized to 128×128 (the last map is 4×4, the smallest the KPU is given),
+// marshals to a kmodel; the Unmarshaller reads it back, and drivers/kpu runs
+// it (emulated) to qnet's CPU result for the same cut and size.
 func TestMarshalRoundTrip(t *testing.T) {
 	g := mobileNet(t, 32)
 	m := NewMarshaller(WithCut(26))
 	var buf bytes.Buffer
-	if err := m.Marshal(&buf, g, WithInputSize(64, 64)); err != nil {
+	if err := m.Marshal(&buf, g, WithInputSize(128, 128)); err != nil {
 		t.Fatal(err)
 	}
-	if m.Info.Input != (qi8.Shape{H: 64, W: 64, C: 3}) || m.Info.Output != (qi8.Shape{H: 2, W: 2, C: 256}) || m.Info.KPULayers != 28 {
+	if m.Info.Input != (qi8.Shape{H: 128, W: 128, C: 3}) || m.Info.Output != (qi8.Shape{H: 4, W: 4, C: 256}) || m.Info.KPULayers != 28 {
 		t.Fatalf("info %+v", m.Info)
 	}
 	var model km.Model
@@ -74,7 +74,7 @@ func TestMarshalRoundTrip(t *testing.T) {
 	}
 	out := r.Output(0)
 
-	ref, err := Prepare(g, map[string]string{keyCut: "26", keyInput: "64x64"})
+	ref, err := Prepare(g, map[string]string{keyCut: "26", keyInput: "128x128"})
 	if err != nil {
 		t.Fatal(err)
 	}

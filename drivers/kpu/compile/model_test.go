@@ -13,9 +13,10 @@ import (
 
 // TestKmodelRuns: Kmodel compiles the SAME MobileNet into one kmodel; run
 // by drivers/kpu (emulated) on the CHW input, its output equals qnet's CPU
-// runner.
+// runner. At 128×128 the last map is 4×4, the smallest the planner gives
+// the KPU.
 func TestKmodelRuns(t *testing.T) {
-	g := mobileNetSAME(t, 0.25, 64)
+	g := mobileNetSAME(t, 0.25, 128)
 	data, info, err := Kmodel(g)
 	if err != nil {
 		t.Fatal(err)
@@ -181,7 +182,7 @@ func TestKmodelRefusalReasons(t *testing.T) {
 	}{
 		{"512² Pad + VALID", mobileNetPad(t, 0.25, 512), "at most 256"},
 		{"SAME with a global pool", func() *qnet.Graph {
-			g := mobileNetSAME(t, 0.25, 64)
+			g := mobileNetSAME(t, 0.25, 128)
 			last := g.Layers[len(g.Layers)-1]
 			pool := qnet.Layer{Kind: qnet.AvgPool2D, In: last.Out, Out: qi8.Shape{H: 1, W: 1, C: last.Out.C}, InQ: last.OutQ, OutQ: last.OutQ,
 				KH: last.Out.H, KW: last.Out.W, StrideH: 1, StrideW: 1, Padding: qi8.PaddingValid}

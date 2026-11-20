@@ -43,7 +43,14 @@ Owner decision (2026-11-10): models come as int8 TFLite files or as our own `qne
 | stride 2, `Pad(1,1)` + 3×3 VALID or 1×1 VALID | yes: conv + left-top 2×2 sampler | windows centred on even pixels. A stride-2 **depthwise** runs at full resolution (`Fuse.Full`) and the next KPU layer samples (`Fuse.Subsample`): the KPU does not pool in depthwise mode |
 | stride 2, TF SAME 3×3 (even H and W) | yes, exact, no extra KPU work but a sampler | windows centred on odd pixels. The conv (regular or depthwise) runs at full resolution (`Fuse.Full`); the next KPU layer reads from one row down with the right-top sampler (`Fuse.OddSample`). That reader is the next 1×1 conv when there is one, else an identity 1×1 conv (`compile.Sampler`, exact: weights 1 and multiplier 1). The official MobileNetV1 exports need one Sampler, after the stem |
 | MaxPool2D / AvgPool2D 2×2 or 4×4, stride = kernel, directly after a regular conv | fused into that conv | `pool_type`; not after a depthwise conv (CPU). The KPU's average rounds half up on the uint8 values (silicon, K9g), which is TFLite uint8's rounding (`TiesUp`) |
-| everything else (Add, Concat, FC, Mean/GAP, Softmax, Logistic, Mul, resizes) | no | CPU (qnet kernels) |
+| a conv whose input or output map is smaller than 4×4 (`compile.MinSide`) | no | CPU. Such maps were not checked on the K210, and nncase never emits one (it pads a 1×1 map to 4×4): open question 4. They cost the CPU little |
+| everything else (Add, Concat, FC, Mean/GAP, Softmax, Logistic, Mul, resizes) | no | CPU (qnet kernels); `compile.Reason(g, i)` says why layer i stayed there |
+
+### Running a graph at another input size
+
+- `compile.Resize(g, h, w)` re-derives every shape for an h×w input and shares the parameters. Convolutions, Pad, element-wise layers and pools are size-agnostic. A Reshape whose input changed keeps its channels and whichever of H and W is 1 (an SSD head's `[cells·A·k] → [boxes, 1, k]`); a Concat sums its inputs along its axis and keeps its `Rescale` maps. Other reshapes, fully connected layers, resizes and constants are refused.
+- **Resize moves the sampling grid.** TF SAME pads a stride-2 3×3 conv one row before on an odd input and none on an even one, so a size that changes a layer's parity shifts that layer's cells by one row of its input, and every later layer's with it. SSD-MobileNetV1 has odd stride-2 inputs at 300×300 (75, 19, 5, 3) and none at 256×256: its 2×2 head map ends up 42 pixels from where its anchors assume it, and boxes come out displaced. A classifier with a global pool does not care; a detector does.
+- `compile.ResizeAligned(g, h, w)` keeps the grid. A stride-2 SAME conv whose padding would move becomes a Pad and a VALID conv: `Pad(1,1,1,1)` where an odd input became even (the form the KPU lowers, cheaper than SAME: no full-resolution pass for a regular conv), `Pad(0,2,0,2)` where an even one became odd (CPU). The result run on the top-left h×w pixels of an image gives, in every cell that reads nothing beyond them, the value `g` gives on the whole image (tested bit for bit on the CPU). A detector's anchors at h×w are therefore the model's own anchors for the cells that remain, kept in pixels (normalised values × old size / new size). Inserted Pad layers shift the layer indices after them.
 
 ### Integer mapping
 
@@ -106,7 +113,7 @@ Requantisation is approximate:
 
 - **Stride 2:** TF SAME and `Pad(1,1)` + VALID both run exactly, on even sizes. SAME on an odd size is refused.
 - **Kernels** 1×1 and 3×3 only; depthwise multiplier 1.
-- **Sizes:** W ≤ 1024, H ≤ 256 per KPU layer input (silicon, see [[k210-kpu]]), C ≤ 1024. A full-resolution stride-2 layer's input is the full image, so 256 rows is also the limit for the input image until row-band tiling (K9g). nncase rejects depthwise outputs smaller than 4×4: whether that is a hardware limit is open question 4.
+- **Sizes:** W ≤ 1024, H ≤ 256 per KPU layer input (silicon, see [[k210-kpu]]), C ≤ 1024. A full-resolution stride-2 layer's input is the full image, so 256 rows is also the limit for the input image until row-band tiling (K9g). Maps smaller than 4×4 stay on the CPU (`compile.MinSide`): nncase rejects depthwise outputs smaller than 4×4, and whether that is a hardware limit is open question 4.
 - **Activations:** anything piecewise-linear in 16 segments: ReLU, ReLU6, clamps, LeakyReLU, hard-sigmoid/hard-swish approximations.
 - **Residual Add and Concat** run on the CPU and cost a read-back plus re-upload each. Prefer V1-style plain chains for KPU efficiency, or keep adds few.
 
@@ -134,6 +141,6 @@ Requantisation is approximate:
 1. The KPU accumulator width: does a 3×3×1024 conv of extreme values overflow? (K9b: probe on the board.)
 2. What `first_stride`, `bypass_conv`, `full_add`, `ram_flag` and `kernel_offset` do. nncase leaves them 0. `first_stride` may be a true stride-2 path. (K9c: probe on the board.)
 3. ~~TF-SAME stride 2 on the first layer via a one-pixel input shift at upload.~~ Resolved: any SAME stride-2 layer runs exactly as full resolution + right-top sampler from one row down (pool_type 6 checked on silicon). An upload with pad rows is impossible at 256×256 anyway (258 rows exceed the 256-row limit).
-4. The ≥ 4×4 depthwise output limit: is it hardware or nncase? (K9c: probe on the board.)
+4. The ≥ 4×4 limit: is it hardware or nncase? Until a board probe answers, the planner gives the KPU no map smaller than 4×4 (`compile.MinSide`). The emulator runs smaller maps (`Lower` accepts them); SSD-MobileNetV1 at 256×256 would move 11 small convolutions (1.56 M MACs) from the CPU to the KPU if the silicon does too.
 5. Whether BN's floor shift and the activation's 36-bit compare explain the ±1 LSB silicon difference. If so, the emulator can model the hardware exactly. (K9b, from the K8c per-layer data.)
 6. Hand-made probe layers (`kpupool`, `kpushape`: BN mul 2¹⁰ shift 15, activation shift 4) differ from `Emulate` on 2–3 % of outputs on silicon, while every compiler-lowered layer matched exactly. Which BN/activation settings the emulator models inexactly is open (K9g).
