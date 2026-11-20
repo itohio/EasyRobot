@@ -110,8 +110,10 @@ activations at 96², 98 304 B at 128², 301 056 B at 224².
 
 ## Runner
 
-`NewRunner(g, arena, backends...)` / `Init` validates `g` (parameters bound),
-plans it, checks `len(arena) ≥ Size()` (`ErrArena`) and prepares every CPU
+`NewRunner(g, arena, backends...)` / `Init` plans `g` (which validates its
+shapes), checks that parameters are bound on every layer the CPU runs (the
+layers of a backend's segment may carry none: a backend that holds them
+compiled), checks `len(arena) ≥ Size()` (`ErrArena`) and prepares every CPU
 layer as a qi8 prepared layer over its scratch (allocating the plan and the
 layer structs once). `Run(input)` executes all segments (`ErrNotReady`
 before a successful `Init`, `ErrInput` on a length mismatch) and returns

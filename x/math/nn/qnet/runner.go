@@ -70,19 +70,26 @@ func NewRunner(g *Graph, arena []int8, backends ...Backend) (*Runner, error) {
 	return r, nil
 }
 
-// Init validates g (parameters must be bound), plans it (PlanMemory),
-// checks len(arena) >= Plan().Size() (ErrArena) and prepares every CPU layer
-// with its scratch region, packing weights for the qi8 backend. It
-// allocates the plan and the prepared layers once; Run allocates nothing.
-// On error r is left uninitialised.
+// Init validates g, plans it (PlanMemory), checks len(arena) >=
+// Plan().Size() (ErrArena) and prepares every CPU layer with its scratch
+// region, packing weights for the qi8 backend. Parameters must be bound on
+// the layers the CPU runs; the layers of a backend's segment may carry none
+// (a backend that holds them compiled). It allocates the plan and the
+// prepared layers once; Run allocates nothing. On error r is left
+// uninitialised.
 func (r *Runner) Init(g *Graph, arena []int8, backends ...Backend) error {
 	*r = Runner{}
-	if err := g.Validate(); err != nil {
-		return err
-	}
 	plan, err := PlanMemory(g, backends...)
 	if err != nil {
 		return err
+	}
+	for _, s := range plan.Segments {
+		if s.Backend != nil {
+			continue
+		}
+		if err := g.checkLayer(s.First, true); err != nil {
+			return err
+		}
 	}
 	if len(arena) < plan.Size() {
 		return ErrArena

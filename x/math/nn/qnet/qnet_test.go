@@ -2,6 +2,7 @@ package qnet_test
 
 import (
 	"bytes"
+	"errors"
 	"math/rand/v2"
 	"testing"
 
@@ -718,6 +719,58 @@ func TestRunnerFusedSegments(t *testing.T) {
 	}
 	if !bytes.Equal(i8b(out), i8b(want)) || pair.runs != 1 {
 		t.Fatalf("out %v, want %v (pair runs %d)", out, want, pair.runs)
+	}
+}
+
+// heldBackend runs the depthwise + 1×1 pair from its own copies of the two
+// layers, as an accelerator does that holds them compiled.
+type heldBackend struct {
+	pairBackend
+	held [2]qnet.Layer
+}
+
+func (b *heldBackend) Run(ls []qnet.Layer, dst, src []int8) error {
+	return b.pairBackend.Run(b.held[:], dst, src)
+}
+
+// A backend's layers need no parameters in the graph: the Runner checks
+// bound parameters only on the layers the CPU runs. Without the backend the
+// same graph is refused.
+func TestRunnerBackendLayersWithoutParams(t *testing.T) {
+	g := bound(t, smallLayers(), 11)
+	in := randInput(g.Layers[0].In.Len(), 5)
+	want := append([]int8(nil), runByHand(t, &g, in)...)
+	held := &heldBackend{pairBackend: pairBackend{scratch: make([]int8, 256)}, held: [2]qnet.Layer{g.Layers[1], g.Layers[2]}}
+	for i := 1; i <= 2; i++ {
+		l := &g.Layers[i]
+		l.Weights, l.Bias, l.Requant = nil, nil, nil
+	}
+	p, err := qnet.PlanMemory(&g, held)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var r qnet.Runner
+	if err := r.Init(&g, make([]int8, p.Size()), held); err != nil {
+		t.Fatalf("with the backend: %v", err)
+	}
+	out, err := r.Run(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(i8b(out), i8b(want)) || held.runs != 1 {
+		t.Fatalf("out %v, want %v (backend runs %d)", out, want, held.runs)
+	}
+	pc, err := qnet.PlanMemory(&g)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Init(&g, make([]int8, pc.Size())); !errors.Is(err, qnet.ErrParams) {
+		t.Fatalf("without the backend: %v, want ErrParams", err)
+	}
+	// A CPU layer without parameters is still refused with the backend.
+	g.Layers[0].Weights = nil
+	if err := r.Init(&g, make([]int8, p.Size()), held); !errors.Is(err, qnet.ErrParams) {
+		t.Fatalf("CPU layer without weights: %v, want ErrParams", err)
 	}
 }
 

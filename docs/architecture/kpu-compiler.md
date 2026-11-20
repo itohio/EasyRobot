@@ -102,6 +102,16 @@ Requantisation is approximate:
   - This is the most complex part and gets its own milestone.
 - **CPU fallback:** layers the KPU can't run (Add, Concat, FC, GAP/Mean, Softmax, Logistic, Mul, resizes) run on qnet's CPU kernels between KPU segments. FC can alternatively run as a 1×1 KPU conv on a 4×4 zero-padded map (nncase's head), chosen by an option once measured.
 
+## The board file (`drivers/kpu/kgraph`)
+
+A board cannot load the TFLite file and compile on the device: for SSD-MobileNetV1 the file (4.2 MB) plus the kmodels (3.7 MB) exceed the K210's 6 MiB. The host compiles, and the board gets one file that it runs in place.
+
+- **Contents:** the graph's layers (fixed 96-byte records), the kmodel of every KPU segment, the weights, bias and requant tables of the layers left to the CPU, the Concat rescale maps and the Logistic table, the output list, and tagged extras the application reads (a detector's anchors and decoder constants). The layers inside a KPU segment carry no parameters: their kmodel holds them. `compile.Backend.File(g, extras...)` writes it; the layout is in the package comment.
+- **Alignment:** kmodels lie at multiples of 128 bytes in the file, the other tables at multiples of 16. Held at a 128-byte-aligned address, the file needs no copy: the KPU fetches weights from where they are, and the CPU tables are used as `[]int8`, `[]int32`, `[]qi8.Requant` in place. `kgraph.Parse` refuses a file at another address (`ErrAlign`), checks a CRC-32 and bounds-checks every table; it allocates the layer structs only (29.6 KB for SSD-MobileNetV1's 68 layers).
+- **Running:** `kgraph.NewBackend(file, kpu.New)` builds one `kpu.Runner` per segment over **one shared upload buffer** (the largest segment input) and **one shared output buffer** (the largest output); `qnet.NewRunner(&file.Graph, arena, backend)` runs the graph. The Runner checks bound parameters only on the layers the CPU runs. The format is a list of segments, so fewer, longer segments later need no format change.
+- **Holding it once on the K210:** linked into the program's read-only data at a 128-byte-aligned address by a C file in the program's package: file-scope assembly with `.balign 128` and `.incbin`, two symbols for its start and end, read from Go through cgo. TinyGo 0.43 builds and links this for the K210 (checked by building: the file appears once in the image, at an offset that is a multiple of 128). The fallback, if the board refuses the image, is a flash region of its own, read once at boot into a buffer allocated with 127 spare bytes; it costs a flash reader and the same memory.
+- **Kinds held:** Conv2D, DepthwiseConv2D, MaxPool2D, AvgPool2D, ReLU, ReLU6, Reshape, Logistic, Concat, Pad. `Encode` refuses the others (`ErrUnsupported`) until the record holds their fields; the version field is for that.
+
 ## Validation
 
 1. **Per layer on the host:** each lowered layer through `kmodel.ConvParams.Emulate` (bit-exact with nncase's simulator, K8c, except average pools, which round half up as the silicon does, K9g) against qnet's `RunLayer` on the same int8 input, ≤ 1 LSB, over random shapes, quantisations, zero points, clamps and pools.

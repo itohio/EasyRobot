@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/itohio/EasyRobot/drivers/kpu"
+	"github.com/itohio/EasyRobot/drivers/kpu/kgraph"
 	"github.com/itohio/EasyRobot/drivers/kpu/kmodel"
 	"github.com/itohio/EasyRobot/x/math/nn/qnet"
 	"github.com/itohio/EasyRobot/x/math/primitive/qi8"
@@ -59,6 +60,17 @@ func (b *Backend) Name() string { return "k210-kpu" }
 // Segments lists the compiled segments in graph order.
 func (b *Backend) Segments() []*Segment { return b.order }
 
+// File writes g, the graph b was compiled for, as one kgraph file: the
+// segments' kmodels, the parameters of the layers left to the CPU, and
+// extras. A board runs it from the file alone (package kgraph).
+func (b *Backend) File(g *qnet.Graph, extras ...kgraph.Extra) ([]byte, error) {
+	segs := make([]kgraph.Segment, len(b.order))
+	for k, s := range b.order {
+		segs[k] = kgraph.Segment{First: s.First, Count: s.Count, Kmodel: s.Model.Data}
+	}
+	return kgraph.Encode(g, segs, extras...)
+}
+
 // Claim returns the length of the segment starting at layers[0], or 0.
 func (b *Backend) Claim(layers []qnet.Layer) int {
 	if len(layers) == 0 {
@@ -84,37 +96,12 @@ func (b *Backend) Run(layers []qnet.Layer, dst, src []int8) error {
 	if s == nil || len(layers) != s.Count || len(src) != s.in.Len() || len(dst) != s.out.Len() {
 		return ErrSegment
 	}
-	toCHW(s.chw, src, s.in.H*s.in.W, s.in.C)
+	kgraph.ToCHW(s.chw, src, s.in.H*s.in.W, s.in.C)
 	if err := s.Runner.Run(s.chw); err != nil {
 		return err
 	}
-	fromCHW(dst, s.Runner.Output(0), s.out.H*s.out.W, s.out.C)
+	kgraph.FromCHW(dst, s.Runner.Output(0), s.out.H*s.out.W, s.out.C)
 	return nil
-}
-
-// toCHW converts int8 NHWC (hw pixels × c channels) to the KPU's uint8 CHW
-// (q + 128), one channel plane at a time: the plane is a hoisted slice, so
-// the inner loop is a strided load and a sequential store with no index
-// arithmetic beyond the stride.
-func toCHW(chw []byte, src []int8, hw, c int) {
-	for ch := range c {
-		d := chw[ch*hw : (ch+1)*hw]
-		s := src[ch:]
-		for i := range d {
-			d[i] = byte(s[i*c]) ^ 0x80
-		}
-	}
-}
-
-// fromCHW converts the KPU's uint8 CHW back to int8 NHWC (− 128).
-func fromCHW(dst []int8, chw []byte, hw, c int) {
-	for ch := range c {
-		p := chw[ch*hw : (ch+1)*hw]
-		d := dst[ch:]
-		for i, v := range p {
-			d[i*c] = int8(v ^ 0x80)
-		}
-	}
 }
 
 // graphInfo is the reader structure Compile needs.
