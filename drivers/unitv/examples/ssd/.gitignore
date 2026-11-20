@@ -1,0 +1,7 @@
+# Build inputs (README.md): the model, the test image and the generated
+# files. Never committed.
+/detect.tflite
+/input.u8
+/model.kgraph
+/input.i8
+/data_unitv.c

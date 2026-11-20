@@ -1,0 +1,184 @@
+//go:build !unitv
+
+package main
+
+import (
+	"errors"
+	"fmt"
+	"math"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/itohio/EasyRobot/drivers/kpu"
+	"github.com/itohio/EasyRobot/drivers/kpu/compile"
+	"github.com/itohio/EasyRobot/drivers/kpu/kgraph"
+	"github.com/itohio/EasyRobot/x/math/nn/qnet"
+	"github.com/itohio/EasyRobot/x/math/nn/qnet/tfl"
+	"github.com/itohio/EasyRobot/x/vision/detect/ssd"
+)
+
+// anchorTolerance is the largest difference accepted between the model's
+// stored anchors and the generator's: the export stores them as uint8 in
+// steps of 0.00645, so up to half a step, plus float32 rounding.
+const anchorTolerance = 0.0033
+
+var errNotSSD = errors.New("ssd: not an SSD-MobileNetV1 detection graph (boxes and scores outputs, each a concatenation of reshaped head convolutions)")
+
+// headMaps returns the feature maps (H, W) of g's box heads, in the order
+// the boxes output concatenates them: output 0 is a Reshape of a Concat of
+// Reshapes of the head convolutions.
+func headMaps(g *qnet.Graph) ([][2]int, error) {
+	if g.NumOutputs() != 2 {
+		return nil, errNotSSD
+	}
+	prev := func(i int) int {
+		if f := g.Layers[i].From; len(f) > 0 {
+			return f[0]
+		}
+		return i - 1
+	}
+	i := g.Outputs[0]
+	if g.Layers[i].Kind == qnet.Reshape {
+		i = prev(i)
+	}
+	if i < 0 || g.Layers[i].Kind != qnet.Concat {
+		return nil, errNotSSD
+	}
+	var maps [][2]int
+	for _, r := range g.Layers[i].From {
+		if r < 0 || g.Layers[r].Kind != qnet.Reshape {
+			return nil, errNotSSD
+		}
+		c := prev(r)
+		if c < 0 || g.Layers[c].Kind != qnet.Conv2D {
+			return nil, errNotSSD
+		}
+		maps = append(maps, [2]int{g.Layers[c].Out.H, g.Layers[c].Out.W})
+	}
+	return maps, nil
+}
+
+// buildModel compiles the detection graph g (as tfl.LoadDetection returns
+// it, with its post-process pp) for a size×size input on the KPU and
+// returns the kgraph file the board runs: the graph on its trained sampling
+// grid (compile.ResizeAligned), the KPU segments' kmodels, the CPU layers'
+// tables, and the extras "anchors" (the trained anchors of the cells that
+// remain, ssd.CropAnchors) and "ssd" (the box scales y, x, h, w and the NMS
+// IoU threshold). The model's stored anchors must be the SSD-MobileNetV1
+// generator's for its head maps.
+func buildModel(g *qnet.Graph, pp tfl.PostProcess, size int) ([]byte, error) {
+	trained, err := headMaps(g)
+	if err != nil {
+		return nil, err
+	}
+	cfg := ssd.MobileNetV1Anchors(trained)
+	full, err := ssd.Anchors(cfg)
+	if err != nil {
+		return nil, err
+	}
+	if len(full) != len(pp.Anchors) {
+		return nil, fmt.Errorf("ssd: the model stores %d anchors, the SSD-MobileNetV1 generator gives %d for its head maps %v", len(pp.Anchors)/4, len(full)/4, trained)
+	}
+	for i := range full {
+		if d := math.Abs(float64(full[i] - pp.Anchors[i])); d > anchorTolerance {
+			return nil, fmt.Errorf("ssd: the model's anchors are not the SSD-MobileNetV1 generator's (value %d: %v, generated %v)", i, pp.Anchors[i], full[i])
+		}
+	}
+	r, err := compile.ResizeAligned(g, size, size)
+	if err != nil {
+		return nil, err
+	}
+	kept, err := headMaps(r)
+	if err != nil {
+		return nil, err
+	}
+	in := g.Layers[0].In
+	anchors, err := ssd.CropAnchors(cfg, [2]int{in.H, in.W}, [2]int{size, size}, kept)
+	if err != nil {
+		return nil, err
+	}
+	be, err := compile.Compile(r, kpu.NewEmulated)
+	if err != nil {
+		return nil, err
+	}
+	return be.File(r,
+		kgraph.Extra{Tag: "anchors", Data: kgraph.Float32s(anchors)},
+		kgraph.Extra{Tag: "ssd", Data: kgraph.Float32s([]float32{pp.YScale, pp.XScale, pp.HScale, pp.WScale, pp.IoUThreshold})})
+}
+
+// inputSize is the side of the square input the board runs: 256 rows is the
+// KPU's limit for a layer's input.
+const inputSize = 256
+
+// generate writes the board build's inputs into dir: model.kgraph from the
+// TFLite detection model, input.i8 from a raw 256×256×3 uint8 RGB image
+// (x − 128, the graph's int8 input), and data_unitv.c, which links both
+// into the program's read-only data, the model at a 128-byte-aligned
+// address.
+func generate(modelPath, imagePath, dir string) error {
+	b, err := os.ReadFile(modelPath)
+	if err != nil {
+		return err
+	}
+	g, pp, err := tfl.LoadDetection(b)
+	if err != nil {
+		return err
+	}
+	file, err := buildModel(&g, pp, inputSize)
+	if err != nil {
+		return err
+	}
+	img, err := os.ReadFile(imagePath)
+	if err != nil {
+		return err
+	}
+	if len(img) != inputSize*inputSize*3 {
+		return fmt.Errorf("%s: %d bytes, want %d (%d×%d×3)", imagePath, len(img), inputSize*inputSize*3, inputSize, inputSize)
+	}
+	for i := range img {
+		img[i] ^= 0x80
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
+	model, input := filepath.Join(abs, "model.kgraph"), filepath.Join(abs, "input.i8")
+	if strings.ContainsAny(abs, "\"\\\n") {
+		return fmt.Errorf("%s: the path goes into a C string; it must not contain quotes or backslashes", abs)
+	}
+	if err := os.WriteFile(model, file, 0o644); err != nil {
+		return err
+	}
+	if err := os.WriteFile(input, img, 0o644); err != nil {
+		return err
+	}
+	c := fmt.Sprintf(`// Code generated by the ssd example's -gen; DO NOT EDIT.
+
+//go:build unitv
+
+// The model file and the test input, linked once into read-only data. The
+// KPU fetches weights from 128-byte-aligned addresses, so the model starts
+// on one.
+__asm__(
+	".section .rodata.ssd_model,\"a\",@progbits\n"
+	".balign 128\n"
+	".globl ssd_model\n"
+	"ssd_model:\n"
+	".incbin \"%s\"\n"
+	".globl ssd_model_end\n"
+	"ssd_model_end:\n"
+	".balign 16\n"
+	".globl ssd_input\n"
+	"ssd_input:\n"
+	".incbin \"%s\"\n"
+	".globl ssd_input_end\n"
+	"ssd_input_end:\n"
+);
+`, model, input)
+	if err := os.WriteFile(filepath.Join(abs, "data_unitv.c"), []byte(c), 0o644); err != nil {
+		return err
+	}
+	fmt.Printf("ssd: %s %d B (from %d B), input.i8 %d B, data_unitv.c\n", model, len(file), len(b), len(img))
+	return nil
+}
