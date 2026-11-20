@@ -5,9 +5,11 @@
 // [anchors × 4] (ty, tx, th, tw, centre-size coded against the anchors) and
 // class scores [anchors × (1 + classes)] (column 0 is the background).
 // qnet/tfl's LoadDetection cuts that operator off a model and returns its
-// anchors and options. The stored anchors fit the export's input size only:
-// Anchors builds the grid for other head sizes (a model run at another
-// input size), as the export's generator did.
+// anchors and options. The stored anchors fit the export's input size only.
+// Anchors builds the generator's grid for a model at its trained size. A
+// model run at a smaller input keeps the trained anchors of the cells that
+// remain (CropAnchors); a grid generated for its smaller head maps would
+// put the boxes in the wrong place.
 //
 // For each anchor the best class (the first of equal scores) is a candidate
 // when its score reaches the threshold; candidates go through greedy NMS

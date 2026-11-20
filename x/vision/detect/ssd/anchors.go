@@ -61,14 +61,7 @@ func Anchors(cfg AnchorConfig) ([]float32, error) {
 		if m[0] <= 0 || m[1] <= 0 {
 			return nil, ErrAnchorConfig
 		}
-		per := len(cfg.AspectRatios)
-		if cfg.InterpolatedRatio > 0 {
-			per++
-		}
-		if k == 0 && cfg.ReduceLowest {
-			per = 3
-		}
-		boxes += m[0] * m[1] * per
+		boxes += m[0] * m[1] * cfg.perCell(k)
 	}
 	scale := func(k int) float64 {
 		if k == n {
@@ -106,6 +99,60 @@ func Anchors(cfg AnchorConfig) ([]float32, error) {
 				}
 			}
 		}
+	}
+	return out, nil
+}
+
+// perCell is the number of boxes on each cell of layer k.
+func (cfg AnchorConfig) perCell(k int) int {
+	if k == 0 && cfg.ReduceLowest {
+		return 3
+	}
+	if cfg.InterpolatedRatio > 0 {
+		return len(cfg.AspectRatios) + 1
+	}
+	return len(cfg.AspectRatios)
+}
+
+// CropAnchors returns the anchors of a model that runs on a smaller input
+// with its sampling grid kept: the model computes, on a cropped (H, W)
+// input, what it computes on the top-left cropped pixels of the trained
+// (H, W) input cfg describes, so each head map keeps its first keep[k]
+// rows and columns of cells. The result is cfg's boxes for those cells, in
+// the model's output order, in pixels as trained: normalised to the cropped
+// input (y values × trained H / cropped H, x values × trained W / cropped
+// W). Sizes can exceed 1.
+//
+// Anchors generated for the kept maps (Anchors with Maps = keep) are not
+// these: they spread each map's cells over the whole input, while the kept
+// cells stay where the trained grid has them.
+func CropAnchors(cfg AnchorConfig, trained, cropped [2]int, keep [][2]int) ([]float32, error) {
+	if len(keep) != len(cfg.Maps) || trained[0] <= 0 || trained[1] <= 0 || cropped[0] <= 0 || cropped[1] <= 0 {
+		return nil, ErrAnchorConfig
+	}
+	full, err := Anchors(cfg)
+	if err != nil {
+		return nil, err
+	}
+	boxes := 0
+	for k, m := range cfg.Maps {
+		if keep[k][0] <= 0 || keep[k][1] <= 0 || keep[k][0] > m[0] || keep[k][1] > m[1] {
+			return nil, ErrAnchorConfig
+		}
+		boxes += keep[k][0] * keep[k][1] * cfg.perCell(k)
+	}
+	sy := float32(float64(trained[0]) / float64(cropped[0]))
+	sx := float32(float64(trained[1]) / float64(cropped[1]))
+	out := make([]float32, 0, 4*boxes)
+	for k, m := range cfg.Maps {
+		row := 4 * m[1] * cfg.perCell(k) // values in one row of cells
+		for y := range keep[k][0] {
+			kept := full[y*row:][:4*keep[k][1]*cfg.perCell(k)]
+			for i := 0; i < len(kept); i += 4 {
+				out = append(out, kept[i]*sy, kept[i+1]*sx, kept[i+2]*sy, kept[i+3]*sx)
+			}
+		}
+		full = full[m[0]*row:]
 	}
 	return out, nil
 }
